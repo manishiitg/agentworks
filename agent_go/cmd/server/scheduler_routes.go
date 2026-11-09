@@ -363,6 +363,24 @@ func replaceScheduleDependencyIDs(schedule *WorkflowSchedule, ids []string, lega
 	}
 }
 
+func applyScheduleDependencyUpdate(schedule *WorkflowSchedule, req UpdateScheduleRequest) {
+	if req.AfterScheduleID != nil {
+		schedule.AfterScheduleID = strings.TrimSpace(*req.AfterScheduleID)
+	}
+	if req.AfterScheduleIDs != nil {
+		replaceScheduleDependencyIDs(schedule, req.AfterScheduleIDs, req.AfterScheduleID != nil)
+	}
+	if req.AfterTerminalStatus != nil {
+		schedule.AfterTerminalStatus = strings.TrimSpace(*req.AfterTerminalStatus)
+	}
+	if req.AfterDelayMinutes != nil {
+		schedule.AfterDelayMinutes = *req.AfterDelayMinutes
+	}
+	if req.DependencyDeadline != nil {
+		schedule.DependencyDeadline = strings.TrimSpace(*req.DependencyDeadline)
+	}
+}
+
 type badRequestError string
 
 func (e badRequestError) Error() string { return string(e) }
@@ -720,6 +738,12 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			if len(req.CalendarItems) > 0 {
 				when = &projectactions.When{Timezone: timezone, Dates: crewScheduleDates(req.CalendarItems)}
 			}
+			if after := scheduleWhenAfter(WorkflowSchedule{AfterScheduleID: req.AfterScheduleID, AfterScheduleIDs: req.AfterScheduleIDs, AfterTerminalStatus: req.AfterTerminalStatus, AfterDelayMinutes: req.AfterDelayMinutes, DependencyDeadline: req.DependencyDeadline}); after != nil {
+				if when == nil {
+					when = &projectactions.When{Timezone: timezone}
+				}
+				when.After = after
+			}
 			job, err := svc.api.projectActions.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
 				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages,
@@ -1024,21 +1048,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if req.MaxStartDelayMinutes != nil {
 			sched.MaxStartDelayMinutes = *req.MaxStartDelayMinutes
 		}
-		if req.AfterScheduleID != nil {
-			sched.AfterScheduleID = strings.TrimSpace(*req.AfterScheduleID)
-		}
-		if req.AfterScheduleIDs != nil {
-			replaceScheduleDependencyIDs(sched, req.AfterScheduleIDs, req.AfterScheduleID != nil)
-		}
-		if req.AfterTerminalStatus != nil {
-			sched.AfterTerminalStatus = strings.TrimSpace(*req.AfterTerminalStatus)
-		}
-		if req.AfterDelayMinutes != nil {
-			sched.AfterDelayMinutes = *req.AfterDelayMinutes
-		}
-		if req.DependencyDeadline != nil {
-			sched.DependencyDeadline = strings.TrimSpace(*req.DependencyDeadline)
-		}
+		applyScheduleDependencyUpdate(sched, req)
 		if manifest.Kind != "relay" {
 			validGroupNames, err := validateScheduleGroupNamesForWorkspace(r.Context(), workspacePath, sched.GroupNames)
 			if err != nil {
@@ -1598,6 +1608,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 					schedule.Isolated, schedule.New = false, false
 				}
 			}
+			updateCrewScheduleDependencies(schedule, req)
 			if req.Name != "" {
 				schedule.Name = req.Name
 			}

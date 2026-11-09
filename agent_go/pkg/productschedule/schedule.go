@@ -131,6 +131,11 @@ func Validate(s Schedule) error {
 	if s.QuietMinutes < 0 || s.MaxDeferralHours < 0 {
 		return fmt.Errorf("schedule %q: quiet_minutes and max_deferral_hours must not be negative", s.ID)
 	}
+	if s.When != nil {
+		if err := s.When.After.Validate(s.ID); err != nil {
+			return err
+		}
+	}
 	if s.WorkflowID != "" {
 		if len(s.Messages) != 0 || s.Condition != nil {
 			return fmt.Errorf("a workflow timer runs saved work and cannot also send messages or watch events")

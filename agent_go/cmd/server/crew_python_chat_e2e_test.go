@@ -50,6 +50,12 @@ func TestCrewWorkflowTimerRunsPythonAndSupportsHTTPStop(t *testing.T) {
 	checkCrewChatPythonStop(t, "crew-timer")
 }
 
+// PLAT-871-33: an on-time dependency wait survives the ordinary clock window,
+// uses its original occurrence, and launches real Python only after release.
+func TestCrewWorkflowTimerWaitsForPrerequisiteWithoutCatchup(t *testing.T) {
+	checkCrewChatPythonStop(t, "crew-timer-dependency")
+}
+
 // PLAT-746-506: a trigger in a Crew must be real background work
 // of the calling chat. A shared Run person's published call has the same Stop.
 func TestCrewChatRunTriggerAndFunctionStop(t *testing.T) {
@@ -161,7 +167,11 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 			return true
 		})
 	})
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}), 35*time.Second)
+	timeout := 35 * time.Second
+	if entry == "crew-timer-dependency" {
+		timeout = 60 * time.Second // the actual clock adds up to five seconds of launch jitter
+	}
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}), timeout)
 	defer cancel()
 	stopRun := func(id string) {
 		api.scheduler.cancelScheduleRunContext(id)
@@ -170,7 +180,7 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 		}
 	}
 	binding := crewExecutableBinding{ID: "chat-saved", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/chat-saved", Kind: "script", RuntimeRoot: "workflows/chat-saved"}
-	if entry == "crew-timer" {
+	if strings.HasPrefix(entry, "crew-timer") {
 		// The Python adoption converter preserves Workflow/<same-id> and stores
 		// kind=script, runtime_root=workflows/<same-id> (not kind=workflow).
 		// Exercise that adopted binding, rather than the new automations layout.
@@ -200,8 +210,9 @@ child.wait()
 		t.Fatal(err)
 	}
 	var runID, timerJobID string
+	var dependencyOccurrence time.Time
 	var timerHTTP func(string, string, any) (int, []byte)
-	if entry == "crew-timer" {
+	if strings.HasPrefix(entry, "crew-timer") {
 		api.costLedger = installWorkflowCostTestLedger(t)
 		routes := mux.NewRouter()
 		SchedulerRoutes(routes, api.scheduler)
@@ -235,6 +246,22 @@ child.wait()
 			t.Fatalf("foreign target was not refused by ownership: HTTP%d %s", status, body)
 		}
 		create["target_workflow_id"] = binding.ID
+		var prerequisite string
+		if entry == "crew-timer-dependency" {
+			create["after_schedule_ids"] = []string{projectScheduleJobID("work", "foreign", "timer")}
+			if status, body := timerHTTP("POST", "/api/scheduler/jobs", create); status != 400 || !strings.Contains(string(body), "this Crew") {
+				t.Fatalf("foreign prerequisite accepted: HTTP%d %s", status, body)
+			}
+			delete(create, "after_schedule_ids")
+			status, body := timerHTTP("POST", "/api/scheduler/jobs", map[string]any{"entity_type": "product", "product_profile_id": "work", "product_project_id": "team", "name": "Prerequisite", "schedule_type": "cron", "cron_expression": "0 0 1 1 *", "timezone": "UTC", "enabled": false, "messages": []string{"Collect the data"}})
+			var saved ScheduledJobResponse
+			if status != 201 || json.Unmarshal(body, &saved) != nil {
+				t.Fatalf("prerequisite create: HTTP%d %s", status, body)
+			}
+			prerequisite = strings.TrimPrefix(saved.ID, "product-project:work:team:")
+			create["enabled"], create["cron_expression"] = true, "* * * * *"
+			create["after_schedule_ids"], create["after_delay_minutes"] = []string{saved.ID}, 1
+		}
 		status, body := timerHTTP("POST", "/api/scheduler/jobs", create)
 		var saved ScheduledJobResponse
 		if status != 201 || json.Unmarshal(body, &saved) != nil || saved.TargetWorkflowID != binding.ID || saved.Inputs["enabled"] != "true" {
@@ -244,14 +271,74 @@ child.wait()
 		if status, body := timerHTTP("GET", "/api/scheduler/jobs/"+timerJobID, nil); status != 200 || !strings.Contains(string(body), binding.ID) {
 			t.Fatalf("timer list lost target: HTTP%d %s", status, body)
 		}
-		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
+		if entry == "crew-timer-dependency" {
+			if len(saved.AfterScheduleIDs) != 1 || saved.AfterScheduleIDs[0] != projectScheduleJobID("work", "team", prerequisite) || saved.AfterDelayMinutes != 1 {
+				t.Fatalf("create lost dependency projection: %+v", saved)
+			}
+			dependencyOccurrence = time.Now().UTC().Truncate(time.Minute).Add(time.Minute)
+			rawID := strings.TrimPrefix(timerJobID, "product-project:work:team:")
+			checkWaiting := func(at time.Time) {
+				t.Helper()
+				api.scheduler.dispatchProjectTimers(ctx, at)
+				pending, err := store.GetPendingOccurrence(ctx, "crew", "team", rawID)
+				if err != nil || !pending.ScheduledFor.Equal(dependencyOccurrence) || pending.Policy != "retry" {
+					t.Fatalf("dependency occurrence lost: %+v %v", pending, err)
+				}
+				decisions, _ := store.ListFireDecisions(ctx, "crew", "team", rawID, 10)
+				for _, decision := range decisions {
+					if decision.RunID != "" {
+						t.Fatalf("Python admitted before its prerequisite: %+v", decision)
+					}
+				}
+			}
+			checkWaiting(dependencyOccurrence)
+			checkWaiting(dependencyOccurrence.Add(5 * time.Minute))
+			completePrerequisite := func(id string, occurrence, completed time.Time) {
+				t.Helper()
+				if err := store.RecordAdmittedRun(ctx, schedulerstate.Run{RunID: id, ScopeType: "crew", ScopeID: "team", ScheduleID: prerequisite, TriggerSource: "cron", ScheduledFor: occurrence, StartedAt: occurrence}); err != nil {
+					t.Fatal(err)
+				}
+				if err := store.ForceTerminal(ctx, schedulerstate.Transition{RunID: id, To: schedulerstate.StateCompleted, At: completed}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A later prerequisite occurrence cannot release this older wait.
+			completePrerequisite("later-prerequisite", dependencyOccurrence.Add(time.Minute), dependencyOccurrence.Add(2*time.Minute))
+			checkWaiting(dependencyOccurrence.Add(5 * time.Minute))
+			completePrerequisite("matching-prerequisite", dependencyOccurrence.Add(-time.Minute), dependencyOccurrence.Add(2*time.Minute))
+			api.scheduler.dispatchProjectTimers(ctx, dependencyOccurrence.Add(5*time.Minute))
+		} else if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
 			t.Fatalf("manual Crew workflow timer: HTTP%d %s", status, body)
 		}
-		decisions, err := store.ListFireDecisions(ctx, "crew", "team", strings.TrimPrefix(saved.ID, "product-project:work:team:"), 10)
-		if err != nil || len(decisions) != 1 {
-			t.Fatalf("one timer admission: %+v %v", decisions, err)
+		var admissions []schedulerstate.FireDecision
+		for ctx.Err() == nil {
+			decisions, err := store.ListFireDecisions(ctx, "crew", "team", strings.TrimPrefix(saved.ID, "product-project:work:team:"), 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			admissions = nil
+			for _, decision := range decisions {
+				if decision.RunID != "" {
+					admissions = append(admissions, decision)
+				}
+			}
+			if len(admissions) != 0 {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
-		runID = decisions[0].RunID
+		if len(admissions) != 1 {
+			t.Fatalf("one timer admission: %+v %v", admissions, ctx.Err())
+		}
+		runID = admissions[0].RunID
+		if entry == "crew-timer-dependency" {
+			if !admissions[0].ScheduledFor.Equal(dependencyOccurrence) || admissions[0].TriggerSource != "queued" {
+				t.Fatalf("dependency retry replaced original occurrence: %+v", admissions[0])
+			}
+			if _, err := store.GetPendingOccurrence(ctx, "crew", "team", strings.TrimPrefix(timerJobID, "product-project:work:team:")); !errors.Is(err, schedulerstate.ErrRunNotFound) {
+				t.Fatalf("admission did not consume pending occurrence: %v", err)
+			}
+		}
 		t.Cleanup(func() { api.projectActions.Stop("owner", timerJobID) })
 	} else if entry == "bound" {
 		resolved := &resolvedAgentProfile{}
@@ -403,7 +490,7 @@ child.wait()
 	if err != nil || json.Unmarshal(pidBytes, &pids) != nil || pids.Parent <= 0 || pids.Child <= 0 || pids.Parent == pids.Child || pids.Group <= 0 {
 		t.Fatalf("heartbeat was not from the actual child: %s %v", pidBytes, err)
 	}
-	if entry == "crew-timer" {
+	if strings.HasPrefix(entry, "crew-timer") {
 		// PR1798: direct Python does not pass through the message router, so
 		// cron and manual starts must hold the same conversation claim.
 		job, err := api.projectActions.Job(ctx, "owner", timerJobID)
@@ -452,6 +539,14 @@ child.wait()
 		if err := writeFileToWorkspace(ctx, binding.Root+"/code/main.py", "from agentworks import inputs, run_folder\nassert inputs['count']==7 and inputs['enabled'] is True\n(run_folder/'result.txt').write_text('timer finished')\n"); err != nil {
 			t.Fatal(err)
 		}
+		if entry == "crew-timer-dependency" {
+			// Run now is the explicit override, even while the clock would wait.
+			status, body := timerHTTP("PUT", "/api/scheduler/jobs/"+timerJobID, map[string]any{"after_delay_minutes": 1440})
+			var updated ScheduledJobResponse
+			if status != 200 || json.Unmarshal(body, &updated) != nil || updated.AfterDelayMinutes != 1440 {
+				t.Fatalf("dependency update lost existing setting: HTTP%d %s", status, body)
+			}
+		}
 		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
 			t.Fatalf("second manual timer: HTTP%d %s", status, body)
 		}
@@ -459,7 +554,7 @@ child.wait()
 		for ctx.Err() == nil {
 			decisions, _ := store.ListFireDecisions(ctx, "crew", "team", strings.TrimPrefix(timerJobID, "product-project:work:team:"), 10)
 			for _, d := range decisions {
-				if d.RunID != runID {
+				if d.RunID != "" && d.RunID != runID {
 					completed, _ = store.GetRun(ctx, d.RunID)
 				}
 			}

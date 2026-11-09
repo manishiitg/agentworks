@@ -403,29 +403,7 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 			return fmt.Errorf("after_schedule_ids[%d] cannot be empty", i)
 		}
 	}
-	for _, dependencyID := range scheduleDependencyIDs(schedule) {
-		if dependencyID == schedule.ID {
-			return fmt.Errorf("schedule dependencies cannot reference the schedule itself")
-		}
-	}
-	switch strings.TrimSpace(schedule.AfterTerminalStatus) {
-	case "", "completed", "any_terminal":
-	default:
-		return fmt.Errorf("after_terminal_status must be completed or any_terminal")
-	}
-	if schedule.AfterDelayMinutes < 0 {
-		return fmt.Errorf("after_delay_minutes cannot be negative")
-	}
-	if deadline := strings.TrimSpace(schedule.DependencyDeadline); deadline != "" {
-		if _, err := time.Parse("15:04", deadline); err != nil {
-			return fmt.Errorf("dependency_deadline must be HH:MM in the schedule timezone")
-		}
-	}
-	if len(scheduleDependencyIDs(schedule)) == 0 &&
-		(strings.TrimSpace(schedule.AfterTerminalStatus) != "" || schedule.AfterDelayMinutes != 0 || strings.TrimSpace(schedule.DependencyDeadline) != "") {
-		return fmt.Errorf("after_terminal_status, after_delay_minutes, and dependency_deadline require after_schedule_id or after_schedule_ids")
-	}
-	return nil
+	return scheduleWhenAfter(schedule).Validate(schedule.ID)
 }
 
 func scheduleAllowsParallel(schedule WorkflowSchedule) bool {
