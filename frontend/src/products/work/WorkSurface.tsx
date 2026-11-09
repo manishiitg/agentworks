@@ -83,7 +83,7 @@ import {
 const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
-  history: 'history', context: 'context', report: 'dashboard', goals: 'goals', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
+  history: 'history', context: 'context', report: 'dashboard', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
   // ?view=share and ?view=slack open the Access page on that section (links from the Mac app's Where it lives).
   share: 'mcp', slack: 'mcp',

@@ -10,7 +10,6 @@ import { getReportCosts, renderReportCosts } from './reportOperationalMetrics'
 import type { ReportActivityOptions, ReportTableOptions } from './reportComposition'
 import { renderReportActivity, renderReportTable } from './reportComposition'
 import type { ReportChatWidgetApi, ReportCostOptions, ReportDataApi } from './reportEmbedContext'
-import { getReportGoalMetrics, renderReportGoalProgress } from './reportGoalProgress'
 import { REPORT_OPEN_ATTR, REPORT_SRC_ATTR } from './reportMarkdownLinks'
 import { reportDaisyUiHead } from './reportDaisyUi'
 import { selectReportDocument } from '../reportDocuments'
@@ -83,7 +82,7 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
       });
     };
   }
-  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
+  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
     api[name] = queueCall(name);
   });
   api.openFile = function(){
@@ -480,8 +479,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
 
   const getCosts = (costOptions?: ReportCostOptions) => getReportCosts(dataApi, costOptions)
   const renderCosts = (target: string | HTMLElement, costOptions?: ReportCostOptions) => renderReportCosts(doc, dataApi, target, costOptions)
-  const getGoalMetrics = () => getReportGoalMetrics(dataApi.query)
-  const renderGoalProgress = (target: string | HTMLElement) => renderReportGoalProgress(doc, dataApi.query, target)
   const renderTable = (target: string | HTMLElement, tableOptions: ReportTableOptions) => renderReportTable(doc, dataApi.query, target, tableOptions)
   const renderActivity = (target: string | HTMLElement, activityOptions?: ReportActivityOptions) => renderReportActivity(doc, dataApi, target, activityOptions)
 
@@ -494,8 +491,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
       close: () => {},
     },
     getCosts, renderCosts,
-    getGoalMetrics,
-    renderGoalProgress,
     renderTable,
     renderActivity,
     ready: (fn: unknown) => {
@@ -531,8 +526,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   const realReportMethods: Record<string, ((...args: unknown[]) => unknown) | undefined> = {
     getCosts: getCosts as (...args: unknown[]) => unknown,
     renderCosts: renderCosts as (...args: unknown[]) => unknown,
-    getGoalMetrics,
-    renderGoalProgress: renderGoalProgress as (...args: unknown[]) => unknown,
     renderTable: renderTable as (...args: unknown[]) => unknown,
     renderActivity: renderActivity as (...args: unknown[]) => unknown,
     query: dataApi.query as (...args: unknown[]) => unknown,
