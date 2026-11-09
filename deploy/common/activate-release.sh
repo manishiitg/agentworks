@@ -265,15 +265,6 @@ except Exception:
   # step fails while the services are stopped, activate_recover (the caller's EXIT trap) restarts them.
   ACTIVATE_STOPPED=1
   systemctl --user stop "$UNIT_PREFIX-agent"
-  # Deploy-time mailbox snapshot (there is no recurring backup job): a consistent copy of the stopped agent's database at
-  # STATE_ROOT/backups/mailbox-RELEASE_ID.sqlite (VACUUM INTO, 0600); the newest 5 are kept.
-  if [[ -f "$DOCS_ROOT/_system/agent_messages/mailbox.sqlite" ]]; then
-    install -d -m 0700 "$STATE_ROOT/backups"
-    rm -f "$STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
-    "$RELEASE_DIR/bin/$UNIT_PREFIX-agent" server mailbox-backup --docs-dir "$DOCS_ROOT" --out "$STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
-    echo "mailbox: snapshot $STATE_ROOT/backups/mailbox-$RELEASE_ID.sqlite"
-    ls -1t "$STATE_ROOT"/backups/mailbox-*.sqlite | tail -n +6 | while IFS= read -r old_snapshot; do rm -f "$old_snapshot"; done
-  fi
   ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
