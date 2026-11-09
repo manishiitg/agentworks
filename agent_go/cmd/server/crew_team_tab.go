@@ -152,6 +152,9 @@ type crewTeamTabReply struct {
 	CanRemoveFolder bool `json:"can_remove_folder"`
 	// Asks are the cards' Ask messages, sent to the viewer's own Main (crewTeamAskPrompts).
 	Asks map[string]string `json:"asks"`
+	// NewTeam: this Crew has no Team yet and the viewer is its owner, so the page opens the first-time wizard
+	// (crew_team_wizard.go) instead of the empty Team screen.
+	NewTeam bool `json:"new_team,omitempty"`
 }
 
 // crewTeamAskPrompts are the Access and Team cards' Ask messages (owner, 6 Nov: each looks at the current state
@@ -203,6 +206,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	if viewer == t.OwnerID && twin {
 		out.AgentsLine = crewAlwaysOnAgentsLine
 	}
+	out.NewTeam = crewTeamIsNew(t, viewer)
 	if !t.On {
 		// Team off: only AgentBridge is left to choose, on the owner's own agents.
 		if viewer == t.OwnerID {

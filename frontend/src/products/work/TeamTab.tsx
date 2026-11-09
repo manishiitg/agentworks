@@ -12,6 +12,7 @@ import { TeamSyncPanel } from './TeamSyncPanel'
 const CrewFunctionsView = lazy(() => import('../../components/automation/CrewFunctionsView'))
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
+import { TeamWizard } from './TeamWizard'
 import { TeamFolderChangeDialog } from './TeamFolderChangeDialog'
 
 type Person = { id: string; username: string; email?: string }
@@ -76,6 +77,7 @@ function useFolderSize(target: TeamTarget, query?: string) {
 export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
   const { view, target, error } = state
+  const [noTeam, setNoTeam] = useState(false) // step 1 "No": nothing is saved, the normal tab shows until it is reopened
   // The Mac app's own Crew before Mac online pairs it: the Team is off, and turning it on turns Mac online on too.
   if (state.unbound) return <section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
@@ -88,6 +90,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
   </section>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
+  if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
     {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
     <PeopleCard view={view} target={target} projectId={projectId} />

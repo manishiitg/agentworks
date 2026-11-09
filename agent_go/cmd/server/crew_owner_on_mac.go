@@ -78,6 +78,7 @@ func refuseCrewOwnerTurnOnMacTwin(ctx context.Context, root, user string) error 
 // is changeable. The tab strip and MCP read this reply too.
 func (out *crewTeamTabReply) changeOnMac() {
 	out.Team.ChangeOnMac, out.Team.CanManage = crewChangeOnMacLine, false
+	out.NewTeam = false
 	out.CanSwitch, out.CanChoose, out.CanAddFolder, out.CanRemoveFolder = false, false, false, false
 	out.Asks = map[string]string{} // an Ask card's message offers changes
 	for i := range out.People {
