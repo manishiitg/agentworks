@@ -25,6 +25,20 @@ Over MCP, discover `workspace action=create kind=crew` and pass the requested ex
 
 The returned `files_path` is the logical file root; `workspace_path` stays the stable resource/settings namespace. Native commands and the project terminal use the selected folder. For shared-file MCP calls, keep the project's normal namespace and address user files with the returned relative `_files/...` path; never invent a different project root or use an absolute host path in a file API.
 
+## Attach a folder on this Mac
+
+This is separate from connecting a laptop to a hosted Crew. Read `panel-access`'s
+Linked folders procedure, list with `files action=folders`, then use
+`files action=folder_attach` for the folder the person requested. Their request
+is the approval; preserve existing grants and use the needed access. This is the
+same list as Integrations → Folders on this Mac. “Your whole Mac” attaches the
+home folder as `mac` with read/write only when asked. A sign-in folder requires
+the person to name that exact folder; never broaden it to a parent.
+
+The native sandbox picks up the grant on the next turn. Tell the person to send
+one more message; do not claim the current process gained access immediately.
+On a server, allowed-root checks still apply. A refusal grants no workaround.
+
 ## Connect a laptop to a hosted Crew
 
 For a hosted Crew, the agent runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs. They work on every turn of the person's own chat, scheduled and watch turns and their own agents' messages included; never for another person's message or a Run person. Use the laptop only when the work needs that computer; paths are relative to the granted folder. If the computer is offline, say the local step is unavailable and carry on with the server work; never retry an uncertain command blindly.
