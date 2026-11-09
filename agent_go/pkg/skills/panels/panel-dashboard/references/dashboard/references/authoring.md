@@ -224,6 +224,10 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
    discovery and blocks the link.
 2. `dashboard action=get` reads the source and revision. An HTML page may use its
    returned document_path and stays intact when adopted into a managed bundle.
+   For a draft, use the exact immutable revision path returned by get. The app
+   preserves that requested revision; the server requires current edit access.
+   Stable shared links still open the publication. Current published pages keep
+   Ask; a draft or older revision does not borrow the current publication’s Ask.
 3. `dashboard action=create` takes dashboard_id (lowercase slug), title and files.
    Live dashboards supply index.tsx and optional relative source/assets; a quick shareable page may supply index.html. JSON dashboards are not supported.
    Images/fonts use matching base64 data URLs. Optional scripts go under scripts/.
@@ -233,6 +237,11 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
 5. `dashboard action=validate` checks the exact source, SQL and referenced files.
    `dashboard action=preview` renders that revision with the real browser runtime;
    inspect errors and screenshots and verify visible content, not only ready status.
+   Preview waits for the page’s ready callbacks and visible Loading placeholders
+   to finish. Late data loads may return it to loading. CSS-hidden placeholders
+   do not block capture. If it times out as loading, report the unfinished check
+   and inspect the data/script errors; do not claim a screenshot or publish to
+   bypass it. The requested revision stays unchanged.
    Connected MCP attaches up to two PNG screenshot images; inspect those image
    blocks. Other screenshots open through signed-in browser links. If your client
    cannot display images, report that visual inspection is still needed.

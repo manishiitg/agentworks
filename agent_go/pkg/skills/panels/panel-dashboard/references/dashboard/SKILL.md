@@ -6,6 +6,8 @@ Dashboard work stays in the project's dashboard list. “Move this dashboard to 
 
 Before authoring a dashboard, Read [the detailed procedure](references/authoring.md).
 
+To inspect a draft, open the exact revision returned by get; do not replace it with the published link or publish it just to preview. Drafts require current edit access. Preview must finish with visible content: a loading result, missing screenshot or remaining visible Loading text is not a successful check.
+
 For a button or link that sends a request into the project's chat, use `report.sendChatMessage(message)` from the explicit click handler. This is separate from `AskButton`/`report.chat.open()`, which only open the composer. Hidden Builder Ask widgets do not disable direct chat actions in the live website dashboard. Read “Buttons that send a message to chat” in the detailed procedure for an example, queued-result wording and preview/export/MCP App differences.
 
 When playback, a motion dashboard or a video export is requested, Read [the detailed procedure](references/motion-guide.md). Set motion=true through create/update for interactive playback pages and publish to list them under Motion dashboards. The label alone does not animate a page. Use the shared MotionControls toolbar by default, floating within the authored playback area; its placement, appearance and controls stay customizable. MP4 export is optional.
