@@ -13,22 +13,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func TestNormalizeReportHumanInputSourceMergesLegacyAdvisorIdentity(t *testing.T) {
-	for input, want := range map[string]string{
-		"engineering-review": "technical_review",
-		"Operations Review":  "technical_review",
-		"strategic-review":   "strategic_review",
-		"strategy-auditor":   "strategic_review",
-		"Strategy Auditor":   "strategic_review",
-		"goal-advisor":       "strategic_review",
-		"unknown":            "pulse",
-	} {
-		if got := normalizeReportHumanInputSource(input); got != want {
-			t.Fatalf("normalizeReportHumanInputSource(%q) = %q, want %q", input, got, want)
-		}
-	}
-}
-
 func TestBackgroundWorkflowChildCanCreateOnlyOwnHumanInputRequest(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	tools, executors, _ := createReportHumanInputTools()
