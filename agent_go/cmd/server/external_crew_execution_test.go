@@ -86,7 +86,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	call("snapshot", map[string]any{})
 	// PLAT-746-428: an unconverted workflow bound to this Crew uses its
 	// chosen database too. No second database or transport fallback is needed.
-	legacy := crewExecutableBinding{ID: "legacy", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/legacy", Kind: "workflow", RuntimeRoot: "workflows/legacy"}
+	legacy := crewExecutableBinding{ID: "legacy", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/legacy", Kind: "script", RuntimeRoot: "workflows/legacy"}
 	if err := registerCrewExecutable(legacy); err != nil {
 		t.Fatal(err)
 	}

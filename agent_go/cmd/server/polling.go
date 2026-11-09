@@ -730,7 +730,7 @@ func (api *StreamingAPI) buildActiveSessionInfoSummary(session *ActiveSessionInf
 	// PLAT-746-376: moved workflows retain their logical Workflow address.
 	// Their server-owned binding, rather than a browser path heuristic, names
 	// the Crew that must open when the person selects this activity.
-	if binding, err := findCrewExecutable(enriched.WorkspacePath); err == nil && binding != nil && (binding.Kind == "workflow" || binding.Kind == "script") {
+	if binding, err := findCrewExecutable(enriched.WorkspacePath); err == nil && binding != nil && binding.Kind == "script" {
 		enriched.CrewProjectID = binding.CrewID
 		if enriched.TriggeredByLabel == "" && (enriched.TriggeredBy == "workflow_builder" || enriched.TriggeredBy == "workflow_phase") {
 			enriched.TriggeredByLabel = "Workflow run"

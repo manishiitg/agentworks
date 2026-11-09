@@ -152,7 +152,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, binding := range []crewExecutableBinding{
-		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "workflow"},
+		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "script"},
 		{ID: "script-shared-id", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-script", Kind: "script"},
 		{ID: "script-shared-id", CrewID: "other-crew", CrewRoot: "Crew/other", Root: "Workflow/keep-script", Kind: "script"},
 	} {
