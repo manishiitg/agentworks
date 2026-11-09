@@ -28,18 +28,6 @@ func TestLockedLLMRestrictsToThePublishedListWhenOneIsConfigured(t *testing.T) {
 	}
 }
 
-// Without an explicit list the historical behaviour stands: any model the
-// platform knows for a locked provider is accepted.
-func TestLockedLLMWithoutPublishedListKeepsKnownModels(t *testing.T) {
-	t.Setenv("LLM_CONFIG_LOCKED", "true")
-	t.Setenv("DEFAULT_PUBLISHED_LLMS", "")
-	t.Setenv("DEFAULT_PUBLISHED_LLMS_PATH", "")
-
-	if !isAllowedDefaultLLM("cursor-cli", "gpt-5") {
-		t.Fatal("a curated cursor-cli model must stay allowed in the legacy mode")
-	}
-}
-
 // A product profile's own binding (Example Product pins claude-code) is operator
 // configuration and wins under the lock; a user's or a workflow's choice that
 // is not published falls back to the server default.

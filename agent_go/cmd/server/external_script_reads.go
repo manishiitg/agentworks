@@ -44,7 +44,8 @@ func externalWorkflowReadView(ctx context.Context, item DiscoveredWorkflow, comp
 // Run metadata is a public runtime projection, not the private helper transport.
 // Read it through the same bounded file reader and connection grants as files.
 // Checks/notices come from the canonical evidence reader used by the website.
-func externalScriptRunRecord(ctx context.Context, workspace, folder string, result map[string]any) error {
+func externalScriptRunRecord(ctx context.Context, item DiscoveredWorkflow, folder string, result map[string]any) error {
+	workspace := item.WorkspacePath
 	if err := workflow.ValidateWorkflowRunFolder(folder); err != nil {
 		return &externalUpstreamError{400, "Choose a run from this workflow."}
 	}
@@ -63,6 +64,7 @@ func externalScriptRunRecord(ctx context.Context, workspace, folder string, resu
 		if err := json.Unmarshal([]byte(record.Content), &metadata); err != nil {
 			return fmt.Errorf("read run record: %w", err)
 		}
+		setRunResumeCapability(ctx, item.Manifest, workspace, folder, &metadata)
 		result["metadata"] = metadata
 	}
 	items, err := workflow.ReadPythonRunEvidence(workflow.GetPromptDocsRoot(), workspace, folder)

@@ -638,7 +638,7 @@ type StreamingAPI struct {
 	// Last query request per session — used to construct synthetic turns
 	lastQueryRequests       map[string]QueryRequest
 	lastQueryMu             sync.RWMutex
-	sessionWorkspaceFolders map[string]string // sessionID → resolved workflowPhaseFolder (for builder log persistence in synthetic turns)
+	sessionWorkspaceFolders map[string]string // sessionID → conversation workspace
 	sessionWorkspaceMu      sync.RWMutex
 
 	// Stored agent instances for synthetic turns (plan mode only)
@@ -793,22 +793,17 @@ type QueryRequest struct {
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
 	// launched with them is not steered once they change.
 	secretsWorkspacePath string
-	// admittedWorkflowPhase records, once and server-side, that this request was admitted as a Workflow phase chat.
-	// handleQuery later rewrites AgentMode from workflow_phase to multi-agent, so checks that run after that point
-	// read this instead of AgentMode (PLAT-608; PLAT-600 was a check that read the rewritten mode). A client cannot set
-	// it: an ordinary multi-agent chat that sends phase_id=workflow-builder is not the Builder.
-	admittedWorkflowPhase bool
-	ConnectionID          string   `json:"connection_id,omitempty"`
-	Query                 string   `json:"query"`
-	Message               string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
-	SessionTitle          string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
-	ParentSessionID       string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
-	SessionKind           string   `json:"session_kind,omitempty"`      // Stable runtime kind such as generic_agent; never infer this from titles.
-	Servers               []string `json:"servers,omitempty"`
-	EnabledServers        []string `json:"enabled_servers,omitempty"`
-	SelectedTools         []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
-	Provider              string   `json:"provider,omitempty"`
-	ModelID               string   `json:"model_id,omitempty"`
+	ConnectionID         string   `json:"connection_id,omitempty"`
+	Query                string   `json:"query"`
+	Message              string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
+	SessionTitle         string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
+	ParentSessionID      string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
+	SessionKind          string   `json:"session_kind,omitempty"`      // Stable runtime kind such as generic_agent; never infer this from titles.
+	Servers              []string `json:"servers,omitempty"`
+	EnabledServers       []string `json:"enabled_servers,omitempty"`
+	SelectedTools        []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
+	Provider             string   `json:"provider,omitempty"`
+	ModelID              string   `json:"model_id,omitempty"`
 	// ReasoningEffort overrides the "reasoning_effort" key of an agent
 	// profile's provider_options[].Options for this turn only; every other
 	// key stays as declared. Ignored outside the profile query path.
@@ -931,7 +926,9 @@ type QueryRequest struct {
 	// Workspace path passed directly (used by scheduler to bypass preset lookup)
 	SelectedFolder string `json:"selected_folder,omitempty"`
 	// Set only after target admission, or by an internal scheduled run.
-	notificationItemWorkspace string
+	notificationItemWorkspace         string
+	notificationMailConnectionID      string
+	notificationMailBlockedRecipients []string
 
 	// Triggered by: "manual", "cron" — for tracking execution source
 	TriggeredBy string `json:"triggered_by,omitempty"`
@@ -1007,8 +1004,11 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 			}
 		}
 	}
-	if dest.Gmail != nil {
-		dest.Gmail.Workspace = req.notificationItemWorkspace
+	if req.notificationItemWorkspace != "" {
+		dest.Gmail = &services.GmailDest{Workspace: req.notificationItemWorkspace, BlockedRecipients: append([]string(nil), req.notificationMailBlockedRecipients...)}
+		if req.notificationMailConnectionID != "" {
+			dest.Gmail.ConnectionIDs = []string{req.notificationMailConnectionID}
+		}
 	}
 	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.WhatsApp == nil && dest.Gmail == nil {
 		return nil
@@ -1301,7 +1301,7 @@ func requestLLMConfigOverridesManifest(req QueryRequest) bool {
 
 func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 	mode := normalizeAgentMode(req.AgentMode)
-	return mode == "workflow_phase" || isToolBackedChatMode(mode)
+	return isToolBackedChatMode(mode)
 }
 
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
@@ -1383,7 +1383,7 @@ type sessionInputLane struct {
 //
 // PLAT-113: callers needing "is a turn running" previously read sessionBusy,
 // which is a user-facing display flag deliberately NOT set for workflow turns
-// (see the !isWorkflowPhase guard where it is assigned). Auto-notifications
+// during headless execution. Auto-notifications
 // therefore skipped their queue during a workflow run and blocked on this lane
 // instead, piling 25 never-started synthetic turns behind one 5-hour turn until
 // the idle-wait watchdog killed a healthy run. Read the authority, not the
@@ -3670,23 +3670,7 @@ func requestLogPath(r *http.Request) string {
 	return path + "?" + query.Encode()
 }
 
-// Query endpoint - handles POST requests to start agent streaming.
-//
-// TWO PRODUCT MODES share this one handler (see the isWorkflowPhase block
-// below for the full explanation):
-//
-//  1. Multiagent chat  — agent_mode="multi-agent": the normal conversational
-//     agent with delegation/sub-agents.
-//  2. Workflow builder — agent_mode="workflow_phase" + phase_id: a chat whose
-//     job is to construct/edit a workflow.json. It is NOT a separate engine —
-//     it loads phase-specific config (prompt/tools/folder/LLM) from
-//     workflow.json and then sets req.AgentMode="multi-agent", falling through
-//     this same path. The two modes therefore diverge only via the ~30
-//     `isWorkflowPhase` / workflowPhase* checks scattered below, not via
-//     separate code paths.
-//
-// (The direct plan-execution agent_mode="workflow" path is handled
-// separately right after the workflow_phase block.)
+// handleQuery runs current Crew/product chats and direct saved-Python executions.
 func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	requestReceivedAt := time.Now()
 	if r.Method == "OPTIONS" {
@@ -3798,6 +3782,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Normalize legacy "simple" → "multi-agent" at the request boundary so
 	// every downstream branch sees the canonical name.
 	req.AgentMode = normalizeAgentMode(req.AgentMode)
+	if req.AgentMode != "workflow" && !isToolBackedChatMode(req.AgentMode) {
+		http.Error(w, "Choose a Crew chat, or run a saved Python workflow.", http.StatusBadRequest)
+		return
+	}
 
 	// Extract sessionID from header/cookie or fallback to queryID
 	sessionID := r.Header.Get("X-Session-ID")
@@ -3861,7 +3849,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
-	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
+	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile)
 	// A Slack channel turn runs as the bot identity; its shared-account
 	// tokens count toward, and are limited by, the target's owner.
 	botTokenOwner := botRouteTokenOwner(r.Context(), currentUserID, accountScope.WorkspacePath)
@@ -3976,21 +3964,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			selected = strings.Trim(strings.TrimSpace(resolved), "/")
 		}
 	}
-	// Workflow phase payloads identify the workspace through their preset.
-	// Resolve it before both journal acceptance and retained-policy admission.
-	if req.AgentMode == "workflow_phase" && strings.HasPrefix(selected, "Workflow/") {
-		req.SelectedFolder = selected
-	}
 	bindConversationBrowserIsolation(sessionID, currentUserID, selected, resolvedProfile)
 	common.SetSessionBrowserMode(sessionID, getBrowserMode(req))
 	// Keep configured browser intent on the request. In auto mode,
 	// agent_browser queries current CDP reachability at tool-call time.
 
 	// Default maxTurns only when omitted (0). Negative values are preserved to mean "no turn cap".
-	// Multi-agent chat and the workflow builder run uncapped by default.
-	isWorkflowBuilderPhase := req.AgentMode == "workflow_phase" && req.PhaseID == workflowtypes.WorkflowStatusWorkflowBuilder
+	// Chat runs uncapped by default.
 	if req.MaxTurns == 0 {
-		if isToolBackedChatMode(req.AgentMode) || isWorkflowBuilderPhase {
+		if isToolBackedChatMode(req.AgentMode) {
 			req.MaxTurns = -1
 			log.Printf("[AGENT] MaxTurns omitted for %s mode, running without a turn cap", req.AgentMode)
 		} else {
@@ -4199,7 +4181,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// User input has priority over a synthetic completion turn. Cancel it
 		// before waiting for the shared turn lane; otherwise the user would wait
 		// behind the very synthetic turn it is meant to interrupt.
-		if !req.IsAutoNotification && req.AgentMode != "workflow_phase" && api.isSyntheticTurn(sessionID) {
+		if !req.IsAutoNotification && api.isSyntheticTurn(sessionID) {
 			api.agentCancelMux.RLock()
 			cancelFn := api.agentCancelFuncs[sessionID]
 			api.agentCancelMux.RUnlock()
@@ -4404,177 +4386,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Session config isn't persisted anymore — follow-up messages rely on the
 	// frontend to pass the provider/model on every request.
 
-	// === Workflow builder vs multiagent chat: the mode discriminator ===
-	//
-	// `isWorkflowPhase` is the single flag that distinguishes the WORKFLOW
-	// BUILDER from plain MULTIAGENT CHAT for the rest of this handler. There is
-	// no separate builder code path: the block just below loads the builder's
-	// config (LLM, servers, browser mode, secrets, working folder) from the
-	// preset's workflow.json, and then sets req.AgentMode="multi-agent" so the
-	// request continues down the shared chat path.
-	//
-	// Consequence: every place the builder must behave differently from chat is
-	// an `if isWorkflowPhase` / `if !isWorkflowPhase` check further down (~30 of
-	// them — folder guard, LLM resolution, tool registration, secrets injection,
-	// session binding, chat-history persistence, etc.). Grep
-	// `isWorkflowPhase` to see the full set of divergence points. If you need
-	// the builder and chat to diverge more, prefer threading the difference
-	// through `workflowPhaseFolder`/config rather than adding yet another bool
-	// check here — the scattered checks are already the main source of
-	// confusion in this 3k-line function.
-	//
-	// This runs BEFORE the direct agent_mode=="workflow" execution branch
-	// to intercept and redirect.
-	//
-	// req.AgentMode is one of: "workflow_phase" (Workflow Builder chat, this
-	// branch), "workflow" (direct plan execution, see below), or "multi-agent" — the
-	// generic direct-chat mode (model + skills + tools + workspace context)
-	// that the base agentworks surface uses by default and that other product
-	// surfaces opt into explicitly for plain chat.
-	// "multi-agent" is NOT a "Chief of Staff" product — no such product exists
-	// on main (only on the separate, unmerged feature/chief-of-staff-product
-	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
-	isWorkflowPhase := req.AgentMode == "workflow_phase"
-
-	workflowPhaseID := req.PhaseID
-	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
-	workflowPhaseRunFolder := ""
-	var workflowPhasePrimaryOptions map[string]interface{}
-	_ = workflowPhaseFolder // used later in the function
-	if isWorkflowPhase {
-		logfWithContext(queryLogCtx, "[WORKFLOW_PHASE] Phase chat mode detected: phase=%s preset=%s session=%s", workflowPhaseID, req.PresetQueryID, sessionID)
-		if req.PresetQueryID == "" {
-			logfWithContext(queryLogCtx, "[WORKFLOW_PHASE] ERROR: workflow_phase mode requires a preset_query_id")
-			http.Error(w, `{"error":"workflow_phase mode requires a preset_query_id (workflow preset)"}`, http.StatusBadRequest)
-			return
-		}
-
-		// Try manifest-first resolution for workflow_phase
-		// Priority: resolve from preset DB → fallback to req.SelectedFolder (scheduler sets this directly)
-		phaseManifestLoaded := false
-		resolvedWPath := ""
-		if wPath, wErr := api.resolveWorkspacePathFromPreset(context.Background(), req.PresetQueryID); wErr == nil && wPath != "" {
-			resolvedWPath = wPath
-		} else if req.SelectedFolder != "" {
-			// Scheduler/cron sets selected_folder directly — no DB lookup needed
-			resolvedWPath = req.SelectedFolder
-			logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Using selected_folder as workspace path: %s", resolvedWPath)
-		}
-		var resolvedManifest *WorkflowManifest
-		if resolvedWPath != "" {
-			if manifest, found, mErr := ReadWorkflowManifest(context.Background(), resolvedWPath); mErr == nil && found {
-				resolvedManifest = manifest
-			}
-		}
-		if resolvedWPath != "" {
-			queryLogCtx = queryLogCtx.WithWorkflow(resolvedWPath)
-			registerServerLogContext(queryLogCtx, sessionID, queryID)
-			queryLogger = queryLogCtx.Logger(api.logger)
-			api.activeSessionsMux.Lock()
-			if sess, ok := api.activeSessions[sessionID]; ok {
-				// PLAT-159: WorkflowLabel/PresetName used to get the raw folder
-				// name too, same as WorkflowName. That made the same running
-				// session look like a different workflow wherever the UI reads
-				// the label instead of the folder name (the Global Activity
-				// Monitor pill, in particular) — see workflowDisplayLabel.
-				workflowName := workflowNameFromWorkspacePath(resolvedWPath)
-				displayLabel := workflowDisplayLabel(resolvedWPath, resolvedManifest)
-				sess.PresetQueryID = req.PresetQueryID
-				sess.WorkspacePath = resolvedWPath
-				sess.WorkflowName = workflowName
-				sess.WorkflowLabel = displayLabel
-				sess.PresetName = displayLabel
-				if workflowPhaseID != "" {
-					sess.CurrentExecutionName = workflowPhaseID
-				}
-			}
-			api.activeSessionsMux.Unlock()
-		}
-		if resolvedWPath != "" && resolvedManifest != nil {
-			manifest := resolvedManifest
-			{
-				phaseManifestLoaded = true
-				workflowPhaseFolder = resolvedWPath
-				logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Loaded config from manifest at %s", resolvedWPath)
-				if manifest.Capabilities.LLMConfig != nil {
-					phaseLLM, _ := workshopResolveLLMConfigFor(withModelLimitPerson(r.Context(), modelLimitPersonID), lockedPresetLLMConfig(manifest.Capabilities.LLMConfig))
-					if phaseLLM != nil && phaseLLM.Provider != "" && phaseLLM.ModelID != "" {
-						if requestLLMConfigOverridesManifest(req) {
-							logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Preserving request LLM %s/%s from %s over manifest phase LLM %s/%s",
-								finalProvider, finalModelID, req.LLMConfigSource, phaseLLM.Provider, phaseLLM.ModelID)
-						} else {
-							finalProvider = phaseLLM.Provider
-							finalModelID = phaseLLM.ModelID
-							workflowPhasePrimaryOptions = phaseLLM.Options
-							// The manifest selects credentials as well as the model. Clear
-							// stale request account IDs when switching back to a server account.
-							req.ConnectionID = phaseLLM.ConnectionID
-							// Keep the retained-turn context equal to the actual launch,
-							// including effort; stale tab options must not describe it.
-							configCopy := orchestrator.LLMConfig{}
-							if req.LLMConfig != nil {
-								configCopy = *req.LLMConfig
-							}
-							configCopy.Primary.Provider = phaseLLM.Provider
-							configCopy.Primary.ModelID = phaseLLM.ModelID
-							configCopy.Primary.ConnectionID = phaseLLM.ConnectionID
-							configCopy.Primary.Options = maps.Clone(phaseLLM.Options)
-							req.LLMConfig = &configCopy
-							logfWithContext(queryLogCtx.WithWorkflow(resolvedWPath), "[WORKFLOW_PHASE] Using workshop LLM from manifest: %s/%s", finalProvider, finalModelID)
-						}
-					}
-				}
-				// If manifest has explicit selection, use it; otherwise leave nil (= none)
-				if req.SelectedGlobalSecrets == nil && manifest.Capabilities.SelectedGlobalSecretNames != nil {
-					req.SelectedGlobalSecrets = manifest.Capabilities.SelectedGlobalSecretNames
-				}
-				req.secretsWorkspacePath = resolvedWPath
-				// Checked against the owner who lends them, as the turn resolves them.
-				secretsOwner := api.turnSecretsOwner(sessionID, currentUserID, resolvedWPath)
-				// A bot session already carries its arrival connection, which
-				// wins over the manifest selection for that conversation.
-				if strings.TrimSpace(req.BotConnectionID) == "" {
-					req.BotConnectionID = strings.TrimSpace(manifest.Capabilities.SlackConnectionID)
-				}
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
-					http.Error(w, err.Error(), http.StatusForbidden)
-					return
-				}
-
-				// Manifest is the source of truth for servers and browser mode.
-				if runtime := manifest.Capabilities.RuntimeServers(); len(runtime) > 0 {
-					selectedServers = runtime
-					serverList = strings.Join(selectedServers, ",")
-				}
-				if manifest.Capabilities.BrowserMode != "" {
-					req.BrowserMode = manifest.Capabilities.BrowserMode
-				}
-			}
-		}
-
-		if !phaseManifestLoaded {
-			// Manifest-only mode: workflow.json is the source of truth.
-			logfWithContext(queryLogCtx, "[WORKFLOW_PHASE] WARNING: No workflow.json found for preset %s - phase will use request defaults only", req.PresetQueryID)
-			// Still need to resolve workspace folder for FolderGuard write access
-			if workflowPhaseFolder == "" {
-				if wPath, wErr := api.resolveWorkspacePathFromPreset(context.Background(), req.PresetQueryID); wErr == nil && wPath != "" {
-					workflowPhaseFolder = wPath
-				} else if req.SelectedFolder != "" {
-					workflowPhaseFolder = req.SelectedFolder
-				}
-			}
-		}
-		// A Flow's Builder chat is its owner's; everyone else with access chats in Run mode (856-78). Run mode is the same
-		// server-side policy as a Crew's: no shell, MCP servers or secrets, and only the Run tool surface.
-
-		// Convert to multi-agent mode so it falls through to the standard agent path
-		req.AgentMode = "multi-agent"
-	}
-
-	// Handle workflow mode - use workflow orchestrator.
-	// agent_mode "workflow" is the headless direct plan-execution path.
-	// Direct plan execution is used by webhooks and workflow-run tools.
-	// Interactive authoring uses the separate workflow_phase Builder path.
+	// Run saved Python workflows directly for webhooks, timers and run tools.
 	if req.AgentMode == "workflow" {
 		directWebhookOptions, _ := r.Context().Value(directWebhookExecutionKey{}).(*todo_creation_human.ExecutionOptions)
 
@@ -4972,6 +4784,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Execute workflow asynchronously
 		go func() {
+			if directWebhookOptions != nil && directWebhookOptions.PythonResume != nil && directWebhookOptions.PythonResume.Release != nil {
+				defer directWebhookOptions.PythonResume.Release()
+			}
 			defer func() {
 				// Clean up the cancel function when done (keyed by queryID)
 				api.workflowOrchestratorContextMux.Lock()
@@ -5002,39 +4817,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				api.sessionQueryIDMux.Unlock()
 			}()
-
-			if isWorkflowPhase && workflowPhaseFolder != "" && workflowPhaseFolder != "default_workspace" {
-				triggeredBy := "workflow_phase"
-				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					triggeredBy = "workflow_builder"
-				}
-				// Scheduler turns intentionally use the workflow-builder phase,
-				// but they are still cron work. Preserve that origin in the running
-				// registry so the frontend restores a Schedule lane rather than
-				// treating it as the user's interactive Builder chat.
-				if requestedTrigger := strings.TrimSpace(req.TriggeredBy); requestedTrigger != "" {
-					triggeredBy = requestedTrigger
-				}
-
-				runFolder := ""
-				if req.ExecutionOptions != nil {
-					runFolder = req.ExecutionOptions.SelectedRunFolder
-				}
-				api.registerRunningWorkflow(&ActiveWorkflowExecution{
-					QueryID:       queryID,
-					SessionID:     sessionID,
-					PresetQueryID: req.PresetQueryID,
-					WorkspacePath: workflowPhaseFolder,
-					RunFolder:     runFolder,
-					PhaseID:       workflowPhaseID,
-					Status:        "running",
-					UserID:        currentUserID,
-					Title:         req.SessionTitle,
-					Query:         req.Query,
-					TriggeredBy:   triggeredBy,
-					StartedAt:     time.Now(),
-				})
-			}
 
 			// Check in-memory runtime state for workflow approval status
 			workflowStatus := workflowtypes.WorkflowStatusPreVerification // Default status
@@ -5270,10 +5052,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				err = preflightCrewAttachments(workflowCtx, api.projectActions, claims.UserID, workflowWorkspacePath)
 			}
 			if err == nil {
-				// An unreadable input is refused before anything runs (PLAT-579).
-				_, err = workflowGraphPreflight(workflowWorkspacePath, "")
-			}
-			if err == nil {
 				_, err = workflowOrchestrator.Execute(
 					workflowCtx,
 					workflowObjective, // Use preset objective instead of req.Query
@@ -5432,7 +5210,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// start the next turn from a lightweight live-input message when a retained
 	// coding CLI session is idle. Synthetic turns also reuse this context.
 	req.userID = currentUserID
-	continuationReq := queryRequestForContinuation(req, isWorkflowPhase, workflowPhaseFolder)
+	continuationReq := req
 	continuationReq = queryRequestWithEffectiveRuntime(continuationReq, finalProvider, finalModelID)
 	if idleRun == nil {
 		api.lastQueryMu.Lock()
@@ -5444,7 +5222,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set user-facing busy state for regular chat turns.
-	if !isWorkflowPhase {
+	{
 		api.setSessionBusy(sessionID, true)
 		// Mark auto-notification turns as synthetic so frontend doesn't block input
 		if req.IsAutoNotification {
@@ -5456,13 +5234,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Load merged API keys (env + workspace) while r.Context() is still valid (before goroutine)
 	mergedAPIKeys := MergedProviderAPIKeys(r.Context())
-	if isWorkflowPhase && workflowPhaseFolder != "" {
-		var credentialErr error
-		mergedAPIKeys, credentialErr = api.resolveEffectiveAPIKeys(r.Context(), currentUserID, workflowPhaseFolder, mergedAPIKeys)
-		if credentialErr != nil {
-			logfWithContext(queryLogCtx.WithWorkflow(workflowPhaseFolder), "[WORKFLOW_AUTH] Failed to load provider credentials: %v", credentialErr)
-		}
-	} else if resolvedProfile != nil && resolvedProfile.APIKeys != nil {
+	if resolvedProfile != nil && resolvedProfile.APIKeys != nil {
 		// resolveAgentProfileForQuery resolved a project-scoped credential for a
 		// product surface from the encrypted per-workspace
 		// store. Recomputing mergedAPIKeys from scratch below would discard it:
@@ -5486,7 +5258,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
-	resolverScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, isWorkflowPhase, workflowPhaseFolder)
+	resolverScope := queryProviderAccountScope(req, currentUserID, resolvedProfile)
 	resolverScope.TokenOwner = botTokenOwner
 	if accountScope.Principal != resolverScope.Principal && botTokenOwner != "" && accountScope.Principal == botTokenOwner {
 		resolverScope.Principal = botTokenOwner
@@ -5524,7 +5296,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Publish completion before releasing the turn lane. A queued synthetic
 			// turn can then acquire the lane and set running=true without an older
 			// cleanup racing afterward and clearing its state.
-			if !isWorkflowPhase {
+			{
 				api.setSyntheticTurn(sessionID, false)
 				api.setSessionBusy(sessionID, false)
 			}
@@ -5544,7 +5316,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if queryInputLaneRelease != nil {
 				queryInputLaneRelease()
 			}
-			if !isWorkflowPhase {
+			{
 				// Drain only after releasing the lane; synthetic turns acquire it.
 				api.drainPendingAutoNotificationsAfterTurn(sessionID)
 			}
@@ -5620,12 +5392,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		agentModeForScope := req.AgentMode
-		if isWorkflowPhase {
-			agentModeForScope = "workflow_phase"
-		}
-		costScope := chatTurnCostScope(req, agentModeForScope, workflowPhaseID)
+
+		costScope := chatTurnCostScope(req, agentModeForScope, "")
 		turnCostAttribution := api.costTurnAttribution(r.Context(), req, currentUserID,
-			costFirstNonEmpty(workflowPhaseFolder, req.SelectedFolder), costScope)
+			req.SelectedFolder, costScope)
 		api.setSessionCostAttribution(sessionID, turnCostAttribution)
 		streamCtx = queryLogCtx.Context(streamCtx)
 		streamCtx = costobserver.ContextWithAttribution(streamCtx, turnCostAttribution)
@@ -5672,9 +5442,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.LLMConfig != nil {
 			resolvedPrimaryOptions = req.LLMConfig.Primary.Options
 		}
-		if isWorkflowPhase && workflowPhasePrimaryOptions != nil {
-			resolvedPrimaryOptions = workflowPhasePrimaryOptions
-		}
+
 		if !isPublishedLLMProviderAllowed(finalProvider) {
 			sendError(fmt.Sprintf("Selected provider %q is not supported; select an available provider", finalProvider), true)
 			return
@@ -5715,9 +5483,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if resolvedProfile != nil {
 			chatWorkingFolder = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
 		}
-		if isWorkflowPhase && workflowPhaseFolder != "" && workflowPhaseFolder != "default_workspace" {
-			chatWorkingFolder = workflowPhaseFolder
-		}
+
 		workspace.SetSessionWorkingDir(sessionID, crewFilesPath(chatWorkingFolder))
 		turnProfileID := ""
 		if resolvedProfile != nil {
@@ -5727,7 +5493,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if source := publicationSourceForProfile(resolvedProfile); source != "" {
 			cliWorkspaceFolder = source
 		}
-		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, cliWorkspaceFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly, resolvedProfile != nil && (resolvedProfile.IsolateCodeCLI || resolvedProfile.Publication != nil))
+		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, false, cliWorkspaceFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly, resolvedProfile != nil && (resolvedProfile.IsolateCodeCLI || resolvedProfile.Publication != nil))
 		if isolationErr != nil {
 			sendError(isolationErr.Error(), true)
 			return
@@ -5755,7 +5521,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
-		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
+		if currentUserIsReadOnly && crewReaderCLI {
 			cliWritePaths = nil
 		}
 		if resolvedProfile != nil && resolvedProfile.Publication != nil {
@@ -5797,7 +5563,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		turnRunAs, runAsErr := declareTurnRunAs(r.Context(), turnRunAsInput{
 			ProfileID:        turnProfileID,
 			ConversationKey:  req.AgentProfileConversationKey,
-			WorkflowPhase:    isWorkflowPhase,
 			WorkingFolder:    chatWorkingFolder,
 			CLIWorkingDir:    chatWorkingDir,
 			SharedWorkingDir: sharedChatWorkingDir,
@@ -5897,9 +5662,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
 
-		if isWorkflowPhase && resolvedProfile == nil {
-			toolGate = newWorkflowConversationToolGate(sessionID, req, currentUserIsReadOnly)
-		}
 		toolGate.DenyWhere(func(name string) bool {
 			return !builderProductSelection(GetUserFromContext(r.Context())).AllowsTool(name)
 		})
@@ -5910,11 +5672,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// keeps the bridge file tools, so it never ends up with neither. The bridge tool list is admitted at launch.
 		fullCLIOn := false
 		toolGate.DenyWhere(func(name string) bool { return fullCLIOn && fullCLIDuplicateTool(name) })
-		toolGate.AllowWorkflowNotifications(isWorkflowPhase && workflowNotificationsForPath(workflowPhaseFolder))
 		claims := GetUserFromContext(r.Context())
-		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly
 		projectTokenChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && claims != nil && claims.AccessToken != nil
-		if (workflowRun || projectTokenChat && currentUserIsReadOnly) && claims != nil && claims.AccessToken != nil {
+		if (projectTokenChat && currentUserIsReadOnly) && claims != nil && claims.AccessToken != nil {
 			// Apply the existing token denylist to registration and the core CLI
 			// bridge as well as execution, so an unusable shell is not advertised.
 			toolGate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
@@ -5932,15 +5692,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return name == "slack" || name == "send_slack_message"
 			})
 		}
-		if isWorkflowPhase && (resolvedProfile == nil || !isProjectProfileID(resolvedProfile.Definition.ID)) && strings.TrimSpace(req.SelectedFolder) != "" && workflowHasNoUsableSlackBot(r.Context(), req.SelectedFolder) {
-			toolGate.DenyWhere(func(name string) bool {
-				name = strings.TrimSpace(name)
-				return name == "slack" || name == "send_slack_message"
-			})
-		}
+
 		defer toolGate.logSurface(sessionID)
 		bridgeProvider := usesMCPBridge(finalProvider, finalModelID)
-		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, workflowRun, toolGate, bridgeProvider)
+		useCodeExecutionMode := true
+		var platformBridgeTools []string
 		if projectTokenChat {
 			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate, bridgeProvider)
 		}
@@ -6214,7 +5970,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				APIKeys:              mergedAPIKeys,
 			})
 			if len(chatAgentSecretEnv) > 0 {
-				logfWithContext(queryLogCtx, "[SECRETS] Injected %d secret(s) into chat agent shell env (isWorkflowPhase=%v)", len(chatAgentSecretEnv), isWorkflowPhase)
+				logfWithContext(queryLogCtx, "[SECRETS] Injected %d secret(s) into chat agent shell env (chat)", len(chatAgentSecretEnv))
 			}
 			workspaceTools := workspaceRegistry.Tools
 			workspaceExecutors := workspaceRegistry.Executors
@@ -6238,51 +5994,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[FILE CONTEXT] Extracted read-only folder-guard paths from #workflow: %v", workflowReadOnlyFolders)
 			}
 
-			// Workflow phase: grant write access to the whole workflow folder (prefix match)
-			// and block writes to planning/ via the separate blocked-write list. This is
-			// "allow everything except planning/" expressed as one prefix + one exception,
-			// which is immune to the drift class of bugs that came from enumerating
-			// individual writable subfolders (reports/, db/, soul/ previously fell out of
-			// sync). planning/ stays read-only because plan.json / step_config.json /
-			// workflow_layout.json must go through typed plan-mod tools that serialize
-			// full structs, not raw writes.
-			var fileContextBlockedWriteFolders []string
-			if execution, ok := api.botExecutionForSession(sessionID); ok && execution.Request.PresetQueryID != "" {
-				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/runs/iteration-0/")
-			}
-			// PLAT-262: a read-only identity gets none of the whole-workflow write
-			// grant below — effectiveWorkflowPhaseFolderForWrites stays "" for them,
-			// which workflowPhaseWriteFolders() below treats as "no workflow write
-			// root", leaving only its unconditional Downloads/ + the caller's own
-			// chat-history folder writable. Reads are untouched (readPaths below
-			// still uses the real workflowPhaseFolder).
-			effectiveWorkflowPhaseFolderForWrites := workflowPhaseFolder
-			if currentUserIsReadOnly {
-				effectiveWorkflowPhaseFolderForWrites = ""
-			}
-			if isWorkflowPhase && effectiveWorkflowPhaseFolderForWrites != "" {
-				fileContextWriteFolders = append(fileContextWriteFolders, effectiveWorkflowPhaseFolderForWrites+"/")
-				blockedPlanning := effectiveWorkflowPhaseFolderForWrites + "/" + todo_creation_human.PlanningFolderName + "/"
-				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning, effectiveWorkflowPhaseFolderForWrites+"/schedules.json", effectiveWorkflowPhaseFolderForWrites+"/webhooks.json")
-				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Write access: %s/ (whole workflow) with blocked-write prefix: %s", effectiveWorkflowPhaseFolderForWrites, blockedPlanning)
-				// workflow.json carries the access record and created_by (whom
-				// schedules run as): only an owner's session may write it, so an
-				// editor cannot have the agent promote them or change run-as.
-
-				if blockedManifest := workflowManifestBlockedWriteForNonOwner(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), effectiveWorkflowPhaseFolderForWrites); blockedManifest != "" {
-					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedManifest)
-					log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Non-owner session: blocked writes to %s", blockedManifest)
-				}
-			} else if isWorkflowPhase && currentUserIsReadOnly {
-				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Read-only identity — no whole-workflow write grant for session=%s", sessionID)
-			}
-
 			// Apply folder guard to restrict writes based on mode.
 			// Non-workflow plan/chat sessions write to the per-user Chats folder.
 			// Workflow phase writes to the active workflow folder (plus
 			// Downloads and chat_history) and keeps Chats read-only so
 			// builder artifacts cannot drift into normal chat storage.
-			if !isWorkflowPhase {
+			{
 				// Per-user chat folders replace the legacy global "Chats/" write path.
 				perUserChatsWrite := perUserChatsFolder + "/"
 				perUserChatHistory := strings.TrimSuffix(perUserChatsFolder, "Chats") + "chat_history/"
@@ -6517,58 +6234,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					log.Printf("[MULTI-AGENT FOLDER GUARD] Applied per-user folder restriction (chats: %s, write: %v, read-only: %v, grants: %v)", perUserChatsWrite, additionalFolders, workflowReadOnlyFolders, resolvedGrants.AppliedNames)
 				}
-			} else {
-				perUserChatsWrite := perUserChatsFolder + "/"
-				perUserChatHistory := strings.TrimSuffix(perUserChatsFolder, "Chats") + "chat_history/"
-				// PLAT-262: a read-only identity gets none of the approved external
-				// write grants either — write access is write access regardless of
-				// source. Their own chat-history folder stays writable (that's
-				// conversation persistence, not workflow mutation) and readPaths
-				// below is built the same for everyone (full reads, unaffected).
-				var extraWriteFolders []string
-				if !currentUserIsReadOnly {
-					extraWriteFolders = append([]string{}, resolvedGrants.WriteFolders...)
-					extraWriteFolders = append(extraWriteFolders, fileContextWriteFolders...)
-				}
-				extraFolders := append(append([]string{}, extraWriteFolders...), perUserChatHistory)
-				workspaceExecutors = wrapExecutorsWithWorkflowPhaseFolderGuard(workspaceExecutors, effectiveWorkflowPhaseFolderForWrites, workflowReadOnlyFolders, fileContextBlockedWriteFolders, extraFolders...)
-				workspaceExecutors = wrapExecutorsWithReferenceMapNotes(workspaceExecutors, workflowPhaseFolder)
-				workspace.SetSessionWorkingDir(sessionID, crewFilesPath(chatWorkingFolder))
-				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
-				readPaths := []string{perUserChatsWrite, perUserChatHistory, "subagents/"}
-				if workflowReadRoot != "" {
-					readPaths = append(readPaths, workflowReadRoot)
-				}
-				readPaths = append(readPaths, extraFolders...)
-				readPaths = append(readPaths, workflowReadOnlyFolders...)
-				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
-				workspace.SetSessionFolderGuard(sessionID,
-					readPaths,
-					writePaths,
-				)
-				// Blocked-write paths flow through to the isolator's
-				// FolderGuardConfig.BlockedWritePaths and are enforced at kernel-sandbox
-				// level — source of truth for what the shell can actually write. Matches
-				// the blocked-write list applied to the typed-tool wrapper above so both
-				// surfaces deny the same prefixes. Reads remain permitted so agents can
-				// still inspect plan.json and friends.
-				if len(fileContextBlockedWriteFolders) > 0 {
-					workspace.SetSessionFolderGuardBlockedWritePaths(sessionID, fileContextBlockedWriteFolders)
-				}
-				// PLAT-221: the main Workflow Builder is a managed DB client just
-				// like its workshop children. Give the dedicated DB tools their
-				// trusted logical capability and hard-block raw db.sqlite/WAL/SHM
-				// access so a denied migration cannot fall back to the sqlite CLI.
-
-				todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
-
-				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
-				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
-					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
-				}
-				todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
-				configureWorkflowPhaseCLIShellGuard(sessionID, workflowPhaseFolder, currentUserID, currentUserIsReadOnly)
-				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
 			}
 
 			// Coding-agent adapters project system instructions, selected skills,
@@ -6608,9 +6273,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 
 			workspaceToolModeLabel := "chat mode"
-			if isWorkflowPhase {
-				workspaceToolModeLabel = "workflow builder"
-			}
+
 			log.Printf("[WORKSPACE TOOLS] Registering %d workspace tools for %s", len(workspaceTools), workspaceToolModeLabel)
 
 			for _, tool := range workspaceTools {
@@ -6626,14 +6289,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if executor, exists := workspaceExecutors[toolName]; exists {
 					// Enhance tool description based on mode
 					var enhancedDescription string
-					if !isWorkflowPhase {
+					{
 						descriptionRoot := perUserChatsFolder
 						if resolvedProfile != nil {
 							descriptionRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
 						}
 						enhancedDescription = enhanceToolDescriptionForMultiAgentMode(toolName, tool.Function.Description, descriptionRoot, resolvedProfile)
-					} else {
-						enhancedDescription = enhanceToolDescriptionForWorkflowPhase(toolName, tool.Function.Description, workflowPhaseFolder)
 					}
 
 					// Convert Parameters to map[string]interface{}
@@ -6681,7 +6342,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// verbatim (the shared helper never computes guards itself).
 			if enableBrowserAccess {
 				browserGuard := func(execs codingAgentToolExecutors) codingAgentToolExecutors {
-					if !isWorkflowPhase {
+					{
 						if resolvedProfile != nil && !isGlobalScopedProfile(resolvedProfile) {
 							profileRoot := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
 							profileReadOnly := agentProfileReadOnlyFolders(resolvedProfile.Definition.Runtime.Sandbox, workflowReadOnlyFolders)
@@ -6698,18 +6359,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						additionalFolders = append(additionalFolders, fileContextWriteFolders...)
 						return wrapExecutorsWithPlanFolderGuard(execs, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
 					}
-					// PLAT-262: this closure previously granted full write access to a
-					// read-only session's browser tools unconditionally — a real gap,
-					// found while investigating the shell-command read regression above.
-					var browserExtraFolders []string
-					browserGuardWriteFolder := workflowPhaseFolder
-					if currentUserIsReadOnly {
-						browserGuardWriteFolder = ""
-					} else {
-						browserExtraFolders = append([]string{}, resolvedGrants.WriteFolders...)
-						browserExtraFolders = append(browserExtraFolders, fileContextWriteFolders...)
-					}
-					return wrapExecutorsWithWorkflowPhaseFolderGuard(execs, browserGuardWriteFolder, workflowReadOnlyFolders, fileContextBlockedWriteFolders, browserExtraFolders...)
+
 				}
 				browserPorts := getCdpPorts(req)
 				if getBrowserMode(req) == "auto" {
@@ -6737,7 +6387,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Chat mode stays minimal (workflowMode=false). Without
 			// this, the notification implementation was not registered on the serving agent, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
-			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
+			allTools, allExecutors, toolCategories := createCustomTools(false, currentUserID, sessionID, req.SelectedFolder) // session-aware
 			if knowledgeProjectBuilderQuery(req, GetUserFromContext(r.Context()), sessionID, sessionID, currentUserIsReadOnly) {
 				projectTools, projectExecs, projectCategories := createKnowledgeProjectBuilderTools()
 				// Replace content-only browse/access schemas for this root Builder.
@@ -6768,23 +6418,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if tool.Function != nil {
 					toolName := tool.Function.Name
 					toolCategory := toolCategories[toolName]
-					chatMode := "builder"
-					if currentUserIsReadOnly {
-						chatMode = "run"
-					}
-					allowedHumanTool := false
-
-					allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
-
-					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !allowedHumanTool {
-						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
-						continue
-					}
-					if isWorkflowPhase && currentUserIsReadOnly && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) {
-						log.Printf("[CUSTOM TOOLS] Skipping external-token-denied tool %s in session %s", toolName, sessionID)
-						continue
-					}
-
 					// Skip workspace tools - already registered above.
 					switch toolCategories[toolName] {
 					case "workspace_tools", virtualtools.GetWorkspaceAdvancedToolCategory(), virtualtools.GetWorkspaceBrowserToolCategory():
@@ -6960,7 +6593,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			isToolBackedChat := !isWorkflowPhase
+			isToolBackedChat := true
 			isAgentWorksChat := isToolBackedChat && resolvedProfile == nil
 			if isToolBackedChat {
 				if err := api.registerMultiAgentLLMTools(llmAgent, func(toolName string) bool {
@@ -6988,22 +6621,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[SKILL TOOLS] Registered multi-agent skill tools")
 			}
-			if isWorkflowBuilderPhase {
-				if err := api.registerAccessibleWorkflowListTool(llmAgent, currentUserID, nil); err != nil {
-					logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Failed to register accessible workflow listing: %v", err)
-					sendError(fmt.Sprintf("Failed to register workflow discovery tools: %v", err), true)
-					return
-				}
-				logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Registered list_accessible_workflows for Builder")
-			}
-			if isWorkflowPhase {
-				if err := api.registerWorkflowLLMDiscoveryTools(llmAgent); err != nil {
-					logfWithContext(queryLogCtx, "[LLM TOOLS] Failed to register workflow LLM discovery tools: %v", err)
-					sendError(fmt.Sprintf("Failed to register workflow LLM discovery tools: %v", err), true)
-					return
-				}
-				logfWithContext(queryLogCtx, "[LLM TOOLS] Registered workflow LLM discovery tools")
-			}
+
 			if isToolBackedChat {
 				activeForMCP, _ := api.getActiveSession(sessionID)
 				mcpPolicy := resolveWorkflowChatPolicy(sessionID, req, activeForMCP, currentUserIsReadOnly)
@@ -7120,7 +6738,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 				}
-			} else if !isWorkflowPhase {
+			} else {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))
 				logfWithContext(queryLogCtx, "[CHAT] Added direct-chat instructions to system prompt")
 				// Attach the full reference surface for generic multi-agent chat.
@@ -7180,7 +6798,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			if resolvedProfile != nil && !isWorkflowPhase {
+			if resolvedProfile != nil {
 				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly)); err != nil {
 					sendError(fmt.Sprintf("Failed to attach project memory guidance: %v", err), true)
 					return
@@ -7198,13 +6816,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// requested one (the log named the request's CLI, not Muse/Codex).
 				Provider:              finalProvider,
 				HasProfile:            resolvedProfile != nil,
-				IsWorkflowPhase:       isWorkflowPhase,
 				CrewReadOnly:          crewReaderCLI,
 				MemoryReadOnly:        currentUserIsReadOnly,
 				ProjectMemoryDisabled: resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !agentprofiles.HasFeature(resolvedProfile.Definition, "memory"),
 				ShellRoot:             shellRoot,
 				PerUserChatsFolder:    perUserChatsFolder,
-				WorkflowPhaseFolder:   workflowPhaseFolder,
 				ProfileWorkspace:      agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
 				CapabilitySection:     buildLLMCapabilityPromptSection(r.Context()),
 				AuthenticatedUser:     authenticatedChatUserPrompt(GetUserFromContext(r.Context())),
@@ -7298,380 +6914,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 			// --- Workflow Phase Chat Mode ---
 			// Override system prompt and register plan modification tools for conversational phase editing
-			if isWorkflowPhase && workflowPhaseID != "" {
-				log.Printf("[WORKFLOW_PHASE] Setting up phase chat mode: phase=%s preset=%s", workflowPhaseID, req.PresetQueryID)
 
-				// Get workspace path and objective from preset or request
-				phaseWorkspacePath := ""
-				phaseObjective := ""
-				// For scheduler/cron triggers, the workspace path comes from selected_folder
-				// and preset may not exist in the DB. Use selected_folder as primary source.
-				if req.SelectedFolder != "" {
-					phaseWorkspacePath = req.SelectedFolder
-				}
-				// Resolve workspace path from manifest if not already set
-				if phaseWorkspacePath == "" && req.PresetQueryID != "" {
-					if p, e := api.resolveWorkspacePathFromPreset(context.Background(), req.PresetQueryID); e == nil && p != "" {
-						phaseWorkspacePath = p
-					}
-				}
-				// Load objective from manifest label
-				if phaseWorkspacePath != "" && phaseObjective == "" {
-					if manifest, found, mErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath); mErr == nil && found {
-						phaseObjective = manifest.Label
-					}
-				}
-				if phaseWorkspacePath == "" {
-					// Fallback: try to extract workspace path from the query's file context marker
-					phaseWorkspacePath = extractWorkspacePathFromObjective(req.Query)
-				}
-				if phaseWorkspacePath == "" {
-					log.Printf("[WORKFLOW_PHASE] WARNING: No workspace path found for phase=%s preset=%s - using default_workspace", workflowPhaseID, req.PresetQueryID)
-					phaseWorkspacePath = "default_workspace"
-				}
-				// Set default shell working directory for this session.
-				// The global map is read by execute_shell_command at call time.
-				if phaseWorkspacePath != "" && phaseWorkspacePath != "default_workspace" {
-					workspace.SetSessionWorkingDir(sessionID, phaseWorkspacePath)
-					// underlyingAgent is provably non-nil at this point
-					// (vet flags the prior nil check as tautological);
-					// nil-check removed to silence (govet/nilness).
-					phaseCLIWorkingDir, isolationErr := workflowCLIWorkingDir(phaseWorkspacePath, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly))
-					if isolationErr != nil {
-						sendError(isolationErr.Error(), true)
-						return
-					}
-					if err := llmAgent.SetCodingAgentWorkingDir(phaseCLIWorkingDir); err != nil {
-						sendError(fmt.Sprintf("Failed to configure coding-agent working directory: %v", err), true)
-						return
-					}
-					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, currentUserIsReadOnly)
-
-					// Reapply the managed DB boundary on every setup/restore so old
-					// sessions cannot retain broad raw SQLite or sidecar access.
-
-					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
-
-					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
-						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
-					}
-					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
-					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, currentUserIsReadOnly)
-					if len(workflowReadOnlyFolders) > 0 {
-						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
-					}
-				}
-
-				// Create workspace client for reading plan.json and variables.json
-				phaseWSClient := workspace.NewClient(
-					getWorkspaceAPIURL(),
-					workspace.WithUserID(currentUserID),
-				)
-
-				// readFile closure: reads file content from workspace
-				phaseReadFile := func(ctx context.Context, filePath string) (string, error) {
-					result, err := phaseWSClient.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: filePath})
-					if err != nil {
-						return "", err
-					}
-					rememberTeamPlanRead(ctx, filePath, result.Content)
-					return result.Content, nil
-				}
-
-				// writeFile closure: writes content to workspace
-				phaseWriteFile := func(ctx context.Context, filePath string, content string) error {
-					ctx = context.WithValue(ctx, common.UserIDKey, currentUserID)
-					_, err := phaseWSClient.UpdateWorkspaceFile(ctx, workspace.UpdateWorkspaceFileParams{Filepath: filePath, Content: content})
-					return err
-				}
-
-				// moveFile closure: moves file in workspace
-				phaseMoveFile := func(ctx context.Context, src string, dst string) error {
-					_, err := phaseWSClient.MoveWorkspaceFile(ctx, workspace.MoveWorkspaceFileParams{SourceFilepath: src, DestinationFilepath: dst})
-					return err
-				}
-
-				// Build template vars by reading current plan and variables from workspace
-				phaseRunFolder := "iteration-0"
-				if req.ExecutionOptions != nil && strings.TrimSpace(req.ExecutionOptions.SelectedRunFolder) != "" {
-					phaseRunFolder = strings.TrimSpace(req.ExecutionOptions.SelectedRunFolder)
-				}
-				workflowPhaseRunFolder = phaseRunFolder
-				var phaseEnabledGroupNames []string
-				if req.ExecutionOptions != nil {
-					phaseEnabledGroupNames = req.ExecutionOptions.EnabledGroupNames
-				}
-				// Match the runtime transport: external Builder uses managed direct
-				// tools; app workshop agents use code-execution mode.
-				// Provider-specific CLI handling (prompt template, api-bridge tool
-				// mapping, native context) is decided separately via
-				// common.IsCLIProvider.
-				phaseIsCodeExec := useCodeExecutionMode
-				log.Printf("[WORKFLOW_PHASE] Mode detection: finalProvider=%q, isCodeExec=%v", finalProvider, phaseIsCodeExec)
-				phaseTemplateVars := map[string]string{
-					"Objective":                   phaseObjective,
-					"WorkspacePath":               phaseWorkspacePath,
-					"IsCodeExecutionMode":         fmt.Sprintf("%v", phaseIsCodeExec),
-					"UseProjectedReferenceSkills": "true", // legacy template key; mcpagent read_skill is transport-neutral
-				}
-				if manifest, found, err := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); err == nil && found {
-					phaseTemplateVars["CHAT_INSTRUCTIONS"] = manifest.ChatInstructions
-				}
-
-				// Pass workshop mode from frontend override (auto-detection happens after plan is loaded below).
-				// Migrate legacy values to the current 2-mode scheme
-				// (workshop/run). The "workshop" mode merges what used to be
-				// "builder" + "optimizer" + "reporting" — the merged tool
-				// list is a strict superset of all three, and the unified
-				// agent decides phase from workspace state (plan exists?
-				// runs exist? report work requested?).
-				// Two modes exist: "run" (products and bot-routed workflow
-				// execution) and "workshop" (everything else). Rather than
-				// enumerating retired names — builder, optimizer, reporting,
-				// eval, output, ask, debugger, runner — anything that is not
-				// "run" collapses to "workshop". An old client or persisted
-				// session cannot introduce a value this misses, which is what
-				// enumeration risked: an unrecognized mode reaches
-				// MaterializeReferenceSkill and yields NO reference surface
-				// at all.
-				if req.ExecutionOptions != nil && req.ExecutionOptions.WorkshopMode != "" {
-					mode := req.ExecutionOptions.WorkshopMode
-					// Two modes exist: "run" and "workshop". Anything that is
-					// not "run" collapses to "workshop" rather than being
-					// enumerated, so no retired name can slip through into
-					// MaterializeReferenceSkill and yield NO reference surface.
-					switch strings.ToLower(strings.TrimSpace(mode)) {
-					case "run", "ask", "debugger", "runner":
-						mode = "run"
-					default:
-						mode = "workshop"
-					}
-					phaseTemplateVars["WorkshopMode"] = mode
-					log.Printf("[WORKSHOP_MODE] Using frontend override: %s (raw=%s)", mode, req.ExecutionOptions.WorkshopMode)
-				}
-
-				// Use a detached context for workflow-builder setup. /api/query returns
-				// an acknowledgement before the background turn finishes, so r.Context()
-				// is canceled while these short setup reads/session refreshes still run.
-				setupCtx := context.WithoutCancel(streamCtx)
-
-				// Build GroupInfo and extra template vars for the interactive-workshop system prompt
-				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-
-					groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
-					if groupInfo != "" {
-						phaseTemplateVars["GroupInfo"] = groupInfo
-					}
-
-					phaseTemplateVars["RunFolder"] = phaseRunFolder
-					phaseTemplateVars["UseKnowledgebase"] = "true"                 // default; overridden by preset below if needed
-					phaseTemplateVars["KBShape"] = workflowtypes.KBShapeGraphNotes // default; overridden from manifest below if set
-					if phaseWorkspacePath != "" {
-						if manifest, found, mErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath); mErr == nil && found && manifest.Capabilities.LLMConfig != nil {
-							if manifest.Capabilities.LLMConfig.KBShape != "" {
-								phaseTemplateVars["KBShape"] = workflowtypes.ResolveKBShape(manifest.Capabilities.LLMConfig.KBShape)
-							}
-						}
-					}
-				}
-
-				// Read existing plan from workspace (if any)
-				existingPlanJSON := todo_creation_human.ReadPlanFromWorkspace(setupCtx, phaseWorkspacePath, phaseReadFile)
-				if existingPlanJSON != "" {
-					phaseTemplateVars["ExistingPlanJSON"] = existingPlanJSON
-					log.Printf("[WORKFLOW_PHASE] Loaded existing plan (%d bytes)", len(existingPlanJSON))
-
-					// Extract compact step summary for builder-style phase prompts
-					if stepSummary := extractStepSummary(existingPlanJSON); stepSummary != "" {
-						phaseTemplateVars["StepSummary"] = stepSummary
-						log.Printf("[WORKFLOW_PHASE] Extracted step summary (%d steps)", strings.Count(stepSummary, "\n"))
-					}
-				}
-
-				// Default workshop mode if not provided by frontend. Run/Reporting
-				// are explicit user/frontend choices; everything else defaults
-				// to the merged Workshop mode (was previously builder/optimizer).
-				if phaseTemplateVars["WorkshopMode"] == "" && existingPlanJSON != "" && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					phaseTemplateVars["WorkshopMode"] = "workshop"
-					log.Printf("[WORKSHOP_MODE] Defaulted to workshop")
-				}
-				if phaseTemplateVars["WorkshopMode"] == "" {
-					phaseTemplateVars["WorkshopMode"] = "workshop"
-				}
-
-				// PLAT-262: a read-only identity is always pinned to Run mode,
-				// overriding whatever was requested or defaulted above — the
-				// client-side toggle is hidden for these users too, but the
-				// server has the final say. This is the single point that
-				// decides WorkshopMode for both the system prompt rendered
-				// just below and every phaseTemplateVars["WorkshopMode"] read
-				// inside installWorkflowPhaseTools (same map, passed by
-				// reference). Read-only users never perform a same-session
-				// Workshop<->Run toggle, so this does not reopen the removed
-				// mode-based tool-catalog-filtering bug — see
-				// installWorkflowPhaseTools's doc comment.
-				if currentUserIsReadOnly {
-					phaseTemplateVars["WorkshopMode"] = "run"
-				} else {
-					// Workshop/Run is permission-derived. Ignore stale saved modes or
-					// client requests that attempt to put a writable workflow user on
-					// the read-only prompt and tool surface.
-					phaseTemplateVars["WorkshopMode"] = "workshop"
-				}
-				activeForCapabilities, _ := api.getActiveSession(sessionID)
-				phasePolicy := resolveWorkflowChatPolicy(sessionID, req, activeForCapabilities, currentUserIsReadOnly)
-				if !phasePolicy.allows("plan_authoring") {
-					phaseTemplateVars["WorkshopMode"] = "run"
-				}
-
-				// Read variable names from workspace (if any)
-				variableNames := todo_creation_human.ReadVariablesFromWorkspace(setupCtx, phaseWorkspacePath, phaseReadFile)
-				if variableNames != "" {
-					phaseTemplateVars["VariableNames"] = variableNames
-					log.Printf("[WORKFLOW_PHASE] Loaded variable names")
-				}
-
-				// Collect optional runtime sections before composing the complete prompt.
-				// The phase composer is shared with the assembled-prompt regression tests.
-				var phaseAdditions []string
-				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					if userPrompt := authenticatedChatUserPrompt(GetUserFromContext(r.Context())); userPrompt != "" {
-						phaseAdditions = append(phaseAdditions, userPrompt)
-					}
-				}
-
-				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					// Secrets
-					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
-					if len(phaseSecrets) > 0 {
-						entries := make([]orchestrator.SecretEntry, len(phaseSecrets))
-						for i, s := range phaseSecrets {
-							entries[i] = orchestrator.SecretEntry{Name: s.Name, Value: s.Value}
-						}
-						secretPrompt := todo_creation_human.BuildWorkflowSecretPrompt(entries)
-						if secretPrompt != "" {
-							phaseAdditions = append(phaseAdditions, secretPrompt)
-							log.Printf("[WORKFLOW_PHASE] Appended %d secrets to %s system prompt", len(entries), workflowPhaseID)
-						}
-					}
-
-					// Browser instructions from manifest config
-					// The manifest determines browser mode, not req.EnableBrowserAccess (which is false for workflow_phase)
-					if phaseWorkspacePath != "" {
-						phaseManifest, phaseFound, phaseMErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath)
-						if phaseMErr == nil && phaseFound {
-							configuredBrowserMode := strings.ToLower(strings.TrimSpace(phaseManifest.Capabilities.BrowserMode))
-							if configuredBrowserMode == "cdp" && phaseManifest.Capabilities.BrowserCDPPort > 0 {
-								port := phaseManifest.Capabilities.BrowserCDPPort
-								req.CdpPort = &port
-							}
-							phaseConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, req.resolvedCDPPorts)
-
-							// Browser mode is configured intent. In auto mode the executor
-							// checks CDP live; no resolved cdp/headless result is persisted
-							// in the prompt or chat runtime.
-							phaseBrowserCfg := browserinstructions.BrowserConfig{}
-							if len(phaseConfiguredCDPPorts) > 0 {
-								phaseBrowserCfg.CdpPort = phaseConfiguredCDPPorts[0]
-							}
-							switch configuredBrowserMode {
-							case "extension", "auto", "cdp", "headless":
-								phaseBrowserCfg.HasAgentBrowser = true
-							}
-							if phaseBrowserCfg.HasAgentBrowser {
-								// Replace the ~5-10KB BuildBrowserInstructions block with a
-								// one-line pointer. The full guide (API + per-mode behaviors,
-								// upload rules, session limits) lives in the builder-reference
-								// mega-skill as `browser-usage` and is fetched on demand.
-								browserPrompt := "\n## Browser\n\nThis phase has a browser tool configured (mode=" + configuredBrowserMode +
-									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints.\n"
-
-								browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
-
-								if configuredBrowserMode == "auto" || configuredBrowserMode == "cdp" {
-									_, endpointGuidance := cdpPromptEndpoints(phaseConfiguredCDPPorts, phaseBrowserCfg.CdpPort)
-									browserPrompt += endpointGuidance + " These are configured candidates only; `agent_browser status` is authoritative for current reachability.\n"
-								}
-								phaseAdditions = append(phaseAdditions, browserPrompt)
-								log.Printf("[WORKFLOW_PHASE] Appended dynamic browser pointer to %s (configured_mode=%s, candidate_cdp_ports=%v)",
-									workflowPhaseID, configuredBrowserMode, phaseConfiguredCDPPorts)
-							}
-
-						}
-					}
-				}
-
-				// Workflow references are already included exactly once by the shared
-				// assembler. UI guidance follows the same caller policy as registration.
-				activeForPrompt, _ := api.getActiveSession(sessionID)
-				promptCtx.WorkflowMode = phaseTemplateVars["WorkshopMode"]
-				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly || promptCtx.WorkflowMode == "run")); err != nil {
-					sendError(fmt.Sprintf("Failed to attach workflow memory guidance: %v", err), true)
-					return
-				}
-				promptCtx.WorkflowUIAvailable = workflowUICallerAllowed(workflowPhaseID, sessionID, req, activeForPrompt)
-				// Workflow browser configuration is authoritative; do not add the
-				// generic chat browser pointer as well.
-				promptCtx.BrowserPointer = ""
-
-				if section := workflowTeamInstructions(r.Context(), phaseWorkspacePath, currentUserID); section != "" {
-					phaseAdditions = append(phaseAdditions, section)
-				}
-				phaseSystemPrompt, phaseIncluded, phaseSkipped, phasePromptErr := buildWorkflowPhaseSystemPrompt(workflowPhaseID, phaseTemplateVars, promptCtx, phaseAdditions...)
-				if phasePromptErr != nil {
-					sendError(fmt.Sprintf("Failed to assemble the system prompt for phase %s: %v", workflowPhaseID, phasePromptErr), true)
-					return
-				}
-				if workflowCLIIsolationEnabledForMode(workflowCLIMode(&req, currentUserIsReadOnly)) && isCodingAgentProvider(finalProvider, finalModelID) {
-					phaseSystemPrompt += workflowCLIWorkspaceInstructions(phaseWorkspacePath)
-				}
-				if err := llmAgent.ResetInstructions(phaseSystemPrompt); err != nil {
-					sendError(fmt.Sprintf("Failed to set the system prompt for phase %s: %v", workflowPhaseID, err), true)
-					return
-				}
-				logPromptAssembly(promptCtx, phaseIncluded, phaseSkipped)
-				log.Printf("[WORKFLOW_PHASE] Set assembled system prompt (%d bytes) for phase=%s", len(phaseSystemPrompt), workflowPhaseID)
-
-				// Register phase-appropriate tools via the shared helper. The
-				// chat-history auto-restore path calls the same helper with a
-				// synthesized request, and both now install the identical
-				// surface — there is no per-turn narrowing for one path to
-				// apply and the other to miss.
-				syntheticReq := QueryRequest{
-					TriggeredBy:                 req.TriggeredBy,
-					ParentSessionID:             req.ParentSessionID,
-					SessionKind:                 req.SessionKind,
-					BotPlatform:                 req.BotPlatform,
-					AgentProfileID:              req.AgentProfileID,
-					IsAutoNotification:          req.IsAutoNotification,
-					UserInteractiveContinuation: req.UserInteractiveContinuation,
-					LLMConfig:                   req.LLMConfig,
-					ExecutionOptions:            req.ExecutionOptions,
-					SelectedGlobalSecrets:       req.SelectedGlobalSecrets,
-					PresetQueryID:               req.PresetQueryID,
-				}
-				if err := api.installWorkflowPhaseTools(
-					setupCtx, llmAgent, sessionID, currentUserID,
-					workflowPhaseID, phaseWorkspacePath, phaseRunFolder,
-					phaseTemplateVars, selectedServers, mergedAPIKeys,
-					phaseReadFile, phaseWriteFile, phaseMoveFile,
-					syntheticReq, currentUserIsReadOnly,
-				); err != nil {
-					// Preserve the original Fatal semantics for the /api/query
-					// caller: the workflow-builder system prompt advertises the
-					// plan modification tools, so a half-registered builder
-					// silently hallucinates missing tools to the LLM.
-					log.Fatalf("[WORKFLOW_PHASE] FATAL: phase tools install failed: %v", err)
-				}
-
-				log.Printf("[WORKFLOW_PHASE] Phase chat setup complete: phase=%s workspace=%s", workflowPhaseID, phaseWorkspacePath)
-			}
 		}
 
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
 		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
-		if len(identitySecrets) > 0 && req.PhaseID == "" {
+		if len(identitySecrets) > 0 {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
 			}
@@ -7699,8 +6948,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			costobserver.WithAccount(costobserver.AccountIDFor(finalProvider, func() string { _, id := api.queryTurnConnectionForSession(req, sessionID); return id }())),
 			withCostAttribution(
 				costScope,
-				costFirstNonEmpty(workflowPhaseFolder, req.SelectedFolder),
-				workflowPhaseRunFolder,
+				req.SelectedFolder,
+				"",
 				queryID,
 			),
 			withCostSourcePlatform(req.BotPlatform),
@@ -7775,12 +7024,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.ExecutionOptions != nil {
 			newWorkshopMode = normalizeChatHistoryWorkshopMode(req.ExecutionOptions.WorkshopMode)
 		}
-		if newWorkshopMode == "" && isWorkflowPhase {
-			newWorkshopMode = "workshop"
-		}
-		if isWorkflowPhase && currentUserIsReadOnly {
-			newWorkshopMode = "run"
-		}
+
 		modeChangedThisTurn := false
 		modeChangePrevMode := ""
 		modeChangeConversationPath := ""
@@ -7793,7 +7037,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			activeForPolicy, _ := api.getActiveSession(sessionID)
 			// After a restart an auto-notification has no remembered role: take it from the saved runtime.
 			if _, known := chatPolicyRoleSnapshotFor(sessionID); !known && common.IsCLIProvider(finalProvider) && (req.IsAutoNotification || strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "auto_notification")) {
-				if saved, _, err := ReadChatHistoryRuntimeForSession(currentUserID, sessionID, workflowPhaseFolder); err == nil && saved != nil {
+				if saved, _, err := ReadChatHistoryRuntimeForSession(currentUserID, sessionID, ""); err == nil && saved != nil {
 					seedChatPolicyRole(sessionID, saved.ChatPolicyRoleOrigin, saved.ChatPolicyRoleAuthority)
 				}
 			}
@@ -7809,7 +7053,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			var savedRuntime *ChatHistoryAgentRuntime
 			if codingProvider && !knownInMemory {
 				var readErr error
-				savedRuntime, _, readErr = ReadChatHistoryRuntimeForSession(currentUserID, sessionID, workflowPhaseFolder)
+				savedRuntime, _, readErr = ReadChatHistoryRuntimeForSession(currentUserID, sessionID, "")
 				if readErr != nil {
 					logfWithContext(queryLogCtx, "[CHAT_POLICY] Could not read saved session policy: %v", readErr)
 				}
@@ -7892,41 +7136,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationMux.Unlock()
 		}
 		if modeChangedThisTurn {
-			if workflowPhaseFolder != "" {
-				if existingPath, ok, err := findWorkflowScopedChatHistoryConversationPath(sessionID, workflowPhaseFolder); err != nil {
-					logfWithContext(queryLogCtx, "[WORKSHOP_MODE] Failed to find previous conversation file for mode switch: %v", err)
-				} else if ok {
-					modeChangeConversationPath = existingPath
-					// The process-local cache can be empty after recovery or cache
-					// cleanup even though the canonical JSON exists. Load it before
-					// switching modes; otherwise the overwrite guard correctly keeps
-					// the old file but has no way to append this new turn.
-					if len(preModeChangeSnapshot) == 0 {
-						if snapshot, readErr := modeChangeHistorySnapshot(currentUserID, existingPath, nil); readErr != nil {
-							logfWithContext(queryLogCtx, "[WORKSHOP_MODE] Failed to load previous conversation for mode-change merge: %v", readErr)
-						} else if len(snapshot) > 0 {
-							preModeChangeSnapshot = snapshot
-						}
-					}
-				}
-				if modeChangeConversationPath == "" && len(preModeChangeSnapshot) > 0 {
-					modeChangeConversationPath = stableBuilderConversationLogPath(context.Background(), workflowPhaseFolder, currentUserID, sessionID)
-					convData := map[string]interface{}{
-						"session_id":           sessionID,
-						"user_id":              currentUserID,
-						"username":             chatHistoryUsername(currentUserID, ""),
-						"phase_id":             workflowPhaseID,
-						"workshop_mode":        modeChangePrevMode,
-						"conversation_history": cleanChatHistoryForPersistence(preModeChangeSnapshot),
-						"updated_at":           time.Now().Format(time.RFC3339),
-					}
-					if convJSON, err := json.MarshalIndent(convData, "", "  "); err != nil {
-						logfWithContext(queryLogCtx, "[WORKSHOP_MODE] Failed to marshal previous conversation snapshot: %v", err)
-					} else if err := persistRawConversationSnapshot(context.Background(), modeChangeConversationPath, string(convJSON)); err != nil {
-						logfWithContext(queryLogCtx, "[WORKSHOP_MODE] Failed to write previous conversation snapshot to %s: %v", modeChangeConversationPath, err)
-					}
-				}
-			}
+
 			contextHandoff := buildModeChangeConversationContext(modeChangePrevMode, newWorkshopMode, modeChangeConversationPath, preModeChangeSnapshot)
 			api.conversationMux.Lock()
 			api.conversationHistory[sessionID] = []llmtypes.MessageContent{{
@@ -7967,7 +7177,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				historyRestoredThisTurn = api.restorePersistedConversationHistory(
 					sessionID,
 					currentUserID,
-					workflowPhaseFolder,
+					"",
 					newWorkshopMode,
 				)
 			}
@@ -8032,20 +7242,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Merge global secrets with user-supplied secrets, then inject into system prompt (not user message)
 		chatQuery := req.Query
 
-		// Skip secret prompt injection for workflow phases — they inject secrets in the phase setup above.
-		// Only inject here for non-workflow chat agents (multi-agent, plain chat, etc.)
-		//
-		// NOTE: this SHADOWS the outer isWorkflowPhase and derives it from a
-		// DIFFERENT basis — req.PhaseID != "" here, vs req.AgentMode ==
-		// "workflow_phase" at the top of handleQuery. They usually agree but can
-		// diverge (e.g. a request with PhaseID set but a non-workflow_phase mode).
-		// Keep that in mind before relying on either one in this block.
-		isWorkflowPhase := req.PhaseID != ""
 		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
-		if !isWorkflowPhase {
+		{
 			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
 		}
-		if len(allChatSecrets) > 0 && !isWorkflowPhase {
+		if len(allChatSecrets) > 0 {
 			// Inject secret values as environment variables for shell execution (SECRET_ prefix)
 			if workspaceEnv == nil {
 				workspaceEnv = make(map[string]string, len(allChatSecrets))
@@ -8067,13 +7268,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			restoredNativeCodingResume := false
 			restoredConversationPath := strings.TrimSpace(req.RestoredConversationPath)
 			restoredConversationSessionID := strings.TrimSpace(req.RestoredConversationSessionID)
-			restoredConversationWorkspace := strings.TrimSpace(workflowPhaseFolder)
-			if restoredConversationWorkspace == "" {
-				// Product-owned chats resolve SelectedFolder server-side. Work keeps
-				// its transcripts inside that project, so use the trusted project
-				// workspace when locating the native provider resume handle.
-				restoredConversationWorkspace = productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)
-			}
+			// Product-owned chats locate native resume handles in their trusted runtime workspace.
+			restoredConversationWorkspace := productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)
 			restoredConversationPathForFallback := restoredConversationPath
 			var restoredRuntime *ChatHistoryAgentRuntime
 			threadCwd, threadTransport := "", ""
@@ -8344,7 +7540,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn && isCodingAgentProvider(finalProvider, finalModelID) && modeChangeConversationPath != "" {
-			chatQuery = prependCodingAgentContinuityNotice(chatQuery, modeChangeConversationPath, workflowPhaseFolder, continuityHistory)
+			chatQuery = prependCodingAgentContinuityNotice(chatQuery, modeChangeConversationPath, "", continuityHistory)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background
@@ -8493,9 +7689,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.conversationMux.Unlock()
 
 		runtimeWorkspacePath := strings.TrimSpace(req.SelectedFolder)
-		if isWorkflowPhase && workflowPhaseFolder != "" {
-			runtimeWorkspacePath = workflowPhaseFolder
-		}
+
 		var chatRuntime *ChatHistoryAgentRuntime
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 			chatRuntime = api.captureChatHistoryAgentRuntime(sessionID, finalProvider, finalModelID, runtimeWorkspacePath, underlyingAgent)
@@ -8531,7 +7725,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sessionID,
 				req.RestoredConversationPath,
 				req.RestoredConversationSessionID,
-				firstNonEmptyTrimmed(workflowPhaseFolder, normalizeConversationWorkspace(req.SelectedFolder)),
+				normalizeConversationWorkspace(req.SelectedFolder),
 				finalProvider,
 				newWorkshopMode,
 			)
@@ -8582,7 +7776,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Persist ordinary personal/product chats to global chat_history, except
 		// Work projects which use the project-owned path selected above. Workflow
 		// conversations are persisted below in their workspace Builder folder.
-		if !isWorkflowPhase {
+		{
 			if err := checkTokenTurn(context.WithoutCancel(agentCtx)); err != nil {
 				turnStatus, turnError = trackedExecutionStatusCanceled, err.Error()
 				return
@@ -8593,145 +7787,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Store resolved workflowPhaseFolder so synthetic turns can persist builder conversations
-		if isWorkflowPhase && workflowPhaseFolder != "" {
-			api.sessionWorkspaceMu.Lock()
-			api.sessionWorkspaceFolders[sessionID] = workflowPhaseFolder
-			api.sessionWorkspaceMu.Unlock()
-		}
+		// Store resolved "" so synthetic turns can persist builder conversations
 
 		// Save builder conversation log + token_usage.json for workflow phase sessions.
 		// One file per session — overwrites on each follow-up with the full cumulative history.
 		// Resolve workspace-docs root so files are visible in the UI.
-		if isWorkflowPhase && workflowPhaseFolder != "" && len(persistedHistoryForDisk) > 0 {
-			convData := map[string]interface{}{
-				"session_id":           persistSessionID,
-				"user_id":              currentUserID,
-				"username":             chatHistoryUsername(currentUserID, ""),
-				"phase_id":             workflowPhaseID,
-				"conversation_history": persistedHistoryForDisk,
-				"updated_at":           time.Now().Format(time.RFC3339),
-			}
-			if newWorkshopMode != "" {
-				convData["workshop_mode"] = newWorkshopMode
-			}
-			if chatRuntime != nil {
-				convData["runtime"] = chatRuntime
-			}
-			applyChatHistoryBotMetadata(convData, botHistoryMeta)
-			if terminalSnapshots := api.captureChatHistoryTerminalSnapshots(sessionID, chatRuntime); len(terminalSnapshots) > 0 {
-				convData["terminal_snapshots"] = terminalSnapshots
-			}
-			if len(uiEvents) > 0 {
-				convData["ui_events"] = uiEvents
-			}
-			if convJSON, err := json.MarshalIndent(convData, "", "  "); err == nil {
-				logPath := persistConversationPath
-				if strings.TrimSpace(logPath) == "" {
-					logPath = stableBuilderConversationLogPath(context.Background(), workflowPhaseFolder, currentUserID, persistSessionID)
-				}
-				// Same guard as the shared persist path: a rebuild with fewer
-				// user turns than the file already holds is partial, and
-				// writing it destroys the fuller record.
-				if lossy, existingTurns, nextTurns := conversationOverwriteWouldLoseTurns(context.Background(), logPath, persistedHistoryForDisk); lossy {
-					refuseConversationOverwrite(logPath, existingTurns, nextTurns)
-				} else if err := checkTokenTurn(context.WithoutCancel(agentCtx)); err != nil {
-					turnStatus, turnError = trackedExecutionStatusCanceled, err.Error()
-					return
-				} else if err := persistRawConversationSnapshot(context.Background(), logPath, string(convJSON)); err != nil {
-					log.Printf("[BUILDER LOG] Failed to write conversation log: %v", err)
-				} else {
-					log.Printf("[BUILDER LOG] Saved conversation log (%d messages) to %s", len(finalHistory), logPath)
-					// The workflow history list is served from chat-index.json. Writing
-					// the transcript without this leaves the chat on disk but absent
-					// from /resume, so the user is offered an older conversation and the
-					// agent legitimately has no memory of the one they were just in.
-					if err := updatePersistedChatHistoryIndex(currentUserID, persistSessionID, req.AgentMode, persistedHistoryForDisk, chatRuntime, logPath, int64(len(convJSON)), time.Now(), botHistoryMeta); err != nil {
-						log.Printf("[BUILDER LOG] Failed to update chat index for %s: %v", logPath, err)
-					}
-				}
-			}
-
-			if underlying := llmAgent.GetUnderlyingAgent(); underlying != nil {
-				usage := mcpagent.ReadAgentDiagnostics(underlying).Usage
-				promptTokens, completionTokens := usage.PromptTokens, usage.CompletionTokens
-				cacheTokens, reasoningTokens, llmCallCount := usage.CacheTokens, usage.ReasoningTokens, usage.LLMCalls
-				inputCost, outputCost := usage.InputCostUSD, usage.OutputCostUSD
-				reasoningCost, cacheCost, totalCost := usage.ReasoningCostUSD, usage.CacheCostUSD, usage.TotalCostUSD
-
-				fmtM := func(tokens int) string {
-					return fmt.Sprintf("%.3fM", float64(tokens)/1_000_000.0)
-				}
-
-				phaseKey := workflowPhaseID
-				modelUsage := &orchestrator.ModelTokenUsage{
-					Provider:          finalProvider,
-					InputTokens:       promptTokens,
-					OutputTokens:      completionTokens,
-					InputTokensM:      fmtM(promptTokens),
-					OutputTokensM:     fmtM(completionTokens),
-					CacheTokens:       cacheTokens,
-					CacheTokensM:      fmtM(cacheTokens),
-					CacheReadTokens:   usage.CacheReadTokens,
-					CacheReadTokensM:  fmtM(usage.CacheReadTokens),
-					CacheWriteTokens:  usage.CacheWriteTokens,
-					CacheWriteTokensM: fmtM(usage.CacheWriteTokens),
-					ReasoningTokens:   reasoningTokens,
-					ReasoningTokensM:  fmtM(reasoningTokens),
-					LLMCallCount:      llmCallCount,
-					InputCost:         inputCost,
-					OutputCost:        outputCost,
-					ReasoningCost:     reasoningCost,
-					CacheCost:         cacheCost,
-					TotalCost:         totalCost,
-				}
-
-				workflowRoot := workflowPhaseFolder
-				tokenFilePath := filepath.Join(workflowRoot, "costs", "phase", "token_usage.json")
-				var tokenFile orchestrator.PhaseTokenUsageFile
-				if existingData, exists, err := readFileFromWorkspace(context.Background(), tokenFilePath); err == nil && exists {
-					_ = json.Unmarshal([]byte(existingData), &tokenFile)
-				}
-				now := time.Now()
-				runtimeInfo := mcpagent.ReadAgentRuntimeInfo(underlying)
-				modelID := strings.TrimSpace(runtimeInfo.EffectiveModelID)
-				if modelID == "" {
-					modelID = runtimeInfo.LLMConfig.ModelID
-				}
-				usageSessionKey := phaseUsageCumulativeKey(persistSessionID, queryID, chatRuntime)
-				deltaUsage := orchestrator.ApplyCumulativeSessionModelUsageToPhaseTokenUsageFile(&tokenFile, usageSessionKey, phaseKey, modelID, modelUsage, now)
-
-				if tokenJSON, err := json.MarshalIndent(tokenFile, "", "  "); err == nil {
-					if err := writeRawFileToWorkspace(context.Background(), tokenFilePath, string(tokenJSON)); err != nil {
-						log.Printf("[BUILDER LOG] Failed to write phase token usage: %v", err)
-					} else {
-						turnCost := 0.0
-						if deltaUsage != nil {
-							turnCost = deltaUsage.TotalCost
-						}
-						log.Printf("[BUILDER LOG] Updated %s (phase=%s, $%.4f this turn)", tokenFilePath, phaseKey, turnCost)
-					}
-				}
-
-				dailyTokenFilePath := filepath.Join(workflowRoot, "costs", "phase", "daily", orchestrator.CostDateKey(now)+".json")
-				var dailyTokenFile orchestrator.DailyPhaseTokenUsageFile
-				if existingData, exists, err := readFileFromWorkspace(context.Background(), dailyTokenFilePath); err == nil && exists {
-					_ = json.Unmarshal([]byte(existingData), &dailyTokenFile)
-				}
-				dailyTokenFile.Date = orchestrator.CostDateKey(now)
-				dailyTokenFile.UpdatedAt = now
-				if dailyTokenFile.TokenUsage == nil {
-					dailyTokenFile.TokenUsage = &orchestrator.PhaseTokenUsageFile{}
-				}
-				orchestrator.ApplyModelUsageToPhaseTokenUsageFile(dailyTokenFile.TokenUsage, phaseKey, modelID, deltaUsage, now)
-
-				if dailyTokenJSON, err := json.MarshalIndent(dailyTokenFile, "", "  "); err == nil {
-					if err := writeRawFileToWorkspace(context.Background(), dailyTokenFilePath, string(dailyTokenJSON)); err != nil {
-						log.Printf("[BUILDER LOG] Failed to write daily phase token usage: %v", err)
-					}
-				}
-			}
-		}
 
 		// Store agent for reuse by synthetic turns (multi-agent chat and workflow phase chat).
 		// The stored agent retains all tools, prompts, observers, and conversation history.
@@ -10814,6 +9874,7 @@ func (api *StreamingAPI) cleanupInactiveSessions() {
 	for range ticker.C {
 		now := time.Now()
 		api.cleanupInactiveSessionsAt(now)
+		api.cleanupExpiredPythonAgentSessions(now)
 		api.heartbeatTerminalLeases(now)
 		if closed := api.cleanupStaleCodingAgentTmuxSessions(now); closed > 0 {
 			log.Printf("[ACTIVE_SESSION] Cleanup: Closed %d stale coding-agent tmux session(s)", closed)
@@ -11912,22 +10973,6 @@ type internalResponseCapture struct {
 	body   bytes.Buffer
 }
 
-// queryRequestForContinuation restores the product-level mode after handleQuery
-// has adapted a workflow-builder request to the shared multi-agent engine. The
-// stored request is later used by /live-input when a retained CLI object is
-// between turns. Persisting the adapted "multi-agent" value silently restarted
-// workflow follow-ups in _users/default/Chats instead of their workflow folder.
-func queryRequestForContinuation(req QueryRequest, isWorkflowPhase bool, workflowPhaseFolder string) QueryRequest {
-	if !isWorkflowPhase {
-		return req
-	}
-	req.AgentMode = "workflow_phase"
-	if strings.TrimSpace(req.SelectedFolder) == "" {
-		req.SelectedFolder = strings.TrimSpace(workflowPhaseFolder)
-	}
-	return req
-}
-
 // queryRequestWithEffectiveRuntime records the provider/model that actually
 // launched the retained coding CLI. The incoming request may carry tab state
 // from before Update Automation changed workflow.json, while finalProvider and
@@ -12640,12 +11685,6 @@ func (api *StreamingAPI) buildWorkshopConfig(
 // to the workflow.json manifest and scheduler service. No database dependency.
 func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.SchedulerCallbacks {
 	return &todo_creation_human.SchedulerCallbacks{
-		GetContractUpgrades: func(ctx context.Context, workspacePath string) (string, error) {
-			return describeWorkflowContractUpgrades(ctx, workspacePath)
-		},
-		NextContractUpgrade: func(ctx context.Context, workspacePath string) (string, string, error) {
-			return nextWorkflowContractUpgrade(ctx, workspacePath)
-		},
 		ListSchedules: func(ctx context.Context, workspacePath string) (string, error) {
 			manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 			if err != nil {
@@ -14136,7 +13175,7 @@ func (e *queryAdmissionError) Error() string {
 func (e *queryAdmissionError) Unwrap() error { return e.err }
 
 // admitQueryTarget resolves a turn's target and the caller's access to it:
-// the agent profile, the workflow-phase folder, then
+// the agent profile and concrete workspace, then
 // conversationTargetAccess. handleQuery and the bot dry run
 // (bot_dry_run.go) share it, so a dry run admits exactly what a real turn
 // admits.
@@ -14151,13 +13190,6 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
 	}
-	// Workflow-phase payloads identify the workspace through their preset,
-	// not selected_folder (the client never sends it for these chats).
-	// Resolve it BEFORE access: otherwise conversationTargetAccess skips the
-	// manifest and answers from the account tier, so a manifest reader chats
-	// as Builder while every tool call fails the permission-drift guard
-	// once the folder is backfilled later in handleQuery.
-	api.backfillWorkflowPhaseFolder(ctx, req)
 	// Only the verified Work binding may enter another person's Crew. A
 	// profile-less workflow payload must not bypass Crew access/tool policy.
 	if isCrewProjectPath(req.SelectedFolder) && !crewProjectOwnedByCaller(currentUserID, req.SelectedFolder) && !isProjectProfileID(req.AgentProfileID) {
@@ -14176,6 +13208,15 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		if _, exists, readErr := ReadWorkflowManifest(ctx, req.SelectedFolder); readErr == nil && exists {
 			req.notificationItemWorkspace = personalConnectionItemRoot(currentUserID, req.SelectedFolder)
 		}
+	}
+	req.notificationMailConnectionID, req.notificationMailBlockedRecipients = "", nil
+	if req.notificationItemWorkspace != "" && strings.HasPrefix(req.SelectedFolder, "Workflow/") {
+		manifest, found, err := ReadWorkflowManifest(ctx, req.SelectedFolder)
+		if err != nil || !found {
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("This workflow's mail settings are unavailable; open its Crew and try again.")}
+		}
+		req.notificationMailConnectionID = manifest.Capabilities.GmailConnectionID
+		req.notificationMailBlockedRecipients = append([]string(nil), manifest.Capabilities.GmailBlockedRecipients...)
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
 	// The server selects grants only after resolving and authorizing the project.
@@ -14199,15 +13240,12 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 			}
 		}
 	}
-	if req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase || resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 		log.Printf("[LAPTOP_ACCESS] session=%s actor=%s project=%q local_tools=%t %s", sessionID, currentUserID, req.SelectedFolder, req.LaptopConnection != nil, laptopWhy)
 	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
-	// Retained delivery runs before phase setup rewrites AgentMode. Preserve
-	// the admitted phase here so launch and follow-ups use the same policy.
-	req.admittedWorkflowPhase = req.admittedWorkflowPhase || req.AgentMode == "workflow_phase"
 	return resolvedProfile, access, nil
 }
 

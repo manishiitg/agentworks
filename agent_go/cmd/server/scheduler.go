@@ -1331,9 +1331,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		return "", errors.New("target is not a webhook")
 	}
 	sctx.OriginSessionID = originSessionID
-	if input == nil {
-		s.rememberScheduleCaller(sctx, originSessionID)
-	}
+	s.rememberScheduleCaller(sctx, originSessionID)
 	startTime := time.Now().UTC()
 	sctx.ScheduledFor = startTime
 	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != scheduleDependencyReady {
@@ -1442,7 +1440,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 
 // StopRunningJob stops a running scheduled job by canceling its session.
 func (s *SchedulerService) StopRunningJobForWorkflow(workspacePath, scheduleID string) {
-	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID)
+	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID, "")
 }
 
 func (s *SchedulerService) StopRunningJob(scheduleID string) {
@@ -1450,12 +1448,38 @@ func (s *SchedulerService) StopRunningJob(scheduleID string) {
 	if len(keys) != 1 {
 		return
 	}
-	s.stopRunningJob(keys[0], scheduleID)
+	s.stopRunningJob(keys[0], scheduleID, "")
 }
 
-func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID string) {
+// stopChatWorkflowRun uses the run identity admitted to this chat's background
+// item. It never selects all runs of a workflow or another delivery's worker.
+func (s *SchedulerService) stopChatWorkflowRun(runID, scheduleID string) {
+	if s == nil || runID == "" {
+		return
+	}
+	s.runtimeStatesMu.RLock()
+	key := ""
+	for candidate, state := range s.runtimeStates {
+		if state.ActiveRunID == runID && state.LastStatus == "running" {
+			key = candidate
+			break
+		}
+	}
+	s.runtimeStatesMu.RUnlock()
+	if key != "" {
+		s.stopRunningJob(key, scheduleID, runID)
+	}
+}
+
+func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID, expectedRunID string) {
 	s.runtimeStatesMu.Lock()
 	state := s.getRuntimeStateLocked(runtimeKey)
+	// A manual schedule reuses its key. The chat owns the admitted run, not
+	// a replacement that acquired this key after the registry lookup.
+	if expectedRunID != "" && state.ActiveRunID != expectedRunID {
+		s.runtimeStatesMu.Unlock()
+		return
+	}
 	sessionID := state.LastSessionID
 	runID := state.ActiveRunID
 	state.LastStatus = "stopped"
@@ -2363,9 +2387,8 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	}
 
-	migrationRequired := errors.Is(execErr, errWorkflowContractMigrationRequired)
-	if migrationRequired {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] %s did not run: this workflow requires a manual contract migration", schedID)
+	if errors.Is(execErr, errWorkflowScriptRequired) {
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] %s did not run: this workflow needs saved Python source", schedID)
 	}
 	// Now the whole scheduled job, including post-run side effects, is done.
 	terminalState := schedulerstate.StateCompleted
@@ -2766,10 +2789,9 @@ var errWorkshopIdleWaitTimeout = errors.New("workshop idle wait timed out")
 var errWorkshopSequenceInterrupted = errors.New("workshop sequence interrupted by user")
 var errWorkshopSessionFailed = errors.New("workshop session failed")
 
-// errWorkflowContractMigrationRequired marks an automated invocation whose
-// lane still requires a current contract (currently direct webhooks). Normal
-// schedules are allowed to keep running their saved contract.
-var errWorkflowContractMigrationRequired = errors.New("workflow contract migration required")
+// errWorkflowScriptRequired marks a retired or unbound workflow that has no
+// registered saved Python source for an automated run.
+var errWorkflowScriptRequired = errors.New("This workflow has not been converted to a saved Python workflow yet, so it cannot start. Ask its owner to convert it.")
 
 func (s *SchedulerService) refreshSessionTmuxSnapshotsForIdleCheck(ctx context.Context, sessionID string) error {
 	if s == nil || s.api == nil {

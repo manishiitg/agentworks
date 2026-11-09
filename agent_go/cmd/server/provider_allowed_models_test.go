@@ -126,9 +126,9 @@ func TestAllowedModelsServerAccountAdminOnlyAndEnforced(t *testing.T) {
 	}
 
 	// Product defaults follow the list.
-	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"code":{"provider":"codex-cli","model":"gpt-5.5"}}`)
+	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"work":{"provider":"codex-cli","model":"gpt-5.5"}}`)
 	defaults, err := effectiveProductDefaults(ctx)
-	if err != nil || defaults["code"].Model != "gpt-5.3-codex" {
+	if err != nil || defaults["work"].Model != "gpt-5.3-codex" {
 		t.Fatalf("product default not constrained: %+v %v", defaults, err)
 	}
 

@@ -36,7 +36,6 @@ import { WorkspaceViewActions } from './WorkspaceViewActions'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import WorkflowIdentityPanel from './WorkflowIdentityPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
-import WorkflowUpdatesView from './WorkflowUpdatesView'
 
 
 // Which sections exist is decided by the registry in workspaceViews.ts; this
@@ -45,12 +44,11 @@ export type WorkflowCapabilitySection = CapabilityViewId
 
 type McpTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
-type IdentityTab = 'general' | 'secrets' | 'llm' | 'upgrades'
+type IdentityTab = 'general' | 'secrets' | 'llm'
 
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'llm', label: 'Models' },
-  { value: 'upgrades', label: 'Upgrades' },
 ]
 
 interface WorkflowCapabilitiesPanelProps {
@@ -80,7 +78,7 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
   },
   identity: {
     title: 'Settings',
-    description: 'Name, icon, purpose, connected work, LLMs, and platform upgrades for this workflow.',
+    description: 'Name, icon, purpose, connected work, and models for this workflow.',
     savesViaManifest: false,
   },
   browser: {
@@ -406,9 +404,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   /></>
                 )}
 
-                {activeIdentityTab === 'upgrades' && (
-                  <WorkflowUpdatesView workspacePath={workspacePath} />
-                )}
+
               </div>
             )}
             {section === 'browser' && (

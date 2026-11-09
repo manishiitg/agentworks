@@ -7,6 +7,10 @@ export type CrewPanelRow = { id: string; label: string; detail?: string; destina
 export type CrewPanelSection = { id: string; title: string; detail?: string; rows: CrewPanelRow[]; busy?: boolean; stale?: boolean; error?: string; access?: { where?: 'mac' | 'web'; place?: CloudState; role?: string; view?: string; summary?: string; tree?: CrewAccessLine[]; asking?: (CrewAsk & { label: string; detail: string })[] } }
 export type CrewPanel = { project: string; workspace: string; busy: boolean; mac_elsewhere: boolean; sections: CrewPanelSection[]; details: Record<string, string> }
 
+// The last answer for each scope, project and chat: the menu is mounted again every time a person comes back to it, and
+// a far-away server needs a few seconds to answer. Show what was last known at once; the new answer replaces it.
+const lastKnown = new Map<string, CrewPanel>()
+
 /** One current-account read. The existing tab-wide feed handles reconnect and
  * resync; timers are a fallback only. Settings screens retain their own APIs. */
 export function useCrewPanel(scope: string, project: string, workspace: string, session?: string) {
@@ -23,11 +27,11 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
       reading = true
       try {
         const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { session_id: session }, signal: controller.signal, skipSessionContext: true })
-        if (!controller.signal.aborted) setState({ key, data })
+        if (!controller.signal.aborted) { lastKnown.set(key, data); setState({ key, data }) }
       } catch {
         // Do not retain a previous account's or now-revoked Crew's data after
         // a failed admission. Section-level last-good values live on the server.
-        if (!controller.signal.aborted) setState({ key, error: 'Could not load this Crew’s status. Try again.' })
+        if (!controller.signal.aborted) { lastKnown.delete(key); setState({ key, error: 'Could not load this Crew’s status. Try again.' }) }
       } finally {
         reading = false
         if (again && !controller.signal.aborted) { again = false; void read() }
@@ -37,7 +41,7 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
     void read()
     return () => { controller.abort(); refreshRef.current = () => {} }
   }, [key, project, session])
-  const data = state?.key === key ? state.data : undefined
+  const data = state?.key === key ? state.data : lastKnown.get(key)
   useLiveRefetch(() => refreshRef.current(), {
     kinds: ['crew_panel', 'sessions', 'schedules', 'report', 'plan', 'browser'],
     project, workflow: workspace, scopeKey: scope, enabled: !!project,

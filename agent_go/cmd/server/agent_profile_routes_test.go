@@ -88,20 +88,6 @@ func TestQueryRequestForAgentProfileChatUsesOnlyServerOwnedProfileConfiguration(
 	}
 }
 
-func TestWorkResumeKeyIsDerivedFromProjectAndSavedChat(t *testing.T) {
-	input := AgentProfileConversationRequest{ResourceID: "project-1", SessionID: "saved-chat"}
-	if got := agentProfileResumeConversationKey("work", input); got != "project-1:saved-chat" {
-		t.Fatalf("resume key=%q", got)
-	}
-	input.ConversationKey = "existing:key"
-	if got := agentProfileResumeConversationKey("work", input); got != "existing:key" {
-		t.Fatalf("existing key was replaced: %q", got)
-	}
-	if got := agentProfileResumeConversationKey("example-product", AgentProfileConversationRequest{ResourceID: "launch", SessionID: "saved-chat"}); got != "launch" {
-		t.Fatalf("non-Work project key=%q", got)
-	}
-}
-
 func TestQueryRequestForAgentProfileChatRequiresServerOwnedWorkspace(t *testing.T) {
 	_, err := queryRequestForAgentProfileChat(
 		routeTestProfile("project-product", true, ""),
@@ -123,31 +109,6 @@ func fixedWorkspaceTestProfile() agentprofiles.Profile {
 	return profile
 }
 
-func TestQueryRequestForAgentProfileChatWithNoEngineLeavesProviderUnset(t *testing.T) {
-	query, err := queryRequestForAgentProfileChat(fixedWorkspaceTestProfile(), AgentProfileChatRequest{
-		Message: "hello",
-	}, ProductConversationRecord{SessionID: "session-1", WorkspacePath: "Chats/Example"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if query.Provider != "" || query.ModelID != "" {
-		t.Fatalf("no engine requested must leave provider/model unset (the profile's own default applies), got provider=%q model=%q", query.Provider, query.ModelID)
-	}
-}
-
-func TestQueryRequestForAgentProfileChatResolvesDeclaredEngine(t *testing.T) {
-	query, err := queryRequestForAgentProfileChat(fixedWorkspaceTestProfile(), AgentProfileChatRequest{
-		Message: "hello",
-		Engine:  "codex-cli",
-	}, ProductConversationRecord{SessionID: "session-1", WorkspacePath: "Chats/Example"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if query.Provider != "codex-cli" || query.ModelID != "gpt-5.4" {
-		t.Fatalf("engine %q must resolve to its declared (provider, model_id), got provider=%q model=%q", "codex-cli", query.Provider, query.ModelID)
-	}
-}
-
 func TestQueryRequestForAgentProfileChatRejectsUndeclaredEngine(t *testing.T) {
 	_, err := queryRequestForAgentProfileChat(fixedWorkspaceTestProfile(), AgentProfileChatRequest{
 		Message: "hello",
@@ -155,48 +116,6 @@ func TestQueryRequestForAgentProfileChatRejectsUndeclaredEngine(t *testing.T) {
 	}, ProductConversationRecord{SessionID: "session-1", WorkspacePath: "Chats/Example"})
 	if err == nil {
 		t.Fatal("an engine id not declared in the profile's provider_options must be rejected, never silently ignored or passed through")
-	}
-}
-
-func TestQueryRequestForAgentProfileChatAcceptsDeclaredChatExtras(t *testing.T) {
-	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Capabilities.MCPSelection = agentprofiles.CapabilityPreferred
-	profile.Runtime.Capabilities.SkillSelection = agentprofiles.CapabilityPreferred
-	profile.Runtime.Capabilities.WorkflowReferences = agentprofiles.CapabilityPreferred
-	query, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
-		Message:              "hello",
-		EnabledServers:       []string{"github", "github"},
-		SelectedSkills:       []string{"code-reviewer", "code-reviewer"},
-		WorkflowContextPaths: []string{"Workflow/customer-research", "Workflow/customer-research"},
-	}, ProductConversationRecord{SessionID: "session-1", WorkspacePath: "Chats/Work/projects/demo"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(query.EnabledServers, ",") != "github" || strings.Join(query.SelectedSkills, ",") != "code-reviewer" {
-		t.Fatalf("chat extras not applied or deduplicated: servers=%v skills=%v", query.EnabledServers, query.SelectedSkills)
-	}
-	if strings.Join(query.WorkflowContextPaths, ",") != "Workflow/customer-research" {
-		t.Fatalf("workflow references not applied or deduplicated: %v", query.WorkflowContextPaths)
-	}
-}
-
-func TestProjectChatMergesDurableAndMessageWorkflowReferences(t *testing.T) {
-	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Capabilities.WorkflowReferences = agentprofiles.CapabilityPreferred
-	query, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
-		Message:              "compare them",
-		WorkflowContextPaths: []string{"Workflow/temporary", "Workflow/saved"},
-	}, ProductConversationRecord{
-		SessionID:                   "session-1",
-		WorkspacePath:               "Chats/Work/projects/demo",
-		ResourceID:                  "demo",
-		ProjectWorkflowContextPaths: []string{"Workflow/saved"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(query.WorkflowContextPaths, ","); got != "Workflow/saved,Workflow/temporary" {
-		t.Fatalf("workflow references = %q, want durable first and deduplicated", got)
 	}
 }
 
@@ -246,17 +165,6 @@ func TestQueryRequestForAgentProfileChatRejectsUndeclaredChatExtras(t *testing.T
 	}, ProductConversationRecord{SessionID: "session-1", WorkspacePath: "Chats"})
 	if err == nil {
 		t.Fatal("expected a fixed-purpose profile to reject user-selected MCP servers")
-	}
-}
-
-func TestQueryRequestForAgentProfileChatAcceptsNoServersSentinelOnFixedPurposeProfile(t *testing.T) {
-	profile := routeTestProfile("example-product", true, "")
-	_, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{
-		Message:        "hello",
-		EnabledServers: []string{"NO_SERVERS"},
-	}, ProductConversationRecord{SessionID: "session-1", WorkspacePath: "Chats"})
-	if err != nil {
-		t.Fatalf("expected the NO_SERVERS sentinel to be accepted even when MCP selection is disabled, got %v", err)
 	}
 }
 

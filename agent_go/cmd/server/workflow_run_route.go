@@ -43,5 +43,5 @@ func (api *StreamingAPI) handleWorkflowRun(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "only a script workflow starts directly; this workflow is on the retired engine", http.StatusConflict)
 		return
 	}
-	api.externalRunProxy(w, r, "run_full_workflow", args, target)
+	api.externalScriptStart(w, r, args, target)
 }

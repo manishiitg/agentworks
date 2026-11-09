@@ -6,26 +6,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-// Interactive Builder calls use the person's existing typed-function path;
-// executions continue to carry the Crew caller and cannot recurse into it.
+// PLAT-746: automatic turns in an owner's chat have the same handoff as their
+// interactive turns. Actual execution scopes and pinned Run turns keep the
+// Crew caller and cannot recurse into their own function.
 func TestInteractiveBuilderCallsOwnDeclaredFunction(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newCrewFunctionEnv(t)
-	ctx := context.Background()
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]any{"definition": map[string]any{"name": "own_fn", "description": "Own function", "action": map[string]any{"type": "message"}, "input": map[string]any{"messages": []string{"Return the result."}}}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, trigger := range []string{"function", "schedule", "notification", "trigger", "interactive"} {
-		t.Run(trigger, func(t *testing.T) {
+	for _, tc := range []struct {
+		name, trigger, scope string
+		pinRun               bool
+	}{
+		{name: "function turn in own chat", trigger: "function"},
+		{name: "schedule turn in own chat", trigger: "schedule"},
+		{name: "notification in own chat", trigger: "notification"},
+		{name: "trigger in own chat", trigger: "trigger"},
+		{name: "interactive own chat", trigger: "interactive"},
+		{name: "workflow execution", trigger: "function", scope: "run-step"},
+		{name: "pinned Run", trigger: "interactive", pinRun: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			reg := &recordingRegistrar{}
-			req := QueryRequest{SelectedFolder: linkAlphaPath, AgentProfileID: "work", TriggeredBy: trigger}
-			if err := env.api.registerCrewFunctionToolSet(reg, "owner", "sess-builder", req, crewTriggerLinkCaller(linkAlphaPath), nil, crewFunctionToolOptions{InteractiveOwnCalls: publishedBuilderHandoff(&req, false)}); err != nil {
+			req := QueryRequest{SelectedFolder: linkAlphaPath, AgentProfileID: "work", TriggeredBy: tc.trigger, PinRunMode: tc.pinRun}
+			options := crewFunctionToolOptions{InteractiveOwnCalls: publishedBuilderHandoff(&req, false), ExecutionScope: tc.scope}
+			if tc.scope != "" {
+				options.FunctionTools = agentworksproduct.ExecutionFunctionTools()
+			}
+			if err := env.api.registerCrewFunctionToolSet(reg, "owner", "sess-builder", req, crewTriggerLinkCaller(linkAlphaPath), nil, options); err != nil {
 				t.Fatal(err)
 			}
-			out, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"project": "Alpha", "function": "own_fn", "notify": false})
-			if trigger != "interactive" {
+			callTool, admitted := reg.tools["project_functions_call"]
+			if !admitted || callTool.exec == nil {
+				t.Fatal("fixture did not admit the declared function tool")
+			}
+			out, err := callTool.exec(ctx, map[string]any{"project": "Alpha", "function": "own_fn", "notify": false})
+			if tc.scope != "" || tc.pinRun {
 				if err == nil || !strings.Contains(err.Error(), "own function") {
 					t.Fatalf("execution self-call guard changed: %s %v", out, err)
 				}

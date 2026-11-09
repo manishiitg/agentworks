@@ -111,7 +111,7 @@ func crewScriptCapabilities(ctx context.Context, crewRoot string, definition *wo
 
 // Script ids are configuration, never derived from mapped values. Resolve source
 // only through the server's trusted executable-to-Crew ownership registry.
-func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace, id string) (workflow.CrewScriptConfiguration, error) {
+func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, workspace, id string) (workflow.CrewScriptConfiguration, error) {
 	var result workflow.CrewScriptConfiguration
 	parent, err := findCrewExecutable(workspace)
 	if id == "" && err == nil && (parent == nil || parent.Kind != "script") {
@@ -142,15 +142,8 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(parent.CrewRoot) {
 			return result, fmt.Errorf("choose a script from this Crew; call another Crew's shared function instead")
 		}
-		definition, err := readCrewScript(ctx, binding.Root)
-		if err != nil {
-			return result, err
-		}
-		if definition.ID != binding.ID {
-			return result, fmt.Errorf("saved script identity is invalid")
-		}
 		sourceRoot := path.Join(binding.Root, "code")
-		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string][]byte{}}
+		result = workflow.CrewScriptConfiguration{Definition: workflow.CrewScriptDefinition{ID: binding.ID}, Root: sourceRoot}
 		// Match the existing account executor's scope, including its established
 		// shared default. Tool admission must neither narrow nor widen its grants.
 		if google := services.GetGmailService(); google != nil {
@@ -160,27 +153,47 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 		}
 		log.Printf("[SCRIPT_APP_SCOPE] script=%s workspace=%s owner=%s google_available=%t", binding.ID, binding.Root, r.userID, len(result.ToolSelections) > 0)
 
-		files, err := listWorkspaceFilesRecursive(ctx, sourceRoot)
-		if err != nil {
-			return result, err
-		}
-		for _, file := range files {
-			relative := strings.TrimPrefix(file, sourceRoot+"/")
-			if !workflow.CrewScriptBundleFile(relative) {
-				continue
-			}
-			content, err := fs.ReadFile(workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: binding.Root}, path.Join("code", relative))
-			if err != nil {
-				return result, err
-			}
-			result.Files[relative] = content
-		}
-		if len(result.Files["main.py"]) == 0 {
-			return result, fmt.Errorf("save main.py before running this script")
-		}
 		return result, nil
 	}
 	return result, fmt.Errorf("saved script is unavailable; choose a script from this Crew")
+}
+
+// Fresh launches read editable source only after the server resolves its scope.
+// Resume uses the same scope checks, then loads its verified captured bundle.
+func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace, id string) (workflow.CrewScriptConfiguration, error) {
+	result, err := r.ResolveCrewScriptScope(ctx, workspace, id)
+	if err != nil || result.Definition.ID == "" {
+		return result, err
+	}
+	definition, err := readCrewScript(ctx, path.Dir(result.Root))
+	if err != nil {
+		return result, err
+	}
+	if definition.ID != result.Definition.ID {
+		return result, fmt.Errorf("saved script identity is invalid")
+	}
+	result.Definition = *definition
+	result.Files = map[string][]byte{}
+
+	files, err := listWorkspaceFilesRecursive(ctx, result.Root)
+	if err != nil {
+		return result, err
+	}
+	for _, file := range files {
+		relative := strings.TrimPrefix(file, result.Root+"/")
+		if !workflow.CrewScriptBundleFile(relative) {
+			continue
+		}
+		content, err := fs.ReadFile(workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: path.Dir(result.Root)}, path.Join("code", relative))
+		if err != nil {
+			return result, err
+		}
+		result.Files[relative] = content
+	}
+	if len(result.Files["main.py"]) == 0 {
+		return result, fmt.Errorf("save main.py before running this script")
+	}
+	return result, nil
 }
 
 func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesManifest, edits ...*scriptEntryInputEdits) error {
@@ -303,7 +316,12 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	result := crewScriptSaveNotes(r.Context(), binding, file)
+	if result == nil {
+		result = map[string]interface{}{}
+	}
+	result["success"] = true
+	json.NewEncoder(w).Encode(result)
 }
 
 // The Plan view reads exactly the saved code under the same authoring access
@@ -335,9 +353,54 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	// The server resolves each agent's model, so the page only prints it.
+	if manifest, _, err := crewScriptManifest(r.Context(), binding); err == nil {
+		if withModels, err := addOutlineModels(graph, manifest.Capabilities.LLMConfig); err == nil {
+			graph = withModels
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(graph)
+}
+
+// crewScriptStepCount is the number of steps the Workflow page's Steps card counts: the outline's nodes that are
+// not containers. The Crew panel prints the same number from here. ok is false when there is no readable outline.
+func crewScriptStepCount(ctx context.Context, binding crewExecutableBinding) (int, bool) {
+	owner, found := crewProjectOwnerID(binding.CrewRoot)
+	if !found {
+		return 0, false
+	}
+	resource := &crewWorkflowResources{userID: owner}
+	source, err := resource.ResolveCrewScript(ctx, binding.Root, "")
+	if err != nil {
+		return 0, false
+	}
+	files := map[string]string{}
+	for name, content := range source.Files {
+		if strings.HasSuffix(name, ".py") {
+			files[name] = string(content)
+		}
+	}
+	raw, err := inspectPythonAutomationSource(ctx, binding.Root, files)
+	if err != nil {
+		return 0, false
+	}
+	var graph struct {
+		Nodes []struct {
+			Role string `json:"role"`
+		} `json:"nodes"`
+	}
+	if json.Unmarshal(raw, &graph) != nil || len(graph.Nodes) == 0 {
+		return 0, false
+	}
+	count := 0
+	for _, node := range graph.Nodes {
+		if node.Role == "" {
+			count++
+		}
+	}
+	return count, true
 }
 
 type crewScriptUsage struct {

@@ -132,10 +132,17 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 	}
 	ctx, cancel := context.WithTimeout(ctx, longest)
 	defer cancel()
+	started := time.Now()
+	slowest, slowestFor := "", time.Duration(0)
+	defer func() {
+		// One line per panel read: which section made it slow (no user data).
+		log.Printf("[CREW_PANEL] project=%s total_ms=%d slowest=%s slowest_ms=%d", key.project, time.Since(started).Milliseconds(), slowest, slowestFor.Milliseconds())
+	}()
 	type result struct {
 		index   int
 		section crewPanelSection
 		err     error
+		took    time.Duration
 	}
 	results := make(chan result, len(sources))
 	out := make([]crewPanelSection, len(sources))
@@ -156,11 +163,12 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			}
 			sourceCtx, done := context.WithTimeout(ctx, limit)
 			defer done()
+			began := time.Now()
 			section, err := source.read(sourceCtx)
 			if err == nil && sourceCtx.Err() != nil {
 				err = sourceCtx.Err()
 			}
-			results <- result{i, section, err}
+			results <- result{i, section, err, time.Since(began)}
 		}(i, source)
 	}
 	finish := func(i int, section crewPanelSection, err error) {
@@ -195,6 +203,9 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 	for len(pending) > 0 {
 		select {
 		case result := <-results:
+			if result.took > slowestFor {
+				slowest, slowestFor = sources[result.index].id, result.took
+			}
 			finish(result.index, result.section, result.err)
 		case <-ctx.Done():
 			for i := range pending {
@@ -296,11 +307,12 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 // reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess
+	accessAt := -1
 	shared, listed, paths := "", false, []string{}
 	for i := range sections {
 		switch s := &sections[i]; s.ID {
 		case "access":
-			access = s.Access
+			access, accessAt = s.Access, i
 		case "sharing":
 			if s.Error == "" {
 				shared = s.shared
@@ -317,7 +329,10 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	if access == nil || !listed {
 		return
 	}
-	access.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	// A copy: the cached section shares its Access, and adding the line in place would add it again on every read.
+	shown := *access
+	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	sections[accessAt].Access = &shown
 }
 
 func crewPanelRead(r *http.Request, handler http.HandlerFunc, method, route string, vars map[string]string, query url.Values, body, out any) error {
@@ -394,13 +409,20 @@ func crewPanelAgo(since time.Duration) string {
 
 // crewPanelWorkflowLine is one workflow's summary from its newest run: "4 steps · last run finished 2h ago".
 // folders arrive newest first.
-func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
+func crewPanelWorkflowLine(folders []RunFolderInfo, steps int, now time.Time) string {
 	if len(folders) == 0 || folders[0].Metadata == nil {
+		if steps > 0 {
+			return crewPanelCount(steps, "step") + " · not run yet"
+		}
 		return "Not run yet"
 	}
 	meta := folders[0].Metadata
 	parts := []string{}
-	if n := len(meta.PythonSteps); n > 0 {
+	n := steps
+	if n <= 0 {
+		n = len(meta.PythonSteps)
+	}
+	if n > 0 {
 		parts = append(parts, crewPanelCount(n, "step"))
 	}
 	at, _ := runFolderTime(folders[0])
@@ -534,8 +556,23 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		for _, section := range sections {
 			if section.ID == kind.section && section.Error == "" {
 				details[kind.destination] = "None yet"
+			} else if section.ID == kind.section {
+				details[kind.destination] = "Could not load"
 			}
 		}
+	}
+	// The Connections row's one line: how many are on, from the rows above.
+	connectedCount := 0
+	for _, section := range sections {
+		for _, row := range section.Rows {
+			if strings.HasPrefix(row.Destination, "mcp:") && row.Connected {
+				connectedCount++
+			}
+		}
+	}
+	details["connections"] = "None yet"
+	if connectedCount > 0 {
+		details["connections"] = fmt.Sprintf("%d connected", connectedCount)
 	}
 	if _, ok := details["mcp:connected"]; !ok {
 		for _, section := range sections {

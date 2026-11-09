@@ -23,10 +23,14 @@ export interface RelaySourceNode {
   /** Script outline only: the container node this one is nested in, and what a container is. */
   parent?: string
   role?: 'branch' | 'case' | 'repeat' | 'try' | 'failure' | 'block'
+  /** Script outline only: the model the server resolved for this agent row; absent when it cannot say. */
+  agent?: RelayResolvedAgent
   line: number
 }
+/** What the server resolved for an agent: `source` is "call" when the agent call itself names a model, tier or reasoning. */
+export interface RelayResolvedAgent { provider: string; model: string; reasoning?: string; source: 'default' | 'call' }
 export interface RelaySourceEdge { from: string; to: string; label?: string; line: number }
-export interface RelaySourceGraph { nodes: RelaySourceNode[]; edges: RelaySourceEdge[]; errors: string[]; native?: boolean; recorded?: boolean }
+export interface RelaySourceGraph { default_agent?: RelayResolvedAgent; type_notes?: Array<{ file: string; line: number; message: string }>; notes?: string[]; unkeyed_calls?: Array<{ file: string; line: number; helper: string }>; nodes: RelaySourceNode[]; edges: RelaySourceEdge[]; errors: string[]; native?: boolean; recorded?: boolean }
 const kinds: RelayNodeKind[] = ['input', 'agent', 'classifier', 'script', 'decision', 'output']
 const validID = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z][\w-]{0,63}$/.test(value)
 const stringList = (value: unknown) => Array.isArray(value) && value.every(item => typeof item === 'string')

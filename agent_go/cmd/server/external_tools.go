@@ -60,7 +60,7 @@ func externalInteger(minimum, maximum int) map[string]any {
 }
 func externalTools() ([]externalTool, error) {
 	externalCatalogOnce.Do(func() {
-		var defined []externalTool
+		defined := []externalTool{externalSavedPythonStartTool()}
 		add := func(name, description string, write, scoped bool, props map[string]any, required ...string) {
 			if props == nil {
 				props = map[string]any{}
@@ -80,7 +80,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, schedule counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, separate timer (schedules/schedules_enabled), webhook and function-trigger counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats (Show in chat box; off by default). Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		externalServerProductDefinitions(add)
@@ -110,12 +110,9 @@ func externalTools() ([]externalTool, error) {
 		// Product declarations admit tools; current roles and existing connection
 		// consent separately authorize reads, execution and direct authoring.
 		// Catalog membership is admitted by product.yaml (chat.run
-		// external_tools plus the run.tools proxy surface); these definitions
+		// external_tools and implemented run.tools entries); these definitions
 		// are implementations only.
-		add("get_plan", "For a saved Python script, read its source outline without executing it; requires the same Builder access as its source editor. For an older workflow, read the plan and configuration. A large plan can be several hundred thousand characters: pass view=outline first (each step's id, type, title and a short description, plus the size of every top-level plan section), then step_id to read one step's plan entry and its configuration. Without either you get everything (plan and step configuration).", false, true, map[string]any{
-			"view":    map[string]any{"type": "string", "enum": []any{"full", "outline"}, "description": "outline: step list and section sizes only. Default full."},
-			"step_id": externalString("Read only this step: its plan entry and its configuration."),
-		})
+		add("get_script_outline", "Read a saved Python workflow's source outline without running it. Requires the same Builder access as its source editor.", false, true, nil)
 		add("save_script_inputs", "Save a Python workflow's input presets, and optionally its typed inputs. Replaces the supplied lists, preserving other script settings. Requires this Crew's Builder and the same source-editing consent as the script editor.", true, true, map[string]any{
 			"inputs":         map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional complete typed input definitions; omit to keep current inputs."},
 			"input_presets":  map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Complete list of named presets, each with name and values. An empty list removes all presets."},
@@ -145,9 +142,8 @@ func externalTools() ([]externalTool, error) {
 			}
 			add(name, description, false, true, p, "run_folder")
 		}
-		// JSON-direct run operations. The four run.tools names keep these
-		// native implementations instead of the generic proxy below;
-		// run_status has no chat equivalent and is admitted by external_tools.
+		// Saved-script run operations use native handlers and the ordinary
+		// run lifecycle; none starts a workflow assistant.
 		addRun := func(name, description string, executes bool, props map[string]any, required ...string) {
 			if props == nil {
 				props = map[string]any{}
@@ -165,6 +161,7 @@ func externalTools() ([]externalTool, error) {
 		p["since_index"] = externalInteger(-1, 1000000000)
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: turn_status (running, waiting_for_input, idle), any pending question, final_answer once idle and executions, without events. Pass false for a size-bounded page of events."}
 		addRun("run_status", "Poll a run session started externally: turn_status, final_answer once the turn is done, pending inputs and its active executions, without events by default (compact: false adds a size-bounded event page).", false, p, "session_id")
+		addRun("resume_workflow", "Resume a failed saved Python run in its existing folder using its verified captured source and inputs. Only the owner/editor can resume. Successful explicit-key agent/script calls can return reused=true; ordinary code and app calls execute normally. Start a new run to change source or inputs.", true, map[string]any{"run_folder": externalString("Failed run folder from runs list/get, belonging to this workflow.")}, "run_folder")
 		addRun("rerun_workflow", "Start a new real run of a saved Python workflow using a previous run's typed input values/preset and the current saved source. This repeats real effects, including database writes, app calls and sends. Returns the normal session receipt plus changed source files/revisions versus the prior execution snapshot. Poll runs status, then read runs logs.", true, map[string]any{"run_folder": externalString("Previous run folder from runs list/get; must belong to this workflow.")}, "run_folder")
 		workflowPublishedFunctionDefinitions(func(name, description string, write bool, props map[string]any, required ...string) {
 			if props == nil {
@@ -192,7 +189,7 @@ func externalTools() ([]externalTool, error) {
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
-		addRun("stop_step", "Stop one running step or background execution by its execution ID from runs action=step, runs action=step_status, or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or runs action=step_status."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
+		addRun("stop_step", "Stop one running execution by its execution ID from runs action=status or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID from runs action=status or runs action=active."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
 		addRun("stop_all_executions", "Stop all running executions owned by this connection in the workflow, or one session you started (here or in the app) when session_id is given. Executes directly.", true, map[string]any{"session_id": map[string]any{"type": "string", "description": "Optional run session ID to stop instead of every owned session."}})
 		// Crews: bounded by the token's Crew list; crews:read.
 		crewID := func(props map[string]any) map[string]any {
@@ -232,7 +229,7 @@ func externalTools() ([]externalTool, error) {
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
-		add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence+" Returns inbox_id, conversation_id and message_id, not call_id. The Crew explicitly decides whether to reply; read messages action=read with inbox_id. Agent messaging off refuses incoming messages, including replies. Requires crews:run.", false, false, crewID(map[string]any{"chat_id": externalString("Optional chat_id from messages action=list_agents. Omit for the main chat."), "message": externalString("Conversational message."), "inbox_id": externalString("Inbox from an earlier send; omit for a fresh external conversation."), "submission_id": submission}), "crew_id", "message")
+		add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence+" Returns inbox_id, conversation_id and message_id, not call_id. The Crew explicitly decides whether to reply; read messages action=read with inbox_id. Requires crews:run.", false, false, crewID(map[string]any{"chat_id": externalString("Optional chat_id from messages action=list_agents. Omit for the main chat."), "message": externalString("Conversational message."), "inbox_id": externalString("Inbox from an earlier send; omit for a fresh external conversation."), "submission_id": submission}), "crew_id", "message")
 		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its purpose, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
@@ -298,7 +295,6 @@ func externalTools() ([]externalTool, error) {
 			externalCatalogErr = err
 			return
 		}
-		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		if err := externalWorkflowAccountDefinitions(add); err != nil {
 			externalCatalogErr = err
@@ -418,12 +414,10 @@ func externalTools() ([]externalTool, error) {
 			if seen[name] {
 				continue
 			}
-			seen[name] = true
 			if native, ok := byName[name]; ok {
+				seen[name] = true
 				externalCatalog = append(externalCatalog, native)
-				continue
 			}
-			externalCatalog = append(externalCatalog, externalRunProxyTool(name))
 		}
 		for _, tool := range defined {
 			if !seen[tool.Name] && !runSet[tool.Name] {
@@ -1074,10 +1068,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkflowCrewCall(w, r, args, *selected)
 		return
 	}
-	if tool.Name == "workflow_upgrade" {
-		api.externalContractUpgradeCall(w, r, args, *selected)
-		return
-	}
 	if tool.Name == "get_file_link" {
 		api.externalAssetLink(w, r, *selected, externalArg(args, "path"))
 		return
@@ -1122,28 +1112,27 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkflowFunctionCall(w, r, tool.Name, args, *selected, access)
 		return
 	}
-	// Run operations dispatch before the workflow lock: proxy turns forward
-	// to the asynchronous query runtime (which must never run under this
-	// lock), and the status and schedule readers need no lock.
+	// Run operations use their native handlers; script starts retain the
+	// asynchronous query lifecycle and never run under a workflow lock.
 	switch tool.Name {
 	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "run_reply_input", "stop_step", "stop_all_executions":
 		api.externalRunCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	if tool.Name == "resume_workflow" {
+		api.externalScriptResume(w, r, *selected, args)
 		return
 	}
 	if tool.Name == "rerun_workflow" {
 		api.externalScriptRerun(w, r, *selected, args)
 		return
 	}
-	if tool.executes {
-		if selected.Manifest.Kind == "relay" {
-			externalError(w, 400, "relay_builder_only", "Use relay action=test or relay action=run; Flow does not expose Run chat tools.")
-			return
-		}
-		api.externalRunProxy(w, r, tool.Name, args, *selected)
+	if tool.Name == "run_full_workflow" {
+		api.externalScriptStart(w, r, args, *selected)
 		return
 	}
-	if tool.Name == "get_plan" {
-		api.externalPlanCall(w, r, *selected, args)
+	if tool.Name == "get_script_outline" {
+		api.externalScriptOutlineCall(w, r, *selected)
 		return
 	}
 	api.externalFileCall(w, r, tool.Name, args, *selected)
@@ -1243,7 +1232,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 		}
 		if name == "get_run" {
 			if externalWorkflowIsScript(workflow) {
-				if err := externalScriptRunRecord(r.Context(), req.Root, externalArg(args, "run_folder"), linked); err != nil {
+				if err := externalScriptRunRecord(r.Context(), workflow, externalArg(args, "run_folder"), linked); err != nil {
 					externalFailure(w, err)
 					return
 				}
@@ -1270,155 +1259,16 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 	externalJSON(w, result)
 }
 
-var externalPlanPaths = []string{"planning/plan.json", "planning/step_config.json"}
-
-func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow, args map[string]any) {
-	if externalWorkflowIsScript(workflow) {
-		if externalArg(args, "step_id") != "" {
-			externalError(w, 400, "invalid_arguments", "Python steps are labels in the saved source. Read the outline without step_id, or read the script file.")
-			return
-		}
-		forward := r.Clone(r.Context())
-		forward.Method = http.MethodGet
-		forward.URL.Path = "/api/crew-script-graph"
-		forward.URL.RawQuery = "workspace_path=" + url.QueryEscape(workflow.WorkspacePath)
-		externalBuilderForward(w, forward, api.handleCrewScriptGraph)
+func (api *StreamingAPI) externalScriptOutlineCall(w http.ResponseWriter, r *http.Request, item DiscoveredWorkflow) {
+	if !externalWorkflowIsScript(item) {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Choose a saved Python workflow to inspect its source.")
 		return
 	}
-	artifacts := map[string]any{}
-	var revisions strings.Builder
-	for _, p := range externalPlanPaths {
-		result, err := externalFileRequest(r.Context(), wf.Request{Root: workflow.WorkspacePath, Operation: "read", Path: p})
-		if err != nil {
-			externalFailure(w, err)
-			return
-		}
-		revisions.WriteString(p + ":" + result.Revision + "\n")
-		var value any
-		if result.Exists {
-			if err := json.Unmarshal([]byte(result.Content), &value); err != nil {
-				externalFailure(w, fmt.Errorf("invalid JSON in %s: %w", p, err))
-				return
-			}
-		}
-		artifacts[p] = value
-	}
-	revision := wf.Revision([]byte(revisions.String()))
-	plan, config := artifacts["planning/plan.json"], artifacts["planning/step_config.json"]
-	if stepID := externalArg(args, "step_id"); stepID != "" {
-		step := externalPlanFindStep(plan, stepID)
-		if step == nil {
-			externalError(w, 404, "not_found", "No step "+stepID+" in the plan; call workflow action=plan with view=outline for the step ids.")
-			return
-		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "step_id": stepID, "step": step, "config": externalPlanConfigFor(config, stepID)})
-		return
-	}
-	if externalArg(args, "view") == "outline" {
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "outline": externalPlanOutline(plan, config)})
-		return
-	}
-	// The plan is returned once: it used to be repeated inside artifacts, doubling the reply.
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "plan": plan, "artifacts": map[string]any{"planning/step_config.json": config}})
-}
-
-// externalPlanFindStep returns the plan entry of a step: the first object with this id that also has a type.
-func externalPlanFindStep(node any, id string) map[string]any {
-	switch value := node.(type) {
-	case map[string]any:
-		if got, _ := value["id"].(string); got == id {
-			if _, isStep := value["type"].(string); isStep {
-				return value
-			}
-		}
-		for _, child := range value {
-			if found := externalPlanFindStep(child, id); found != nil {
-				return found
-			}
-		}
-	case []any:
-		for _, child := range value {
-			if found := externalPlanFindStep(child, id); found != nil {
-				return found
-			}
-		}
-	}
-	return nil
-}
-
-// externalPlanConfigFor returns a step's entry of step_config.json: the value under its id key, or the first object
-// whose id is this step's. Nil when the configuration has none.
-func externalPlanConfigFor(node any, id string) any {
-	switch value := node.(type) {
-	case map[string]any:
-		if entry, ok := value[id]; ok {
-			return entry
-		}
-		if got, _ := value["id"].(string); got == id {
-			return value
-		}
-		for _, child := range value {
-			if found := externalPlanConfigFor(child, id); found != nil {
-				return found
-			}
-		}
-	case []any:
-		for _, child := range value {
-			if found := externalPlanConfigFor(child, id); found != nil {
-				return found
-			}
-		}
-	}
-	return nil
-}
-
-// externalPlanOutline is the cheap view of a plan: every step's id, type, title and a short description, and the size
-// in characters of each top-level section of the plan and of the step configuration.
-func externalPlanOutline(plan, config any) map[string]any {
-	steps := []map[string]any{}
-	var walk func(node any)
-	walk = func(node any) {
-		switch value := node.(type) {
-		case map[string]any:
-			if id, _ := value["id"].(string); id != "" {
-				if kind, isStep := value["type"].(string); isStep {
-					entry := map[string]any{"id": id, "type": kind, "title": value["title"]}
-					if description, _ := value["description"].(string); description != "" {
-						if runes := []rune(description); len(runes) > 160 {
-							description = string(runes[:160]) + "…"
-						}
-						entry["description"] = description
-					}
-					steps = append(steps, entry)
-				}
-			}
-			keys := make([]string, 0, len(value))
-			for key := range value {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
-				walk(value[key])
-			}
-		case []any:
-			for _, child := range value {
-				walk(child)
-			}
-		}
-	}
-	walk(plan)
-	sizes := func(node any) map[string]int {
-		out := map[string]int{}
-		if object, ok := node.(map[string]any); ok {
-			for key, child := range object {
-				encoded, _ := json.Marshal(child)
-				out[key] = len(encoded)
-			}
-		}
-		return out
-	}
-	return map[string]any{"steps": steps, "plan_sections": sizes(plan), "config_sections": sizes(config),
-		"next": "workflow action=plan with step_id=<id> reads one step and its configuration; without view or step_id returns everything."}
+	forward := r.Clone(r.Context())
+	forward.Method = http.MethodGet
+	forward.URL.Path = "/api/crew-script-graph"
+	forward.URL.RawQuery = "workspace_path=" + url.QueryEscape(item.WorkspacePath)
+	externalBuilderForward(w, forward, api.handleCrewScriptGraph)
 }
 
 // externalWorkflowView is a workflow as an external client may see it: the manifest without the stored webhook

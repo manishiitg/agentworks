@@ -50,6 +50,10 @@ func TestCrewScriptTimeoutRejectsUnboundedDefinitions(t *testing.T) {
 	}
 }
 
+func (r *savedCrewScriptFixture) ResolveCrewScriptScope(ctx context.Context, workspace, id string) (CrewScriptConfiguration, error) {
+	return r.ResolveCrewScript(ctx, workspace, id)
+}
+
 func (r *savedCrewScriptFixture) ResolveCrewScript(_ context.Context, workspace string, id string) (CrewScriptConfiguration, error) {
 	if id == "" && workspace != r.directWorkspace {
 		return CrewScriptConfiguration{}, nil
@@ -162,6 +166,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		out, err := draft.tools["run_full_workflow"].Execute(ctx, args)
 		if err != nil || !strings.Contains(out, "execution_id:") {
 			if expectMissingSecret && err != nil && strings.Contains(err.Error(), "Select or add DECLARED in Vault") {
+				if strings.Contains(err.Error(), secretValue) || strings.Contains(err.Error(), "other-selected-fixture-value") {
+					t.Fatal("declared-secret refusal exposed a selected secret value")
+				}
 				return ""
 			}
 			t.Fatalf("admission %s %v", out, err)

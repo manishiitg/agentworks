@@ -66,7 +66,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     const back = file ? () => setFile(null) : inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : selected ? () => { setSelectedId(null); setSection('steps') } : onBack
     return <div className="space-y-4">
       <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} onBack={back} />
-      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onStarted={() => { setFile(null); setRuns(noRunsView); setSection('runs') }} onBack={back} />
+      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} />
     </div>
   }
   const lead = <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>

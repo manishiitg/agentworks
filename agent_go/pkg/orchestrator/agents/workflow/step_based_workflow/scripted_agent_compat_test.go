@@ -23,23 +23,6 @@ func TestScriptedToolNamesArePlanMutationsAndLegacyNamesAreNot(t *testing.T) {
 	}
 }
 
-func TestScriptedToolSchemasExposeNextStepID(t *testing.T) {
-	for name, schema := range map[string]string{
-		"add_scripted_step":    getAddScriptedStepSchema(),
-		"update_scripted_step": getUpdateScriptedStepSchema(),
-	} {
-		var decoded struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		}
-		if err := json.Unmarshal([]byte(schema), &decoded); err != nil {
-			t.Fatalf("%s schema is invalid JSON: %v", name, err)
-		}
-		if _, ok := decoded.Properties["next_step_id"]; !ok {
-			t.Fatalf("%s schema does not expose next_step_id", name)
-		}
-	}
-}
-
 func TestScriptedStepNextStepIDRoundTripAndUpdate(t *testing.T) {
 	original := &ScriptedPlanStep{
 		Type:             StepTypeScripted,
@@ -140,27 +123,6 @@ func TestUpdateAgentExecutorAtomicallyPersistsLegacyUpgrade(t *testing.T) {
 	}
 	if sequence.ContextOutput.String() != "latency.json" || sequence.NextStepID != "end" {
 		t.Fatalf("legacy fields were not preserved: %#v", sequence)
-	}
-}
-
-func TestCollectScriptedPlanStepsIncludesNestedTodoRoutes(t *testing.T) {
-	regular := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "fetch-data", Title: "Fetch data"}}
-	sequence := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "analyze-data"}}
-	nested := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "nested"},
-		PredefinedRoutes: []PlanOrchestrationRoute{
-			{RouteID: "fetch-data", SubAgentStep: regular},
-			{RouteID: "analyze-data", SubAgentStep: sequence},
-		},
-	}
-	root := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "root"},
-		PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", SubAgentStep: nested}},
-	}
-
-	got := collectScriptedPlanSteps(root)
-	if len(got) != 1 || got[0] != regular {
-		t.Fatalf("expected only the nested scripted boundary, got %#v", got)
 	}
 }
 

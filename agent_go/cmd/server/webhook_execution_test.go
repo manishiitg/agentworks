@@ -66,41 +66,39 @@ func TestDirectWebhookRequestPreservesBindingWithoutBuilder(t *testing.T) {
 	}
 }
 
-func TestDirectWebhookRequiresPreparedWorkflow(t *testing.T) {
-	for _, manifest := range []*WorkflowManifest{nil, {}, {Version: "1.0.1"}} {
-		if err := directWebhookPreflight(manifest); !errors.Is(err, errWorkflowContractMigrationRequired) {
-			t.Fatalf("unprepared workflow allowed: %v", err)
+// PLAT-746-500: an archived plan cannot become executable by carrying the
+// latest version. A real registered script is accepted from its current source.
+func TestDirectWebhookRequiresRegisteredSavedPython(t *testing.T) {
+	newCrewWorkflowRunTestEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	archived, found, err := ReadWorkflowManifest(ctx, "Workflow/test")
+	if err != nil || !found {
+		t.Fatalf("archived descriptor fixture unreadable: %v", err)
+	}
+	for _, manifest := range []*WorkflowManifest{nil, {}, archived, {Version: WorkflowContractCurrentVersion, CodeLayoutVersion: 1}, {crewExecutable: &crewExecutableBinding{Kind: "workflow"}}} {
+		err := directWebhookPreflight(manifest)
+		if !errors.Is(err, errWorkflowScriptRequired) {
+			t.Fatalf("archived or unregistered workflow admitted: %v", err)
+		}
+		// The trigger records this reason for a person: say why it cannot
+		// start and who can convert it, rather than suggesting a contract stamp.
+		if !strings.Contains(err.Error(), "cannot start") || !strings.Contains(err.Error(), "owner") || !strings.Contains(err.Error(), "convert") {
+			t.Fatalf("unconverted workflow refusal has no actionable reason: %v", err)
 		}
 	}
-	for _, version := range []string{
-		workflowContractExplicitSchedulePulseVersion,
-		workflowContractRunScopedRoutesVersion,
-		workflowContractEvalRetirementVersion,
-	} {
-		if err := directWebhookPreflight(&WorkflowManifest{Version: version}); !errors.Is(err, errWorkflowContractMigrationRequired) {
-			t.Fatalf("older contract %s bypassed the nested-artifact migration: %v", version, err)
-		}
+	binding := crewExecutableBinding{ID: archived.ID, CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/test", Kind: "script"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
 	}
-	if err := directWebhookPreflight(&WorkflowManifest{Version: WorkflowContractCurrentVersion, CodeLayoutVersion: 1}); err != nil {
-		t.Fatalf("current prepared workflow rejected: %v", err)
+	if err := initializeCrewScriptSource(ctx, binding, "Saved Python"); err != nil {
+		t.Fatal(err)
 	}
-}
-
-// PLAT-746-396: unattended entrances cannot bypass the owning Crew update.
-func TestUnmovedWebhookKeepsPreviousContractAllowance(t *testing.T) {
-	for _, version := range []string{workflowContractStepDescriptionLayoutVersion, workflowContractSkillsVersion} {
-		previous := &WorkflowManifest{Version: version, CodeLayoutVersion: 1}
-		if err := directWebhookPreflight(previous); err != nil {
-			t.Fatalf("unmoved previous contract refused: %v", err)
-		}
-		previous.CodeLayoutVersion = 0
-		if err := directWebhookPreflight(previous); !errors.Is(err, errWorkflowContractMigrationRequired) {
-			t.Fatalf("unmigrated code layout allowed: %v", err)
-		}
+	manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
+	if err != nil || !found {
+		t.Fatalf("current script manifest unreadable: %v", err)
 	}
-	older := &WorkflowManifest{Version: workflowContractManagedDBScriptsVersion, CodeLayoutVersion: 1}
-	if err := directWebhookPreflight(older); !errors.Is(err, errWorkflowContractMigrationRequired) {
-		t.Fatalf("two contracts behind allowed: %v", err)
+	if err := directWebhookPreflight(manifest); err != nil {
+		t.Fatalf("registered saved Python refused: %v", err)
 	}
 }
 

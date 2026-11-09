@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
@@ -628,4 +629,24 @@ func createRestoreStepFromChangelogExecutor(workspacePath string, logger loggerv
 		restore["reason"] = fmt.Sprintf("Restore %s to its state before %s (before_ref %s): %s", stepID, changeID, entry.BeforeRef, reason)
 		return update(ctx, restore)
 	}
+}
+
+var promptDatedTextRe = regexp.MustCompile(`(?i)\b\d{4}-\d{2}-\d{2}\b|\bmeasured\b|\bobserved on\b|\b(?:run|execution)[ _-]?id[ \t]*[:=#][ \t]*[A-Za-z0-9_.-]+|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+
+func promptBudgetSnippet(text string, start, end int) string {
+	from := start - 40
+	if from < 0 {
+		from = 0
+	}
+	to := end + 40
+	if to > len(text) {
+		to = len(text)
+	}
+	for from > 0 && !utf8.RuneStart(text[from]) {
+		from--
+	}
+	for to < len(text) && !utf8.RuneStart(text[to]) {
+		to++
+	}
+	return strings.Join(strings.Fields(text[from:to]), " ")
 }

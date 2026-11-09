@@ -19,13 +19,15 @@ import (
 // PythonRunEvidence is the public projection of one completed check or notice.
 // Arguments, helper results, credentials and private continuation state stay out.
 type PythonRunEvidence struct {
-	ID         string `json:"id,omitempty"`
-	Kind       string `json:"kind"`
-	At         string `json:"at"`
-	Name       string `json:"name,omitempty"`
-	OK         *bool  `json:"ok,omitempty"`
-	Detail     string `json:"detail"`
-	SourceCall string `json:"source_call,omitempty"`
+	StepExecutionID string `json:"step_execution_id,omitempty"`
+	StepName        string `json:"step_name,omitempty"`
+	ID              string `json:"id,omitempty"`
+	Kind            string `json:"kind"`
+	At              string `json:"at"`
+	Name            string `json:"name,omitempty"`
+	OK              *bool  `json:"ok,omitempty"`
+	Detail          string `json:"detail"`
+	SourceCall      string `json:"source_call,omitempty"`
 }
 
 func boundedRunEvidenceText(value string) string {
@@ -37,12 +39,17 @@ func boundedRunEvidenceText(value string) string {
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) savePythonRunEvidence(ctx context.Context, id, action string, arguments map[string]interface{}, reply pythonHelperReply) error {
+	if action == "ask_agent" {
+		return hcpo.savePythonAskEvidence(ctx, id, arguments, reply)
+	}
 	if action != "check" && action != "notify" {
 		return nil
 	}
 	now := time.Now().UTC()
 	event := PythonRunEvidence{ID: id, Kind: action, At: now.Format(time.RFC3339Nano)}
 	event.SourceCall, _ = arguments["source_call"].(string)
+	event.StepExecutionID, _ = arguments["step_execution_id"].(string)
+	event.StepName, _ = arguments["step_name"].(string)
 	if action == "check" {
 		ok, valid := arguments["ok"].(bool)
 		event.Name, _ = arguments["name"].(string)
@@ -59,6 +66,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) savePythonRunEvidence(ctx context.Con
 	}
 	clean := boundedRunEvidenceText
 	event.Name, event.Detail, event.SourceCall = clean(event.Name), clean(event.Detail), clean(event.SourceCall)
+	event.StepName = clean(event.StepName)
 	data, err := json.Marshal(event)
 	if err != nil {
 		return err

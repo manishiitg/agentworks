@@ -86,6 +86,8 @@ export type TeamTabView = {
   can_choose: boolean; can_add_folder: boolean; can_remove_folder: boolean
   // The cards' Ask messages, written by the server and sent as given (crew_team_tab.go crewTeamAskPrompts).
   asks: Record<string, string>
+  // The Crew has no Team yet and the viewer owns it: open the first-time wizard (crew_team_wizard.go).
+  new_team?: boolean
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }
@@ -314,4 +316,25 @@ export function useTeamInvites() {
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
   }, [user, workspace, connections])
   return invites
+}
+
+/** The first-time Team wizard (crew_team_wizard.go): the server's options for each step, and one save at Finish. */
+export type TeamWizardView = {
+  new_team: boolean; default_level: CrewPeopleLevelKey; levels: CrewPeopleLevel[]
+  people: { user_id: string; name: string; email?: string }[]
+  folders: { default: string; folders: string[]; offline?: string }
+  agents: { key: string; name: string; main?: boolean }[]
+}
+export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; whole: boolean; folder: string; agents: string[] }
+export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {
+  return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, '/setup')
+}
+export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardChoice): Promise<void> {
+  try { await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/setup', 'POST', choice) }
+  catch (cause) {
+    // A partly saved Team reloads the tab (the wizard is gone), so the server's line goes to the tab to keep showing.
+    const failure = teamFailure(cause)
+    if (failure.code === 'setup_partial') window.dispatchEvent(new CustomEvent('agentworks:team-notice', { detail: failure.message }))
+    throw cause
+  } finally { changed() }
 }

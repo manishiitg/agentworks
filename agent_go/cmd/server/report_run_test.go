@@ -45,32 +45,36 @@ func TestReportRunMCPSessionScope(t *testing.T) {
 	}
 }
 
-// A crew Dashboard is runnable by its owner and by users with the Crew
-// product; anyone else is refused before anything runs.
+// PLAT-746: current Crew roots use registry ownership/sharing, not retired personal paths (8106ccb9de).
 func TestReportRunCrewAccess(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"outsider","username":"outsider","can_create":true,"products":["agentworks"]}]}`)
-	api := &StreamingAPI{}
-	post := func(claims *UserClaims) int {
-		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"_users/owner/Chats/Work/projects/sde","path":"code/x.py"}`))
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"reader","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["agentworks"]}]}`)
+	post := func(user, root string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+root+`","path":"code/x.py"}`))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		w := httptest.NewRecorder()
-		api.handleReportRun(w, r)
-		return w.Code
+		f.api.handleReportRun(w, r)
+		return w
 	}
-	if code := post(&UserClaims{UserID: "outsider", Username: "outsider"}); code != http.StatusForbidden {
-		t.Fatalf("user without the Crew product: %d", code)
+	if w := post("outsider", externalCommandCrewRoot); w.Code != http.StatusForbidden {
+		t.Fatalf("user without the Crew product: %d %s", w.Code, w.Body)
 	}
-	// The owner passes the access check (the script itself does not exist).
-	if code := post(&UserClaims{UserID: "owner", Username: "owner"}); code != http.StatusNotFound {
-		t.Fatalf("owner: %d", code)
+	// Both admitted callers reach the missing-script check; this starts no process.
+	for _, user := range []string{"owner", "reader"} {
+		if w := post(user, externalCommandCrewRoot); w.Code != http.StatusNotFound {
+			t.Fatalf("admitted %s: %d %s", user, w.Code, w.Body)
+		}
 	}
-	// Same through the user-relative path the owner's own Dashboard sends.
-	r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"Chats/Work/projects/sde","path":"code/x.py"}`))
-	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
-	w := httptest.NewRecorder()
-	api.handleReportRun(w, r)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("owner via relative path: %d %s", w.Code, w.Body.String())
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	if w := post("reader", externalCommandCrewRoot); w.Code != http.StatusForbidden {
+		t.Fatalf("unshared Crew remained runnable by another person: %d %s", w.Code, w.Body)
+	}
+	for _, root := range []string{"Chats/Work/projects/sde", "_users/owner/Chats/Work/projects/sde"} {
+		if w := post("owner", root); w.Code != http.StatusBadRequest {
+			t.Fatalf("retired Crew path %s: %d %s", root, w.Code, w.Body)
+		}
 	}
 }
 
@@ -115,6 +119,8 @@ func TestReportRunRejectsBeforeRunning(t *testing.T) {
 func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	withProjectOwnerRegistry(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"reader","username":"reader","can_create":true,"products":["work","agentworks"]},{"id":"other","username":"other","can_create":true,"products":["work"]},{"id":"admin-viewer","username":"admin","admin":true,"can_create":true,"products":["work"]}]}`)
 	t.Setenv("MCP_API_URL", "http://127.0.0.1:9/api")
 	// The process-wide token never reaches the script; it gets its own
 	// session's token (bridge_token.go).
@@ -149,7 +155,7 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 			manifest, _ := json.Marshal(map[string]any{"capabilities": map[string]any{"selected_servers": []string{"notion"}, "selected_global_secret_names": []string{}}})
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"content": string(manifest)}})
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/variables.json"):
-			vars := `{"variables":[{"name":"REGION","value":"eu"}],"groups":[{"name":"main","enabled":true,"values":{"REGION":"us"}}]}`
+			vars := `{"variables":[{"name":"REGION","value":"eu"}],"input_presets":[{"name":"main","values":{"REGION":"us"}}]}`
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"content": vars}})
 		case r.URL.Path == "/api/execute":
 			// json.Decoder reuses non-nil maps; capture only this request's env.
@@ -184,24 +190,29 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	env := sent.ExtraEnv
 	sid := env["MCP_SESSION_ID"]
 	if !strings.HasPrefix(sid, "report-run-") || env["MCP_API_URL"] != "http://127.0.0.1:9/api/s/"+sid || env["MCP_AUTH"] != "Authorization: Bearer "+common.BridgeTokenForSession(sid) || strings.Contains(fmt.Sprint(env), "global-token") {
-		t.Fatalf("bridge env: %v", env)
+		t.Fatal("report bridge must use its own session credential and exclude the process token")
 	}
-	if env["REPORT_ARGS"] != `{"days":7}` || env["VAR_REGION"] != "us" || env["REPORT_CACHE_DIR"] != filepath.Join(docs, "Workflow/deals/.report-cache") {
-		t.Fatalf("report env: %v", env)
+	if env["REPORT_ARGS"] != `{"days":7}` || env["VAR_REGION"] != "eu" || env["REPORT_CACHE_DIR"] != filepath.Join(docs, "Workflow/deals/.report-cache") {
+		t.Fatal("report arguments, default input or cache path changed")
 	}
 	if _, hasDB := env["DB_PATH"]; hasDB || sent.DBReadSnapshot {
 		t.Fatalf("no DB yet, but DB_PATH/snapshot requested: %v %v", env["DB_PATH"], sent.DBReadSnapshot)
 	}
-	if !sent.FolderGuard.Enabled || strings.Join(sent.FolderGuard.ReadPaths, ",") != "Workflow/deals" || strings.Join(sent.FolderGuard.WritePaths, ",") != "Workflow/deals/.report-cache" {
+	for _, root := range sent.FolderGuard.ReadPaths {
+		if root != "Workflow/deals" {
+			t.Fatalf("report read scope escaped its workflow: %q", root)
+		}
+	}
+	if !sent.FolderGuard.Enabled || len(sent.FolderGuard.ReadPaths) == 0 || strings.Join(sent.FolderGuard.WritePaths, ",") != "Workflow/deals/.report-cache" {
 		t.Fatalf("guard: %+v", sent.FolderGuard)
 	}
 	if sent.Timeout != 60 || sent.WorkingDirectory != "Workflow/deals/code" || !strings.HasPrefix(sent.Command, "python3 '") {
-		t.Fatalf("exec: %+v", sent)
+		t.Fatal("report execution command, working directory or timeout changed")
 	}
 
-	// Code uses the same real HTTP entry point, canonical owner path and sandbox
-	// envelope; neither another user nor an admin inspection may execute it.
-	codeRoot := "_users/reader/Chats/Code/projects/dashboard"
+	// A current private Crew uses the same HTTP entry point and sandbox.
+	// Neither another person nor an admin inspection may execute its report.
+	codeRoot := registerTestCrew(t, "dashboard", "reader", false)
 	codeScript := filepath.Join(docs, codeRoot, "code/reports/open.py")
 	if err := os.MkdirAll(filepath.Dir(codeScript), 0o755); err != nil {
 		t.Fatal(err)
@@ -209,23 +220,23 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	if err := os.WriteFile(codeScript, []byte("print(1)"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []string{codeRoot, "Chats/Code/projects/dashboard"} {
+	for _, address := range []string{codeRoot} {
 		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+address+`","path":"code/reports/open.py","args":{"days":7}}`))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "reader"}))
 		w := httptest.NewRecorder()
 		api.handleReportRun(w, r)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"success":true`) {
-			t.Fatalf("Code run %s: %d %s", address, w.Code, w.Body.String())
+			t.Fatalf("Crew run %s: %d %s", address, w.Code, w.Body.String())
 		}
 		if sent.WorkingDirectory != codeRoot+"/code" || strings.Join(sent.FolderGuard.WritePaths, ",") != codeRoot+"/.report-cache" || sent.ExtraEnv["VAR_REGION"] != "" {
-			t.Fatalf("Code escaped its project scope: %+v", sent)
+			t.Fatalf("Crew execution scope changed: directory=%q write_paths=%q has_variables=%t", sent.WorkingDirectory, sent.FolderGuard.WritePaths, sent.ExtraEnv["VAR_REGION"] != "")
 		}
 		selection, err := reportRunSelectionFor(context.Background(), codeRoot)
 		if err != nil || strings.Join(selection.servers, ",") != "notion" || selection.globalSecrets == nil || len(*selection.globalSecrets) != 0 {
-			t.Fatalf("Code selection: %+v %v", selection, err)
+			t.Fatalf("Crew selection: %+v %v", selection, err)
 		}
 	}
-	postCode := func() *httptest.ResponseRecorder {
+	postCrew := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+codeRoot+`","path":"code/reports/open.py"}`))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "reader"}))
 		w := httptest.NewRecorder()
@@ -241,8 +252,8 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	if err := os.Symlink(filepath.Join(docs, "Workflow/deals/code"), codeDir); err != nil {
 		t.Fatal(err)
 	}
-	if w := postCode(); w.Code != http.StatusBadRequest {
-		t.Fatalf("symlinked Code directory: %d %s", w.Code, w.Body.String())
+	if w := postCrew(); w.Code != http.StatusBadRequest {
+		t.Fatalf("symlinked Crew directory: %d %s", w.Code, w.Body.String())
 	}
 	if err := os.Remove(codeDir); err != nil {
 		t.Fatal(err)
@@ -250,23 +261,31 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	if err := os.Rename(codeDir+"-saved", codeDir); err != nil {
 		t.Fatal(err)
 	}
-	// A copied Code with a conflicting server-controlled owner is refused.
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "code", Folder: "dashboard", OwnerID: "registered-owner"}); err != nil {
+	// A changed server-controlled owner immediately revokes the old owner's
+	// permission, independently of the item's editable manifest.
+	if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
+		for key, record := range records {
+			if record.Folder == "dashboard" {
+				record.OwnerID = "registered-owner"
+				records[key] = record
+			}
+		}
+		return true, nil
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if w := postCode(); w.Code != http.StatusForbidden {
-		t.Fatalf("Code owner registry conflict: %d %s", w.Code, w.Body.String())
+	resetCrewOwnerCache()
+	if w := postCrew(); w.Code != http.StatusForbidden {
+		t.Fatalf("old Crew owner retained report access: %d %s", w.Code, w.Body.String())
 	}
 
-	withMemoryUserDirectory(t, `{"users":[{"id":"admin-viewer","username":"admin","admin":true,"can_create":true}]}`)
 	for _, caller := range []string{"other", "admin-viewer"} {
 		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+codeRoot+`","path":"code/reports/open.py"}`))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: caller}))
 		w := httptest.NewRecorder()
 		api.handleReportRun(w, r)
 		if w.Code != http.StatusForbidden {
-			t.Fatalf("non-owner Code run (%s): %d %s", caller, w.Code, w.Body.String())
+			t.Fatalf("non-owner Crew run (%s): %d %s", caller, w.Code, w.Body.String())
 		}
 	}
 
@@ -280,7 +299,7 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	stdout = "Fetched 3 deals"
 	result = api.runReportScript(context.Background(), "reader", "Workflow/deals", "code/reports/open.py", absScript, "{}")
 	if !sent.DBReadSnapshot || sent.ExtraEnv["DB_PATH"] == "" || sent.ExtraEnv["STEP_OUTPUT_DIR"] != sent.ExtraEnv["REPORT_CACHE_DIR"] {
-		t.Fatalf("DB snapshot not requested: %v %v", sent.DBReadSnapshot, sent.ExtraEnv)
+		t.Fatal("report must use a read-only database snapshot in its own cache")
 	}
 	if result["success"] != false || !strings.Contains(result["error"].(string), "one JSON value") {
 		t.Fatalf("non-JSON stdout accepted: %v", result)

@@ -27,7 +27,6 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 	if api.scheduler == nil {
 		return nil
 	}
-	_ = sessionID
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "work_workflow_reference_tools")
 	}
@@ -166,6 +165,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		if strings.TrimSpace(event) == "" {
 			event = "crew.trigger"
 		}
+		ctx = context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID)
 		delivery, err := api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
 			WorkflowID: manifest.ID, TriggerID: strings.TrimSpace(triggerID),
 			Caller: crew, DeliveryID: deliveryID, Event: event, Payload: data, DirectInputs: directInputs, DirectInputPreset: preset,

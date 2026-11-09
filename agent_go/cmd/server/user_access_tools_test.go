@@ -2,17 +2,25 @@ package server
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
-	api := managedGlobalTestAPI(t)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	const accessWorkspace = "Workflow/invoices" // Served by the real workspace fixture.
+	f := newExternalToolsFixture(t)
+	api := f.api
+	f.write(t, accessWorkspace+"/workflow.json", `{"id":"wf_shared","label":"Renewals","created_by":"a1","access":{"owners":["a1"],"readers":["c3"]}}`)
+	registerWorkflowOwner(accessWorkspace, "a1")
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","role":"admin"},{"id":"a1","username":"owner","email":"owner@example.com","role":"creator"},{"id":"c3","username":"reader","email":"reader@example.com","role":"viewer"}]}`)
 	policy := workflowChatPolicy{Capabilities: map[string]bool{"user_management": true}}
 	register := func(id string) recordedTool {
 		t.Helper()
 		r := &recordingRegistrar{}
-		if err := api.registerUserAccessTools(r, id, sharedSecretsTestWorkflow, policy); err != nil {
+		if err := api.registerUserAccessTools(r, id, accessWorkspace, policy); err != nil {
 			t.Fatal(err)
 		}
 		return r.tools["manage_user_access"]
@@ -39,12 +47,20 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 			t.Fatalf("invalid path %q accepted", path)
 		}
 	}
-	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{}, "readers": []string{"c3"}}); err == nil {
-		t.Fatal("last owner removed")
-	}
-	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"a1"}, "readers": []string{"c3"}}); err != nil {
+	// The current main-owner rule keeps the owner even when omitted from the list.
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{}}); err != nil {
 		t.Fatal(err)
 	}
+	if _, manifest := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: "a1"}, accessWorkspace); manifest == nil || !containsID(manifest.effectiveOwners(), "a1") {
+		t.Fatal("main owner was removed")
+	}
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"a1"}, "readers": []string{"reader@example.com"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"missing@example.com"}}); err == nil || !strings.Contains(err.Error(), "email address of someone in your company") {
+		t.Fatalf("unknown email did not explain the next step: %v", err)
+	}
+
 	dir, err := readUserDirectoryFile()
 	if err != nil {
 		t.Fatal(err)
@@ -94,5 +110,51 @@ func TestUserAccessToolsAbsentOutsideBuilder(t *testing.T) {
 		if exists != want {
 			t.Fatalf("admission %s=%v", origin, exists)
 		}
+	}
+}
+
+// PLAT-746-504: access chat omitted the title when creating its first shared dashboard.
+func TestAccessToolSharesSameDefaultDashboardAsShare(t *testing.T) {
+	var standardFiles map[string]string
+	for _, origin := range []string{"share", "access_tool"} {
+		t.Run(origin, func(t *testing.T) {
+			t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+			f := newExternalToolsFixture(t)
+			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","email":"owner@example.com","role":"creator","products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","role":"viewer","products":["agentworks"]}]}`)
+			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+			request := dashboards.Request{Root: "Workflow/invoices", Action: "list", IncludeDraft: true}
+			before, err := dashboardWorkspaceRequest(ctx, request)
+			if err != nil || len(before.Dashboards) != 0 {
+				t.Fatalf("fixture already has dashboard: %+v %v", before, err)
+			}
+			if origin == "share" {
+				externalTestBody(t, f.call(t, "owner", "share", map[string]any{"action": "set", "workflow_id": "invoices", "mode": "people", "emails": []string{"reader@example.com"}}), 200)
+			} else {
+				registrar := &recordingRegistrar{}
+				if err := f.api.registerUserAccessTools(registrar, "owner", "Workflow/invoices", workflowChatPolicy{Capabilities: map[string]bool{"user_management": true}}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := registrar.tools["manage_user_access"].exec(ctx, map[string]any{"action": "set_workflow_access", "readers": []string{"reader@example.com"}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			after, err := dashboardWorkspaceRequest(ctx, request)
+			if err != nil || len(after.Dashboards) != 1 || after.Dashboards[0].Title != "Invoice processing" || after.Dashboards[0].Published == "" {
+				t.Fatalf("shared dashboard missing canonical title/publication: %+v %v", after, err)
+			}
+			page, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: request.Root, Action: "get", ID: after.Dashboards[0].ID, IncludeDraft: true})
+			if err != nil || page.Snapshot == nil {
+				t.Fatalf("missing published default: %+v %v", page, err)
+			}
+			if origin == "share" {
+				standardFiles = page.Snapshot.Files
+			} else if !reflect.DeepEqual(standardFiles, page.Snapshot.Files) {
+				t.Fatal("access tool created a different standard dashboard")
+			}
+			_, manifest := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: "owner"}, request.Root)
+			if manifest == nil || projectAccessKind(manifest) != "workflow" || workflowAccessForManifest(&UserClaims{UserID: "reader"}, manifest) != WorkflowAccessRead {
+				t.Fatalf("shared workflow kind/access lost: %+v", manifest)
+			}
+		})
 	}
 }

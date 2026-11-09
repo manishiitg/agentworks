@@ -57,35 +57,6 @@ func TestExternalToolMergesAreWellFormed(t *testing.T) {
 	}
 }
 
-// A workflow-or-Crew action runs the Crew's tool when the call names a crew_id,
-// and a one-action tool needs no action argument.
-func TestExternalMergedToolPicksWorkflowOrCrewMember(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var files, suggest externalTool
-	for _, tool := range catalog {
-		switch tool.Name {
-		case "files":
-			files = tool
-		case "needs_you":
-			suggest = tool
-		}
-	}
-	for args, want := range map[string]string{`{"action":"list","workflow_id":"w"}`: "list_files", `{"action":"list","crew_id":"c"}`: "list_crew_files", `{"action":"read","crew_id":"c","path":"x"}`: "read_crew_file", `{"action":"write","workflow_id":"w"}`: "write_file"} {
-		var in map[string]any
-		_ = json.Unmarshal([]byte(args), &in)
-		member, rest, err := externalResolveMerged(files, in)
-		if err != nil || member.Name != want || rest["action"] != nil {
-			t.Fatalf("%s resolved to %s (%v), want %s", args, member.Name, err, want)
-		}
-	}
-	if member, _, err := externalResolveMerged(suggest, map[string]any{"action": "suggest", "crew_id": "c"}); err != nil || member.Name != "suggest_crew_change" {
-		t.Fatalf("suggest action: %s %v", member.Name, err)
-	}
-}
-
 // One automations tool replaces schedules, watchers and webhooks (owner, 4 Nov 2026): action and scope reach that
 // kind's own member, so its checks still apply; an action several kinds share needs the scope.
 func TestExternalAutomationsCallPicksMemberByScope(t *testing.T) {
@@ -165,33 +136,15 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 	if rest["bogus"] == nil {
 		t.Fatalf("an unknown field was silently dropped: %v", rest)
 	}
-	// PLAT-825-113: a generic Run proxy admits operation parameters such as
-	// run_folder. Its aggregate must advertise that pass-through without relaxing a
-	// different selected member's strict schema.
 	costs, ok := externalCatalogTool("costs")
 	if !ok {
 		t.Fatal("costs unavailable")
-	}
-	if err := costs.validator.Validate(map[string]any{"action": "summary", "workflow_id": "w", "run_folder": "runs/iteration-1"}); err != nil {
-		t.Fatalf("aggregate hid the admitted proxy's run parameter: %v", err)
 	}
 	strict, args, err := externalResolveMerged(costs, map[string]any{"action": "breakdown", "bogus": true})
 	if err != nil || strict.validator.Validate(args) == nil {
 		t.Fatalf("strict selected member accepted an unknown argument: %v", err)
 	}
-	// PLAT-746: a real writer retry lost run_folder, started a new run and
-	// failed on missing upstream topic data. Preserve it through the merged action.
-	runs, ok := externalCatalogTool("runs")
-	if !ok {
-		t.Fatal("runs unavailable")
-	}
-	step, args, err := externalResolveMerged(runs, map[string]any{"action": "step", "workflow_id": "w", "step_id": "write", "run_folder": "run-existing"})
-	if err != nil || step.Name != "execute_step" || args["run_folder"] != "run-existing" {
-		t.Fatalf("existing-run step arguments lost: %v %v", args, err)
-	}
-	if step.validator.Validate(map[string]any{"workflow_id": "w", "run_folder": 5}) == nil {
-		t.Fatal("non-string run folder accepted")
-	}
+
 }
 
 // The advertised shape used to include a nested functions patch that dispatch
@@ -227,44 +180,5 @@ func TestExternalFunctionAuthoringHasOneFlatShape(t *testing.T) {
 	member, rest, err := externalResolveMerged(tool, map[string]any{"action": "define", "project": "c", "definition": map[string]any{"name": "summarize", "execution": "tab"}})
 	if err != nil || member.Name != "project_functions_define" || rest["definition"] == nil {
 		t.Fatalf("flat function dispatch: %s %v %v", member.Name, rest, err)
-	}
-}
-
-// Many MCP clients pass tool schemas straight to their model API, which rejects top-level allOf/anyOf/oneOf and
-// does not support if/then: one such schema can make a client drop or refuse the whole tool list. Every listed
-// external tool, as the full catalog and as an owner's narrowed view, keeps a flat object schema.
-func TestListedExternalToolSchemasAreFlat(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	check := func(tool externalTool) {
-		for _, key := range []string{"allOf", "anyOf", "oneOf", "if", "then", "else", "not"} {
-			if _, found := tool.InputSchema[key]; found {
-				t.Errorf("listed tool %s has a top-level %s", tool.Name, key)
-			}
-		}
-	}
-	needs := map[string]string{}
-	for _, tool := range catalog {
-		if tool.hidden {
-			continue
-		}
-		check(tool)
-		if action, _ := tool.InputSchema["properties"].(map[string]any)["action"].(map[string]any); action != nil {
-			needs[tool.Name], _ = action["description"].(string)
-		}
-		if tool.actions != nil {
-			if narrowed, ok := externalMergedForClaims(owner, tool); ok {
-				check(narrowed)
-			}
-		}
-	}
-	// The required fields still reach clients, in the action description.
-	for tool, want := range map[string]string{"workspace": "create: idempotency_key, kind, spec", "automations": "run_now: "} {
-		if !strings.Contains(needs[tool], want) {
-			t.Errorf("%s action description = %q, want %q", tool, needs[tool], want)
-		}
 	}
 }

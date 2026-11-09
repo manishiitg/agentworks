@@ -157,3 +157,35 @@ func ValidateWorkflowLaunchInputs(manifest *VariablesManifest, values map[string
 	}
 	return nil
 }
+
+// WorkflowInputOverrides validates the same typed JSON values for Crew chat and
+// direct HTTP/MCP starts. The runner keeps the existing canonical string encoding.
+func WorkflowInputOverrides(definitions *VariablesManifest, args map[string]interface{}) (map[string]string, error) {
+	supplied := map[string]interface{}{}
+	if raw, present := args["inputs"]; present {
+		var valid bool
+		supplied, valid = raw.(map[string]interface{})
+		if !valid {
+			return nil, fmt.Errorf("inputs must be an object")
+		}
+	}
+	declared := map[string]Variable{}
+	if definitions != nil {
+		for _, definition := range definitions.Variables {
+			declared[definition.Name] = definition
+		}
+	}
+	inputs := map[string]string{}
+	for name, value := range supplied {
+		definition, found := declared[name]
+		if !found {
+			return nil, fmt.Errorf("Unknown input %q; use this script's declared inputs.", name)
+		}
+		encoded, err := WorkflowInputValue(definition, value)
+		if err != nil {
+			return nil, err
+		}
+		inputs[name] = encoded
+	}
+	return inputs, nil
+}

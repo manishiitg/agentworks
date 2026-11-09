@@ -116,7 +116,7 @@ chat_policy:
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot]
+    external_tools: [workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
       - brain_browse
@@ -138,18 +138,15 @@ chat:
       - create_calendar_schedule
       - create_schedule
       - create_slack_bot_route
-      - debug_step
       - delete_schedule
       - delete_workflow_secret
       - edit_mcp_server
       - edit_team_source
-      - execute_step
       - get_contract_upgrades
       - get_cost_summary
       - get_file_link
       # files action=read/list/search: reading a workflow file is basic (PLAT-856-397).
       - get_llm_config
-      - get_plan_prompt_health
       - get_mcp_server_logs
       - get_report_link
       - get_schedule_runs
@@ -183,7 +180,6 @@ chat:
       - send_slack_message
       - google_workspace_cli
       - preview_report
-      - query_step
       - remove_mcp_server
       - remove_slack_bot_route
       - request_workflow_folder_access
@@ -191,7 +187,6 @@ chat:
       - run_full_workflow
       - search_mcp_catalog
       - search_skills
-      - send_step_message
       - set_workflow_contract_version
       - set_workflow_secret
       - stop_all_executions
@@ -262,7 +257,7 @@ chat:
     prompt:
       file: prompts/builder.md
       includes: [prompts/workflow-shared.md]
-    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-data, panel-plan, panel-runs, panel-settings, panel-automations, panel-channels, panel-access]
+    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-data, panel-runs, panel-settings, panel-automations, panel-channels, panel-access]
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
@@ -283,7 +278,6 @@ chat:
       - brain_skills
       - brain_access
       - agent_browser
-      - execute_step
       - get_contract_upgrades
       - get_cost_summary
       - get_file_link
@@ -313,11 +307,9 @@ chat:
       - send_email
       - send_slack_message
       - google_workspace_cli
-      - query_step
       - request_workflow_folder_access
       - run_full_workflow
       - search_skills
-      - send_step_message
       - stop_all_executions
       - stop_step
       - test_slack_bot_connection
@@ -410,7 +402,7 @@ chat:
       - get_file_link
       - read_file
       - write_file
-      - get_plan
+      - get_script_outline
       - save_script_inputs
       - get_agent_context
       - list_guidance_topics
@@ -423,6 +415,7 @@ chat:
       - get_run
       - get_logs
       - rerun_workflow
+      - resume_workflow
       - run_status
       # Normal MCP OAuth: inbox messaging; CLI-issued connections keep the live CLI path.
       - messages

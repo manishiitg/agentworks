@@ -19,49 +19,39 @@ import (
 // disk store. A project with no dashboard used to fail with a workspace 403
 // because platform-generated mutations omitted the draft/write flag.
 func TestDashboardShareCreatesAndPublishesStandardDashboard(t *testing.T) {
-	// Goals omit kind; relay is the only non-empty persisted kind.
-	for _, kind := range []string{"", "relay"} {
-		for _, mode := range []string{runSharePeople, runShareEveryone} {
-			label := kind
-			if label == "" {
-				label = "goal"
+	// PLAT-746: Relay sharing retired on 8 Nov; retain the existing workflow sharing contract.
+	for _, mode := range []string{runSharePeople, runShareEveryone} {
+		t.Run(mode, func(t *testing.T) {
+			f := newExternalToolsFixture(t)
+			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks"]}]}`)
+			raw, _ := json.Marshal(WorkflowManifest{ID: "invoices", Label: "Invoices", CreatedBy: "owner", Access: &WorkflowAccess{Owners: []string{"owner"}}})
+			f.write(t, "Workflow/invoices/workflow.json", string(raw))
+			args := map[string]any{"mode": mode, "emails": []string{"reader@example.com"}}
+			claims := &UserClaims{UserID: "owner", Username: "owner"}
+			var w *httptest.ResponseRecorder
+			if mode == runSharePeople {
+				args["action"] = "set"
+				args["workflow_id"] = "invoices"
+				w = f.call(t, "owner", "share", args)
+			} else {
+				args["workspace"], args["action"] = "Workflow/invoices", "share"
+				body, _ := json.Marshal(args)
+				w = httptest.NewRecorder()
+				f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", string(body), claims, nil))
 			}
-			t.Run(label+"/"+mode, func(t *testing.T) {
-				f := newExternalToolsFixture(t)
-				withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","relays"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks","relays"]}]}`)
-				raw, _ := json.Marshal(WorkflowManifest{ID: "invoices", Label: "Invoices", Kind: kind, CreatedBy: "owner", Access: &WorkflowAccess{Owners: []string{"owner"}}})
-				f.write(t, "Workflow/invoices/workflow.json", string(raw))
-				args := map[string]any{"mode": mode, "emails": []string{"reader@example.com"}}
-				claims := &UserClaims{UserID: "owner", Username: "owner"}
-				var w *httptest.ResponseRecorder
-				if mode == runSharePeople {
-					args["action"] = "set"
-					selector := "workflow_id"
-					if kind == "relay" {
-						selector = "flow_id"
-					}
-					args[selector] = "invoices"
-					w = f.call(t, "owner", "share", args)
-				} else {
-					args["workspace"], args["action"] = "Workflow/invoices", "share"
-					body, _ := json.Marshal(args)
-					w = httptest.NewRecorder()
-					f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", string(body), claims, nil))
-				}
-				state := externalTestBody(t, w, 200)
-				if state["mode"] != mode || state["note"] == "" {
-					t.Fatalf("share should explain the generated dashboard: %v", state)
-				}
-				listed, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "list"})
-				if err != nil || len(listed.Dashboards) != 1 || listed.Dashboards[0].ID != defaultDashboardID || listed.Dashboards[0].Published == "" {
-					t.Fatalf("share did not publish the standard dashboard: %+v, %v", listed, err)
-				}
-				manifest, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
-				if err != nil || !found || manifest == nil || workflowAccessForManifest(&UserClaims{UserID: "reader", Username: "reader"}, manifest) != WorkflowAccessRead {
-					t.Fatalf("the shared person cannot use the project: %+v, %v", manifest, err)
-				}
-			})
-		}
+			state := externalTestBody(t, w, 200)
+			if state["mode"] != mode || state["note"] == "" {
+				t.Fatalf("share should explain the generated dashboard: %v", state)
+			}
+			listed, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "list"})
+			if err != nil || len(listed.Dashboards) != 1 || listed.Dashboards[0].ID != defaultDashboardID || listed.Dashboards[0].Published == "" {
+				t.Fatalf("share did not publish the standard dashboard: %+v, %v", listed, err)
+			}
+			manifest, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
+			if err != nil || !found || manifest == nil || workflowAccessForManifest(&UserClaims{UserID: "reader", Username: "reader"}, manifest) != WorkflowAccessRead {
+				t.Fatalf("the shared person cannot use the project: %+v, %v", manifest, err)
+			}
+		})
 	}
 }
 

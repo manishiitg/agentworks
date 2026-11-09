@@ -4,25 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"strings"
 	"testing"
-)
 
-func TestProfileRequiresWorkflowRuntime(t *testing.T) {
-	if profileRequiresWorkflowRuntime(nil) {
-		t.Fatal("nil profile requires workflow runtime")
-	}
-	resolved := &resolvedAgentProfile{}
-	if profileRequiresWorkflowRuntime(resolved) {
-		t.Fatal("empty capability requires workflow runtime")
-	}
-	resolved.Definition.Runtime.Capabilities.WorkflowExecution = "required"
-	if !profileRequiresWorkflowRuntime(resolved) {
-		t.Fatal("required capability did not enable workflow runtime")
-	}
-}
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+)
 
 // PLAT-746-405: changing the native chat must not borrow another chat's run.
 func TestCrewStepRunSelectionDoesNotFollowAChangedSession(t *testing.T) {
@@ -74,10 +61,9 @@ func TestStoppedOrCancelledCrewChatCannotCreateWorkflowRuntime(t *testing.T) {
 	api.workshopChatSessions.Range(func(_, _ interface{}) bool { t.Error("stopped chat cached a runtime"); return false })
 }
 
-// PLAT-746-405: Crew's old policy refused single-step work entirely. Register
-// native tools only for an editable Crew's bound workflow, without initializing it.
-func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
-	_, files, api := newCrewWorkflowRunTestEnv(t)
+// PLAT-746: a saved Python start stays lazy and rechecks its Crew owner binding.
+func TestCrewPythonStartRequiresOwnEditableWorkflowAndStaysLazy(t *testing.T) {
+	_, _, api := newCrewWorkflowRunTestEnv(t)
 	api.logger = loggerv2.NewNoop()
 	resolved := &resolvedAgentProfile{}
 	resolved.Definition.ID = crewProfileID
@@ -92,6 +78,12 @@ func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
 		}
 		return reg
 	}
+	// PLAT-746-500: declaring the capability on another product/root must
+	// not expose a targetless legacy workflow start.
+	otherRoot := &productSurfaceDraft{}
+	if err := api.registerAgentProfileWorkflowTools(ctx, otherRoot, resolved, "owner", "owner-chat", "Chats/work", nil, nil, QueryRequest{}, false); err != nil || len(otherRoot.tools) != 0 {
+		t.Fatalf("non-Crew root received a workflow runtime: %v", err)
+	}
 	if len(register("owner", false).tools) != 0 {
 		t.Fatal("Crew without a workflow received workflow tools")
 	}
@@ -99,36 +91,31 @@ func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := crewExecutableBinding{ID: manifest.ID, CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/test", Kind: "workflow"}
+	binding := crewExecutableBinding{ID: manifest.ID, CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/test", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
 	if len(register("reader", false).tools) != 0 || len(register("owner", true).tools) != 0 {
 		t.Fatal("Run person received owner step controls")
 	}
-	reg := register("owner", false)
-	for _, name := range []string{"execute_step", "query_step", "send_step_message", "stop_step", "stop_all_executions", "list_executions", "run_full_workflow", "debug_step"} {
-		if _, ok := reg.tools[name]; !ok {
-			t.Fatalf("missing existing step control %s", name)
-		}
+	if err := initializeCrewScriptSource(ctx, binding, "Saved Python"); err != nil {
+		t.Fatal(err)
 	}
+	reg := register("owner", false)
+	start, ok := reg.tools["run_full_workflow"]
+	if !ok {
+		t.Fatal("editable Crew lost its saved Python start")
+	}
+
 	assertNoRuntime := func() {
 		t.Helper()
 		api.workshopChatSessions.Range(func(_, _ interface{}) bool { t.Error("Workshop initialized before admitted tool use"); return false })
 	}
 	assertNoRuntime()
-	// A workflow one contract behind keeps running (owner, 8 Nov); two behind is refused with the operator pointer.
-	manifest.Version = workflowContractManagedDBScriptsVersion
-	raw, _ := json.Marshal(manifest)
-	files.files[manifestPath(binding.Root)] = string(raw)
-	if _, err := reg.tools["execute_step"].exec(ctx, map[string]interface{}{"step_id": "work"}); err == nil || !strings.Contains(err.Error(), "platform operator") {
-		t.Fatalf("Crew start bypassed contract gate: %v", err)
-	}
-	assertNoRuntime()
-	// The account was demoted after its tool catalog was built. Even a status
-	// call must recheck the intended edit rule before opening its runtime.
+	// The account was demoted after its tool catalog was built. Starting work
+	// must recheck the intended edit rule before opening its runtime.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":false}]}`)
-	if _, err := reg.tools["query_step"].exec(ctx, map[string]interface{}{"step_id": "work"}); err == nil || !strings.Contains(err.Error(), "edit access") {
+	if _, err := start.exec(ctx, map[string]interface{}{}); err == nil || !strings.Contains(err.Error(), "edit access") {
 		t.Fatalf("demoted owner kept workflow controls: %v", err)
 	}
 	assertNoRuntime()

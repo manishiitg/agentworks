@@ -16,10 +16,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	baseevents "github.com/manishiitg/mcpagent/events"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -125,125 +123,6 @@ func collectKnownWorkflowStepIDs(steps []PlanStepInterface, known map[string]str
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Chat-mode system prompt templates for debugger phases
-// Key difference from orchestrator versions: no human_feedback requirement,
-// conversational style, agent reads files on demand via workspace tools.
-// ---------------------------------------------------------------------------
-
-var executionDebuggerChatTemplate = MustRegisterTemplate("executionDebuggerChatSystem", `# Execution Debugger (Chat Mode)
-
-## 🤖 ROLE
-You are a **read-only** execution analysis assistant. Help the user understand what happened during workflow execution.
-
-## ⚠️ RULES
-1. **Read-Only**: You MUST NOT modify any files. You have no write access or plan modification tools.
-2. **Answer Directly**: For general questions, answer from the plan context below.
-3. **Read Files Only When Needed**: Only read execution logs if user asks about specific failures or "why did X happen".
-4. **Conversational**: Ask follow-up questions if the user's query is ambiguous.
-
-## 📋 CONTEXT
-- **Workspace**: {{.WorkspacePath}}
-- **Run folder**: Check 'runs/' directory for available iterations. Ask the user which run to analyze if unclear.
-
-### Current Plan
-{{if .ExistingPlanJSON}}`+"`"+`json
-{{.ExistingPlanJSON}}
-`+"`"+`{{else}}No plan provided. Read it from 'planning/plan.json'.{{end}}
-
-## 📁 FILE LOCATIONS
-- **Plan file**: '{{.WorkspacePath}}/planning/plan.json'
-- **Runs**: '{{.WorkspacePath}}/runs/' — list to find available iterations
-- **Execution outputs**: '{{.WorkspacePath}}/runs/{iteration}/{group}/execution/{step-id}/'
-- **Validation logs**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/validation-{N}.json'
-- **Execution logs**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/execution/'
-- **Routing evaluations**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/routing-evaluation.json'
-- **Orchestration routing**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/orchestration-execution.json' (JSONL)
-- **Todo task progress**: '{{.WorkspacePath}}/runs/{iteration}/{group}/execution/{step-id}/tasks.md'
-
-## 📖 STEP FOLDER NAMING
-- Scripted steps: '{step-id}/' using the declared ID from planning/plan.json
-- Conversational specialist calls: '{parent-step}/agents/{route-id}/calls/{call-id}/'
-- Generic agent calls: '{parent-step}/agents/generic/calls/{call-id}/'
-- Scripted Agent items: '{parent-step}/scripts/items/{item-id}/calls/{call-id}/'
-- Scripted routes: '{parent-step}/scripts/routes/{route-id}/calls/{call-id}/'
-- Specialist session logs: '{parent-step}/agents/{route-id}/session.json'
-
-All nested runtime artifacts belong to the parent Agent subtree. Do not look for
-retired flattened sub-agent or agents folders.
-
-{{if .IsCodeExecutionMode}}{{"{{TOOL_STRUCTURE}}"}}{{end}}`)
-
-// PhaseChatSystemPrompt generates the system prompt for any chat-compatible phase.
-// Dispatches to the correct template based on phaseId.
-func PhaseChatSystemPrompt(phaseId string, templateVars map[string]string) string {
-	now := time.Now()
-	templateData := map[string]interface{}{
-		"WorkspacePath":               templateVars["WorkspacePath"],
-		"ExistingPlanJSON":            templateVars["ExistingPlanJSON"],
-		"VariableNames":               templateVars["VariableNames"],
-		"IsCodeExecutionMode":         templateVars["IsCodeExecutionMode"],
-		"UseProjectedReferenceSkills": templateVars["UseProjectedReferenceSkills"],
-		"CurrentDate":                 promptDate(now),
-		"CurrentTime":                 promptTime(now),
-	}
-
-	var tmpl = interactiveWorkshopSystemTemplate // default: workflow-builder template
-	switch phaseId {
-	case "execution-qa":
-		tmpl = executionDebuggerChatTemplate
-	case "workflow-builder":
-		// Use the full workshop system template (same as orchestrator mode)
-		// so the chat agent gets all plan design guidance, optimization tips, etc.
-		// PlanJSON is intentionally NOT injected here — the agent reads plan.json
-		// via shell command on demand, avoiding a large static injection on every request.
-		templateData["RunFolder"] = templateVars["RunFolder"]
-		templateData["StepConfigSummary"] = templateVars["StepConfigSummary"]
-		templateData["ProgressSummary"] = templateVars["ProgressSummary"]
-		templateData["GroupInfo"] = templateVars["GroupInfo"]
-		templateData["UseKnowledgebase"] = templateVars["UseKnowledgebase"]
-		kbShape := templateVars["KBShape"]
-		if kbShape == "" {
-			kbShape = workflowtypes.KBShapeGraphNotes
-		}
-		templateData["KBShape"] = kbShape
-		templateData["CustomInstructions"] = templateVars["CustomInstructions"]
-		templateData["StepSummary"] = templateVars["StepSummary"]
-		templateData["WorkshopMode"] = templateVars["WorkshopMode"]
-		templateData["ExecutionMode"] = templateVars["ExecutionMode"]
-		templateData["AvailableGroups"] = templateVars["AvailableGroups"]
-		// Both native API and CLI sessions attach the same mode-filtered reference skill.
-		templateData["SpecialWorkspaceToolsInstructions"] = instructions.GetSpecialWorkspaceToolsPointer()
-		wsPath := templateVars["WorkspacePath"]
-		templateData["AbsWorkspacePath"] = GetPromptDocsRoot() + "/" + wsPath
-		templateData["AbsDocsRoot"] = GetPromptDocsRoot()
-		templateData["PlanJSON"] = ""    // Intentionally empty — agent reads plan.json on demand via shell command
-		templateData["UserRequest"] = "" // Not applicable in chat mode — user messages come via conversation
-		tmpl = interactiveWorkshopSystemTemplate
-		if templateVars["WorkshopMode"] != "workshop" {
-			tmpl = interactiveRunSystemTemplate
-		}
-	}
-
-	var result strings.Builder
-	if err := tmpl.Execute(&result, templateData); err != nil {
-		panic(fmt.Sprintf("[FATAL] Phase chat system prompt template failed for phase=%q: %v — this means the LLM will receive no system prompt. Fix the template or templateData.", phaseId, err))
-	}
-	rendered := result.String()
-	if phaseId == "workflow-builder" {
-		rendered += "\n\n" + workflowFolderAccessBuilderPrompt(templateVars["WorkspacePath"])
-	}
-	// Guard against empty or suspiciously short prompts — the workshop template should be 10K+ chars
-	if len(rendered) < 1000 {
-		panic(fmt.Sprintf("[FATAL] Phase chat system prompt for phase=%q is only %d chars (expected 10000+). Template likely has missing variables or rendering issues.", phaseId, len(rendered)))
-	}
-	// Conditional blocks in the template each carry their own surrounding blank
-	// line, so a block that renders empty (an {{if}} that's false, or one whose
-	// body is itself blank in this mode) leaves runs of 3+ newlines behind.
-	// Harmless to the model, but it reads like the prompt has holes in it.
-	return collapseBlankLines(rendered)
-}
-
 // collapseBlankLines squashes 3+ consecutive newlines down to a single blank
 // line (2 newlines), the same normalization a Markdown renderer would apply.
 func collapseBlankLines(s string) string {
@@ -262,12 +141,6 @@ type SchedulerCallbacks struct {
 	DeleteSchedule         func(ctx context.Context, jobID string) error
 	TriggerSchedule        func(ctx context.Context, jobID string) (string, error)
 	GetScheduleRuns        func(ctx context.Context, jobID string, limit int) (string, error)
-
-	// GetContractUpgrades reports the workflow's pending contract migrations.
-	GetContractUpgrades func(ctx context.Context, workspacePath string) (string, error)
-
-	// NextContractUpgrade returns the next migration owed by the workflow.
-	NextContractUpgrade func(ctx context.Context, workspacePath string) (target string, label string, err error)
 }
 
 // ScheduleRuntimePolicy carries typed scheduling behavior that must be
@@ -993,45 +866,6 @@ func (s *WorkshopChatSession) UpdateInvocationInputs(ctx context.Context, preset
 	return nil
 }
 
-// RegisterWorkshopChatTools registers the complete workshop-only tool surface on
-// the given agent using the session's controller.
-func RegisterWorkshopChatTools(
-	mcpAgent DefinitionRegistrar,
-	session *WorkshopChatSession,
-	logger loggerv2.Logger,
-) {
-	if session.config != nil {
-		mcpAgent = guardScheduleRegistrar(mcpAgent, session.config.ScheduleCollisionCheck)
-	}
-	iwm := &InteractiveWorkshopManager{
-		controller:             session.controller,
-		workshopConfig:         session.config,
-		sessionID:              session.mainSessionID,
-		stepRegistry:           session.StepRegistry,
-		sessionCtx:             session.sessionCtx,
-		toolCallQueryFunc:      session.toolCallQueryFunc,
-		tmuxLookupFunc:         session.tmuxLookupFunc,
-		mainSessionID:          session.mainSessionID,
-		schedulerWorkspacePath: session.schedulerWorkspacePath,
-		schedulerFuncs:         session.schedulerFuncs,
-		llmToolsFuncs:          session.llmToolsFuncs,
-		skillFuncs:             session.skillFuncs,
-		listAvailableSecrets:   session.listAvailableSecrets,
-		resolveSecretValues:    session.resolveSecretValues,
-		secretsAttached:        session.secretsAttached,
-		executionNotifier:      session.executionNotifier,
-		hasPendingCompletions:  session.hasPendingCompletions,
-		hasRunningAgents:       session.hasRunningAgents,
-		cancelAllServerAgents:  session.cancelAllServerAgents,
-		listServerAgents:       session.listServerAgents,
-		workshopModeOverride:   session.workshopModeOverride,
-	}
-	if session.controller.isRelayExecution() {
-		mcpAgent = relayDefinitionRegistrar{DefinitionRegistrar: mcpAgent}
-	}
-	registerWorkshopAgentTools(iwm, mcpAgent, session.config.WorkspacePath, logger)
-}
-
 // Close cancels all background goroutines for this workshop session.
 func (s *WorkshopChatSession) Close() {
 	if s.cancelFunc != nil {
@@ -1457,264 +1291,75 @@ func truncateResult(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// RegisterRunFullWorkflowTool registers a run_full_workflow tool that executes the complete
-// workflow pipeline once with the resolved inputs in the background. The LLM is notified
-// when execution completes. This is the workshop-builder equivalent of the orchestrator-mode
-// full execution, but triggered as a tool call.
-func RegisterRunFullWorkflowTool(
-	mcpAgent DefinitionToolRegistrar,
-	session *WorkshopChatSession,
-	logger loggerv2.Logger,
-) {
+// RegisterRunFullWorkflowTool starts the owning Crew's saved Python script.
+// It shares the direct starter's typed input contract and existing background lifecycle.
+func RegisterRunFullWorkflowTool(mcpAgent DefinitionToolRegistrar, session *WorkshopChatSession, logger loggerv2.Logger) {
 	if session.config != nil {
 		mcpAgent = GuardScheduleTools(mcpAgent, session.config.ScheduleCollisionCheck)
 	}
-	if session.controller.isRelayExecution() {
-		mcpAgent = relayToolRegistrar{DefinitionToolRegistrar: mcpAgent}
-	}
 	if err := mcpAgent.RegisterCustomTool(
 		"run_full_workflow",
-		"Execute the complete workflow for real with its normal permissions, live database and actual tool actions. A person's request to run or test authorizes this execution; do not ask again for the same request. Resolve defaults, optional saved inputs, and explicit inputs once, then run all steps in a unique run folder. A saved schedule or webhook retains its server-bound run identity. Starts from the beginning and runs in background - you will be notified when complete. Use send_step_message with the returned execution_id to steer whichever workflow child-agent turn is currently active. Use human_inputs for run-specific instructions or responses, keyed by the exact target step ID; each value is visible only to that step. If the plan contains deterministic routing steps and the user's request already selected a branch, pass route_selections keyed by routing step ID.",
+		"Run this Crew's saved Python workflow for real with optional input_preset and typed inputs. Omitted values use the preset and script defaults. Starts in the background; you will be notified when it finishes. Use the chat's background work control to stop it. A person's request to run or test authorizes the run's normal database writes, app calls and sends.",
 		map[string]interface{}{
-			"type": "object",
+			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{
-				"input_preset": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional exact saved-input preset name. Omit to use workflow defaults. This only fills input values; route selections are separate.",
-				},
-				"human_inputs": map[string]interface{}{
-					"type":        "object",
-					"description": "Per-step run instructions keyed by exact step ID. Each value is delivered only to that step, including delegated route agents. Example: {\"search-jobs\": \"Use only Best Matches and My Feed\"}. Do not use this for routing choices; use route_selections instead.",
-					"additionalProperties": map[string]interface{}{
-						"type": "string",
-					},
-				},
-				"route_selections": map[string]interface{}{
-					"type":        "object",
-					"description": "Deterministic route choices, keyed by routing step ID. Values may be a route_id or a unique next_step_id for that routing step. Use this when the user has already told the builder which fixed branch to run. Example: {\"pick-job\": \"lead-verification\"}.",
-					"additionalProperties": map[string]interface{}{
-						"type": "string",
-					},
-				},
-				"inputs": map[string]interface{}{
-					"type":        "object",
-					"description": "Per-run values for this run only, keyed by declared variable name (see variables/variables.json), overriding optional saved input values. Use for per-run data such as a PR number, URL or ID the user gave; never rely on a saved value for it. Unknown names are refused. Not allowed for a run started by a webhook or function, whose values are fixed by the trigger. Example: {\"PR_NUMBER\": \"149\"}.",
-					"additionalProperties": map[string]interface{}{
-						"type": "string",
-					},
-				},
+				"input_preset": map[string]interface{}{"type": "string", "description": "Optional exact saved input preset from this script."},
+				"inputs":       map[string]interface{}{"type": "object", "description": "Typed JSON values keyed by this script's declared input names. Overrides preset values and defaults."},
 			},
-			"required": []string{},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
-
-			cfg := session.config
-			if cfg != nil {
-				snapshot := *cfg
-				cfg = &snapshot
+			if session.config == nil {
+				return "", fmt.Errorf("this Python workflow is unavailable")
 			}
-			if cfg == nil {
-				return "session config not available — cannot create workflow controller", nil
-			}
-
-			iteration := "run-" + workflowExecutionIDToken()
-			if cfg.WebhookInvocation != nil {
-				iteration = cfg.WebhookInvocation.RunFolder
-			} else if cfg.ScheduleInvocation != nil {
-				iteration = cfg.ScheduleInvocation.BoundRunFolder()
-			}
-			strategy := "start_from_beginning_no_human"
-
-			for _, retired := range []string{"group_name", "enabled_group_names", "variables"} {
-				if _, supplied := args[retired]; supplied {
-					return "", fmt.Errorf("%s is retired; use input_preset and inputs", retired)
+			snapshot := *session.config
+			cfg := &snapshot
+			for name := range args {
+				if name != "inputs" && name != "input_preset" {
+					return "", fmt.Errorf("use input_preset and inputs; %s is not a start argument", name)
 				}
 			}
-			if cfg.WebhookInvocation != nil {
-				if _, present := args["input_preset"]; present {
-					return "", fmt.Errorf("input_preset is fixed by this function or webhook invocation")
+			preset := cfg.InputPreset
+			if raw, supplied := args["input_preset"]; supplied {
+				var valid bool
+				preset, valid = raw.(string)
+				if !valid {
+					return "", fmt.Errorf("input_preset must be a string")
 				}
 			}
-			groupName, _ := args["input_preset"].(string)
-			if value, supplied := args["input_preset"]; supplied {
-				if _, ok := value.(string); !ok {
-					return "input_preset must be a string", nil
-				}
+			// Refresh the canonical script before validating; a cached chat runtime
+			// never substitutes an older input or secret declaration.
+			if err := session.controller.loadCodeLayout(ctx); err != nil {
+				return "", err
 			}
-			var enabledGroupNames []string
-			if !session.controller.isRelayExecution() {
-				var inputErr error
-				groupName, inputErr = session.controller.resolveWorkshopInputGroup(ctx, groupName, func() []string {
-					if cfg.InputPreset != "" {
-						return []string{cfg.InputPreset}
-					}
-					return nil
-				}())
-				if inputErr != nil {
-					return "", inputErr
-				}
-				if groupName != "" {
-					enabledGroupNames = []string{groupName}
-				}
+			if session.controller.directCrewScript == nil {
+				return "", fmt.Errorf("choose this Crew's saved Python workflow")
 			}
-
-			// Parse human_inputs strictly. The old assertion silently discarded
-			// alternate decoded map shapes and non-string values, allowing a run
-			// to continue without the operator's safety constraint.
-			humanInputs, parseErr := parseWorkflowStepStringMap(args, "human_inputs")
-			if parseErr != nil {
-				return parseErr.Error(), nil
+			definitions := session.controller.directCrewScript.InputDefinitions()
+			runVariables, err := WorkflowInputOverrides(definitions, args)
+			if err != nil {
+				return "", err
 			}
-			// Parse route_selections (optional map of routing_step_id -> route_id or next_step_id)
-			var routeSelections map[string]string
-			if rs, ok := args["route_selections"]; ok && rs != nil {
-				rsMap, ok := rs.(map[string]interface{})
-				if !ok {
-					return "route_selections must be an object keyed by routing step ID.", nil
-				}
-				routeSelections = make(map[string]string, len(rsMap))
-				for k, v := range rsMap {
-					stepID := strings.TrimSpace(k)
-					value, ok := v.(string)
-					if !ok {
-						return fmt.Sprintf("route_selections[%q] must be a string route_id or next_step_id.", k), nil
-					}
-					value = strings.TrimSpace(value)
-					if stepID == "" || value == "" {
-						return "route_selections entries must have non-empty step IDs and route values.", nil
-					}
-					routeSelections[stepID] = value
-				}
-			}
-
-			runVariables, parseErr := parseWorkflowStepStringMap(args, "inputs")
-			if parseErr != nil {
-				return parseErr.Error(), nil
-			}
-			if len(runVariables) > 0 {
-				if cfg.WebhookInvocation != nil {
-					return "variables cannot be set here: this run was started by a webhook or function, whose values are fixed by the trigger.", nil
-				}
-				if problem := undeclaredRunVariables(session.controller.variablesManifest, runVariables); problem != "" {
-					return problem, nil
-				}
-			}
-
 			invocationInputs := cloneWorkflowStringMap(cfg.Inputs)
 			if invocationInputs == nil {
 				invocationInputs = map[string]string{}
 			}
-			if cfg.WebhookInvocation != nil {
-				for name, value := range cfg.WebhookInvocation.Variables {
-					invocationInputs[name] = value
-				}
-			}
 			for name, value := range runVariables {
 				invocationInputs[name] = value
 			}
-			resolvedInputs, inputErr := ResolveWorkflowInputs(session.controller.variablesManifest, groupName, invocationInputs)
-			if inputErr == nil {
-				inputErr = ValidateWorkflowLaunchInputs(session.controller.variablesManifest, resolvedInputs)
+			resolvedInputs, err := ResolveWorkflowInputs(definitions, preset, invocationInputs)
+			if err == nil {
+				err = ValidateWorkflowLaunchInputs(definitions, resolvedInputs)
 			}
-			if inputErr != nil {
-				return "", inputErr
-			}
-
-			if cfg.WebhookInvocation != nil {
-				var bindingErr error
-				if session.controller.isRelayExecution() {
-					routeSelections = cfg.WebhookInvocation.RouteSelections
-				} else {
-					routeSelections, bindingErr = cfg.WebhookInvocation.RoutesForGroup(groupName)
-				}
-				if bindingErr != nil {
-					return "", bindingErr
-				}
-			}
-
-			// Validate exact input target IDs and selected routes.
-			// Route-scoped validation matters for workflows like Upwork where one plan contains
-			// bid/search/profile branches; a search run must not be forced to answer bid approval.
-			plan, err := session.controller.ReadCurrentPlan(ctx)
 			if err != nil {
-				return fmt.Sprintf("Failed to load plan: %v", err), nil
+				return "", err
 			}
-			if cfg.WebhookInvocation != nil && plan != nil {
-				humanInputs = attachWebhookStepInputs(plan.Steps, humanInputs, cfg.WebhookInvocation.InputFile)
+			if err := session.controller.validateScriptSecrets(session.controller.directCrewScript); err != nil {
+				return "", err
 			}
-
-			// Preflight: refuse to launch when the workflow declares MCP
-			// servers that the host config doesn't actually provide.
-			// Without this the run silently fails later — locked scripts hit
-			// "SCOPE DENIED" and the cursor fallback returns 0 tokens after
-			// minutes of waiting. Fail-fast with one clear punch list instead.
-			if missing, err := validateWorkflowDependencies(ctx, session, cfg.MCPConfigPath, logger); err != nil {
-				logger.Warn(fmt.Sprintf("preflight: dependency check skipped (%v) — proceeding without it", err))
-			} else if len(missing) > 0 {
-				workflowLabel := ""
-				if cfg.WorkspacePath != "" {
-					workflowLabel = cfg.WorkspacePath
-				}
-				return formatMissingDependencies(workflowLabel, missing, cfg.MCPConfigPath), nil
-			}
-			if plan != nil {
-				if unknown := unknownWorkflowStepInputIDs(plan.Steps, humanInputs); len(unknown) > 0 {
-					return fmt.Sprintf("human_inputs contains unknown step ID(s): %s. Read the current plan and key each value by an exact step ID.", strings.Join(unknown, ", ")), nil
-				}
-				var legacyRoutingSteps []string
-				validationSteps := plan.Steps
-				variableValues := resolvedInputs
-				if err := validateRequiredLaunchVariables(plan.Steps, variableValues, routeSelections, 0, false); err != nil {
-					return err.Error(), nil
-				}
-				if len(variableValues) > 0 {
-					validationSteps = routeScopedValidationSteps(plan.Steps, variableValues, humanInputs, routeSelections)
-				} else if len(routeSelections) > 0 {
-					validationSteps = routeScopedValidationSteps(plan.Steps, nil, humanInputs, routeSelections)
-				}
-				for _, step := range validationSteps {
-					if step.StepType() == StepTypeRouting || step.StepType() == StepTypeBranch {
-						if routingStep, ok := step.(routeSwitchStep); ok && routingStep.GetDescription() != "" {
-							legacyRoutingSteps = append(legacyRoutingSteps, fmt.Sprintf("  - %s (id: %s)", step.GetTitle(), step.GetID()))
-						}
-					}
-				}
-				if len(legacyRoutingSteps) > 0 {
-					return fmt.Sprintf("❌ Plan has routing/branch steps with legacy descriptions. Both are deterministic-only and never execute agents:\n%s\n\nMove each probe/judgment into a prior agent step that writes route_selection.json, then clear the description and point the step at that file via route_source_file or context_dependencies.", strings.Join(legacyRoutingSteps, "\n")), nil
-				}
-			}
-
-			if cfg.WebhookInvocation != nil {
-				if session.controller.isRelayExecution() {
-					if err := validateRelayWorkshopRunFolder(iteration); err != nil {
-						return "", err
-					}
-				} else if !IsPermanentRunFolder(iteration) {
-					return "webhook run folder unavailable", nil
-				}
-				if !session.controller.isRelayExecution() {
-					if err := cfg.WebhookInvocation.ClaimGroup(groupName); err != nil {
-						return err.Error(), nil
-					}
-				}
-			}
-
+			iteration := "run-" + workflowExecutionIDToken()
+			strategy := "start_from_beginning_no_human"
 			execToken := workflowExecutionIDToken()
-			if session.controller.isRelayExecution() && cfg.WebhookInvocation == nil {
-				iteration = "relay-" + execToken
-			}
-			execID := fmt.Sprintf("workflow-full-%s", execToken)
-			if cfg.ScheduleInvocation != nil && cfg.ScheduleInvocation.Next != nil {
-				next, err := cfg.ScheduleInvocation.Next(ctx, execID)
-				if err != nil {
-					return "", err
-				}
-				snapshot := *cfg
-				snapshot.ScheduleInvocation = next
-				cfg = &snapshot
-				iteration = next.RunFolder
-			}
-
+			execID := "workflow-full-" + execToken
 			execCtx, cancel := context.WithCancel(session.sessionCtx)
 			execCtx = withWorkshopExecutionParent(execCtx, ctx)
 
@@ -1738,9 +1383,6 @@ func RegisterRunFullWorkflowTool(
 			// 2) The workflow MCP session so human_input / human_feedback lookups
 			//    resolve against the same session ID step agents actually use.
 			workflowGroup := ""
-			if len(enabledGroupNames) > 0 {
-				workflowGroup = ""
-			}
 			workflowSessionID := session.controller.GetMCPSessionID()
 			if workflowSessionID != "" {
 				virtualtools.RegisterParentChat(workflowSessionID, &virtualtools.ParentChatContext{
@@ -1758,31 +1400,23 @@ func RegisterRunFullWorkflowTool(
 			})
 
 			// Notify workshop execution notifier so frontend keeps polling
-			// Include group and iteration in display name so notifications are unambiguous
-			workflowDisplayName := "full-run"
-			if len(enabledGroupNames) > 0 && iteration != "" {
-				workflowDisplayName = fmt.Sprintf("full-run [%s / %s]", enabledGroupNames[0], iteration)
-			} else if len(enabledGroupNames) > 0 {
-				workflowDisplayName = fmt.Sprintf("full-run [%s]", enabledGroupNames[0])
+			// The preset label identifies the selected values, not a run identity.
+			workflowDisplayName := "Python workflow"
+			if preset != "" {
+				workflowDisplayName += " [" + preset + "]"
 			}
 			execMeta := map[string]string{
 				"workshop_mode":  "runner",
 				"execution_type": "full-workflow",
 			}
-			if cfg.WebhookInvocation != nil {
-				execMeta["trigger_source"] = "webhook"
-			}
 			if iteration != "" {
 				execMeta["iteration"] = iteration
 			}
-			if len(enabledGroupNames) > 0 {
-				execMeta["input_preset"] = enabledGroupNames[0]
+			if preset != "" {
+				execMeta["input_preset"] = preset
 			}
 			if iteration != "" {
 				runFolder := iteration
-				if len(enabledGroupNames) > 0 {
-					runFolder = iteration
-				}
 				execMeta["run_folder"] = runFolder
 			}
 			if session.executionNotifier != nil {
@@ -1833,9 +1467,6 @@ func RegisterRunFullWorkflowTool(
 					parentID:       execID,
 					iteration:      iteration,
 					ownedSubAgents: &workshopSubAgentCleanup{},
-				}
-				if len(enabledGroupNames) > 0 {
-					progressBridge.groupName = ""
 				}
 
 				workflowController, err := NewStepBasedWorkflowOrchestrator(
@@ -1908,37 +1539,15 @@ func RegisterRunFullWorkflowTool(
 					SelectedRunFolder:  iteration,
 					RunFolderAllocated: true,
 					ExecutionStrategy:  strategy,
-					InputPreset:        groupName,
+					InputPreset:        preset,
 					Inputs:             invocationInputs,
 					ResolvedInputs:     resolvedInputs,
-					HumanInputs:        humanInputs,
-					RouteSelections:    routeSelections,
 					// Fresh controllers start with no options: without the
 					// resource service, saved agent/script references cannot be resolved here.
 					CrewResources:      cfg.CrewResources,
 					AgentFunctionTools: cfg.AgentFunctionTools,
 				}
-				if cfg.ScheduleInvocation != nil {
-					execOpts.RunKind = cfg.ScheduleInvocation.RunKind()
-					execOpts.ScheduleRunID = cfg.ScheduleInvocation.BoundRunID()
-					execOpts.ScheduleID = cfg.ScheduleInvocation.ScheduleID
-					execOpts.TriggerSource = cfg.ScheduleInvocation.TriggerSource
-					execOpts.ScheduledFor = cfg.ScheduleInvocation.ScheduledFor
-					execOpts.ExecutionID = execID
-				}
-				if cfg.WebhookInvocation != nil {
-					execOpts.WebhookInputFile = cfg.WebhookInvocation.InputFile
-					execOpts.WebhookVariables = cfg.WebhookInvocation.Variables
-				} else if len(runVariables) > 0 {
-					execOpts.WebhookVariables = runVariables
-				}
 				workflowController.SetExecutionOptions(execOpts)
-				if len(routeSelections) > 0 {
-					// PLAT-066: pairs with the seed-time log in seedRouteSelectionsForRun.
-					// If that log never shows this run's ID/route pair, the value was
-					// lost somewhere inside CreateTodoList's call chain, not here.
-					logger.Info(fmt.Sprintf("🔀 run_full_workflow: SetExecutionOptions carries route_selections=%v before CreateTodoList", routeSelections))
-				}
 
 				result, execErr = workflowController.CreateTodoList(
 					execCtx,
@@ -1948,21 +1557,10 @@ func RegisterRunFullWorkflowTool(
 				result = firstNonEmpty(strings.TrimSpace(result), "Workflow execution completed successfully.")
 			}()
 
-			groupInfo := ""
-			if len(enabledGroupNames) > 0 {
-				groupInfo = fmt.Sprintf("\nSaved inputs: %s", enabledGroupNames[0])
-			}
-			iterInfo := "\nIteration: new (auto-created)"
-			if session.controller.isRelayExecution() {
-				iterInfo = fmt.Sprintf("\nrun_folder: %q", iteration)
-			} else if iteration != "" {
-				iterInfo = fmt.Sprintf("\nrun_folder: %q", iteration)
-			}
-			return fmt.Sprintf("Full workflow execution started.\nexecution_id: %q\nStrategy: %s%s%s\nAll steps will be executed end-to-end. Use send_step_message(execution_id=%q, message=...) for a live correction while a child-agent turn is active.\nYou will be automatically notified when it completes.", execID, strategy, groupInfo, iterInfo, execID), nil
-		},
-		"workflow",
+			return fmt.Sprintf("Python workflow started.\nexecution_id: %q\nrun_folder: %q\nYou will be notified when it finishes.", execID, iteration), nil
+		}, "workflow",
 	); err != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Failed to register run_full_workflow tool: %v", err))
+		logger.Warn(fmt.Sprintf("Failed to register run_full_workflow: %v", err))
 	}
 }
 

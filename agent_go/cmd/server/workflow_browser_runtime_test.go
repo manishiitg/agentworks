@@ -23,15 +23,26 @@ import (
 )
 
 func TestWorkflowBrowserRuntimeRefreshesPersistentTool(t *testing.T) {
-	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	mode := "none"
 	readErr := error(nil)
 	exec := workflowBrowserExecutors("browser-refresh-test", "test-workflow", func(context.Context, string) (*WorkflowManifest, bool, error) {
 		return &WorkflowManifest{Capabilities: WorkflowCapabilities{BrowserMode: mode}}, true, readErr
 	})["agent_browser"]
-	for _, configured := range []string{"none", "auto", "headless", "cdp", "none", ""} {
-		mode = configured
+	// PLAT-788: server defaults are managed; disabled/invalid saved choices
+	// must never silently enable another browser on a persistent tool.
+	for _, choice := range []struct{ configured, effective string }{
+		{"none", "none"}, {"auto", ""}, {"headless", "headless"},
+		{"cdp", ""}, {"none", "none"}, {"", "headless"},
+	} {
+		mode = choice.configured
 		result, err := exec(context.Background(), map[string]interface{}{"command": "status"})
+		if choice.effective == "" {
+			if err == nil || !strings.Contains(err.Error(), projectBrowserChoiceMessage) {
+				t.Fatalf("unavailable mode %q enabled a browser: result=%s err=%v", mode, result, err)
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,10 +52,8 @@ func TestWorkflowBrowserRuntimeRefreshesPersistentTool(t *testing.T) {
 		if err := json.Unmarshal([]byte(result), &status); err != nil {
 			t.Fatal(err)
 		}
-		want := "headless"
-
-		if status.EffectiveMode != want {
-			t.Fatalf("mode %q: got %q, want %q", configured, status.EffectiveMode, want)
+		if status.EffectiveMode != choice.effective {
+			t.Fatalf("mode %q: got %q, want %q", mode, status.EffectiveMode, choice.effective)
 		}
 	}
 
@@ -59,7 +68,7 @@ func TestWorkflowBrowserRuntimeRefreshesPersistentTool(t *testing.T) {
 // for Chrome; status/tab-list need no page commands or model invocation.
 func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	m, err := browserrelay.NewPersistent(t.TempDir())
 	if err != nil {
@@ -117,7 +126,7 @@ func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 	requestCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Provider: "local"})
 	executors := api.bindWorkflowBrowserExecutors(requestCtx, parent, QueryRequest{}, false,
 		workflowBrowserExecutors(parent, workspace, func(context.Context, string) (*WorkflowManifest, bool, error) {
-			return &WorkflowManifest{Capabilities: WorkflowCapabilities{BrowserMode: "cdp"}}, true, nil
+			return &WorkflowManifest{Capabilities: WorkflowCapabilities{BrowserMode: "extension"}}, true, nil
 		}))
 	logger := loggerv2.NewNoop()
 	handlers := executor.NewExecutorHandlers("", logger)
@@ -147,7 +156,7 @@ func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 	for _, child := range []string{parent + "-execution", parent + "-agent"} {
 		mcpclient.GetSessionRegistry().RegisterHTTPSession(parent, child)
 		common.SetSessionBrowserNamespace(child, common.GetSessionShellConfig(parent).BrowserSessionNamespace)
-		output := workspace + "/runs/iteration-0/default/execution/" + child
+		output := workspace + "/runs/run-example/execution/" + child
 		common.SetSessionWorkingDir(child, output)
 		common.SetSessionFolderGuard(child, []string{workspace}, []string{output})
 		t.Cleanup(func() { common.ClearSessionShellConfig(child); codeexec.CleanupSession(child) })

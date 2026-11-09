@@ -108,7 +108,7 @@ sections and resolves every path they name under `learnings/`, `knowledgebase/`,
   records a warning (never a silent drop).
 - A named path that does not exist is reported in the step prompt and the plan edit response.
 
-**2. Budgets (triggers, never gates).** Measured deterministically by `get_plan_prompt_health` per step:
+**2. Historical plan budgets (retired).** The old per-step prompt-health measurements below are no longer exposed; current saved Python workflows use Crew instructions and authored checks:
 - description over 3x the plan's median description size, with a floor of 12,000 characters;
 - dated or incident text in a description (ISO dates, "measured", "observed on", run ids);
 - 300+ characters repeated verbatim across steps;

@@ -99,6 +99,9 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 		}
 		draft := &workflowAgentFunctionDraft{executors: map[string]interface{}{}}
 		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, FunctionTools: agentworksproduct.ExecutionFunctionTools(), CheckTarget: checkTarget})
+		if err == nil {
+			api.bindPythonAskExecutors(draft.executors, actor, resolveCaller, checkTarget)
+		}
 		return draft.tools, draft.executors, err
 	}
 }

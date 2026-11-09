@@ -2365,6 +2365,8 @@ export interface RunPythonStep {
 
 /** A check() or notify() a Python run recorded in its own metadata (the latest 200). */
 export interface RunPythonEvidence {
+  step_execution_id?: string;
+  step_name?: string;
   id: string;
   kind: 'check' | 'notify';
   at: string;
@@ -2375,6 +2377,21 @@ export interface RunPythonEvidence {
 }
 
 export interface RunMetadata {
+  /** Server-recorded Crew asks. Reply bytes stay in answer_file, read only when opened. */
+  python_asks?: Record<string, {
+    id: string;
+    crew: string;
+    status: string;
+    inbox_id?: string;
+    message_id?: string;
+    reply_message_id?: string;
+    detail?: string;
+    log_file?: string;
+    answer_file?: string;
+  }>;
+  /** Current server-computed eligibility; full Resume admission may still refuse. */
+  can_resume?: boolean;
+  python_resume_calls?: Array<{ key: string; action: string; reused: boolean; reason: string; execution_id: string; at: string; source_call?: string }>;
   created_at: string;
   /** The attempt that produced this run folder. */
   execution_id?: string;
@@ -2842,29 +2859,8 @@ export interface GetWorkflowManifestResponse {
   success: boolean
   manifest: WorkflowManifest
   workspace_path: string
-  contract_upgrade?: WorkflowContractUpgradeStatus
   /** Selected secret names with no stored value; the run still starts without them. */
   missing_secrets?: string[]
-}
-
-export interface WorkflowContractUpgradeStatus {
-  required: boolean
-  current_version: string
-  platform_version: string
-  pending_count: number
-  next_label?: string
-  next_version?: string
-  pending: WorkflowContractUpgradeItem[]
-  applied: WorkflowContractUpgradeItem[]
-  /** Older workflows have no per-migration timestamps; completed entries are
-   * inferred from the manifest's monotonic contract version. */
-  history_basis: 'contract_version'
-}
-
-export interface WorkflowContractUpgradeItem {
-  label: string
-  target_version: string
-  details: string
 }
 
 export interface CreateWorkflowManifestRequest {

@@ -62,11 +62,26 @@ func TestDashboardQueryBindingsRealWorkspace(t *testing.T) {
 			(&StreamingAPI{}).handleReportPreviewQuery(w, r)
 			var out struct {
 				Success bool                            `json:"success"`
+				Error   string                          `json:"error"`
 				Data    workspace.QueryWorkflowDBResult `json:"data"`
 			}
-			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != http.StatusOK || !out.Success || len(out.Data.Rows) != 1 || out.Data.Rows[0]["name"] != value {
-				t.Fatalf("%s scope %q: %d %s (%v)", root, scope, w.Code, w.Body.String(), err)
+			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
 			}
+			// The retired foreign personal Crew path is not a Crew grant (8106ccb9de).
+			// Its real database exists, so the refusal must come from the caller boundary.
+			if root == "_users/crew-owner/Chats/Work/projects/dashboard" {
+				if w.Code != http.StatusOK || out.Success || len(out.Data.Rows) != 0 || !strings.Contains(out.Error, "access to another user's database is not allowed") {
+					t.Fatalf("foreign personal database scope %q: %d %s", scope, w.Code, w.Body)
+				}
+				continue
+			}
+			if w.Code != http.StatusOK || !out.Success || len(out.Data.Rows) != 1 || out.Data.Rows[0]["name"] != value {
+				t.Fatalf("%s scope %q: %d %s", root, scope, w.Code, w.Body)
+			}
+		}
+		if root == "_users/crew-owner/Chats/Work/projects/dashboard" {
+			continue
 		}
 		client := (&StreamingAPI{}).reportPreviewWorkspaceClient(context.Background(), &UserClaims{UserID: "owner"}, root)
 		for query, valid := range map[string]bool{

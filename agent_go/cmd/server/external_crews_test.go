@@ -31,6 +31,8 @@ func externalCrewRequest(t *testing.T, env triggerLinkEnv, claims *UserClaims, n
 }
 
 func TestExternalCrewToolsRespectTokenCrewBounds(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	env.mock.mu.Lock()
@@ -38,8 +40,6 @@ func TestExternalCrewToolsRespectTokenCrewBounds(t *testing.T) {
 	env.mock.files[linkBetaPath+"/builder/conversation/2026-09-24/session.json"] = "{}"
 	env.mock.mu.Unlock()
 
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	folder := filepath.Join(docs, filepath.FromSlash(linkBetaPath), "notes")
 	if err := os.MkdirAll(folder, 0700); err != nil {
 		t.Fatal(err)
@@ -203,6 +203,8 @@ func TestExternalAgentMessagesKeepOptionalRepliesAndCurrentBounds(t *testing.T) 
 // manage_crew_chats lists only the caller's own app chats, and a Crew-bounded
 // connection stays bounded. Agent messaging uses separate inboxes.
 func TestExternalCrewChatsAreYourOwn(t *testing.T) {
+	// The registered Crew folders must exist before named-agent initialization.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	chats := func(claims *UserClaims, args map[string]any) (int, map[string]any) {

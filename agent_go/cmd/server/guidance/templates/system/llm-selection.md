@@ -41,7 +41,7 @@ Existing explicit settings and one-run caller overrides keep their precedence.
 Use measured, approved trials with quality guardrails and a rollback checkpoint;
 
 
-A step's model is chosen in the script: `agent(name, task, model=...)` pins an exact model, `tier="high|medium|low"` picks a tier (high for subjective or ambiguous judgment, medium for normal checks, low for deterministic or file-shape checks). Older plan workflows keep their saved per-step settings and are not edited. A one-run override is `runs action=step` with `tier="..."`; it changes nothing saved.
+A step's model is chosen in the script: `agent(name, task, model=...)` pins an exact model, `tier="high|medium|low"` picks a tier (high for subjective or ambiguous judgment, medium for normal checks, low for deterministic or file-shape checks). Inspect the effective model recorded for the saved script run. Change a helper's explicit model or tier in the saved program when requested; the next run uses the updated frozen source.
 
 ### Model freshness and upgrades
 
@@ -68,7 +68,7 @@ A step's model is chosen in the script: `agent(name, task, model=...)` pins an e
 1. **Start with a provider profile, not pins.** Let the coding-agent provider supply sensible role defaults. Use explicit mode only when the workflow needs a deliberate cross-provider or model-specific allocation.
 2. **Don't force a cheaper tier before reliability and goal quality are proven.** When a material workflow goal is below target, keep the current model/reasoning tier for outcome-bearing, planning, judgment, diagnostic, recovery, eval, and verification steps. Drop a step to `medium`/`low` only after representative eval/run evidence is at target and proves equivalent output and downstream outcomes. A strictly mechanical deterministic non-bottleneck step may be trialed cheaper only with that evidence, explicit approval, and rollback. Missing evidence means do not downgrade.
 3. **Use `execution_tier` for "usually cheaper/faster", `execution_llm` for "must be this exact model".** Don't hardcode a model when a tier expresses the intent.
-4. **Trial before committing.** Use `runs action=step` (..., tier="...") or `models action=test` to validate a model on a real run before making it persistent.
+4. **Trial before committing.** Use the requested saved workflow run or the offered model test to measure a deliberate model choice, and report the actual result.
 5. **Match tier to the work.** Subjective/ambiguous judgment → high; routine checks → medium; deterministic/file-shape → low.
 
 ### Cost awareness

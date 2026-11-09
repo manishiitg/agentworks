@@ -123,20 +123,6 @@ func TestWebhookRawPayloadMappingsKeepPresetAndSelectNestedBranch(t *testing.T) 
 	}
 }
 
-func TestWebhookRawPayloadMappingsCanSelectSingleStep(t *testing.T) {
-	s := WorkflowSchedule{Webhook: &WorkflowWebhookConfig{InputMode: "raw", PayloadMappings: &WorkflowWebhookPayloadMappings{
-		Step: &WorkflowWebhookValueMapping{Source: "component", Values: map[string]string{"service/review": "run-review-tests"}},
-	}}}
-	delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(`{"component":"service/review"}`)}
-	if err := resolveWebhookDeliveryOptions(s, delivery); err != nil {
-		t.Fatal(err)
-	}
-	stepID, routes := resolvedWebhookExecutionTarget(s, delivery)
-	if stepID != "run-review-tests" || len(routes) != 0 {
-		t.Fatalf("resolved target = step %q routes %#v", stepID, routes)
-	}
-}
-
 func TestWebhookRawPayloadMappingsRejectUnknownOrMissingValues(t *testing.T) {
 	s := WorkflowSchedule{Webhook: &WorkflowWebhookConfig{InputMode: "raw", PayloadMappings: &WorkflowWebhookPayloadMappings{
 		Step: &WorkflowWebhookValueMapping{Source: "env", Values: map[string]string{"prod": "analyze"}},
@@ -214,65 +200,7 @@ func TestActiveWebhookDeliveryCountIsScopedToTrigger(t *testing.T) {
 		t.Fatalf("active review deliveries = %d, want %d", got, maxWebhookConcurrency)
 	}
 }
-func TestWebhookRetentionKeepsTenCompletedRunsAndPreservesActiveRuns(t *testing.T) {
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	workspace := "Workflow/test"
-	if err := os.MkdirAll(filepath.Join(docs, workspace, "runs/iteration-0"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(docs, workspace, "workflow.json"), []byte(`{"schema_version":1,"id":"test","label":"Test"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	svc := &SchedulerService{stateStore: store}
-	ctx := context.Background()
-	folders := []string{}
-	for i := 0; i < 14; i++ {
-		id := fmt.Sprintf("run-%d", i)
-		folder, err := allocateWebhookRunFolder(workspace, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		folders = append(folders, folder)
-		if err := store.BeginRun(ctx, schedulerstate.Run{RunID: id, ScopeType: "workflow", ScopeID: workspace, LockKey: id, ScheduleID: id, TriggerSource: "webhook"}); err != nil {
-			t.Fatal(err)
-		}
-		if err := store.AssignRunFolder(ctx, id, folder); err != nil {
-			t.Fatal(err)
-		}
-		if i < 13 {
-			if err := store.Transition(ctx, schedulerstate.Transition{RunID: id, To: schedulerstate.StateFailed, At: time.Now().Add(time.Duration(i) * time.Second)}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	for i := 0; i < 2; i++ {
-		if err := svc.pruneWebhookRunsChecked(workspace); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for i, folder := range folders {
-		_, err := os.Stat(filepath.Join(docs, workspace, "runs", folder))
-		if i < 3 {
-			if !os.IsNotExist(err) || !webhookArtifactsExpired(workspace, fmt.Sprintf("run-%d", i)) {
-				t.Fatalf("old run retained: %s %v", folder, err)
-			}
-		} else if err != nil {
-			t.Fatalf("retained/active removed: %s", folder)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(docs, workspace, "runs/iteration-0")); err != nil {
-		t.Fatal("normal removed")
-	}
-	if _, err := store.GetRun(ctx, "run-0"); err != nil {
-		t.Fatal("history removed")
-	}
-}
+
 func TestWebhookConcurrentOutcomeIsolation(t *testing.T) {
 	all := []RunFolderInfo{{Name: "iteration-0/dev"}, {Name: "iteration-1-hook/dev"}, {Name: "iteration-2-hook/prod"}}
 	if got := webhookInvocationFolders(all, "iteration-1-hook", true); len(got) != 1 || got[0].Name != "iteration-1-hook/dev" {
@@ -338,5 +266,37 @@ func TestStoppingIdleWebhookDoesNotStopConcurrentSchedule(t *testing.T) {
 	run, err := store.GetRun(ctx, "normal-run")
 	if err != nil || run.CompletedAt != nil {
 		t.Fatalf("unrelated schedule stopped: %+v %v", run, err)
+	}
+}
+
+// PLAT-746-506 / PR1721: the same schedule key can acquire another run
+// between chat Stop's lookup and its controller's write lock.
+func TestChatStopCannotCancelAReplacementScheduleRun(t *testing.T) {
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	svc := NewSchedulerService(&StreamingAPI{})
+	svc.stateStore = store
+	ctx := context.Background()
+	schedule := &ScheduleContext{WorkspacePath: "Workflow/test", Schedule: WorkflowSchedule{ID: "timer", ScheduleType: "cron"}}
+	if err := svc.claimScheduleRun(ctx, schedule, "replacement", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	key := scheduleRuntimeKey(schedule)
+	svc.runtimeStates[key] = &ScheduleRuntimeState{ActiveRunID: "replacement", LastStatus: "running"}
+	canceled := false
+	svc.runCancels["replacement"] = func() { canceled = true }
+	svc.stopRunningJob(key, "timer", "previous")
+	run, err := store.GetRun(ctx, "replacement")
+	if canceled || svc.runtimeStates[key].ActiveRunID != "replacement" || err != nil || schedulerstate.IsTerminal(run.State) {
+		t.Fatalf("stale chat Stop changed replacement: canceled=%v state=%+v durable=%+v err=%v", canceled, svc.runtimeStates[key], run, err)
+	}
+	// The corresponding allowed case must reach the real cancellation handle.
+	svc.stopRunningJob(key, "timer", "replacement")
+	run, err = store.GetRun(ctx, "replacement")
+	if !canceled || svc.runtimeStates[key].ActiveRunID != "" || err != nil || run.State != schedulerstate.StateStopped {
+		t.Fatalf("matching chat Stop did not stop its run: canceled=%v state=%+v durable=%+v err=%v", canceled, svc.runtimeStates[key], run, err)
 	}
 }

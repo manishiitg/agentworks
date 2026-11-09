@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -63,28 +62,6 @@ func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
 	}
 }
 
-func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, family := range []string{"files", "share", "settings", "dashboard", "functions"} {
-		for _, tool := range catalog {
-			if tool.Name != family {
-				continue
-			}
-			action := "get"
-			if family == "files" || family == "functions" {
-				action = "list"
-			}
-			member, args, err := externalResolveMerged(tool, map[string]any{"action": action, "workspace_id": "code:example"})
-			if err != nil || args["crew_id"] != "code:example" {
-				t.Fatalf("%s lost native Code target: %s %v %v", family, member.Name, args, err)
-			}
-		}
-	}
-}
-
 // Creating a Crew over a token needs crews:write on all Crews; a token bounded to listed Crews cannot create.
 func TestWorkspaceCreateTokenNeedsAllCrewsWrite(t *testing.T) {
 	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}}
@@ -97,49 +74,43 @@ func TestWorkspaceCreateTokenNeedsAllCrewsWrite(t *testing.T) {
 	}
 }
 
+// fec04534b1 pins flat function definitions; function writes are not project patches.
 func TestWorkspaceFunctionAuthoringKeepsProjectIdentity(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
+	tool, found := externalCatalogTool("functions")
+	if !found {
+		t.Fatal("functions tool missing")
 	}
-	for _, tool := range catalog {
-		if tool.Name != "functions" {
-			continue
+	for _, action := range []string{"define", "delete"} {
+		input := map[string]any{"action": action, "project": "work:example"}
+		if action == "define" {
+			input["definition"] = map[string]any{"name": "reconcile", "description": "Function description", "execution": "tab", "tab_id": "main"}
+		} else {
+			input["name"] = "reconcile"
 		}
-		for _, action := range []string{"define", "update", "delete"} {
-			member, args, err := externalResolveMerged(tool, map[string]any{"action": action, "workspace_id": "code:example", "name": "reconcile", "description": "Function description", "instructions": "Function instructions", "input_schema": map[string]any{"type": "object"}, "result_schema": map[string]any{"type": "object"}})
-			if err != nil || member.Name != "update_crew" || args["crew_id"] != "code:example" {
-				t.Fatalf("%s: %s %v", action, member.Name, err)
-			}
-			for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema"} {
-				if _, exists := args[key]; exists {
-					t.Fatalf("%s can change project field %s: %v", action, key, args)
-				}
-			}
-			raw, err := json.Marshal(args["functions"])
-			if err != nil || !strings.Contains(string(raw), "reconcile") {
-				t.Fatalf("%s lost the function name: %s %v", action, raw, err)
-			}
+		member, args, err := externalResolveMerged(tool, input)
+		if err != nil || member.Name != "project_functions_"+action || args["project"] != "work:example" {
+			t.Fatalf("%s lost function/project identity: %s %v %v", action, member.Name, args, err)
 		}
-		return
+		if _, exists := args["functions"]; exists {
+			t.Fatal("function authoring became a project patch")
+		}
 	}
-	t.Fatal("functions tool missing")
 }
 
 func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	registry := withProjectOwnerRegistry(t)
 	withProjectSharing(t, true)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("POST", "/api/external/v1/call", nil)
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other"}))
 	recorder := httptest.NewRecorder()
-	api.externalWorkspaceCall(recorder, req, map[string]any{"action": "get", "workspace_id": "code:c0de0001-0000"})
+	api.externalWorkspaceCall(recorder, req, map[string]any{"action": "get", "workspace_id": "work:c0de0001-0000"})
 	var out map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &out); err != nil || recorder.Code != 200 {
 		t.Fatalf("shared get: %d %s", recorder.Code, recorder.Body.String())
@@ -156,28 +127,6 @@ func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing
 	}
 }
 
-func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
-	now := time.Now()
-	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
-		"failed": {ExecutionID: "failed", SessionID: "chat", StartedAt: now, Status: trackedExecutionStatusFailed},
-		"other":  {ExecutionID: "other", SessionID: "another-chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusFailed},
-	}}
-	if failure := api.externalWorkspaceTurnExecution("chat", ""); failure == nil || failure.ExecutionID != "failed" || failure.Status != trackedExecutionStatusFailed {
-		t.Fatal("launch failure with no transcript disappeared")
-	}
-	if failure := api.externalWorkspaceTurnExecution("chat", "new"); failure != nil {
-		t.Fatal("a new ask inherited an old failure")
-	}
-	api.trackedWorkflowExecutions["new"] = &TrackedWorkflowExecution{ExecutionID: "new", SessionID: "chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusCompleted}
-	if execution := api.externalWorkspaceTurnExecution("chat", ""); execution == nil || execution.ExecutionID != "new" || execution.Status != trackedExecutionStatusCompleted {
-		t.Fatal("an old failure replaced the latest completed turn")
-	}
-	api.trackedWorkflowExecutions["new"].Status = trackedExecutionStatusRunning
-	if execution := api.externalWorkspaceTurnExecution("chat", "new"); execution == nil || execution.Status != trackedExecutionStatusRunning {
-		t.Fatal("a newly accepted turn looked idle before its runner acquired the lane")
-	}
-}
-
 // PLAT-746-419: a successful live Crew delete left its workflow/script IDs
 // behind, which can make a later lookup ambiguous. Other Crews stay intact.
 func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
@@ -187,6 +136,8 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
 	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
 	f := newMultiUserFixture(t, layout)
+	// Real creation also materializes the private root required by workspace mutations.
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
 	profile := f.Crew
 	profile.Version++
 	profile.Runtime.Workspace.ProjectsRoot = "Crew"
@@ -195,9 +146,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	}
 	f.put("Crew/other/product.json", `{"schema_version":1,"product":"work","id":"other-crew","title":"Other","session_id":"work:project:other-crew"}`)
 	f.put("Crew/other/workflow.json", `{"schema_version":1,"id":"other-crew","label":"Other","capabilities":{}}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "other", ProjectID: "other-crew", OwnerID: fixtureUserB, Shared: true}); err != nil {
-		t.Fatal(err)
-	}
+	registerTestCrew(t, "other", fixtureUserB, true, "other-crew")
 	withProjectSharing(t, true)
 	if err := defaultProjectOwners().SetRunPeople("work", fixtureCrewFolder, []string{fixtureUserB}); err != nil {
 		t.Fatal(err)

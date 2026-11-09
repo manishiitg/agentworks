@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,6 +47,50 @@ func putChannelRoute(api *StreamingAPI, userID, connID, channel, body string) *h
 	w := httptest.NewRecorder()
 	putSlackConnectionChannelRouteHandler(api)(w, req)
 	return w
+}
+
+// PLAT-746: removing retired Flow policy checks must retain the live channel
+// admission rule. A failed membership check cannot persist a default target.
+func TestSlackDefaultChannelChecksMembershipBeforeSaving(t *testing.T) {
+	api, _ := setupSlackConnectionTest(t)
+	createSlackConnectionForTest(t, api, "alice", `{"display_name":"Own bot","enabled":false,"workspace_path":"Workflow/alpha"}`)
+	id := slackConnectionIDForScope(t, "Workflow/alpha")
+	const channel = "C1111111111"
+	previous := slackChannelAddCheck
+	t.Cleanup(func() { slackChannelAddCheck = previous })
+	member, checks := false, 0
+	slackChannelAddCheck = func(_ context.Context, _ *services.SlackService, conn services.SlackConnection, email, selected string) (string, error) {
+		checks++
+		if conn.ID != id || email != "alice@example.com" || selected != channel {
+			t.Fatalf("membership checked for the wrong person/channel: %s %s %s", conn.ID, email, selected)
+		}
+		if !member {
+			return "", fmt.Errorf("%w: you are not a member of this channel", services.ErrSlackChannelCheck)
+		}
+		return "example", nil
+	}
+	for _, tc := range []struct {
+		member bool
+		status int
+	}{{false, http.StatusBadRequest}, {true, http.StatusOK}} {
+		member = tc.member
+		req := slackConnectionRequest(t, http.MethodPut, "alice", `{"workspace_path":"Workflow/alpha","default":true}`)
+		GetUserFromContext(req.Context()).Email = "alice@example.com"
+		req = mux.SetURLVars(req, map[string]string{"id": id, "channel": channel})
+		w := httptest.NewRecorder()
+		putSlackConnectionChannelRouteHandler(api)(w, req)
+		if w.Code != tc.status || (!member && !strings.Contains(w.Body.String(), "not a member")) {
+			t.Fatalf("membership admission: %d %s", w.Code, w.Body.String())
+		}
+		conn, _ := services.GetSlackService().GetConnection(id)
+		_, saved := conn.ChannelRoutes[channel]
+		if saved != member {
+			t.Fatalf("route persisted=%t after membership=%t", saved, member)
+		}
+	}
+	if checks != 2 {
+		t.Fatalf("requests did not reach the membership boundary: %d", checks)
+	}
 }
 
 func deleteChannelRoute(api *StreamingAPI, userID, connID, channel string) *httptest.ResponseRecorder {

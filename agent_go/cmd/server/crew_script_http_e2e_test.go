@@ -282,6 +282,10 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			sourceAPI.handleCrewScriptFile(w, r)
 			return
 		}
+		if r.URL.Path == "/api/external/v1/call" {
+			sourceAPI.handleExternalCall(w, r)
+			return
+		}
 		sourceAPI.handleCrewScriptGraph(w, r)
 	})))
 	defer graphEndpoint.Close()
@@ -323,8 +327,31 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			if response.StatusCode != 403 {
 				t.Fatalf("Run person read source overview HTTP%d", response.StatusCode)
 			}
-		} else if response.StatusCode != 200 || !strings.Contains(string(body), "Prepare report") || !strings.Contains(string(body), `"errors": []`) || strings.Contains(string(body), "start-marker") {
-			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
+		} else {
+			var inspection struct {
+				Errors []string `json:"errors"`
+			}
+			decodeErr := json.Unmarshal(body, &inspection)
+			if response.StatusCode != 200 || decodeErr != nil || inspection.Errors == nil || len(inspection.Errors) != 0 || !strings.Contains(string(body), "Prepare report") || strings.Contains(string(body), "start-marker") {
+				t.Fatalf("saved source graph did not inspect safely: HTTP%d %s (%v)", response.StatusCode, body, decodeErr)
+			}
+		}
+		// The new MCP action adds no graph renderer: it must preserve the
+		// route's exact output and current source-owner rule. Other variants
+		// above already exercise the route in managed and attached Crews.
+		if !local && googleScope == "shared_default" {
+			payload, _ := json.Marshal(map[string]any{"name": "workflow", "arguments": map[string]any{"action": "outline", "workflow_id": binding.ID}})
+			outlineRequest, _ := http.NewRequestWithContext(ctx, http.MethodPost, graphEndpoint.URL+"/api/external/v1/call", bytes.NewReader(payload))
+			outlineRequest.Header.Set("Authorization", "Bearer "+token)
+			outlineResponse, err := http.DefaultClient.Do(outlineRequest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outlineBody, _ := io.ReadAll(outlineResponse.Body)
+			outlineResponse.Body.Close()
+			if outlineResponse.StatusCode != response.StatusCode || user == "owner" && !bytes.Equal(bytes.TrimSpace(outlineBody), bytes.TrimSpace(body)) {
+				t.Fatalf("MCP outline diverged from current source route as %s: HTTP%d %s", user, outlineResponse.StatusCode, outlineBody)
+			}
 		}
 		if user == "owner" {
 			var graph struct {
@@ -576,6 +603,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		t.Fatal("no real Python result")
 	}
 	if !local {
+		// PLAT-746-500: a valid archived plan with broken old dependencies
+		// must not gate current Python timer/MCP execution or Resume.
+		seedArchivedPlanWithMissingDependency(t, docs, binding.Root)
 		checkSavedScriptTriggerAndSchedule(t, docs, binding)
 	}
 	var sharedExtension os.FileInfo
@@ -609,5 +639,30 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	authored, err := os.Stat(filepath.Join(sourceRoot, "_vendor", vendorFile))
 	if err != nil || sharedExtension == nil || os.SameFile(authored, sharedExtension) {
 		t.Fatal("run linked mutable authored source", err)
+	}
+}
+
+// A converted script may retain its old plan as an archive. Both malformed
+// archives and valid old graphs must stay outside the Python run contract.
+func seedArchivedPlanWithMissingDependency(t *testing.T, docs, root string) {
+	t.Helper()
+	path, err := fsutil.WorkspacePath(docs, root+"/planning/plan.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"steps":[{"type":"scripted","id":"archived-step","title":"Archived step","description":"Archived plan","context_dependencies":["retired-source.csv"]}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "step_config.json"), []byte(`{"steps":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Current identity, owner and layout are derived from the Crew/script,
+	// never from an archived descriptor's version or claimed owner.
+	archived := filepath.Join(filepath.Dir(filepath.Dir(path)), "workflow.json")
+	if err := os.WriteFile(archived, []byte(`{"id":"archived","version":"1.0.0","code_layout_version":0,"created_by":"other","access":{"owners":["other"]}}`), 0600); err != nil {
+		t.Fatal(err)
 	}
 }

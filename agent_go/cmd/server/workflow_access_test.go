@@ -118,20 +118,6 @@ func TestContributorCanEditButCannotCreate(t *testing.T) {
 	}
 }
 
-func TestWorkflowFolderFromProxyPath(t *testing.T) {
-	cases := map[string]string{
-		"api/documents/Workflow/abc/plan.json": "Workflow/abc",
-		"api/folders/Workflow/abc":             "Workflow/abc",
-		"api/documents/Workflow":               "",
-		"api/documents/Chats/x":                "",
-	}
-	for in, want := range cases {
-		if got := workflowFolderFromWorkspaceProxyPath(in); got != want {
-			t.Fatalf("%s: got %q want %q", in, got, want)
-		}
-	}
-}
-
 func TestSessionVisibility(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},{"id":"b2","username":"bob","can_create":true,"products":[]}]}`)

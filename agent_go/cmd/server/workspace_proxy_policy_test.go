@@ -15,6 +15,9 @@ import (
 // workflow's access record.
 func TestWorkspaceProxyPolicy(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	registerTestCrew(t, "test-crew", "alice", false)
 	withMemoryUserDirectory(t, `{"users":[
 		{"id":"root","username":"root","role":"admin"},
 		{"id":"alice","username":"alice","role":"creator"},
@@ -37,7 +40,7 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 	for _, tc := range []call{
 		// Whole-workspace bulk routes and server configuration.
 		{"bob", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, false},
-		{"root", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, true},
+		{"root", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, false},
 		{"bob", http.MethodGet, "/api/wp/api/documents/config/users.json", nil, false},
 		{"bob", http.MethodGet, "/api/wp/api/documents/_system/costs.jsonl", nil, false},
 		// PLAT-856-418: split mailbox history remains under the same system fence.
@@ -63,25 +66,25 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"bob", http.MethodPost, "/api/wp/api/report-field", map[string]any{"db_path": "Workflow/private/db/db.sqlite"}, false},
 		// workflow.json (the access record) is owner-only.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Workflow/shared/workflow.json", map[string]any{"content": "{}"}, false},
-		{"alice", http.MethodPut, "/api/wp/api/documents/Workflow/shared/workflow.json", map[string]any{"content": "{}"}, true},
+		{"alice", http.MethodPut, "/api/wp/api/documents/Workflow/shared/workflow.json", map[string]any{"content": "{}"}, false},
+		// The protected Team source rule does not forbid ordinary owner writes elsewhere.
+		{"alice", http.MethodPut, "/api/wp/api/documents/Workflow/private/workflow.json", map[string]any{"content": "{}"}, true},
 		// The caller's own tree is untouched by these rules.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Chats/notes.md", map[string]any{"content": "x"}, true},
 		{"bob", http.MethodGet, "/api/wp/api/documents", nil, true},
-		// Code deletion belongs to its lifecycle route, not raw Files operations.
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code?confirm=true", nil, false},
-		{"root", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/_users/alice/Chats/Code/projects/test-code?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code/files?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/files?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/product.json", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/workflow.json", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/app.ts", nil, true},
-		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/files", nil, true},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code/code?confirm=true", nil, true},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code/code/files?confirm=true", nil, true},
-		{"alice", http.MethodPut, "/api/wp/api/documents/Chats/Code/projects/test-code/workflow.json", map[string]any{"content": "{}"}, true},
-		{"alice", http.MethodGet, "/api/wp/api/documents/Chats/Code/projects/test-code/product.json", nil, true},
+		// Crew deletion belongs to its lifecycle route; retired Code paths have no authority.
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew?confirm=true", nil, false},
+		{"root", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew/files?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Crew/test-crew/product.json", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Crew/test-crew/workflow.json", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Crew/test-crew/app.ts", nil, true},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Crew/test-crew/files", nil, true},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew/code?confirm=true", nil, true},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew/code/files?confirm=true", nil, true},
+		{"alice", http.MethodPut, "/api/wp/api/documents/Crew/test-crew/workflow.json", map[string]any{"content": "{}"}, true},
+		{"alice", http.MethodGet, "/api/wp/api/documents/Crew/test-crew/product.json", nil, true},
 	} {
 		t.Run(tc.user+"_"+tc.method+"_"+strings.ReplaceAll(tc.url, "/", "_"), func(t *testing.T) {
 			var body []byte

@@ -32,9 +32,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 	if options := hcpo.GetExecutionOptions(); options != nil {
 		if resources := options.CrewResources; resources != nil && resources.Scripts != nil {
 			resolver := resources.Scripts
-			resolved, err := resolver.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), "")
+			var resolved CrewScriptConfiguration
+			var err error
+			if options.PythonResume != nil {
+				resolved, err = resolver.ResolveCrewScriptScope(ctx, hcpo.GetWorkspacePath(), "")
+			} else {
+				resolved, err = resolver.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), "")
+			}
 			if err != nil {
 				return err
+			}
+			if resume := options.PythonResume; resume != nil {
+				verified, err := ReadPythonRunResume(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), options.SelectedRunFolder, resolved.Definition.ID)
+				if err != nil || verified.SourceHash != resume.SourceHash || verified.InputsHash != resume.InputsHash || verified.PreviousExecutionID != resume.PreviousExecutionID {
+					return fmt.Errorf("%s", pythonResumeNewRun)
+				}
+				resolved.Definition, resolved.Files = verified.Script.Definition, verified.Script.Files
 			}
 			if resolved.Definition.ID != "" {
 				hcpo.directCrewScript = &resolved.Definition

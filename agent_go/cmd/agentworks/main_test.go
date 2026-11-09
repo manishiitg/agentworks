@@ -86,13 +86,12 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"functions", "call", "--project", "crew-sample", "--function", "review", "--function-input", `{"build":"812"}`}, "", "functions", map[string]any{"action": "call", "project": "crew-sample", "function": "review", "input": map[string]any{"build": "812"}}},
 		{[]string{"functions", "call-status", "--call", "call-sample"}, "", "functions", map[string]any{"action": "status", "call_id": "call-sample"}},
 		{[]string{"workflows", "create", "--crew", "team", "--name", "Weekly report"}, "", "workspace", map[string]any{"action": "automation_create", "crew_id": "team", "name": "Weekly report"}},
-		{[]string{"workflows", "outline", "--workflow", "sample"}, "", "workflow", map[string]any{"action": "plan", "workflow_id": "sample", "view": "outline"}},
+		{[]string{"workflows", "outline", "--workflow", "sample"}, "", "workflow", map[string]any{"action": "outline", "workflow_id": "sample"}},
 		{[]string{"workflows", "source", "--crew", "team", "--workspace", "Workflow/sample", "--file", "nested/report.py"}, "", "workspace", map[string]any{"action": "automation_read", "crew_id": "team", "workspace_path": "Workflow/sample", "file": "nested/report.py"}},
 		{[]string{"workflows", "save-source", "--crew", "team", "--workspace", "Workflow/sample", "--file", "nested/report.py", "--content-file", "-"}, "def total():\n    return 7\n", "workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": "Workflow/sample", "file": "nested/report.py", "content": "def total():\n    return 7\n"}},
 		{[]string{"workflows", "save-inputs", "--workflow", "sample", "--input-presets", `[{"name":"weekly","values":{"count":"7"}}]`}, "", "workflow", map[string]any{"action": "save_inputs", "workflow_id": "sample", "input_presets": []any{map[string]any{"name": "weekly", "values": map[string]any{"count": "7"}}}}},
 		{[]string{"functions", "run-trigger", "--crew", "team", "--workspace", "Workflow/sample", "--preset", "weekly", "--inputs", `{"count":3}`}, "", "functions", map[string]any{"action": "run_trigger", "crew_id": "team", "workspace_path": "Workflow/sample", "input_preset": "weekly", "inputs": map[string]any{"count": 3}}},
 		{[]string{"functions", "trigger-status", "--crew", "team", "--workspace", "Workflow/sample", "--trigger-id", "trigger-one", "--run-id", "run-one"}, "", "functions", map[string]any{"action": "trigger_status", "crew_id": "team", "workspace_path": "Workflow/sample", "trigger_id": "trigger-one", "run_id": "run-one"}},
-		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "workflow", map[string]any{"action": "plan", "workflow_id": "wf-1"}},
 		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "workflow_id": "wf-1", "path": "notes.md"}},
 		{[]string{"files", "list", "--workflow", "wf-1", "--path", "code", "--glob", "**/*.py"}, "", "files", map[string]any{"action": "list", "workflow_id": "wf-1", "path": "code", "glob": "**/*.py"}},
 		{[]string{"files", "code", "--workflow", "wf-1", "--step-id", "run-basic-smoke"}, "", "files", map[string]any{"action": "code", "workflow_id": "wf-1", "step_id": "run-basic-smoke"}},
@@ -152,20 +151,16 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 		tool   string
 		fields map[string]any
 	}{
-		{[]string{"runs", "start-step", "--workflow", "wf-1", "--step-id", "fetch", "--group", "g1", "--tier", "high"}, "runs", map[string]any{"action": "step", "workflow_id": "wf-1", "step_id": "fetch", "group_name": "g1", "tier": "high"}},
-		{[]string{"runs", "start-step", "--workflow", "wf-1", "--step-id", "fetch", "--set", `script_parameters={"limit":10}`}, "runs", map[string]any{"action": "step", "workflow_id": "wf-1", "step_id": "fetch", "script_parameters": map[string]any{"limit": float64(10)}}},
 		{[]string{"runs", "start-workflow", "--workflow", "wf-1", "--preset", "weekly", "--inputs", `{"count":3,"active":true}`}, "runs", map[string]any{"action": "start", "workflow_id": "wf-1", "input_preset": "weekly", "inputs": map[string]any{"count": 3, "active": true}}},
 		{[]string{"runs", "rerun", "--workflow", "sample", "--run-folder", "run-one"}, "runs", map[string]any{"action": "rerun", "workflow_id": "sample", "run_folder": "run-one"}},
+		{[]string{"runs", "resume", "--workflow", "sample", "--run-folder", "run-one"}, "runs", map[string]any{"action": "resume", "workflow_id": "sample", "run_folder": "run-one"}},
 		{[]string{"runs", "status", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "status", "workflow_id": "wf-1", "session_id": "s1"}},
-		{[]string{"runs", "message", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1", "--message", "slow down"}, "runs", map[string]any{"action": "message", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1", "message": "slow down"}},
 		{[]string{"runs", "stop", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1"}, "runs", map[string]any{"action": "stop_step", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1"}},
 		{[]string{"runs", "stop-all", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "stop_all", "workflow_id": "wf-1", "session_id": "s1"}},
 		{[]string{"runs", "executions", "--workflow", "wf-1"}, "runs", map[string]any{"action": "active", "workflow_id": "wf-1"}},
 		{[]string{"schedules", "list", "--project", "wf-1"}, "automations", map[string]any{"action": "list", "scope": "schedule", "project": "wf-1"}},
 		{[]string{"schedules", "runs", "--project", "wf-1", "--schedule-id", "daily"}, "automations", map[string]any{"action": "runs", "scope": "schedule", "project": "wf-1", "schedule_id": "daily"}},
 		{[]string{"schedules", "trigger", "--project", "wf-1", "--schedule-id", "daily"}, "automations", map[string]any{"action": "run_now", "scope": "schedule", "project": "wf-1", "schedule_id": "daily"}},
-		{[]string{"chat", "ask", "--workflow", "wf-1", "--message", "why did step 1 fail?"}, "chat", map[string]any{"workflow_id": "wf-1", "message": "why did step 1 fail?"}},
-		{[]string{"chat", "ask", "--workflow", "wf-1", "--inbox", "inbox-1", "--message", "and then?"}, "chat", map[string]any{"workflow_id": "wf-1", "inbox_id": "inbox-1", "message": "and then?"}},
 		{[]string{"messages", "send", "--crew", "crew-1", "--message", "Please review", "--submission-id", "msg-1"}, "messages", map[string]any{"action": "send", "crew_id": "crew-1", "message": "Please review", "submission_id": "msg-1"}},
 		{[]string{"messages", "read", "--inbox", "inbox-1", "--after", "2", "--limit", "10", "--wait", "25"}, "messages", map[string]any{"action": "read", "inbox_id": "inbox-1", "after": 2, "limit": 10, "wait_seconds": 25}},
 		{[]string{"functions", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "functions", map[string]any{"action": "status", "call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},
@@ -367,7 +362,7 @@ func TestSkillsInstallWritesBundledSkill(t *testing.T) {
 func TestInvalidInputDoesNotCallServer(t *testing.T) {
 	for _, raw := range []string{`null`, `[]`, `{} {}`, `{"x":`} {
 		var stdout, stderr bytes.Buffer
-		code := run(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "missing"), "tools", "call", "get_plan", "--input", "-"}, strings.NewReader(raw), &stdout, &stderr, func(string) string { return "" })
+		code := run(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "missing"), "tools", "call", "get_workflow", "--input", "-"}, strings.NewReader(raw), &stdout, &stderr, func(string) string { return "" })
 		if code == 0 || !strings.Contains(stderr.String(), "--input") {
 			t.Fatalf("input %q: code %d %s", raw, code, &stderr)
 		}
@@ -545,7 +540,7 @@ func TestMCPStdioRoundtrip(t *testing.T) {
 			t.Error("missing hosted token")
 		}
 		if r.URL.Path == "/api/external/v1/tools" {
-			_, _ = w.Write([]byte(`{"tools":[{"name":"get_plan","description":"Plan","inputSchema":{"type":"object","properties":{"workflow_id":{"type":"string"}},"required":["workflow_id"]}}]}`))
+			_, _ = w.Write([]byte(`{"tools":[{"name":"get_workflow","description":"Plan","inputSchema":{"type":"object","properties":{"workflow_id":{"type":"string"}},"required":["workflow_id"]}}]}`))
 			return
 		}
 		var body struct {
@@ -555,7 +550,7 @@ func TestMCPStdioRoundtrip(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if body.Name != "get_plan" || body.Arguments["workflow_id"] != "wf" {
+		if body.Name != "get_workflow" || body.Arguments["workflow_id"] != "wf" {
 			t.Errorf("call: %#v", body)
 		}
 		_, _ = w.Write([]byte(`{"revision":"v1","plan":{"steps":[]}}`))
@@ -596,10 +591,10 @@ func TestMCPStdioRoundtrip(t *testing.T) {
 		t.Fatalf("initialize instructions missing guidance entrypoint: %q", initialized.Instructions)
 	}
 	listed, err := client.ListTools(ctx, mcp.ListToolsRequest{})
-	if err != nil || len(listed.Tools) != 1 || listed.Tools[0].Name != "get_plan" {
+	if err != nil || len(listed.Tools) != 1 || listed.Tools[0].Name != "get_workflow" {
 		t.Fatalf("list: %#v %v", listed, err)
 	}
-	result, err := client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "get_plan", Arguments: map[string]any{"workflow_id": "wf"}}})
+	result, err := client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "get_workflow", Arguments: map[string]any{"workflow_id": "wf"}}})
 	if err != nil || result.IsError || len(result.Content) != 1 {
 		t.Fatalf("call: %#v %v", result, err)
 	}

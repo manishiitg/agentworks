@@ -1,14 +1,13 @@
 package server
 
 import (
-	"context"
-	"strings"
 	"testing"
 
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
+// PLAT-746: effective role controls which tools are offered. Native Vault
+// validates arguments; this registration test does not require a Vault service.
 func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name, session  string
@@ -49,13 +48,6 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 			}
 			if _, got := reg.tools["list_mcp_servers"]; got != (tc.want || tc.list) {
 				t.Fatalf("list_mcp_servers registered=%v want %v (%+v)", got, tc.want || tc.list, policy)
-			}
-			if tc.want {
-				// Exercise the real handler without making a network request.
-				result, err := reg.tools["install_mcp_server"].exec(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "policy-test-user"}), map[string]interface{}{})
-				if err == nil || !strings.Contains(err.Error(), "name is required") || result != "" {
-					t.Fatalf("missing required name: %q %v", result, err)
-				}
 			}
 		})
 	}
@@ -110,78 +102,3 @@ type chatPolicyTestDefinition struct{ recordingRegistrar }
 
 func (*chatPolicyTestDefinition) AttachSkill(*llmtypes.Skill) error { return nil }
 func (*chatPolicyTestDefinition) AttachedSkills() []*llmtypes.Skill { return nil }
-
-func TestBuilderPhaseActuallyRegistersMCPManagement(t *testing.T) {
-	for _, readOnly := range []bool{false, true} {
-		api := &StreamingAPI{logger: loggerv2.NewNoop(), stoppedSessions: map[string]bool{"policy-chat": true}}
-		reg := &chatPolicyTestDefinition{}
-		err := api.installWorkflowPhaseTools(context.Background(), reg, "policy-chat", "test-user", "workflow-builder", "", "", map[string]string{"WorkshopMode": "workshop"}, nil, nil, nil, nil, nil, QueryRequest{}, readOnly)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"search_mcp_catalog", "install_mcp_server", "add_mcp_server"} {
-			_, exists := reg.tools[name]
-			if exists == readOnly {
-				t.Fatalf("phase setup %s present=%v readOnly=%v", name, exists, readOnly)
-			}
-		}
-	}
-}
-
-func TestScheduledBuilderActuallyRegistersPlanMigrationTools(t *testing.T) {
-	for _, readOnly := range []bool{false, true} {
-		api := &StreamingAPI{logger: loggerv2.NewNoop(), stoppedSessions: map[string]bool{"schedule-policy-chat": true}}
-		reg := &chatPolicyTestDefinition{}
-		err := api.installWorkflowPhaseTools(
-			context.Background(), reg, "schedule-policy-chat", "test-user", "workflow-builder", "", "",
-			map[string]string{"WorkshopMode": "workshop"}, nil, nil, nil, nil, nil,
-			QueryRequest{TriggeredBy: "cron"}, readOnly,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"maintain_plan"} {
-			_, exists := reg.tools[name]
-			if exists == readOnly {
-				t.Fatalf("scheduled phase tool %s present=%v readOnly=%v", name, exists, readOnly)
-			}
-		}
-	}
-}
-
-func TestChatPolicyReconnectPreservesCompatibleHistory(t *testing.T) {
-	for _, tc := range []struct {
-		name          string
-		coding, known bool
-		previous      string
-		saved         *ChatHistoryAgentRuntime
-		want          bool
-	}{
-		{name: "fresh API chat"},
-		{name: "changed policy on API chat", known: true, previous: "old"},
-		{name: "fresh coding chat", coding: true},
-		{name: "unchanged live coding chat", coding: true, known: true, previous: "current"},
-		{name: "changed live coding chat", coding: true, known: true, previous: "old", want: true},
-		{name: "retained compatible after restart", coding: true, saved: &ChatHistoryAgentRuntime{ExternalSessionID: "native-id", ChatPolicyKey: "current"}},
-		{name: "legacy retained needs new catalog", coding: true, saved: &ChatHistoryAgentRuntime{ExternalSessionID: "native-id"}, want: true},
-		{name: "retained changed policy", coding: true, saved: &ChatHistoryAgentRuntime{ExternalSessionID: "native-id", ChatPolicyKey: "old"}, want: true},
-		{name: "saved API history has no native session", coding: true, saved: &ChatHistoryAgentRuntime{Kind: "llm_agent"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := chatPolicyRequiresReconnect(tc.coding, tc.previous, "current", tc.known, tc.saved); got != tc.want {
-				t.Fatalf("reconnect=%v want=%v", got, tc.want)
-			}
-		})
-	}
-	api := &StreamingAPI{
-		lastChatPolicyBySession:      map[string]string{"chat": "current"},
-		lastAgentProfileKeyBySession: map[string]string{"chat": "profile-sha256:current"},
-	}
-	runtime := api.captureChatHistoryAgentRuntime("chat", "cursor-cli", "test-model", "Workflow/test", nil)
-	if runtime.ChatPolicyKey != "current" {
-		t.Fatal("native runtime did not persist its policy fingerprint")
-	}
-	if runtime.AgentProfileKey != "profile-sha256:current" {
-		t.Fatal("native runtime did not persist its agent profile fingerprint")
-	}
-}

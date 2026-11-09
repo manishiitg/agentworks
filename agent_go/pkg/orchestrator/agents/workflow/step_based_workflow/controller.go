@@ -668,7 +668,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	}
 	var variableValues map[string]string
 	var err error
-	if opts != nil && opts.ResumeFromStep > 0 {
+	if hcpo.resumingPython() {
+		variableValues = cloneWorkflowStringMap(opts.PythonResume.Values)
+	} else if opts != nil && opts.ResumeFromStep > 0 {
 		if !opts.AllowRunContinuation {
 			return "", fmt.Errorf("Only the Crew owner can continue an existing run; start a new run instead")
 		}

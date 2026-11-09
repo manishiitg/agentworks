@@ -1,25 +1,7 @@
-## People and workflow runs
+# Questions in conversations
 
-A workflow run never waits for a person (decisions log, 2026-11-08). There is
-no mid-run question, approval card or OTP prompt. Use this reference when a
-workflow needs something from a person.
+An attended Crew conversation can ask its person a question using the program's native question tool or the offered clarification tool. Shared-Crew Ask uses its existing scoped question/reply path. Keep questions concise and within the current conversation; a child or another person must not answer as its owner.
 
-| Situation | What to do |
-| --- | --- |
-| Clarifying scope or discussing an output | Ask in the normal chat. The reply continues the conversation. |
-| A known value or instruction for this run | Supply it at launch through declared inputs or function arguments. |
-| A missing value during a run | The step fails with a clear reason. Fix the input and run again. |
-| The user reviews business items in a dashboard | The dashboard saves each item's status in the database. A later run reads the approved items; the write alone starts nothing. |
-| A dashboard action should hand a task to the agent now | Use the dashboard's chat action, which queues a message in an existing chat. |
-| Correcting an execution that is already running | `runs action=message` forwards to that exact execution. |
-| Telling people about a result | The run record is the summary and the owner is told in the Crew chat. A workflow that must reach other people sends explicitly (`messages action=email_send` or `messages action=slack_send`, or the Python send helpers). |
+Background work and messages started by another agent use the existing unattended handling. Do not invent a new waiting state, send a question to another audience or change the current tool set simply because the turn was automatic.
 
-Schedules must complete unattended. When a person must review something,
-provide the actual draft/change/evidence to review, not a summary of it. For a
-decision that takes hours or days, save the proposal (for example in the
-database), end the run, and let a later run
-read the person's saved answer. A default or a skipped answer is never
-evidence of approval: the consumer of an action checks for an explicit saved
-approval before acting.
-
-Crew chats with their own person are unaffected: they ask in the conversation.
+Saved Python workflows take declared inputs before they start; they do not pause on a plan human-input step. If a required value is missing, ask for it in the Crew conversation before starting the requested work. A running program is not corrected by sending a message to an old plan step. Inspect its real evidence; stop the returned execution only when requested, then edit and run through the current supported entry.

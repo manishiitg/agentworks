@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 func reviewPRTrigger() WorkflowSchedule {
@@ -108,28 +107,6 @@ func TestWorkflowFunctionObjectInput(t *testing.T) {
 	}
 	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"INPUT": "not an object"}); err == nil {
 		t.Fatal("object input accepted a string")
-	}
-}
-
-// The validated inputs become the run's variables directly.
-func TestDeliverFunctionSetsRunVariables(t *testing.T) {
-	var got *WorkflowWebhookDelivery
-	receiver := webhookReceiver{
-		existing: func(context.Context, string) (schedulerstate.Run, error) {
-			return schedulerstate.Run{}, schedulerstate.ErrRunNotFound
-		},
-		start: func(_ string, _ string, _ string, input *WorkflowWebhookDelivery) (string, error) {
-			got = input
-			return input.RunID, nil
-		},
-	}
-	sched := reviewPRTrigger()
-	result, err := receiver.deliverFunction(context.Background(), "gate", "Workflow/gate", sched, "call-1", []byte(`{"function":"review_pr"}`), map[string]string{"PR_NUMBER": "149"}, "")
-	if err != nil || result.Status != "accepted" {
-		t.Fatalf("deliver = %+v err=%v", result, err)
-	}
-	if got == nil || got.Variables["PR_NUMBER"] != "149" || got.Group != "" || got.Event != "agentworks.function.review_pr" {
-		t.Fatalf("delivery = %+v", got)
 	}
 }
 
@@ -246,6 +223,13 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 // review_pr failed with "GITHUB_OWNER is no longer allowed" because function
 // triggers have no allowed_variables list).
 func TestFunctionTriggerVariablesPassRunStartCheck(t *testing.T) {
+	definitions, err := json.Marshal(reviewPRInputDefinitions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/test/variables/variables.json": string(definitions)}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	sched := reviewPRTrigger()
 	input := &WorkflowWebhookDelivery{Variables: map[string]string{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "149"}}
 	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", sched, input); err != nil {
@@ -255,7 +239,7 @@ func TestFunctionTriggerVariablesPassRunStartCheck(t *testing.T) {
 	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", sched, input); err == nil || !strings.Contains(err.Error(), `"OTHER"`) {
 		t.Fatalf("undeclared variable: err = %v", err)
 	}
-	hook := WorkflowSchedule{ScheduleType: "webhook", Webhook: &WorkflowWebhookConfig{AllowedVariables: []string{"PR_NUMBER"}}}
+	hook := WorkflowSchedule{ScheduleType: "webhook", Inputs: map[string]string{"GITHUB_OWNER": "example", "GITHUB_REPO": "app"}, Webhook: &WorkflowWebhookConfig{AllowedVariables: []string{"PR_NUMBER"}}}
 	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", hook, &WorkflowWebhookDelivery{Variables: map[string]string{"PR_NUMBER": "1"}}); err != nil {
 		t.Fatalf("webhook allow-list: %v", err)
 	}
@@ -366,6 +350,7 @@ func TestWorkflowFunctionCallStatusAndResultSize(t *testing.T) {
 
 // PLAT-871: a manifest save must retain authored constraints, and calls must enforce them.
 func TestGoalFunctionSchemaSurvivesManifestSaveAndValidatesCalls(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newCrewFunctionEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	schema := map[string]interface{}{
@@ -428,8 +413,11 @@ func TestGoalFunctionSchemaSurvivesManifestSaveAndValidatesCalls(t *testing.T) {
 }
 
 // PLAT-746-265: selecting names never creates a second type contract or grants
-// access to fixed/secret values. Definitions refuse to leave saved consumers dangling.
+// access to fixed values. Definitions refuse to leave saved consumers dangling.
+// Selected Vault bindings are guarded at admission, not guessed from names
+// (266b844d7e); the companion selected-binding regressions cover that boundary.
 func TestWorkflowInputExposureAndSavedReferences(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	definitions := &VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer", Required: true, Value: "4"}, {Name: "scope", Required: true, Value: "default"}, {Name: "SECRET_KEY"}}}
 	schema, err := workflowCallerInputSchema(definitions, []string{"count", "scope"}, "", map[string]string{"scope": "fixed"})
 	if err != nil {
@@ -446,10 +434,11 @@ func TestWorkflowInputExposureAndSavedReferences(t *testing.T) {
 	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"scope": "override"}); err == nil {
 		t.Fatal("caller overrode fixed input")
 	}
-	for _, names := range [][]string{{"SECRET_KEY"}, {"unknown"}} {
-		if _, err := workflowCallerInputSchema(definitions, names, "", nil); err == nil {
-			t.Fatalf("exposed protected or unknown inputs: %v", names)
-		}
+	if _, err := workflowCallerInputSchema(definitions, []string{"unknown"}, "", nil); err == nil {
+		t.Fatal("unknown input exposed")
+	}
+	if _, err := workflowCallerInputSchema(definitions, []string{"SECRET_KEY"}, "", nil); err != nil {
+		t.Fatalf("ordinary declared input was rejected by its name: %v", err)
 	}
 	env := newCrewFunctionEnv(t)
 	ctx := context.Background()

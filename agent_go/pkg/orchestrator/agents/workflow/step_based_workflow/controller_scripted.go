@@ -516,7 +516,7 @@ print('[preflight] Python bundle syntax, top-level imports and configuration OK'
 // chat tools. In particular a pinned Run chat has no database tools to lend
 // its group session. Give each invocation its own registry so parallel helpers
 // cannot replace one another's access or leave broader tools on a cached group.
-func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func() {
+func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func(...bool) {
 	ctx, finishActivities := context.WithCancel(ctx)
 	sessionID := fmt.Sprintf("script-step-%s-%d", step.GetID(), time.Now().UnixNano())
 	if hcpo.httpSessionID != "" {
@@ -555,7 +555,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 		}
 	}
 	ctx = context.WithValue(ctx, pythonScriptSessionKey{}, sessionID)
-	bridgeTools["python_automation"] = hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
+	helper, finishSteps := hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
+	bridgeTools["python_automation"] = helper
 	allow["python_automation"] = true
 	env["WORKFLOW_RUN_DIR"] = workflowAbsPath(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder)
 	codeexec.InitRegistryForSession(sessionID, bridgeTools, hcpo.GetLogger())
@@ -568,7 +569,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 	registerStepSessionShellEnv(sessionID, env["STEP_OUTPUT_DIR"], env["STEP_EXECUTION_DIR"], env["DB_PATH"], env["RUN_FOLDER"], env)
 	configureWorkshopToolAgentBridgeSession(sessionID)
 	hcpo.GetLogger().Info(fmt.Sprintf("[SCRIPT_BRIDGE] Registered step tools session=%s step=%s db_access=%s tools=%d", sessionID, step.GetID(), dbAccess, len(bridgeTools)))
-	return func() {
+	return func(success ...bool) {
+		finishSteps(len(success) > 0 && success[0])
 		finishActivities()
 		codeexec.CleanupSession(sessionID)
 		common.ClearSessionShellConfig(sessionID)
@@ -700,7 +702,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// leak between concurrently running todo routes.
 	extraEnv = appendScriptedDelegationEnv(ctx, extraEnv)
 	releaseBridge := hcpo.configureScriptBridgeSession(ctx, step, guard, dbAccess, extraEnv, workDirAbsPath, stepExecutionRelPath)
-	defer releaseBridge()
+	defer func() { releaseBridge(execErr == nil && exitCode == 0) }()
 	if len(scriptedParameterDefinitions(step)) > 0 {
 		if _, present := extraEnv[ScriptedParametersEnv]; !present {
 			extraEnv[ScriptedParametersEnv] = "{}"
@@ -869,6 +871,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	docsRoot := GetPromptDocsRoot()
 	stepID := step.GetID()
 
+	reuseCaptured := false
 	shared, hasShared := step.(*ScriptedPlanStep)
 	hasShared = hasShared && shared.crewScript != nil
 	if hasShared {
@@ -906,6 +909,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		codeDirRelPath = stepExecutionRelPath + "/code"
 		codeDirAbsPath = workflowAbsPath(codeDirRelPath)
 		mainPyAbsPath = filepath.Join(codeDirAbsPath, "main.py")
+		if hcpo.resumingPython() {
+			_, err := hcpo.ReadWorkspaceFile(ctx, codeDirRelPath+"/script.json")
+			reuseCaptured = err == nil
+		}
 		if err := createFolderViaAPI(ctx, codeDirRelPath); err != nil {
 			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 		}
@@ -913,8 +920,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		if files == nil {
 			return &ScriptedFastPathResult{RanScript: true, Error: "saved script source was not resolved", ExitCode: -1}
 		}
-		if err := hcpo.materializeScriptBundle(ctx, codeDirRelPath, files); err != nil {
-			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		if !reuseCaptured {
+			if err := hcpo.materializeScriptBundle(ctx, codeDirRelPath, files); err != nil {
+				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+			}
 		}
 		existingScript = string(files["main.py"])
 		if existingScript == "" {
@@ -932,7 +941,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 
 	// Clean previous output files before running saved script — fresh slate for this execution.
 	// Preserve code/ containing the saved-source bundle.
-	hcpo.cleanStepOutputDir(ctx, stepExecutionRelPath, "code")
+	if !hcpo.resumingPython() {
+		hcpo.cleanStepOutputDir(ctx, stepExecutionRelPath, "code")
+	}
 	if hasShared {
 		// Direct chat and workflow invocations record the same resolved inputs and
 		// executed definition beside their own copied source bundle.
@@ -943,9 +954,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		if hcpo.directCrewScript == nil {
 			files["inputs.json"] = inputs
 		}
-		for file, content := range files {
-			if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
-				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		if !reuseCaptured {
+			for file, content := range files {
+				if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
+					return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+				}
 			}
 		}
 		// Hash the actual frozen bytes, including the resolved script.json,

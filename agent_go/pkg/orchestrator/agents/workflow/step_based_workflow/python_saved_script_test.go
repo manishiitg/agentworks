@@ -20,6 +20,10 @@ import (
 
 type pythonSavedScripts map[string]CrewScriptConfiguration
 
+func (scripts pythonSavedScripts) ResolveCrewScriptScope(ctx context.Context, workspace, id string) (CrewScriptConfiguration, error) {
+	return scripts.ResolveCrewScript(ctx, workspace, id)
+}
+
 func (scripts pythonSavedScripts) ResolveCrewScript(_ context.Context, _, id string) (CrewScriptConfiguration, error) {
 	return scripts[id], nil
 }
@@ -122,11 +126,17 @@ print('saved-script-finished')
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	defer common.ClearSessionShellConfig(c.GetMCPSessionID())
-	call := func(key, id string, inputs map[string]interface{}, resume bool, redo ...bool) pythonHelperReply {
+	dispatch := func(key, id string, inputs map[string]interface{}, resume, explicit, redo bool) pythonHelperReply {
 		t.Helper()
-		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, ResumeFromStep: 1, CrewResources: &CrewResources{Scripts: scripts}})
-		handler := c.pythonAutomationHandler(ctx, parent, filepath.Join(docs, root, "code/A"), root+"/runs/run-saved/execution/A")
-		out, err := handler(ctx, map[string]interface{}{"action": "run_script", "key": key, "order": float64(1), "redo": len(redo) > 0 && redo[0], "arguments": map[string]interface{}{"id": id, "inputs": inputs}})
+		c.SetExecutionOptions(&ExecutionOptions{PythonResume: func() *PythonRunResume {
+			if resume {
+				return &PythonRunResume{}
+			}
+			return nil
+		}(), ResumeFromStep: 1, CrewResources: &CrewResources{Scripts: scripts}})
+		handler, finishSteps := c.pythonAutomationHandler(ctx, parent, filepath.Join(docs, root, "code/A"), root+"/runs/run-saved/execution/A")
+		defer finishSteps(false)
+		out, err := handler(ctx, map[string]interface{}{"action": "run_script", "key": key, "explicit_key": explicit, "order": float64(1), "redo": redo, "arguments": map[string]interface{}{"id": id, "inputs": inputs}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,6 +145,10 @@ print('saved-script-finished')
 			t.Fatal(err)
 		}
 		return reply
+	}
+	call := func(key, id string, inputs map[string]interface{}, resume bool, redo ...bool) pythonHelperReply {
+		t.Helper()
+		return dispatch(key, id, inputs, resume, true, len(redo) > 0 && redo[0])
 	}
 	read := func(reply pythonHelperReply) string {
 		t.Helper()
@@ -222,8 +236,21 @@ print('saved-script-finished')
 	if err := os.RemoveAll(filepath.Join(docs, root, "runs/run-saved/execution/A")); err != nil {
 		t.Fatal(err)
 	}
-	if cached := call("saved-b", "B", map[string]interface{}{"count": 3}, true); cached.LogFile != first.LogFile || read(cached) != read(first) {
+	if cached := call("saved-b", "B", map[string]interface{}{"count": 3}, true); !cached.Reused || cached.LogFile != first.LogFile || read(cached) != read(first) {
 		t.Fatal("resume lost completed child files")
+	}
+	changedReply := call("saved-b", "B", map[string]interface{}{"count": 4}, true)
+	if changedReply.Reused || changedReply.LogFile == first.LogFile || !strings.Contains(read(changedReply), `"count": 4`) {
+		t.Fatal("changed explicit-key arguments reused the old result")
+	}
+	implicit := dispatch("implicit-b", "B", map[string]interface{}{"count": 3}, false, false, false)
+	read(implicit)
+	if fresh := dispatch("implicit-b", "B", map[string]interface{}{"count": 3}, true, false, false); fresh.Reused || fresh.LogFile == implicit.LogFile || read(fresh) == "" {
+		t.Fatal("unkeyed script work was reused during resume")
+	}
+	failed := call("failed-again", "failing", map[string]interface{}{}, false)
+	if retried := call("failed-again", "failing", map[string]interface{}{}, true); failed.OK || retried.OK || retried.Reused || retried.LogFile == failed.LogFile || !strings.Contains(retried.Error, "fixture child failure") {
+		t.Fatalf("failed script result was reused: %+v", retried)
 	}
 	unfinished := call("unfinished", "B", map[string]interface{}{}, false)
 	read(unfinished)
@@ -260,7 +287,7 @@ print('saved-script-finished')
 	if reply := call("unfinished", "B", map[string]interface{}{}, true); reply.OK || !strings.Contains(reply.Error, "no completed receipt") {
 		t.Fatalf("uncertain script replayed: %+v", reply)
 	}
-	if redone := call("unfinished", "B", map[string]interface{}{}, true, true); redone.LogFile == unfinished.LogFile || read(redone) == "" {
+	if redone := call("unfinished", "B", map[string]interface{}{}, true, true); redone.LogFile == unfinished.LogFile || read(redone) == "" || redone.Value.(map[string]interface{})["output_dir"] == unfinished.Value.(map[string]interface{})["output_dir"] {
 		t.Fatal("explicit redo did not retain a fresh attempt")
 	}
 	changed := scripts["B"]

@@ -183,9 +183,60 @@ def inspect_source(source):
     return graph
 
 
+def python_type_notes(files):
+    """Optional static hints. Never import authored files or inherit credentials."""
+    import pathlib
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    checker = shutil.which('pyright') or shutil.which('basedpyright')
+    if not checker:
+        return [], []  # no checker on this server: nothing to say
+    root = pathlib.Path.cwd().resolve()
+    saved = [file.resolve() for name in files for file in [root / name]
+             if not file.is_symlink() and file.is_file() and file.resolve().is_relative_to(root)]
+    sdk = next((entry for entry in os.environ.get('PYTHONPATH', '').split(os.pathsep)
+                if entry and (pathlib.Path(entry) / 'agentworks' / '__init__.py').is_file()), None)
+    if not saved or not sdk:
+        return [], ['Type hints could not be checked this time. The script can still run.']
+    try:
+        with tempfile.TemporaryDirectory(prefix='python-hints-') as directory:
+            config = pathlib.Path(directory) / 'pyrightconfig.json'
+            config.write_text(json.dumps({'include': [os.path.relpath(file, directory) for file in saved],
+                'extraPaths': [sdk, str(root)], 'typeCheckingMode': 'basic',
+                'useLibraryCodeForTypes': True}), encoding='utf-8')
+            environment = {'PATH': os.environ.get('PATH', ''), 'HOME': directory,
+                           'TMPDIR': directory, 'LANG': 'C.UTF-8'}
+            result = subprocess.run([checker, '--outputjson', '--project', str(config),
+                                     '--pythonpath', sys.executable], cwd=root,
+                                    env=environment, capture_output=True, text=True, timeout=10)
+            if result.returncode not in (0, 1):
+                raise ValueError('checker unavailable')
+            report = json.loads(result.stdout)
+            if report.get('summary', {}).get('filesAnalyzed', 0) <= 0:
+                return [], ['The type check did not analyze any files. The script can still run.']
+            diagnostics = report['generalDiagnostics']
+            notes = []
+            for item in diagnostics:
+                file = pathlib.Path(item['file']).resolve()
+                if file not in saved:
+                    continue
+                line = item.get('range', {}).get('start', {}).get('line', 0)
+                notes.append({'file': file.relative_to(root).as_posix(),
+                              'line': max(1, int(line) + 1), 'message': str(item['message'])})
+            summary = []
+            if notes:
+                noun = 'problem' if len(notes) == 1 else 'problems'
+                summary = [f'Type hints show {len(notes)} possible {noun}. The script can still run.']
+            return notes, summary
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return [], ['Type hints could not be checked this time. The script can still run.']
+
+
 def inspect_automation_source(files):
     """A source outline, not a Python execution plan. Authored modules never run."""
-    graph = {"native": True, "nodes": [], "edges": [], "errors": []}
+    graph = {"native": True, "nodes": [], "edges": [], "errors": [], "unkeyed_calls": [], "notes": []}
     try:
         if not isinstance(files, dict) or 'main.py' not in files:
             raise ValueError('Save main.py before viewing this automation.')
@@ -233,6 +284,22 @@ def inspect_automation_source(files):
                     return imported[0], expression.attr
             return None, None
 
+        # Inventory only calls whose imported target is known. No source is
+        # rewritten: a loop/helper needs the author's logical work identity.
+        for module, tree in trees.items():
+            for call in ast.walk(tree):
+                if not isinstance(call, ast.Call):
+                    continue
+                origin, helper = target(module, call.func)
+                if origin != 'agentworks' or helper not in ('agent', 'run_script'):
+                    continue
+                key = next((item.value for item in call.keywords if item.arg == 'key'), None)
+                if key is None or isinstance(key, ast.Constant) and key.value is None:
+                    graph['unkeyed_calls'].append({'file': filenames[module], 'line': call.lineno, 'helper': helper})
+        graph['unkeyed_calls'].sort(key=lambda item: (item['file'], item['line'], item['helper']))
+        if graph['unkeyed_calls']:
+            graph['notes'].append('Some agent or saved-script calls have no visible saved-result key. Add a stable key to costly work you want to reuse after a failure, such as one key per record. Scripts still run without keys.')
+
         def literal(module, value):
             seen = set()
             while True:
@@ -243,7 +310,7 @@ def inspect_automation_source(files):
                 else:
                     origin = target(module, value)
                 if origin in seen or origin[0] not in constants or origin[1] not in constants[origin[0]]:
-                    return 'built at run time'
+                    return None
                 seen.add(origin)
                 module = origin[0]
                 value = constants[module][origin[1]]
@@ -251,9 +318,17 @@ def inspect_automation_source(files):
         def argument(call, index, name):
             return call.args[index] if len(call.args) > index else next((item.value for item in call.keywords if item.arg == name), None)
 
+        def call_settings(call):
+            # Only plain string values written on the call itself; anything computed is left to the run.
+            found = {}
+            for item in call.keywords:
+                if item.arg in ('model', 'tier', 'reasoning') and isinstance(item.value, ast.Constant) and isinstance(item.value.value, str):
+                    found[item.arg] = item.value.value
+            return found
+
         parents, last = [], {}
 
-        def add(call, module, kind, label, identity, description=None, role=None):
+        def add(call, module, kind, label, identity, description=None, role=None, settings=None):
             import hashlib
             parent = parents[-1] if parents else None
             # One row per occurrence: the same step reached in two cases gets two ids.
@@ -263,6 +338,8 @@ def inspect_automation_source(files):
                 node['description'] = description
             if role:
                 node['role'] = role
+            if settings:
+                node['settings'] = settings
             if parent:
                 node['parent'] = parent
             if any(existing['id'] == node['id'] for existing in graph['nodes']):
@@ -342,7 +419,7 @@ def inspect_automation_source(files):
             if fn:
                 for decoration in fn.decorator_list:
                     if isinstance(decoration, ast.Call) and target(module, decoration.func) == ('agentworks', 'step'):
-                        return fn, literal(module, argument(decoration, 0, 'title'))
+                        return fn, literal(module, argument(decoration, 0, 'title')) or name
             return None, None
 
         def walk_call(module, expression, expand=True):
@@ -357,8 +434,9 @@ def inspect_automation_source(files):
                 return found
             name_module, name = target(module, expression.func)
             if (name_module, name) == ('agentworks', 'agent'):
-                add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')),
-                    f'agent@{filenames[module]}:{expression.lineno}', literal(module, argument(expression, 1, 'message')))
+                add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')) or 'Agent',
+                    f'agent@{filenames[module]}:{expression.lineno}', literal(module, argument(expression, 1, 'message')),
+                    settings=call_settings(expression))
                 return True
             fn, label = decorated(name_module, name) if name_module in trees else (None, None)
             if fn is not None:
@@ -378,10 +456,8 @@ def inspect_automation_source(files):
                 if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Match)):
                     if has_step(module, statement):
                         structured(module, statement, expand)
-                    else:
-                        add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
-                elif not walk_call(module, statement, expand) and any(isinstance(item, ast.Call) for item in ast.walk(statement)):
-                    add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
+                else:
+                    walk_call(module, statement, expand)
 
         def structured(module, statement, expand):
             """Draw a block that holds steps: a container row, with its steps nested inside."""
@@ -468,6 +544,9 @@ def inspect_automation_source(files):
     except (SyntaxError, ValueError, RecursionError, TypeError) as error:
         graph['nodes'], graph['edges'] = [], []
         graph['errors'] = [str(error)]
+    if os.environ.get('VAR_AUTOMATION_TYPE_CHECK') == '1' and isinstance(files, dict):
+        graph['type_notes'], notes = python_type_notes(files)
+        graph['notes'].extend(notes)
     return graph
 
 

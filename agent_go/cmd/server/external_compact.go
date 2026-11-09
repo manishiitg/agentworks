@@ -115,10 +115,23 @@ func (api *StreamingAPI) externalWaitForTurn(started map[string]interface{}, ses
 func externalCompactWorkflow(item DiscoveredWorkflow) map[string]any {
 	view := map[string]any{"workspace_path": item.WorkspacePath, "my_access": item.MyAccess}
 	if m := item.Manifest; m != nil {
-		enabled := 0
+		// The manifest's execution view combines the three canonical entry files.
+		// Only records loaded from schedules.json are timers (PLAT-746-510).
+		counts := map[string]int{"schedules": 0, "schedules_enabled": 0, "webhooks": 0, "webhooks_enabled": 0, "function_triggers": 0, "function_triggers_enabled": 0, "other": 0, "other_enabled": 0}
 		for _, s := range m.Schedules {
+			kind := "other"
+			switch s.ScheduleType {
+			case "", "cron", "calendar":
+				kind = "schedules"
+			case "webhook":
+				kind = "webhooks"
+				if s.IsInternalTrigger() {
+					kind = "function_triggers"
+				}
+			}
+			counts[kind]++
 			if s.Enabled {
-				enabled++
+				counts[kind+"_enabled"]++
 			}
 		}
 		view["id"], view["label"] = m.ID, m.Label
@@ -134,7 +147,9 @@ func externalCompactWorkflow(item DiscoveredWorkflow) map[string]any {
 		if m.Access != nil {
 			view["owners"] = m.Access.Owners
 		}
-		view["schedules"], view["schedules_enabled"] = len(m.Schedules), enabled
+		for name, count := range counts {
+			view[name] = count
+		}
 	}
 	return view
 }

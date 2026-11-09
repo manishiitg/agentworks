@@ -26,7 +26,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
+__all__ = ["AutomationError", "Reply", "AskResult", "ask_agent", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
 __all__.append("secret")
 
 
@@ -46,6 +46,7 @@ class Reply:
     log_error: str = ""
     log_kind: str = "activity"
     answer_file: Path | None = None
+    reused: bool = False
 
 
 JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
@@ -72,7 +73,19 @@ class FunctionResult(Reply):
     receipt: Mapping[str, JSONValue] = field(default_factory=dict)
 
 
-_active_step: ContextVar[str] = ContextVar("agentworks_step", default="")
+@dataclass(frozen=True)
+class AskResult(Reply):
+    """ok means accepted; use text only when status is replied.
+
+    A pending receipt means sent, no reply yet. Inspect it; do not resend.
+    """
+    inbox_id: str = ""
+    message_id: str = ""
+    status: str = ""
+    receipt: Mapping[str, JSONValue] = field(default_factory=dict)
+
+
+_active_step: ContextVar[tuple[str, str] | None] = ContextVar("agentworks_step", default=None)
 _order = 0
 _order_lock = threading.Lock()
 _run_dir = os.environ.get("WORKFLOW_RUN_DIR", "")
@@ -117,17 +130,21 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
     caller = caller.f_back.f_back if caller and caller.f_back else None
     site = f"{Path(caller.f_code.co_filename).name}:{caller.f_lineno}" if caller else action
     label = key if key is not None else f"{action}:{site}:{order}"
-    if action in ("check", "notify") and _active_step.get():
-        arguments = {**arguments, "source_call": _active_step.get()}
+    active = _active_step.get()
+    if action in ("check", "notify") and active:
+        arguments = {**arguments, "source_call": active[0], "step_execution_id": active[1]}
     request = urllib.request.Request(
         base + "/python_automation",
         data=json.dumps({"action": action, "arguments": arguments, "key": label,
-                         "order": order, "redo": redo}, allow_nan=False).encode(),
+                         "order": order, "redo": redo, "explicit_key": key is not None}, allow_nan=False).encode(),
         headers={"Content-Type": "application/json", header.strip(): credential.strip()},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=3 if action == "step" else None) as response:
+        # The owning script deadline and Stop bound helper calls. A shorter
+        # activity-only timeout can lose an accepted start ID and leave a
+        # successful Python function recorded as failed at process exit.
+        with urllib.request.urlopen(request) as response:
             envelope = json.load(response)
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise AutomationError("Helper delivery is uncertain. Check this run before trying again.") from error
@@ -150,7 +167,13 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  log_complete=bool(result.get("log_complete")),
                  log_error=result.get("log_error", ""),
                  log_kind=result.get("log_kind", "activity"),
-                 answer_file=Path(result["answer_file"]) if result.get("answer_file") else None)
+                 answer_file=Path(result["answer_file"]) if result.get("answer_file") else None,
+                 reused=bool(result.get("reused")))
+    if action == "ask_agent":
+        receipt = result.get("value") or {}
+        return AskResult(**vars(reply), inbox_id=receipt.get("inbox_id", ""),
+                         message_id=receipt.get("message_id", ""),
+                         status=receipt.get("status", ""), receipt=receipt)
     if action in ("call_function", "function_status"):
         receipt = result.get("value") or {}
         return FunctionResult(**vars(reply), call_id=receipt.get("call_id", ""),
@@ -162,7 +185,7 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
         return ScriptResult(ok=reply.ok, error=reply.error, text=reply.text,
                             conversation_id=reply.conversation_id, log_file=reply.log_file,
                             log_complete=reply.log_complete, log_error=reply.log_error,
-                            log_kind=reply.log_kind,
+                            log_kind=reply.log_kind, reused=reply.reused,
                             output_dir=Path(directory) if directory else None,
                             outputs=[Path(path) for path in value.get("outputs", [])])
     return reply
@@ -195,6 +218,11 @@ def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
     are forwarded; unused caller inputs are dropped. Names declared by neither
     script are refused, and the child's types/defaults/required fields still apply.
     Output contents stay ordinary files. This helper never parses them.
+
+    Pass a stable key when this result should survive a failed run. On Resume,
+    the same key and arguments reuse a successful result (reply.reused=True);
+    changed arguments run fresh. Repeating a key in one attempt is refused;
+    use a distinct key per record. redo=True deliberately runs the call fresh.
     """
     try:
         reply = _call("run_script", {"id": script_id, "inputs": dict(inputs)}, key, redo)
@@ -227,7 +255,7 @@ def _step_activity(title: str, function, site: str):
         started = _call("step", {"phase": "start", "title": title, "source_call": identity}, None, True)
     except Exception:
         started = Reply(ok=False)
-    token = _active_step.set(identity)
+    token = _active_step.set((identity, started.conversation_id if started.ok else ""))
     failure = ""
     try:
         yield
@@ -272,6 +300,31 @@ def step(title: str):
                 return function(*args, **kwargs)
         return synchronous
     return decorate
+
+
+def ask_agent(crew: str, message: str, *, chat_id: str | None = None,
+              wait_seconds: float = 25) -> AskResult:
+    """Ask an accessible Crew, using this run's existing person and access.
+
+    Crew is its ID or exact name; chat_id optionally selects an offered chat.
+    Wait at most 25 seconds, bounded by the parent deadline. ok means accepted,
+    not answered: use text only when status == "replied". A pending receipt
+    retains inbox_id/message_id and says sent, no reply yet, do not resend.
+    There is no automatic resend, saved-result key or new messaging authority.
+    """
+    import math
+    if not isinstance(crew, str) or not crew.strip() or not isinstance(message, str) or not message.strip():
+        raise ValueError("ask_agent needs a Crew and a non-empty message")
+    if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float)) or not math.isfinite(wait_seconds) or wait_seconds < 0:
+        raise ValueError("wait_seconds must be a finite non-negative number")
+    try:
+        reply = _call("ask_agent", {"crew": crew, "message": message, "chat_id": chat_id or "",
+                                    "wait_seconds": min(25, wait_seconds)}, None, False)
+        if isinstance(reply, AskResult):
+            return reply
+        return AskResult(ok=False, error="The ask returned an unreadable receipt. Inspect this run.")
+    except AutomationError as error:
+        return AskResult(ok=False, error=str(error))
 
 
 def call_function(crew: str, name: str, inputs: Mapping[str, JSONValue], *,
@@ -337,6 +390,11 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False) -> Reply:
     """Run ordinary agent turns in this run folder, with no external MCPs by default.
+
+    Pass a stable key when this result should survive a failed run. On Resume,
+    the same key and arguments reuse a successful result (reply.reused=True);
+    changed arguments run fresh. Repeating a key in one attempt is refused;
+    use a distinct key per record. redo=True deliberately runs the call fresh.
 
     A list sends follow-ups to the same agent. To continue later in this run,
     pass reply.conversation_id; omitted settings retain its original selections.

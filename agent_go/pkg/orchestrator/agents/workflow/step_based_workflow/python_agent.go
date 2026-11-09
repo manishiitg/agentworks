@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -102,6 +103,7 @@ type pythonAgentArguments struct {
 }
 
 type pythonAgentConversation struct {
+	NativeExpired bool `json:"native_expired,omitempty"`
 	WorkflowContinuationState
 	ParentStepID string               `json:"parent_step_id"`
 	Name         string               `json:"name"`
@@ -443,6 +445,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	reply = pythonHelperReply{ConversationID: saved.StepID, LogFile: log.Path(), LogKind: "provider_transcript"}
 	log.Note("provider_transcript: normalized messages/tool records and streamed chunks emitted by the provider, with existing redaction; not uncaptured OS stdout")
 	defer func() { log.Close(); reply.LogComplete, reply.LogError = log.Error() == "", log.Error() }()
+	if saved.NativeExpired {
+		note := "conversation expired: this call restarts fresh"
+		if err := hcpo.upsertRunMetadata(ctx, hcpo.selectedRunFolder, func(meta map[string]interface{}) {
+			warnings, _ := meta["warnings"].([]interface{})
+			meta["warnings"] = append(warnings, boundedRunEvidenceText(saved.Name+": "+note))
+		}); err != nil {
+			return pythonHelperReply{Error: "Cannot record the expired conversation restart: " + err.Error()}
+		}
+		log.Note(note)
+		saved.AgentSessionHandle = nil
+		saved.Session = agentSequenceSession{}
+		saved.FirstMessage = args.Messages[0]
+		saved.NativeExpired = false
+	}
 	step := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: saved.StepID, Title: saved.Name, Description: saved.FirstMessage}, AgentConfigs: &saved.Config}
 	runRoot := filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder))
 	// The native cwd is this writable run root. Frozen source uses read-only
@@ -552,29 +568,107 @@ func (hcpo *StepBasedWorkflowOrchestrator) finishPythonAgentSessions(status stri
 	if hcpo.selectedRunFolder == "" {
 		return
 	}
-	// Existing protected conversation records persist the server-generated
-	// identity before launch. Read that list so terminal cleanup also works
-	// after a controller/process restart; never scan unrelated /tmp homes.
-	view := workflowfiles.WorkflowFS{Docs: GetPromptDocsRoot(), Root: hcpo.GetWorkspacePath()}
-	dir := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "conversations"))
+	if err := visitPythonAgentConversations(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, func(saved pythonAgentConversation) {
+		if status == "failed" {
+			// Close live processes/connections but retain the native history for
+			// a later Resume. The existing server sweep expires it after 72h.
+			provider := ""
+			if saved.Config.ExecutionLLM != nil {
+				provider = saved.Config.ExecutionLLM.Provider
+			}
+			hcpo.closeAgentRuntime(&agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: "python-runtime-" + saved.StepID, Provider: provider, PreserveWorkspace: true}}, "failed Python run awaiting resume")
+		} else {
+			mcpagent.CloseSession("python-runtime-" + saved.StepID)
+		}
+	}); err != nil {
+		hcpo.GetLogger().Warn(fmt.Sprintf("Cannot read Python agent homes for terminal cleanup: %v", err))
+	}
+}
+
+// Only protected, run-owned conversation records can identify a native home.
+// Never walk arbitrary provider temp directories or accept a saved disk path.
+func visitPythonAgentConversations(docs, workspace, folder string, visit func(pythonAgentConversation)) error {
+	view := workflowfiles.WorkflowFS{Docs: docs, Root: workspace}
+	dir := filepath.ToSlash(filepath.Join("runs", folder, "helpers", "conversations"))
 	entries, err := view.ReadDir(dir)
 	if err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("Cannot read Python agent homes for terminal cleanup: %v", err))
-		return
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
 	}
 	for _, entry := range entries {
 		id := strings.TrimSuffix(entry.Name(), ".json")
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") || !strings.HasPrefix(id, "python-agent-") {
 			continue
 		}
-		if _, err := hcpo.pythonAgentConversationPath(id); err != nil {
+		if _, err := uuid.Parse(strings.TrimPrefix(id, "python-agent-")); err != nil {
 			continue
 		}
 		raw, err := fs.ReadFile(view, dir+"/"+entry.Name())
 		var saved pythonAgentConversation
-		if err != nil || json.Unmarshal(raw, &saved) != nil || saved.StepID != id || saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.OwnerKind != "python_agent" {
+		if err != nil || json.Unmarshal(raw, &saved) != nil || saved.StepID != id || saved.WorkspacePath != workspace || saved.RunFolder != folder || saved.OwnerKind != "python_agent" {
 			continue
 		}
-		mcpagent.CloseSession("python-runtime-" + id)
+		visit(saved)
 	}
+	return nil
+}
+
+// ExpireFailedPythonAgentSessions runs in the server's existing two-minute
+// cleanup sweep. Disk metadata survives restarts; active runs are never expired.
+// Run outputs and conversation evidence remain available after native expiry.
+func ExpireFailedPythonAgentSessions(docs, workspace, folder string, now time.Time) (int, error) {
+	if err := ValidateWorkflowRunFolder(folder); err != nil {
+		return 0, err
+	}
+	view := workflowfiles.WorkflowFS{Docs: docs, Root: workspace}
+	raw, err := fs.ReadFile(view, filepath.ToSlash(filepath.Join("runs", folder, "run_metadata.json")))
+	if err != nil {
+		return 0, nil
+	}
+	var metadata struct {
+		Status      string    `json:"status"`
+		CompletedAt time.Time `json:"completed_at"`
+	}
+	if json.Unmarshal(raw, &metadata) != nil || metadata.Status != "failed" || metadata.CompletedAt.IsZero() || now.Before(metadata.CompletedAt.Add(72*time.Hour)) {
+		return 0, nil
+	}
+	count := 0
+	var writeErr error
+	err = visitPythonAgentConversations(docs, workspace, folder, func(saved pythonAgentConversation) {
+		if saved.NativeExpired {
+			return
+		}
+		// Persist expiry first so a later follow-up can restart plainly rather
+		// than attempting an invalid native handle after the home is removed.
+		saved.NativeExpired = true
+		data, marshalErr := json.Marshal(saved)
+		if marshalErr != nil {
+			writeErr = marshalErr
+			return
+		}
+		root, relative, openErr := workflowfiles.OpenWorkflowDirectory(docs, workspace, filepath.ToSlash(filepath.Join("runs", folder, "helpers", "conversations")))
+		if openErr != nil {
+			writeErr = openErr
+			return
+		}
+		defer root.Close()
+		directory, openErr := workflowfiles.OpenDirectory(root, relative, false)
+		if openErr != nil {
+			writeErr = openErr
+			return
+		}
+		defer directory.Close()
+		if err := workflowfiles.WriteServerFile(directory, saved.StepID+".json", data); err != nil {
+			writeErr = err
+			return
+		}
+		mcpagent.CloseSession("python-runtime-" + saved.StepID)
+		count++
+	})
+	if err != nil {
+		return count, err
+	}
+	return count, writeErr
 }

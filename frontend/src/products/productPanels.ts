@@ -117,7 +117,7 @@ export const WORKFLOW_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = 
   knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS,
 }
 export const WORK_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: [{ id: 'laptop', label: 'Local laptop', keywords: 'computer folders terminal' }, { id: 'slack-account', label: 'Slack account', keywords: 'personal slack' }, ...INTEGRATION_SECTIONS.filter(section => section.id !== 'skills')], identity: WORK_IDENTITY_SECTIONS, schedules: [{ id: 'workflows', label: 'Workflows', keywords: 'steps sequence plan' }, { id: 'scripts', label: 'Scripts', keywords: 'python code reusable' }, ...AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats')],
+  mcp: [{ id: 'laptop', label: 'Local laptop', keywords: 'computer folders terminal' }, { id: 'slack-account', label: 'Slack account', keywords: 'personal slack' }, ...INTEGRATION_SECTIONS.filter(section => section.id !== 'skills')], identity: WORK_IDENTITY_SECTIONS, schedules: [{ id: 'workflows', label: 'Workflows', keywords: 'steps sequence plan' }, ...AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats')],
   memory: [{ id: 'memory', label: 'Memory' }, { id: 'skills', label: 'Skills' }],
 }
 export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { people: VAULT_PEOPLE_SECTIONS }

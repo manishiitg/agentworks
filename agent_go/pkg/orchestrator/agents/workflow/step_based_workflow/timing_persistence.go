@@ -595,6 +595,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) markRunMetadataStartedForExecution(ct
 		if _, ok := meta["created_at"]; !ok {
 			meta["created_at"] = formatRFC3339UTC(now)
 		}
+		if hcpo.resumingPython() {
+			attempts, _ := meta["attempts"].([]interface{})
+			previous := map[string]interface{}{}
+			for _, key := range []string{"execution_id", "status", "started_at", "completed_at", "duration_ms"} {
+				if value, ok := meta[key]; ok {
+					previous[key] = value
+				}
+			}
+			meta["attempts"] = append(attempts, previous)
+			meta["resume_of"] = hcpo.executionOptions.PythonResume.PreviousExecutionID
+		}
 		meta["started_at"] = formatRFC3339UTC(now)
 		delete(meta, "completed_at")
 		delete(meta, "duration_ms")
@@ -605,7 +616,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) markRunMetadataStartedForExecution(ct
 		// This identity belongs to this producing group execution, not to the
 		// long-lived orchestrator instance or mutable iteration-0 slot.
 		meta["execution_id"] = executionID
-		delete(meta, "source_snapshot_hash") // Filled from this execution's frozen Python bundle before launch.
+		if !hcpo.resumingPython() {
+			delete(meta, "source_snapshot_hash")
+			delete(meta, "inputs_snapshot_hash")
+		}
 		delete(meta, "active_slot_at_start")
 		meta["plan_revision"] = planRevision
 		meta["run_folder"] = runFolder

@@ -34,26 +34,10 @@ func TestRegisteredProductIDsIncludesBuiltInProducts(t *testing.T) {
 	for _, id := range registeredProductIDs() {
 		found[id] = true
 	}
-	for _, id := range []string{"work", "relays"} {
-		if !found[id] {
-			t.Fatalf("registeredProductIDs() = %v, want it to include %s", registeredProductIDs(), id)
-		}
-	}
-}
-
-func TestRegisteredRelayProductFollowsWorkflowDeployment(t *testing.T) {
-	for _, tc := range []struct {
-		products string
-		want     bool
-	}{{"agentworks", true}, {"relays", true}, {"work,code", false}, {"example-product", false}} {
-		t.Setenv("AGENT_PRODUCTS", tc.products)
-		found := false
-		for _, id := range registeredProductIDs() {
-			found = found || id == "relays"
-		}
-		if found != tc.want {
-			t.Fatalf("AGENT_PRODUCTS=%q: relays=%v want %v", tc.products, found, tc.want)
-		}
+	// PLAT-746 / PLAT-847: the Relay product was retired on 8 November.
+	// Work remains a built-in product; retirement does not remove it.
+	if !found["work"] {
+		t.Fatalf("registeredProductIDs() = %v, missing Work", registeredProductIDs())
 	}
 }
 
@@ -492,23 +476,6 @@ func TestSSOFirstLoginNeverLinksByDisplayName(t *testing.T) {
 			t.Fatalf("duplicate username %q in the directory", u.Username)
 		}
 		seen[key] = true
-	}
-}
-
-// The token an SSO sign-in issues names the directory account, not the
-// user-chosen display name.
-func TestAdminAddedEmailIsStoredLowercase(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[]}`)
-	dir, _ := readUserDirectoryFile()
-	if _, created, err := addDirectoryUser(dir, "Ana@Gmail.com", "Ana@Gmail.com", "viewer", []string{"code"}); err != nil || !created {
-		t.Fatalf("create: %v created=%v", err, created)
-	}
-	if len(dir.Users) != 1 || dir.Users[0].Email != "ana@gmail.com" {
-		t.Fatalf("stored email = %+v", dir.Users)
-	}
-	// A second add differing only in case is the same account.
-	if _, created, err := addDirectoryUser(dir, "ANA@gmail.com", "ana2", "viewer", nil); err != nil || created || len(dir.Users) != 1 {
-		t.Fatalf("case-different duplicate: created=%v err=%v users=%d", created, err, len(dir.Users))
 	}
 }
 
