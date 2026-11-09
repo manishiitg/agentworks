@@ -8269,11 +8269,19 @@ func (api *StreamingAPI) markMCPAgentSessionTurnRunningWithNativeID(sessionID, e
 	if len(acceptedAt) > 0 && !acceptedAt[0].IsZero() {
 		boundary = acceptedAt[0]
 	}
+	identity := retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID), AcceptedAt: boundary}
+	if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil {
+		if handle := native.Snapshot(); handle != nil {
+			identity.Provider = handle.Provider.Provider
+			identity.Transport = handle.Provider.Transport
+			identity.NativeSessionID = handle.Provider.NativeSessionID
+		}
+	}
 	api.retainedMainTurnsMu.Lock()
 	if api.retainedMainTurnCanonicalIDs == nil {
 		api.retainedMainTurnCanonicalIDs = make(map[string]retainedTurnIdentity)
 	}
-	api.retainedMainTurnCanonicalIDs[executionID] = retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID), AcceptedAt: boundary}
+	api.retainedMainTurnCanonicalIDs[executionID] = identity
 	api.retainedMainTurnsMu.Unlock()
 	api.markMCPAgentSessionTurnRunning(sessionID, executionID)
 	api.reconcileAcceptedNativeCompletions(sessionID, nativeTurnID)
@@ -8287,7 +8295,18 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 	if len(executionIDs) > 0 {
 		executionID = strings.TrimSpace(executionIDs[0])
 	}
-	for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
+	snapshots := api.terminalStore.ListRaw(sessionID)
+	if sessionOwnsCompletion {
+		api.retainedMainTurnsMu.Lock()
+		identity := api.retainedMainTurnCanonicalIDs[executionID]
+		api.retainedMainTurnsMu.Unlock()
+		if descriptor, native := identity.nativeDescriptor(sessionID); native {
+			// No terminal is created: reuse the exact-ID lifecycle and its
+			// activity watchdog with an in-memory native runtime descriptor.
+			snapshots = []terminals.Snapshot{descriptor}
+		}
+	}
+	for _, snapshot := range snapshots {
 		if !codingAgentSnapshotIsMainAgent(snapshot) {
 			continue
 		}
@@ -8297,7 +8316,9 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 		if !sessionOwnsCompletion && !terminalSnapshotHasLiveTmux(snapshot) {
 			continue
 		}
-		api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+		if snapshot.TerminalID != "" {
+			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+		}
 		provider := llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 		watchCtx, watchCancel := context.WithCancel(context.Background())
 		api.retainedMainTurnsMu.Lock()
@@ -8906,6 +8927,11 @@ func (api *StreamingAPI) releaseStaleRetainedMainTurn(sessionID, reason string) 
 		api.retainedMainTurnsMu.Unlock()
 		return false
 	}
+	identity := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
+	if _, native := identity.nativeDescriptor(sessionID); native {
+		api.retainedMainTurnsMu.Unlock()
+		return false
+	}
 	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
 	executionIDs := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
 	for _, id := range executionIDs {
@@ -9031,25 +9057,38 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		return
 	}
 
-	snapshot, ok := api.terminalStore.GetRaw(event.TerminalID)
-	if !ok || !codingAgentSnapshotIsMainAgent(snapshot) {
-		// BaseEventBridge preserves the canonical mcpagent event but has no
-		// AgentWorks terminal identity to attach to it. Resolve the main terminal
-		// from the already-tracked owner session only for the explicit Session
-		// completion source. This keeps child completions from settling the turn.
-		if !mcpAgentSessionCompletion(event) && !steeredRun {
+	snapshot, nativeOnly := expectedNativeID.nativeDescriptor(sessionID)
+	if nativeOnly {
+		// Missing/different IDs never settle an accepted input, including
+		// after a previous Run finishes or the provider becomes quiet.
+		if expectedNativeID.ID == "" || retainedCompletionTurnID(event) != expectedNativeID.ID {
 			return
 		}
-		ok = false
-		for _, candidate := range api.terminalStore.ListRaw(sessionID) {
-			if codingAgentSnapshotIsMainAgent(candidate) {
-				snapshot = candidate
-				ok = true
-				break
+		if id := completionMetadataString(event, "native_session_id"); id != "" && expectedNativeID.NativeSessionID != "" && id != expectedNativeID.NativeSessionID {
+			return
+		}
+	} else {
+		var ok bool
+		snapshot, ok = api.terminalStore.GetRaw(event.TerminalID)
+		if !ok || !codingAgentSnapshotIsMainAgent(snapshot) {
+			// BaseEventBridge preserves the canonical mcpagent event but has no
+			// AgentWorks terminal identity to attach to it. Resolve the main terminal
+			// from the already-tracked owner session only for the explicit Session
+			// completion source. This keeps child completions from settling the turn.
+			if !mcpAgentSessionCompletion(event) && !steeredRun {
+				return
 			}
-		}
-		if !ok {
-			return
+			ok = false
+			for _, candidate := range api.terminalStore.ListRaw(sessionID) {
+				if codingAgentSnapshotIsMainAgent(candidate) {
+					snapshot = candidate
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return
+			}
 		}
 	}
 
@@ -9097,20 +9136,27 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 				api.retainedMainTurnPendingExecutionIDs[sessionID] = remaining
 			}
 		}
-		// Validate native ownership before changing the terminal snapshot. A late
-		// old completion must not make the newer native turn look idle.
-		if completion, ok := retainedCompletionPayload(event); ok &&
-			(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
-			if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
-				snapshot = failed
+		if nativeOnly {
+			snapshot.State = "completed"
+			if completion, ok := retainedCompletionPayload(event); ok && (completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout" || completion.Status == "canceled" || completion.Status == "cancelled") {
+				snapshot.State = "failed"
 			}
-			if completionMetadataFlag(event, "process_exited") {
-				if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
-					snapshot = closed
+		} else {
+			// Validate native ownership before changing the terminal snapshot. A late
+			// old completion must not make the newer native turn look idle.
+			if completion, ok := retainedCompletionPayload(event); ok &&
+				(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
+				if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
+					snapshot = failed
 				}
+				if completionMetadataFlag(event, "process_exited") {
+					if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
+						snapshot = closed
+					}
+				}
+			} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
+				snapshot = completed
 			}
-		} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
-			snapshot = completed
 		}
 		delete(api.retainedMainTurnCanonicalIDs, executionID)
 		if len(pending) > 0 && !strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
@@ -9130,6 +9176,11 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 			nextWatchCtx, nextCancel = context.WithCancel(context.Background())
 			api.retainedMainTurnWatchCancels[sessionID] = nextCancel
 			nextSnapshot = snapshot
+			if identity := api.retainedMainTurnCanonicalIDs[promotedExecutionID]; nextSessionOwned {
+				if descriptor, native := identity.nativeDescriptor(sessionID); native {
+					nextSnapshot = descriptor
+				}
+			}
 			nextProvider = llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 		} else {
 			if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
@@ -9156,6 +9207,10 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		watchCancel()
 	}
 
+	var settledIdentity map[string]string
+	if nativeOnly {
+		settledIdentity = map[string]string{"native_turn_id": retainedCompletionTurnID(event)}
+	}
 	if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
 		api.setSessionBusy(sessionID, false)
 		api.updateSessionStatus(sessionID, "error")
@@ -9170,13 +9225,15 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		}
 	} else {
 		if executionID != "" {
-			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", nil)
+			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", settledIdentity)
 		}
 		for _, id := range completedPendingExecutionIDs {
-			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", nil)
+			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", settledIdentity)
 		}
 		if promotedExecutionID != "" {
-			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+			if snapshot.TerminalID != "" {
+				api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+			}
 			api.setSessionBusy(sessionID, true)
 			api.updateSessionStatus(sessionID, "running")
 			if nextWatchCtx != nil {
@@ -9206,8 +9263,8 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	if outcome == "" {
 		outcome = "completed"
 	}
-	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s covered_inputs=%d",
-		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), 1+len(completedPendingExecutionIDs))
+	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s query=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s native_session=%s covered_inputs=%d",
+		eventType, sessionID, executionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), expectedNativeID.NativeSessionID, 1+len(completedPendingExecutionIDs))
 	if promotedExecutionID == "" {
 		api.kickConversationTurnQueue(sessionID)
 	} else if nextSessionOwned {
