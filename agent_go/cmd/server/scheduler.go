@@ -1331,9 +1331,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		return "", errors.New("target is not a webhook")
 	}
 	sctx.OriginSessionID = originSessionID
-	if input == nil {
-		s.rememberScheduleCaller(sctx, originSessionID)
-	}
+	s.rememberScheduleCaller(sctx, originSessionID)
 	startTime := time.Now().UTC()
 	sctx.ScheduledFor = startTime
 	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != scheduleDependencyReady {
@@ -1451,6 +1449,26 @@ func (s *SchedulerService) StopRunningJob(scheduleID string) {
 		return
 	}
 	s.stopRunningJob(keys[0], scheduleID)
+}
+
+// stopChatWorkflowRun uses the run identity admitted to this chat's background
+// item. It never selects all runs of a workflow or another delivery's worker.
+func (s *SchedulerService) stopChatWorkflowRun(runID, scheduleID string) {
+	if s == nil || runID == "" {
+		return
+	}
+	s.runtimeStatesMu.RLock()
+	key := ""
+	for candidate, state := range s.runtimeStates {
+		if state.ActiveRunID == runID && state.LastStatus == "running" {
+			key = candidate
+			break
+		}
+	}
+	s.runtimeStatesMu.RUnlock()
+	if key != "" {
+		s.stopRunningJob(key, scheduleID)
+	}
 }
 
 func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID string) {
