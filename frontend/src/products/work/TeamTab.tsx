@@ -268,7 +268,7 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
     {people && <>
-      <p className="text-xs text-muted-foreground">{people.intro}</p>
+      {people.intro && <p className="text-xs text-muted-foreground">{people.intro}</p>}
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
       <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(personRow)}</div>
       {people.put_online && <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{people.put_online}</span>
