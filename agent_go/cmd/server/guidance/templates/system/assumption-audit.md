@@ -1,7 +1,7 @@
 ## Assumption Audit — Keep The Workflow Evolvable
 
-Use this bounded check whenever reviewing or improving the plan, eval, report,
-knowledgebase notes, learnings/skills, database contracts, or saved code. An
+Use this bounded check whenever reviewing or improving the saved Python workflow, checks, dashboard,
+permitted knowledge, skills, database contracts, or saved code. An
 artifact can be internally correct and still preserve an old assumption that
 prevents the workflow from reaching its goal.
 
@@ -46,7 +46,7 @@ cadence, and other agent-chosen constraints around them.
 
 Hardcoded credentials, local paths, account ids, and run ids are Bugs and should
 be fixed within the command's normal boundaries. A strategy/tactic assumption is
-a Goal concern. Do not confuse the two.
+an outcome question. Do not confuse the two.
 
 ### Bounded action
 
@@ -58,10 +58,10 @@ a Goal concern. Do not confuse the two.
    remove stale prose, parameterize a literal, stop treating a tactic as a goal,
    or mark a current choice as revisable.
 4. If changing it would alter business intent, risk, cost, external behaviour or
-   a material plan path, ask the owner in chat.
+   a material task path, ask the owner in chat.
    Include the assumption, source, evidence for and against, and what would
    validate it. Keep one pending question for the same decision.
-5. Record authorized work and its evidence in the existing plan changelog or
+5. Record authorized work and its evidence in the existing project change notes or
    requesting conversation. Close obsolete proposals through the normal
    withdrawal tools; a withdrawal never grants approval.
 
@@ -74,7 +74,7 @@ a Goal concern. Do not confuse the two.
 - **Report:** show goal/outcome truth; do not make the current implementation or
   an inferred proxy look like the user's target.
 - **KB notes:** distinguish durable domain evidence from workflow-design beliefs.
-  Never rewrite user-owned `knowledgebase/context/` without the owner asking.
+  Preserve user-owned context; use current Brain tools and grants instead of retired local knowledge paths.
 - **Learnings/skills:** keep reusable HOW; remove business policy, strategy, and
   stale architecture disguised as execution guidance.
 - **DB:** challenge schemas/enums/cardinality that unnecessarily lock the workflow
