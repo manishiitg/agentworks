@@ -714,6 +714,9 @@ func (s Store) treeTurnFile(ctx context.Context, list *exec.Cmd, blob func(strin
 // or capture limit) whose size, time and type are the same after the reply.
 // The reply did not change them, so nothing was lost: they stay out of both
 // sides like ignored paths and do not raise the capture-limit warning.
+// A rewrite keeping the same size and modification time is not detected; only
+// the warning is lost then, since these bytes were never captured anyway. A
+// deleted path fails Lstat and stays skipped, so it still warns.
 func (s Store) untouchedSkipped(r Record) map[string]bool {
 	out := map[string]bool{}
 	root, err := os.OpenRoot(s.Root)
