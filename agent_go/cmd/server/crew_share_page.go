@@ -450,7 +450,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		if !a.Mine {
 			continue
 		}
-		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !onMac, CanEdit: a.CanEditRule && !onMac,
+		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && (!a.InTeam || a.CanUnshare) && !onMac, Fixed: a.Fixed, CanEdit: a.CanEditRule && !onMac,
 			ChangesLabel: "Let them make changes", ChangesLine: "Off: they only get answers.", ChatShare: a.ChatShare, ChatShareLabel: "Your chat with it", ChatShareOptions: crewShareChatOptions}
 		if a.CanMakeChanges != nil {
 			ask.CanMakeChanges = *a.CanMakeChanges
