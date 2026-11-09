@@ -84,6 +84,26 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f.write(t, externalCommandCrewRoot+"/db/reports/example.html", "<html><title>Example result</title></html>")
+	// PLAT-746-513 / Codex1730: one workflow with three timers and a
+	// webhook stays one workflow; starts keep their automation classification.
+	f.api.scheduler = &SchedulerService{api: f.api}
+	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
+	child := crewExecutableBinding{ID: "panel-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/panel-workflow", Kind: "workflow"}
+	if err := registerCrewExecutable(child); err != nil {
+		t.Fatal(err)
+	}
+	manifest := NewWorkflowManifest("Example workflow")
+	manifest.ID, manifest.CreatedBy = child.ID, "owner"
+	manifest.Schedules = []WorkflowSchedule{
+		{ID: "timer-one", Name: "First timer", ScheduleType: "cron", CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: true},
+		{ID: "timer-two", Name: "Second timer", ScheduleType: "cron", CronExpression: "0 10 * * *", Timezone: "UTC", Enabled: false},
+		{ID: "timer-three", Name: "Third timer", ScheduleType: "cron", CronExpression: "0 11 * * *", Timezone: "UTC", Enabled: true},
+		{ID: "incoming", Name: "Incoming webhook", ScheduleType: "webhook", Enabled: true, Webhook: &WorkflowWebhookConfig{AuthMode: "bearer"}},
+	}
+	if err := WriteWorkflowManifest(t.Context(), child.Root, manifest); err != nil {
+		t.Fatal(err)
+	}
+
 	router := mux.NewRouter()
 	router.HandleFunc("/api/crews/{project}/panel", f.api.handleCrewPanel).Methods("GET")
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
@@ -102,6 +122,31 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
+	counts := map[string]int{}
+	var workflowDetail string
+	for _, section := range result.Sections {
+		switch section.ID {
+		case "workflow":
+			counts[section.ID] = len(section.Rows)
+			if len(section.Rows) == 1 {
+				workflowDetail = section.Rows[0].Detail
+			}
+		case "schedules", "webhooks":
+			if section.Error != "" {
+				t.Fatalf("trigger section failed: %+v", section)
+			}
+			counts[section.ID] = len(section.Rows)
+			for _, row := range section.Rows {
+				if row.Destination != "workflow" {
+					t.Fatalf("workflow start lost its navigation: %+v", row)
+				}
+			}
+		}
+	}
+	if counts["workflow"] != 1 || counts["schedules"] != 3 || counts["webhooks"] != 1 || result.Details["workflow"] != workflowDetail || result.Details["schedules:schedules"] != "2 on · 1 paused" || result.Details["schedules:triggers"] != "1 on" || result.Details["automations"] != "4" {
+		t.Fatalf("workflow starts misclassified: counts=%v details=%v", counts, result.Details)
+	}
+	t.Logf("PANEL_TRIGGERS workflows=%d timers=%d webhooks=%d timers_detail=%q webhooks_detail=%q", counts["workflow"], counts["schedules"], counts["webhooks"], result.Details["schedules:schedules"], result.Details["schedules:triggers"])
 	found := false
 	for _, section := range result.Sections {
 		if section.ID == "dashboards" {
