@@ -48,7 +48,7 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
           action={agent && <ChangeButton label={`Change the model for ${node.label}`} onClick={() => void onAsk(`Change the model for “${node.label}” in ${workflow}. It uses ${modelText(agent, false)} today. I want: `)} />} />
       }
       const inside = stepsIn(node.id)
-      const count = node.role === 'branch' ? `${nodes.filter(child => child.parent === node.id).length} cases` : `${inside.length} step${inside.length === 1 ? '' : 's'}`
+      const count = node.role === 'branch' ? `${nodes.filter(child => child.parent === node.id).length} ${nodes.filter(child => child.parent === node.id).length === 1 ? 'case' : 'cases'}` : `${inside.length} step${inside.length === 1 ? '' : 's'}`
       const failed = inside.some(step => stepOf(step)?.status === 'failed')
       return <PageRow key={node.id} lead={numbered ? <StepNumber n={index + 1} status={failed ? 'failed' : undefined} /> : <RunDot state={failed ? 'stopped' : 'idle'} />} title={node.label} lines={[count]} open={open.has(node.id)} onToggle={() => toggle(node.id)}>
         <div className="-mx-4 -my-3 divide-y divide-border">

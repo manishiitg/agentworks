@@ -513,7 +513,9 @@ func (s *ProjectActionDispatcher) JobsForBuilder(ctx context.Context, userID str
 	for owner := range owners {
 		other, err := s.JobsForUser(ctx, owner)
 		if err != nil {
-			return nil, err
+			// A Team member's own list must not fail because one owner's records could not be read for them.
+			log.Printf("[SCHEDULES] skipping the Crew owner's schedules for a Team member: %v", err)
+			continue
 		}
 		for _, job := range other {
 			workspace := job.WorkspacePath

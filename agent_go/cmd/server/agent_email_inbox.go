@@ -218,6 +218,7 @@ func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[str
 	if !enabled {
 		// Off: no address is shown to anyone (approved mock, 8 Nov).
 		inbox.Address = ""
+		page = gmailinbound.Page{Messages: []gmailinbound.Item{}}
 	}
 	if enabled && !inboxSourceCurrent(inbox) {
 		box.LastError = "Delivery stopped. The owner can reconnect or choose an inbox account in your project's Vault panel or in chat."

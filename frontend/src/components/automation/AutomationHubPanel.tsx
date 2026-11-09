@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, lazy, Suspense, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
+import { cloneElement, isValidElement, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { Zap } from 'lucide-react'
 import api from '../../services/api'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
@@ -92,11 +92,16 @@ export function AutomationHubPanel({
     setSection(fallbackSection)
   }, [fallbackSection])
 
+  // A menu row opens one tab once per click (its token). The parent passes a fresh scope object on
+  // every render, which re-ran this effect and snapped the page back to the row's tab; apply each token once.
+  const appliedTargetToken = useRef(0)
   useEffect(() => {
     if (workspaceViewTarget?.view !== 'workshop') return
+    if (appliedTargetToken.current === workspaceViewTarget.token) return
     const target = workspaceViewTarget?.target
     const normalized = target === 'webhooks' ? 'triggers' : target
     if (normalized && availableSections.has(normalized as AutomationHubSection)) {
+      appliedTargetToken.current = workspaceViewTarget.token
       setSection(normalized as AutomationHubSection)
       if (normalized === 'email') setEmailRefreshToken(token => token + 1)
     }
