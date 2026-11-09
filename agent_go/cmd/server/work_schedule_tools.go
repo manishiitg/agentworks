@@ -95,6 +95,30 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
+		// Run-mode chat already has access to this exact Crew. Preserve its
+		// owner-scoped message schedules without impersonating the owner for
+		// workflow discovery or broadening access to any other project.
+		if readOnly && listUserID != userID {
+			jobs, listErr := api.projectActions.JobsForBuilder(ctx, listUserID)
+			if listErr != nil {
+				return "", listErr
+			}
+			seen := make(map[string]bool, len(out))
+			for _, row := range out {
+				seen[row.ID] = true
+			}
+			for _, job := range jobs {
+				if !strings.EqualFold(job.Profile.ID, profileID) || job.ProjectID != projectID || job.Schedule.Condition != nil {
+					continue
+				}
+				runsWorkspace, _ := api.projectActions.RunsWorkspace(ctx, job)
+				row := withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace))
+				if !seen[row.ID] {
+					out = append(out, row)
+					seen[row.ID] = true
+				}
+			}
+		}
 		result := map[string]interface{}{"schedules": out}
 		for _, job := range out {
 			if job.EntityType == "workflow" {
