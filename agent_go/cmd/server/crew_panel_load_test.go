@@ -148,7 +148,7 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 	cache := crewPanelCache{}
 	key := crewPanelCacheKey{caller: "owner", project: "panel-crew-00", authority: "current"}
 	entered, release, complete := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	source := crewPanelSource{id: "workflow", title: "Workflow", allowed: true, refreshFor: time.Millisecond, read: func(context.Context) (crewPanelSection, error) {
+	source := crewPanelSource{id: "workflow", title: "Workflow", allowed: true, read: func(context.Context) (crewPanelSection, error) {
 		close(entered)
 		<-release
 		return crewPanelSection{Rows: []crewPanelRow{{ID: "workflow:one", Label: "Example"}}}, nil
@@ -163,7 +163,6 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 	}
 	entered, release, complete = make(chan struct{}), make(chan struct{}), make(chan struct{})
 	// Force revalidation while retaining a previous snapshot.
-	source.refreshFor = time.Nanosecond
 	go func() { cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second); close(complete) }()
 	<-entered
 	warm := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
@@ -172,6 +171,45 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 	if warm[0].Error != "" || !warm[0].Stale || len(warm[0].Rows) != 1 || warm[0].Rows[0].Label != "Example" {
 		t.Fatalf("overlapping refresh lost last snapshot: %+v", warm)
 	}
+	// A late finish of an older run must not hide the newest running run.
+	write("Workflow/panel-load-02/runs/run-new/run_metadata.json", `{"status":"running","started_at":"2026-11-09T02:00:00Z"}`)
+	write("Workflow/panel-load-02/runs/run-old/run_metadata.json", `{"status":"completed","started_at":"2026-11-09T01:00:00Z"}`)
+	physical, _, err := crewroot.Resolve(f.docs, "Workflow/panel-load-02/runs/run-old/run_metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(physical, later, later); err != nil {
+		t.Fatal(err)
+	}
+	f.api.crewPanels.mu.Lock()
+	for key, value := range f.api.crewPanels.entries {
+		value.at = time.Now().Add(-6 * time.Second)
+		f.api.crewPanels.entries[key] = value
+	}
+	f.api.crewPanels.mu.Unlock()
+	_, ordered, orderedCode := call("owner", "panel-crew-02")
+	running := false
+	for _, section := range ordered.Sections {
+		if section.ID == "workflow" {
+			running = section.Busy && len(section.Rows) == 1 && strings.Contains(section.Rows[0].Detail, "running now")
+		}
+	}
+	if orderedCode != 200 || !running {
+		t.Fatal("older run finishing hid the newest running workflow")
+	}
+	write("Workflow/panel-load-03/runs/iteration-1/archived/run_metadata.json", `{"status":"completed","started_at":"2026-11-09T03:00:00Z"}`)
+	_, archived, archivedCode := call("owner", "panel-crew-03")
+	unavailable := false
+	for _, section := range archived.Sections {
+		if section.ID == "workflow" {
+			unavailable = section.Error == "" && len(section.Rows) == 1 && strings.Contains(section.Rows[0].Detail, "Run summary not loaded")
+		}
+	}
+	if archivedCode != 200 || !unavailable {
+		t.Fatal("retained nested history presented as empty or a current flat result")
+	}
+	t.Log("PANEL_LOAD lifecycle_order=pass nested_summary=unavailable")
 	// One Python workflow with two helper files and one legacy workflow means
 	// exactly two menu rows, not zero Python rows or one row per helper file.
 	write("Workflow/panel-load-01/code/another_helper.py", "def another_helper(): return 2\n")

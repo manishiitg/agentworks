@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -87,39 +86,39 @@ func cachedCrewStepCount(ctx context.Context, root string) (int, bool) {
 	return entry.Count, true
 }
 
-// One directory level and one metadata body, through the same admitted storage
-// resolver as run/file routes. No artifacts, child runs or Resume calculation.
-// Enumeration is bounded even if a workflow has an unexpectedly huge history.
-func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, bool, error) {
+// One directory level through the admitted storage resolver, with a total byte
+// budget. Select by the same lifecycle clocks as Runs, never file mtime. No
+// artifacts, nested-history traversal or Resume calculation from the menu.
+func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, string, error) {
 	base, relative, err := workflowfiles.OpenWorkflowDirectory(workflow.GetPromptDocsRoot(), root, "runs")
 	if os.IsNotExist(err) {
-		return nil, false, nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 	defer base.Close()
 	file, err := base.Open(relative)
 	if os.IsNotExist(err) {
-		return nil, false, nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 	defer file.Close()
 	const limit = 4096
 	entries, err := file.ReadDir(limit + 1)
 	if err != nil && err != io.EOF {
-		return nil, false, err
+		return nil, "", err
 	}
 	if len(entries) > limit {
-		// A partial unordered directory cannot identify the latest run honestly.
-		return nil, true, nil
+		return nil, "Run history is long", nil
 	}
-	latest, newest := "", time.Time{}
+	remaining := int64(4 << 20)
+	folders := []RunFolderInfo{}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
-			return nil, false, err
+			return nil, "", err
 		}
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
@@ -127,33 +126,32 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, bool
 		if err := workflow.ValidateWorkflowRunFolder(entry.Name()); err != nil {
 			continue
 		}
-		name := path.Join(relative, entry.Name(), "run_metadata.json")
-		info, err := base.Stat(name)
-		if err == nil && info.ModTime().After(newest) {
-			latest, newest = entry.Name(), info.ModTime()
+		metadataFile, err := base.Open(path.Join(relative, entry.Name(), "run_metadata.json"))
+		if err != nil {
+			// Retained nested histories and partial/unreadable runs are not an
+			// empty history. Do not invent a latest result from incomplete data.
+			return nil, "Run summary not loaded", nil
 		}
+		raw, readErr := io.ReadAll(io.LimitReader(metadataFile, remaining+1))
+		metadataFile.Close()
+		if readErr != nil {
+			return nil, "Run summary not loaded", nil
+		}
+		remaining -= int64(len(raw))
+		if remaining < 0 {
+			return nil, "Run history is long", nil
+		}
+		metadata, err := decodeRunMetadata(string(raw))
+		if err != nil || metadata == nil {
+			return nil, "Run summary not loaded", nil
+		}
+		folders = append(folders, RunFolderInfo{Name: entry.Name(), Metadata: metadata})
 	}
-	if latest == "" {
-		return nil, false, nil
+	sortRunFoldersByTime(folders)
+	if len(folders) > 1 {
+		folders = folders[:1]
 	}
-	metadataFile, err := base.Open(path.Join(relative, latest, "run_metadata.json"))
-	if err != nil {
-		return nil, false, err
-	}
-	defer metadataFile.Close()
-	const maxMetadata = 4 << 20
-	raw, err := io.ReadAll(io.LimitReader(metadataFile, maxMetadata+1))
-	if err != nil {
-		return nil, false, err
-	}
-	if len(raw) > maxMetadata {
-		return nil, false, fmt.Errorf("run metadata exceeds its summary read budget")
-	}
-	metadata, err := decodeRunMetadata(string(raw))
-	if err != nil {
-		return nil, false, err
-	}
-	return []RunFolderInfo{{Name: latest, Metadata: metadata}}, false, nil
+	return folders, "", nil
 }
 
 func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection, error) {
@@ -193,7 +191,7 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 		if !known {
 			steps = -1
 		}
-		folders, longHistory, err := crewPanelLatestRun(ctx, binding.Root)
+		folders, historyNote, err := crewPanelLatestRun(ctx, binding.Root)
 		if err != nil {
 			return section, err
 		}
@@ -201,10 +199,10 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 			section.Busy = true
 		}
 		detail := crewPanelWorkflowLine(folders, steps, time.Now())
-		if longHistory {
-			detail = "Step count not loaded · Run history is long"
+		if historyNote != "" {
+			detail = "Step count not loaded · " + historyNote
 			if steps >= 0 {
-				detail = crewPanelCount(steps, "step") + " · Run history is long"
+				detail = crewPanelCount(steps, "step") + " · " + historyNote
 			}
 		}
 		section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: detail, Destination: "workflow"})
