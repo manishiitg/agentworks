@@ -443,7 +443,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	}
 	teamStatus := "Off"
 	if t.On {
-		teamStatus = fmt.Sprintf("On · %d %s", members, plural(members, "person", "people"))
+		teamStatus = "On"
 	}
 	agentParts := []string{}
 	if sharedAgents > 0 {
