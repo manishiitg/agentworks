@@ -20,7 +20,7 @@ import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentA
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
+import { fillAgentPurposeDraft, fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
 import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
@@ -558,7 +558,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {moreBeforePeople && moreMenu}
       {chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
       {chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
-        agents={group.agents} watching={group.watching} onPick={selectTab} />)}
+        agents={group.agents} watching={group.watching} onPick={selectTab} help={teamState.view?.help}
+        onAskHelp={placeProject && teamState.view?.help_ask ? () => { fillMainDraft(placeProject, teamState.view?.help_ask || '') } : undefined} />)}
       </div>
       {!moreBeforePeople && moreMenu}
 
@@ -602,10 +603,14 @@ const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-em
 /** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many
  * of their agents are here and the dot for their Mac; it opens their agents with the server's status words (the Team
  * tab reading). While one of theirs is open, the chip names it. */
-function PersonChip({ name, presence, agents, watching, onPick }: {
+function PersonChip({ name, presence, agents, watching, onPick, help, onAskHelp }: {
   name: string; presence?: TeamTabPresence; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
+  help?: { badge: string; title: string; text: string }[]; onAskHelp?: () => void
 }) {
   const [open, setOpen] = useState(false)
+  // "How this works": the server's help lines in place of the agents; a second click or Esc closes it.
+  const [helpOpen, setHelpOpen] = useState(false)
+  useEffect(() => { if (!open) setHelpOpen(false) }, [open])
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ top: 0, left: 0 })
@@ -615,13 +620,13 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
     if (rect) setPosition({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(300, window.innerWidth - 16) - 8)) })
     menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     const close = (event: MouseEvent) => { if (!buttonRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); buttonRef.current?.focus() } }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { if (helpOpen) setHelpOpen(false); else { setOpen(false); buttonRef.current?.focus() } } }
     const shut = () => setOpen(false)
     document.addEventListener('mousedown', close)
     document.addEventListener('keydown', escape)
     window.addEventListener('resize', shut)
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape); window.removeEventListener('resize', shut) }
-  }, [open])
+  }, [open, helpOpen])
   const avatar = (size: string) => <span aria-hidden="true" className={`relative grid ${size} shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary`}>
     {name.trim().charAt(0).toUpperCase() || '?'}
     {presence && <span className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-background p-[1.5px]"><PersonPresenceDot presence={presence} className="h-2 w-2" /></span>}
@@ -644,7 +649,15 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
           {avatar('h-5 w-5')}
           <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}</span>{presence && <span className="block">{presence.line}</span>}</p>
         </div>
-        {agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
+        {helpOpen && help ? <div className="px-2 pb-1 pt-1" data-testid="agent-menu-help">
+          <p className="pb-1 text-[13px] font-semibold">How agents work here</p>
+          <p className="pb-1 text-[12px] text-muted-foreground">Each name is an agent in this Crew. Pick one to talk to it.</p>
+          {help.map(line => <div key={line.badge + line.title} className="flex gap-2.5 border-t border-border py-2">
+            <span className="h-fit shrink-0 whitespace-nowrap rounded-full border border-border px-2 text-[11px] leading-5">{line.badge}</span>
+            <p className="min-w-0 text-[12px] text-muted-foreground"><b className="block text-[13px] font-semibold text-foreground">{line.title}</b>{line.text}</p>
+          </div>)}
+          {onAskHelp && <button type="button" onClick={() => { setOpen(false); onAskHelp() }} className="mt-1 rounded-full border border-primary px-3 py-0.5 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask the Crew to change this</button>}
+        </div> : agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
           className={`flex min-h-9 w-full min-w-0 items-start gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70' : ''}`}>
           <span className="mt-1 flex w-3 shrink-0 justify-center"><PersonAgentMark tabId={agent.tabId} running={agent.running} /></span>
           {/* The name keeps its own full line; the server's status sits smaller underneath (owner, 6 Nov: names were cut to "t.." by the status). */}
@@ -655,6 +668,7 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
           {watching?.tabId === agent.tabId && <span className="mt-0.5 shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
           <span className="mt-0.5 flex shrink-0 items-center"><PersonAgentWord tabId={agent.tabId} running={agent.running} /></span>
         </button>)}
+        {help && help.length > 0 && <button type="button" aria-expanded={helpOpen} onClick={() => setHelpOpen(value => !value)} className="mt-1 flex w-full items-center gap-2 border-t border-border px-2.5 pb-1 pt-2 text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span aria-hidden="true" className="grid h-5 w-5 place-items-center rounded-full border border-muted-foreground text-[11px]">?</span>How this works</button>}
       </div>, document.body
     )}
   </>
