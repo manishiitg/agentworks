@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
@@ -94,6 +95,41 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 		result[binding.Root] = binding
 	}
 	return result, nil
+}
+
+// crewShownWorkflow is the one workflow a Crew screen shows: the newest Python workflow record of the Crew (older
+// Crews may still hold several records), else the newest record of any kind. Nil when the Crew has none.
+func crewShownWorkflow(crewWorkspace string) *crewExecutableBinding {
+	records, err := readCrewExecutables()
+	if err != nil || crewWorkspace == "" {
+		return nil
+	}
+	var best *crewExecutableBinding
+	var bestTime time.Time
+	for _, binding := range records {
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(crewWorkspace) {
+			continue
+		}
+		var modified time.Time
+		if file, err := crewExecutableFile(binding.Root); err == nil {
+			if info, err := os.Stat(file); err == nil {
+				modified = info.ModTime()
+			}
+		}
+		better := best == nil
+		if !better {
+			if (binding.Kind == "workflow") != (best.Kind == "workflow") {
+				better = binding.Kind == "workflow"
+			} else {
+				better = modified.After(bestTime)
+			}
+		}
+		if better {
+			b := binding
+			best, bestTime = &b, modified
+		}
+	}
+	return best
 }
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {

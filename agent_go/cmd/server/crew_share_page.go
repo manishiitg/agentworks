@@ -62,24 +62,31 @@ type crewShareAction struct {
 	On        bool     `json:"on"`
 	CanChange bool     `json:"can_change"`
 	Fixed     string   `json:"fixed,omitempty"`
+	// Target is "" for a Crew action, or the workflow's id for a workflow action (sent back with POST action).
+	Target string `json:"target"`
+	// Starts is what it starts: "Starts the workflow" or "Asks the agent <name>".
+	Starts string `json:"starts"`
+	// Who is "Who can ask: ..." (people allowed, and "N other Crews" that may call it; no ids).
+	Who string `json:"who"`
 }
 
-// crewShareAgent is one card of Share agents: one of the viewer's own agents (with Ask), or an agent-like card that
-// has only actions (a workflow, or an agent named only by actions).
+// crewShareAgent is one card of Share agents: one of the viewer's own agents, with its Ask part. Actions are not per
+// agent: they are one group below the cards.
 type crewShareAgent struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
-	Line string `json:"line,omitempty"`
-	// Target is "" for the Crew's own actions, or the workflow's id for a workflow's (sent back with POST action).
-	Target  string            `json:"target"`
-	Ask     *crewShareAsk     `json:"ask,omitempty"`
-	Actions []crewShareAction `json:"actions"`
-	// ActionsLine is the muted line of the Actions part ("None yet." when there are none).
-	ActionsLine string `json:"actions_line"`
-	// ConnectedLine is the muted line under a workflow card for Crew-to-Crew connections (no ids): "Called by 3 other Crews".
-	ConnectedLine string `json:"connected_line,omitempty"`
-	// SetupAsk is the draft "✦ Ask AI to set up an action" opens in the viewer's Main; WizardFor names the agent in the
-	// first-time wizard (no actions yet). Both empty when the viewer cannot set up actions here.
+	Key  string        `json:"key"`
+	Name string        `json:"name"`
+	Line string        `json:"line,omitempty"`
+	Ask  *crewShareAsk `json:"ask,omitempty"`
+}
+
+// crewShareActionsGroup is the one "Actions" group: every action of the Crew (its own and the workflow's), once.
+type crewShareActionsGroup struct {
+	Title string `json:"title"`
+	// Line is the intro under the title, or the muted "None yet." when there are no rows.
+	Line string            `json:"line"`
+	Rows []crewShareAction `json:"rows"`
+	// SetupAsk is the draft "✦ Ask AI to set up an action" opens in the viewer's Main; WizardFor names what the
+	// first-time wizard sets up for (no actions yet). Both empty when the viewer cannot set up actions here.
 	SetupAsk  string `json:"setup_ask,omitempty"`
 	WizardFor string `json:"wizard_for,omitempty"`
 }
@@ -93,6 +100,8 @@ type crewSharePage struct {
 	AgentsIntro string           `json:"agents_intro"`
 	AgentsEmpty string           `json:"agents_empty,omitempty"`
 	WhoCanUse   string           `json:"who_can_use"`
+	// ActionsGroup: all actions in one group under the agents.
+	ActionsGroup crewShareActionsGroup `json:"actions_group"`
 	// Read only: how many dashboards, and the draft "Ask the Crew" opens in Main when there is none.
 	Dashboards   int    `json:"dashboards"`
 	DashboardAsk string `json:"dashboard_ask,omitempty"`
@@ -233,29 +242,22 @@ type crewShareWorkflow struct {
 }
 
 func crewShareWorkflows(ctx context.Context, crewWorkspace string) []crewShareWorkflow {
-	records, err := readCrewExecutables()
-	if err != nil || crewWorkspace == "" {
+	// One workflow per Crew: an older Crew that still holds several shows its newest Python one only.
+	binding := crewShownWorkflow(crewWorkspace)
+	if binding == nil {
 		return nil
 	}
-	out := []crewShareWorkflow{}
-	for _, binding := range records {
-		if binding.CrewRoot != crewWorkspace {
-			continue
-		}
-		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
-		if err != nil || !found || manifest == nil {
-			continue
-		}
-		wf := crewShareWorkflow{id: binding.ID, root: binding.Root, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")}
-		for _, sched := range manifest.Schedules {
-			if sched.IsFunctionTrigger() {
-				wf.functions = append(wf.functions, sched)
-			}
-		}
-		out = append(out, wf)
+	manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
+	if err != nil || !found || manifest == nil {
+		return nil
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].label < out[j].label })
-	return out
+	wf := crewShareWorkflow{id: binding.ID, root: binding.Root, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")}
+	for _, sched := range manifest.Schedules {
+		if sched.IsFunctionTrigger() {
+			wf.functions = append(wf.functions, sched)
+		}
+	}
+	return []crewShareWorkflow{wf}
 }
 
 // crewShareBindingName matches the name generated for a Crew-to-Crew connection ("binding_<uuid>"): a connection,
@@ -340,7 +342,7 @@ func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange boo
 			names[key] = agent
 		}
 		title, line := crewShareActionWords(fn.Name, fn.Description)
-		a := crewShareAction{Name: fn.Name, Title: title, Line: line, Inputs: crewShareInputWords(crewShareSchemaInputs(fn.InputSchema)), On: on, CanChange: canChange && !published}
+		a := crewShareAction{Name: fn.Name, Title: title, Line: line, Inputs: crewShareInputWords(crewShareSchemaInputs(fn.InputSchema)), On: on, CanChange: canChange && !published, Starts: "Asks the agent " + agent}
 		switch {
 		case published:
 			a.Fixed = crewSharePublishedAction
@@ -377,11 +379,16 @@ func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange boo
 }
 
 func crewShareSetupAsk(name string) string {
-	return fmt.Sprintf("Help me set up another action for %s in this Crew. Ask me what it should do, what people give it and what they get back, then show me the action before you save it.", name)
+	return fmt.Sprintf("Help me set up another action for %s. Ask me what it should do, what people give it and what they get back, then show me the action before you save it.", name)
 }
 
 // crewShareWhoLine is "Who can use these: ...": the people who can ask the shared agents and start the actions.
 func crewShareWhoLine(t crewTeam, everyone bool, named []string) string {
+	return "Who can use these: " + crewSharePeopleWords(t, everyone, named, 0)
+}
+
+// crewSharePeopleWords lists who may ask: the Team, people the Crew is shared with, and "N other Crews" (0: none).
+func crewSharePeopleWords(t crewTeam, everyone bool, named []string, crews int) string {
 	parts := []string{}
 	if t.On {
 		joined := 0
@@ -406,10 +413,16 @@ func crewShareWhoLine(t crewTeam, everyone bool, named []string) string {
 	case extra > 0:
 		parts = append(parts, fmt.Sprintf("%d more %s you shared this Crew with", extra, plural(extra, "person", "people")))
 	}
-	if len(parts) == 0 {
-		return "Who can use these: only you so far"
+	if crews > 0 {
+		parts = append(parts, fmt.Sprintf("%d other %s", crews, plural(crews, "Crew", "Crews")))
 	}
-	return "Who can use these: " + strings.Join(parts, ", ") + ", in the app, Slack, their own AI apps and other Crews"
+	if len(parts) == 0 {
+		return "only you so far"
+	}
+	if crews > 0 {
+		return strings.Join(parts, ", ")
+	}
+	return strings.Join(parts, ", ") + ", in the app, Slack, their own AI apps and other Crews"
 }
 
 func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer string) crewSharePage {
@@ -425,11 +438,10 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	// Share agents: the viewer's own agents with Ask, the owner's actions on them, then cards with actions only.
 	canActions := owner && !onMac
 	var groups map[string][]crewShareAction
-	var groupNames map[string]string
 	var workflows []crewShareWorkflow
 	dashWorkspace := ""
 	if src, ok := api.crewShareSourceFor(ctx, viewer, t.ProjectID); ok {
-		groups, groupNames = crewShareActionsFor(ctx, src, canActions)
+		groups, _ = crewShareActionsFor(ctx, src, canActions)
 		workflows = crewShareWorkflows(ctx, src.workspace)
 		dashWorkspace = src.workspace
 	}
@@ -452,30 +464,22 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		if a.InTeam && t.On {
 			sharedAgents++
 		}
-		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask, Actions: []crewShareAction{}}
-		if owner {
-			key := crewAgentChatID(a.Name)
-			card.Actions = append(card.Actions, groups[key]...)
-			delete(groups, key)
-		}
+		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
 		page.Agents = append(page.Agents, card)
 	}
-	// Agents named only by actions (or the owner's agents, for a teammate): cards with their actions only.
+	// Actions: the Crew's own and the workflow's, once, in one group. Crew-to-Crew connections are not rows: they
+	// are counted into the "Who can ask" line of the workflow's actions.
 	keys := make([]string, 0, len(groups))
 	for key := range groups {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	rows := []crewShareAction{}
 	for _, key := range keys {
-		line := "Runs in its own tab"
-		if !owner {
-			line = crewPersonShortName(t.OwnerID) + "'s actions"
-		}
-		page.Agents = append(page.Agents, crewShareAgent{Key: "actions:" + key, Name: groupNames[key], Line: line, Actions: groups[key]})
+		rows = append(rows, groups[key]...)
 	}
+	callers := map[string]bool{}
 	for _, wf := range workflows {
-		card := crewShareAgent{Key: "workflow:" + wf.id, Name: wf.label, Line: "Workflow", Target: wf.id, Actions: []crewShareAction{}}
-		callers := map[string]bool{}
 		for _, sched := range wf.functions {
 			if crewShareIsBinding(sched.Function) {
 				for _, c := range sched.Function.AllowedCallers {
@@ -484,41 +488,40 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 				continue
 			}
 			title, line := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
-			a := crewShareAction{Name: sched.Function.Name, Title: title, Line: line, Inputs: crewShareInputWords(sched.Function.Inputs), On: sched.Enabled, CanChange: canActions}
+			a := crewShareAction{Name: sched.Function.Name, Title: title, Line: line, Inputs: crewShareInputWords(sched.Function.Inputs), On: sched.Enabled, CanChange: canActions, Target: wf.id, Starts: "Starts the workflow"}
 			if !canActions {
 				a.Fixed = crewShareOwnerOnlyActions
 			}
-			card.Actions = append(card.Actions, a)
+			rows = append(rows, a)
 		}
-		sort.Slice(card.Actions, func(i, j int) bool { return card.Actions[i].Title < card.Actions[j].Title })
-		if n := len(callers); n > 0 {
-			card.ConnectedLine = fmt.Sprintf("Called by %d other %s", n, plural(n, "Crew", "Crews"))
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Title < rows[j].Title })
+	for i := range rows {
+		crews := 0
+		if rows[i].Target != "" {
+			crews = len(callers)
 		}
-		page.Agents = append(page.Agents, card)
+		rows[i].Who = "Who can ask: " + crewSharePeopleWords(t, everyone, named, crews)
+		if rows[i].On {
+			actionsOn++
+		}
+	}
+	page.ActionsGroup = crewShareActionsGroup{Title: "Actions", Line: crewShareActionsIntro, Rows: rows}
+	if len(rows) == 0 {
+		page.ActionsGroup.Line = "None yet."
+	}
+	if canActions {
+		if len(rows) == 0 {
+			page.ActionsGroup.WizardFor = "this Crew"
+			for _, a := range page.Agents {
+				page.ActionsGroup.WizardFor = a.Name
+				break
+			}
+		} else {
+			page.ActionsGroup.SetupAsk = crewShareSetupAsk("this Crew")
+		}
 	}
 	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, groups, workflows)
-	for i := range page.Agents {
-		card := &page.Agents[i]
-		for _, a := range card.Actions {
-			if a.On {
-				actionsOn++
-			}
-		}
-		if len(card.Actions) == 0 {
-			card.ActionsLine = "None yet."
-		}
-		if canActions {
-			name := card.Name
-			if card.Target != "" {
-				name = "the " + card.Name + " workflow"
-			}
-			if len(card.Actions) == 0 {
-				card.WizardFor = name
-			} else {
-				card.SetupAsk = crewShareSetupAsk(name)
-			}
-		}
-	}
 	if len(page.Agents) == 0 {
 		page.AgentsEmpty = "No agents to share yet."
 	}

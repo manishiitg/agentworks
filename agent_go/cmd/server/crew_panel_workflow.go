@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"sort"
 	"sync"
 	"time"
 
@@ -156,58 +155,24 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, stri
 
 func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection, error) {
 	section := crewPanelSection{}
-	records, err := readCrewExecutables()
+	binding := crewShownWorkflow(workspace)
+	if binding == nil {
+		return section, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return section, err
+	}
+	folders, historyNote, err := crewPanelLatestRun(ctx, binding.Root)
 	if err != nil {
 		return section, err
 	}
-	for _, binding := range records {
-		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return section, err
-		}
-		label := "Workflow"
-		filesystem := workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: binding.Root}
-		header := "workflow.json"
-		if binding.Kind == "script" {
-			header = "code/script.json"
-		}
-		if raw, err := fs.ReadFile(filesystem, header); err == nil {
-			var saved struct {
-				Name  string `json:"name"`
-				Label string `json:"label"`
-			}
-			if json.Unmarshal(raw, &saved) == nil {
-				if binding.Kind == "script" && saved.Name != "" {
-					label = saved.Name
-				}
-				if binding.Kind == "workflow" && saved.Label != "" {
-					label = saved.Label
-				}
-			}
-		}
-		steps, known := crewScriptStepCount(ctx, binding)
-		if !known {
-			steps = -1
-		}
-		folders, historyNote, err := crewPanelLatestRun(ctx, binding.Root)
-		if err != nil {
-			return section, err
-		}
-		if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
-			section.Busy = true
-		}
-		detail := crewPanelWorkflowLine(folders, steps, time.Now())
-		if historyNote != "" {
-			detail = "Step count not loaded · " + historyNote
-			if steps >= 0 {
-				detail = crewPanelCount(steps, "step") + " · " + historyNote
-			}
-		}
-		section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: detail, Destination: "workflow"})
+	if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
+		section.Busy = true
 	}
-	sort.Slice(section.Rows, func(i, j int) bool { return section.Rows[i].Label < section.Rows[j].Label })
-	section.Detail = crewPanelCount(len(section.Rows), "workflow")
+	detail := crewPanelWorkflowLine(folders, time.Now())
+	if historyNote != "" {
+		detail = historyNote
+	}
+	section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: "Workflow", Detail: detail, Destination: "workflow"})
 	return section, nil
 }
