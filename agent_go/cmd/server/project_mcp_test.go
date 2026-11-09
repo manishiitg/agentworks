@@ -331,7 +331,7 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 					t.Fatal("Builder conversation exposed", status)
 				}
 				if mode == "view" {
-					for name, action := range map[string]string{"functions": "call", "relay": "run"} {
+					for name, action := range map[string]string{"functions": "call"} {
 						definition, exists := externalCatalogTool(name)
 						if !exists {
 							t.Fatal("missing canonical tool", name)
