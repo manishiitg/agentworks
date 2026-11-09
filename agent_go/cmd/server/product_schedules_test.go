@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -210,7 +211,7 @@ func TestAgentProfileSchedulesRequireSingletonConversation(t *testing.T) {
 // Only the provider turn is replaced. Stop/setup errors cannot strand a run,
 // and a second independent Crew chat must not acquire a new scope-wide lease.
 func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testing.T) {
-	for _, outcome := range []string{"completed", "failed", "stopped", "setup_failed"} {
+	for _, outcome := range []string{"completed", "failed", "stopped", "setup_failed", "ledger_unavailable"} {
 		t.Run(outcome, func(t *testing.T) {
 			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 			env := newTriggerLinkEnv(t)
@@ -221,6 +222,9 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 			}
 			t.Cleanup(func() { _ = store.Close() })
 			env.api.scheduler.stateStore = store
+			if outcome == "ledger_unavailable" {
+				env.api.scheduler.stateStore = nil
+			}
 			profile, err := env.svc.registry.Resolve("work", 0, "owner")
 			if err != nil {
 				t.Fatal(err)
@@ -256,7 +260,7 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 			occurrence := time.Now().UTC().Truncate(time.Minute)
 			done := make(chan error, 1)
 			go func() { _, err := env.svc.Run(ctx, job, "cron", occurrence); done <- err }()
-			if outcome != "setup_failed" {
+			if outcome != "setup_failed" && outcome != "ledger_unavailable" {
 				select {
 				case <-started:
 				case <-time.After(3 * time.Second):
@@ -287,6 +291,15 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 				t.Fatal("timer did not settle")
 			}
 			decisions, err := store.ListFireDecisions(ctx, "crew", "beta", "first", 10)
+			if outcome == "ledger_unavailable" {
+				if err != nil || len(decisions) != 0 || calls.Load() != 0 {
+					t.Fatalf("unavailable ledger started work/evidence: calls=%d decisions=%v err=%v", calls.Load(), decisions, err)
+				}
+				if _, running := env.svc.Running("owner", job.ID()); running {
+					t.Fatal("unavailable ledger stranded dispatcher claim")
+				}
+				return
+			}
 			if err != nil || len(decisions) != 1 || decisions[0].Decision != "started" {
 				t.Fatalf("admission evidence = %+v, %v", decisions, err)
 			}
@@ -298,6 +311,14 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 			if err != nil || saved.State != want || saved.CompletedAt == nil {
 				t.Fatalf("terminal evidence = %+v, %v", saved, err)
 			}
+			if err := store.RecordAdmittedRun(ctx, saved); !errors.Is(err, schedulerstate.ErrRunAlreadyActive) {
+				t.Fatalf("same run ID re-admitted: %v", err)
+			}
+			receipts, err := store.ListFireDecisions(ctx, "crew", "beta", "first", 10)
+			if err != nil || len(receipts) != 1 || receipts[0].RunID != saved.RunID {
+				t.Fatalf("duplicate admission changed occurrence evidence: %v, %v", receipts, err)
+			}
+
 			if _, running := env.svc.Running("owner", job.ID()); running {
 				t.Fatal("terminal timer retained dispatcher claim")
 			}
