@@ -580,3 +580,36 @@ func TestGitTurnKeepsUnicodeFilename(t *testing.T) {
 		t.Fatalf("Unicode Undo paths lost: %v %+v", err, plan)
 	}
 }
+
+// PLAT-746-319: a parent-folder import contained 123k backup/untracked paths.
+// Bound those sets without losing a healthy checkout or inventing deletions
+// when the ordinary-file prefix stops fitting at the next boundary.
+func TestTurnFileLimitKeepsHealthyCheckoutAndOmitsUnknownLooseDiff(t *testing.T) {
+	f := newCrew(t)
+	f.repo("huge", map[string]string{"tracked.txt": "original"})
+	f.repo("z-project", map[string]string{"edit.txt": "original"})
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("huge/untracked-%05d", i), "")
+	}
+	f.put("note.md", "before")
+	f.put("z-project/edit.txt", "before")
+	before, err := f.s.BeginGitTurn(t.Context(), "limited")
+	if err != nil || !turnFileLimited(before.BeforeCapture) || len(before.GitTurn) != 1 {
+		t.Fatalf("large untracked checkout was not bounded: %v %+v", err, before.BeforeCapture)
+	}
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("backup/copy-%05d", i), "")
+	}
+	f.put("z-project/edit.txt", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "limited")
+	if err != nil || after.Status != "partial" || after.AfterCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("large ordinary set lost healthy capture: %v %+v", err, after.AfterCapture)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("bounded prefix invented or lost changes: %v %+v", err, comparison.Changes)
+	}
+	if after.AfterCapture.ImportedBytes > 20 {
+		t.Fatalf("read large untracked/backup contents: %+v", after.AfterCapture)
+	}
+}
