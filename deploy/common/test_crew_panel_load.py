@@ -41,7 +41,8 @@ try:
         relative = p.relative_to(repo).as_posix()
         p.write_bytes(subprocess.check_output(["git", "show", base+":"+relative], cwd=repo))
     old = run("before")
-    if old.returncode == 0 or "panel performed expensive per-poll work" not in old.stdout:
+    observed_work = any(int(n) > 0 for n in re.findall(r"(?:inspections|deep_walks)=(\d+)", old.stdout))
+    if old.returncode == 0 or "panel performed expensive per-poll work" not in old.stdout or not observed_work:
         raise SystemExit("Old path did not reproduce the panel-load regression; inspect setup, not a PASS")
 finally:
     for p, content in fixed.items():
