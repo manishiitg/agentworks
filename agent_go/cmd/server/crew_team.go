@@ -234,6 +234,17 @@ func (t crewTeam) invited(user string) bool {
 
 // Joined members manage the Team together. The main owner and each person's own
 // machine/agent controls remain separate.
+// readCrewTeamOrNew is the Crew's Team record, or, for a Crew that never had one, the empty Team its owner starts from.
+// Every route that lets the owner act on a new Team (the Team tab, settings, people, the directory) reads it here, so
+// the card, the settings and a person change agree on who can manage.
+func readCrewTeamOrNew(project, caller string) (crewTeam, error) {
+	t, err := readCrewTeam(project)
+	if os.IsNotExist(err) && crewProjectOwnedByCallerStrict(caller, crewProjectRootByID(project)) {
+		return crewTeam{ProjectID: project, OwnerID: ownerOfCrewProjectID(project), People: []crewTeamPerson{}}, nil
+	}
+	return t, err
+}
+
 func crewTeamCanManage(t crewTeam, user string) bool {
 	return user != "" && crewTeamAccountActive(user) && (t.member(user) || crewProjectOwnedByCallerStrict(user, crewProjectRootByID(t.ProjectID)))
 }

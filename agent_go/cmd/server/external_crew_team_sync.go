@@ -67,7 +67,7 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 		return
 	case "directory":
 		// The people who can be added: only a Team member or the owner may look, and only ids and names come back.
-		if t, err := readCrewTeam(project); err != nil || !crewTeamCanManage(t, claims.UserID) {
+		if t, err := readCrewTeamOrNew(project, claims.UserID); err != nil || !crewTeamCanManage(t, claims.UserID) {
 			externalError(w, http.StatusForbidden, "team_owner_required", "Join this Crew's Team to see who can be added.")
 			return
 		}
@@ -108,10 +108,7 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 		// The Team tab's switch and shared folders, the same saved record and checks as the website, the Mac app and the
 		// team_sync chat tool (configure): the Crew's main owner alone turns the Team on or off or switches Folders and
 		// Whole Crew, a joined member may add folders (crewTeamOwnerOnlyChange is the one check).
-		team, err := readCrewTeam(project)
-		if os.IsNotExist(err) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
-			team, err = crewTeam{ProjectID: project, OwnerID: ownerOfCrewProjectID(project), People: []crewTeamPerson{}}, nil
-		}
+		team, err := readCrewTeamOrNew(project, claims.UserID)
 		if err != nil || !crewTeamCanManage(team, claims.UserID) {
 			externalError(w, http.StatusForbidden, "team_owner_required", "Join this Crew's Team to change its settings.")
 			return
