@@ -340,3 +340,35 @@ func TestStoppingIdleWebhookDoesNotStopConcurrentSchedule(t *testing.T) {
 		t.Fatalf("unrelated schedule stopped: %+v %v", run, err)
 	}
 }
+
+// PLAT-746-506 / PR1721: the same schedule key can acquire another run
+// between chat Stop's lookup and its controller's write lock.
+func TestChatStopCannotCancelAReplacementScheduleRun(t *testing.T) {
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	svc := NewSchedulerService(&StreamingAPI{})
+	svc.stateStore = store
+	ctx := context.Background()
+	schedule := &ScheduleContext{WorkspacePath: "Workflow/test", Schedule: WorkflowSchedule{ID: "timer", ScheduleType: "cron"}}
+	if err := svc.claimScheduleRun(ctx, schedule, "replacement", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	key := scheduleRuntimeKey(schedule)
+	svc.runtimeStates[key] = &ScheduleRuntimeState{ActiveRunID: "replacement", LastStatus: "running"}
+	canceled := false
+	svc.runCancels["replacement"] = func() { canceled = true }
+	svc.stopRunningJob(key, "timer", "previous")
+	run, err := store.GetRun(ctx, "replacement")
+	if canceled || svc.runtimeStates[key].ActiveRunID != "replacement" || err != nil || schedulerstate.IsTerminal(run.State) {
+		t.Fatalf("stale chat Stop changed replacement: canceled=%v state=%+v durable=%+v err=%v", canceled, svc.runtimeStates[key], run, err)
+	}
+	// The corresponding allowed case must reach the real cancellation handle.
+	svc.stopRunningJob(key, "timer", "replacement")
+	run, err = store.GetRun(ctx, "replacement")
+	if !canceled || svc.runtimeStates[key].ActiveRunID != "" || err != nil || run.State != schedulerstate.StateStopped {
+		t.Fatalf("matching chat Stop did not stop its run: canceled=%v state=%+v durable=%+v err=%v", canceled, svc.runtimeStates[key], run, err)
+	}
+}

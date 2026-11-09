@@ -1440,7 +1440,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 
 // StopRunningJob stops a running scheduled job by canceling its session.
 func (s *SchedulerService) StopRunningJobForWorkflow(workspacePath, scheduleID string) {
-	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID)
+	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID, "")
 }
 
 func (s *SchedulerService) StopRunningJob(scheduleID string) {
@@ -1448,7 +1448,7 @@ func (s *SchedulerService) StopRunningJob(scheduleID string) {
 	if len(keys) != 1 {
 		return
 	}
-	s.stopRunningJob(keys[0], scheduleID)
+	s.stopRunningJob(keys[0], scheduleID, "")
 }
 
 // stopChatWorkflowRun uses the run identity admitted to this chat's background
@@ -1467,13 +1467,19 @@ func (s *SchedulerService) stopChatWorkflowRun(runID, scheduleID string) {
 	}
 	s.runtimeStatesMu.RUnlock()
 	if key != "" {
-		s.stopRunningJob(key, scheduleID)
+		s.stopRunningJob(key, scheduleID, runID)
 	}
 }
 
-func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID string) {
+func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID, expectedRunID string) {
 	s.runtimeStatesMu.Lock()
 	state := s.getRuntimeStateLocked(runtimeKey)
+	// A manual schedule reuses its key. The chat owns the admitted run, not
+	// a replacement that acquired this key after the registry lookup.
+	if expectedRunID != "" && state.ActiveRunID != expectedRunID {
+		s.runtimeStatesMu.Unlock()
+		return
+	}
 	sessionID := state.LastSessionID
 	runID := state.ActiveRunID
 	state.LastStatus = "stopped"
