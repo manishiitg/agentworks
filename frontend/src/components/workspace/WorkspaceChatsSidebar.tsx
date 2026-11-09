@@ -3,7 +3,6 @@ import { Search } from 'lucide-react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { agentApi } from '../../services/api'
@@ -24,23 +23,15 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const scope = `${workspace}:${user?.id || ''}`
   const product = useProductSurfaceStore(state => state.productSurface)
   const crewId = useProductSurfaceStore(state => state.selectedWorkProjectId)
-  const goalId = useGlobalPresetStore(state => state.activePresetIds.workflow)
-  const presets = useGlobalPresetStore(state => state.workflowPresets)
   const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
   const providersOpen = useLLMStore(state => state.showLLMModal)
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
-  const canListGoals = allowed.includes('agentworks')
   const [directory, setDirectory] = useState<{ scope: string; crews: Crew[]; error: boolean } | null>(null)
   const [refresh, setRefresh] = useState(0)
   useLiveRefetch(() => setRefresh(value => value + 1), {
     kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
-    enabled: allowed.includes('work') || canListGoals,
+    enabled: allowed.includes('work'),
   })
-  // Navigation owns its Goals list even when the selected page is a Crew.
-  // Loading manifests elsewhere does not populate the derived preset list.
-  useEffect(() => {
-    if (canListGoals) void useGlobalPresetStore.getState().refreshPresets()
-  }, [scope, refresh, canListGoals])
   useEffect(() => {
     let disposed = false
     const identity = captureChatIdentity()
@@ -58,8 +49,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const current = directory?.scope === scope ? directory : null
   const projects = [
     ...(allowed.includes('work') ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
-    ...(allowed.includes('agentworks') ? presets.filter(preset => (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(preset.id)))
-      .map(preset => ({ id: preset.id, name: preset.label, icon: preset.icon, kind: 'goal' as const })) : []),
   ].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
 
   return <aside aria-label="Projects" className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20">
@@ -76,7 +65,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     </div>
     <DesktopConnections projects={projects.map(project => ({ ...project,
       selected: !globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
-        (project.kind === 'crew' ? product === 'work' && crewId === project.id : product === 'agentworks' && goalId === project.id),
+        product === 'work' && crewId === project.id,
     }))}>
       {!current && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
       {current?.error && <button type="button" className="px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => setRefresh(value => value + 1)}>Could not load Crews. Try again.</button>}

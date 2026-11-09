@@ -37,7 +37,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onImportLocalChat, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
+  onImportLocalChat, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -48,6 +48,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
   onReopen?: (chat: AgentProfileSideChat) => Promise<void>
   onImportLocalChat?: () => void
+  onOpenIdentity?: () => void
   onCloseTab: (tabId: string) => void; onSelectTab: (tabId: string) => void
   projectActivity?: 'running' | 'waiting' | null
   renderAfterTab?: (tab: ChatTab) => ReactNode; isTabActive?: (tab: ChatTab) => boolean; onMakeInteractive?: (tabId: string) => void
@@ -519,7 +520,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} />}
+      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} onOpenIdentity={onOpenIdentity} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)

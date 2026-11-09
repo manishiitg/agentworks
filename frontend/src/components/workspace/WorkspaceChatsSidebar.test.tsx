@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -117,7 +116,7 @@ async function render(check: (host: HTMLDivElement, rerender: () => Promise<void
     host.remove()
   }
 }
-it('lists admitted Crews and Goals before a chat exists, without projecting chat threads', async () => {
+it('lists admitted Crews without duplicating their saved workflows or chat threads', async () => {
   mocks.enabled = ['work', 'agentworks']
   mocks.navigation.mockResolvedValue({ workspaces: [{ id: 'shared', profile_id: 'work', name: 'Accounting', icon: '📒', workspace_path: 'Crew/shared' }] })
   mocks.presets = [
@@ -127,25 +126,23 @@ it('lists admitted Crews and Goals before a chat exists, without projecting chat
   await render(async host => {
     const group = host
     expect(group.textContent).toContain('Accounting')
-    expect(group.textContent).toContain('Sales')
+    expect(group.textContent).not.toContain('Sales')
     expect(group.textContent).not.toContain('Internal research thread')
     expect(mocks.history).not.toHaveBeenCalled()
     expect(mocks.activeSessions).not.toHaveBeenCalled()
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accounting · Crew"]')!.click())
     expect(mocks.openProject).toHaveBeenLastCalledWith({ surface: 'work', id: 'shared' })
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Sales · Goal"]')!.click())
-    expect(mocks.openProject).toHaveBeenLastCalledWith({ surface: 'agentworks', id: 'goal' })
     expect(host.querySelector('[aria-label="Search all chats (Ctrl+K or Command+K)"]')).not.toBeNull()
   })
 })
 
-it('honors current product and Goal access and does not invent project rows from saved chats', async () => {
+it('does not list Crews when the current account lacks Crew access', async () => {
   mocks.user.allowed_products = ['agentworks']
   mocks.user.allowed_workflow_ids = ['permitted']
   mocks.presets = [{ id: 'permitted', label: 'Allowed goal' }, { id: 'private', label: 'Private goal' }]
   mocks.tabs = { stale: { tabId: 'stale', name: 'Private Crew', metadata: { agentProfileId: 'work', agentProfileProjectId: 'private' } } }
   await render(async host => {
-    expect(host.textContent).toContain('Allowed goal')
+    expect(host.textContent).not.toContain('Allowed goal')
     expect(host.textContent).not.toContain('Private goal')
     expect(host.textContent).not.toContain('Private Crew')
     expect(mocks.navigation).not.toHaveBeenCalled()
@@ -162,17 +159,5 @@ it('discards a previous server inventory when the active server changes', async 
     await act(async () => resolveOld({ workspaces: [{ id: 'old', name: 'Previous private Crew', profile_id: 'work' }] }))
     expect(host.textContent).toContain('Current Crew')
     expect(host.textContent).not.toContain('Previous private Crew')
-  })
-})
-
-it('loads Goals when opening directly on a Crew without first visiting the Goals page', async () => {
-  // PLAT-746: the Crew route never mounts AppWorkspace's preset initialization.
-  mocks.workspace = 'connected-server'
-  mocks.navigation.mockResolvedValue({ workspaces: [{ id: 'crew', profile_id: 'work', name: 'Research crew' }] })
-  mocks.refreshPresets.mockImplementation(async () => { mocks.presets = [{ id: 'goal', label: 'Weekly report' }] })
-  await render(async (host, rerender) => {
-    await rerender()
-    expect(host.textContent).toContain('Research crew')
-    expect(host.textContent).toContain('Weekly report')
   })
 })
