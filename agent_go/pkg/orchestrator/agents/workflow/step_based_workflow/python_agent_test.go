@@ -19,7 +19,7 @@ import (
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -786,7 +786,7 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 			"project_functions_call": func(context.Context, map[string]interface{}) (string, error) { return `{}`, nil },
 		}, nil
 	}
-	_, functions, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Call", Messages: []string{"Use the published function"}, Tools: []string{agentworksproduct.ExecutionFunctionTools().Category + ":project_functions_call"}})
+	_, functions, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Call", Messages: []string{"Use the published function"}, Tools: []string{projectfunctions.ExecutionTools().Category + ":project_functions_call"}})
 	if err != nil {
 		t.Fatal(err)
 	}
