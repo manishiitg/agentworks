@@ -285,9 +285,9 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
       const session = sessions.find(item => item.session_id === chat.session_id)
-      return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
+      return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
     })}</div>)}</>
 }
 
