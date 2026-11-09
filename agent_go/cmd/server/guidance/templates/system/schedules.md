@@ -28,7 +28,8 @@ what was actually saved. Enabling requires the workflow's required inputs.
 Dependencies use the current after condition, outcome, delay and deadline.
 Ordinary missed clock slots do not catch up. An already waiting dependency
 occurrence retains its original scheduled time through its deadline/local day;
-waiting work is not an unlimited replay queue. The global pause holds pending
+dependency waiting does not replay indefinitely. An ordinary busy-chat queue is
+separate and has no local-day/dependency expiry; it may start after midnight. The global pause holds pending
 work and resume rechecks the current schedule and prerequisites. Run now is a
 requested real run that ignores timing and dependencies, not proof those
 conditions succeeded. A save or accepted run receipt is not completion.

@@ -9,17 +9,22 @@ The first-time Team setup chooses people and their level, the shared folder
 saves with Finish. If sharing requires a dashboard, explain that before saving
 and ask before creating one. Do not create it as a side effect of listing.
 
-Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Read the
-current schema rather than translating old workflow-team policy fields:
+Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Their action
+names differ: chat `status` lists Teams and invitations; MCP uses `invites`.
+Chat changes folders/Team settings with `configure`; MCP uses `settings`.
+Chat uses its returned `project`; MCP uses `crew_id`. Read the current schema
+rather than copying action names or old workflow-team policy fields:
 
 - `directory` finds eligible people; `people` reads their current levels.
   **Works with me** invites someone to join; **Dashboards only** is the Crew
   owner's choice on a server Crew. Moving between levels or removing someone
   uses that same People service. Show any returned gain/loss preview and apply
   its required confirmation only after the person agrees.
-- `invites`, `accept` and `decline` handle the caller's own invitations. An
-  invitation is not proof they joined. Members use **Leave this Team** to leave.
-- `settings` controls Team on/off and shared folders. The main owner controls
+- MCP `invites`, `accept` and `decline` handle the caller's own invitations.
+  Chat `status` lists them; use the returned invitation controls rather than
+  inventing chat accept/decline actions. An invitation is not proof they joined.
+  Chat `leave` and **Leave this Team** let members leave.
+- Chat `configure` / MCP `settings` controls Team on/off and shared folders. The main owner controls
   on/off, whole Crew versus folders, and removing folders; joined members can
   add folders. Preserve unrelated folders. Show the returned change preview
   and follow the service's confirmation requirement.
