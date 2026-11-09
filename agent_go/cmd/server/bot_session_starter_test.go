@@ -272,7 +272,7 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := api.sendFollowUpInternal(ctx, map[string]interface{}{"query": "use Notion instead", "agent_mode": "workflow_phase", "phase_id": "workflow-builder"}, sessionID, userID); err != nil {
+	if err := api.sendFollowUpInternal(ctx, map[string]interface{}{"query": "use Notion instead", "agent_mode": "multi-agent"}, sessionID, userID); err != nil {
 		t.Fatal(err)
 	}
 	if deliveries != 1 {
