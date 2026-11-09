@@ -397,12 +397,13 @@ func crewPanelAutomationLine(rows []crewPanelRow) string {
 	now := time.Now()
 	for i := range rows {
 		row := &rows[i]
-		if row.Detail == "Paused" || row.Detail == "Completed" {
+		status, _, _ := strings.Cut(row.Detail, " · ")
+		if status == "Paused" || status == "Completed" {
 			paused++
 		} else {
 			on++
 		}
-		if row.Detail == "Running now" {
+		if status == "Running now" {
 			running++
 		}
 		if row.nextRun.After(now) && (next == nil || row.nextRun.Before(next.nextRun)) {
@@ -532,7 +533,7 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 	workflows := []crewPanelRow{}
 	for _, section := range sections {
 		for _, row := range section.Rows {
-			if row.Destination == "workflow" {
+			if section.ID == "workflow" && row.Destination == "workflow" {
 				workflows = append(workflows, row)
 				continue
 			}
@@ -544,8 +545,19 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 				}
 				continue
 			}
-			groups[row.Destination] = append(groups[row.Destination], row)
-			if strings.HasPrefix(row.Destination, "schedules:") {
+			// Classification comes from the server section. A workflow timer
+			// still opens its Workflow page, but is counted as a timer.
+			destination := row.Destination
+			switch section.ID {
+			case "schedules":
+				destination = "schedules:schedules"
+			case "webhooks":
+				destination = "schedules:triggers"
+			case "watchers":
+				destination = "schedules:conditions"
+			}
+			groups[destination] = append(groups[destination], row)
+			if strings.HasPrefix(destination, "schedules:") {
 				automations = append(automations, row)
 			}
 		}

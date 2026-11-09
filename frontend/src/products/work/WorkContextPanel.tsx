@@ -72,15 +72,15 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   // One page, opened at the tab the row names (the Automations page listens for the target).
-  const automationKinds = [{ target: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', label: 'Webhooks', icon: Webhook }, { target: 'conditions', label: 'Watchers', icon: Eye }] as const
+  const automationKinds = [{ target: 'schedules', section: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', section: 'webhooks', label: 'Webhooks', icon: Webhook }, { target: 'conditions', section: 'watchers', label: 'Watchers', icon: Eye }] as const
   const allRows = (data?.sections || []).flatMap(item => item.rows)
   // The server sends an Inbox row whenever it can do inboxes, On or Off (the server decides, not a browser flag).
   const inboxRow = allRows.find(row => row.destination === 'schedules:email')
   // The collapsed row's stacked icons: one per kind that has something, with how many (Connections look): the workflow,
   // each start, and the Inbox while it is on. Each hint is the server's one-line summary.
   const automationChips = [
-    { key: 'workflow', detailKey: 'workflow', target: 'workflow', label: 'Workflow', icon: Route, count: allRows.filter(row => row.destination === 'workflow').length },
-    ...automationKinds.map(kind => ({ key: kind.target, detailKey: `schedules:${kind.target}`, target: kind.target, label: kind.label, icon: kind.icon, count: allRows.filter(row => row.destination === `schedules:${kind.target}`).length })),
+    { key: 'workflow', detailKey: 'workflow', target: 'workflow', label: 'Workflow', icon: Route, count: section('workflow')?.rows.filter(row => row.destination === 'workflow').length ?? 0 },
+    ...automationKinds.map(kind => ({ key: kind.target, detailKey: `schedules:${kind.target}`, target: kind.target, label: kind.label, icon: kind.icon, count: section(kind.section)?.rows.length ?? 0 })),
     { key: 'email', detailKey: 'schedules:email', target: 'email', label: 'Inbox', icon: Mail, count: inboxRow?.connected ? 1 : 0 },
   ].filter(chip => chip.count > 0)
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }

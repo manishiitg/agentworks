@@ -61,9 +61,10 @@ type crewWizardChoice struct {
 		UserID string `json:"user_id"`
 		Level  string `json:"level"`
 	} `json:"people"`
-	Whole  bool     `json:"whole"`
-	Folder string   `json:"folder"`
-	Agents []string `json:"agents"` // keys of the agents the Team may ask (Main is always on)
+	Whole           bool     `json:"whole"`
+	Folder          string   `json:"folder"`
+	Agents          []string `json:"agents"` // keys of the agents the Team may ask (Main is always on)
+	CreateDashboard bool     `json:"create_dashboard"`
 }
 
 // crewWizardAgents are the owner's own agents as the Team tab lists them while the Team is off, Main first.
@@ -117,7 +118,9 @@ func (api *StreamingAPI) handleCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-	slices.SortFunc(view.People, func(a, b crewWizardPerson) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	slices.SortFunc(view.People, func(a, b crewWizardPerson) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	// The Crew's folders, through the Team tab's own folder route (a Crew on a Mac is read from its Mac).
 	rec := httptest.NewRecorder()
 	api.handleCrewTeamFolders(rec, mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/folders", nil).WithContext(r.Context()), map[string]string{"project": project}))
@@ -171,6 +174,25 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 	} else {
 		team.Folder = crewTeamFolder{Folders: []string{firstNonEmptyTrimmed(in.Folder, crewTeamDefaultFolder)}}
 	}
+	// PLAT-746: ask for a dashboard before saving the Team, so the wizard and its choices stay available.
+	// This is the same explicit creation choice as People; checking Dashboards only is not creation consent.
+	if len(dashboards) > 0 {
+		target, err := api.dashboardTarget(r.Context(), claims, crewProjectRootByID(project))
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		if !hasPublishedDashboard(r.Context(), target.Root) {
+			if !in.CreateDashboard {
+				externalError(w, 409, "dashboard_needed", "This Crew has no dashboard yet. Create a standard dashboard for the people with Dashboards only access?")
+				return
+			}
+			if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil || !hasPublishedDashboard(r.Context(), target.Root) {
+				externalError(w, 409, "dashboard_needed", "The dashboard could not be created. Try again, or publish your own dashboard first.")
+				return
+			}
+		}
+	}
 	// The Team save: the same route and checks as the Team tab (folder limits, invites, owner only).
 	if !crewPeopleRunShare(w, r, func(rec http.ResponseWriter, req *http.Request) { api.putCrewTeam(rec, req, project, team) }) {
 		return
@@ -178,7 +200,7 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 	var left []string
 	for _, id := range dashboards {
 		rec := httptest.NewRecorder()
-		api.changeCrewPerson(rec, r, claims, project, crewPeopleChange{Person: id, Level: crewPeopleDashboards, Confirm: true})
+		api.changeCrewPerson(rec, r, claims, project, crewPeopleChange{Person: id, Level: crewPeopleDashboards, Confirm: true, CreateDashboard: in.CreateDashboard})
 		if rec.Code >= 300 {
 			var failure struct {
 				Error struct {
@@ -189,12 +211,21 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 			left = append(left, fmt.Sprintf("%s: %s", crewPersonShortName(id), firstNonEmptyTrimmed(failure.Error.Message, "not added")))
 		}
 	}
-	// The owner's agents: ticked ones stay In team (the default), the rest become Only me. Main is always on.
+	// The owner's agents: apply the selection explicitly, including old Only me choices.
+	// Turn the checked agents on first, so hiding the others never hides the last shared agent.
 	fresh, err := readCrewTeam(project)
 	if err != nil {
 		fresh = team
 	}
-	for _, a := range crewWizardAgents(r.Context(), fresh) {
+	agents := crewWizardAgents(r.Context(), fresh)
+	for _, a := range agents {
+		if a.Main || slices.Contains(in.Agents, a.Key) {
+			if err := setCrewTeamAgentChoice(r.Context(), project, t.OwnerID, a.Key, true); err != nil {
+				left = append(left, a.Name+": "+err.Error())
+			}
+		}
+	}
+	for _, a := range agents {
 		if !a.Main && !slices.Contains(in.Agents, a.Key) {
 			if err := setCrewTeamAgentChoice(r.Context(), project, t.OwnerID, a.Key, false); err != nil {
 				left = append(left, a.Name+": "+err.Error())
