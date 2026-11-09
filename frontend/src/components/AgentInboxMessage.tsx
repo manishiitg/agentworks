@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Bot } from 'lucide-react'
 import { shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview } from '../utils/terminalEventTranscript'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
@@ -8,8 +9,8 @@ import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from
 export function agentInboxMessage(metadata?: Record<string, unknown>) {
   if (metadata?.source !== 'agent_message') return null
   const { sender_label: sender, agent_message_inbox: inboxID, message_id: messageID, agent_message_instructions: instructions, display_content: body } = metadata
-  if ([sender, inboxID, messageID, instructions, body].some(value => typeof value !== 'string' || !value.trim())) return null
-  return { sender: sender as string, kind: typeof metadata.sender_kind === 'string' ? metadata.sender_kind : '', inboxID: inboxID as string, messageID: messageID as string, instructions: instructions as string, body: body as string,
+  if ([sender, body].some(value => typeof value !== 'string' || !value.trim())) return null
+  return { sender: sender as string, kind: typeof metadata.sender_kind === 'string' ? metadata.sender_kind : typeof metadata.sender_channel === 'string' ? metadata.sender_channel : '', inboxID: typeof inboxID === 'string' ? inboxID : '', messageID: typeof messageID === 'string' ? messageID : '', instructions: typeof instructions === 'string' ? instructions : '', body: body as string,
     bodyTruncated: typeof metadata.display_content_truncated === 'boolean' ? metadata.display_content_truncated : undefined }
 }
 
@@ -26,8 +27,14 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
   const shown = collapsible && !expanded ? transcriptUserMessagePreview(body) : body
   const needsLoad = artifact && message.bodyTruncated !== false && !full.text
   return (
-    <article data-testid="agent-inbox-message" className="mb-2 ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%]">
-      <div data-testid="agent-inbox-body" className="max-w-full break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
+    <article data-testid="agent-inbox-message" className="mb-3 mt-3 w-[min(100%,52rem)] overflow-hidden rounded-xl border border-border bg-muted/20 text-left">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
+        <Bot aria-hidden="true" className="h-4 w-4 shrink-0" />
+        <span className="font-medium text-foreground">{message.sender}</span>
+        {message.kind && <span>{message.kind}</span>}
+        {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
+      </header>
+      <div data-testid="agent-inbox-body" className="max-w-full break-words px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
         <ConversationMarkdownRenderer content={shown} framed={false} maxHeight="none" copyableCode />
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}
@@ -37,10 +44,11 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
           {expanded ? 'Show less' : 'Show full message'}
         </button>}
       </div>
-      <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
-        <span>From {message.sender}</span>
-        {timestamp && <span className="tabular-nums">{timestamp}</span>}
-      </div>
+      {(message.inboxID || message.instructions) && <details className="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Message details</summary>
+        {message.inboxID && <p className="mt-2 break-all">Reply address: {message.inboxID}</p>}
+        {message.instructions && <p className="mt-2 whitespace-pre-wrap break-words">{message.instructions}</p>}
+      </details>}
     </article>
   )
 }
