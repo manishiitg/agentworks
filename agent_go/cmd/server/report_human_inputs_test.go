@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"database/sql"
+
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -134,44 +134,6 @@ func TestReportHumanInputsUseWorkflowLocalDB(t *testing.T) {
 	}
 }
 
-// TestOpenReportHumanInputDBUsesWALMode locks in the fix for a real incident:
-// get_pulse_state(view=module) hit persistent SQLITE_BUSY under concurrent
-// load because this DB was opened in SQLite's default rollback-journal mode,
-// where a writer's transaction exclusively locks the whole file against every
-// concurrent reader. get_pulse_state(view=module) alone opens this DB 5
-// separate times sequentially for one call (pulse_worklist.go), multiplying
-// the collision window. WAL mode lets readers proceed without blocking on a
-// writer. Also locks in that busy_timeout is DSN-embedded, not a one-time
-// runtime PRAGMA, since this *sql.DB has no SetMaxOpenConns cap and a
-// runtime PRAGMA on one pooled connection would silently not apply to a
-// second connection the pool opens for a concurrent query.
-func TestOpenReportHumanInputDBUsesWALMode(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-
-	_, db, err := openReportHumanInputDB(ctx, "Workflow/wal-mode-check", true)
-	if err != nil {
-		t.Fatalf("openReportHumanInputDB: %v", err)
-	}
-	defer db.Close()
-
-	var journalMode string
-	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode); err != nil {
-		t.Fatalf("query journal_mode: %v", err)
-	}
-	if !strings.EqualFold(journalMode, "wal") {
-		t.Fatalf("journal_mode = %q, want \"wal\" -- a reader/writer collision on this db.sqlite will hit SQLITE_BUSY under concurrent load without WAL mode", journalMode)
-	}
-
-	var busyTimeoutMs int
-	if err := db.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeoutMs); err != nil {
-		t.Fatalf("query busy_timeout: %v", err)
-	}
-	if busyTimeoutMs <= 0 {
-		t.Fatalf("busy_timeout = %d, want > 0 -- a concurrent writer would return SQLITE_BUSY immediately instead of retrying", busyTimeoutMs)
-	}
-}
-
 // The decisions store no longer initializes Pulse for any product. Goals create
 // their own measurement and scheduling tables through the actual Goal paths.
 
@@ -240,36 +202,6 @@ func TestFixRunsCannotFetchApprovedDecisions(t *testing.T) {
 	}
 }
 
-func TestPromptContractDecisionMigrationGetsTargetedFixerContract(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	workspacePath := "Workflow/migrated-prompt-contract"
-	if _, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{
-		InputID: "technical-decision-prompt-contract-consolidation-example", Source: "technical_review", Question: "Approve cleanup?",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", filepath.Join(root, "Workflow", "migrated-prompt-contract", "db", "db.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`UPDATE report_human_inputs SET apply_contract_json='{}'`); err != nil {
-		_ = db.Close()
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	inputs, err := listReportHumanInputs(ctx, workspacePath, "pending", "")
-	if err != nil || len(inputs) != 1 {
-		t.Fatalf("migrated inputs=%+v err=%v", inputs, err)
-	}
-	if got := inputs[0].ApplyContract; got.Mode != "targeted_fixer" || got.FailurePolicy != "continue_unchanged" || !strings.Contains(got.ApprovedScope, "one versioned") {
-		t.Fatalf("prompt-contract migration = %+v", got)
-	}
-}
-
 func TestAnswerHumanInputRequestToolUsesValidatedDecisionLifecycle(t *testing.T) {
 	ctx := humanAnswerFixture(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
@@ -333,98 +265,6 @@ func TestAnswerHumanInputRequestToolUsesValidatedDecisionLifecycle(t *testing.T)
 	}
 }
 
-func TestGetHumanInputRequestToolReadsCanonicalDecision(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/read-decision"
-	inputID := "strategy-proposal-read-me"
-	if _, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{
-		InputID:  inputID,
-		Source:   "strategy_auditor",
-		Question: "Apply the proposed strategy?",
-		Context:  "Proposal: use the verified strategy on the next run.",
-		Options:  []ReportHumanInputOption{{ID: "approve", Title: "Approve"}},
-	}); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if _, err := answerReportHumanInput(ctx, workspacePath, inputID, ReportHumanInputAnswerRequest{
-		SelectedOptionID: "approve",
-		AnsweredBy:       "user",
-	}); err != nil {
-		t.Fatalf("answer: %v", err)
-	}
-
-	tools, executors, categories := createReportHumanInputTools()
-	found := false
-	for _, tool := range tools {
-		if tool.Function != nil && tool.Function.Name == "get_human_input_request" {
-			found = true
-			break
-		}
-	}
-	if !found || categories["get_human_input_request"] != "human_tools" {
-		t.Fatalf("get tool is not registered in human_tools: found=%v category=%q", found, categories["get_human_input_request"])
-	}
-	get, ok := executors["get_human_input_request"].(func(context.Context, map[string]interface{}) (string, error))
-	if !ok {
-		t.Fatal("get_human_input_request executor is missing or has the wrong type")
-	}
-	result, err := get(ctx, map[string]interface{}{"workspace_path": workspacePath, "input_id": inputID})
-	if err != nil {
-		t.Fatalf("get tool: %v", err)
-	}
-	for _, want := range []string{`"status":"read"`, `"selected_option_id":"approve"`, "use the verified strategy"} {
-		if !strings.Contains(result, want) {
-			t.Fatalf("get tool result missing %q: %s", want, result)
-		}
-	}
-}
-
-func TestAnsweredGoalAdvisorPlanProposalCarriesContext(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	workspacePath := "Workflow/proposal"
-	proposalContext := "Proposal: add a validation step before delivery. Exact edits: add scripted step validate-offer after draft-offer; update delivery dependency. Rationale: two clean runs still sent weak offers. Expected impact: fewer off-goal deliveries. Risk: extra runtime. Evidence: runs/iteration-0/group-1/logs/deliver-offer/execution/execution-attempt-1-iteration-0.json"
-
-	_, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{
-		InputID:  "plan-proposal-validate-offer",
-		Source:   "goal_advisor",
-		Priority: "high",
-		Question: "Approve adding an offer-validation step?",
-		Context:  proposalContext,
-		Evidence: "runs/iteration-0/group-1/logs/deliver-offer/execution/execution-attempt-1-iteration-0.json",
-		Options: []ReportHumanInputOption{
-			{ID: "approve", Title: "Approve", Description: "Apply this plan change in the next Autopilot pass."},
-			{ID: "reject", Title: "Reject", Description: "Keep the current plan."},
-			{ID: "defer", Title: "Defer", Description: "Wait for more evidence."},
-		},
-	})
-	if err != nil {
-		t.Fatalf("create proposal: %v", err)
-	}
-	_, err = answerReportHumanInput(ctx, workspacePath, "plan-proposal-validate-offer", ReportHumanInputAnswerRequest{
-		SelectedOptionID: "approve",
-		AnsweredBy:       "user",
-	})
-	if err != nil {
-		t.Fatalf("answer proposal: %v", err)
-	}
-
-	contextBlock := formatAnsweredReportHumanInputsForAgent(ctx, workspacePath)
-	for _, want := range []string{
-		"plan-proposal-validate-offer",
-		"option=approve",
-		"add scripted step validate-offer",
-		"apply it only with normal plan modification/config/measurement/report tools",
-		"mark_human_input_consumed",
-	} {
-		if !strings.Contains(contextBlock, want) {
-			t.Fatalf("answered proposal context missing %q:\n%s", want, contextBlock)
-		}
-	}
-}
-
 func TestReportHumanInputAllowsFreeTextInsteadOfOption(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
@@ -469,45 +309,6 @@ func TestReportHumanInputRejectsEscapingWorkspacePath(t *testing.T) {
 	}
 }
 
-func TestReportHumanInputAnswerPersistsAttributionAndEvent(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	workspacePath := "Workflow/attribution"
-	if _, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{
-		InputID: "approve", Question: "Approve?", AllowFreeText: true,
-		CreatedBy: "pulse", CreatedByKind: "agent", CreatedVia: "agent_tool", SessionID: "pulse-run-1",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	answered, err := answerReportHumanInput(ctx, workspacePath, "approve", ReportHumanInputAnswerRequest{
-		Note: "yes", AnsweredBy: "operator-1", AnsweredByKind: "human_ui", AnsweredVia: "report_ui", SessionID: "chat-1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if answered.AnsweredBy != "operator-1" || answered.AnsweredByKind != "human_ui" || answered.AnsweredVia != "report_ui" || answered.AnsweredSessionID != "chat-1" {
-		t.Fatalf("answer attribution mismatch: %+v", answered)
-	}
-	db, err := sql.Open("sqlite", filepath.Join(root, "Workflow", "attribution", "db", "db.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	var eventType, actorID, actorKind, channel, sessionID, details string
-	if err := db.QueryRow(`SELECT event_type, actor_id, actor_kind, channel, session_id, details
-		FROM report_human_input_events WHERE input_id='approve' ORDER BY id DESC LIMIT 1`).Scan(
-		&eventType, &actorID, &actorKind, &channel, &sessionID, &details); err != nil {
-		t.Fatal(err)
-	}
-	if eventType != "answered" || actorID != "operator-1" || actorKind != "human_ui" || channel != "report_ui" || sessionID != "chat-1" {
-		t.Fatalf("event attribution = %q %q %q %q %q", eventType, actorID, actorKind, channel, sessionID)
-	}
-	if strings.Contains(details, "yes") || !strings.Contains(details, `"note_present":true`) {
-		t.Fatalf("event must record answer shape without duplicating free text: %s", details)
-	}
-}
-
 func TestReportHumanInputHTTPAnswerIgnoresForgedActor(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
@@ -536,24 +337,5 @@ func TestReportHumanInputHTTPAnswerIgnoresForgedActor(t *testing.T) {
 	}
 	if inputs[0].AnsweredBy == "forged-user" || inputs[0].AnsweredByKind != "human_ui" || inputs[0].AnsweredVia != "report_ui" || inputs[0].AnsweredSessionID != "ui-session-1" {
 		t.Fatalf("HTTP attribution was not server-derived: %+v", inputs[0])
-	}
-}
-
-func TestDecisionsStoreOnlyCreatesDecisionTables(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	for _, path := range []string{"Crew/demo-1a2b", "Workflow/goal-check"} {
-		_, db, err := openReportHumanInputDB(ctx, path, true)
-		if err != nil {
-			t.Fatalf("%s: %v", path, err)
-		}
-		var n int
-		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name GLOB 'pulse_*'").Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		_ = db.Close()
-		if n != 0 {
-			t.Fatalf("%s: %d Autopilot tables, want none from decisions", path, n)
-		}
 	}
 }

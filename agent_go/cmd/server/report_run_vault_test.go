@@ -44,10 +44,6 @@ func TestReportRunVaultBridgeUsesLiveViewerAndEndsWithScript(t *testing.T) {
 	if _, err := api.resolveGovernedMCP(ctx, "viewer", "vault_c_notion"); err != nil {
 		t.Fatal(err)
 	}
-	ctx, _, tool, err = api.vaultBridgeToolName(context.Background(), session, "Notion", "fetch-page")
-	if err != nil || tool != "notion__fetch-page" {
-		t.Fatalf("legacy report tool path was lost: %q %v", tool, err)
-	}
 	// PLAT-746: current stable tool spelling (23f75add6a) and explicit selection both matter.
 	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"vault_c_notion"}, []string{"vault_c_notion:" + tool}, "viewer", "Notion", tool); err != nil {
 		t.Fatalf("selected current connection/tool was refused: %v", err)

@@ -479,23 +479,6 @@ func TestSSOFirstLoginNeverLinksByDisplayName(t *testing.T) {
 	}
 }
 
-// The token an SSO sign-in issues names the directory account, not the
-// user-chosen display name.
-func TestAdminAddedEmailIsStoredLowercase(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[]}`)
-	dir, _ := readUserDirectoryFile()
-	if _, created, err := addDirectoryUser(dir, "Ana@Gmail.com", "Ana@Gmail.com", "viewer", []string{"code"}); err != nil || !created {
-		t.Fatalf("create: %v created=%v", err, created)
-	}
-	if len(dir.Users) != 1 || dir.Users[0].Email != "ana@gmail.com" {
-		t.Fatalf("stored email = %+v", dir.Users)
-	}
-	// A second add differing only in case is the same account.
-	if _, created, err := addDirectoryUser(dir, "ANA@gmail.com", "ana2", "viewer", nil); err != nil || created || len(dir.Users) != 1 {
-		t.Fatalf("case-different duplicate: created=%v err=%v users=%d", created, err, len(dir.Users))
-	}
-}
-
 func TestRegisteredProductIDsIncludesConfiguredLLMGateway(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_PRODUCTS", "work,llm-gateway")

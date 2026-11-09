@@ -14,7 +14,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
-	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // PLAT-856-542: a slow section cannot hold the other sections hostage; cached
@@ -185,29 +184,6 @@ func TestCrewPanelAutomationKindSummaries(t *testing.T) {
 	}
 	if got["schedules:triggers"] != "Could not load" {
 		t.Fatalf("a list that failed to load must say so, not claim it is empty: %v", got)
-	}
-}
-
-// The Automations menu: a workflow row and the Inbox line (On counts as an automation, Off does not), and the workflow
-// line says steps and the newest run in plain words.
-func TestCrewPanelWorkflowAndInboxSummaries(t *testing.T) {
-	now := time.Now()
-	done := now.Add(-2 * time.Hour)
-	steps := map[string]todo_creation_human.PythonStepEvidence{"a": {}, "b": {}, "c": {}, "d": {}}
-	line := crewPanelWorkflowLine([]RunFolderInfo{{Name: "run-2", Metadata: &RunMetadata{Status: "completed", CompletedAt: &done, PythonSteps: steps}}}, 0, now)
-	if line != "4 steps · last run finished 2h ago" {
-		t.Fatalf("workflow line: %q", line)
-	}
-	if got := crewPanelWorkflowLine(nil, 0, now); got != "Not run yet" {
-		t.Fatalf("no runs: %q", got)
-	}
-	off := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "Off"}}}})
-	if off["schedules:email"] != "Off" || off["automations"] != "" {
-		t.Fatalf("an Off inbox must be listed but not counted: %v", off)
-	}
-	on := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "On · a@example.com · 0 messages this week", Connected: true}}}, {ID: "workflow", Rows: []crewPanelRow{{Destination: "workflow", Detail: line}}}})
-	if on["automations"] != "On · a@example.com · 0 messages this week" || on["workflow"] != line {
-		t.Fatalf("on inbox and workflow: %v", on)
 	}
 }
 

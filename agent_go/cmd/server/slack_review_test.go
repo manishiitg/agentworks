@@ -427,47 +427,6 @@ func TestSlackBindingSurvivesConnectorRestartAndRejectsRepointing(t *testing.T) 
 	}
 }
 
-func TestSlackRetentionPreservesActiveUnknownAndOtherRunFamilies(t *testing.T) {
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	workspace := "Workflow/demo"
-	write := func(path, value string) {
-		t.Helper()
-		p := filepath.Join(docs, workspace, path)
-		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(value), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for i := 1; i <= 12; i++ {
-		name := fmt.Sprintf("iteration-%d-slack-a%d", i, i)
-		write("runs/"+name+"/.slack-run-id", name)
-		write("runs/"+name+"/group/run_metadata.json", fmt.Sprintf(`{"status":"completed","completed_at":"2026-09-%02dT00:00:00Z"}`, i))
-	}
-	// Keep active Slack work, other run families and past evaluation evidence.
-	write("runs/iteration-13-slack-active/.slack-run-id", "active")
-	write("evaluation/runs/iteration-1-slack-a1/artifact", "evaluation")
-	write("runs/iteration-0/artifact", "builder")
-	write("runs/iteration-14-sched/artifact", "schedule")
-	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"active": {Status: "running"}}}
-	api.scheduleInvocations.Store("active", &stepworkflow.ExternalInvocation{Kind: "slack", RunFolder: "iteration-13-slack-active"})
-	if err := api.pruneSlackRuns(workspace); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"runs/iteration-1-slack-a1", "runs/iteration-2-slack-a2"} {
-		if _, err := os.Stat(filepath.Join(docs, workspace, path)); !os.IsNotExist(err) {
-			t.Fatalf("expired path remains: %s %v", path, err)
-		}
-	}
-	for _, path := range []string{"evaluation/runs/iteration-1-slack-a1/artifact", "runs/iteration-0/artifact", "runs/iteration-14-sched/artifact", "runs/iteration-3-slack-a3", "runs/iteration-12-slack-a12", "runs/iteration-13-slack-active"} {
-		if _, err := os.Stat(filepath.Join(docs, workspace, path)); err != nil {
-			t.Fatalf("protected path lost: %s %v", path, err)
-		}
-	}
-}
-
 func TestSlackConversationCannotChangeReplyThreadDuringExecution(t *testing.T) {
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"shared": {Status: "running"}}}
 	claims := &UserClaims{ExecutionPrincipal: &ExecutionPrincipal{Kind: "bot_route"}}

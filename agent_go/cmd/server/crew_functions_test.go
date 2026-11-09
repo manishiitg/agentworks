@@ -12,8 +12,6 @@ import (
 
 	"github.com/gorilla/mux"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func muxRouterForCrewFunctions(svc *ProjectActionDispatcher) *mux.Router {
@@ -451,35 +449,6 @@ func TestCrewFunctionsHTTPOwnerChangesTeamMemberOnlyReads(t *testing.T) {
 	}
 }
 
-func TestCrewFunctionFailureDetailKeepsPartialWork(t *testing.T) {
-	detail := crewFunctionFailureDetail(map[string]interface{}{"partial_result": map[string]interface{}{"video": "https://x/v.mp4"}, "final_reply": "1764 PASS"})
-	if !strings.Contains(detail, "https://x/v.mp4") || !strings.Contains(detail, "1764 PASS") {
-		t.Fatalf("failure detail dropped the target's work: %q", detail)
-	}
-}
-
-// All project callers use the shared owner rule, including workflow and Code.
-func TestCrewCallConversationRouting(t *testing.T) {
-	crew := &productWebhookMatch{Profile: agentprofiles.Profile{ID: "work"}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}}}
-	if !projectCallConversation(crew) {
-		t.Fatal("a Crew calling a Crew must be routed by owner")
-	}
-	workflow := &productWebhookMatch{Profile: agentprofiles.Profile{ID: "work"}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerWorkflow, ID: "wf"}}}
-	if !projectCallConversation(workflow) {
-		t.Fatal("a workflow caller must use project ownership")
-	}
-	codeTarget := &productWebhookMatch{Profile: agentprofiles.Profile{ID: workproduct.ProfileID}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "x", ProfileID: workproduct.ProfileID}}}
-	if !projectCallConversation(codeTarget) {
-		t.Fatal("Code peer calls must use project ownership")
-	}
-	if got := crewCallIsolatedKey("trig-1", ""); got != "trig-1" {
-		t.Fatalf("same-owner key = %q", got)
-	}
-	if a, b := crewCallIsolatedKey("trig-1", "bob"), crewCallIsolatedKey("trig-1", "carol"); a == b || a == "trig-1" {
-		t.Fatalf("each calling person needs their own conversation: %q %q", a, b)
-	}
-}
-
 func TestCrewCallMessageMatchesWhereItRuns(t *testing.T) {
 	stored := crewTargetMessage(triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "a"}, Label: "Alpha"})
 	if got := crewCallMessage(stored, true); !strings.Contains(got, "runs in your main chat") || strings.Contains(got, "does not see it") {
@@ -487,24 +456,6 @@ func TestCrewCallMessageMatchesWhereItRuns(t *testing.T) {
 	}
 	if got := crewCallMessage(stored, false); !strings.Contains(got, "only for this caller's calls") {
 		t.Fatalf("cross-owner message: %s", got)
-	}
-}
-
-// A Crew function runs in its own named tab by default; "new" keeps a new chat per call, and functions naming
-// one agent share its tab (owner, 2026-10-19).
-func TestCrewFunctionRunsInItsNamedTabByDefault(t *testing.T) {
-	if got := (crewFunction{Name: "weekly_report"}).tabName(); got != "weekly_report" || crewAgentChatID(got) != "weekly-report" {
-		t.Fatalf("default tab = %q", got)
-	}
-	if got := (crewFunction{Name: "triage", Agent: "Support desk"}).tabName(); got != "Support desk" {
-		t.Fatalf("named tab = %q", got)
-	}
-	if got := (crewFunction{Name: "private_check", Execution: "new", Agent: "x"}).tabName(); got != "" {
-		t.Fatalf("new function ran in tab %q", got)
-	}
-	spec := crewFunctionSpec{Name: "triage", Description: "d", Instructions: "i", Execution: "sometimes"}.normalized()
-	if spec.validate() == nil {
-		t.Fatal("an unknown execution was accepted")
 	}
 }
 

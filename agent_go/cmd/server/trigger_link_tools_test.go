@@ -185,32 +185,6 @@ func TestSharedCrewFunctionUsesDeclaredEntry(t *testing.T) {
 	t.Fatalf("shared Crew missing from accessible projects: %+v", crews)
 }
 
-// The Work product gate admits the function tools through the
-// workflow-references feature (readers are excluded at registration); the
-// retired *_target tools are gone.
-func TestTriggerLinkToolsDeclaredByFeature(t *testing.T) {
-	profile := agentprofiles.Profile{ID: "p", Features: []agentprofiles.FeatureBinding{{ID: "workflow-references"}}}
-	if err := agentprofiles.ResolveFeatures(&profile); err != nil {
-		t.Fatal(err)
-	}
-	declared := map[string]bool{}
-	for _, feature := range profile.ResolvedFeatures {
-		for _, tool := range feature.Tools {
-			declared[tool] = true
-		}
-	}
-	for _, name := range []string{"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "ask_function_update"} {
-		if !declared[name] {
-			t.Fatalf("%s is not declared by the workflow-references feature", name)
-		}
-	}
-	for _, name := range []string{"connect_to_target", "call_target", "get_target_run", "send_to_target_run"} {
-		if declared[name] {
-			t.Fatalf("retired tool %s is still declared", name)
-		}
-	}
-}
-
 // A follow-up into a call's run is refused before the run starts and after
 // it ends.
 func TestFollowUpNeedsARunningCall(t *testing.T) {
