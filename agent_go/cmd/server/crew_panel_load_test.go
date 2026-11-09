@@ -75,6 +75,8 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		write(binding.Root+"/code/script.json", fmt.Sprintf(`{"id":%q,"name":%q}`, id, id))
 		write(binding.Root+"/code/helper.py", "def helper(): return 1\n")
 		write(binding.Root+"/code/main.py", "from agentworks import step\n@step('First')\ndef first(): return 1\n@step('Second')\ndef second(): return 2\nfirst()\nsecond()\n")
+		// Real executions retain immutable source snapshots beside run folders.
+		write(binding.Root+"/runs/source-blobs/snapshot/main.py", "# stored source\n")
 		for run := 0; run < 100; run++ {
 			name := fmt.Sprintf("%s/runs/run-%03d", binding.Root, run)
 			write(name+"/run_metadata.json", `{"status":"completed","started_at":"2026-11-09T00:00:00Z"}`)

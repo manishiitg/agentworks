@@ -123,7 +123,7 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, stri
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
-		if err := workflow.ValidateWorkflowRunFolder(entry.Name()); err != nil {
+		if workflowRunName(entry.Name()) == "" {
 			continue
 		}
 		metadataFile, err := base.Open(path.Join(relative, entry.Name(), "run_metadata.json"))
