@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"path"
-	"reflect"
 	"strings"
 	"unicode/utf8"
 
@@ -368,81 +367,6 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 // not containers. The Crew panel prints the same number from here. ok is false when there is no readable outline.
 func crewScriptStepCount(ctx context.Context, binding crewExecutableBinding) (int, bool) {
 	return cachedCrewStepCount(ctx, binding.Root)
-}
-
-type crewScriptUsage struct {
-	Workflow string `json:"workflow"`
-	Step     string `json:"step"`
-}
-
-func crewScriptConsumers(ctx context.Context, script *crewExecutableBinding, next *workflow.CrewScriptDefinition) ([]crewScriptUsage, error) {
-	records, err := readCrewExecutables()
-	if err != nil {
-		return nil, err
-	}
-	var previous *workflow.CrewScriptDefinition
-	if next != nil {
-		previous, err = readCrewScript(ctx, script.Root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	var result []crewScriptUsage
-	var affected []string
-	for _, binding := range records {
-		if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(script.CrewRoot) {
-			continue
-		}
-		plan, err := readPlanFromWorkspace(ctx, binding.Root)
-		if err != nil {
-			continue
-		}
-		for _, step := range workflow.CrewScriptReferencingSteps(plan, script.ID) {
-			label := binding.ID
-			if raw, found, _ := readFileFromWorkspace(ctx, binding.Root+"/workflow.json"); found {
-				var header struct {
-					Label string `json:"label"`
-				}
-				if json.Unmarshal([]byte(raw), &header) == nil && header.Label != "" {
-					label = header.Label
-				}
-			}
-			result = append(result, crewScriptUsage{Workflow: label, Step: step.Title})
-			if next == nil {
-				continue
-			}
-			before := map[string]workflow.Variable{}
-			after := map[string]workflow.Variable{}
-			for _, input := range previous.Inputs {
-				before[input.Name] = input
-			}
-			for _, input := range next.Inputs {
-				after[input.Name] = input
-			}
-			broken := false
-			for name := range step.ScriptInputs {
-				input, ok := after[name]
-				old, was := before[name]
-				if !ok || was && (workflow.WorkflowInputType(input) != workflow.WorkflowInputType(old) || !reflect.DeepEqual(input.Schema, old.Schema)) {
-					broken = true
-				}
-			}
-			for _, input := range next.Inputs {
-				if input.Required && input.Value == "" {
-					if _, mapped := step.ScriptInputs[input.Name]; !mapped {
-						broken = true
-					}
-				}
-			}
-			if broken {
-				affected = append(affected, label+" / "+step.Title)
-			}
-		}
-	}
-	if len(affected) > 0 {
-		return result, fmt.Errorf("these input changes affect workflows. Used by: %s. Update their script input mappings first", strings.Join(affected, ", "))
-	}
-	return result, nil
 }
 
 // PLAT-746-265: a timer runs saved Python directly, just like a function/webhook.

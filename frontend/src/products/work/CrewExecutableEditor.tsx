@@ -15,7 +15,6 @@ export type CrewExecutable = {
   kind: 'script'
   workspace_path: string
   manifest: { label: string }
-  used_by?: Array<{ workflow: string; step: string }>
   /** What a person can change before a run, and the saved settings that fill it in. */
   inputs?: Array<{ name: string; value: string; description?: string; type?: string; required?: boolean }>
   input_presets?: Array<{ name: string; values: Record<string, string> }>
@@ -76,7 +75,6 @@ export function CrewExecutableEditor({
   }
   return (
     <div className="space-y-4">
-      {!!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes here apply to all of them.</p>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
