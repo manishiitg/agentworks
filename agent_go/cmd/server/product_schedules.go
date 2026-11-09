@@ -1038,7 +1038,7 @@ func conversationKeyForJob(job productScheduleJob) string {
 
 // popProductQueueLocked removes and returns the head of one conversation
 // queue. The caller must hold s.mu.
-func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey string) (productScheduleQueuedRun, bool) {
+func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey string, paused bool) (productScheduleQueuedRun, bool) {
 	items := queued[convKey]
 	if len(items) == 0 {
 		return productScheduleQueuedRun{}, false
@@ -1053,13 +1053,19 @@ func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey
 		}
 		return !a.IsZero() && !b.IsZero() && a.Before(b)
 	})
-	head := items[0]
-	if len(items) == 1 {
-		delete(queued, convKey)
-	} else {
-		queued[convKey] = append([]productScheduleQueuedRun(nil), items[1:]...)
+	for i, item := range items {
+		if paused && (item.triggerSource == "cron" || item.triggerSource == "queued") {
+			continue
+		}
+		remaining := append(items[:i], items[i+1:]...)
+		if len(remaining) == 0 {
+			delete(queued, convKey)
+		} else {
+			queued[convKey] = remaining
+		}
+		return item, true
 	}
-	return head, true
+	return productScheduleQueuedRun{}, false
 }
 
 func (s *ProjectActionDispatcher) runWithOptions(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted ...func(sessionID string)) (string, error) {
@@ -1152,9 +1158,38 @@ func (s *ProjectActionDispatcher) finishAutomationRun(jobKey, convKey string) {
 	s.mu.Lock()
 	delete(s.running, jobKey)
 	delete(s.conversations, convKey)
-	next, ok := popProductQueueLocked(s.queued, convKey)
-	if !ok {
+	s.mu.Unlock()
+	s.startNextQueuedRun(convKey)
+}
+
+// The existing clock retries idle queues after resume. Accepted work retains
+// its occurrence; no new occurrence is created for ticks missed while paused.
+func (s *ProjectActionDispatcher) resumeQueuedRuns() {
+	s.mu.Lock()
+	keys := make([]string, 0, len(s.queued))
+	for key := range s.queued {
+		keys = append(keys, key)
+	}
+	s.mu.Unlock()
+	for _, key := range keys {
+		s.startNextQueuedRun(key)
+	}
+}
+
+func (s *ProjectActionDispatcher) startNextQueuedRun(convKey string) {
+	paused := automaticSchedulePaused(context.Background(), "cron")
+	s.mu.Lock()
+	if s.conversations[convKey] || (s.heldConversation != nil && s.heldConversation(convKey)) {
 		s.mu.Unlock()
+		return
+	}
+	next, ok := popProductQueueLocked(s.queued, convKey, paused)
+	if !ok {
+		held := len(s.queued[convKey])
+		s.mu.Unlock()
+		if paused && held > 0 {
+			scheduleLogf("[SCHEDULER] conversation queue held by global pause conversation=%q pending=%d", convKey, held)
+		}
 		return
 	}
 	if s.conversations == nil {
@@ -1169,6 +1204,7 @@ func (s *ProjectActionDispatcher) finishAutomationRun(jobKey, convKey string) {
 	nextJobKey := next.job.UserID + "\x1f" + next.job.ID()
 	s.running[nextJobKey] = nextRun
 	s.mu.Unlock()
+	scheduleLogf("[SCHEDULER] dispatching accepted queued occurrence job=%s source=%s scheduled_for=%s", next.job.ID(), next.triggerSource, next.scheduledFor.UTC().Format(time.RFC3339))
 	go s.executeAutomationRun(nextCtx, nextCancel, next.job, next.triggerSource, next.scheduledFor, next.options, nextRun, nextJobKey, convKey, next.onStarted)
 }
 
@@ -1222,6 +1258,34 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	// No admission record is written, so a dependency retry stays pending in
 	// the single clock and keeps its original expiry window.
 	if automaticSchedulePaused(runCtx, triggerSource) {
+		// A conversation-queued delivery was accepted before this admission.
+		// Put it back if pause began after it was popped. Dependency retries
+		// already have their durable pending row and stay with the clock.
+		if options.AllowQueue {
+			s.mu.Lock()
+			if s.queued == nil {
+				s.queued = map[string][]productScheduleQueuedRun{}
+			}
+			waiting := productScheduleQueuedRun{job: job, triggerSource: triggerSource,
+				scheduledFor: scheduledFor, queuedAt: run.StartedAt, options: options, onStarted: onStarted}
+			replaced := false
+			for i, queued := range s.queued[convKey] {
+				if queued.triggerSource == "cron" && triggerSource == "cron" && queued.job.ID() == job.ID() {
+					// Keep the queue's existing latest-occurrence coalescing rule.
+					if !queued.scheduledFor.After(scheduledFor) {
+						s.queued[convKey][i] = waiting
+					}
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				s.queued[convKey] = append(s.queued[convKey], waiting)
+			}
+			s.mu.Unlock()
+			scheduleLogf("[SCHEDULER] retained queued occurrence during pause job=%s source=%s scheduled_for=%s", job.ID(), triggerSource, scheduledFor.UTC().Format(time.RFC3339))
+			return "", ErrProductRunQueued
+		}
 		scheduleLogf("[SCHEDULER] held at admission by global pause job=%s source=%s", job.ID(), triggerSource)
 		return "", productschedule.ErrSkip
 	}
