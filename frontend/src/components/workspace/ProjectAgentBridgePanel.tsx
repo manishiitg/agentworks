@@ -54,7 +54,7 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
   const networkRows = [...connected, ...crewsAndAgents.filter(agent => agent.kind === 'crew_agent')]
     .filter(agent => agent.online === true)
     .filter((agent, index, rows) => rows.findIndex(row => row.id === agent.id) === index)
-    .sort((a, b) => Number(b.online === true) - Number(a.online === true) || name(a).localeCompare(name(b)))
+    .sort((a, b) => Number(b.yours === true) - Number(a.yours === true) || name(a).localeCompare(name(b)))
   const matching = networkRows.filter(agent => `${name(agent)} ${agent.purpose || agent.description || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
   const visible = showAll || query.trim() ? matching : matching.slice(0, 4)
   if (view === 'network') return <div className="space-y-3 text-sm">
@@ -65,7 +65,9 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading agents…</p>}
     <div className="max-h-80 space-y-1 overflow-y-auto">
-      {visible.map(agent => <details key={agent.id} className="rounded-lg border border-border px-3 py-2">
+      {visible.map((agent, index) => <div key={agent.id}>
+        {(index === 0 || (visible[index - 1].yours === true) !== (agent.yours === true)) && <h4 className="pb-1 pt-2 text-xs font-medium text-muted-foreground">{agent.yours === true ? 'Your agents' : 'Other available agents'}</h4>}
+        <details className="rounded-lg border border-border px-3 py-2">
         <summary className="cursor-pointer text-xs marker:text-muted-foreground">
           <span className="font-medium">{name(agent)}</span>
           {agent.yours === true && <span className="ml-2 text-[11px] text-muted-foreground">Your agent · {agent.published ? 'Published' : 'Private'}</span>}
@@ -75,8 +77,12 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
         <div className="mt-2 space-y-2 border-t border-border pt-2 text-xs">
           <p className="whitespace-pre-wrap break-words text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</p>
           {agent.provider && <p className="text-muted-foreground">{providerLabel(agent.provider)}</p>}
-          <button type="button" onClick={() => ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Ask what I want to send before sending anything. Use this exact target and report actual delivery status; do not substitute another agent.`)} className="rounded-full border border-border px-3 py-1 font-medium hover:bg-muted">Ask</button>
-          {(agent.yours === true || agent.published === true) && onSend && <button type="button" className="ml-2 rounded-full border border-border px-3 py-1 font-medium hover:bg-muted" onClick={() => { setCompose(agent.id); setMessage(''); setError('') }}>Ask AI</button>}
+          <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted" onClick={() => {
+            if ((agent.yours === true || agent.published === true) && onSend) {
+              if (compose && compose !== agent.id && message.trim()) { setError('Finish or cancel your current message first.'); return }
+              setCompose(agent.id); setError('')
+            } else ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Ask what I want to send before sending anything. Use this exact target and report actual delivery status; do not substitute another agent.`)
+          }}><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />Message</button>
           {compose === agent.id && (agent.yours === true || agent.published === true) && onSend && <form className="space-y-2" onSubmit={event => {
             event.preventDefault()
             if (!message.trim() || sending) return
@@ -86,10 +92,10 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
           }}>
             <label className="block">Message {name(agent)}<textarea autoFocus rows={3} required value={message} disabled={sending} onChange={event => setMessage(event.target.value)} className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2" /></label>
             <p className="text-muted-foreground">Your agent sends it through AgentBridge. Delivery updates and replies appear in chat.</p>
-            <div className="flex gap-2"><button type="submit" disabled={sending || !message.trim()} className="rounded-full border border-border px-3 py-1 disabled:opacity-50">{sending ? 'Starting…' : 'Send'}</button><button type="button" disabled={sending} onClick={() => setCompose(null)} className="px-2 py-1 text-muted-foreground">Cancel</button></div>
+            <div className="flex gap-2"><button type="submit" disabled={sending || !message.trim()} className="rounded-full border border-border px-3 py-1 disabled:opacity-50">{sending ? 'Starting…' : 'Send'}</button><button type="button" disabled={sending} onClick={() => { setCompose(null); setMessage('') }} className="px-2 py-1 text-muted-foreground">Cancel</button></div>
           </form>}
         </div>
-      </details>)}
+      </details></div>)}
     </div>
     {agents && !matching.length && !error && <p className="text-xs text-muted-foreground">{query.trim() ? 'No agents match your search.' : 'No agents are online on this network right now.'}</p>}
     {agents && !query.trim() && matching.length > 4 && <button type="button" aria-expanded={showAll} onClick={() => setShowAll(value => !value)} className="text-xs text-primary hover:underline">{showAll ? 'Show fewer' : `View all (${matching.length})`}</button>}
