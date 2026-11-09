@@ -80,7 +80,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, schedule counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, separate timer (schedules/schedules_enabled), webhook and function-trigger counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats (Show in chat box; off by default). Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		externalServerProductDefinitions(add)

@@ -52,6 +52,19 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 	raw, _ := json.Marshal(definition)
 	call("workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": script.Root, "file": "script.json", "content": string(raw)})
 	call("workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": script.Root, "file": "main.py", "content": "from agentworks import step\nraise RuntimeError('source must never execute')\n@step('Prepare report')\ndef prepare():\n    return 3\nprepare()\n"})
+	writeScriptFile := func(relative, content string) {
+		t.Helper()
+		physical, _, err := crewroot.Resolve(f.docs, script.Root+"/"+relative)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(physical), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(physical, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	assertDefinition := func(row map[string]any) {
 		t.Helper()
 		inputs, _ := row["inputs"].([]any)
@@ -78,6 +91,37 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 	if !strings.Contains(string(graphJSON), "Prepare report") {
 		t.Fatalf("saved AST labels missing: %s", graphJSON)
 	}
+	// PLAT-746-510: the compact MCP list must not call webhooks, their input
+	// mappings, or internal/callable functions timers. Exercise canonical files.
+	writeScriptFile("schedules.json", `{"schedules":[]}`)
+	writeScriptFile("webhooks.json", strings.ReplaceAll(`{"webhooks":[
+		{"id":"hook-on","name":"Incoming","project":{"kind":"goal","id":"SCRIPT_ID"},"enabled":true,"action":{"type":"run"},"run_as":"owner","input":{},"auth":{"mode":"bearer"},"input_mapping":{"mode":"variables","variables":["limit"]}},
+		{"id":"hook-off","name":"Paused incoming","project":{"kind":"goal","id":"SCRIPT_ID"},"enabled":false,"action":{"type":"run"},"run_as":"owner","input":{},"auth":{"mode":"bearer"},"input_mapping":{"mode":"variables","variables":["limit"]}}
+	]}`, "SCRIPT_ID", script.ID))
+	writeScriptFile("functions.json", `{"functions":[
+		{"id":"fn-off","name":"prepare","enabled":false,"action":{"type":"run"},"input":{},"inputs":["limit"]},
+		{"id":"binding-on","name":"binding_on","enabled":true,"action":{"type":"run"},"input":{},"input_mapping":{},"allowed_callers":[{"type":"crew","id":"team","profile_id":"work"}]}
+	]}`)
+	assertCounts := func(timers, enabled int) {
+		t.Helper()
+		listed := call("workflow", map[string]any{"action": "list"})
+		rows, _ := listed["workflows"].([]any)
+		if len(rows) != 1 {
+			t.Fatalf("script disappeared after entry-point save: %v", listed)
+		}
+		row := rows[0].(map[string]any)
+		for field, want := range map[string]int{"schedules": timers, "schedules_enabled": enabled, "webhooks": 2, "webhooks_enabled": 1, "function_triggers": 2, "function_triggers_enabled": 1} {
+			if row[field] != float64(want) {
+				t.Fatalf("%s = %v, want %d: %v", field, row[field], want, row)
+			}
+		}
+	}
+	assertCounts(0, 0)
+	writeScriptFile("schedules.json", strings.ReplaceAll(`{"schedules":[
+		{"id":"timer-on","name":"Daily","project":{"kind":"goal","id":"SCRIPT_ID"},"when":{"cron":"0 9 * * *","timezone":"UTC"},"enabled":true,"action":{"type":"run"},"input":{},"run_as":"owner"},
+		{"id":"timer-off","name":"Paused daily","project":{"kind":"goal","id":"SCRIPT_ID"},"when":{"cron":"0 10 * * *","timezone":"UTC"},"enabled":false,"action":{"type":"run"},"input":{},"run_as":"owner"}
+	]}`, "SCRIPT_ID", script.ID))
+	assertCounts(2, 1)
 	// Source stays with Builder even when a token can read workflow files.
 	readOnly := crewReader("owner")
 	readOnly.AccessToken.AllWorkflows = true
@@ -87,24 +131,11 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 	f.api.dispatchExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), readOnly, nil), false)
 	externalTestBody(t, w, http.StatusForbidden)
 
-	writeRunFile := func(relative, content string) {
-		t.Helper()
-		physical, _, err := crewroot.Resolve(f.docs, script.Root+"/"+relative)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(filepath.Dir(physical), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(physical, []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	const folder = "run-20261108-120000"
-	writeRunFile("runs/"+folder+"/run_metadata.json", `{"execution_id":"exec-one","status":"completed","python_steps":{"step-one":{"id":"step-one","name":"Prepare report","status":"completed","source_call":"main.py:4:0"}}}`)
-	writeRunFile("runs/"+folder+"/helpers/evidence/0001.json", `{"id":"check-one","kind":"check","at":"2026-11-08T12:00:00Z","name":"Totals agree","ok":true,"detail":"Checked three rows"}`)
-	writeRunFile("runs/"+folder+"/helpers/requests/private.json", `{"note":"helper-request-fixture-marker"}`)
-	writeRunFile("runs/"+folder+"/helpers/answers/answer.txt", "Public final answer")
+	writeScriptFile("runs/"+folder+"/run_metadata.json", `{"execution_id":"exec-one","status":"completed","python_steps":{"step-one":{"id":"step-one","name":"Prepare report","status":"completed","source_call":"main.py:4:0"}}}`)
+	writeScriptFile("runs/"+folder+"/helpers/evidence/0001.json", `{"id":"check-one","kind":"check","at":"2026-11-08T12:00:00Z","name":"Totals agree","ok":true,"detail":"Checked three rows"}`)
+	writeScriptFile("runs/"+folder+"/helpers/requests/private.json", `{"note":"helper-request-fixture-marker"}`)
+	writeScriptFile("runs/"+folder+"/helpers/answers/answer.txt", "Public final answer")
 	answer := call("files", map[string]any{"action": "read", "workflow_id": script.ID, "path": "runs/" + folder + "/helpers/answers/answer.txt"})
 	if answer["content"] != "Public final answer" {
 		t.Fatalf("public answer artifact unavailable: %v", answer)
