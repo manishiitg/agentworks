@@ -105,6 +105,33 @@
   },
   {
     "family": "automations",
+    "name": "scheduler_status",
+    "scope": "schedule",
+    "member": "global_scheduler_status",
+    "description": "Read the one pause for all schedules. No project needed. Administrator connection only.",
+    "source": "manage_schedules",
+    "source_action": "scheduler_status"
+  },
+  {
+    "family": "automations",
+    "name": "pause_all",
+    "scope": "schedule",
+    "member": "pause_all_schedules",
+    "description": "Pause every schedule with the one global switch. No project needed. Administrator connection only; ask an administrator to change it from Schedules.",
+    "source": "manage_schedules",
+    "source_action": "pause_all"
+  },
+  {
+    "family": "automations",
+    "name": "resume_all",
+    "scope": "schedule",
+    "member": "resume_all_schedules",
+    "description": "Resume every schedule held by the global switch. No project needed. Administrator connection only; ask an administrator to change it from Schedules.",
+    "source": "manage_schedules",
+    "source_action": "resume_all"
+  },
+  {
+    "family": "automations",
     "name": "create_calendar",
     "scope": "schedule",
     "member": "create_calendar_schedule",

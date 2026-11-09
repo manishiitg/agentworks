@@ -14,51 +14,11 @@ const schedulerConfigFilePath = "config/scheduler.json"
 // SchedulerConfig stores workspace-level scheduler settings in config/scheduler.json.
 // Schedule definitions remain in each workflow manifest.
 type SchedulerConfig struct {
-	// GloballyPaused holds the timed runs of every product: Goals workflows, Relays, Crews and Code.
+	// GloballyPaused is the one pause holding every timed run.
 	GloballyPaused bool       `json:"globally_paused"`
 	PausedAt       *time.Time `json:"paused_at,omitempty"`
 	PausedBy       string     `json:"paused_by,omitempty"`
 	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
-	// PausedProducts holds the timed runs of the named products only (PLAT-782): "agentworks" (Goals workflows),
-	// "relays", "work" (Crews), "code". A product is paused when it is listed here or GloballyPaused is on.
-	PausedProducts []string `json:"paused_products,omitempty"`
-}
-
-// schedulerPauseProducts are the products whose timed runs a pause can hold.
-var schedulerPauseProducts = []string{"agentworks", "relays", "work"}
-
-func normalizePausedProducts(in []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, product := range in {
-		product = strings.ToLower(strings.TrimSpace(product))
-		known := false
-		for _, allowed := range schedulerPauseProducts {
-			known = known || allowed == product
-		}
-		if known && !seen[product] {
-			seen[product] = true
-			out = append(out, product)
-		}
-	}
-	return out
-}
-
-// ProductPaused reports whether this product's timed runs are held, by the global pause or by its own.
-func (c *SchedulerConfig) ProductPaused(product string) bool {
-	if c == nil {
-		return false
-	}
-	if c.GloballyPaused {
-		return true
-	}
-	product = strings.ToLower(strings.TrimSpace(product))
-	for _, paused := range c.PausedProducts {
-		if paused == product {
-			return true
-		}
-	}
-	return false
 }
 
 func sanitizeSchedulerConfig(cfg *SchedulerConfig) *SchedulerConfig {
@@ -69,9 +29,6 @@ func sanitizeSchedulerConfig(cfg *SchedulerConfig) *SchedulerConfig {
 	sanitized := &SchedulerConfig{
 		GloballyPaused: cfg.GloballyPaused,
 		PausedBy:       strings.TrimSpace(cfg.PausedBy),
-	}
-	if cfg.PausedProducts != nil {
-		sanitized.PausedProducts = normalizePausedProducts(cfg.PausedProducts)
 	}
 	if cfg.GloballyPaused && cfg.PausedAt != nil {
 		pausedAt := cfg.PausedAt.UTC()
@@ -122,21 +79,13 @@ func LoadSchedulerConfig(ctx context.Context) (*SchedulerConfig, error) {
 	return sanitizeSchedulerConfig(&cfg), nil
 }
 
-// IsProductPaused reports whether a product's timed runs are held, by the global pause or its own (PLAT-782).
-func (s *SchedulerService) IsProductPaused(ctx context.Context, product string) (bool, *SchedulerConfig, error) {
+// IsGloballyPaused reads the one switch holding every schedule.
+func (s *SchedulerService) IsGloballyPaused(ctx context.Context) (bool, *SchedulerConfig, error) {
 	cfg, err := LoadSchedulerConfig(ctx)
 	if err != nil {
 		return false, nil, err
 	}
-	return cfg.ProductPaused(product), cfg, nil
-}
-
-// workflowPauseProduct is the product a workflow's timed runs belong to for the pause.
-func workflowPauseProduct(kind string) string {
-	if strings.EqualFold(strings.TrimSpace(kind), "relay") {
-		return "relays"
-	}
-	return "agentworks"
+	return cfg.GloballyPaused, cfg, nil
 }
 
 func getSchedulerConfigHandler(svc *SchedulerService) http.HandlerFunc {
@@ -171,10 +120,6 @@ func updateSchedulerConfigHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		previous, _ := LoadSchedulerConfig(r.Context())
-		// An older client sends only globally_paused: it must not wipe the per-product pauses.
-		if req.PausedProducts == nil && previous != nil {
-			req.PausedProducts = previous.PausedProducts
-		}
 		if err := SaveSchedulerConfig(r.Context(), &req); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -201,30 +146,6 @@ func updateSchedulerConfigHandler(svc *SchedulerService) http.HandlerFunc {
 					ev.PausedSince = &since
 					resp.SkippedWhilePaused = svc.skippedWhilePaused(r.Context(), claims, since, ev.At)
 				}
-			}
-			appendSchedulerPauseEvent(r.Context(), ev)
-		}
-		// Each product paused or resumed on its own is recorded as its own event.
-		before := map[string]bool{}
-		if previous != nil {
-			for _, product := range previous.PausedProducts {
-				before[product] = true
-			}
-		}
-		for _, product := range schedulerPauseProducts {
-			now := false
-			for _, paused := range cfg.PausedProducts {
-				now = now || paused == product
-			}
-			if now == before[product] {
-				continue
-			}
-			ev := SchedulerPauseEvent{At: time.Now().UTC(), Action: "paused", Product: product, Via: strings.TrimSpace(req.PausedBy), UserAgent: truncateString(r.UserAgent(), 160)}
-			if !now {
-				ev.Action = "resumed"
-			}
-			if claims := GetUserFromContext(r.Context()); claims != nil {
-				ev.UserID, ev.Username = claims.UserID, claims.Username
 			}
 			appendSchedulerPauseEvent(r.Context(), ev)
 		}

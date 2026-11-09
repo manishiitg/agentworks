@@ -179,7 +179,7 @@ func externalTools() ([]externalTool, error) {
 			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
 		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
-		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: global/product pause flags, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
+		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: the single global pause flag, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
 		p = page()
 		p["schedule_id"] = externalString("Schedule ID from list_schedules.")
 		p["offset"] = externalInteger(0, 1000000)
@@ -737,7 +737,15 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkspaceCall(w, r, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_schedules" && globalSchedulerAction(externalArg(call.Arguments, "action")) {
+		api.externalGlobalSchedulerCall(w, r, call.Arguments)
+		return
+	}
 	if tool.Name == "manage_schedules" || tool.Name == "manage_triggers" || tool.Name == "manage_condition_triggers" {
+		if externalArg(call.Arguments, "project") == "" {
+			externalError(w, http.StatusBadRequest, "project_required", "Choose the Crew or workflow whose schedules you want to manage.")
+			return
+		}
 		claims := GetUserFromContext(r.Context())
 		target, err := resolveTriggerTarget(r.Context(), claims, externalArg(call.Arguments, "project"))
 		if err != nil {

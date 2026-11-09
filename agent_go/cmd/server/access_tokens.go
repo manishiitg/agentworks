@@ -376,6 +376,7 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
+	schedulerAdmin := globalSchedulerMember(tool.Name)
 	if !agentSourceConsentAllowed(c, tool) {
 		return false
 	}
@@ -402,6 +403,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
 		return false
+	}
+	if schedulerAdmin {
+		return schedulerAdminAllowed(c)
 	}
 	if c.AccessToken != nil && c.AccessToken.ProjectKind != "" && tool.actions == nil && !projectMCPToolAllowed(c.AccessToken.ProjectKind, tool.Name) {
 		return false

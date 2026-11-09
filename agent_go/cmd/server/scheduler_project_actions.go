@@ -39,7 +39,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 			users[userID] = struct{}{}
 		}
 	}
-	// The scheduler pause holds timed runs here too: for every product (the global pause) or one at a time (PLAT-782).
+	// The scheduler pause holds timed runs here too: one switch for every schedule.
 	pauseConfig, pauseErr := LoadSchedulerConfig(ctx)
 	if pauseErr != nil {
 		scheduleLogf("[PRODUCT-SCHEDULE] cannot read the scheduler pause, timed runs continue: %v", pauseErr)
@@ -51,7 +51,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 			continue
 		}
 		for _, job := range jobs {
-			if pauseConfig.ProductPaused(job.Profile.ID) {
+			if pauseConfig != nil && pauseConfig.GloballyPaused {
 				continue
 			}
 			if job.Schedule.Condition != nil && job.Effective().Enabled {
