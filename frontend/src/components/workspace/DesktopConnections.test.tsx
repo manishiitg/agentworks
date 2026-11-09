@@ -156,8 +156,9 @@ it('routes pinned and recent Crews by network and drops shortcuts absent from th
     expect(recent().querySelectorAll('[aria-label*=" · Crew · "]')).toHaveLength(6)
     expect(recent().textContent).toContain('Local crew')
     expect(recent().textContent).not.toContain('Other 0')
-    expect(recent().textContent).toContain('On your Mac')
-    expect(recent().textContent).toContain('Team')
+    // Location identity survives in the compact icon's hover label (PLAT-746-509).
+    expect(recent().querySelector('[role="img"][title="On your Mac"]')).not.toBeNull()
+    expect(recent().querySelector('[role="img"][title="Team"]')).not.toBeNull()
     await act(async () => useProjectMenuHistoryStore.getState().visit(scope, remoteKey))
     await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Remote crew · Crew · Team"]')!.click())
     expect(open).toHaveBeenLastCalledWith(remote, '/crew/projects/same')
