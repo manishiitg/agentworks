@@ -29,7 +29,7 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
-				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send); err != nil {
+				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims); err != nil {
 					if send {
 						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
 					}
@@ -111,6 +111,12 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
 		_, reason := macSharedAgentForAgent(peer.ID, tab, claims.UserID, peer.UserID)
+		// Receiving an owner's Mac-initiated message (or answering its existing inbox)
+		// does not require publishing that private tab. The exact paired conversation must still exist.
+		if reason != "" && !send && sameAccountAgentSender(peer, claims.UserID) && ownMacMessagePeer(ctx, peer) &&
+			!userAccessForClaims(claims).Disabled && userAllowedProduct(claims, crewProfileID) {
+			reason = ""
+		}
 		if reason == "" && token != nil {
 			if token.BoundAgentID != "" {
 				if !namedAgentOperationAllowed(claims, send) {
@@ -280,6 +286,20 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		return triggerTarget{}, err
 	}
 	return target, nil
+}
+
+// ownMacMessagePeer validates the saved source of an owner-initiated network conversation.
+// First contact never uses this exception; the pair and native conversation must still match.
+func ownMacMessagePeer(ctx context.Context, peer agentMessageEndpoint) bool {
+	if peer.Guest != "" || peer.NetworkPairID == "" || peer.NetworkConversationID == "" || peer.NetworkTab == "" ||
+		!crewTeamMessagePairAdmitted(peer.ID, peer.UserID, peer.NetworkPairID) ||
+		peer.ChatKey != macSharedAgentChatKey(peer.ID, peer.NetworkTab) ||
+		peer.Session != crewChatSessionID(peer.ID, peer.NetworkConversationID) {
+		return false
+	}
+	return slices.ContainsFunc(ownerMacTabsAll(ctx, peer.ID), func(tab crewMacTeamTab) bool {
+		return tab.Tab == peer.NetworkTab && tab.ConversationID == peer.NetworkConversationID
+	})
 }
 
 // externalOwnerAuthority reports whether a message to a Crew over this connection may start the Crew owner's own turn
