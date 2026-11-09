@@ -690,10 +690,23 @@ type tokenSessionVerdict struct {
 	token  bool
 }
 
-func accessTokenSessionCheck(ctx context.Context, entry accessTokenSession) (tokenSessionVerdict, error) {
+func accessTokenSessionCheck(ctx context.Context, entry accessTokenSession, running bool) (tokenSessionVerdict, error) {
 	var token accesstokens.Token
 	if strings.HasPrefix(entry.tokenID, "oauth-") {
-		grant, err := mcpOAuthFamilyActive(ctx, strings.TrimPrefix(entry.tokenID, "oauth-"))
+		store, err := openMCPOAuthStore()
+		if err != nil {
+			return tokenSessionVerdict{}, err
+		}
+		defer store.Close()
+		family := strings.TrimPrefix(entry.tokenID, "oauth-")
+		var grant mcpOAuthGrant
+		if running {
+			// PLAT-746-512: authorized work outlives a short access token,
+			// but stops when the whole sign-in expires or is revoked.
+			grant, err = store.LiveFamily(ctx, family)
+		} else {
+			grant, err = store.ActiveFamily(ctx, family)
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			return tokenSessionVerdict{"revoked_or_expired", true}, nil
 		}
@@ -733,14 +746,14 @@ func accessTokenSessionCheck(ctx context.Context, entry accessTokenSession) (tok
 }
 
 func accessTokenSessionAllowed(ctx context.Context, entry accessTokenSession) bool {
-	verdict, err := accessTokenSessionCheck(ctx, entry)
+	verdict, err := accessTokenSessionCheck(ctx, entry, false)
 	return err == nil && verdict.reason == ""
 }
 
 // Confirm a definite negative with a second store/access read. A deadline, busy
 // database or unavailable workspace stays unknown and is retried on the next tick.
 func (api *StreamingAPI) recheckAccessTokenSession(ctx context.Context, entry accessTokenSession) bool {
-	verdict, err := accessTokenSessionCheck(ctx, entry)
+	verdict, err := accessTokenSessionCheck(ctx, entry, true)
 	if err == nil && verdict.reason == "" {
 		return false
 	}
@@ -752,7 +765,7 @@ func (api *StreamingAPI) recheckAccessTokenSession(ctx context.Context, entry ac
 		log.Printf("[TOKEN_WATCH] unknown token=%s session=%s reason=%q", prefix, entry.sessionID, err)
 		return false
 	}
-	confirmed, err := accessTokenSessionCheck(ctx, entry)
+	confirmed, err := accessTokenSessionCheck(ctx, entry, true)
 	if err != nil || confirmed != verdict {
 		log.Printf("[TOKEN_WATCH] unknown token=%s session=%s reason=negative_not_confirmed error=%v", prefix, entry.sessionID, err)
 		return false
