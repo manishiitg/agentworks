@@ -259,6 +259,25 @@ export function teamFolders(target: TeamTarget, query: string): Promise<TeamFold
   return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)
 }
 
+/** The Share page (crew_share_page.go, owner 9 Nov mock): three options with the server's status and chips, the
+ * viewer's agents (Ask with its two permissions) and the owner's actions, the who-can-use line and the dashboards
+ * count. Every word and every "may change" is the server's; the page prints them and sends the person's change. */
+export type CrewShareOptionKey = 'team' | 'agents' | 'read_only'
+export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
+export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean; changes_label: string; changes_line: string
+  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[] }
+export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string }
+export type CrewShareAgent = { key: string; name: string; line?: string; target: string; ask?: CrewShareAsk; actions: CrewShareAction[]; actions_line: string; setup_ask?: string; wizard_for?: string }
+export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; dashboards: number; dashboard_ask?: string }
+export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
+  return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
+}
+/** One action's own switch (POST action, the Crew's owner only): target is '' for the Crew's own actions, else the workflow. */
+export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {
+  await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/action', 'POST', action)
+  changed()
+}
+
 /** The Folders / Whole Crew confirm box, worded by the server (crew_team_folder_switch.go); refusal when too big. */
 export type TeamFolderChange = { whole: boolean; title: string; sub: string; people: string[]; folders_added?: string[]; folders_kept?: string[]; means: string[]; note?: string; confirm_label?: string; refusal?: string }
 export function teamFolderChange(target: TeamTarget, whole: boolean): Promise<TeamFolderChange> {

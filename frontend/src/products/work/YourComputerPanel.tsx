@@ -11,8 +11,8 @@ import { Switch } from '../../components/ui/Switch'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
-import { AskButton, TeamTab, teamCard } from './TeamTab'
-import { CrewDashboardsTab } from './CrewDashboardsTab'
+import { AskButton, teamCard } from './TeamTab'
+import { ShareCrew } from './ShareCrew'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
@@ -261,7 +261,9 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
   const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
   const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
   // A tab the server does not list for this person (a teammate has the Team tab only) falls back to its first one.
-  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
+  // Dashboards are the Share tab's Read only option now (owner, 9 Nov): asking for them opens Share there.
+  const wanted: CrewAccessSection = section === 'dashboards' ? 'team' : section
+  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === wanted) ? wanted : tabs[0]?.id
   const needsServer = here && !connections.length && !online
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
@@ -343,13 +345,10 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
       </div>
       {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
-    {/* One Team tab everywhere (owner, 5 Nov): the server's /tab reply decides its rows. The Mac app's own Crew adds its
-        Mac online switch, and turns the Team on through the Mac while Mac online is off. */}
+    {/* Share this Crew (owner, 9 Nov mock): one page with three options, the server's /share reply decides its rows. The
+        Mac app's own Crew turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <TeamTab projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined} />
-    </section>}
-    {!(here && needsServer) && shown === 'dashboards' && <section role="tabpanel" id={`crew-access-panel-${projectId}-dashboards`} aria-labelledby={`crew-access-${projectId}-dashboards`} className="space-y-3">
-      <CrewDashboardsTab projectId={projectId} />
+      <ShareCrew projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined} focus={section === 'dashboards' ? 'read_only' : undefined} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
