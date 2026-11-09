@@ -149,10 +149,26 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     })
     return () => { controller.abort(); cancelPendingWorkflowNavigation() }
   }, [location, account, workspace, permissionKey, attempt])
+  const sameProduct = parseProductRoute(resolution.location)?.surface === parseProductRoute(location)?.surface
+  const openingLink = status === 'loading' && resolution.status === 'ready' && resolution.account === account && resolution.workspace === workspace && resolution.permissionKey === permissionKey && sameProduct
+  const [loadingAge, setLoadingAge] = useState<'brief' | 'notice' | 'expired'>('brief')
+  useEffect(() => {
+    setLoadingAge('brief')
+    if (!openingLink) return
+    const notice = window.setTimeout(() => setLoadingAge('notice'), 2000)
+    const expiry = window.setTimeout(() => setLoadingAge('expired'), 10000)
+    return () => { window.clearTimeout(notice); window.clearTimeout(expiry) }
+  }, [openingLink, location, attempt])
   useEffect(() => status === 'ready' ? observeProductHistory(route => {
     if (!['agentworks', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
   }) : undefined, [status, location, account])
-  if (status === 'ready') return <>{children}</>
+  // Keep the admitted workspace mounted while another link is checked, so a
+  // Crew switch does not tear down the chat and flash a full-page loader.
+  // Account, connection and permission changes still remove it immediately.
+  if (status === 'ready' || openingLink && loadingAge !== 'expired') return <>
+    <div className={openingLink ? 'contents pointer-events-none' : 'contents'} aria-busy={openingLink} inert={openingLink}>{children}</div>
+    {openingLink && loadingAge === 'notice' && <p role="status" className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground shadow-sm">Opening link…</p>}
+  </>
   const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : resolution.message || 'This item is not available. You may not have access.'
   return <main className="grid min-h-screen place-items-center p-6"><div className="max-w-md space-y-4 text-center"><p role={status === 'loading' ? 'status' : 'alert'}>{text}</p>{status !== 'loading' && <div className="flex justify-center gap-4"><a className="underline" href="/">Return to workspace</a>{status === 'error' && <button className="underline" onClick={() => { activeResolution.current?.abort(); setAttempt(value => value + 1) }}>Retry</button>}</div>}</div></main>
 }
