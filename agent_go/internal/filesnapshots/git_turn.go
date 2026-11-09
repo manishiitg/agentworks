@@ -446,8 +446,9 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		paths[root] = nil
 		start, existed := r.GitTurn[root]
 		dir := filepath.Join(s.Root, filepath.FromSlash(root))
-		if !existed && presentBefore[root] {
-			// No trustworthy before-image for this checkout. Keep other roots.
+		if !existed && (presentBefore[root] || r.BeforeCapture.Deferred == "loose_file_limit") {
+			// No trustworthy before-image, including roots hidden by a capped
+			// ordinary walk. Never call pre-existing dirty files new reply edits.
 			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
 			continue
 		}

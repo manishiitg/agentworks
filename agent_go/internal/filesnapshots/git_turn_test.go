@@ -612,4 +612,24 @@ func TestTurnFileLimitKeepsHealthyCheckoutAndOmitsUnknownLooseDiff(t *testing.T)
 	if after.AfterCapture.ImportedBytes > 20 {
 		t.Fatalf("read large untracked/backup contents: %+v", after.AfterCapture)
 	}
+	// PR1807 P1: a nested checkout hidden by the before walk's cap must not
+	// turn pre-existing dirty bytes into this reply's changes or Undo targets.
+	f.repo("m-parent/nested", map[string]string{"old.txt": "committed"})
+	f.put("m-parent/nested/old.txt", "pre-existing dirty work")
+	before, err = f.s.BeginGitTurn(t.Context(), "recovered")
+	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("before discovery was not capped: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "backup")); err != nil {
+		t.Fatal(err)
+	}
+	f.put("z-project/edit.txt", "third")
+	after, err = f.s.FinishGitTurn(t.Context(), "recovered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err = f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("recovered checkout claimed old dirty work: %v %+v", err, comparison.Changes)
+	}
 }
