@@ -100,6 +100,9 @@ type ScheduledJobResponse struct {
 	RunOutcome  string `json:"run_outcome"`
 	HasRunIssue bool   `json:"has_run_issue"`
 	LastResult  string `json:"last_result,omitempty"`
+	// Starts is the one plain line the Automations pages print for what this schedule starts ("Runs the workflow ·
+	// <saved setting>" or "Sends a message to <agent>"; see automation_starts_line.go).
+	Starts string `json:"starts,omitempty"`
 	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
 	pauseProduct string
 
@@ -204,6 +207,7 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		ChatKey:         chatKey,
 		ChatID:          chatID,
 		RunDestinations: destinations,
+		Starts:          workflowScheduleStartsLine(manifest, sched),
 		pauseProduct:    pauseProduct,
 		Kind:            normalizeTriggerKind(sched.Kind),
 		StepID:          workflowWebhookDTO(sched).StepID,

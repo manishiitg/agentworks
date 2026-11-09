@@ -2587,6 +2587,8 @@ export interface ScheduledJob {
   run_outcome?: string
   /** One plain sentence about the last run; the raw error stays in last_error as detail. */
   last_result?: string
+  /** One plain line from the server: what this schedule starts ("Runs the workflow · <saved setting>" or "Sends a message to <agent>"). */
+  starts?: string
   // Pulse schedules synthesize their run-specific messages from current
   // evidence; they intentionally do not persist ordinary messages[].
 

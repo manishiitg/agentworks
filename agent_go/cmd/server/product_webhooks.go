@@ -98,6 +98,8 @@ type productWebhookResponse struct {
 	RunDestination string         `json:"run_destination"`
 	Kind           string         `json:"kind,omitempty"`
 	Caller         *triggerCaller `json:"caller,omitempty"`
+	// Starts is the one plain line the Webhooks page prints: a Crew webhook always sends its message to the Crew's Main agent.
+	Starts string `json:"starts,omitempty"`
 }
 
 func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
@@ -116,6 +118,7 @@ func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
 		RunDestination: trigger.shownRunDestination(),
 		Kind:           normalizeTriggerKind(trigger.Kind),
 		Caller:         trigger.Caller,
+		Starts:         automationStartsMessageLine("Main"),
 	}
 }
 

@@ -10,6 +10,13 @@ A workflow belongs to a Crew. Its saved source is `script.json` (typed inputs,
 optional presets and expected outputs), `main.py`, and any nested Python files.
 The server runs it in that Crew with its current permissions and connected apps.
 
+A Crew has one workflow. A new task is a new path inside it, not a new
+workflow: add an input that picks the task, an `if`/`elif` branch in `main.py`,
+and a saved preset (saved setting) for that task. Point the task's schedule,
+webhook or action at that preset. Put reusable code in a helper `.py` file
+beside `main.py` and import it normally, for example `import gate`, then
+`gate.run_gate()`.
+
 The parent workflow and platform-run scripts can import `agentworks` and
 `agentworks_db`. A native shell inside `agent()` does not have that helper
 environment. Agents use the registered `database` tool (`action="query"` or
@@ -87,7 +94,7 @@ checks/notices; full run files remain available under the same file grants.
 For Python runs, `metadata.source_snapshot_hash` identifies the main script's
 executed frozen bundle, including `script.json`, nested source and binary files.
 It is a SHA-256 of sorted relative file names and raw bytes, each followed by a
-NUL byte; `__pycache__` is excluded. Child script calls do not replace it.
+NUL byte; `__pycache__` is excluded.
 `runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
 tails with full paths, per-label status/durations, checks/notices, saved typed
 inputs/preset, failing labels and traceback, and agent answer/provider-log paths.
@@ -123,7 +130,7 @@ Only the Crew's Builder or an admitted workflow editor can resume. It keeps
 that folder and the captured source and typed inputs, starts a new execution
 attempt, and preserves the old logs. Python starts at the top again.
 
-Only successful `agent()` and `run_script()` calls with an explicit `key=`
+Only successful `agent()` calls with an explicit `key=`
 can reuse their recorded results. Use a distinct logical key for each call,
 including each loop iteration; reusing a key within one attempt is refused.
 The same key and arguments can reuse a successful result even if unrelated

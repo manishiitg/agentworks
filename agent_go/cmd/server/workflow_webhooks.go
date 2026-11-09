@@ -144,6 +144,8 @@ type workflowWebhookResponse struct {
 	Caller           *triggerCaller                  `json:"caller,omitempty"`
 	Function         *WorkflowFunctionSpec           `json:"function,omitempty"`
 	InputSchema      map[string]interface{}          `json:"input_schema,omitempty"`
+	// Starts is the one plain line the Webhooks page prints for what this webhook starts (automation_starts_line.go).
+	Starts string `json:"starts,omitempty"`
 }
 
 type workflowWebhookRequest struct {
@@ -240,7 +242,7 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 	if s.IsInternalTrigger() {
 		path = ""
 	}
-	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, InputPreset: s.InputPreset, Inputs: s.Inputs, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
+	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, InputPreset: s.InputPreset, Inputs: s.Inputs, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function, Starts: workflowScheduleStartsLine(nil, s)}
 	if s.Function != nil {
 		out.InputSchema = workflowFunctionInputSchema(s)
 	}
