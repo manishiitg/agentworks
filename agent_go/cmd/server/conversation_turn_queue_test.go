@@ -77,9 +77,9 @@ func TestDurableConversationTurnQueueCoversEveryConversationProducer(t *testing.
 	}{
 		{"ordinary chat", QueryRequest{AgentMode: "multi-agent"}, true},
 		{"Crew chat", QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work"}, true},
-		{"workflow builder chat", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual"}, true},
-		{"workflow schedule", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "cron"}, true},
-		{"webhook trigger", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "webhook"}, true},
+		// PLAT-746: triggers either run Python directly or ask an existing Crew agent.
+		{"scheduled Crew agent", QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", TriggeredBy: "cron"}, true},
+		{"webhook Crew agent", QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", TriggeredBy: "webhook"}, true},
 		{"bot turn", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:slack", BotPlatform: "slack"}, true},
 		{"synthetic notification", QueryRequest{AgentMode: "multi-agent", IsAutoNotification: true}, false},
 		{"headless workflow execution", QueryRequest{AgentMode: "workflow"}, false},
