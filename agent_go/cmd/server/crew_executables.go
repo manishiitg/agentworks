@@ -118,8 +118,9 @@ func crewShownWorkflow(crewWorkspace string) *crewExecutableBinding {
 		}
 		better := best == nil
 		if !better {
-			if (binding.Kind == "workflow") != (best.Kind == "workflow") {
-				better = binding.Kind == "workflow"
+			// A Python workflow (kind script) wins over an older plan record, which can no longer run.
+			if (binding.Kind == "script") != (best.Kind == "script") {
+				better = binding.Kind == "script"
 			} else {
 				better = modified.After(bestTime)
 			}
