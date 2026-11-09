@@ -335,7 +335,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				return
 			}
 		}
-		if private := api.crewSessionChatSavedRead(r, sessionID); private != nil {
+		if private := api.crewSessionChatLimit(r, sessionID); private != nil {
 			private.refuse(w, claims.UserID)
 			return
 		}

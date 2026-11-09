@@ -82,12 +82,11 @@ type crewTeamTabAgent struct {
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
 	// Teammates see (crew_team_chat_private.go). ChatShareLabel and ChatShareOptions are the choice, on the viewer's own
-	// agent; on someone else's, ChatPrivateLine replaces the chat of Just the agent and ChatShareNote sits above Chat history.
+	// agent; on someone else's, ChatPrivateLine replaces the chat of a Hidden agent.
 	ChatShare        string                `json:"chat_share"`
 	ChatShareLabel   string                `json:"chat_share_label,omitempty"`
 	ChatShareOptions []crewChatShareOption `json:"chat_share_options,omitempty"`
 	ChatPrivateLine  string                `json:"chat_private_line,omitempty"`
-	ChatShareNote    string                `json:"chat_share_note,omitempty"`
 	// WatchKey is the key of its tab for someone else, where that differs from Key: the Crew owner's Mac Main.
 	WatchKey string `json:"watch_key,omitempty"`
 	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's Main (their own agent).
@@ -344,11 +343,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
 				row.ChatShareLabel, row.ChatShareOptions = crewTeamChatShareLabel, crewChatShareOptions
 			} else {
-				switch row.ChatShare {
-				case crewChatShareAgent:
+				if row.ChatShare == crewChatShareAgent {
 					row.ChatPrivateLine = crewChatPrivateLine(p.UserID)
-				case crewChatShareHistory:
-					row.ChatShareNote = crewChatHistoryLine(p.UserID)
 				}
 				if p.Owner && onMac && a.Tab == macMainTab {
 					row.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey

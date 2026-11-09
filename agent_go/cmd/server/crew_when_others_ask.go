@@ -29,7 +29,7 @@ type crewTeamAgentRule struct {
 	ChatShare string `json:"chat_share,omitempty"`
 }
 
-// UnmarshalJSON reads a Team record saved with the earlier on/off setting: off was Just the agent.
+// UnmarshalJSON reads a Team record saved with the earlier on/off setting (off was Hidden) or the removed saved-only choice.
 func (r *crewTeamAgentRule) UnmarshalJSON(data []byte) error {
 	type stored crewTeamAgentRule
 	var in struct {
@@ -40,6 +40,9 @@ func (r *crewTeamAgentRule) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*r = crewTeamAgentRule(in.stored)
+	if r.ChatShare == "history" { // the saved-only choice was removed (9 Nov): a stored one reads as the more private Hidden
+		r.ChatShare = crewChatShareAgent
+	}
 	if in.ChatVisible != nil && !*in.ChatVisible && r.ChatShare == crewChatShareLive {
 		r.ChatShare = crewChatShareAgent
 	}
@@ -78,8 +81,8 @@ func withAgentRuleArgs(ctx context.Context, args map[string]any, project, person
 // errWhenOthersAskTooLong refuses a rule over the limit, with what to do instead.
 var errWhenOthersAskTooLong = fmt.Errorf("keep the rule under %d characters", whenOthersAskMaxRunes)
 
-// errCrewChatShareUnknown refuses anything but the three choices.
-var errCrewChatShareUnknown = errors.New("choose Live chat, Chat history or Just the agent")
+// errCrewChatShareUnknown refuses anything but the two choices.
+var errCrewChatShareUnknown = errors.New("choose Live or Hidden")
 
 // setCrewTeamAgentRule saves the person's own rule, Answer only / Make changes and/or Teammates see for one of their
 // agents (nil leaves that part as it is). Only the agent's own person may (crewTeamOwnAgent).

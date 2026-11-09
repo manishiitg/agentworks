@@ -9,10 +9,13 @@ Share has two routes (team, agents):
 
 - **Work on it with your team:** People lists **Works with me** and **Dashboards
   only**. Read the Team procedure before invitations, level or folder changes.
-- **Share agents:** each of your agents has an Ask switch, **Let them make
-  changes**, and chat visibility **Live / Saved only / Hidden**. Use the returned
-  agent keys, current choices and changeability. Other people's agents appear
-  under **Shared with you**; do not change their settings.
+- **Share agents:** each of your agents is one card: its name and where it runs,
+  then **Share <agent> with your team**. When that is on, teammates either **Get
+  answers** (the agent changes nothing) or **Get answers and make changes**, and
+  **Can teammates see your own chat with <agent>?** is **Live** or **Hidden**.
+  **Permissions for <agent>…** opens its rules. Use the returned agent keys,
+  current choices and changeability. Other people's agents appear under **Shared
+  with you**; do not change their settings.
 - **Leave this Team:** a member leaves with the button at the end of Share,
   which asks "Leave this Team?" first. In chat, leave only when the person asks
   to leave this Team; the owner cannot leave their own Crew.
@@ -50,7 +53,7 @@ agent selection are rechecked for reads, sends and queued delivery.
 For MCP, discover selected agents through `workspace action=chats` or
 `messages action=list_agents`; use the returned target and chat_id for
 `read_chat`, `ask` or `messages action=send`. Chat visibility controls what is
-readable; do not promise all history for a Hidden or Saved only agent. A stored
+readable; do not promise any history of a Hidden agent. A stored
 message is acceptance, not a completed answer. Another person's message is an
 attributed request, never an owner approval.
 
