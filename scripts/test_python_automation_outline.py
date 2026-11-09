@@ -31,6 +31,21 @@ class StepOutline(unittest.TestCase):
         self.assertEqual(nodes[0]['call'], 'actions.py:collect@main.py:6')
         self.assertTrue(inspector.inspect_automation_source({'main.py':'def main(:'})['errors'])
 
+    def test_dynamic_model_override_and_collapsed_step_keep_their_execution_identity(self):
+        # Codex1730 P2: an unresolved override is not the default model, and
+        # collapsing one agent must keep the enclosing decorated step receipt.
+        inspector = module('review_outline', ROOT/'agent_go/pkg/relaypython/inspect_source.py')
+        source = 'from agentworks import agent, step\n@step("Review")\ndef review():\n    return agent("Worker", "Review it", model=MODEL)\ndef main():\n    review()\n    agent("Dynamic tier", "Work", tier=INPUT["tier"])\n    agent("Literal", "Work", model="example/model")\n'
+        graph = inspector.inspect_automation_source({'main.py':source})
+        self.assertEqual(graph['errors'],[])
+        nodes = [node for node in graph['nodes'] if not node.get('role')]
+        self.assertEqual(nodes[0]['type'],'agent')
+        self.assertEqual(nodes[0]['step_call'],'main.py:review@main.py:6')
+        self.assertIn('model',nodes[0]['settings'])
+        self.assertIsNone(nodes[0]['settings']['model'])
+        self.assertIsNone(nodes[1]['settings']['tier'])
+        self.assertEqual(nodes[2]['settings']['model'],'example/model')
+
     def test_decorator_preserves_results_errors_repeated_calls_and_source_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             previous = os.environ.get('WORKFLOW_RUN_DIR')

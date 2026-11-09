@@ -540,7 +540,7 @@ def apply(changes, documents, state, backup=None, identity='runtime-roots', appe
     if not changes and not moves:
         return None
     backup = backup or state / 'migrations' / ('workflow-python-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ'))
-    backup = backup / safe_id(identity)
+    backup = backup.resolve() / safe_id(identity)
     if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
         raise ValueError('This workflow backup already contains a snapshot. Keep it and choose a new backup folder.')
     copies = dict(documents, ownership=state / 'ownership')
@@ -548,7 +548,7 @@ def apply(changes, documents, state, backup=None, identity='runtime-roots', appe
         if target.exists():
             raise ValueError('Dashboard source destination already exists; inspect the collision before repair.')
         copies['dashboard-source-' + str(index)] = source
-    for source in copies.values():
+    for source in [*copies.values(), *(target for _, target in moves)]:
         if backup == source or source in backup.parents or backup in source.parents:
             raise ValueError('Choose a backup outside the active automation storage.')
     backup.mkdir(parents=True, exist_ok=True, mode=0o700)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -15,10 +16,10 @@ func TestOutlineAgentModel(t *testing.T) {
 	}
 	tiers := &workflowtypes.TieredLLMConfig{Tier1: tier("big", "high"), Tier2: tier("mid", "medium"), Tier3: nil}
 	cases := []struct {
-		name                       string
-		model, tier, reasoning     string
-		want                       outlineAgent
-		unresolved                 bool
+		name                   string
+		model, tier, reasoning string
+		want                   outlineAgent
+		unresolved             bool
 	}{
 		{name: "default is High", want: outlineAgent{"Claude", "big", "high", "default"}},
 		{name: "tier", tier: "medium", want: outlineAgent{"Claude", "mid", "medium", "call"}},
@@ -36,5 +37,29 @@ func TestOutlineAgentModel(t *testing.T) {
 	}
 	if resolveOutlineAgent(nil, "", "", "") != nil {
 		t.Error("no saved model settings must resolve to nothing")
+	}
+}
+
+// Codex1730 P2: null records an override that execution resolves at run time;
+// only an absent setting may inherit the saved High tier.
+func TestOutlineDynamicOverrideDoesNotInventDefaultModel(t *testing.T) {
+	config := &workflowtypes.PresetLLMConfig{Mode: workflowtypes.LLMConfigModeExplicit, TieredConfig: &workflowtypes.TieredLLMConfig{Tier1: &workflowtypes.AgentLLMConfig{Provider: "example", ModelID: "default"}}}
+	raw, err := addOutlineModels(json.RawMessage(`{"nodes":[{"type":"agent","settings":{"model":null}},{"type":"agent","settings":{"tier":null}},{"type":"agent"}]}`), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var graph struct {
+		Nodes []map[string]any `json:"nodes"`
+	}
+	if err = json.Unmarshal(raw, &graph); err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range graph.Nodes[:2] {
+		if node["agent"] != nil {
+			t.Fatalf("dynamic override became a default: %s", raw)
+		}
+	}
+	if graph.Nodes[2]["agent"] == nil {
+		t.Fatalf("absent override lost the default: %s", raw)
 	}
 }
