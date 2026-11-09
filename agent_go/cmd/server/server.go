@@ -2926,6 +2926,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer schedulerCancel()
 	schedulerSvc := NewSchedulerService(api)
 	api.scheduler = schedulerSvc
+	if err := schedulerSvc.initializeRunLedger(); err != nil {
+		log.Printf("[SCHEDULER] Run ledger initialization failed: %v", err)
+	}
 	productScheduleSvc := NewProjectActionDispatcher(api, profileRegistry)
 	api.projectActions = productScheduleSvc
 	// One-off, before any function can be called: a function's saved "fresh" becomes "new" (migration file; delete

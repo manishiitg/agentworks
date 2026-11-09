@@ -253,20 +253,32 @@ func (s *SchedulerService) InvalidateWorkflowManifestCache() {
 	invalidateWorkflowManifestIndex()
 }
 
-// Start scans all workspace folders for workflow.json manifests, loads enabled schedules,
-// and starts the wall-clock tick loop.
-func (s *SchedulerService) Start(ctx context.Context) error {
-	scheduleLogf("[SCHEDULER] Starting manifest-based scheduler service...")
+// initializeRunLedger opens occurrence evidence independently of the clock.
+// Secondary machines disable automatic firing but still offer manual Run now.
+// Opening the shared store never interrupts another machine's active work;
+// startup recovery remains with Start on the clock-owning machine.
+func (s *SchedulerService) initializeRunLedger() error {
 	s.stateStoreMu.Lock()
+	defer s.stateStoreMu.Unlock()
 	if s.stateStore == nil {
 		storePath := filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "schedule-state.sqlite")
 		store, err := schedulerstate.Open(storePath)
 		if err != nil {
-			s.stateStoreMu.Unlock()
 			return fmt.Errorf("initialize schedule state store: %w", err)
 		}
 		s.stateStore = store
 	}
+	return nil
+}
+
+// Start scans all workspace folders for workflow.json manifests, loads enabled schedules,
+// and starts the wall-clock tick loop.
+func (s *SchedulerService) Start(ctx context.Context) error {
+	scheduleLogf("[SCHEDULER] Starting manifest-based scheduler service...")
+	if err := s.initializeRunLedger(); err != nil {
+		return err
+	}
+	s.stateStoreMu.Lock()
 	if interrupted, err := s.stateStore.InterruptActiveRuns(ctx, "interrupted: server restarted", time.Now().UTC()); err != nil {
 		s.stateStoreMu.Unlock()
 		return fmt.Errorf("reconcile interrupted schedule runs: %w", err)
