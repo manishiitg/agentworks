@@ -1,3 +1,6 @@
+import { AgentMark } from '../chat/AgentIcon'
+import { useAgentMenuState } from '../chat/agentMenuState'
+import type { ActiveSessionInfo } from '../../services/api-types'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
@@ -20,7 +23,6 @@ import { openAppProduct } from '../../utils/appNavigation'
 import { productRoutePath } from '../../utils/productRoutes'
 import { runtimeHasBackgroundAgents, runtimeNeedsUserInput, sessionRuntimeStatus } from '../../utils/runtimeActivity'
 import { useChatStore } from '../../stores/useChatStore'
-import { hasActiveSessionWork } from '../../utils/activitySessions'
 
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
@@ -284,8 +286,15 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
   return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
-      const session = activity?.find(item => item.session_id === chat.session_id && item.crew_project_id === projectId)
-      const asking = runtimeNeedsUserInput(session)
-      return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span>{asking ? <span title="Needs your input" aria-label="Needs your input" className="h-2 w-2 rounded-full bg-amber-400" /> : session && hasActiveSessionWork(session) ? <span title="Running" aria-label="Running" className="h-2 w-2 rounded-full bg-sky-500" /> : null}</button>
+      const session = sessions.find(item => item.session_id === chat.session_id)
+      return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
     })}</div>)}</>
+}
+
+/** Inactive project rows use the same marks as the open Crew, including unread completions. */
+function ProjectAgentMark({ projectId, sessionId, session, local }: { projectId: string; sessionId: string; session?: ActiveSessionInfo; local: boolean }) {
+  const tabId = useChatStore(state => local ? Object.values(state.chatTabs).find(tab => tab.sessionId === sessionId && tab.metadata?.agentProfileProjectId === projectId)?.tabId : undefined)
+  const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, undefined, local ? { sessionId } : undefined)
+  const remoteState = runtimeNeedsUserInput(session) ? 'waiting' : sessionRuntimeStatus(session) === 'busy' || runtimeHasBackgroundAgents(session) ? 'running' : null
+  return <AgentMark state={local ? state : remoteState} />
 }
