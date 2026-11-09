@@ -19,7 +19,7 @@ import (
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
-// PLAT-746-513: a provider event burst on adopted Crew storage must retain
+// PLAT-746-515: a provider event burst on adopted Crew storage must retain
 // every ordered event with zero workspace HTTP round trips, then honor deletion.
 func TestBackgroundTranscriptBurstFlushesLocallyAndHonorsDeletion(t *testing.T) {
 	docs, err := filepath.EvalSymlinks(t.TempDir())

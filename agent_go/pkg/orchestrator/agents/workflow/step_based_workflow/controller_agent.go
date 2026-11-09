@@ -702,17 +702,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) completeAgentItemNotification(_ conte
 	if hcpo == nil || hcpo.workshopExecutionNotifier == nil || !active {
 		return
 	}
-	// Publish completion only after emitted records have reached durable storage.
-	// Observability failure must not change the execution's result.
-	if hcpo.BaseOrchestrator != nil {
-		if bridge, ok := hcpo.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge); ok {
-			persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if persistErr := bridge.WaitForBackgroundTranscriptPersistence(persistCtx); persistErr != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("Agent item %s transcript persistence: %v", execID, persistErr))
-			}
-			cancel()
-		}
-	}
+	hcpo.flushAgentTranscripts()
 	result := strings.TrimSpace(summary)
 	if result == "" && err != nil {
 		result = err.Error()

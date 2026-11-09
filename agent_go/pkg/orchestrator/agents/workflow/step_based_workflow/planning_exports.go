@@ -872,6 +872,7 @@ func (s *WorkshopChatSession) Close() {
 		s.cancelFunc()
 	}
 	if s.controller != nil {
+		s.controller.flushAgentTranscripts()
 		s.controller.CloseWorkshopGroupSessions()
 	}
 }

@@ -14,7 +14,7 @@ type transcriptBatch struct {
 	events []orchevents.BackgroundAgentTranscriptEvent
 }
 
-// PLAT-746-513: provider events used to each launch a goroutine and a complete
+// PLAT-746-515: provider events used to each launch a goroutine and a complete
 // transcript read/modify/write over HTTP. Keep their order in one pending batch,
 // flush at most once per interval, and drain immediately at the existing end barrier.
 func (c *ContextAwareEventBridge) queueTranscriptEvents(writer BackgroundAgentTranscriptWriter, session, agent string, events []orchevents.BackgroundAgentTranscriptEvent) {
