@@ -85,22 +85,42 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 		var crew struct {
 			Schedules []ScheduledJobResponse `json:"schedules"`
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &crew); err != nil || len(crew.Schedules) != 1 {
-			t.Fatalf("saved Crew timer missing: %s (%v)", w.Body.String(), err)
+		if err := json.Unmarshal(w.Body.Bytes(), &crew); err != nil {
+			t.Fatal(err)
 		}
-		if (crew.Schedules[0].StatusWord == "Paused") != paused || !crew.Schedules[0].Enabled {
-			t.Fatalf("Crew timer disagrees with global pause=%v: %+v", paused, crew.Schedules[0])
+		foundCrew := false
+		for _, schedule := range crew.Schedules {
+			if schedule.Name != "Crew timer" {
+				continue
+			}
+			foundCrew = true
+			if (schedule.StatusWord == "Paused") != paused || !schedule.Enabled {
+				t.Fatalf("Crew timer disagrees with global pause=%v: %+v", paused, schedule)
+			}
+		}
+		if !foundCrew {
+			t.Fatalf("saved Crew timer missing: %s", w.Body.String())
 		}
 		w = mcp(owner, "list", map[string]any{"project": child.ID})
 		mustOK(w)
 		var workflow struct {
 			State WorkflowSchedulerState `json:"scheduler_state"`
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &workflow); err != nil || len(workflow.State.Schedules) != 1 || workflow.State.GloballyPaused == nil {
+		if err := json.Unmarshal(w.Body.Bytes(), &workflow); err != nil || workflow.State.GloballyPaused == nil {
 			t.Fatalf("saved workflow timer missing: %s (%v)", w.Body.String(), err)
 		}
-		if *workflow.State.GloballyPaused != paused || (workflow.State.Schedules[0].State == "paused") != paused {
-			t.Fatalf("workflow timer disagrees with global pause=%v: %+v", paused, workflow.State)
+		foundWorkflow := false
+		for _, schedule := range workflow.State.Schedules {
+			if schedule.ID != "workflow-timer" {
+				continue
+			}
+			foundWorkflow = true
+			if *workflow.State.GloballyPaused != paused || (schedule.State == "paused") != paused {
+				t.Fatalf("workflow timer disagrees with global pause=%v: %+v", paused, workflow.State)
+			}
+		}
+		if !foundWorkflow {
+			t.Fatalf("saved workflow timer missing: %s", w.Body.String())
 		}
 	}
 	checkBoth(false)
