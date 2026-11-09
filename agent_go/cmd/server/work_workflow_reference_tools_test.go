@@ -15,6 +15,8 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 	withMemoryUserDirectory(t, `{"users":[{"id":"reader","username":"reader","products":[]},{"id":"owner","username":"owner","products":[]}]}`)
 	// Crews are discovered from the owner registry, not from manifests found in the workspace.
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	// Registered Crew roots must exist on disk even when document transport is mocked.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	bankingRoot := registerTestCrew(t, "banking", "reader", false)
 	researchRoot := registerTestCrew(t, "research", "owner", true)
 	shared, _ := json.Marshal(WorkflowManifest{
@@ -74,8 +76,8 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 		t.Fatalf("attach Crew out=%s err=%v", out, err)
 	}
 	crewReadRoot := researchRoot
-	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) || containsWorkReferencePath(cfg.WritePaths, crewReadRoot) {
-		t.Fatalf("attached Crew was not granted immediately as read-only: %+v", cfg)
+	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) || !containsWorkReferencePath(cfg.WritePaths, crewReadRoot) {
+		t.Fatalf("attached Crew did not receive its admitted file grants: %+v", cfg)
 	}
 	workspace.mu.Lock()
 	productSaved := workspace.files[productPath]
