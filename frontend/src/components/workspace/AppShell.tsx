@@ -19,8 +19,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (event.isComposing) return
       const action = workChatTabShortcut(event)
       if (action?.kind !== 'adjacent') return
-      // Reserved app navigation, including focused composers, editors and
-      // native terminals. Do not also deliver it as a cursor/terminal key.
+      // Back/Forward only when the person is not typing: in the chat box, text fields, editors and terminals these keys
+      // keep their editing job (Cmd+Left = line start on a Mac, Ctrl+Left = previous word on Windows and in terminals).
+      if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor,.xterm')) return
       event.preventDefault()
       event.stopImmediatePropagation()
       window.history.go(action.direction)
