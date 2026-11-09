@@ -16,7 +16,8 @@ import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { openAppProduct } from '../../utils/appNavigation'
 import { productRoutePath } from '../../utils/productRoutes'
-import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
+import { runtimeHasBackgroundAgents, runtimeNeedsUserInput, sessionRuntimeStatus } from '../../utils/runtimeActivity'
+import { useChatStore } from '../../stores/useChatStore'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 
 
@@ -76,7 +77,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   })
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
   const renderProject = ({ location, mac, state, ...project }: SidebarProject) => {
-    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents}
+    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined}
     showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
     pinned={pinned?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))} onTogglePin={canPin && !project.personal_agent ? () => { const key = connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id); setPinned(key, !pinned?.includes(key)) } : undefined}
     stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
@@ -157,10 +158,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     .flatMap(key => { const row = crewByKey.get(key); return row ? [row] : [] })
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const key = keyFor(project)
-    const sessions = isChatIdentityCurrent(state.identity) ? state.activity[project.connection.id]?.sessions.filter(session => session.crew_project_id === project.id && !session.parent_session_id) || [] : []
-    const attention = sessions.some(runtimeNeedsUserInput)
-    const running = sessions.some(hasActiveSessionWork)
-    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={attention ? 'Needs your input' : running ? 'Running' : undefined}
+    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       selected={project.connection.id === active && project.selected}
       location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} remote={project.connection.id !== 'local'} showLocation={shortcut || selectedLocations.length > 1}
@@ -216,7 +214,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
 }
 
 /** Each expanded Crew loads its own admitted chats, including on other connections. */
-function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void) => ReactNode }) {
+function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string) => ReactNode }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'crew', connectionId, projectId)
   const saved = useSidebarExpansionStore(state => state.expanded[key])
   const toggle = useSidebarExpansionStore(state => state.toggle)
@@ -225,6 +223,13 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
   const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
+  // The active-session cache is already refreshed for the current connection, including outside the desktop app.
+  // Keep observing it while collapsed; no need to open/load the project's chat list to know it is working.
+  const localSessions = useChatStore(state => state.activeSessionsCache)
+  const sessions = (connectionId === getRawActiveWorkspaceId() ? localSessions : activity || [])
+    .filter(session => session.crew_project_id === projectId)
+  const running = sessions.some(session => sessionRuntimeStatus(session) === 'busy' || runtimeHasBackgroundAgents(session))
+  const activityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
   useEffect(() => {
     if (!expanded || selected) return
     let cancelled = false
@@ -254,7 +259,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  return <>{children(expanded, () => toggle(key, initialOpen))}{expanded && (selected ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
       const session = activity?.find(item => item.session_id === chat.session_id && item.crew_project_id === projectId)
       const asking = runtimeNeedsUserInput(session)
       return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span>{asking ? <span title="Needs your input" aria-label="Needs your input" className="h-2 w-2 rounded-full bg-amber-400" /> : session && hasActiveSessionWork(session) ? <span title="Running" aria-label="Running" className="h-2 w-2 rounded-full bg-sky-500" /> : null}</button>
