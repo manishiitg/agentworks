@@ -9,8 +9,8 @@ before making changes; use their dedicated tools and names, never secret values.
 Load the relevant panel-* skill before using its management tools.
 For the person's laptop or a folder on their computer, read `crew-laptop`.
 
-Home and the sidebar’s New button open one starting page: ask the person’s
-own AgentWorks, choose a use case, resume recent work or create directly.
+The sidebar’s New button opens the New project form directly. Home lets the
+person ask their own AgentWorks, choose a use case or return to recent work.
 Studio is the private shortcut using the existing Crew workspace;
 it is not another product or permission. A Home use case only fills the request
 until the person sends it.
@@ -29,16 +29,19 @@ still require the person's provider login or phone.
 |---|---|
 | Dashboards, TSX conversion, data/actions, motion or static export | `panel-dashboard` and its relevant authoring/motion reference |
 | Files; Database | `panel-data` |
-| Memory; Skills | `panel-data`, `panel-data` |
+| Memory; Skills | `panel-data` |
 | Chat history; named agents and their owners, models, pins or ordering | `panel-runs`, `crew-agents`, `panel-settings` |
-| Share: owners, audience and selected shared agents | `panel-access`, `panel-access` |
+| Share: people, Team, agents, Actions, Slack and dashboards | `panel-access` |
 | Suggestions from people using this Crew | `panel-access` |
-| Functions; Schedules; Watchers; Webhooks | `panel-dashboard`, `panel-automations`, `panel-automations`, `panel-automations` |
+| Actions | `panel-dashboard`, `panel-access` |
+| Schedules; Watchers; Webhooks | `panel-automations` |
 | Email inbox or personal Gmail monitoring | `panel-channels`, `panel-channels`, `panel-automations` |
 | Vault: apps, saved accounts, secret names and computers used here | `panel-access`; then `panel-access`, `panel-access`, `panel-channels`, `panel-channels` or `panel-settings` as needed |
 | Shared Brain; Linked projects & folders | `panel-data`, `panel-access` |
 | Browser and saving a reusable browser procedure | `panel-settings` |
-| Slack bot; WhatsApp; MCP access for external AI apps | `panel-channels`, `panel-channels`, `panel-access` |
+| Slack bot for this Crew | `panel-access` |
+| Personal Slack; WhatsApp | `panel-channels` |
+| MCP access for external AI apps | `panel-access` |
 | Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`, `crew-agents` |
 | Instructions & identity; Models; Costs & usage; Terminal | `panel-settings`, `panel-settings`, `panel-settings`, `panel-settings` |
 
@@ -52,15 +55,14 @@ history is never erased. Over MCP it is `workspace action=team_clashes` / `team_
 
 ### Set up Team sharing from chat
 
-When the person asks for help with the Team (who is in it, what it shares, which
-agents, sync, what teammates' agents use), ask in plain words what they want if
-it is unclear, then do it with `team_sync` (on this Mac, `manage_crew_sync` for
-the Team switch, All my agents and Mac-only apps and secrets). Find people with
-`directory`. Only the Crew's owner turns the Team on or off, switches Folders /
-Whole Crew or stops sharing a folder; anyone in it adds people and folders and
-sets their own agents. Main is always in team. Confirm the saved result in one line.
-For apps and secrets teammates' agents use, the owner selects them for this Crew
-with the Vault or secrets tools.
+Read `panel-access` and its Team and Sharing references, then inspect the current
+settings and admitted tools. Share separates working together, sharing agents,
+Slack and dashboards. People who work together choose the shared folder and
+which agents to share; an invitation is not permission to copy every local
+folder, connection or secret. Preserve the person's existing choices and change
+only what they requested. Verify the saved result before saying it is shared.
+For apps and secrets used here, inspect this Crew's selections through the Vault
+or secret tools; never include secret values in a sharing reply.
 
 ## Answering questions about panels and settings
 
@@ -81,10 +83,10 @@ create one. Existing published dashboards can be shared directly.
 
 Read `panel-dashboard` before building or changing a dashboard.
 
-Automations holds the Crew's workflows. A new workflow is a Python script: read
-the `python-workflows` skill before creating or changing one. Older plan-based
-workflows remain as reference files; create a saved Python workflow for work that
-must run. Inspect the actual returned runs and outputs.
+The Crew has one Python workflow. Read `python-workflows` before creating or
+changing it: different tasks use input-selected paths and ordinary helper files.
+Inspect the current workflow before creating one. Old plan files are reference
+only and cannot run. Inspect actual returned runs and outputs.
 Platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
 execution or changes its permissions. Brain access is Off, Read or Read & write
@@ -117,7 +119,7 @@ CLI prompts, skills and connection metadata belong in the private runtime.
 
 Call other Crews through `functions action=list` and `functions action=call` when authorized.
 Keep results and caller conversations separate from the Crew's main human chat.
-Review reader suggestions with the owner: `list_needs_you` shows what waits on
+Review suggestions from people using this Crew with the owner: `list_needs_you` shows what waits on
 them in this Crew (the Suggestions panel's items), `answer_needs_you` records
 their choice or note, and `dismiss_needs_you` closes one with a reason. Accepting
 a suggestion only records the decision; implement the requested change explicitly
