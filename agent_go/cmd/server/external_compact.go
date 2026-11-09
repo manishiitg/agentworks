@@ -117,10 +117,13 @@ func externalCompactWorkflow(item DiscoveredWorkflow) map[string]any {
 	if m := item.Manifest; m != nil {
 		// The manifest's execution view combines the three canonical entry files.
 		// Only records loaded from schedules.json are timers (PLAT-746-510).
-		counts := map[string]int{"schedules": 0, "schedules_enabled": 0, "webhooks": 0, "webhooks_enabled": 0, "function_triggers": 0, "function_triggers_enabled": 0}
+		counts := map[string]int{"schedules": 0, "schedules_enabled": 0, "webhooks": 0, "webhooks_enabled": 0, "function_triggers": 0, "function_triggers_enabled": 0, "other": 0, "other_enabled": 0}
 		for _, s := range m.Schedules {
-			kind := "schedules"
-			if s.ScheduleType == "webhook" {
+			kind := "other"
+			switch s.ScheduleType {
+			case "", "cron", "calendar":
+				kind = "schedules"
+			case "webhook":
 				kind = "webhooks"
 				if s.IsInternalTrigger() {
 					kind = "function_triggers"
