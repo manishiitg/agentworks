@@ -323,7 +323,7 @@ def inspect_automation_source(files):
             found = {}
             for item in call.keywords:
                 if item.arg is None:
-                    found['model'] = None  # **settings may choose an override.
+                    return {'model': None}  # **settings may choose an override.
                 elif item.arg in ('model', 'tier', 'reasoning'):
                     if isinstance(item.value, ast.Constant) and item.value.value is None:
                         continue
