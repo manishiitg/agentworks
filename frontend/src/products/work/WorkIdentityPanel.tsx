@@ -322,7 +322,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           },
         } : undefined}
       />
-      <div key={`${activeTab}:${tabNonce}`} className={activeTab === 'memory' ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-y-auto p-4'}>
+      <div key={`${activeTab}:${tabNonce}`} data-ui-view-section={activeTab} className={activeTab === 'memory' ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-y-auto p-4'}>
         {activeTab === 'skills' && skillsPanel}
         {activeTab === 'memory' && memoryPanel}
         {activeTab === 'general' && product.hasIdentity && <WorkGeneralPanel
