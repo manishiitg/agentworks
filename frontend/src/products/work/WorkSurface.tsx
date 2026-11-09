@@ -246,7 +246,15 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [product, selectedId, allowedProducts, setSelectedId, updateSessions])
+  }, [product, allowedProducts, setSelectedId, updateSessions])
+
+  // Known projects are already in memory. Only an externally-created selection
+  // needs an extra inventory refresh; clicking between known projects does not.
+  const missingSelectedId = selectedId && !sessions.some(item => item.id === selectedId) ? selectedId : null
+  useEffect(() => {
+    if (loading || !missingSelectedId) return
+    void refresh().catch(() => {})
+  }, [loading, missingSelectedId, refresh])
 
   const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, rootPath?: string) => {
     const session = await createWorkSession(title, description, icon, product, runsOn, rootPath)
@@ -543,6 +551,8 @@ export function useWorkChatTab(
   }
 }
 
+const workAgentLists = new Map<string, { listed: AgentProfileSideChat[]; mainPurpose?: string }>()
+
 export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity }: {
   projectId: string
   projectName: string
@@ -572,9 +582,15 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   // Which agents this project has, their names, order and pins come from the server's list (the person's
   // product-conversations record, also changed over MCP). A browser tab is only the open window of a listed chat: a tab
   // the server does not list is not shown, whatever this browser remembered about it. null = not loaded yet.
-  const [listed, setListed] = useState<AgentProfileSideChat[] | null>(null)
-  // The person's own Main chat's purpose, for its purpose icon (undefined: not theirs or not loaded).
-  const [mainPurpose, setMainPurpose] = useState<string | undefined>()
+  const userId = useAuthStore(state => state.user?.id ?? 'local')
+  const workspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const listCacheKey = JSON.stringify([workspaceId, userId, profileId, projectId])
+  const [listed, setListed] = useState<AgentProfileSideChat[] | null>(() => workAgentLists.get(listCacheKey)?.listed ?? null)
+  // Reuse only this account/connection/project's last server list while refreshing.
+  const [mainPurpose, setMainPurpose] = useState<string | undefined>(() => workAgentLists.get(listCacheKey)?.mainPurpose)
+  useEffect(() => {
+    if (listed) workAgentLists.set(listCacheKey, { listed, mainPurpose })
+  }, [listCacheKey, listed, mainPurpose])
   const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])

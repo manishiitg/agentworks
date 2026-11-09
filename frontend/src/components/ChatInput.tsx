@@ -2564,7 +2564,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const stillOwnsUpload = () => isChatIdentityCurrent(uploadIdentity) && Boolean(activeTabId) &&
       useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId
     setIsUploadingFiles(true)
-    addToast(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}...`, 'info')
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
     const uploadedPaths: string[] = []
     const uploadedAbsolutePaths = new Map<string, string>()
@@ -2655,10 +2654,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         ws.activeFolder ? undefined : { maxDepth: 2 }
       ).catch(() => {})
 
-      addToast(
-        insertedIntoTerminal ? `${uploadedPaths.length} file${uploadedPaths.length > 1 ? 's' : ''} added to terminal` : `${uploadedPaths.length} attachment${uploadedPaths.length > 1 ? 's' : ''} ready for your next message`,
-        'success'
-      )
+      if (insertedIntoTerminal) addToast(`${uploadedPaths.length} file${uploadedPaths.length > 1 ? 's' : ''} added to terminal`, 'success')
 
       if (nativeUpload) {
         if (useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') requestMainTerminalFocus(uploadSessionId)
