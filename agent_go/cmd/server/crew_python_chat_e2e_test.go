@@ -513,6 +513,20 @@ child.wait()
 			}
 			t.Fatalf("cron overlapped the running manual workflow: %v", err)
 		}
+		// PLAT-871: dependency retries must share the live workflow's chat claim,
+		// even when the retry itself is an ordinary Crew message timer.
+		messageJob := job
+		messageJob.Schedule.ID += "-dependent-message"
+		messageJob.Schedule.WorkflowID = ""
+		messageJob.Schedule.Messages = []string{"Report the result"}
+		claim, err = api.projectActions.claimAutomationRun(ctx, messageJob, "queued", time.Now(), productScheduleRunOptions{}, nil)
+		if !errors.Is(err, productschedule.ErrAlreadyRunning) {
+			if claim != nil {
+				claim.cancel()
+				api.projectActions.finishAutomationRun(claim.jobKey, claim.convKey)
+			}
+			t.Fatalf("dependency message overlapped the running workflow: %v", err)
+		}
 		// Real SQLite entries exercise the visitor's date bounds and run/user
 		// attribution. These are fixture costs, not a model billing assertion.
 		for i, owner := range []string{"owner", "other"} {
