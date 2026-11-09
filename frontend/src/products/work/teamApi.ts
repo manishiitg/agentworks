@@ -328,16 +328,22 @@ export type TeamWizardView = {
   folders: { default: string; folders: string[]; offline?: string }
   agents: { key: string; name: string; main?: boolean }[]
 }
-export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; whole: boolean; folder: string; agents: string[] }
+export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; whole: boolean; folder: string; agents: string[]; create_dashboard?: boolean }
 export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {
   return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, '/setup')
 }
 export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardChoice): Promise<void> {
-  try { await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/setup', 'POST', choice) }
+  try {
+    await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/setup', 'POST', choice)
+    changed()
+  }
   catch (cause) {
     // A partly saved Team reloads the tab (the wizard is gone), so the server's line goes to the tab to keep showing.
     const failure = teamFailure(cause)
-    if (failure.code === 'setup_partial') window.dispatchEvent(new CustomEvent('agentworks:team-notice', { detail: failure.message }))
+    if (failure.code === 'setup_partial') {
+      window.dispatchEvent(new CustomEvent('agentworks:team-notice', { detail: failure.message }))
+      changed()
+    }
     throw cause
-  } finally { changed() }
+  }
 }

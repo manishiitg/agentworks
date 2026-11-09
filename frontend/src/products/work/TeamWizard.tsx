@@ -31,6 +31,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
   const [folder, setFolder] = useState('')
   const [agents, setAgents] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [needsDashboard, setNeedsDashboard] = useState(false)
   useEffect(() => {
     let active = true
     void teamWizard(target).then(data => { if (active) { setOptions(data); setFolder(data.folders.default) } }).catch(e => { if (active) setError(teamFailure(e).message) })
@@ -39,14 +40,18 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
   if (!options) return error ? <p role="alert" className="text-xs text-destructive">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const available = options.levels.filter(level => level.available)
   const firstLevel = available.find(level => level.key === options.default_level)?.key || available[0]?.key
-  const finish = async () => {
+  const finish = async (createDashboard = false) => {
     setSaving(true); setError('')
     try {
       await finishTeamWizard(target, {
+        create_dashboard: createDashboard,
         people: Object.entries(picked).map(([user_id, level]) => ({ user_id, level })), whole, folder,
         agents: options.agents.filter(agent => agent.main || agents.includes(agent.key)).map(agent => agent.key),
       })
-    } catch (e) { setError(teamFailure(e).message); setSaving(false) }
+    } catch (e) {
+      const failure = teamFailure(e)
+      setNeedsDashboard(failure.code === 'dashboard_needed'); setError(failure.message); setSaving(false)
+    }
   }
   const next = () => { if (step === 1 && !yes) onNo(); else setStep(step + 1) }
   const heading = ['Share this Crew with a team?', 'Who is on the Team?', 'What do people work on?', 'Which agents can the Team ask?'][step - 1]
@@ -91,10 +96,10 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
     <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
-      {step > 1 && <Button size="sm" variant="outline" disabled={saving} onClick={() => setStep(step - 1)}>Back</Button>}
+      {step > 1 && <Button size="sm" variant="outline" disabled={saving} onClick={() => { setStep(step - 1); setNeedsDashboard(false); setError('') }}>Back</Button>}
       {step < STEPS
         ? <Button size="sm" onClick={next}>Continue</Button>
-        : <Button size="sm" disabled={saving} onClick={() => void finish()}>{saving && <Loader2 aria-label="Saving" className="animate-spin" />}Finish</Button>}
+        : <Button size="sm" disabled={saving} onClick={() => void finish(needsDashboard)}>{saving && <Loader2 aria-label="Saving" className="animate-spin" />}{needsDashboard ? 'Create dashboard and finish' : 'Finish'}</Button>}
     </div>
   </section>
 }
