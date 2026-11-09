@@ -123,9 +123,9 @@ func TestWithoutVaultOnlyManagedStoredSecretsResolve(t *testing.T) {
 		want      int
 	}{
 		"nil selection keeps the current behaviour (no inherited globals)": {nil, 0},
-		"empty selection":             {&empty, 0},
+		"empty selection":                         {&empty, 0},
 		"only selected managed values are merged": {&both, 1},
-		"unknown name is skipped":     {&missing, 0},
+		"unknown name is skipped":                 {&missing, 0},
 	} {
 		got := api.mergeGlobalSecretsFor(ctx, "anyone", tc.selection)
 		if len(got) != tc.want {
