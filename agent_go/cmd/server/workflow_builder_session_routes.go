@@ -63,8 +63,9 @@ type builderConversationLog struct {
 }
 
 type builderConversationMessage struct {
-	Role  string                    `json:"Role"`
-	Parts []builderConversationPart `json:"Parts"`
+	NativeID string                    `json:"native_message_id,omitempty"` // Stable journal occurrence, independent of the display window.
+	Role     string                    `json:"Role"`
+	Parts    []builderConversationPart `json:"Parts"`
 }
 
 type builderConversationPart struct {
