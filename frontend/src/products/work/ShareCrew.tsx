@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, MessageSquare, Slack, Users, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowLeft, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -17,18 +17,15 @@ const toMain = (projectId: string, draft: string) => {
 const optionIcons: Record<CrewShareOptionKey, { icon: LucideIcon; tone: string }> = {
   team: { icon: Users, tone: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
   agents: { icon: MessageSquare, tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-  slack: { icon: Slack, tone: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
 }
 
 /**
  * Share this Crew (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page with the server's
  * options, each a card with its one-line explanation, chips and status; a click opens its setup. Work on it with your
- * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent, Slack
- * is the Crew's Slack bot (today's bot settings, moved here from the Crew menu). Dashboards are their own Access tab
- * next to this one. The server's /share reply writes every line and says what this person may change; the page prints
+ * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent. Slack (the Crew's Slack bot) and Dashboards are their own Access tabs next to this one. The server's /share reply writes every line and says what this person may change; the page prints
  * it and sends their change to the existing routes. The same page for the owner and every teammate.
  */
-export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
+export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
@@ -42,14 +39,6 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Opened for one option (the menu's Slack bot row opens Slack): that option open at the top, the others closed.
-  useEffect(() => { if (focus) setOpen({ team: false, agents: false, slack: false, [focus]: true }) }, [focus])
-  const scrolled = useRef('')
-  useEffect(() => {
-    if (!focus || !page || scrolled.current === focus) return
-    scrolled.current = focus
-    document.querySelector(`[data-share-option="${focus}"]`)?.scrollIntoView({ block: 'start' })
-  }, [focus, page])
   // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch (its dashboards are on the
   // Dashboards tab).
   if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
@@ -67,7 +56,6 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
     {page.options.map(option => <ShareOption key={option.key} option={option} open={isOpen(option)} onToggle={() => setOpen(prev => ({ ...prev, [option.key]: !isOpen(option) }))}>
       {option.key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
       {option.key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => setOpen(prev => ({ ...prev, team: true }))} />}
-      {option.key === 'slack' && (workspacePath ? <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={page.slack && <ShareSlackRules slack={page.slack} />} /> : <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>)}
     </ShareOption>)}
     {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
@@ -91,7 +79,27 @@ function ShareOption({ option, open, onToggle, children }: { option: CrewShareOp
   </section>
 }
 
-/** Share › Slack's Who can talk to it: the server's lines (who may message the Crew in a channel, in a direct message,
+/**
+ * The Slack tab (owner, 9 Nov: its own tab next to Share and Dashboards): the Crew's Slack bot cards with the server's
+ * "Who can talk to it" lines from the same /share reply. The Mac app's own Crew before Mac online has no server copy
+ * yet, so it shows the bot cards alone.
+ */
+export function SlackTab({ projectId, workspacePath }: { projectId: string; workspacePath?: string }) {
+  const { target } = useTeamTab(projectId)
+  const [slack, setSlack] = useState<CrewShareSlack>()
+  useEffect(() => {
+    if (!target) return
+    let active = true
+    const load = () => void crewSharePage(target).then(data => { if (active) setSlack(data.slack) }).catch(() => undefined)
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!workspacePath) return <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>
+  return <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={slack && <ShareSlackRules slack={slack} />} />
+}
+
+/** The Slack tab's Who can talk to it: the server's lines (who may message the Crew in a channel, in a direct message,
  * and who is refused), then its note. */
 function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
   return <div className="space-y-1.5 text-[13.5px]">

@@ -265,6 +265,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			reply := crewSyncReply{ProjectID: project, Place: "online", Role: "member", AccessView: "team", AccessSummary: crewMemberAccessSummary(t),
 				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, b), Where: crewTeamWhereFor(project, caller)}
 			crewAccessPage(&reply)
+			api.crewAccessAddSlack(r, &reply, caller)
 			externalJSON(w, reply)
 			return
 		}
@@ -312,6 +313,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			out.Asking = api.recentMacAsks(out.ProjectID)
 		}
 		crewAccessPage(&out)
+		api.crewAccessAddSlack(r, &out, GetUserIDFromContext(r.Context()))
 	}
 	externalJSON(w, out)
 }
