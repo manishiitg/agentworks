@@ -102,7 +102,7 @@ func TestTokenWatcherKeepsRunningProcessOnLookupTimeoutAndStopsRevokedToken(t *t
 	lateCtx, lateStop := context.WithCancel(context.Background())
 	defer lateStop()
 	f.api.agentCancelFuncs[entry.sessionID] = lateStop
-	delete(f.api.stoppedSessions, entry.sessionID)
+	f.api.clearSessionStopped(entry.sessionID)
 	if !f.api.recheckAccessTokenSession(t.Context(), entry) || lateCtx.Err() == nil {
 		t.Fatal("post-setup revocation missed runtime whose watch entry was already removed")
 	}
