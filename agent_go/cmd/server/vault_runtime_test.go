@@ -349,3 +349,24 @@ func TestVaultDefaultsWithoutProjectSelectionAndRevoke(t *testing.T) {
 		t.Fatal("retained project selection bypassed revocation")
 	}
 }
+
+// Access rule (reviewer, PR 1856): only the owner of the connections learns where same-name rows come from; a
+// teammate viewing the owner's Crew gets the same rows with no label (no group names, no "Personal account").
+func TestSameNameVaultRowsLabelledOnlyForTheirOwner(t *testing.T) {
+	rows := func() []map[string]any {
+		return []map[string]any{{"id": "a", "label": "Notion"}, {"id": "b", "label": "notion "}, {"id": "c", "label": "Slack"}}
+	}
+	from := map[string]string{"a": "Company group", "b": personalVaultName, "c": "Company group"}
+	owner := rows()
+	labelSameNameVaultRows(owner, from, true)
+	if owner[0]["detail"] != "Shared through Company group" || owner[1]["detail"] != "Personal account" || owner[2]["detail"] != nil {
+		t.Fatalf("owner labels: %v", owner)
+	}
+	teammate := rows()
+	labelSameNameVaultRows(teammate, from, false)
+	for _, row := range teammate {
+		if _, labelled := row["detail"]; labelled {
+			t.Fatalf("teammate learned where a row comes from: %v", teammate)
+		}
+	}
+}

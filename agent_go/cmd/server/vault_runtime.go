@@ -405,27 +405,36 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
-	// Only the owner of these connections sees where each comes from: a teammate viewing the owner's Crew must not
-	// learn the names of Vault groups they are not in, nor which row is the owner's personal account.
+	labelSameNameVaultRows(rows, from, actor == owner)
+	writeUsersJSON(w, 200, map[string]any{"servers": rows})
+}
+
+// labelSameNameVaultRows tells apart two connections with the same name by where each comes from ("Shared through
+// <group>" or "Personal account"). Only the owner of these connections gets the label: a teammate viewing the owner's
+// Crew must not learn the names of Vault groups they are not in, nor which row is the owner's personal account.
+func labelSameNameVaultRows(rows []map[string]any, from map[string]string, isOwner bool) {
+	if !isOwner {
+		return
+	}
 	labels := map[string]int{}
 	for _, row := range rows {
-		labels[strings.ToLower(strings.TrimSpace(row["label"].(string)))]++
+		label, _ := row["label"].(string)
+		labels[strings.ToLower(strings.TrimSpace(label))]++
 	}
 	for _, row := range rows {
-		if actor != owner {
-			break
+		label, _ := row["label"].(string)
+		id, _ := row["id"].(string)
+		if labels[strings.ToLower(strings.TrimSpace(label))] < 2 {
+			continue
 		}
-		if labels[strings.ToLower(strings.TrimSpace(row["label"].(string)))] > 1 {
-			switch group := from[row["id"].(string)]; group {
-			case "":
-			case personalVaultName:
-				row["detail"] = "Personal account"
-			default:
-				row["detail"] = "Shared through " + group
-			}
+		switch group := from[id]; group {
+		case "":
+		case personalVaultName:
+			row["detail"] = "Personal account"
+		default:
+			row["detail"] = "Shared through " + group
 		}
 	}
-	writeUsersJSON(w, 200, map[string]any{"servers": rows})
 }
 
 type vaultDelegation struct {
