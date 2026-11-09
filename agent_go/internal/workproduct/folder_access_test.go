@@ -69,7 +69,7 @@ func TestResolveGrantsTrustsStoredPaths(t *testing.T) {
 
 func TestBuildAttachedFoldersPrompt(t *testing.T) {
 	empty := BuildAttachedFoldersPrompt(nil)
-	if !strings.Contains(empty, "### Attached Folders") || !strings.Contains(empty, "No server workspace folders") {
+	if !strings.Contains(empty, "### Attached Folders") || !strings.Contains(empty, "files action=folder_attach") {
 		t.Fatalf("empty prompt section = %q", empty)
 	}
 	withGrants := BuildAttachedFoldersPrompt([]FolderGrant{
