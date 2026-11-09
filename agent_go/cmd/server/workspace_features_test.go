@@ -77,9 +77,15 @@ func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
 			if family == "files" || family == "functions" {
 				action = "list"
 			}
-			member, args, err := externalResolveMerged(tool, map[string]any{"action": action, "workspace_id": "code:example"})
-			if err != nil || args["crew_id"] != "code:example" {
-				t.Fatalf("%s lost native Code target: %s %v %v", family, member.Name, args, err)
+			input := map[string]any{"action": action, "workspace_id": "work:example"}
+			targetKey := "crew_id"
+			if family == "functions" {
+				input = map[string]any{"action": action, "project": "work:example"}
+				targetKey = "project"
+			}
+			member, args, err := externalResolveMerged(tool, input)
+			if err != nil || args[targetKey] != "work:example" {
+				t.Fatalf("%s lost native Crew target: %s %v %v", family, member.Name, args, err)
 			}
 		}
 	}
@@ -97,33 +103,27 @@ func TestWorkspaceCreateTokenNeedsAllCrewsWrite(t *testing.T) {
 	}
 }
 
+// fec04534b1 pins flat function definitions; function writes are not project patches.
 func TestWorkspaceFunctionAuthoringKeepsProjectIdentity(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
+	tool, found := externalCatalogTool("functions")
+	if !found {
+		t.Fatal("functions tool missing")
 	}
-	for _, tool := range catalog {
-		if tool.Name != "functions" {
-			continue
+	for _, action := range []string{"define", "delete"} {
+		input := map[string]any{"action": action, "project": "work:example"}
+		if action == "define" {
+			input["definition"] = map[string]any{"name": "reconcile", "description": "Function description", "execution": "tab", "tab_id": "main"}
+		} else {
+			input["name"] = "reconcile"
 		}
-		for _, action := range []string{"define", "update", "delete"} {
-			member, args, err := externalResolveMerged(tool, map[string]any{"action": action, "workspace_id": "code:example", "name": "reconcile", "description": "Function description", "instructions": "Function instructions", "input_schema": map[string]any{"type": "object"}, "result_schema": map[string]any{"type": "object"}})
-			if err != nil || member.Name != "update_crew" || args["crew_id"] != "code:example" {
-				t.Fatalf("%s: %s %v", action, member.Name, err)
-			}
-			for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema"} {
-				if _, exists := args[key]; exists {
-					t.Fatalf("%s can change project field %s: %v", action, key, args)
-				}
-			}
-			raw, err := json.Marshal(args["functions"])
-			if err != nil || !strings.Contains(string(raw), "reconcile") {
-				t.Fatalf("%s lost the function name: %s %v", action, raw, err)
-			}
+		member, args, err := externalResolveMerged(tool, input)
+		if err != nil || member.Name != "project_functions_"+action || args["project"] != "work:example" {
+			t.Fatalf("%s lost function/project identity: %s %v %v", action, member.Name, args, err)
 		}
-		return
+		if _, exists := args["functions"]; exists {
+			t.Fatal("function authoring became a project patch")
+		}
 	}
-	t.Fatal("functions tool missing")
 }
 
 func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing.T) {
