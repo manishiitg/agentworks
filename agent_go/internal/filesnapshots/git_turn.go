@@ -122,13 +122,12 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 			} else if !os.IsNotExist(err) {
 				return err
 			}
-			if stats.Deferred == "loose_file_limit" {
-				return filepath.SkipDir
-			}
 		} else if validTurnPath(rel) {
 			if len(loose) == maxTurnPaths {
+				// Stop collecting ordinary files, but continue discovering repos.
+				// Skipping later directories hid healthy nested checkouts too.
 				stats.Deferred = "loose_file_limit"
-				return filepath.SkipDir
+				return nil
 			}
 			loose = append(loose, rel)
 		}
@@ -157,7 +156,9 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 			if rows[i][0] != ':' || i+1 >= len(rows) || len(rows[i+1]) == 0 {
 				return errors.New("invalid Git path metadata")
 			}
-			paths[string(rows[i+1])] = true
+			if validTurnPath(string(rows[i+1])) {
+				paths[string(rows[i+1])] = true
+			}
 			if len(paths) > maxTurnPaths {
 				return errTurnPathLimit
 			}
@@ -177,7 +178,7 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 			return nil, err
 		}
 		for _, p := range bytes.Split(out, []byte{0}) {
-			if len(p) > 0 {
+			if len(p) > 0 && validTurnPath(string(p)) {
 				paths[string(p)] = true
 			}
 		}
@@ -202,7 +203,10 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 			}
 			break
 		}
-		paths[strings.TrimSuffix(p, string([]byte{0}))] = true
+		candidate := strings.TrimSuffix(p, string([]byte{0}))
+		if validTurnPath(candidate) {
+			paths[candidate] = true
+		}
 		if len(paths) > maxTurnPaths {
 			readErr = errTurnPathLimit
 			stop()
