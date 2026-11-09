@@ -39,6 +39,15 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
       {tab.filters.map(filter => <button key={filter.key} type="button" aria-pressed={tab.filter === filter.key} onClick={() => setKind(filter.key)}
         className={`rounded-full border px-2.5 py-0.5 text-xs ${tab.filter === filter.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{filter.label} {filter.count}</button>)}
     </div>}
+    {/* What the chosen kind is and how it works, and "Ask the Crew" for the owner when there is none yet (owner, 9 Nov). */}
+    {(() => {
+      const chosen = tab.filters.find(filter => filter.key === tab.filter)
+      if (!chosen?.hint) return null
+      return <div className="space-y-1.5 text-xs text-muted-foreground">
+        <p>{chosen.hint}</p>
+        {chosen.count === 0 && chosen.ask && <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => { if (!fillMainDraft(projectId, chosen.ask || '')) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask the Crew</Button>}
+      </div>
+    })()}
     {tab.note && <p className="text-xs text-muted-foreground">{tab.note}</p>}
     {tab.put_online && <div><Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => openAccess(projectId, 'mac')}>Put it online</Button></div>}
     {tab.empty && <div className="space-y-1.5 rounded-lg bg-muted/40 px-3 py-3 text-[13px]">

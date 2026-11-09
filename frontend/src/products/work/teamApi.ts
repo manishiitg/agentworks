@@ -245,7 +245,7 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
  * server Crew, its public link. Every line is the server's; the card shows them. */
 export type CrewDashboardsTab = {
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
-  filters: { key: string; label: string; count: number }[]
+  filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
   items: { id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
