@@ -1932,6 +1932,9 @@ func sweepTurnHeartbeats(now time.Time) {
 			continue
 		}
 		line := fmt.Sprintf("[TURN] session=%s still_running age=%s last_chunk_age=%s chunks=%d", b.session, b.age.Round(time.Second), b.sinceChunk.Round(time.Second), b.chunks)
+		if b.chunks == 0 {
+			line += " text_status=no_text_yet"
+		}
 		if extra := turnDiagnosticsFor(b.session); extra != "" {
 			line += " " + extra
 		}
