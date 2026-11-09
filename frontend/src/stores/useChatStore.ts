@@ -1041,6 +1041,17 @@ export const reconcileSessionTabStreamingState = (
     const activeSession = activeSessionById.get(tab.sessionId)
     const activity = activeSession ? sessionStreamingState(activeSession) : undefined
 
+    // A background tab may have no live chat event reader. Recover its unseen reply from the
+    // server's completed turn, not from a disappearing session or a stale streaming flag.
+    const completedAt = Date.parse(activeSession?.runtime_state?.completed_at || activeSession?.last_activity || '')
+    const completedUnseen = state.activeTabId !== tabId && activity?.status === 'completed' &&
+      !activity.hasRunningBgAgents && Number.isFinite(completedAt) &&
+      completedAt > (tab.lastAccessedAt || 0) && completedAt >= (tab.lastStreamingStartedAt || 0)
+    if (completedUnseen && !tab.hasUnreadCompletion) {
+      if (!nextChatTabs) nextChatTabs = { ...state.chatTabs }
+      nextChatTabs[tabId] = { ...tab, hasUnreadCompletion: true }
+    }
+
     // Recover externally started work or a dead SSE stream using the same
     // foreground/background decision as event polling. Raw status=running
     // alone can describe an idle retained CLI or background-only work; forcing
@@ -1053,6 +1064,7 @@ export const reconcileSessionTabStreamingState = (
       nextChatTabs[tabId] = {
         ...tab,
         isStreaming: activity.isStreaming,
+        hasUnreadCompletion: false,
         isCompleted: false,
         lastStreamingStartedAt: activity.isStreaming ? (tab.lastStreamingStartedAt ?? now) : undefined,
         hasRunningBgAgents: activity.hasRunningBgAgents,
@@ -1071,7 +1083,7 @@ export const reconcileSessionTabStreamingState = (
 
     if (!nextChatTabs) nextChatTabs = { ...state.chatTabs }
     nextChatTabs[tabId] = {
-      ...tab,
+      ...(nextChatTabs[tabId] || tab),
       isStreaming: false,
       lastStreamingStartedAt: undefined,
       hasRunningBgAgents: false,
@@ -2629,6 +2641,7 @@ export const useChatStore = create<ChatState>()(
               const events = state.tabEvents[previousTab.sessionId] || []
               updates[state.activeTabId] = {
                 ...previousTab,
+                lastAccessedAt: Date.now(),
                 lastViewedEventCount: events.length, // @deprecated - kept for compat
                 lastViewedEventCounts: computePerModeCounts(events)
               }
