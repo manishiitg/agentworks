@@ -792,6 +792,9 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if strings.TrimSpace(schedule.CreatedAt) == "" {
 		schedule.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	if err := normalizeCrewScheduleDependencies(&schedule, profileID, projectID); err != nil {
+		return productScheduleJob{}, err
+	}
 	manifest.Schedules = append(manifest.Schedules, schedule)
 	if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
 		return productScheduleJob{}, err
@@ -817,6 +820,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 	for i := range manifest.Schedules {
 		if manifest.Schedules[i].ID == job.Schedule.ID {
 			update(&manifest.Schedules[i])
+			if err := normalizeCrewScheduleDependencies(&manifest.Schedules[i], job.Profile.ID, job.ProjectID); err != nil {
+				return job, err
+			}
 			// A schedule has one timing form: a new cron, cadence or run_at replaces saved dates.
 			if s := &manifest.Schedules[i]; s.When != nil && (s.CronExpression != "" || s.CadenceHours > 0 || s.RunAt != "") {
 				s.When.Dates = nil
@@ -1590,6 +1596,14 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
 		Starts:              productScheduleStartsLine(job),
+	}
+	if when := sched.When; when != nil && when.After != nil {
+		after := when.After
+		resp.AfterTerminalStatus = after.Outcome
+		for _, id := range after.Schedules {
+			resp.AfterScheduleIDs = append(resp.AfterScheduleIDs, projectScheduleJobID(job.Profile.ID, job.ProjectID, id))
+		}
+		resp.AfterDelayMinutes, resp.DependencyDeadline = after.DelayMinutes, after.Deadline
 	}
 	resp.TargetWorkflowID, resp.InputPreset, resp.Inputs, resp.RouteSelections = sched.WorkflowID, sched.InputPreset, sched.Inputs, sched.RouteSelections
 	if sched.WorkflowID != "" {

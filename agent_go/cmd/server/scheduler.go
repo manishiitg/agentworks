@@ -1937,6 +1937,11 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 		return
 	}
 	for _, item := range pending {
+		if item.ScopeType == "crew" {
+			// The single project clock dispatches Crew dependency retries through
+			// its existing conversation claim, never the workflow scope lease.
+			continue
+		}
 		// A queued delivery may survive an interrupted launch, but it must not
 		// restart that same occurrence. Startup already released the old run's
 		// lease; retain its outcome and leave the lane for the next cron slot.

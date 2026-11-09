@@ -335,7 +335,9 @@ func (s *Store) RecordAdmittedRun(ctx context.Context, run Run) error {
 	run.LockKey = "admitted/" + run.RunID
 	run.OrderedScheduleIDs = nil
 	run.State = StateStarting
-	return s.beginRun(ctx, run, false, true)
+	// A dependency retry already has a durable occurrence. Consume it in the
+	// same transaction as the admitted run, without taking a scope lease.
+	return s.beginRun(ctx, run, run.TriggerSource == "queued", true)
 }
 
 func (s *Store) beginRun(ctx context.Context, run Run, consumePending, admitted bool) error {

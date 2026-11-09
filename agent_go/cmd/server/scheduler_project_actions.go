@@ -89,8 +89,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 				in.SinceInteractive = s.sinceInteractive(userID, job.Profile)
 			}
 			d := productschedule.Decide(job.Effective(), in)
+			triggerSource := "cron"
 			if job.ProjectID != "" {
-				d = projectTimerDecision(job, now)
+				d, triggerSource = scheduler.crewTimerDependencyDecision(ctx, job, now)
 			}
 			if d.Deferred {
 				s.setDeferred(userID, job.ID(), d.Reason)
@@ -120,7 +121,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 					continue
 				}
 			}
-			go func(job productScheduleJob, scheduledFor time.Time) {
+			go func(job productScheduleJob, scheduledFor time.Time, triggerSource string) {
 				// Schedules due the same minute would otherwise all open their
 				// provider connection in the same instant; spread them by a few seconds.
 				time.Sleep(time.Duration(rand.Int63n(int64(scheduledStartJitter))))
@@ -160,10 +161,10 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 						}
 					}
 				}
-				if _, err := s.Run(context.Background(), job, "cron", scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
+				if _, err := s.Run(context.Background(), job, triggerSource, scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
 					scheduleLogf("[PRODUCT-SCHEDULE] %s failed for %s: %v", job.ID(), job.UserID, err)
 				}
-			}(job, d.ScheduledFor)
+			}(job, d.ScheduledFor, triggerSource)
 		}
 	}
 }
