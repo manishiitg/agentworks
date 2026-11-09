@@ -20,9 +20,9 @@ rather than copying action names or old workflow-team policy fields:
   owner's choice on a server Crew. Moving between levels or removing someone
   uses that same People service. Show any returned gain/loss preview and apply
   its required confirmation only after the person agrees.
-- MCP `invites`, `accept` and `decline` handle the caller's own invitations.
-  Chat `status` lists them; use the returned invitation controls rather than
-  inventing chat accept/decline actions. An invitation is not proof they joined.
+- Chat `status` / MCP `invites` lists the caller’s own invitations. Both tools
+  admit `accept` and `decline`, using the returned chat `project` or MCP `crew_id`.
+  Answer only from the person’s own chat. An invitation is not proof they joined.
   Chat `leave` and **Leave this Team** let members leave.
 - Chat `configure` / MCP `settings` controls Team on/off and shared folders. The main owner controls
   on/off, whole Crew versus folders, and removing folders; joined members can
