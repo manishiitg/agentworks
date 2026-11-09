@@ -320,7 +320,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
               : here ? !moving && <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
                 : <span title="Turn this off in the Mac app."><Switch aria-label="Mac online" checked disabled /></span>}
           </div>
-          {pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
+          {connections.length > 1 && pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
           <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>
           {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border pt-2.5">
             <p className="text-xs text-muted-foreground">Which network?</p>
