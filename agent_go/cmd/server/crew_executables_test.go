@@ -362,6 +362,7 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{projectActions: svc}
+	made := false
 	for _, role := range []string{"creator", "viewer", "creator"} {
 		*directory = `{"users":[{"id":"owner","username":"owner","role":"` + role + `"}]}`
 		invalidateUserDirectoryCache()
@@ -373,9 +374,19 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 			if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "account cannot edit") || len(after) != len(before) {
 				t.Fatalf("demoted owner: HTTP%d %s", w.Code, w.Body)
 			}
-		} else if w.Code != http.StatusCreated || len(after) != len(before)+1 {
-			t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
+		} else if !made {
+			if w.Code != http.StatusCreated || len(after) != len(before)+1 {
+				t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
+			}
+			made = true
+		} else if w.Code != http.StatusConflict || len(after) != len(before) {
+			// One workflow per Crew: a second one is refused, and nothing is added.
+			t.Fatalf("second workflow: HTTP%d %s", w.Code, w.Body)
 		}
+	}
+	crew, err = svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Second lab", Purpose: "Reports", IdempotencyKey: "account-edit-second"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// PLAT-746: a new workflow is always a Python script, even when an older caller asks for kind "workflow".
 	w := httptest.NewRecorder()
