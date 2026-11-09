@@ -249,6 +249,9 @@ func (g *GmailService) GoogleCLIAccessForConnectionIn(ctx context.Context, conne
 	// otherwise), so this stays live without paying a subprocess on every
 	// tool call.
 	status, _ := g.AuthStatusForConnectionBlocking(ctx, conn.ID)
+	if status.probeUnavailable && !status.Authenticated {
+		return GoogleCLIAccess{}, fmt.Errorf("Google account check is temporarily unavailable. Try again shortly; this account's access has not been changed.")
+	}
 	if conn.IsPrivate() && !status.Authenticated {
 		return GoogleCLIAccess{}, fmt.Errorf("Google account %s (%s) needs sign-in again. Ask its owner to reconnect in Google apps.", conn.DisplayName, conn.ID)
 	}

@@ -53,7 +53,9 @@ source-editing, account and file grants.
 - `inputs` are typed (`string`, `integer`, `number`, `boolean`) with an optional default in `value`; add `"required": true` when there is no sensible default.
 - `input_presets` are optional named sets of values, for example one per market. A run picks one preset or passes its own values.
 - `outputs` names the files the run must leave in its run folder.
-- Secrets live in Vault and arrive as `SECRET_<NAME>` environment variables; never put a value in a file.
+- Optional `timeout_seconds` limits the whole script, including its agent and script calls. The default is 3600 (one hour); choose an integer from 1 to 21600 (six hours). Stop can still end it sooner.
+- Put third-party Python packages in one plain `requirements.txt` beside `main.py`, preferably with versions such as `httpx==0.28.1`. List pins directly; included files, constraints and installer option lines are refused. The runner installs them with bundled uv (pip when uv is unavailable), then reuses this script's read-only package cache. Changing the file creates a new cache entry. Its agents use the same packages. No system-wide install is needed.
+- Declare needed Vault names in `"secrets": ["API_KEY"]`. The existing selected/lent Vault account supplies them; a missing name stops the run before any step. `from agentworks import secret`, then `secret("API_KEY")`, reads its existing `SECRET_API_KEY` environment value. An undeclared name is refused. Never put values in inputs, files, helper arguments or logs.
 
 ## main.py
 
@@ -116,13 +118,21 @@ else:
 - `inputs`: this run's typed values, by name.
 - `run_folder`: this run's own folder. Write outputs here.
 - `@step("Title")` on a function: a label in the Plan and Runs views. The function runs normally every time; nothing is cached or retried.
+- A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
 - `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `run_script(id, inputs)`: run another saved script of this Crew and get its output files.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
 - `notify(text)`: a progress line to the owner in the Crew chat.
-- `send_email(to, subject, body)` and `send_slack(route, text)`: explicit sends through the connected account or Slack route. Only send when the workflow's job is to reach people.
+- `send_email(to, subject, body, cc=(), html=None)` and `send_slack(route, text)`: explicit sends through the connected account or Slack route. Optional CC and email-safe HTML use the same selected mail account and recipient rules. Pass an empty plain body for HTML-only mail. Only send when the workflow's job is to reach people.
 - `from agentworks import google, slack, github`: call connected apps directly from Python, with the same accounts and permissions. `google.sheets.read(id, range)`, `.write(id, range, rows)` and `.append(...)`; `google.gmail.search(query)`; `google.calendar.list(start, end)` and `.create(title, start, end)`; `google.drive.read(doc_id)` saves Google Doc text in this run. `slack.read(route)` reads channel messages; `.send(route, text)` and `.reply(route, thread_ts, text)` use the tracked sender. `github.files(repo)`, `.read(repo, path)`, `.issues(repo)`, `.prs(repo)`, `.create_issue(repo, title, body)`, `.comment(repo, number, body)`, `.create_pr(repo, head, base, title)` and `.diff(repo, number)` use the Crew's GitHub connection. JSON results keep the service's shape; failures raise `AutomationError`. Sends and app calls do real work, including in mocked-agent runs.
+
+For a script that needs a service key, add `"secrets": ["API_KEY"]` to its `script.json`, then read it in `main.py`:
+
+```python
+from agentworks import secret
+api_key = secret("API_KEY")  # Pass to the service's client; never print or save it.
+```
 
 ## Rules
 
@@ -135,3 +145,117 @@ else:
 - **Mocked test runs.** Use this only when the installation's current start schema offers `mock_agents`; otherwise do not claim a mocked run. Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
 
 Existing plan-based workflows keep working until they are converted; edit them with the guide in `references/crew-plan/SKILL.md`.
+
+## Converting an old workflow
+
+Read the current source, inputs, callers, selected resources and an actual failed
+run before converting. Keep the workflow identity and business database. Write
+one `main.py` with ordinary Python branches and `@step` labels, retaining business
+rules, required files, SQL checks and real notifications. A retired run-summary
+tool may also have delivered a business email or Slack message: preserve that
+send explicitly through the current helpers. Do not keep a plan runner or read
+`planning/plan.json`; record unreachable old nodes rather than inventing routes.
+
+- **Frozen code, durable data.** In parent Python, resolve packaged helpers from
+  `Path(__file__).resolve().parent`. Native agent shells receive the backend's
+  frozen `WORKFLOW_CODE_ROOT`. Never point either at mutable author files or
+  broaden shell access to repair a path. Durable records use
+  `WORKFLOW_DATA_ROOT`; current outputs use `run_folder` / `STEP_OUTPUT_DIR`.
+  Replace old `runs/<iteration>/<group>/execution/<step>` parsing and historical
+  output scans with explicit typed inputs and current-run files.
+- **Run identity.** When a native helper needs the producing run's identity,
+  write a small nonsecret context file into `run_folder` before calling it.
+  Read it through `STEP_OUTPUT_DIR` and validate against the current
+  `run_metadata.json`. Do not assume parent-only environment variables are
+  exported to native agents, recreate old step-session IDs, or call a provenance
+  revision a full source hash.
+- **Resources.** Keep existing app/account choices and installed task skills.
+  Remove retired `builder-reference`; it is Builder guidance, not an execution
+  skill. Agent knowledge choices are `"read"` and `"write"`, never `"read-write"`.
+  Preserve an explicit provider/model with `model="provider/model-id"` when
+  needed; do not pass `tier` with `model`. Optional `reasoning="low"`,
+  `"medium"` or `"high"` overrides that call’s effort only when its model offers
+  the level; unsupported choices refuse by name. Follow-ups retain it. Carry old
+  explicit effort choices onto their matching calls. Use `timeout_seconds` for an intended
+  agent deadline, not `timeout`; omit it to use the parent deadline.
+- **Inputs and callers.** Put choices under `schema.enum`. Saved defaults and
+  preset values are strings; calls and raw payload mappings use typed JSON.
+  Map old routes to declared inputs using each caller's actual ID. Give optional
+  mapped fields a deliberate typed default when absence should be accepted;
+  check both a missing field and an invalid supplied value. Save input/caller
+  changes together through the canonical writer as described below. Preserve
+  caller authentication, enabled state and schedule timing.
+- **Managed database.** Replace retired `query_workflow_db` and
+  `mutate_workflow_db` calls with `database` and `action="query"` / `"mutate"`,
+  or use `agentworks_db`. Keep SQL, parameters and paging intact, check mutation
+  receipts and read back the affected records. Never open the database file.
+- **Real acceptance.** Check `reply.ok`, the full final answer and the required
+  artifacts; completed transport alone is not task success. Repair invalid agent
+  output once in the same conversation without repeating completed external
+  actions. Verify one authorized entry through the actual runtime, then its next
+  turn and dependent script. Keep account/browser refusals, partial collection
+  and unavailable measurements honest; do not weaken guards to get a green run.
+
+### Calling from timers, webhooks and Slack
+
+Use one static saved input preset plus fixed inputs for each caller. For a raw
+webhook body use `payload_mappings.inputs` with declared names selected in
+`allowed_variables`, and a fixed dotted `source` path per name. JSON types are
+preserved; optional `values`/`default` map body choices to typed values. Do not
+let a payload select a preset or replace fixed inputs. Slack event mappings use
+the same input validator. Timers supply their saved typed values directly.
+
+When editing `script.json`, defaults in input `value` and saved preset `values`
+are strings (including `"2"`, `"false"` and JSON text for objects). Calls use
+actual JSON types. Use canonical source/input tools so the server checks them.
+
+
+### Change inputs and their callers together
+
+If an input rename, type or schema change affects a saved function or webhook,
+include `entry_mappings` in the same `workflow action=save_inputs` call, or in
+`workspace action=automation_write` / `crew_workflow_files action=write` when
+writing `script.json`. Do not temporarily clear a binding or edit storage files.
+Read the current entries first; use their existing IDs. The server validates
+the complete result before saving it through the shared managed writer.
+
+```json
+{
+  "entry_mappings": {
+    "functions": {
+      "saved-function-id": {
+        "inputs": ["scenario", "probe_count"],
+        "input_mapping": {
+          "mode": "raw",
+          "variables": ["scenario", "probe_count"],
+          "payload": {"inputs": {
+            "scenario": {"source": "$.scenario", "default": "full"},
+            "probe_count": {"source": "$.probe.count"}
+          }}
+        }
+      }
+    },
+    "webhooks": {
+      "saved-webhook-id": {
+        "input": {"input_preset": "Saved", "inputs": {"region": "USA"}}
+      }
+    }
+  }
+}
+```
+
+Only include fields being changed: `inputs` selects function caller names;
+`input.input_preset` and `input.inputs` set the preset and fixed values;
+`input_mapping` replaces an existing bound function or webhook mapping. Ordinary
+functions use `inputs` and do not acquire a bound mapping. Webhook selections
+live in `input_mapping.variables`. Omitted entries/fields stay unchanged. This
+cannot change identity, callers, authentication, ownership, enabled state or
+timers. `functions action=define` can also update an existing bound function's
+input fields while keeping its saved action and caller.
+
+Put constraints such as `enum` inside each input's `schema`. Defaults in `value`
+and fixed input values remain strings; mapped choices/defaults use typed JSON.
+A missing raw payload source uses the mapping's default first, then the script
+input's declared `value`; a supplied invalid value still refuses. An input with
+neither default is named in the refusal. A mapped payload cannot choose a preset
+or replace fixed inputs.

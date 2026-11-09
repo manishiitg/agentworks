@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -27,29 +26,6 @@ This request was made by the signed-in AgentWorks user below. Use this identity 
 // runtime sections (notification preferences, secret names, browser configuration)
 // are passed in by the caller, so size and content tests exercise the same path.
 func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx promptContext, additions ...string) (string, []string, []string, error) {
-	if phase == "workflow-builder" && vars["WorkflowKind"] == "relay" {
-		promptFn, surface := relayproduct.BuilderPrompt, "Builder"
-		if vars["RelayRunMode"] == "true" {
-			promptFn, surface = relayproduct.RunPrompt, "Run"
-		}
-		chatPrompt, err := promptFn()
-		if err != nil {
-			return "", nil, nil, err
-		}
-		parts := []string{chatPrompt, "## Workspace\n\nActive Flow workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Flow " + surface + " tools and attached skills."}
-		if guidance := workflowtypes.ChatInstructionsPrompt(vars["CHAT_INSTRUCTIONS"]); vars["RelayRunMode"] == "true" && guidance != "" {
-			parts = append(parts, guidance)
-		}
-		if ctx.WorkflowUIAvailable {
-			parts = append(parts, "## Flow views\n\nUse perform_ui_action to open and refresh the graph, triggers, and executions when useful.")
-		}
-		for _, addition := range additions {
-			if strings.TrimSpace(addition) != "" {
-				parts = append(parts, addition)
-			}
-		}
-		return strings.Join(parts, "\n\n"), nil, nil, nil
-	}
 
 	parts := &workflowPromptParts{parts: []string{workflow.PhaseChatSystemPrompt(phase, vars)}}
 	if phase == "workflow-builder" && vars["WorkshopMode"] == "run" {

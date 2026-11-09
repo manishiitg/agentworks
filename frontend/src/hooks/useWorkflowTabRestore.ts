@@ -30,10 +30,10 @@ export function useWorkflowTabRestore(
   selectedModeCategory: ModeCategory,
 ) {
   const workflowPresetOwnership = useGlobalPresetStore(state =>
-    state.workflowPresets.map(preset => `${preset.id}:${preset.workflowKind === 'relay'}`).join('|')
+    state.workflowPresets.map(preset => preset.id).join('|')
   )
   useEffect(() => {
-    if (!hasCompletedInitialSetup || (productSurface !== 'agentworks' && productSurface !== 'relays') || selectedModeCategory !== 'workflow') return
+    if (!hasCompletedInitialSetup || (productSurface !== 'agentworks') || selectedModeCategory !== 'workflow') return
 
     let cancelled = false
 
@@ -48,14 +48,13 @@ export function useWorkflowTabRestore(
       const activeTab = activeTabId ? chatStore.getTab(activeTabId) : null
       const presetStore = useGlobalPresetStore.getState()
       const activePresetId = presetStore.activePresetIds.workflow
-      // Goals and Relays share workflow mode and tab storage. Restoration is
+      // Restoration is
       // subordinate to the product the user chose, never a new navigation intent.
       // Unknown presets wait for the manifest catalog rather than defaulting to Goals.
       const belongsToSelection = (tab: ChatTab | null | undefined) => {
         if (!tab || tab.metadata?.mode !== 'workflow') return false
         const preset = presetStore.workflowPresets.find(item => item.id === tab.metadata?.presetQueryId)
         return !!preset &&
-          (preset.workflowKind === 'relay') === (productSurface === 'relays') &&
           (!activePresetId || preset.id === activePresetId)
       }
 

@@ -1,279 +1,49 @@
-# Workflow Manifest Architecture
+# Workflow definition
 
-## Status
+A workflow belongs to a Crew. Its editable source is `script.json` plus `main.py`, with optional helper files. Use the current workflow tools to create or change it; keep the identity returned by the server so existing callers still reach the same workflow.
 
-This migration is complete.
+Source tools use filenames relative to the authored source directory, such as `main.py` or `script.json`. For shell inspection, those authored files live at `code/main.py` and `code/script.json` under the returned workflow workspace. Each run uses its own frozen source copy; follow the execution's returned paths to inspect it.
 
-Workflow mode is now manifest-backed, and `workflow.json` is the source of truth for workflow definition.
+## Inputs and presets
 
-Current reality:
-
-- workflow discovery comes from scanning workspaces for `workflow.json`
-- workflow create/read/update/delete uses manifest APIs
-- workflow execution bootstrap reads manifest capabilities
-- workflow schedules and ownership live in the manifest
-- frontend workflow "presets" are derived from manifests, not database workflow rows
-
-The old migration-plan framing is obsolete.
-
-## Canonical File
-
-Each workflow workspace has a top-level manifest:
-
-- `Workflow/<name>/workflow.json`
-
-The backend struct lives in [workflow_manifest.go](../../agent_go/cmd/server/workflow_manifest.go).
-
-## Current Manifest Shape
+`script.json` declares the values a run accepts:
 
 ```json
 {
-  "schema_version": 1,
-  "version": "1.0.11",
-  "id": "wf_ab12cd34",
-  "label": "Customer onboarding",
-  "objective": "Optional workflow-level objective",
-  "success_criteria": "Optional workflow-level success criteria",
-  "capabilities": {
-    "selected_servers": ["github"],
-    "selected_tools": [],
-    "selected_skills": ["account-research"],
-    "selected_secrets": ["my-secret-name"],
-    "selected_global_secret_names": null,
-    "browser_mode": "none",
-    "use_code_execution_mode": false,
-    "llm_config": {
-      "schema_version": 2,
-      "mode": "explicit",
-      "builder_llm": {
-        "provider": "openai",
-        "model_id": "gpt-4.1"
-      },
-      "maintenance_llm": {
-        "provider": "anthropic",
-        "model_id": "claude-opus-4-8"
-      },
-      "background_llm": {
-        "provider": "anthropic",
-        "model_id": "claude-sonnet-5-5"
-      },
-      "tiered_config": {
-        "tier_1": {
-          "provider": "openai",
-          "model_id": "gpt-4.1"
-        },
-        "tier_2": {
-          "provider": "openai",
-          "model_id": "gpt-4.1-mini"
-        },
-        "tier_3": {
-          "provider": "openai",
-          "model_id": "gpt-4.1-nano"
-        }
-      }
-    }
-  },
-  "execution_defaults": {
-    "always_use_same_run": false,
-    "disable_learning": false,
-    "global_skill_objective": "What the shared skill should capture",
-    "disable_parallel_tool_execution": false,
-    "enabled_custom_tools": ["workspace_browser:agent_browser"]
-  },
-  "ownership": {
-    "employee_id": null
-  },
-  "schedules": [
-    {
-      "id": "sched_123",
-      "name": "Daily run",
-      "cron_expression": "0 9 * * 1-5",
-      "timezone": "Asia/Kolkata",
-      "enabled": true,
-      "group_ids": ["default"]
-    }
+  "id": "weekly-review",
+  "name": "Weekly review",
+  "inputs": [
+    {"name": "REGION", "type": "string", "value": "India"},
+    {"name": "LIMIT", "type": "integer", "value": "20"},
+    {"name": "ACTION", "type": "string", "value": "research", "schema": {"enum": ["research", "review"]}}
   ],
-  "created_at": "2026-04-09T10:00:00Z",
-  "updated_at": "2026-04-09T10:00:00Z",
-  "oversight_mode": "supervised",
-  "decision_log_mutability": "append_only"
+  "input_presets": [{"name": "USA", "values": {"REGION": "USA"}}],
+  "outputs": ["review.json"]
 }
 ```
 
-## What Lives In The Manifest
+Defaults and saved preset values are strings, including numbers and JSON text. Runtime calls supply typed JSON. Put constraints such as `enum` inside the input's `schema`. Use a required input when there is no sensible default.
 
-### `capabilities`
+A preset is one named set of values, not another workflow or a branch graph. Python reads `inputs` and chooses what to do. Optional raw-event mappings can provide a declared input; fixed inputs and the chosen preset stay under the saved caller's control. A missing mapped field needs a deliberate default when absence is acceptable; an invalid supplied value remains an error.
 
-Workflow-wide execution defaults:
+## Steps and agents
 
-- `selected_servers`
-- `selected_tools`
-- `selected_skills`
-- `selected_secrets`
-- `selected_global_secret_names`
-- `browser_mode`
-- `use_code_execution_mode`
-- `llm_config`
+`main.py` uses ordinary Python functions, conditions and loops. A function decorated with `@step("Title")` is labeled in Steps and Runs. It runs like a normal function and is not separately runnable or scheduled.
 
-Notes:
+Use `agent()` for work that needs an AI agent. Read its full saved answer and validate the required files or database results. `reply.ok` says the turn finished; it is not proof that the task succeeded. Repair an invalid agent output once in the same conversation, preserving completed external actions. A script failure stays a clear failure.
 
-- `llm_config.schema_version` is `2`
-- `mode="provider_profile"` stores only a coding-agent `provider`; Builder, background work and execution tiers resolve from current provider defaults
-- `mode="explicit"` stores `builder_llm`, `maintenance_llm`, `background_llm`, and all three entries in `tiered_config`
-- `builder_llm` runs Builder chats and scheduled workflow conversations. `background_llm` selects independent background reviews and knowledge-base upkeep. Execution tiers select step models.
-- old `phase_llm`, `auto_improve_llm`, and `llm_allocation_mode` fields are migrated once when the manifest is read and are not written again
-- tool search fields are not part of current workflow manifest capabilities
+The bundled `python-workflows` skill documents helpers and current authoring tools. Workflows have no separate chat, plan file or graph editor; ask the Crew agent to explain or change the saved source.
 
-### `execution_defaults`
+## Resources and data
 
-Workflow-level persistent execution defaults:
+Declare needed Vault names in `secrets`, never values. The existing selected account and grants supply them. Installed skills, connected apps and browser access remain scoped to the Crew and the particular agent call; a source file cannot grant an unavailable connection.
 
-- `always_use_same_run`
-- `disable_learning`
-- `global_skill_objective`
-- `disable_parallel_tool_execution`
-- `enabled_custom_tools`
+Use `agentworks_db` or the managed database tools for Crew data. Keep durable files under the runtime's workflow data root and each run's forward outputs in its returned run folder. Native helper code uses the frozen `WORKFLOW_CODE_ROOT`; do not point it at mutable author files or guess older execution-folder layouts.
 
-This is now the active home for global step overrides.
+The platform retains identity, ownership, connection selections and run metadata outside the editable source contract. Do not replace those managed records or edit database files to change a workflow. Read the current schema from the canonical tools.
 
-Runtime code reads global overrides from `workflow.json.execution_defaults`, not from `planning/step_override.json`.
+## Update source and callers together
 
-### `ownership`
+A timer, webhook or function may depend on input names and types. Read those existing entries and include any required `entry_mappings` in the same canonical input/source update. Keep their IDs, authentication, owner, enabled state and schedule timing. The server validates the combined result before saving it.
 
-- `ownership.employee_id`
-
-Workflow assignment is manifest-backed now.
-
-### `schedules`
-
-Schedules are manifest-backed now and no longer depend on DB workflow metadata.
-
-Current schedule fields include:
-
-- `id`
-- `name`
-- `description`
-- `cron_expression`
-- `timezone`
-- `enabled`
-- `trigger_payload`
-- `group_ids`
-- `mode`
-- `messages`
-- `workshop_mode`
-
-For current runtime behavior, APIs, run history, and workshop-vs-workflow execution paths, see [workflow_scheduling.md](workflow_scheduling.md).
-
-### Auto-improvement framework fields
-
-Two optional top-level fields configure hard behavioral gates the auto-improvement framework reads. All default to backward-compatible values; existing workflows can omit them.
-
-| Field | Values | Default | Purpose |
-|---|---|---|---|
-| `oversight_mode` | `manual` \| `supervised` \| `autonomous` | `supervised` | Controls when human approval is required for high-risk framework changes. Hard gate. |
-| `decision_log_mutability` | `append_only` \| `append_only_strict` | `append_only` | `append_only_strict` forbids rewriting a dated decision entry in `builder/improve.html`, even for correction. Used by compliance workflows. Hard gate. |
-
-`schema_version` controls the JSON shape. `version` controls product-managed workflow behavior. Contract `1.0.21` defines an idempotent artifact-ownership migration: it removes shared AgentWorks bridge/auth, Folder Guard, managed-tool, discovery, and coding-session mechanics from workflow-authored Plan/Learnings/KB prose while preserving semantic behavior and target-specific HOW. The owner starts that migration manually in Builder; schedules keep running the saved contract and do not stamp it. Ambiguous rewrites block the version stamp rather than guessing. The prior `1.0.20` contract remains the schema-5 executive Pulse journal upgrade.
-
-The stable Goal lives only in `soul/soul.md`. The Builder may record operating-model reasoning as a dated Reflection / Hansei entry in `builder/improve.html`; there is no permanent Workflow Profile card that can silently become an immutable constraint.
-
-For the design rationale and worked examples, see [auto_improvement_framework.md](auto_improvement_framework.md).
-
-## What Does Not Belong In The Manifest
-
-Do not store live runtime/session state in `workflow.json`:
-
-- workflow execution status
-- current step progress
-- active session ids
-- selected run folder
-- active execution state
-
-Do not store secret values:
-
-- no plaintext API keys
-- no OAuth tokens
-- no resolved credential payloads
-
-## Other Workflow Files
-
-The manifest does not replace the rest of the workspace.
-
-These still live alongside it:
-
-- `planning/plan.json`
-- `planning/step_config.json`
-- `planning/workflow_layout.json`
-- `planning/output_plan.json`
-- `variables/variables.json`
-- Goal measurements live in `workflow_goal_metrics` and `goal_observations`; Goals & metrics and dashboards read those facts. Reviews and pending actions use normal agent chats and owner decisions.
-- `knowledgebase/rules/rules.md` and `knowledgebase/rules/examples/` — legacy business-rule storage when present. Current user-confirmed runtime context belongs in `knowledgebase/context/`; its audit trail is recorded in dated Reflection entries in `builder/improve.html`.
-
-`workflow.json` is the workflow-level definition file.
-The planning files are still the step graph and execution-plan files.
-
-## Runtime Flow
-
-### Discovery
-
-Backend discovery uses [DiscoverWorkflowManifests](../../agent_go/cmd/server/workflow_manifest.go#L344), which scans workspace folders and reads `workflow.json`.
-
-### CRUD APIs
-
-Manifest routes are registered in [server.go](../../agent_go/cmd/server/server.go#L1164):
-
-- `GET /api/workflows/manifests`
-- `GET /api/workflows/manifest`
-- `POST /api/workflows/manifest`
-- `PUT /api/workflows/manifest`
-- `DELETE /api/workflows/manifest`
-- `POST /api/workflows/manifest/duplicate`
-
-### Execution bootstrap
-
-Workflow execution loads manifest capabilities before running:
-
-- [server.go](../../agent_go/cmd/server/server.go#L2375)
-- [workflow_manifest_routes.go](../../agent_go/cmd/server/workflow_manifest_routes.go#L373)
-
-Workshop phase sessions also load manifest config directly:
-
-- [server.go](../../agent_go/cmd/server/server.go#L9762)
-
-### Scheduling
-
-The scheduler is manifest-based:
-
-- [scheduler.go](../../agent_go/cmd/server/scheduler.go#L42)
-
-It scans workflow manifests, loads enabled schedules, and executes them without DB workflow dependency.
-
-### Frontend state
-
-The frontend has a dedicated manifest store:
-
-- [useWorkflowManifestStore.ts](../../frontend/src/stores/useWorkflowManifestStore.ts)
-
-The old "workflow preset" view is now a compatibility layer built from manifests:
-
-- [useGlobalPresetStore.ts](../../frontend/src/stores/useGlobalPresetStore.ts#L14)
-
-## Current Compatibility Leftovers
-
-A few migration-era leftovers still exist in code, but they are no longer the architecture:
-
-- `presetQueryID` is still used in some session and tab compatibility paths, but it resolves to manifest workflow IDs
-- some comments and logs still talk about "run migration"
-- frontend API types still include `migrateWorkflowsToManifests`, but there is no registered `/api/workflows/migrate` route in current backend routing
-- `planning/step_override.json` is still included in version snapshots, but active global overrides come from `execution_defaults`
-
-These are compatibility remnants, not the main design.
-
-## Key Files
-
-- [workflow_manifest.go](../../agent_go/cmd/server/workflow_manifest.go)
-- [workflow_manifest_routes.go](../../agent_go/cmd/server/workflow_manifest_routes.go)
-- [server.go](../../agent_go/cmd/server/server.go)
-- [scheduler.go](../../agent_go/cmd/server/scheduler.go)
-- [useWorkflowManifestStore.ts](../../frontend/src/stores/useWorkflowManifestStore.ts)
-- [useGlobalPresetStore.ts](../../frontend/src/stores/useGlobalPresetStore.ts)
+A run uses its saved inputs and frozen source. Editing the workflow prepares the next run; it does not rewrite the evidence of an earlier run.

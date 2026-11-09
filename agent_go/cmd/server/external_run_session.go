@@ -16,10 +16,6 @@ func externalRunSessionID(sessionID string) bool {
 		(strings.HasPrefix(sessionID, "pat-") && strings.Contains(sessionID, "-"+externalRunSessionMarker))
 }
 
-func externalRunSessionMode(mode, phase string) bool {
-	return mode == "workflow" || mode == "workflow_phase" && phase == "workflow-builder"
-}
-
 // The dispatcher already selected a currently accessible workflow. Resolve
 // only this caller's external run inside that exact workspace. Entry points
 // retain their existing token-prefix/started-by checks; never discover
@@ -32,7 +28,7 @@ func (api *StreamingAPI) externalRunSession(r *http.Request, workspace, sessionI
 	}
 	if active, ok := api.getActiveSession(sessionID); ok {
 		if active.UserID != user || normalizeChatHistoryWorkspacePath(active.WorkspacePath) != normalizeChatHistoryWorkspacePath(workspace) ||
-			!externalRunSessionMode(active.AgentMode, active.PhaseID) || isScheduledSessionIdentity(sessionID, active.TriggeredBy) {
+			active.AgentMode != "workflow" || isScheduledSessionIdentity(sessionID, active.TriggeredBy) {
 			return missing()
 		}
 		return active, false, nil
@@ -62,7 +58,7 @@ func (api *StreamingAPI) externalRunSession(r *http.Request, workspace, sessionI
 		Runtime   *ChatHistoryAgentRuntime `json:"runtime"`
 	}
 	if !exists || json.Unmarshal(raw, &saved) != nil || saved.SessionID != sessionID || saved.UserID != user ||
-		!externalRunSessionMode(saved.AgentMode, saved.PhaseID) || isScheduledSessionIdentity(sessionID, "") {
+		saved.AgentMode != "workflow" || isScheduledSessionIdentity(sessionID, "") {
 		return missing()
 	}
 	if saved.Runtime != nil && strings.TrimSpace(saved.Runtime.WorkspacePath) != "" &&

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
@@ -65,10 +64,6 @@ func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	store.files["Workflow/relay/workflow.json"] = `{"kind":"relay"}`
 	store.files["Workflow/broken/workflow.json"] = `{broken`
-	relayTools, err := relayproduct.BuilderTools()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, tt := range []struct {
 		name, session, workspace, agentMode string
 		readOnly                            bool
@@ -77,7 +72,6 @@ func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
 		{"builder", "chat", "Workflow/goals", "workflow_phase", false, agentworksproduct.ChatTools("builder")},
 		{"reader", "chat", "Workflow/goals", "workflow_phase", true, agentworksproduct.ChatTools("run")},
 		{"executor", "chat", "Workflow/goals", "workflow", false, agentworksproduct.ChatTools("run")},
-		{"relay", "chat", "Workflow/relay", "workflow_phase", false, relayTools},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			gate, err := newDelegatedWorkflowToolGate(context.Background(), tt.session, QueryRequest{AgentMode: tt.agentMode}, tt.workspace, tt.readOnly)
@@ -100,7 +94,7 @@ func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
 			}
 		})
 	}
-	for _, workspace := range []string{"", "Workflow/broken"} {
+	for _, workspace := range []string{"", "Workflow/broken", "Workflow/relay"} {
 		if _, err := newDelegatedWorkflowToolGate(context.Background(), "chat", QueryRequest{}, workspace, false); err == nil {
 			t.Fatalf("invalid scope %q must fail closed", workspace)
 		}

@@ -14,10 +14,10 @@ export class ProductUnavailable extends Error {}
 /** Resolve only through the caller's existing mediated inventories. No writes. */
 export async function resolveProductRoute(route: ProductRoute, signal: AbortSignal): Promise<() => void> {
   let activateResource = () => {}
-  if (route.id && (route.surface === 'agentworks' || route.surface === 'relays')) {
+  if (route.id && (route.surface === 'agentworks')) {
     const response = await agentApi.listWorkflowManifests()
     const item = response.workflows.find(item => item.manifest.id === route.id)
-    if (!item || (item.manifest.kind === 'relay') !== (route.surface === 'relays')) throw new ProductUnavailable()
+    if (!item) throw new ProductUnavailable()
     const { normalizeWorkspaceViewId } = await import('../components/workflow/workspaceViews')
     const view = route.view ? normalizeWorkspaceViewId(route.view) : null
     if (route.view && !view) throw new ProductUnavailable()
@@ -71,7 +71,7 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     if (!route.id) {
       const state = useProductSurfaceStore.getState()
       if (route.surface === 'work') state.setSelectedWorkProjectId(null)
-      if (route.surface === 'agentworks' || route.surface === 'relays') {
+      if (route.surface === 'agentworks') {
         useGlobalPresetStore.getState().clearActivePreset('workflow')
         useAppStore.getState().setShowWorkflowsOverview(true)
         useModeStore.getState().completeInitialSetup()

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BookOpen } from 'lucide-react'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
-import type { PlanningResponse } from '../../utils/stepConfigMatching'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
 import KnowledgebaseView from './KnowledgebaseView'
@@ -20,7 +19,6 @@ function isKnowledgeTab(value: unknown): value is KnowledgeTabId {
 
 interface KnowledgeViewProps {
   workspacePath: string | null
-  plan: PlanningResponse | null
 }
 
 /**

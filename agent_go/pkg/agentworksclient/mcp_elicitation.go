@@ -118,9 +118,6 @@ func elicitationFamilyFor(target string, inputs ...map[string]any) (elicitationF
 	if target == "functions" && (action == "call" || action == "status") {
 		return elicitationFamily{get: target, reply: target, getAction: "status", replyAction: "reply", idField: "call_id", poll: action == "status"}, true
 	}
-	if target == "sessions" && (action == "builder_chat" || action == "builder_status") {
-		return elicitationFamily{get: target, reply: target, getAction: "builder_status", replyAction: "builder_reply_input", idField: "operation_id", workflow: true, poll: action == "builder_status"}, true
-	}
 	if target == "runs" && action == "status" {
 		return elicitationFamily{get: target, reply: target, getAction: "status", replyAction: "reply_input", idField: "session_id", workflow: true, poll: true}, true
 	}
@@ -129,8 +126,6 @@ func elicitationFamilyFor(target string, inputs ...map[string]any) (elicitationF
 	switch target {
 	case "project_functions_call", "project_functions_get_call":
 		return elicitationFamily{get: "project_functions_get_call", reply: "project_functions_reply", idField: "call_id"}, true
-	case "builder_status":
-		return elicitationFamily{get: "builder_status", reply: "builder_reply_input", idField: "operation_id", workflow: true}, true
 	case "run_status":
 		return elicitationFamily{get: "run_status", reply: "run_reply_input", idField: "session_id", workflow: true}, true
 	}

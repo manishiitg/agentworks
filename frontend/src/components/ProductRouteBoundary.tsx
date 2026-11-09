@@ -120,7 +120,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
           if (controller.signal.aborted) return
           const explicitPanel = route?.view && route.view !== saved.view
           const layout = explicitPanel && saved.layout ? { ...saved.layout, panel_open: true, focused_pane: 'preview' as const } : saved.layout
-          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'relays', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
+          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
         }
         if (!homeRequested) window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
@@ -150,7 +150,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     return () => { controller.abort(); cancelPendingWorkflowNavigation() }
   }, [location, account, workspace, permissionKey, attempt])
   useEffect(() => status === 'ready' ? observeProductHistory(route => {
-    if (!['agentworks', 'relays', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
+    if (!['agentworks', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
   }) : undefined, [status, location, account])
   if (status === 'ready') return <>{children}</>
   const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : resolution.message || 'This item is not available. You may not have access.'

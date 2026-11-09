@@ -36,7 +36,7 @@ function sourceLabel(source?: string): string {
   if (source === 'user_suggestion') return 'User suggestion'
   if (source === 'architecture_review') return 'Architecture Review'
   if (source === 'plan_drift_review') return 'Workflow Review'
-  return 'Goal'
+  return 'Conversation'
 }
 
 function inputTime(value?: string): string {
@@ -196,7 +196,7 @@ export function ReportHumanInputPanel({
 
 	const pending = contentMode === 'history' ? [] : visibleInputs.filter(input => input.status === 'pending')
 	// Answered but not applied yet: scheduled runs never apply decisions, so these stay
-	// in front of the person until they are applied in the Builder chat.
+	// in front of the person until they are applied in the Crew chat.
 	const unapplied = contentMode === 'history' ? [] : visibleInputs.filter(input => input.status === 'answered' && Boolean(input.apply_message))
 	const unappliedIds = new Set(unapplied.map(input => input.id))
 	const history = contentMode === 'pending' ? [] : reportHumanInputHistory(visibleInputs, historyLimit).filter(input => !unappliedIds.has(input.id))
@@ -355,12 +355,12 @@ export function ReportHumanInputPanel({
 			{(input.status === 'answered' || input.status === 'claimed') && (
                   <div className="flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-2 py-1.5 text-amber-100">
                     <Clock3 className="h-3.5 w-3.5 shrink-0" />
-				<span>{input.status === 'claimed' ? 'The saved decision is being processed.' : 'Answered, not applied yet. Apply it in the Builder chat.'}</span>
+				<span>{input.status === 'claimed' ? 'The saved decision is being processed.' : 'Answered, not applied yet. Apply it in the Crew chat.'}</span>
                   </div>
                 )}
                 {input.status === 'withdrawn' && input.withdrawal && (
                   <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
-                    <div><span className="font-medium text-foreground">Withdrawn by Builder: </span>{input.withdrawal.reason}</div>
+                    <div><span className="font-medium text-foreground">Withdrawn by the agent: </span>{input.withdrawal.reason}</div>
                     <div className="mt-1 text-[11px]">This proposal no longer needs your answer.</div>
                     <div className="mt-1">Evidence cited: {input.withdrawal.evidence.join('; ')}</div>
                   </div>
@@ -496,7 +496,7 @@ export function ReportHumanInputPanel({
                   {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                   Apply in chat
                 </button>
-                <span className="text-[11px] text-muted-foreground">Runs never apply decisions; the Builder chat applies it where you can watch.</span>
+                <span className="text-[11px] text-muted-foreground">Continue in the Crew chat to apply your decision.</span>
               </div>
             </article>
           )

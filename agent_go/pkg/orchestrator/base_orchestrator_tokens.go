@@ -96,6 +96,50 @@ func getModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata, error)
 	}
 }
 
+// CodingAgentModelMetadata reads the provider's local execution contract,
+// without launching an agent or fetching an unrelated model catalog.
+func CodingAgentModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata, error) {
+	switch provider {
+	case "claude-code":
+		// The offered catalog adds effort capabilities to the CLI's rate card.
+		for _, model := range claudecode.GetAllClaudeCodeModels() {
+			if model.ModelID == claudecode.CurrentClaudeCodeModel(modelID) {
+				return model, nil
+			}
+		}
+		return (&claudecode.ClaudeCodeAdapter{}).GetModelMetadata(modelID)
+	case "codex-cli":
+		return (&codexcli.CodexCLIAdapter{}).GetModelMetadata(modelID)
+	case "cursor-cli":
+		return (&cursorcli.CursorCLIAdapter{}).GetModelMetadata(modelID)
+	case "pi-cli":
+		model, err := (&picli.PiCLIAdapter{}).GetModelMetadata(modelID)
+		if err != nil {
+			return nil, err
+		}
+		template, err := picli.LoadPiAgentTemplate()
+		if err != nil {
+			return nil, fmt.Errorf("Pi model configuration is unavailable")
+		}
+		// Pi applies a deployment pin before the caller's requested effort,
+		// including for built-in models. Never accept a value it would drop.
+		if pinned, ok := template.PinnedThinkingLevel("", model.ModelID); ok {
+			model.SupportsReasoningEffort = pinned != "off"
+			model.ReasoningEffortLevels = nil
+			if model.SupportsReasoningEffort {
+				model.ReasoningEffortLevels = []string{pinned}
+			}
+		}
+		return model, nil
+	case "muse-cli":
+		return (&musecli.MuseCLIAdapter{}).GetModelMetadata(modelID)
+	case "agy-cli":
+		return agycli.GetAgyModelMetadata(modelID)
+	default:
+		return nil, fmt.Errorf("unsupported coding provider: %s", provider)
+	}
+}
+
 func resolvePricingProviderAndModel(provider, modelID string) (string, string) {
 	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
 	normalizedModelID := strings.TrimSpace(modelID)

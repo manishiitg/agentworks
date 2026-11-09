@@ -47,9 +47,7 @@ requested scope first.
   a separate action. For Crew, call
   `skills action=select` with
   the exact folder returned by `skills action=list` and the offered selection fields.
-  Deselecting removes only this project's selection. For a Goal, update its selected skills through
-  `settings action=update` using the current settings version. The same
-  selection is managed through chat. **Build > Skills** (or Recent) shows
+  Deselecting removes only this Crew's selection. A Python workflow chooses its already installed skills in agent() calls; it does not install packages for another person's account. The same Crew selection is managed through chat. **Build > Skills** (or Recent) shows
   installed custom skills. In a Crew, owners can open a skill in Files to edit
   it, or uninstall it from this panel; selection is managed through chat.
   Crew-local copies of another product's skills are ordinary project files:

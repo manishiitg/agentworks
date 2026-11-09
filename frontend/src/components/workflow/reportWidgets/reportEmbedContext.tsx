@@ -22,7 +22,6 @@ export interface ReportDataApi {
   uploadFile?: (file: File) => Promise<{ path: string; name: string; size: number; content_type?: string }>
   getCosts?: (options: ReportCostOptions) => Promise<WorkflowCostsResponse>
   /** Recorded Relay results; never starts a run or reads its private journal. */
-  getRelayRuns?: (options?: { version?: string; limit?: number; before?: number }) => Promise<{ version: string; runs: Record<string, unknown>[]; next_before?: number; truncated?: boolean }>
   // Sends directly from a report action through the human-decision chat queue.
   // Reuses an interactive automation chat, or creates one only if none exists.
   // Queued is not proof of execution or completion.

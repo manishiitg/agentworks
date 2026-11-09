@@ -1277,30 +1277,18 @@
     "description": "Send instructions to a live execution."
   },
   {
-    "family": "runs",
-    "name": "step_prompts",
-    "member": "get_step_prompts",
-    "description": "Read the saved prompt information for a step."
-  },
-  {
-    "family": "runs",
-    "name": "step_runtime",
-    "member": "preview_step_runtime",
-    "description": "Inspect a step\u2019s current runtime configuration."
-  },
-  {
     "family": "sessions",
     "name": "list",
     "member": "list_project_chats",
     "description": "Use the current project\u2019s list session operation with existing person and tab access.",
-    "external_members": "sessions_list_workflow|sessions_list_crew"
+    "external_members": "sessions_list_crew"
   },
   {
     "family": "sessions",
     "name": "open",
     "member": "open_project_chat",
     "description": "Use the current project\u2019s open session operation with existing person and tab access.",
-    "external_members": "sessions_open_workflow|sessions_open_crew"
+    "external_members": "sessions_open_crew"
   },
   {
     "family": "sessions",
@@ -1337,132 +1325,6 @@
     "name": "background_stop",
     "member": "terminate_agent",
     "description": "Use the current project\u2019s background stop session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
-    "name": "list",
-    "member": "manage_builder_chats__list",
-    "description": "Use the existing sessions list operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "list",
-    "external_members": "sessions_list_workflow|sessions_list_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "list",
-    "member": "sessions_list_workflow",
-    "description": "Use the existing sessions list operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "list",
-    "source_key": "tab_action"
-  },
-  {
-    "family": "sessions",
-    "name": "open",
-    "member": "manage_builder_chats__open",
-    "description": "Use the existing sessions open operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "open",
-    "external_members": "sessions_open_workflow|sessions_open_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "open",
-    "member": "sessions_open_workflow",
-    "description": "Use the existing sessions open operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "open",
-    "source_key": "tab_action"
-  },
-  {
-    "family": "sessions",
-    "name": "read",
-    "member": "manage_builder_chats__read",
-    "description": "Use the existing sessions read operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "read",
-    "external_members": "sessions_read_workflow|sessions_read_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "read",
-    "member": "sessions_read_workflow",
-    "description": "Use the existing sessions read operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "read",
-    "source_key": "tab_action"
-  },
-  {
-    "family": "sessions",
-    "name": "rename",
-    "member": "manage_builder_chats__rename",
-    "description": "Use the existing sessions rename operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "rename",
-    "external_members": "sessions_rename_workflow|sessions_rename_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "rename",
-    "member": "sessions_rename_workflow",
-    "description": "Use the existing sessions rename operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "rename",
-    "source_key": "tab_action"
-  },
-  {
-    "family": "sessions",
-    "name": "pin",
-    "member": "manage_builder_chats__pin",
-    "description": "Use the existing sessions pin operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "pin",
-    "external_members": "sessions_pin_workflow|sessions_pin_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "pin",
-    "member": "sessions_pin_workflow",
-    "description": "Use the existing sessions pin operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "pin",
-    "source_key": "tab_action"
-  },
-  {
-    "family": "sessions",
-    "name": "order",
-    "member": "manage_builder_chats__order",
-    "description": "Use the existing sessions order operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "order",
-    "external_members": "sessions_order_workflow|sessions_order_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "order",
-    "member": "sessions_order_workflow",
-    "description": "Use the existing sessions order operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "order",
-    "source_key": "tab_action"
-  },
-  {
-    "family": "sessions",
-    "name": "close",
-    "member": "manage_builder_chats__close",
-    "description": "Use the existing sessions close operation with its current access.",
-    "source": "manage_builder_chats",
-    "source_action": "close",
-    "external_members": "sessions_close_workflow|sessions_close_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "close",
-    "member": "sessions_close_workflow",
-    "description": "Use the existing sessions close operation with its current access.",
-    "source": "builder_tabs",
-    "source_action": "close",
-    "source_key": "tab_action"
   },
   {
     "family": "sessions",
@@ -1551,42 +1413,6 @@
     "description": "Use the existing sessions runtime call operation with its current access.",
     "source": "manage_crew_chats",
     "source_action": "tool"
-  },
-  {
-    "family": "sessions",
-    "name": "builder_chat",
-    "member": "builder_chat",
-    "description": "Use the existing workflow or Flow Builder conversation service for your own session."
-  },
-  {
-    "family": "sessions",
-    "name": "builder_status",
-    "member": "builder_status",
-    "description": "Use the existing workflow or Flow Builder conversation service for your own session."
-  },
-  {
-    "family": "sessions",
-    "name": "builder_reply_input",
-    "member": "builder_reply_input",
-    "description": "Use the existing workflow or Flow Builder conversation service for your own session."
-  },
-  {
-    "family": "sessions",
-    "name": "builder_cancel",
-    "member": "builder_cancel",
-    "description": "Use the existing workflow or Flow Builder conversation service for your own session."
-  },
-  {
-    "family": "sessions",
-    "name": "file_history",
-    "member": "builder_file_history",
-    "description": "Use the existing workflow or Flow Builder conversation service for your own session."
-  },
-  {
-    "family": "sessions",
-    "name": "restore_file",
-    "member": "builder_restore_file",
-    "description": "Use the existing workflow or Flow Builder conversation service for your own session."
   },
   {
     "family": "sessions",

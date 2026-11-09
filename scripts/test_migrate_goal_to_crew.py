@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 spec=importlib.util.spec_from_file_location('goal_conversion',Path(__file__).with_name('migrate-goal-to-crew.py'))
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
@@ -116,6 +117,8 @@ class Migration(unittest.TestCase):
         self.assertEqual(project['database_root'],'workflows/old-goal/db')
         definition = m.read(conversion.code/'script.json')
         self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name'],'workflow_context_paths':['Crew/linked']})
+        # The retired selected_secrets field grants nothing in the current server.
+        self.assertEqual(definition['secrets'], [])
         self.assertEqual(m.read(self.private/'product.json')['workflow_context_paths'], ['Crew/linked'])
         self.assertEqual(definition['input_presets'],[{'name':'default','values':{}}])
         with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
@@ -441,11 +444,59 @@ class Migration(unittest.TestCase):
             self.conversion()
         self.assertEqual(hashes(self.base), before)
 
+    def test_runtime_copy_failure_keeps_source_and_removes_partial_destination(self):
+        # PLAT-746-435 / PR1588: copy or second-cache-rename failure leaves
+        # every original file/cache intact and permits a plain retry.
+        self.conversion().apply()
+        self.runtime.rename(self.source)
+        for name in ('.cache', '.sandbox-cache'):
+            cache = self.source/name
+            cache.mkdir()
+            (cache/'installed-package').write_bytes(name.encode())
+        source_before = hashes(self.source)
+        real_copy, real_rename = m.copy_migration_tree, Path.rename
+
+        def interrupted_copy(source, target, skipped):
+            if target != self.runtime:
+                return real_copy(source, target, skipped)
+            target.mkdir(parents=True)
+            (target/'partial').write_text('incomplete')
+            raise OSError('injected runtime copy failure')
+
+        for failure in ('copy', 'second cache rename'):
+            with self.subTest(failure=failure):
+                moves = []
+
+                def interrupted_rename(path, target):
+                    if path.parent == self.source and path.name in ('.cache', '.sandbox-cache'):
+                        moves.append(path)
+                        if len(moves) == 2:
+                            raise OSError('injected second cache rename failure')
+                    return real_rename(path, target)
+
+                conversion = m.RuntimeRelocation(self.docs, self.state, 'old-goal', 'crew')
+                patch = (mock.patch.object(m, 'copy_migration_tree', side_effect=interrupted_copy)
+                         if failure == 'copy' else mock.patch.object(Path, 'rename', interrupted_rename))
+                with patch:
+                    with self.assertRaisesRegex(OSError, 'injected'):
+                        conversion.apply()
+                self.assertEqual(hashes(self.source), source_before)
+                self.assertFalse(self.runtime.exists())
+                self.assertFalse(conversion.receipt.exists())
+                self.assertEqual(m.RuntimeRelocation(self.docs, self.state, 'old-goal', 'crew').report()['status'], 'ready')
+
     def test_finish_runtime_preserves_authored_files_and_references_without_recreating_old_folder(self):
         # PLAT-746-360: a prior source-only migration left native helpers
         # outside the runtime grant list. Finish only that workflow's records.
         self.conversion().apply()
         self.runtime.rename(self.source)
+        # PLAT-746-435 / PR1520: runtime relocation must preserve installed
+        # caches without descending into a dangling link inside them.
+        cache = self.source/'.sandbox-cache'
+        cache.mkdir()
+        (cache/'dangling').symlink_to('missing-package')
+        (cache/'installed-package').write_bytes(b'keep installed runtime')
+        cache_inode = cache.stat().st_ino
         write(self.source/'learnings/retired.json', {'keep_in_backup':True})
         write(self.source/'runs/history/run.json', {'output_path':str(self.source/'runs/history/out.json'), 'command':'cat '+str(self.source/'old.txt')})
         with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
@@ -466,6 +517,10 @@ class Migration(unittest.TestCase):
         self.assertEqual(conversion.report()['status'],'ready')
         result=conversion.apply()
         self.assertFalse(self.source.exists())
+        moved_cache = self.runtime/'.sandbox-cache'
+        self.assertEqual(moved_cache.stat().st_ino, cache_inode)
+        self.assertTrue((moved_cache/'dangling').is_symlink())
+        self.assertEqual((moved_cache/'installed-package').read_bytes(), b'keep installed runtime')
         self.assertEqual(database_before,{name:value for name,value in hashes(self.runtime).items() if '.sqlite' in name})
         self.assertEqual(result['database_columns_with_old_paths'], [
             {'database':'db/db.sqlite','table':'file_index','column':'path'},

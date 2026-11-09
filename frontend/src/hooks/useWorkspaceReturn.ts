@@ -79,7 +79,7 @@ export function useWorkspaceReturn(
     if (restore || !ready || !id || useProductSurfaceStore.getState().productSurface !== surface) return
     const state = useChatStore.getState()
     const tab = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
-    const belongs = surface === 'agentworks' || surface === 'relays'
+    const belongs = surface === 'agentworks'
       ? tab?.metadata?.presetQueryId === id
       : tab?.metadata?.agentProfileId === surface && tab?.metadata?.agentProfileProjectId === id
     queueWorkspaceState({ surface, id, view, layout: { ...layout, navigation_mode: navigationMode },

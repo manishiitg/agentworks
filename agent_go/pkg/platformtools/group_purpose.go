@@ -22,7 +22,6 @@ var groupPurpose = map[string]string{
 	"messages":     "Messages and email: send to another agent, Slack or email, read the agent mailbox and inbox, and set up channels.",
 	"models":       "Which AI model this project uses: list, test and change it.",
 	"needs_you":    "Decisions waiting for a person (the Needs you list): create, list, answer or dismiss them.",
-	"relay":        "Relays: run, test and publish a relay, and read its runs and releases.",
 	"runs":         "Goal workflow runs: start a run or step, check status and logs, answer a run's question, or stop it.",
 	"sessions":     "Chats and background work: list, open and read this project's chats, and start or check background tasks.",
 	"settings":     "Project settings: read and change them, choose which secrets are used, and manage variables.",

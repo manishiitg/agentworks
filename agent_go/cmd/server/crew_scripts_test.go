@@ -12,6 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/spf13/viper"
+
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 )
@@ -20,6 +24,10 @@ import (
 // shared source. A workflow reference cannot select another Crew's source.
 func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T) {
 	docs := t.TempDir()
+	docs, _ = filepath.EvalSymlinks(docs)
+	previousDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", previousDocs) })
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
@@ -48,7 +56,14 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/qualify/code/script.json": `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}]}`, "Workflow/qualify/code/main.py": "print('saved')\n", "Workflow/other-script/code/script.json": `{"id":"other-script","name":"Other"}`, "Workflow/other-script/code/main.py": "print('private')\n"}}
 	files.files["Crew/lab/product.json"] = `{"product":"work","id":"crew-lab","capabilities":{"browser_mode":"headless","llm_config":{"schema_version":1,"mode":"provider_profile","provider":"codex-cli"},"selected_servers":["example-app"],"selected_tools":["example-app:read"],"selected_global_secret_names":["EXAMPLE_CREDENTIAL"]}}`
-	workspace := httptest.NewServer(files)
+	// Managed input saves use the same anchored staged writer as production.
+	for file := range files.files {
+		materializeWorkspaceFixtureFile(t, files, docs, file)
+	}
+	router := gin.New()
+	router.Any("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
@@ -107,7 +122,23 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if code := request("owner", "VALUE = 7\n", "helper/values.py"); code != 200 {
 		t.Fatalf("Builder nested source HTTP%d", code)
 	}
-	for _, file := range []string{"../outside.py", "/outside.py", "helper/../../outside.py", "helper/../outside.py", "helper/.private.py", "helper\\outside.py", "helper/script.json"} {
+	// PLAT-746-479 / PR1567: packages use the same native source writer.
+	const requirements = "# saved packages\nhttpx==0.28.1\n"
+	if code := request("runner", requirements, "requirements.txt"); code != 403 {
+		t.Fatalf("Run person edited requirements HTTP%d", code)
+	}
+	if code := request("owner", requirements, "requirements.txt"); code != 200 {
+		t.Fatalf("Builder requirements edit HTTP%d", code)
+	}
+	for _, content := range []string{"-r extra.txt\n", " -c constraints.txt\n", "\ufeff--requirement=extra.txt\n", "\\\n-r extra.txt\n", "--index-url https://example.com/simple\n", "bad\x00text", strings.Repeat("x", (64<<10)+1)} {
+		if code := request("owner", content, "requirements.txt"); code != 400 {
+			t.Fatalf("invalid requirements admitted HTTP%d", code)
+		}
+	}
+	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/requirements.txt"); err != nil || saved != requirements {
+		t.Fatal("refused requirements changed saved source", err)
+	}
+	for _, file := range []string{"../outside.py", "/outside.py", "helper/../../outside.py", "helper/../outside.py", "helper/.private.py", "helper\\outside.py", "helper/script.json", "helper/requirements.txt"} {
 		if code := request("owner", "refused", file); code != 400 {
 			t.Fatalf("source path %q admitted HTTP%d", file, code)
 		}
@@ -119,7 +150,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if manifest.Capabilities.BrowserMode != "headless" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || len(manifest.Capabilities.SelectedServers) != 1 || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
 		t.Fatal("saved script lost the Crew's model/browser/MCP/secret-name selections")
 	}
-	changed := `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}],"capabilities":{"browser_mode":"extension"}}`
+	changed := `{"id":"qualify","name":"Qualify","secrets":["FIXTURE_KEY"],"inputs":[{"name":"count","type":"integer","value":"2"}],"capabilities":{"browser_mode":"extension"}}`
 	if code := request("runner", changed, "script.json"); code != 403 {
 		t.Fatalf("Run person changed script settings HTTP%d", code)
 	}
@@ -127,6 +158,9 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 		t.Fatalf("Builder setting HTTP%d", code)
 	}
 	manifest, _, err = ReadWorkflowManifest(context.Background(), script.Root)
+	if err != nil || len(manifest.DeclaredSecrets) != 1 || manifest.DeclaredSecrets[0] != "FIXTURE_KEY" {
+		t.Fatalf("saved script declaration names missing from public manifest: %v", err)
+	}
 	if err != nil || manifest.Capabilities.BrowserMode != "extension" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
 		t.Fatalf("browser override erased other settings: %v", err)
 	}
@@ -137,13 +171,8 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 		t.Fatal("Run person lost admitted execution access")
 	}
 	resolver := &crewWorkflowResources{userID: "owner"}
-	// The binary-safe resolver reads bytes from the admitted storage root;
-	// mirror this HTTP boundary fixture's saved files into that real storage.
-	for file := range files.files {
-		materializeWorkspaceFixtureFile(t, files, docs, file)
-	}
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
-	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" {
+	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" || string(resolved.Files["requirements.txt"]) != requirements {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
 	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {
@@ -152,7 +181,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "../../other"); err == nil {
 		t.Fatal("script id selected a filesystem path")
 	}
-	if _, present := files.files[script.Root+"/workflow.json"]; present {
+	if _, present, err := readFileFromWorkspace(t.Context(), script.Root+"/workflow.json"); err != nil || present {
 		t.Fatal("script projection persisted a duplicate manifest")
 	}
 	// All existing entry types persist against the one script definition.
@@ -171,7 +200,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {
 		t.Fatal(err)
 	}
-	if _, present := files.files[script.Root+"/workflow.json"]; present {
+	if _, present, err := readFileFromWorkspace(t.Context(), script.Root+"/workflow.json"); err != nil || present {
 		t.Fatal("entry save wrote a duplicate script manifest")
 	}
 	definition, err := readWorkflowInputDefinitions(context.Background(), script.Root)
@@ -184,6 +213,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	files.mu.Lock()
 	files.files[parent.Root+"/planning/plan.json"] = `{"steps":[{"id":"use","type":"scripted","title":"Qualify step","description":"Use saved code","script":"qualify","script_inputs":{"count":{"value":3}}}]}`
 	files.mu.Unlock()
+	materializeWorkspaceFixtureFile(t, files, docs, parent.Root+"/planning/plan.json")
 	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "string"}}}); err == nil || !strings.Contains(err.Error(), "Qualify step") {
 		t.Fatal("breaking script input edit did not identify the referencing step", err)
 	}
@@ -191,6 +221,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	files.mu.Lock()
 	files.files[parent.Root+"/planning/plan.json"] = `{"steps":[],"orphan_steps":[{"id":"specialist","type":"scripted","title":"Saved specialist","description":"Uses shared code","script":"qualify","script_inputs":{"count":{"value":3}}}]}`
 	files.mu.Unlock()
+	materializeWorkspaceFixtureFile(t, files, docs, parent.Root+"/planning/plan.json")
 	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "string"}}}); err == nil || !strings.Contains(err.Error(), "Saved specialist") {
 		t.Errorf("specialist input edit lost consumer validation: %v", err)
 	}
@@ -228,7 +259,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {
 		t.Fatalf("complete timer inputs refused: %v", err)
 	}
-	if _, present := files.files[script.Root+"/variables/variables.json"]; present {
+	if _, present, err := readFileFromWorkspace(t.Context(), script.Root+"/variables/variables.json"); err != nil || present {
 		t.Fatal("script wrote a duplicate input definition")
 	}
 	// PLAT-746: a closed destination must block running, but never block Pause.

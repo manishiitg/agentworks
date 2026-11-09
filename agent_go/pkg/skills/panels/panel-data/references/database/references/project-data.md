@@ -24,8 +24,7 @@
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Supported in Goals/Workflow, <!-- product:relays -->Flows, <!-- /product -->Crew project roots. Crew
-    people it is shared with follow the existing project access rules.
+  - Supported in Crew project roots; people using shared work follow the existing project access rules.
     Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
     the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions. Viewing a project does
     not grant access to its credentials. Published static copies cannot run scripts.

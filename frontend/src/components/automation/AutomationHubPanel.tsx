@@ -23,8 +23,6 @@ export type AutomationHubSection = 'chats' | 'schedules' | 'triggers' | 'functio
 
 type AutomationHubPanelProps = {
   entityType: 'workflow' | 'product'
-  relayMode?: boolean
-  relayWorkflowID?: string
   workspacePath: string
   workflowScope?: WorkflowScope
   productTriggerScope?: ProductTriggerScope
@@ -41,8 +39,6 @@ type AutomationHubPanelProps = {
 
 export function AutomationHubPanel({
   entityType,
-  relayMode = false,
-  relayWorkflowID,
   workspacePath,
   workflowScope,
   productTriggerScope,
@@ -81,15 +77,15 @@ export function AutomationHubPanel({
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
     ...(incomingEnabled && !isWorkflow && (productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'code') ? ['email' as const] : []),
     ...(chatContent ? ['chats' as const] : []),
-    ...(!relayMode ? ['schedules' as const] : []),
+    ...(['schedules' as const]),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
     ...(entityType === 'workflow' || productTriggerScope ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
-    ...(!relayMode && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
-    ...(!relayMode && botContent ? ['bots' as const] : []),
-  ]), [botContent, chatContent, entityType, productTriggerScope, relayMode, incomingEnabled, isWorkflow])
-  const fallbackSection = availableSections.has(initialSection) ? initialSection : relayMode ? 'triggers' : 'schedules'
+    ...(((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
+    ...(botContent ? ['bots' as const] : []),
+  ]), [botContent, chatContent, entityType, productTriggerScope, incomingEnabled, isWorkflow])
+  const fallbackSection = availableSections.has(initialSection) ? initialSection : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
 
   useEffect(() => {
@@ -116,9 +112,7 @@ export function AutomationHubPanel({
     : section === 'schedules'
     ? { label: 'Refresh schedules', run: () => setSchedulesRefreshToken(token => token + 1), spinning: schedulesStatus?.isLoading }
     : section === 'triggers'
-      ? relayMode
-        ? { label: 'Refresh triggers', run: () => setFunctionsRefreshToken(token => token + 1), spinning: false }
-        : { label: 'Refresh webhooks', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
+      ? { label: 'Refresh webhooks', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
       : section === 'functions'
         ? { label: 'Refresh functions', run: () => setFunctionsRefreshToken(token => token + 1), spinning: false }
       : section === 'chats'
@@ -140,7 +134,7 @@ export function AutomationHubPanel({
     onStatus={setSchedulesStatus}
     onClose={() => {}}
   />
-  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} />
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} />
   const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
     embedded
     pageRows={crewPage}
@@ -159,7 +153,7 @@ export function AutomationHubPanel({
   const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} embedded={crewPage} /></div>
 
   const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.'
-  const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Only for a Crew that has an email address or a bot.'] } as Record<string, [string, string | undefined]>)[section]
+  const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Email sent to this Crew starts a chat.'] } as Record<string, [string, string | undefined]>)[section]
   // On a Crew page each tab's content sits in one card with its own Ask (owner-approved mock, 8 Nov).
   const inCard = (content: ReactNode) => crewPage && cardTitle ? <div className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)} onRefresh={refreshAction?.run} refreshLabel={refreshAction?.label} refreshing={refreshAction?.spinning} action={section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} /> : undefined}>{content}</PageCard></div> : content
 
@@ -174,9 +168,7 @@ export function AutomationHubPanel({
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />
-          : section === 'triggers' && relayMode && functionsCounts ? (
-            <span className="text-xs text-muted-foreground">{functionsCounts.functions} functions</span>
-          ) : section === 'triggers' && triggersCounts ? (
+          : section === 'triggers' && triggersCounts ? (
             <span className="text-xs text-muted-foreground">{triggersCounts.active + Object.values(childWebhookCounts).reduce((sum, count) => sum + count.active, 0)} active · {triggersCounts.paused + Object.values(childWebhookCounts).reduce((sum, count) => sum + count.paused, 0)} paused</span>
           ) : section === 'functions' && functionsCounts ? (
             <span className="text-xs text-muted-foreground">{functionsCounts.functions + Object.values(childFunctionCounts).reduce((sum, count) => sum + count, 0)} functions · {functionsCounts.running} running</span>
@@ -198,8 +190,8 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {!relayMode && section === 'schedules' && inCard(schedulesView)}
-        {section === 'triggers' && entityType === 'workflow' && !relayMode && <WorkflowAPITriggersView
+        {section === 'schedules' && inCard(schedulesView)}
+        {section === 'triggers' && entityType === 'workflow' && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           onAsk={onAskAI}
           deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="workflow" />}
@@ -209,14 +201,7 @@ export function AutomationHubPanel({
         />}
         {section === 'email' && inCard(inboxView(crewPage ? '' : 'h-full overflow-y-auto p-4'))}
         {section === 'conditions' && inCard(watchersView)}
-        {section === 'triggers' && entityType === 'workflow' && relayMode && <WorkflowFunctionsView
-          workspacePath={workspacePath}
-          relayMode
-          relayWorkflowID={relayWorkflowID}
-          refreshToken={functionsRefreshToken}
-          onCounts={setFunctionsCounts}
-          onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))}
-        />}
+
         {section === 'triggers' && inCard(productWebhooksView(crewPage ? '' : 'h-full overflow-auto'))}
         {section === 'functions' && entityType === 'workflow' && <WorkflowFunctionsView
           workspacePath={workspacePath}

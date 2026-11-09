@@ -44,7 +44,8 @@ func TestMCPOAuthBuilderIsExplicitAndCLIDefaultsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	scopes, err = store.CLIDeviceRequest(context.Background(), verification)
-	if err != nil || !slices.Equal(scopes, mcpOAuthDefaultScopes) {
+	// The CLI sign-in also carries devices:connect since 2cf0fbbe11 (laptop folders); Builder is still never added.
+	if err != nil || !slices.Equal(scopes, append(slices.Clone(mcpOAuthDefaultScopes), "devices:connect")) {
 		t.Fatalf("CLI default changed: %v %v", scopes, err)
 	}
 }

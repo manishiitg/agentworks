@@ -86,7 +86,7 @@ func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 from pathlib import Path
 from agentworks import check, notify, run_folder, step, call_function, function_status, FunctionResult
 if os.environ['VAR_PHASE'] == 'apps':
-    from agentworks import google, slack, github, AutomationError
+    from agentworks import google, slack, github, AutomationError, send_email
     assert google.sheets.read('sheet', 'A1:B2') == ['fixture', {'value': 3}]
     assert google.sheets.write('sheet', 'A1:B2', [['company', 3]])['args'][1] == 'update'
     assert google.sheets.append('sheet', 'A1:B2', [['company', 3]])['args'][1] == 'append'
@@ -113,6 +113,11 @@ if os.environ['VAR_PHASE'] == 'apps':
     assert slack.read('route', since_ts='1.000001', limit=3)['parameters'] == {'oldest':'1.000001','limit':3}
     assert slack.send('route', 'Progress')['message'] == 'Progress'
     assert slack.reply('route', '1.000001', 'Reply')['thread_ts'] == '1.000001'
+    plain = send_email('member@example.com', 'Plain report', 'Report')
+    assert plain.ok and json.loads(plain.text) == {'to':['member@example.com'], 'subject':'Plain report', 'body':'Report', 'attachments':[]}
+    rich = send_email('member@example.com', 'Rich report', '', cc=('copy@example.com',), html='<p>Report</p>')
+    assert rich.ok and json.loads(rich.text) == {'to':['member@example.com'], 'subject':'Rich report', 'body':'', 'attachments':[], 'cc':['copy@example.com'], 'html':'<p>Report</p>'}
+
     raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'unavailable-app':
     from agentworks import google, AutomationError
@@ -123,6 +128,8 @@ if os.environ['VAR_PHASE'] == 'unavailable-app':
 if os.environ['VAR_PHASE'] == 'evidence':
     @step('Evidence')
     def evidence():
+        import time
+        time.sleep(0.03)
         assert check('Evidence inside', True, 'MCP_API_TOKEN=fixture-credential ' + 'λ' * 700).ok
         assert not check('Evidence expected failure', False, 'expected').ok
         notify('MCP_API_TOKEN=fixture-credential progress')
@@ -196,11 +203,11 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	c.WorkspaceTools = virtualtools.CreateHumanTools()
 	appCalls := 0
 	c.WorkspaceToolExecutors = map[string]interface{}{}
-	for _, name := range []string{"google_workspace_cli", "github", "slack", "send_slack_message"} {
+	for _, name := range []string{"google_workspace_cli", "github", "slack", "send_slack_message", "send_email"} {
 		c.WorkspaceToolExecutors[name] = func(ctx context.Context, args map[string]interface{}) (string, error) {
 			appCalls++
 			// PLAT-746-466: the HTTP caller cannot choose a different app scope.
-			if name != "send_slack_message" { // existing standalone sender path is unchanged
+			if name != "send_slack_message" && name != "send_email" { // existing standalone sender paths are unchanged
 				session, _ := ctx.Value(common.ChatSessionIDKey).(string)
 				owningRoot, err := common.GoogleWorkspaceFromContext(ctx)
 				if err != nil || owningRoot != root || !strings.HasPrefix(session, "script-step-task-") {
@@ -444,7 +451,13 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		}
 		foundCompleted = foundCompleted || item.Status == "completed"
 		foundFailure = foundFailure || item.Status == "failed"
-		foundWithoutNotifier = foundWithoutNotifier || item.Name == "Evidence" && item.Status == "completed"
+		if item.Name == "Evidence" && item.Status == "completed" {
+			// A check is instantaneous; the real decorator must time the function.
+			if item.DurationMs < 30 {
+				t.Fatalf("decorated work lost elapsed time: %+v", item)
+			}
+			foundWithoutNotifier = true
+		}
 	}
 	if !foundCompleted || !foundFailure || !foundWithoutNotifier {
 		t.Fatalf("notifier-independent step evidence missing: completed=%t failed=%t no_notifier=%t", foundCompleted, foundFailure, foundWithoutNotifier)

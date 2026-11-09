@@ -6,7 +6,7 @@ Start with the operator journey, then use the subsystem references when you need
 
 - [Install](getting-started/README.md) the app, or [self-host](../deploy/README.md) on your own machines.
 - [Workflow system overview](workflow/README.md): how authoring, execution, scheduling, and monitoring fit together.
-- [Workflow manifest](workflow/workflow_manifest_architecture.md) and [step config](workflow/step_config_format_specification.md): the files that define a workflow.
+- [Workflow definition](workflow/workflow_manifest_architecture.md): script.json inputs and presets, with main.py for the work.
 - [MCP bridge](core/mcp_bridge_layer.md): exposing AgentWorks tools to external agents, and calling external tools.
 - [Providers and model routing](core/llm_configuration_and_resilience.md): the coding CLIs AgentWorks runs on.
 - [Security](security/README.md): sandboxing, accounts, credentials, and sharing.
@@ -14,19 +14,18 @@ Start with the operator journey, then use the subsystem references when you need
 
 ## Start Here
 
-- [Build, Share, Use](design/build_share_use.md): the product model every product follows; `ask` for open text, functions/routes/triggers for structured calls.
-- [Communication protocols](communication-protocols.md): direct messages, structured functions, MCP/CLI, Crew, workflow-to-workflow calls and Relays.
+- [Build, Share, Use](design/build_share_use.md): the product model every product follows; `ask` for open text, workflow inputs, presets and published functions for structured calls.
+- [Communication protocols](communication-protocols.md): direct messages, structured functions, MCP/CLI, Crew, workflow runs and Crew function calls.
 - [Getting Started](getting-started/README.md): install AgentWorks, complete first-launch setup, and create a first automation.
 - [Build Your First Workflow](getting-started/first-workflow.md): define an outcome, choose a worker, run it, review evidence, and improve the next run.
 
 ## Product Areas
 
-- [Retiring fixed human-input steps](workflow/human-input-step-retirement.md): required launch variables, live human tools and a drained migration.
-- [Workflow](workflow/README.md): workflow authoring, execution, scheduling, metrics, reviews and notifications.
+- [Questions and inputs](workflow/human_feedback_system.md): conversations belong to Crew agents; workflow runs use saved inputs without waiting.
+- [Workflow](workflow/README.md): Python workflow authoring, execution, scheduling and run evidence.
 - [Organization and Agents](multiagent/README.md): delegation, shared memory, and agent-to-agent coordination.
 - [Core](core/README.md): providers, MCP, browser sessions, connectors, secrets, security, and shared runtime services.
 - [Security](security/README.md): the security model, per-user Linux accounts, and provider credentials.
-- [Relays](relay/README.md): versioned agent chains you run from anywhere — builder flow, releases, and the runs API.
 
 `docs/bugs/` is an incident archive — see its index, which groups the 2026-08-01/02 investigations into how the agent-facing tool and permission contract actually behaves. `docs/refactor/` records implementation migrations — see [its index](refactor/README.md), where status distinguishes a shipped design from one still being built. Neither folder is the recommended entry point for operators, but the bugs index is the fastest way to understand why an agent is told one thing and the runtime does another.
 
@@ -50,6 +49,8 @@ This folder also mirrors to the [GitHub wiki](https://github.com/manishiitg/codi
 - Put a doc in `core/` when it applies across chat, workflow, and multi-agent modes or describes a foundational subsystem or integration.
 
 ## All Pages
+
+The catalog includes historical implementation records. For current workflow authoring and execution, use the guides above and the current tool catalog. Earlier references to separate Goals, Relays, Builder conversations or plan editing describe the retired engine.
 
 Every page in this folder, so the index (and the wiki
 mirror) never silently omits one. Curated entry points are above;
@@ -166,7 +167,7 @@ this is the complete map.
 - [Native streaming speech-to-text](refactor/native_streaming_stt.md)
 - [Design: Live-attach terminal transport (replace snapshot/replay mirror)](refactor/terminal_live_attach_transport.md)
 
-### Relays ([index](relay/README.md))
+### Earlier Relay design records ([index](relay/README.md))
 
 - [Relays overview](relay/README.md)
 

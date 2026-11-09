@@ -14,8 +14,10 @@ import (
 func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.eventStore = openClientIdentityTestStore(t, "attribution-test")
+	env.api.agentProfiles = env.svc.registry
+	crewOwnerTabsFixture(t, env)
 	ctx := internalBotRequestContext(context.Background(), "owner")
-	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workflow:Reports")
+	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +92,7 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 			t.Fatal("typed envelope acquired agent identity")
 		}
 	}
-	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: target.stampID()}, Label: target.Label, Path: target.Path, Chat: &codeChat{SessionID: conv.Endpoints[1].Session}}
+	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: "work", ID: target.stampID()}, Label: target.Label, Path: target.Path, Chat: &codeChat{SessionID: conv.Endpoints[1].Session}}
 	if _, err = env.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -144,12 +146,13 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
+	root := crewOwnerTabsFixture(t, env)
 	ctx := internalBotRequestContext(context.Background(), "owner")
 	profile, err := env.svc.registry.Resolve("work", 0, "owner")
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, owned, err := resolveConversationBindingForUser(ctx, "owner", profile, "alpha")
+	binding, owned, err := resolveConversationBindingForUser(ctx, "owner", profile, "beta")
 	if err != nil || !owned {
 		t.Fatal(err)
 	}
@@ -158,7 +161,7 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	targetBinding, err := resolveProductConversationBinding(ctx, "owner", profile, "alpha:chat:reviewer")
+	targetBinding, err := resolveProductConversationBinding(ctx, "owner", profile, "beta:chat:reviewer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +169,7 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoint := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "alpha", Profile: "work", Path: linkAlphaPath, Label: "Alpha", Session: original.SessionID, ChatKey: "alpha"}
+	endpoint := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "beta", Profile: "work", Path: root, Label: "Beta", Session: original.SessionID, ChatKey: "beta"}
 	old := agentMessageTurn
 	t.Cleanup(func() { agentMessageTurn = old })
 	received := ""
@@ -174,7 +177,7 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 		received = session
 		return internalSessionTurnResult{}, nil
 	}
-	for _, check := range []struct{ key, want string }{{"alpha", original.SessionID}, {target.ConversationKey, target.SessionID}, {"session:" + original.SessionID, original.SessionID}} {
+	for _, check := range []struct{ key, want string }{{"beta", original.SessionID}, {target.ConversationKey, target.SessionID}, {"session:" + original.SessionID, original.SessionID}} {
 		// Each address carries its own receiving chat's session.
 		endpoint.ChatKey, endpoint.Session = check.key, check.want
 		conversation := agentConversation{ID: "message-pointer-test", Endpoints: [2]agentMessageEndpoint{endpoint, endpoint}}

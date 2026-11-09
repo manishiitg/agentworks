@@ -49,7 +49,7 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 			}
 		}
 		if mode == "builder" {
-			expected := map[string]bool{"workflow_upgrade": true, "workflow_crews": true, "workflow_google_account": true, "workflow_slack_account": true, "workflow_slack_bot": true, "builder_chat": true, "builder_tabs": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true, "builder_file_history": true, "builder_restore_file": true}
+			expected := map[string]bool{"workflow_upgrade": true, "workflow_crews": true, "workflow_google_account": true, "workflow_slack_account": true, "workflow_slack_bot": true}
 			for _, name := range def.ExternalTools {
 				if !expected[name] {
 					return fmt.Errorf("invalid Builder external tool %q", name)

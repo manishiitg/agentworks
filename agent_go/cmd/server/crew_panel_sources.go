@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -371,6 +372,42 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				section.Rows = append(section.Rows, crewPanelRow{ID: "trigger:" + item.ID, Label: item.Name, Detail: label, Destination: "schedules:triggers"})
 			}
 			return section, err
+		}},
+		// One row per Crew workflow, from the Crew's own records (any person with access to the Crew sees the summary).
+		{id: "workflow", title: "Workflow", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
+			section := crewPanelSection{}
+			records, err := readCrewExecutables()
+			if err != nil {
+				return section, err
+			}
+			for _, binding := range records {
+				if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
+					continue
+				}
+				label := "Workflow"
+				if manifest, found, manifestErr := ReadWorkflowManifest(ctx, binding.Root); manifestErr == nil && found && manifest.Label != "" {
+					label = manifest.Label
+				}
+				folders, foldersErr := api.loadRunFoldersInternal(ctx, binding.Root)
+				if foldersErr != nil {
+					return section, foldersErr
+				}
+				if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
+					section.Busy = true
+				}
+				section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: crewPanelWorkflowLine(folders, time.Now()), Destination: "workflow"})
+			}
+			sort.Slice(section.Rows, func(i, j int) bool { return section.Rows[i].Label < section.Rows[j].Label })
+			section.Detail = crewPanelCount(len(section.Rows), "workflow")
+			return section, nil
+		}},
+		// The Crew's incoming email: On or Off with the address, whenever this server can do inboxes at all.
+		{id: "inbox", title: "Inbox", allowed: !IsLocalMode() && api.gmailInbound != nil, noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {
+			row, err := api.crewPanelInboxRow(ctx, workspace)
+			if err != nil {
+				return crewPanelSection{}, err
+			}
+			return crewPanelSection{Rows: []crewPanelRow{row}, Detail: row.Detail}, nil
 		}},
 		{id: "access", title: "Share", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data crewSyncReply

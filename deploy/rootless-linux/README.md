@@ -62,7 +62,7 @@ per-product configuration. Video Studio and Dominion have their own cases in
 ./deploy.sh all-hetzner                # Server B, server C in sequence from ONE build (never dominion)
 ./deploy.sh <server>                        # same build, shipped to server A
 ./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
-                                       # ancestors of origin/main, so a known-good older build can go out while main is held
+                                       # ancestors of origin/<DEPLOY_BRANCH>, so a known-good older build can go out while the branch is held
 ./deploy.sh pin 7357c770               # keep that build from being pruned by later builds ("unpin" to release it)
 ```
 
@@ -144,7 +144,7 @@ Run those commands from the repository root; `deploy.sh` is the only
 entry point (there is no separate per-directory deployer).
 
 Env overrides (all default from `product.env`): `HOST_IP`, `SSH_PORT`,
-`SSH_KEY_PATH`, `DEPLOY_BRANCH` (defaults to `main`).
+`SSH_KEY_PATH`, `DEPLOY_BRANCH` (`main`, the default, or `dev`: `DEPLOY_BRANCH=dev ./deploy.sh <server>` deploys origin/dev).
 
 ## Slot-enabled servers: the slot self-test (PLAT-478)
 

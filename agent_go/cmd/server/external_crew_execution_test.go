@@ -249,18 +249,16 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	server := serveExternalMCP(t, f.api, crewWriter("owner"))
 	cli := dialExternalMCP(t, ctx, server.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "sessions"} {
-		params := map[string]any{}
-		if name == "sessions" {
-			params["action"] = "background_list"
-		}
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": "main", "action": "chat_tool", "tool_name": name, "arguments": params}})
+	// Session tools are grouped by family (ui, sessions); the family takes the old tool's name as its action.
+	for _, tc := range []struct{ name, tool, action string }{{"capabilities", "ui", "capabilities"}, {"state", "ui", "get"}, {"background list", "sessions", "background_list"}} {
+		name := tc.name
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": "main", "action": "chat_tool", "tool_name": tc.tool, "arguments": map[string]any{"action": tc.action}}})
 		requireRemoteSuccess(t, result, name)
 		raw, _ := json.Marshal(result)
 		if strings.Contains(string(raw), "private background task") {
 			t.Fatal("another session's background agent was exposed")
 		}
-		if name == "get_ui_state" && !strings.Contains(string(raw), "browser_disconnected") {
+		if name == "state" && !strings.Contains(string(raw), "browser_disconnected") {
 			t.Fatalf("unattached browser result: %s", raw)
 		}
 	}
@@ -292,5 +290,5 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "list_background_agents"}, 404)
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "sessions", "arguments": map[string]any{"action": "background_start", "name": "task", "instruction": "do work"}}, 400)
 	call(crewWriter("other"), map[string]any{"action": "tools", "chat_id": "own-session"}, 404)
-	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "get_ui_state", "arguments": map[string]any{"session_id": "another-person-session"}}, 400)
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "get", "session_id": "another-person-session"}}, 400)
 }

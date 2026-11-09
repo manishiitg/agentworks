@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 
 __all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
+__all__.append("secret")
 
 
 
@@ -88,6 +89,19 @@ if not isinstance(_inputs, dict):
     raise AutomationError("Script inputs must be a JSON object.")
 inputs: Mapping[str, JSONValue] = MappingProxyType(_inputs)
 del _inputs
+
+_declared_secrets = frozenset(json.loads(os.environ.get("SCRIPT_REQUIRED_SECRETS_JSON", "[]") or "[]") or [])
+
+
+def secret(name: str) -> str:
+    """Read a declared Vault value from the existing environment, without caching it."""
+    if name not in _declared_secrets:
+        raise AutomationError(f"Declare {name} in script.json secrets and select it in Vault for this workflow.")
+    key = name.split("__", 1)[1] if name.startswith("VLT_") and "__" in name else name
+    value = os.environ.get("SECRET_" + key, "")
+    if not value:
+        raise AutomationError(f"Select or add {name} in Vault for this workflow. Ask this Crew's chat to help.")
+    return value
 
 
 def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -> Reply:
@@ -292,12 +306,18 @@ def function_status(call_id: str) -> FunctionResult:
 
 
 def send_email(to: str | Sequence[str], subject: str, body: str,
-               attachments: Sequence[str | Path] = ()) -> Reply:
+               attachments: Sequence[str | Path] = (), *,
+               cc: str | Sequence[str] = (), html: str | None = None) -> Reply:
     """Send explicitly through the existing mail account and recipient checks."""
     recipients = [to] if isinstance(to, str) else list(to)
+    arguments = {"to": recipients, "subject": subject, "body": body,
+                 "attachments": [str(p) for p in attachments]}
+    if cc:
+        arguments["cc"] = [cc] if isinstance(cc, str) else list(cc)
+    if html is not None:
+        arguments["html"] = html
     try:
-        return _call("send_email", {"to": recipients, "subject": subject, "body": body,
-                                    "attachments": [str(p) for p in attachments]}, None, False)
+        return _call("send_email", arguments, None, False)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))
 
@@ -311,7 +331,7 @@ def send_slack(channel: str, text: str) -> Reply:
 
 
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
-          tier: str | None = None, scripts: Sequence[str] = (),
+          tier: str | None = None, reasoning: str | None = None, scripts: Sequence[str] = (),
           mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (), apps: Sequence[str] = (),
           browser: bool = False, knowledge: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
@@ -320,6 +340,8 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
 
     A list sends follow-ups to the same agent. To continue later in this run,
     pass reply.conversation_id; omitted settings retain its original selections.
+    reasoning optionally selects "low", "medium" or "high" where the selected
+    model supports it; unsupported choices are refused, never silently ignored.
     knowledge defaults to "read" for the owning workflow; "write" also allows
     its normal knowledge-note writes. Continued conversations keep their setting.
     browser uses this automation's connected browser and defaults to False.
@@ -347,7 +369,7 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
         raise ValueError("agent needs a name and at least one non-empty message")
     try:
         return _call("agent", {"name": name, "messages": messages, "model": model,
-                     "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
+                     "tier": tier, "reasoning": reasoning, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "tools": list(tools), "apps": list(apps), "browser": browser,
                      "knowledge": knowledge, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call}, key, redo)

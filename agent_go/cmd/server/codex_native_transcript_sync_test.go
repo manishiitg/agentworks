@@ -106,6 +106,11 @@ func TestNativeTranscriptSyncSupportedProvider(t *testing.T) {
 		if !contract.UsesPersistentSession || !contract.SupportsLiveInput {
 			continue
 		}
+		// Cursor's default SDK transport steers a running turn (run.steer) and reads no transcript; only its
+		// tmux transport retains terminal input, so that is where a readable transcript is required.
+		if !contract.AdapterReadsTranscript && contract.Transport != llmproviders.CodingAgentTransportTmux {
+			continue
+		}
 		if !contract.AdapterReadsTranscript {
 			t.Errorf("persistent live-input provider %q does not declare transcript reading", contract.Provider)
 		}

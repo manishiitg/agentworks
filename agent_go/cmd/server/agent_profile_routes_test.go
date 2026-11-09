@@ -372,7 +372,10 @@ func TestGetAgentProfileDoesNotLeakAnotherOwner(t *testing.T) {
 
 func accountSwitchTestSetup(t *testing.T, key string) (*StreamingAPI, *http.Request, agentprofiles.Profile, ProductConversationRecord) {
 	t.Helper()
-	server, _ := newFakeWorkspaceServer(t)
+	// The conversation registry lists workspace folders as well as reading files; the fake document server answers only
+	// single documents, so use the mock that serves listings too.
+	server := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{}})
+	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
@@ -615,52 +618,6 @@ func TestProductSameProviderModelSwitchRetiresDurableSession(t *testing.T) {
 	}
 	if _, exists := mcpagent.LookupSession(conversation.SessionID); exists {
 		t.Fatal("old model's durable session survived")
-	}
-}
-
-func TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration(t *testing.T) {
-	t.Setenv("AGENT_PRODUCTS", "relays")
-	registry := agentprofiles.NewRegistry()
-	req := profileRouteRequest(http.MethodGet, "/api/agent-profiles/relays?version=1&include_skill_catalog=true", nil, "alice")
-	req = mux.SetURLVars(req, map[string]string{"id": "relays"})
-	w := httptest.NewRecorder()
-	getAgentProfileHandler(registry)(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("catalog read: %d %s", w.Code, w.Body.String())
-	}
-	var profile agentprofiles.Profile
-	if err := json.Unmarshal(w.Body.Bytes(), &profile); err != nil {
-		t.Fatal(err)
-	}
-	if profile.ID != "relays" || len(profile.Commands) != 6 { // build-relay, design-dashboard, test, publish, versions, setup-api
-		t.Fatalf("wrong catalog: %+v", profile.Commands)
-	}
-	var presentation struct {
-		Defaults map[string][]string `json:"skill_defaults_by_mode"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &presentation); err != nil || len(presentation.Defaults["builder"]) == 0 || len(presentation.Defaults["run"]) != 0 {
-		t.Fatalf("mode skill defaults do not describe this product: %s", w.Body.String())
-	}
-	for _, command := range profile.Commands {
-		if command.Name == "publish" && !strings.Contains(command.Prompt, "publish_relay") {
-			t.Fatal("wrong publish prompt")
-		}
-	}
-	if _, err := registry.Resolve("relays", 1, "alice"); err == nil {
-		t.Fatal("catalog enabled generic profile execution")
-	}
-	plain := req.Clone(req.Context())
-	plain.URL.RawQuery = "version=1"
-	canonical := httptest.NewRecorder()
-	getAgentProfileHandler(registry)(canonical, plain)
-	if canonical.Code != http.StatusOK || strings.Contains(canonical.Body.String(), `"skill_defaults_by_mode"`) || strings.Contains(canonical.Body.String(), `"skill_definitions_by_mode"`) {
-		t.Fatal("Skills presentation changed the canonical profile response")
-	}
-	t.Setenv("AGENT_PRODUCTS", "code")
-	w = httptest.NewRecorder()
-	getAgentProfileHandler(registry)(w, req)
-	if w.Code != http.StatusNotFound {
-		t.Fatal("disabled Relay catalog was exposed")
 	}
 }
 

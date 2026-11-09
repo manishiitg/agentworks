@@ -10,8 +10,7 @@ import { WorkspacePageContent } from './workspace/WorkspacePageContent'
 
 const PRODUCT_GROUPS = [
   { id: 'crew', label: 'Crew' },
-  { id: 'workflow', label: 'Goals' },
-  { id: 'relay', label: 'Relays' },
+  { id: 'workflow', label: 'Workflows' },
 ] as const
 
 /** Publication and access are decided by the same discovery service used by MCP. */

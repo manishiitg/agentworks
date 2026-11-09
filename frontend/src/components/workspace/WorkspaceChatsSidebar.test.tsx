@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
+// @vitest-environment happy-dom
+import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
@@ -83,7 +84,7 @@ vi.mock('../../products/productSurfaceConfig', () => ({
   isLocalDeployment: () => true,
   intersectAllowedProductSurfaces: (surfaces: string[], allowed: string[] | null) =>
     allowed ? surfaces.filter((surface) => allowed.includes(surface)) : surfaces,
-  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals', relays: 'Flows', knowledgebase: 'Brain', 'mcp-gateway': 'Vault', bullpen: 'AgentBridge' },
+  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals', knowledgebase: 'Brain', 'mcp-gateway': 'Vault', bullpen: 'AgentBridge' },
 }))
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: ({ surface }: { surface: string }) => <svg data-product-icon={surface} /> }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
@@ -116,12 +117,11 @@ async function render(check: (host: HTMLDivElement, rerender: () => Promise<void
     host.remove()
   }
 }
-it('lists admitted Crews and Goals before a chat exists, without projecting chat threads or Flows', async () => {
-  mocks.enabled = ['work', 'agentworks', 'relays']
+it('lists admitted Crews and Goals before a chat exists, without projecting chat threads', async () => {
+  mocks.enabled = ['work', 'agentworks']
   mocks.navigation.mockResolvedValue({ workspaces: [{ id: 'shared', profile_id: 'work', name: 'Accounting', icon: '📒', workspace_path: 'Crew/shared' }] })
   mocks.presets = [
     { id: 'goal', label: 'Sales', selectedFolder: { filepath: 'Workflow/sales' } },
-    { id: 'flow', label: 'Dispatch flow', workflowKind: 'relay' },
   ]
   mocks.tabs = { chat: { tabId: 'chat', name: 'Internal research thread', metadata: { agentProfileId: 'work', agentProfileProjectId: 'shared' } } }
   await render(async host => {
@@ -129,7 +129,6 @@ it('lists admitted Crews and Goals before a chat exists, without projecting chat
     expect(group.textContent).toContain('Accounting')
     expect(group.textContent).toContain('Sales')
     expect(group.textContent).not.toContain('Internal research thread')
-    expect(group.textContent).not.toContain('Dispatch flow')
     expect(mocks.history).not.toHaveBeenCalled()
     expect(mocks.activeSessions).not.toHaveBeenCalled()
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accounting · Crew"]')!.click())

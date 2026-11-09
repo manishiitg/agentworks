@@ -17,9 +17,6 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/google/uuid"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -27,8 +24,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
-
-const scheduledBackgroundNoPollingInstruction = "After launching background workflow or step work, do not babysit it with sleep/list_executions/query_step polling loops. Use at most one immediate query_step if you need to confirm the execution_id/status, then stop; [AUTO-NOTIFICATION] messages will resume the conversation when background work completes."
 
 // ScheduleContext bundles everything needed to identify and execute a schedule.
 type ScheduleContext struct {
@@ -38,12 +33,9 @@ type ScheduleContext struct {
 	WorkflowID    string
 	WorkflowLabel string
 	WorkflowKind  string
-	RelayRuntime  string
-	// RelayLegacyGroupName reads old release configuration without group execution.
-	RelayLegacyGroupName string
-	Schedule             WorkflowSchedule
-	WebhookInput         *WorkflowWebhookDelivery
-	Capabilities         WorkflowCapabilities
+	Schedule      WorkflowSchedule
+	WebhookInput  *WorkflowWebhookDelivery
+	Capabilities  WorkflowCapabilities
 	// OwnerUserID is the workflow's authenticated execution identity. It is
 	// normally WorkflowManifest.CreatedBy (or the first recorded owner), and
 	// is the explicit local owner for an ownerless legacy workflow only in
@@ -84,8 +76,6 @@ type ScheduleContext struct {
 	CapacityResumeRunID     string
 	CapacityResumeRunFolder string
 	CapacityResumeFromStep  int
-	DBOSResumeRunID         string
-	DBOSResumeRunFolder     string
 	ScheduledRunFolder      string
 }
 
@@ -347,7 +337,6 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		loaded, time.Now().Format(time.RFC3339), time.Now().Location().String())
 
 	// Wall-clock tick loop: every 60s, evaluate all registered schedules against current time.
-	s.recoverInterruptedDBOSRelays(ctx)
 	go s.tickLoop(ctx)
 
 	// Wait for context cancellation
@@ -565,7 +554,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		WorkflowID:     manifest.ID,
 		WorkflowLabel:  manifest.Label,
 		WorkflowKind:   manifest.Kind,
-		RelayRuntime:   manifest.RelayRuntime,
 		Schedule:       sched,
 		Capabilities:   lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:    workflowExecutionOwnerUserID(manifest),
@@ -579,13 +567,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 				sctx.OrderedScheduleIDs = append(sctx.OrderedScheduleIDs, candidate.ID)
 			}
 		}
-	}
-	if manifest.Kind == "relay" {
-		if groups := normalizeScheduleGroupNames(sched.GroupNames); len(groups) == 1 {
-			sctx.RelayLegacyGroupName = groups[0]
-		}
-		sctx.Schedule.GroupNames = nil
-		sctx.Capabilities.SlackConnectionID = ""
 	}
 
 	return sctx
@@ -614,13 +595,7 @@ func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 		// A Crew's work never switches to a co-owner's machine or logins.
 		return ""
 	}
-	if manifest.Kind == "relay" {
-		// Only a Flow's one Builder runs it unattended: if that account is inactive the run fails closed, and it never falls to
-		// another listed owner (now Run mode), whose slot would write journals into the Flow.
-		if builder := strings.TrimSpace(manifest.relayBuilder()); builder != "" {
-			return builder
-		}
-	}
+
 	owners := manifest.effectiveOwners()
 	createdBy := strings.TrimSpace(manifest.CreatedBy)
 	if createdBy != "" && containsID(owners, createdBy) && workflowExecutionAccountActive(createdBy) {
@@ -698,10 +673,6 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 		}
 	}
 	// Flows retain the shared function-delivery ledger, but register no timers.
-	if sctx.WorkflowKind == "relay" && !sched.IsFunctionTrigger() {
-		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
-		return nil
-	}
 
 	// Update workspace index
 	s.workspaceIndexMu.Lock()
@@ -1284,7 +1255,7 @@ func webhookDeliveryStartError(ctx context.Context, workspace string, sched Work
 			return fmt.Errorf("variable %q is no longer allowed by this trigger", name)
 		}
 	}
-	return nil
+	return resolveWorkflowWebhookInputs(ctx, workspace, sched, input)
 }
 
 func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, originSessionID string, input *WorkflowWebhookDelivery) (string, error) {
@@ -1539,16 +1510,7 @@ func (s *SchedulerService) cancelScheduledSessionWork(sessionID, closeReason str
 
 // triggerSchedule is called by the tick loop when a schedule is due.
 func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor time.Time) {
-	if sctx.WorkflowKind == "relay" {
-		if !productEnabled("relays") {
-			sctx.ScheduledFor = scheduledFor
-			_ = s.recordScheduleFireDecision(context.Background(), sctx, "failed_to_start", errFlowsDisabled.Error(), "", time.Now().UTC())
-			s.logf(sctx, "[SCHEDULER] %s", errFlowsDisabled.Error())
-			return
-		}
-		s.logf(sctx, "[SCHEDULER] Flow timers are not supported; use an authenticated API function trigger")
-		return
-	}
+
 	triggerCtx := *sctx
 	triggerCtx.ScheduledFor = scheduledFor.UTC()
 	sctx = &triggerCtx
@@ -1672,7 +1634,6 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	if sctx.WebhookInput != nil {
 		freshCtx.Schedule.InputPreset = sctx.Schedule.InputPreset
 		freshCtx.Schedule.Inputs = sctx.Schedule.Inputs
-		freshCtx.RelayLegacyGroupName = sctx.RelayLegacyGroupName
 		freshCtx.Schedule.RouteSelections = sctx.Schedule.RouteSelections
 		freshCtx.Schedule.Webhook = sctx.Schedule.Webhook
 	}
@@ -2245,11 +2206,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 			return "", err
 		}
 	}
-	if sctx.WorkflowKind == "relay" && (!sctx.Schedule.IsFunctionTrigger() || sctx.WebhookInput == nil) {
-		err := errors.New("Flows require an authenticated API function delivery; schedules are not supported")
-		failBeforeHistory(err, "")
-		return "", err
-	}
+
 	// A run whose identity is over its shared-account token limit fails here
 	// with the reason, like a refused manual turn (PLAT-683).
 	if err := s.api.scheduledRunTokenLimitRefusal(ctx, sctx); err != nil {
@@ -2312,11 +2269,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	if sctx.WebhookInput != nil {
 		run.Webhook = webhookRunMetadata(sctx)
 	}
-	if sctx.DBOSResumeRunID != "" {
-		if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, sctx.DBOSResumeRunID, "running", "", nil, sctx.DBOSResumeRunFolder, ""); err != nil {
-			s.logf(sctx, "[RELAY] Failed to reopen DBOS run history: %v", err)
-		}
-	} else if sctx.CapacityResumeRunID != "" {
+	if sctx.CapacityResumeRunID != "" {
 		// A resumed run continues its own history row rather than opening a
 		// second one. Two rows would read as two runs, when what happened is one
 		// run that waited — and it would leave the first row reporting
@@ -2523,42 +2476,6 @@ func scheduledDecisionApplyMode(input ReportHumanInput) string {
 	}
 }
 
-func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
-	if sctx == nil {
-		return nil
-	}
-	messages := compactScheduleMessages(sctx.Schedule.Messages)
-
-	// A saved route is executable configuration, not optional prose.  Older
-	// schedules could carry both route_selections and a follow-up message such
-	// as "after the selected work completes...".  Returning only that message
-	// silently discarded the selected route and left the builder to guess what
-	// (if anything) it should run.  Always put the canonical route turn first;
-	// retained schedule-specific messages are follow-ups, never replacements.
-	if len(sctx.Schedule.RouteSelections) > 0 {
-		preset, _ := json.Marshal(sctx.Schedule.InputPreset)
-		routes, err := json.Marshal(sctx.Schedule.RouteSelections)
-		instruction := fmt.Sprintf("Run the workflow once using run_full_workflow with input_preset=%s. Omit input_preset when it is empty.", string(preset))
-		if err == nil {
-			instruction = fmt.Sprintf("Run the workflow once using run_full_workflow with input_preset=%s and route_selections=%s. Omit an empty input_preset. Do not substitute a schedule-local procedure for the selected plan route.", string(preset), string(routes))
-		}
-		return append([]string{instruction + " " + scheduledBackgroundNoPollingInstruction}, messages...)
-	}
-	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {
-		prefix := fmt.Sprintf("This invocation has backend-enforced execution_mode=%q; do not weaken or reinterpret it. ", mode)
-		for i := range messages {
-			messages[i] = prefix + messages[i]
-		}
-	}
-	if sctx.QueuedOccurrenceCount > 1 {
-		prefix := fmt.Sprintf("This catch-up invocation coalesces %d scheduled occurrences into one run; do not replay them separately. ", sctx.QueuedOccurrenceCount)
-		for i := range messages {
-			messages[i] = prefix + messages[i]
-		}
-	}
-	return messages
-}
-
 // executeJob builds a session request from the manifest and runs it.
 // Returns (sessionID, runFolder, error).
 func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext, runID string) (sessionID, runFolder string, runErr error) {
@@ -2585,11 +2502,7 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 			}
 			if runFolder != "" {
 				detail += fmt.Sprintf("\nRun files: `%s/runs/%s`", sctx.WorkspacePath, runFolder)
-				if sctx.WorkflowKind == "relay" && runErr == nil {
-					if result, found, e := readFileFromWorkspace(context.Background(), sctx.WorkspacePath+"/runs/"+runFolder+"/relay_result.json"); e == nil && found && len(result) <= 16000 {
-						detail += "\n\n" + result
-					}
-				}
+
 			}
 			if e := s.appendCrewAutomationMessage(context.Background(), sctx, target, runID, status, detail); e != nil {
 				s.logf(sctx, "[AUTOMATION_CHAT] result delivery failed run=%s: %v", runID, e)
@@ -2604,353 +2517,9 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 	if sctx.CrewExecutable != nil && sctx.CrewExecutable.Kind == "script" {
 		return s.executeCrewScriptSchedule(ctx, sctx, runID)
 	}
-	if scheduleStartsRunDirectly(sctx) {
-		return s.executeDirectScheduledRun(ctx, sctx, runID)
-	}
-	if mode := strings.TrimSpace(sctx.Schedule.Mode); mode != "" && mode != "workshop" {
-		s.logf(sctx, "[SCHEDULER] Schedule %s uses legacy mode=%s; executing through workshop mode", sctx.Schedule.ID, mode)
-	}
-	return s.executeWorkshopJob(ctx, sctx, runID)
-}
-
-// executeWorkshopJob runs a workflow via the workshop builder path (workflow_phase mode).
-func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, string, error) {
-	if costobserver.AttributionFromContext(ctx).Activity == "" {
-		ctx = costActivityContext(ctx, sctx.OwnerUserID, "scheduled_run", "")
-	}
-	messages := scheduledWorkshopMessages(sctx)
-	if sctx.WebhookInput != nil {
-		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run AgentWorks, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
-	}
-	runFolder := ""
-	if strings.TrimSpace(sctx.ScheduledRunFolder) != "" {
-		runFolder = strings.TrimSpace(sctx.ScheduledRunFolder)
-	}
-	if sctx.WebhookInput != nil {
-		var allocationErr error
-		runFolder, allocationErr = allocateWebhookRunFolder(sctx.WorkspacePath, runID)
-		if allocationErr != nil {
-			return "", "", allocationErr
-		}
-	}
-
-	// Producing schedules and webhooks are bound to a permanent run. For a
-	// conversation-only invocation the new run, if any, is discovered from
-	// its receipt and metadata instead of assuming a reusable folder.
-	preRunFolders, preRunFoldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath)
-	preRunFolders = webhookInvocationFolders(preRunFolders, runFolder, sctx.WebhookInput != nil)
-	preRunFolders = scheduleInvocationFolders(preRunFolders, runFolder, sctx.ScheduledRunFolder != "")
-	preRunFolderNames := runFolderNameSet(preRunFolders)
-	// A failed snapshot is not an empty workspace. Without this distinction the
-	// reconciler below compares against an empty baseline, concludes every
-	// pre-existing folder is new, and attributes an old failed run to this
-	// invocation. The listing is most likely to fail right after a server
-	// restart, while the workspace API is still warming up — exactly when
-	// scheduled runs resume.
-	runFolderBaselineKnown := preRunFoldersErr == nil
-	invocationStartedAt := time.Now().UTC()
-	sctx.ProducedRunEvidence = false
-
-	sessionID, chatTitle, inTab := goalScheduleConversation(ctx, sctx)
-	chosenConversation := sessionID != ""
-	if !chosenConversation {
-		sessionID = s.newScheduleSessionID(sctx)
-	}
-	if sctx.WebhookInput != nil && sctx.Schedule.IsFunctionTrigger() && strings.HasPrefix(sctx.WebhookInput.DeliveryID, "fn-") {
-		ctx = virtualtools.WithFeedbackOperation(ctx, sctx.WebhookInput.DeliveryID)
-		if call := lookupCrewFunctionCall(sctx.WebhookInput.DeliveryID); call != nil {
-			ctx = costActivityContext(ctx, call.UserID, "function_call", call.ID)
-		}
-	}
-	// Mark the complete scheduled-session lifetime in server-owned state so a
-	// late contract migration cannot stamp the workflow after its owning
-	// scheduled session has ended.
-	contractupgrade.MarkScheduled(sessionID)
-	defer contractupgrade.ClearScheduled(sessionID)
-	if sctx.WebhookInput == nil && sctx.ScheduledRunFolder != "" {
-		s.api.scheduleInvocations.Store(sessionID, &stepworkflow.ScheduleInvocation{
-			RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: sctx.ScheduledRunFolder,
-			TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor,
-			AllowParallel: scheduleAllowsParallel(sctx.Schedule),
-		})
-		defer s.api.scheduleInvocations.Delete(sessionID)
-	}
-	if sctx.WebhookInput != nil {
-		s.api.webhookInvocations.Store(sessionID, &stepworkflow.WebhookInvocation{
-			InputFile:       webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID),
-			RunFolder:       runFolder,
-			Variables:       sctx.WebhookInput.Variables,
-			RouteSelections: sctx.Schedule.RouteSelections, GroupNames: sctx.Schedule.GroupNames,
-		})
-		defer s.api.webhookInvocations.Delete(sessionID)
-	}
-
-	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) {
-		state.LastSessionID = sessionID
-	})
-
-	if runID != "" {
-		_ = UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, runFolder, sessionID)
-	}
-
-	s.sessionLogf(sctx, sessionID, "[SCHEDULER] Scheduled workflow: executing %d messages for %s (session=%s workspace=%s run_folder=%s )",
-		len(messages), sctx.Schedule.ID, sessionID, sctx.WorkspacePath, runFolder)
-
-	baseReqMap := s.buildWorkshopRequest(ctx, sctx, runID)
-	if inTab {
-		// Delivered like another agent's message into a Goal tab (agent_messaging.go):
-		// the tab keeps its person's role and runtime, the turn waits behind a running
-		// turn in that tab, and a schedule trigger never sticks to the tab's session.
-		baseReqMap["is_auto_notification"] = true
-		baseReqMap["triggered_by"] = "auto_notification"
-		baseReqMap["session_title"] = chatTitle
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] schedule %s runs in Builder tab %s (session=%s)", sctx.Schedule.ID, sctx.Schedule.ChatKey, sessionID)
-	}
-	if sctx.WebhookInput != nil {
-		baseReqMap["execution_options"].(map[string]interface{})["selected_run_folder"] = runFolder
-		s.stateStoreMu.RLock()
-		store := s.stateStore
-		s.stateStoreMu.RUnlock()
-		if store == nil {
-			return sessionID, runFolder, fmt.Errorf("webhook run store unavailable")
-		}
-		if err := store.AssignRunFolder(ctx, runID, runFolder); err != nil {
-			return sessionID, runFolder, err
-		}
-	}
-
-	// Scheduled runs deliberately keep executing the saved workflow contract.
-	// Contract upgrades are operator-owned and remain blocked from this session
-	// by the contractupgrade fence above, but a pending upgrade is not allowed to
-	// interrupt an automation that was already running unattended.
-	turns := make([]scheduledWorkshopTurn, 0, len(messages))
-	for i, message := range messages {
-		turns = append(turns, scheduledWorkshopTurn{
-			label: fmt.Sprintf("schedule-message-%d", i+1),
-			query: message,
-		})
-	}
-
-	// Scheduled runs never apply operator decisions (owner decision
-	// 2026-10-03, replacing the PLAT-093 pre-run drain). A decision is applied
-	// in the workflow's Builder chat: in the turn that answers it, or from the
-	// "Apply in chat" button Needs you shows for every answered decision that
-	// is not applied yet.
-	// Unanswered decisions are not part of a scheduled run at all (owner decision
-	// 2026-10-05): no notice is added to the schedule's messages. They live in
-	// Needs you and the Builder chat.
-
-	releaseCompletions := s.api.claimSessionCompletions(sessionID)
-	defer releaseCompletions()
-
-	for i, turn := range turns {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s): %q", i+1, len(turns), turn.label, turn.query)
-
-		reqMap := requestWithWorkshopMode(baseReqMap, turn.workshopMode())
-		reqMap["query"] = turn.query
-
-		// Resume the workflow's latest thread (same CLI) on the first message
-		// only — later messages already share this run's live session.
-		if i == 0 && !chosenConversation {
-			if resumed := s.maybeResumeLatestWorkflowThread(ctx, sctx, reqMap, sessionID); resumed != "" {
-				s.sessionLogf(sctx, sessionID, "[SCHEDULER] Resuming latest workflow thread %s for schedule %s", resumed, sctx.Schedule.ID)
-			}
-		}
-
-		turnStartedAt := time.Now().UTC()
-		if err := s.api.startSessionInternal(ctx, reqMap, sessionID, sctx.OwnerUserID, nil); err != nil {
-			if turn.decisionDrain && !turn.failureBlocksRun {
-				s.sessionLogf(sctx, sessionID, "[SCHEDULER] Pre-run decision drain could not start (continuing to the run): %v", err)
-				continue
-			}
-			s.preserveRunEvidenceAfterFailedTurn(ctx, sctx, sessionID, invocationStartedAt)
-			return sessionID, runFolder, fmt.Errorf("workshop turn %d/%d (%s) failed: %w", i+1, len(turns), turn.label, err)
-		}
-		// A turn can dispatch cleanly and still produce nothing: every LLM
-		// attempt fails, the failure is recorded as events, the session status
-		// stays "completed", and no error reaches here. Without this check the
-		// run is recorded success — hetzner-ssh did exactly that on 2026-08-18,
-		// failing both turns on quota_exhausted in 8.1 seconds and being filed
-		// as a successful security audit.
-		//
-		// A non-blocking decision turn is exempt for the same reason its
-		// dispatch failure is: it must not cost the operator the run itself
-		// (PLAT-093). A targeted Fixer with block_run is intentionally checked.
-		if !turn.decisionDrain || turn.failureBlocksRun {
-			if failure := scheduledTurnFailure(s.api.eventStore, sessionID, turnStartedAt); failure != "" {
-				s.preserveRunEvidenceAfterFailedTurn(ctx, sctx, sessionID, invocationStartedAt)
-				return sessionID, runFolder, fmt.Errorf("workshop turn %d/%d (%s) produced no response: %s", i+1, len(turns), turn.label, failure)
-			}
-		}
-
-		// First message of the workshop sequence — stamp schedule name on
-		// the session for frontend tab labeling. Subsequent calls are
-		// no-ops (helper guards against overwriting an existing Title).
-		if !inTab {
-			s.stampScheduleNameOnSession(sessionID, sctx)
-		}
-
-		// The turn ending is not the work ending. Wait for every step this turn
-		// started, hand the agent their results as its next turn, and repeat
-		// until a turn starts nothing new (e.g. all 12 groups).
-		turnMode := turn.workshopMode()
-		rounds, followErr := s.api.runScheduledFollowUps(ctx, sessionID, invocationStartedAt, schedulerWorkshopLiveChildCeiling, func(ctx context.Context, query string) error {
-			followReq := requestWithWorkshopMode(baseReqMap, turnMode)
-			followReq["query"] = query
-			followStartedAt := time.Now().UTC()
-			if err := s.api.startSessionInternal(ctx, followReq, sessionID, sctx.OwnerUserID, nil); err != nil {
-				return err
-			}
-			if failure := scheduledTurnFailure(s.api.eventStore, sessionID, followStartedAt); failure != "" {
-				return fmt.Errorf("step-result turn produced no response: %s", failure)
-			}
-			return nil
-		})
-		if rounds > 0 {
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s): handed step results back %d time(s)", i+1, len(turns), turn.label, rounds)
-		}
-		if followErr != nil {
-			if !turn.decisionDrain || turn.failureBlocksRun {
-				s.preserveRunEvidenceAfterFailedTurn(ctx, sctx, sessionID, invocationStartedAt)
-				return sessionID, runFolder, fmt.Errorf("workshop turn %d/%d (%s) step results: %w", i+1, len(turns), turn.label, followErr)
-			}
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] Pre-run decision drain step results failed (continuing to the run): %v", followErr)
-		}
-
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s) completed", i+1, len(turns), turn.label)
-	}
-
-	// Previously auto-generated a static markdown report here via the report agent.
-	// The dynamic report (design doc §2) is a live frontend view over db/ + graph.json;
-	// there is no post-run artifact to produce, so scheduled runs now finish without a
-	// report side-effect. Users open the report in the UI whenever they want.
-
-	// The workshop chat session finishing its scheduled turns without an
-	// infrastructure-level error is not proof the triggered workflow run
-	// succeeded — the LLM's run_full_workflow tool call can fail deep inside
-	// (e.g. an orchestrator agent-creation error) while the chat session
-	// itself still goes idle normally. Reconcile against the run(s) actually
-	// created during this invocation, per their own run_metadata.json — the
-	// record the execution machinery writes independently of the scheduler
-	// (BUG-20260729-10, social-media 2026-07-29: the scheduler recorded
-	// "success" for a run that fully failed at its first posting step).
-	postRunFolders, postRunFoldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath, runFolder)
-	// The listing fails when the workspace service is briefly down (restarts,
-	// shutdown). Retry before judging, so a transient outage neither passes a
-	// run unchecked nor fails a healthy one.
-	for attempt := 1; postRunFoldersErr != nil && attempt <= 3 && ctx.Err() == nil; attempt++ {
-		time.Sleep(time.Duration(attempt*2) * time.Second)
-		postRunFolders, postRunFoldersErr = s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath, runFolder)
-	}
-	postRunFolders = webhookInvocationFolders(postRunFolders, runFolder, sctx.WebhookInput != nil)
-	postRunFolders = scheduleInvocationFolders(postRunFolders, runFolder, sctx.ScheduledRunFolder != "")
-	sctx.ProducedRunEvidence = workshopRunProducedEvidence(preRunFolderNames, postRunFolders, invocationStartedAt)
-	if !sctx.ProducedRunEvidence && s.scheduledWorkflowExecutionProducedEvidence(sessionID, invocationStartedAt) {
-		sctx.ProducedRunEvidence = true
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] the schedule's linked workflow execution receipt is this invocation's authoritative AgentWorks evidence")
-	}
-	if !sctx.ProducedRunEvidence {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] no run folder was created or restarted during this invocation for %s; AgentWorks evidence-dependent stages will be skipped", sctx.Schedule.ID)
-	}
-	// Reconciliation is a set difference, so it is only meaningful when both
-	// sides are real. When either listing failed, skip it and say so rather than
-	// reconcile against a baseline we do not have: this check exists to catch a
-	// run that failed while its session looked healthy, and inventing a failure
-	// from a missing snapshot is a worse error than missing one. Failing open is
-	// safe here — the run's own metadata remains the durable record, and the
-	// next invocation reconciles normally once the listing recovers.
-	if !runFolderBaselineKnown || postRunFoldersErr != nil {
-		// Without both listings the outcome cannot be checked. Recording
-		// success here made runs that stopped when the workspace service went
-		// down look complete (jobsearch finished 2 of 8 steps as "success").
-		s.sessionLogf(sctx, sessionID,
-			"[SCHEDULER] run outcome for %s could not be verified: run-folder listing unavailable (pre-run err=%v, post-run err=%v)",
-			sctx.Schedule.ID, preRunFoldersErr, postRunFoldersErr)
-		return sessionID, runFolder, fmt.Errorf("run outcome could not be verified: the run-folder listing was unavailable: %w", errors.Join(preRunFoldersErr, postRunFoldersErr))
-	} else if failedFolder, found := reconcileWorkshopRunOutcome(preRunFolderNames, postRunFolders, invocationStartedAt); found {
-		for _, folder := range postRunFolders {
-			if folder.Name == failedFolder && folder.Metadata != nil && folder.Metadata.Recovery["status"] == "step_recovered_run_unverified" {
-				return sessionID, runFolder, fmt.Errorf("workflow run %s remains failed: a step retry succeeded, but whole-run recovery is unverified (%v)", failedFolder, folder.Metadata.Recovery["reason"])
-			}
-		}
-		if partial := reconcileWorkshopPartialOutcome(preRunFolderNames, postRunFolders, invocationStartedAt, len(sctx.Schedule.GroupNames)); partial != nil {
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] mixed group result for %s: %s", sctx.Schedule.ID, partial.Error())
-			return sessionID, runFolder, partial
-		}
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] ⚠️ Workshop session for %s completed normally, but run %s recorded status \"failed\" in its own run_metadata.json", sctx.Schedule.ID, failedFolder)
-		return sessionID, runFolder, fmt.Errorf("workflow run %s failed (its run_metadata.json records status \"failed\"), even though the orchestrating workshop session completed its turns without an infrastructure error", failedFolder)
-	}
-
-	s.sessionLogf(sctx, sessionID, "[SCHEDULER] ✅ Workshop execution completed for %s, session=%s, folder=%s", sctx.Schedule.ID, sessionID, runFolder)
-	return sessionID, runFolder, nil
-}
-
-func runFolderNameSet(folders []RunFolderInfo) map[string]bool {
-	names := make(map[string]bool, len(folders))
-	for _, folder := range folders {
-		if folder.Name != "" {
-			names[folder.Name] = true
-		}
-	}
-	return names
-}
-
-func (s *SchedulerService) preserveRunEvidenceAfterFailedTurn(ctx context.Context, sctx *ScheduleContext, sessionID string, since time.Time) {
-	if s == nil || s.api == nil || sctx == nil || sctx.ProducedRunEvidence {
-		return
-	}
-	// Deliberately the baseline-free check: the pre-run snapshot can itself be
-	// lost (PLAT-070), and an empty baseline would make every folder look new
-	// and answer "evidence" unconditionally — the opposite error.
-	if folders, listErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath); listErr == nil && sctx.WebhookInput == nil {
-		folders = webhookInvocationFolders(folders, sctx.ScheduledRunFolder, false)
-		folders = scheduleInvocationFolders(folders, sctx.ScheduledRunFolder, sctx.ScheduledRunFolder != "")
-		if workshopRunStartedDuringInvocation(folders, since) {
-			sctx.ProducedRunEvidence = true
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a full workflow run started during this invocation and its own metadata is the authority; preserving run evidence for AgentWorks", sctx.Schedule.ID)
-			return
-		}
-	}
-	if s.scheduledWorkflowExecutionProducedEvidence(sessionID, since) {
-		sctx.ProducedRunEvidence = true
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a linked workflow execution started during this invocation; preserving run evidence for AgentWorks", sctx.Schedule.ID)
-	}
-}
-
-// workshopRunStartedDuringInvocation reports whether any run's own metadata says
-// it started during this invocation, using only the durable record.
-//
-// Deliberately takes no before-set. workshopRunProducedEvidence answers "is this
-// folder new?" first, which is correct when it holds a real baseline but inverts
-// when it does not: an empty baseline (a failed listing — PLAT-070) makes the
-// very first folder look new and returns true unconditionally. On the idle-wait
-// failure path the question is narrower and has a trustworthy answer that needs
-// no baseline at all — did a run actually start? — so ask only that.
-//
-// A run whose metadata carries no usable timestamp is not counted. The caller
-// treats a false here as "no evidence recorded", which is the pre-existing
-// behavior, so an unreadable record never manufactures evidence.
-func workshopRunStartedDuringInvocation(after []RunFolderInfo, since time.Time) bool {
-	for _, folder := range after {
-		if folder.Name == "" || folder.Metadata == nil {
-			continue
-		}
-		for _, stamp := range []time.Time{folder.Metadata.StartedAt, folder.Metadata.CreatedAt} {
-			if !stamp.IsZero() && !stamp.Before(since) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func workshopRunProducedEvidence(before map[string]bool, after []RunFolderInfo, since time.Time) bool {
-	for _, folder := range after {
-		if workshopRunStartedSince(before, folder, since) {
-			return true
-		}
-	}
-	return false
+	// Workflows run without a chat (owner, 8 Nov): every workflow timer starts its run directly; saved messages are
+	// not read (the schedule API refuses new ones).
+	return s.executeDirectScheduledRun(ctx, sctx, runID)
 }
 
 // Rotation changes folder names, not execution timestamps. Prefer StartedAt
@@ -3003,153 +2572,6 @@ func (s *SchedulerService) scheduledWorkflowExecutionProducedEvidence(sessionID 
 	return false
 }
 
-// reconcileWorkshopRunOutcome finds explicit failures started in the invocation
-// window. Timestamps take precedence over names because iteration rotation
-// moves historical runs into newly named folders. Legacy timestamp-less records
-// still use the before-set as a best-effort fallback.
-//
-// The since-based fallback matters because a workflow that reuses the same
-// run-folder name every cycle (e.g. iteration-0/<group>, confirmed live on
-// customer-login — see PLAT-182) never appears "new" by name after its first
-// cycle: before[folder.Name] is already true every time, so a name-only check
-// would skip inspecting that folder's metadata on every single subsequent
-// invocation, regardless of what it actually recorded. workshopRunProducedEvidence,
-// called moments earlier in the same code path for a different purpose, already
-// carries this same since-based fallback for exactly this reason; this function
-// previously lacked it.
-//
-// Ambiguous states — no metadata, "running", "completed", anything else — are
-// still never treated as failure; only an explicit "failed" is, so a
-// transient listing hiccup, or a workflow genuinely still running in the
-// background, fails open toward "cannot verify" rather than toward a false
-// failure.
-func reconcileWorkshopRunOutcome(before map[string]bool, after []RunFolderInfo, since time.Time) (failedFolder string, found bool) {
-	for _, folder := range after {
-		if folder.Name == "" || folder.Metadata == nil {
-			continue
-		}
-		if !workshopRunStartedSince(before, folder, since) {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(folder.Metadata.Status), "failed") {
-			return folder.Name, true
-		}
-	}
-	return "", false
-}
-
-// maxWorkflowResumeScan bounds how many of this schedule's most recent runs the
-// scheduler inspects when resume_previous=true: if a same-CLI resumable scheduled
-// chat is among the latest few, resume it; otherwise start a fresh session.
-const maxWorkflowResumeScan = 5
-
-// maybeResumeLatestWorkflowThread wires restored_conversation_session_id into reqMap
-// so an opt-in scheduled workflow run continues the schedule's most recent
-// scheduled chat with the same access-derived authority instead of starting fresh.
-//
-// We look at schedule-runs.json for this exact schedule_id first, then validate
-// the referenced chat runtime. This deliberately excludes normal user/builder
-// chats in the same workflow workspace. A different CLI's external session ID
-// is meaningless to the new one, and crossing the Workshop/Run boundary would
-// retain the wrong prompt/tool context. Prior run status (success/error) is
-// intentionally ignored: resume happens regardless so the agent can recover
-// from a failed run.
-// Returns the resumed thread's session ID, or "" when the run should start fresh.
-func (s *SchedulerService) maybeResumeLatestWorkflowThread(ctx context.Context, sctx *ScheduleContext, reqMap map[string]interface{}, currentSessionID string) string {
-	if !sctx.Schedule.ShouldResumePrevious() {
-		return ""
-	}
-
-	runs, err := listScheduleRunsForResume(ctx, sctx.WorkspacePath, sctx.Schedule.ID)
-	if err != nil || len(runs) == 0 {
-		return ""
-	}
-	return s.maybeResumeLatestScheduledThread(sctx, reqMap, currentSessionID, runs, sctx.WorkspacePath)
-}
-
-func (s *SchedulerService) maybeResumeLatestScheduledThread(sctx *ScheduleContext, reqMap map[string]interface{}, currentSessionID string, runs []ScheduleRunEntry, workspacePath string) string {
-	currentProvider := ""
-	if llmConfig := sctx.Capabilities.LLMConfig; llmConfig != nil {
-		if llmConfig.BuilderLLM != nil {
-			currentProvider = strings.TrimSpace(llmConfig.BuilderLLM.Provider)
-		}
-		if currentProvider == "" {
-			currentProvider = strings.TrimSpace(llmConfig.Provider)
-		}
-		if currentProvider == "" {
-			if builder, _, ok := workflowtypes.ResolveProviderProfileConfig(llmConfig); ok && builder != nil {
-				currentProvider = strings.TrimSpace(builder.Provider)
-			}
-		}
-	}
-	if currentProvider == "" {
-		return ""
-	}
-	currentWorkshopMode := "workshop"
-	if execOpts, ok := reqMap["execution_options"].(map[string]interface{}); ok {
-		if requested, ok := execOpts["workshop_mode"].(string); ok {
-			currentWorkshopMode = normalizeChatHistoryWorkshopMode(requested)
-		}
-	}
-	if currentWorkshopMode == "" {
-		currentWorkshopMode = "workshop"
-	}
-
-	// Runs are newest-first. Within the latest maxWorkflowResumeScan scheduled
-	// chats, resume the most recent one that is a resumable coding-agent thread
-	// on the same CLI; skip any that don't qualify (e.g. an API-model thread).
-	// If none qualify, start fresh.
-	//
-	// Validate via ReadChatHistoryRuntimeForSession(sessionID, workspace) — the
-	// SAME resolver handleQuery uses when it later honors
-	// restored_conversation_session_id — so what we match here is provably what
-	// gets resumed.
-	checked := 0
-	for _, run := range runs {
-		sessionID := strings.TrimSpace(run.SessionID)
-		if sessionID == "" || sessionID == currentSessionID {
-			continue
-		}
-		checked++
-		if checked > maxWorkflowResumeScan {
-			break
-		}
-
-		rt, ok, rErr := ReadChatHistoryRuntimeForSession("", sessionID, workspacePath)
-		if rErr != nil || !ok || rt == nil {
-			continue
-		}
-		// A coding-agent thread the CLI can resume: kind, matching CLI provider,
-		// and a captured external session ID to hand to the CLI's --resume.
-		if rt.Kind != "coding_agent" {
-			continue
-		}
-		if !strings.EqualFold(strings.TrimSpace(rt.Provider), currentProvider) {
-			continue
-		}
-		if !rt.ResumeSupported || strings.TrimSpace(rt.ExternalSessionID) == "" {
-			continue
-		}
-		if !chatHistoryResumeModesCompatible(rt.WorkshopMode, currentWorkshopMode) {
-			continue
-		}
-		reqMap["restored_conversation_session_id"] = sessionID
-		return sessionID
-	}
-	return ""
-}
-
-func listScheduleRunsForResume(ctx context.Context, workspacePath, scheduleID string) ([]ScheduleRunEntry, error) {
-	if localRuns, ok, err := readLocalScheduleRuns(workspacePath); ok || err != nil {
-		if err != nil {
-			return nil, err
-		}
-		return filterScheduleRunsNewestFirst(localRuns, scheduleID), nil
-	}
-	runs, _, err := ListScheduleRuns(ctx, workspacePath, scheduleID, maxScheduleRuns, 0)
-	return runs, err
-}
-
 func readLocalScheduleRuns(workspacePath string) ([]ScheduleRunEntry, bool, error) {
 	localPath, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), scheduleRunsPath(workspacePath))
 	if err != nil {
@@ -3167,22 +2589,6 @@ func readLocalScheduleRuns(workspacePath string) ([]ScheduleRunEntry, bool, erro
 		return nil, true, err
 	}
 	return runs, true, nil
-}
-
-func filterScheduleRunsNewestFirst(runs []ScheduleRunEntry, scheduleID string) []ScheduleRunEntry {
-	filtered := make([]ScheduleRunEntry, 0, len(runs))
-	for _, run := range runs {
-		if run.ScheduleID == scheduleID {
-			filtered = append(filtered, run)
-		}
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].StartedAt.After(filtered[j].StartedAt)
-	})
-	if len(filtered) > maxScheduleRuns {
-		filtered = filtered[:maxScheduleRuns]
-	}
-	return filtered
 }
 
 // scheduleSessionTrigger preserves the webhook origin in active session metadata.
@@ -3209,28 +2615,6 @@ func scheduleSessionTrigger(sctx *ScheduleContext) string {
 		return "webhook"
 	}
 	return "cron"
-}
-
-// stampScheduleNameOnSession updates the tracked session with the
-// schedule's display name and trigger source so the frontend reconnect
-// path can identify this as a scheduled run and label the tab using the
-// schedule name instead of falling back to the literal "Workflow".
-// Safe to call after startSessionInternal returns — the session is
-// already tracked by then.
-func (s *SchedulerService) stampScheduleNameOnSession(sessionID string, sctx *ScheduleContext) {
-	if sctx == nil || strings.TrimSpace(sctx.Schedule.Name) == "" {
-		return
-	}
-	s.api.activeSessionsMux.Lock()
-	defer s.api.activeSessionsMux.Unlock()
-	if sess, ok := s.api.activeSessions[sessionID]; ok && sess != nil {
-		if sess.Title == "" {
-			sess.Title = sctx.Schedule.Name
-		}
-		if sess.TriggeredBy == "" {
-			sess.TriggeredBy = scheduleSessionTrigger(sctx)
-		}
-	}
 }
 
 // applyLLMAndSecretsToReqMap adds LLM config, API keys, secrets, and trigger payload to a request map.
@@ -3291,21 +2675,6 @@ func cloneStringInterfaceMap(in map[string]interface{}) map[string]interface{} {
 		out[k] = v
 	}
 	return out
-}
-
-// requestWithWorkshopMode clones the request and its nested execution options
-// before setting a per-turn mode. A shallow clone would share execution_options
-// with later turns and could accidentally leave a normal run with Workshop
-// authority after a migration or decision preflight.
-func requestWithWorkshopMode(base map[string]interface{}, mode string) map[string]interface{} {
-	reqMap := cloneStringInterfaceMap(base)
-	execOpts := map[string]interface{}{}
-	if current, ok := reqMap["execution_options"].(map[string]interface{}); ok {
-		execOpts = cloneStringInterfaceMap(current)
-	}
-	execOpts["workshop_mode"] = mode
-	reqMap["execution_options"] = execOpts
-	return reqMap
 }
 
 // buildWorkshopRequest creates the base request map for scheduled workflow
@@ -3369,10 +2738,9 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		execOpts["capacity_account_key"] = accountKey
 		execOpts["pace_threshold_percent"] = threshold
 	}
-	if sctx.WorkflowKind != "relay" {
-		execOpts["input_preset"] = sctx.Schedule.InputPreset
-		execOpts["inputs"] = sctx.Schedule.Inputs
-	}
+
+	execOpts["input_preset"] = sctx.Schedule.InputPreset
+	execOpts["inputs"] = sctx.Schedule.Inputs
 
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {
 		execOpts["execution_mode"] = mode
@@ -3569,9 +2937,7 @@ func (s *SchedulerService) claimScheduleRun(ctx context.Context, sctx *ScheduleC
 		}
 		return nil
 	}
-	if sctx.DBOSResumeRunID != "" {
-		return s.stateStore.ResumeInterruptedDBOSRun(ctx, sctx.DBOSResumeRunID, startedAt)
-	}
+
 	if sctx.CapacityResumeRunID != "" {
 		return s.stateStore.ResumeCapacityRun(ctx, sctx.CapacityResumeRunID, startedAt)
 	}

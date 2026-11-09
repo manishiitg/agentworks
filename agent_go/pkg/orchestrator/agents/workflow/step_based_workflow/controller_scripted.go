@@ -595,6 +595,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	stepExecutionRelPath string,
 	dbAccess string,
 ) (output string, exitCode int, execErr error) {
+	var definition *CrewScriptDefinition
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+		definition = &saved.crewScript.Definition
+	}
+	timeout, err := definition.executionTimeoutSeconds()
+	if err != nil {
+		return "", -1, fmt.Errorf("%w: %w", ErrScriptedHarnessRejection, err)
+	}
 	// Convert absolute workDir to workspace-relative for WorkingDirectory field.
 	// The workspace API prepends docsRoot, so passing the absolute path would double it.
 	workDirRel := workflowAPIPath(hcpo.GetWorkspacePath(), workDirAbsPath)
@@ -610,6 +618,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// Build command: STEP_OUTPUT_DIR is passed via ExtraEnv so no inline env prefix needed.
 	// Use absolute paths for main.py and args — /app/workspace-docs/... is valid inside Docker.
 	command := scriptedCommand(mainPyAbsPath, inputArgs)
+	dependencies := hcpo.scriptDependencies(step)
+	if dependencies != "" {
+		// Install before the ordinary import preflight; a first run has no
+		// third-party modules yet. The bootstrap uses this same shell and guard.
+		command = "python3 -B -m agentworks._dependencies && " + command
+	}
 
 	includeCodeDir := workDirRel == stepExecutionRelPath+"/code"
 	guard, guardErr := hcpo.resolveScriptedShellGuard(ctx, step, stepIndex, stepPath, stepExecutionRelPath, includeCodeDir)
@@ -643,6 +657,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		}
 		hcpo.UnlockWorkspaceEnv()
 	}
+	declared := []string{}
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+		declared = saved.crewScript.Definition.Secrets
+	}
+	names, _ := json.Marshal(declared)
+	extraEnv["SCRIPT_REQUIRED_SECRETS_JSON"] = string(names)
 
 	// DB_PATH: the scripted fast path execs python3 directly — it does NOT go
 	// through the agent's execute_shell_command wrapper (injectStepEnvIntoShellExecutor)
@@ -653,6 +673,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		extraEnv["DB_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 	}
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
+	if dependencies != "" {
+		extraEnv["SCRIPT_INSTALL_REQUIREMENTS"] = "1"
+	}
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+		(pythonScriptRuntime{SourceDir: workDirAbsPath, DependenciesDir: dependencies}).apply(extraEnv)
+	}
 
 	// RUN_FOLDER: the workspace-relative "iteration-N/<group>" segment under
 	// runs/, e.g. "iteration-85/customer-staging". PLAT-185: a script that needs
@@ -700,15 +726,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 
 	// Build request using the same ExecuteShellCommandParams struct the LLM agent uses,
 	// so the workspace API receives the same JSON shape and applies the same logic.
-	// Use timeout=0 so the parent workflow/sub-agent context controls cancellation.
+	// Send the saved script's explicit whole-process limit. The workspace maps
+	// zero to one hour; it does not mean unlimited. Caller cancellation still
+	// travels on the same request context.
 	// The script's DB writes go through the bridge as its MCP session, so that
 	// session must carry the step's DB grant.
 	grantScriptBridgeSessionDB(extraEnv["MCP_SESSION_ID"], hcpo.GetWorkspacePath(), dbAccess)
 	// A test run's script (PLAT-562): its bridge calls are guarded, its DB is
 	// the copy and it cannot write outside the test run folder.
 
-	// Long-running scripted steps can legitimately exceed a fixed shell timeout.
-	timeout := 0
 	useShell := true
 	reqParams := workspace.ExecuteShellCommandParams{
 		Command:          command,
@@ -807,7 +833,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	combined = preview
 	exitCode = result.ExitCode
 	if result.TimedOut {
-		return combined, exitCode, fmt.Errorf("%w: %s", ErrScriptedHarnessTimeout, result.Error)
+		return combined, exitCode, fmt.Errorf("%w: script reached its %d-second limit: %s", ErrScriptedHarnessTimeout, timeout, result.Error)
 	}
 	hcpo.GetLogger().Info(fmt.Sprintf(
 		"🐍 [scripted_code] Direct script shell result | exit_code=%d | api_error=%q | script=%s",
@@ -845,6 +871,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 
 	shared, hasShared := step.(*ScriptedPlanStep)
 	hasShared = hasShared && shared.crewScript != nil
+	if hasShared {
+		if err := hcpo.validateScriptSecrets(&shared.crewScript.Definition); err != nil {
+			return &ScriptedFastPathResult{RanScript: true, ExitCode: -1, Error: err.Error()}
+		}
+	}
 	if !hasShared && !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
 		scriptRelPath := hcpo.scriptedSourceDir(stepID) + "/main.py"
 		existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
@@ -916,6 +947,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 			if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
 				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 			}
+		}
+		// Hash the actual frozen bytes, including the resolved script.json,
+		// before the program or any of its agents can read the run metadata.
+		if err := hcpo.recordScriptSourceSnapshot(ctx, shared.crewScript.Definition.ID, codeDirRelPath); err != nil {
+			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 		}
 	}
 

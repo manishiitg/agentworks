@@ -17,6 +17,63 @@ def hashes(path):
 
 
 class SameIdentityConversion(unittest.TestCase):
+    def test_explicit_entry_mapping_preserves_auth_timing_callers_and_unmapped_reminders(self):
+        # PLAT-746-450: converting routing choices must not recreate webhooks,
+        # activate held timers or rewrite their auth/caller/dependency records.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            definition = {'inputs': [{'name':'ACTION','type':'string','value':'review'}],
+                          'input_presets':[{'name':'default','values':{'ACTION':'review'}}]}
+            run = {'id':'kept','name':'Existing','enabled':False,'action':{'type':'run','step':'old-step','tab':'main'},
+                   'input':{'input_preset':'default','routes':{'branch':'review'}},
+                   'when':{'cron':'0 8 * * *','after':{'schedules':['previous']}},
+                   'auth':{'encrypted_secret':'ciphertext-fixture'},'run_as':'owner','project':{'kind':'goal','id':'task'}}
+            reminder = {'id':'reminder','enabled':False,'action':{'type':'message'},'input':{'messages':['Keep this reminder']}}
+            unmapped = dict(run, id='unmapped')
+            (root/'schedules.json').write_bytes(m.encode({'schedules':[run,reminder,unmapped]}))
+            original = (root/'schedules.json').read_bytes()
+            # Only the external validation boundary is a fixture. Runtime schema
+            # and real webhook/Python validation are checked by the Go fixture.
+            validator = root/'validator'
+            validator.write_text('#!/usr/bin/env python3\nimport json,sys\nx=json.load(sys.stdin)\nassert x["functions"][0]["input"]["input_preset"]=="review"\nassert x["definitions"]["variables"][0]["name"]=="ACTION"\n')
+            validator.chmod(0o700)
+            mapping = {'input_presets':[{'name':'review','values':{'ACTION':'review'}}],
+                       'schedules':{'kept':{'input_preset':'review','inputs':{'ACTION':'review'}}}}
+            staged = {}
+            read = lambda f, default: json.loads(f.read_text()) if f.exists() else default
+            report = m.remap_entry_inputs(definition,staged,root,read,mapping,validator)
+            self.assertEqual((root/'schedules.json').read_bytes(),original)
+            entries = json.loads(staged[root/'schedules.json'])['schedules']
+            self.assertEqual(entries[0],dict(run,action={'type':'run','tab':'main'},input={'input_preset':'review','inputs':{'ACTION':'review'}}))
+            self.assertEqual(entries[1:], [reminder,unmapped])
+            self.assertEqual(report['unmapped_entry_inputs'],[{'kind':'schedules','id':'unmapped','enabled':False}])
+            self.assertEqual(len(definition['input_presets']),2)
+            with self.assertRaisesRegex(ValueError,'existing entry ID'):
+                m.remap_entry_inputs(definition,{},root,read,{'schedules':{'missing':{}}},validator)
+            with self.assertRaisesRegex(ValueError,'message reminders unchanged'):
+                m.remap_entry_inputs(definition,{},root,read,{'schedules':{'reminder':{}}},validator)
+            with self.assertRaisesRegex(ValueError,'already exists with different values'):
+                m.remap_entry_inputs(definition,{},root,read,{'input_presets':[{'name':'default','values':{'ACTION':'changed'}}]},validator)
+            # The same mapper preserves the hook's encrypted auth and shared
+            # caller rules while replacing only its old routing configuration.
+            hook = dict(run,id='hook',input_mapping={'mode':'raw','payload':{'routes':{'branch':{'source':'kind','values':{'issue':'review'}}}}},caller={'id':'caller'})
+            (root/'webhooks.json').write_bytes(m.encode({'webhooks':[hook]}))
+            staged = {}
+            report = m.remap_entry_inputs(definition,staged,root,read,{'webhooks':{'hook':{'input_preset':'review','allowed_variables':['ACTION'],'payload_mappings':{'inputs':{'ACTION':{'source':'kind','values':{'issue':'review'}}}}}}},validator)
+            converted=json.loads(staged[root/'webhooks.json'])['webhooks'][0]
+            for key in ('id','name','enabled','auth','caller','run_as','project','when'):
+                self.assertEqual(converted[key],hook[key])
+            self.assertEqual(converted['input_mapping']['payload'],{'inputs':{'ACTION':{'source':'kind','values':{'issue':'review'}}}})
+            # Review4506403845/46: a preset-only update must retain raw input
+            # mappings and submit the actual mapping to the server validator.
+            (root/'webhooks.json').write_bytes(m.encode({'webhooks':[converted]}))
+            validator.write_text('#!/usr/bin/env python3\nimport json,sys\nx=json.load(sys.stdin)\nf=x["functions"][0]\nassert f["input_mapping"]["payload"]["inputs"]["ACTION"]["values"]=={"issue":"review"}\nassert f["input_mapping"]["variables"]==["ACTION"]\n')
+            staged={}
+            m.remap_entry_inputs(definition,staged,root,read,{'webhooks':{'hook':{'input_preset':'review'}}},validator)
+            preserved=json.loads(staged[root/'webhooks.json'])['webhooks'][0]
+            self.assertEqual(preserved['input_mapping'],converted['input_mapping'])
+
+
     def test_shared_backup_root_keeps_each_workflow_and_refuses_readonly_snapshot_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -73,6 +130,7 @@ class SameIdentityConversion(unittest.TestCase):
             (runtime/'runs/old/full.log').write_text('historical full log\n')
             (runtime/'schedules.json').write_text('{"schedules":[]}')
             (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true},"validation_schema":{"required_files":["result.json"]}}]}')
+            (definitions/'planning/step_config.json').write_bytes(m.encode({'steps':[{'id':'old','agent_configs':{'execution_llm':{'provider':'codex-cli','model_id':'example-model','options':{'reasoning_effort':'high'}}}}]}))
             capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
             # A retired tool in carried selections is dropped (PLAT-746).
             (definitions/'workflow.json').write_bytes(m.encode({'id':'task','workflow_context_paths':['Crew/linked'], 'capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
@@ -134,6 +192,7 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
             self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
             self.assertEqual(report['conversion']['output_check_steps'],['old'])
+            self.assertEqual(report['conversion']['reasoning_steps'],[{'step':'old','reasoning':'high','model':'codex-cli/example-model','source':'planning/step_config.json'}])
             backup = Path(m.apply(changes,documents,state,identity="task", append_platform_rows=bool(report["conversion"]["appended_crew_platform_rows"])))
             self.assertEqual(json.loads((backup/'crew-links').read_text()), crew_manifest)
             self.assertEqual(json.loads((private/'workflow.json').read_text()), dict(crew_manifest, workflow_context_paths=['Crew/already','Crew/linked']))
@@ -147,6 +206,7 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertTrue((definitions/'planning/plan.json').exists())
             self.assertEqual((code/'main.py').read_bytes(),(source/'main.py').read_bytes())
             self.assertEqual(json.loads((code/'script.json').read_text())['capabilities'],capabilities)
+            self.assertEqual(json.loads((code/'script.json').read_text())['secrets'], ['EXAMPLE_TEST_SECRET'])
             self.assertEqual(json.loads((code/'script.json').read_text())['input_presets'],presets)
             self.assertIn('account',[v['name'] for v in json.loads((code/'script.json').read_text())['inputs']])
             self.assertEqual(json.loads(binding_file.read_text()),dict(binding,kind='script',runtime_root='workflows/task'))
@@ -171,7 +231,7 @@ class SameIdentityConversion(unittest.TestCase):
             (runtime/'planning/revisions/plan-failed.json').write_text('{}')
             removals,docs_map,retired=m.retire_old_plan(docs,state,'task')
             self.assertEqual(retired['completed_converted_runs'],['run-1'])
-            self.assertEqual(sorted(retired['removed']),['planning/changelog/changelog-1.json','planning/plan.json','planning/revisions/plan-old.json'])
+            self.assertEqual(sorted(retired['removed']),['planning/changelog/changelog-1.json','planning/plan.json','planning/revisions/plan-old.json','planning/step_config.json'])
             retire_backup=Path(m.apply_retirement(removals,docs_map,state,None,'task'))
             self.assertTrue((retire_backup/'definitions-planning/plan.json').exists())
             self.assertFalse((definitions/'planning').exists())

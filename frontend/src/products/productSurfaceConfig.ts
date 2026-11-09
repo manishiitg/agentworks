@@ -1,10 +1,10 @@
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
-export const PRODUCT_SURFACES = ['agentworks', 'relays', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
-  agentworks: 'Goals', relays: 'Flows',
+  agentworks: 'Goals',
   work: 'Crew', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
 }
 
@@ -41,7 +41,7 @@ export function enabledProductSurfaces(): ProductSurface[] {
   const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'work', 'mcp-gateway', 'knowledgebase'] : ['agentworks', 'work', 'knowledgebase']
   if (!Array.isArray(configured)) return defaults
 
-  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'relays').filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
+  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
   return enabled.length > 0 ? [...new Set(enabled)] : defaults
 }
 

@@ -289,6 +289,9 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
+	if e.Kind == triggerCallerWorkflow {
+		return admissionRefused("Workflows run directly. Send your message to a Crew agent instead.")
+	}
 
 	if e.NamedAgentID != "" {
 		_, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
@@ -982,40 +985,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 
 	var reqMap map[string]interface{}
 	session := dest.Session
-	if dest.Kind == triggerCallerWorkflow {
-		manifest, exists, err := ReadWorkflowManifest(ctx, dest.Path)
-		if err != nil || !exists || manifest == nil || manifest.ID != dest.ID {
-			return session, fmt.Errorf("workflow unavailable")
-		}
-		if strings.Contains(dest.ChatKey, codeChatSideMarker) {
-			view := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: dest.UserID})
-			if !api.authorizeGoalMessageTab(view, dest) {
-				return session, fmt.Errorf("receiving chat is unavailable or ownership changed")
-			}
-		}
-		access := workflowAccessForManifest(GetUserFromContext(ctx), manifest)
-		builder := strings.HasPrefix(dest.ChatKey, "session:") || strings.Contains(dest.ChatKey, codeChatSideMarker)
-		if access != WorkflowAccessOwner && access != WorkflowAccessWrite && (builder || access != WorkflowAccessRead) {
-			return session, fmt.Errorf("workflow unavailable or access denied")
-		}
-		// A sender acts with their own role: owners and editors are the Builder,
-		// only people who can just use the workflow get Run (owner, 2026-10-20).
-		builder = access == WorkflowAccessOwner || access == WorkflowAccessWrite
-		if session == "" {
-			session = "wfmsg-" + strings.TrimPrefix(c.ID, "inbox-")
-		}
-		query := QueryRequest{Query: text, AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: dest.Path, PresetQueryID: manifest.ID, PinRunMode: !builder, TriggeredBy: "external", TriggeredByLabel: "From " + source.Label, SessionTitle: "Messages: " + source.Label, ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"}}
-		if builder {
-			query.ExecutionOptions.WorkshopMode = "workshop"
-		}
-		if api.workflowAskSessionExists(session, dest.Path) {
-			query.RestoredConversationSessionID = session
-		}
-		reqMap, err = queryRequestToMap(query)
-		if err != nil {
-			return session, err
-		}
-	} else {
+	{
 		if api.agentProfiles == nil {
 			return session, fmt.Errorf("Crew runtime unavailable")
 		}

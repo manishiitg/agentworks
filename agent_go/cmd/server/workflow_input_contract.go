@@ -136,17 +136,25 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 		}
 	}
 
-	var plan workflow.PlanningResponse
-	if err := readProjectEntryFile(ctx, root, "planning/plan.json", &plan); err != nil {
+	binding, err := findCrewExecutable(root)
+	if err != nil {
 		return err
 	}
-	for step, names := range workflow.WorkflowStepInputReferences(&plan) {
-		for _, name := range names {
-			input, exists := current[name]
-			before, wasDefined := old[name]
-			if !exists || wasDefined && (workflow.WorkflowInputType(input) != workflow.WorkflowInputType(before) || !reflect.DeepEqual(input.Schema, before.Schema)) {
-				used = append(used, "step "+step)
-				break
+	// Converted scripts may keep old plan files as history. Only the active
+	// plan engine consumes their references; scripts use the final entries.
+	if binding == nil || binding.Kind != "script" {
+		var plan workflow.PlanningResponse
+		if err := readProjectEntryFile(ctx, root, "planning/plan.json", &plan); err != nil {
+			return err
+		}
+		for step, names := range workflow.WorkflowStepInputReferences(&plan) {
+			for _, name := range names {
+				input, exists := current[name]
+				before, wasDefined := old[name]
+				if !exists || wasDefined && (workflow.WorkflowInputType(input) != workflow.WorkflowInputType(before) || !reflect.DeepEqual(input.Schema, before.Schema)) {
+					used = append(used, "step "+step)
+					break
+				}
 			}
 		}
 	}
@@ -164,16 +172,13 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 			exposed = nil
 			if fn.InputMapping.Mode == "envelope" {
 				exposed = fn.InputMapping.Variables
+			} else {
+				exposed = webhookMappedInputNames(fn.InputMapping.Payload)
 			}
 		}
 		check("function "+fn.Name, names, exposed, fn.Input)
-		if fn.InputMapping == nil {
-			var fixed scheduleExecutionInput
-			if json.Unmarshal(fn.Input, &fixed) == nil {
-				if _, err := workflowCallerInputSchema(next, fn.Inputs, fixed.InputPreset, fixed.Inputs); err != nil {
-					used = append(used, "function "+fn.Name+": "+err.Error())
-				}
-			}
+		if err := validateWorkflowFunctionInputContract(next, fn); err != nil {
+			used = append(used, err.Error())
 		}
 	}
 	hooks, err := readProjectWebhookDefinitions(ctx, root)
@@ -184,8 +189,14 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 		var exposed []string
 		if hook.InputMapping.Mode == "envelope" {
 			exposed = hook.InputMapping.Variables
+		} else {
+			exposed = webhookMappedInputNames(hook.InputMapping.Payload)
 		}
 		check("webhook "+hook.Name, append([]string(nil), hook.InputMapping.Variables...), exposed, hook.Input)
+		entry := projectFunctionDefinition{Name: hook.Name, Action: hook.Action, Input: hook.Input, InputMapping: &hook.InputMapping}
+		if err := validateWorkflowFunctionInputContract(next, entry); err != nil {
+			used = append(used, "webhook "+hook.Name+": "+err.Error())
+		}
 	}
 	schedules, err := readProjectSchedules(ctx, root)
 	if err != nil {
@@ -197,6 +208,9 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 	if len(used) > 0 {
 		slices.Sort(used)
 		used = slices.Compact(used)
+		if binding != nil && binding.Kind == "script" {
+			return fmt.Errorf("these input changes affect saved entry points: %s. Save Inputs and their entry_mappings together", strings.Join(used, ", "))
+		}
 		return fmt.Errorf("these input changes affect saved steps or entry points. Used by: %s. Update them first, then save Inputs", strings.Join(used, ", "))
 	}
 	return nil

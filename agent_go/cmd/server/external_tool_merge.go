@@ -27,15 +27,15 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
-	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
-	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
+	{"share", "Share a Crew or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
+	{"dashboard", "Live dashboards of workflows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
 	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
 	{"needs_you", "Find and answer the questions waiting on you. Current question, decision and product access still applies.", platformMergeActions("needs_you")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
-	{"workflow", "Find workflows and Flows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
+	{"workflow", "Find workflows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"}, {"save_inputs", "save_script_inputs"},
 	}},
 	{"files", "Read and change allowed project files, links and attachments. Current Builder, sharing, private-path, file-root and revision checks still decide access.", platformMergeActions("files")},
@@ -48,7 +48,6 @@ var externalToolMerges = []externalToolMerge{
 	{"functions", "Discover, call and maintain offered functions. Published access, caller identity and active-invocation checks still apply.", platformMergeActions("functions")},
 	{"runs", "Start and inspect real workflow runs through their existing execution and access checks.", platformMergeActions("runs")},
 	{"sessions", "Use your project chats and background work. Existing person, project, tab and operation ownership still decides access.", platformMergeActions("sessions")},
-	{"relay", "Build, test, publish and use Flows through their current draft and published-run services.", platformMergeActions("relay")},
 	{"messages", "Find agents, exchange messages and use configured delivery channels. Conversations keep their existing participants and sender identity.", platformMergeActions("messages")},
 	{"integrations", "Use and set up selected Google and Slack accounts and bots. Personal account ownership and product selection stay the same.", platformMergeActions("integrations")},
 	{"workspace", "Find, create and manage your projects, attached references and current access.", platformMergeActions("workspace")},
@@ -572,7 +571,7 @@ func externalMergeProperty(props map[string]any, key string, value any) {
 // but only canonical action families are public entry points.
 func projectServiceTool(name string) bool {
 	switch name {
-	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
+	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
 		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",

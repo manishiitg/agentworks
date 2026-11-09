@@ -474,13 +474,14 @@ func TestAgentMailOverMCPNeedsTheCLI(t *testing.T) {
 	if got := code(mcp, "mcp-token", toCrew); got == "cli_required" {
 		t.Fatal("a Crew message over MCP must stay open")
 	}
+	// The CLI is recognized by the server-authenticated grant (OAuthClientID), never by a display name or bearer prefix.
 	cli := mcp
-	cli.Name = "AgentWorks CLI"
+	cli.Name, cli.OAuthClientID = "AgentWorks CLI", cliOAuthClientID
 	if got := code(cli, cliOAuthAccessPrefix+"x", register); got == "cli_required" {
 		t.Fatal("a CLI sign-in must be allowed to register")
 	}
 	bound := mcp
-	bound.BoundAgentID, bound.BoundAgentName = "agent-1", "helper"
+	bound.BoundAgentID, bound.BoundAgentName, bound.OAuthClientID = "agent-1", "helper", cliOAuthClientID
 	if got := code(bound, cliOAuthAccessPrefix+"x", `{"name":"messages","arguments":{"action":"list_agents","agent_name":"helper"}}`); got == "cli_required" {
 		t.Fatal("a bound agent connection must be allowed")
 	}

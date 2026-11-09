@@ -8,7 +8,7 @@ resets and account deletion.
 ```json
 {"name":"users","arguments":{"action":"list"}}
 {"name":"users","arguments":{"action":"get","user_id":"user-example"}}
-{"name":"users","arguments":{"action":"update","user_id":"user-example","role":"creator","products":["code","relays"],"create_products":["code"],"request_id":"access-example-1"}}
+{"name":"users","arguments":{"action":"update","user_id":"user-example","role":"creator","products":["work"],"create_products":["work"],"request_id":"access-example-1"}}
 ```
 
 AgentBridge, Brain and Vault are available to every account on servers that run them. `shared_products` lists these services; `products` lists the remaining assignable products. Changing a person’s product list never revokes shared-service access. Brain folder roles, Vault grants, private accounts and agent publication still govern their resources.
@@ -55,7 +55,7 @@ provisioning. The app handler currently has no revision/ETag parameter.
   and `action=set_allowed_models` changes model restrictions. These are the
   existing admin operations, with the same consent and audit records.
 
-The in-app Builder's `manage_user_access` retains admin-only password updates
+The Crew chat’s `manage_user_access` retains admin-only password updates
 and supports `delete_user` through the same handler. Provisioning new accounts
 remains with the server administrator. Do not change permissions, model lists
 or limits merely because someone opens the page or copies an admin request.

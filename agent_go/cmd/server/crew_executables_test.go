@@ -389,25 +389,23 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 
 // PLAT-746-265: parking Relay must stop new Crew Relay creation without
 // hiding existing automation from its owner or changing its saved definition.
-func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
+func TestCrewWorkflowsHideUnsupportedKindsWithoutChangingFiles(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnv(t)
-	t.Setenv("AGENT_PRODUCTS", "work,agentworks,relays")
+	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
 	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Workflow lab", Purpose: "Run reports", IdempotencyKey: "park-relay"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{projectActions: svc}
-	for _, kind := range []string{"workflow", "relay"} {
+	for _, kind := range []string{"workflow", "retired"} {
 		binding := crewExecutableBinding{ID: kind, CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/" + kind, Kind: kind}
 		if err := registerCrewExecutable(binding); err != nil {
 			t.Fatal(err)
 		}
 		m := NewWorkflowManifest(kind)
 		m.ID = kind
-		if kind == "relay" {
-			m.Kind = "relay"
-			m.RelayRuntime = "python"
-			m.RelayDurability = "dbos"
+		if kind == "retired" {
+			m.Kind = "retired"
 		}
 		raw, err := json.Marshal(m)
 		if err != nil {
@@ -415,22 +413,19 @@ func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
 		}
 		files.files[binding.Root+"/workflow.json"] = string(raw)
 	}
-	originalRelay := files.files["Workflow/relay/workflow.json"]
+	originalRelay := files.files["Workflow/retired/workflow.json"]
 	path := "/api/crew-executables?crew_id=" + crew.CrewID
 	list := httptest.NewRecorder()
 	api.handleCrewExecutables(list, httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx))
 	var response struct {
-		Executables    []crewExecutableBinding `json:"executables"`
-		ExistingRelays []struct {
-			ID string `json:"id"`
-		} `json:"existing_relays"`
+		Executables []crewExecutableBinding `json:"executables"`
 	}
-	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil || len(response.Executables) != 1 || response.Executables[0].Kind != "workflow" || len(response.ExistingRelays) != 1 || response.ExistingRelays[0].ID != "relay" {
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil || len(response.Executables) != 1 || response.Executables[0].Kind != "workflow" {
 		t.Fatalf("Crew list: %d %s", list.Code, list.Body)
 	}
 	before, _ := readCrewExecutables()
 	rejected := httptest.NewRecorder()
-	api.handleCrewExecutables(rejected, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"name":"New Relay","kind":"relay"}`)).WithContext(ctx))
+	api.handleCrewExecutables(rejected, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"name":"New Relay","kind":"retired"}`)).WithContext(ctx))
 	after, _ := readCrewExecutables()
 	if rejected.Code != http.StatusBadRequest || len(after) != len(before) {
 		t.Fatalf("new Relay was created: %d %s", rejected.Code, rejected.Body)
@@ -440,19 +435,19 @@ func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, request := range []map[string]interface{}{
-		{"action": "write", "workspace_path": "Workflow/relay", "file": "relay.py", "content": "changed"},
+		{"action": "write", "workspace_path": "Workflow/retired", "file": "relay.py", "content": "changed"},
 		{"action": "write", "workspace_path": response.Executables[0].Root, "file": "relay.py", "content": "changed"},
 	} {
 		if _, err := reg.tools["crew_workflow_files"].exec(ctx, request); err == nil {
 			t.Fatal("Crew editor accepted Relay source")
 		}
 	}
-	if files.files["Workflow/relay/workflow.json"] != originalRelay {
+	if files.files["Workflow/retired/workflow.json"] != originalRelay {
 		t.Fatal("parking Relay changed its definition")
 	}
-	// Saved data remains readable internally, but Flow access is unavailable.
-	m, found, err := ReadWorkflowManifest(ctx, "Workflow/relay")
-	if err != nil || !found || workflowAccessForManifest(GetUserFromContext(ctx), m) != WorkflowAccessNone {
+	// Saved data remains on disk, but its unsupported kind cannot become a workflow.
+	m, found, err := ReadWorkflowManifest(ctx, "Workflow/retired")
+	if found || (m != nil && workflowAccessForManifest(GetUserFromContext(ctx), m) != WorkflowAccessNone) {
 		t.Fatalf("disabled Relay gained access: %v %v", found, err)
 	}
 }
@@ -476,7 +471,7 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 			target = filepath.Join(docs, root, ".agentworks/code", b.ID, strings.TrimPrefix(rel, "code/"))
 		}
 		if strings.Contains(rel, "changelog") {
-			target = filepath.Join(docs, "_system/crew-data", b.CrewID, "workflows", b.ID, rel)
+			target = filepath.Join(docs, "_system/crew-data", b.CrewID, "automations", b.ID, rel)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 			t.Fatal(err)

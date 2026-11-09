@@ -75,16 +75,17 @@ func TestAdminDefaultScopesAreEveryScopeTheAccountMayHave(t *testing.T) {
 func TestMCPOAuthCrewScopesFollowTheCrewProduct(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[
-		{"id":"codeonly","username":"codeonly","products":["code"]},
-		{"id":"both","username":"both","products":["code","work"]}
+		{"id":"nocrew","username":"nocrew","products":["agentworks"]},
+		{"id":"crew","username":"crew","products":["agentworks","work"]}
 	]}`)
-	asked := []string{"crews:read", "crews:run", "crews:write", "code:run"}
-	got := mcpOAuthScopesFor(&UserClaims{UserID: "codeonly", Username: "codeonly"}, asked)
-	if len(got) != 1 || got[0] != "code:run" {
-		t.Errorf("a Code-only account must keep only code:run, got %v", got)
+	// code:run was retired with the Code and Crew merge (8106ccb9de); the Crew scopes remain the rule.
+	asked := []string{"crews:read", "crews:run", "crews:write"}
+	got := mcpOAuthScopesFor(&UserClaims{UserID: "nocrew", Username: "nocrew"}, asked)
+	if len(got) != 0 {
+		t.Errorf("an account without the Crew product must keep no Crew scope, got %v", got)
 	}
-	if got := mcpOAuthScopesFor(&UserClaims{UserID: "both", Username: "both"}, asked); len(got) != 4 {
-		t.Errorf("an account with both products keeps every scope, got %v", got)
+	if got := mcpOAuthScopesFor(&UserClaims{UserID: "crew", Username: "crew"}, asked); len(got) != 3 {
+		t.Errorf("an account with the Crew product keeps every Crew scope, got %v", got)
 	}
 }
 
@@ -95,7 +96,7 @@ func TestPersonSignInCarriesTheFullScopeSetLive(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"member","username":"member","can_create":true,"products":["code","work"]}]}`)
 	person := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "member", Username: "member", FamilyID: "f1", Scopes: []string{"workflows:read"}})
-	for _, want := range []string{"code:run", "builder:chat", "crews:run", "dashboards:read", "files:read", "runs:execute"} {
+	for _, want := range []string{"builder:chat", "crews:run", "dashboards:read", "files:read", "runs:execute"} {
 		if !slices.Contains(person.Scopes, want) {
 			t.Errorf("a person's sign-in stored with one scope lacks %s: %v", want, person.Scopes)
 		}

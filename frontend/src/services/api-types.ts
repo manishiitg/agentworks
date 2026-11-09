@@ -1428,32 +1428,6 @@ export interface GetSessionEventsResponse {
   offset: number;
 }
 
-export interface WorkflowOwnerTab {
-  id: string; name: string; owner_id: string; owner_name: string; session_id: string;
-  is_main: boolean; can_write: boolean; working: boolean; updated_at?: string; position?: number; pinned?: boolean;
-}
-
-export interface WorkflowBuilderSessionResponse {
-  tabs?: WorkflowOwnerTab[];
-  is_builder?: boolean;
-  sessions?: Record<string, { is_builder: boolean; kind: 'builder' | 'history' | 'run' }>;
-  success: boolean;
-  source: 'live' | 'workspace' | 'none';
-  session_id?: string;
-  phase_id?: string;
-  status: 'running' | 'completed' | 'idle' | 'error' | 'stopped' | string;
-  display_status?: string;
-  preset_query_id?: string;
-  workspace_path?: string;
-  workflow_name?: string;
-  updated_at?: string;
-  activity_updated_at?: string;
-  conversation_path?: string;
-  events: PollingEvent[];
-  total?: number;
-  last_processed_index?: number;
-}
-
 // SSE message types (match backend sseEventMessage / sseStatusMessage)
 
 export interface CreateChatSessionRequest {
@@ -2426,40 +2400,6 @@ export interface WorkflowPhase {
   options?: WorkflowPhaseOption[];
 }
 
-// Workflow plan changelog (History view "Plan edits" feed)
-export interface PlanChangelogFieldChange {
-  step_id: string
-  field: string
-  old_value: unknown
-  new_value: unknown
-}
-
-export interface PlanChangelogEntry {
-  timestamp: string
-  tool: string
-  reason: string
-  step_ids?: string[]
-  changes?: PlanChangelogFieldChange[]
-  actor?: string
-  origin?: {
-    type?: string
-    agent_name?: string
-    session_id?: string
-    user_id?: string
-    username?: string
-    operation_id?: string
-    via_token?: string
-  }
-  file?: string
-}
-
-export interface PlanChangelogResponse {
-  success: boolean
-  entries: PlanChangelogEntry[]
-  count: number
-  error?: string
-}
-
 /** One additional Google Workspace service (beyond Gmail) a connection is
  *  authorized for, and at what access level. */
 export interface GoogleServiceGrant {
@@ -2785,7 +2725,7 @@ export interface SkippedWhilePaused {
 export interface SchedulerConfig {
   /** Holds the timed runs of every product. */
   globally_paused: boolean
-  /** Products paused on their own: 'agentworks' (Goals), 'relays', 'work' (Crews), 'code'. */
+  /** Products paused on their own: 'agentworks' (Goals), 'work' (Crews), 'code'. */
   paused_products?: string[]
   paused_at?: string
   paused_by?: string
@@ -2801,7 +2741,7 @@ export interface SchedulerConfig {
 export interface WorkflowManifest {
   schema_version: number
   id: string
-  kind?: 'relay' | string
+  kind?: string
   relay_runtime?: 'python' | string
   relay_durability?: 'dbos' | ''
   relay_output_step_id?: string
@@ -2929,7 +2869,7 @@ export interface WorkflowContractUpgradeItem {
 
 export interface CreateWorkflowManifestRequest {
   label: string
-  kind?: 'relay' | string
+  kind?: string
   icon?: string
   workspace_path: string
   capabilities?: Partial<WorkflowCapabilities>

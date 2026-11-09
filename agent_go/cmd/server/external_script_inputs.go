@@ -30,7 +30,7 @@ func (api *StreamingAPI) externalSaveScriptInputs(w http.ResponseWriter, r *http
 		if value, present := args["inputs"]; present {
 			inputs = value
 		}
-		body, err := json.Marshal(map[string]any{"variables": inputs, "groups": args["input_presets"]})
+		body, err := json.Marshal(map[string]any{"variables": inputs, "groups": args["input_presets"], "entry_mappings": args["entry_mappings"]})
 		if err != nil {
 			externalFailure(w, err)
 			return

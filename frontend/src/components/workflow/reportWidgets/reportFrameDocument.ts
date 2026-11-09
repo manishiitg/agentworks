@@ -61,7 +61,6 @@ export function startReportFrameDocument(initial: ReportDocumentContext & { chan
     context = next
     api.workspacePath = next.workspacePath
     api.getCosts = next.dataMethods.includes('getCosts') ? options => call('getCosts', [options]) as ReturnType<NonNullable<ReportDataApi['getCosts']>> : undefined
-    api.getRelayRuns = next.dataMethods.includes('getRelayRuns') ? options => call('getRelayRuns', [options]) as ReturnType<NonNullable<ReportDataApi['getRelayRuns']>> : undefined
     for (const name of REPORT_THEME_VARS) document.documentElement.style.setProperty('--' + name, next.tokens[name] || '')
     if (next.kind === 'report') {
       if (!chat) chat = installDashboardChatWidgets(document, {

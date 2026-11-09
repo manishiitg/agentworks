@@ -147,7 +147,7 @@ func TestKnowledgebaseTokenHTTPScopesServiceIdentityAndRevocation(t *testing.T) 
 	if unrestricted.Metadata.KnowledgebaseFolders != nil || denied.Metadata.KnowledgebaseFolders == nil || len(*denied.Metadata.KnowledgebaseFolders) != 0 {
 		t.Fatalf("null and empty caps confused: %+v %+v", unrestricted.Metadata, denied.Metadata)
 	}
-	readRequest := `{"name":"brain_read","arguments":{"action":"read","entry_id":"` + entry.EntryID + `"}}`
+	readRequest := `{"name":"brain","arguments":{"action":"read","entry_id":"` + entry.EntryID + `"}}`
 	if w := request("POST", "/api/external/v1/call", readRequest, unrestricted.Token); w.Code != 200 {
 		t.Fatalf("live inherited reader denied: %d %s", w.Code, w.Body)
 	}
@@ -399,19 +399,6 @@ func TestAccessTokenIdentityFailsClosed(t *testing.T) {
 		t.Fatal("directory failure accepted")
 	}
 }
-func TestAccessTokenCannotInheritOtherBuilderSession(t *testing.T) {
-	api := tokenTestSetup(t)
-	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{ID: "one", AllWorkflows: true, Scopes: accesstokens.Scopes}}
-	for _, sid := range []string{"browser-session", "pat-two-session"} {
-		r := httptest.NewRequest("POST", "/", nil)
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-		w := httptest.NewRecorder()
-		api.externalBuilderCall(w, r, "builder_status", map[string]interface{}{"session_id": sid}, DiscoveredWorkflow{WorkspacePath: "Workflow/test"})
-		if w.Code != 404 {
-			t.Fatal("PAT inherited a session", w.Code)
-		}
-	}
-}
 func TestAccessTokenStateOutsideWorkspace(t *testing.T) {
 	tokenTestSetup(t)
 	root := t.TempDir()
@@ -464,21 +451,21 @@ func TestAccessTokenWorkflowFilterAndAccountIntersection(t *testing.T) {
 		f.api.handleExternalCall(w, adminRequest("POST", "/api/external/v1/call", string(body), claims, nil))
 		return w
 	}
-	w := call("list_workflows", map[string]any{})
+	w := call("workflow", map[string]any{"action": "list"})
 	if w.Code != 200 || strings.Contains(w.Body.String(), `"secret"`) {
 		t.Fatal("workflow scope ignored", w.Code, w.Body)
 	}
-	w = call("get_workflow", map[string]any{"workflow_id": "secret"})
+	w = call("workflow", map[string]any{"action": "get", "workflow_id": "secret"})
 	if w.Code != 404 {
 		t.Fatal("out-of-scope workflow accessible", w.Code)
 	}
 	claims.UserID = "reader"
 	claims.Username = "reader"
-	w = call("read_file", map[string]any{"workflow_id": "invoices", "path": "docs/process.md"})
+	w = call("files", map[string]any{"action": "read", "workflow_id": "invoices", "path": "docs/process.md"})
 	if w.Code != 403 {
 		t.Fatal("token scope not enforced", w.Code, w.Body)
 	}
-	w = call("list_step_code", map[string]any{"workflow_id": "invoices"})
+	w = call("files", map[string]any{"action": "code", "workflow_id": "invoices"})
 	if w.Code != 403 {
 		t.Fatal("code inventory scope not enforced", w.Code, w.Body)
 	}

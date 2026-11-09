@@ -1,5 +1,4 @@
 import { UI_CONTROL_CONTRACT } from './contract.generated'
-import { requestWorkflowPlanStepFocus } from '../../utils/workflowPlanFocus'
 
 export type UIContract = { version: number; product: string; views: readonly { id: string; label: string; actions: readonly string[]; targets: readonly string[] | null; target_kind?: string }[] }
 
@@ -22,7 +21,7 @@ export function supportedAction(a: UIAction, contract: UIContract = UI_CONTROL_C
   return (a.action === 'open' || a.action === 'refresh')
     ? (!a.target || (targetKind === 'view_section'
       ? (view.targets ?? []).includes(a.target)
-      : ((targetKind === 'plan_step_id' || targetKind === 'report_tab' || targetKind === 'workspace_file_path') && !!a.target.trim() && a.target.length <= 1024)))
+      : ((targetKind === 'report_tab' || targetKind === 'workspace_file_path') && !!a.target.trim() && a.target.length <= 1024)))
     : (view.targets ?? []).includes(a.target ?? '')
 }
 
@@ -53,7 +52,6 @@ export async function applyUIAction(
   return new Promise(resolve => {
     let done = false
     let touched = false
-    let requestedNode: Element | undefined
     const finish = (status: string, code = '') => {
       if (done) return
       done = true
@@ -80,20 +78,6 @@ export async function applyUIAction(
         const section = host.querySelector<HTMLElement>('[data-ui-view-section]')
         if (section?.dataset.uiViewSection !== action.target || section.getClientRects().length === 0) return
       }
-      if (action.view === 'flow' && action.target) {
-        // Wait for the actual node, including lazy canvas/data loading. Never
-        // interpolate a caller's target into a selector or synthesize clicks.
-        const node = Array.from(host.querySelectorAll('.react-flow__node[data-id]'))
-          .find(el => el.getAttribute('data-id') === action.target)
-        if (!node) return
-        if (requestedNode !== node) {
-          requestedNode = node
-          requestWorkflowPlanStepFocus({ workspacePath: workspace, stepId: action.target })
-        }
-        const panel = Array.from(host.querySelectorAll<HTMLElement>('[data-ui-plan-step]'))
-          .find(el => el.dataset.uiPlanStep === action.target)
-        if (!panel || panel.getClientRects().length === 0) return
-      }
       if (action.view === 'files' && action.target) {
         // Opening the Files shell is not success: wait until the requested file
         // has actually loaded in the right-side viewer. The marker is semantic
@@ -116,7 +100,7 @@ export async function applyUIAction(
     }
     const observer = new MutationObserver(check)
     const timer = setTimeout(() => finish('failed', action.target ? 'target_not_found' : 'render_failed'), Math.min(8000, expires - Date.now()))
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-ui-view', 'data-ui-view-section', 'data-ui-plan-step', 'data-ui-file-path', 'data-ui-file-ready', 'open', 'class'] })
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-ui-view', 'data-ui-view-section', 'data-ui-file-path', 'data-ui-file-ready', 'open', 'class'] })
     signal.addEventListener('abort', aborted, { once: true })
     document.addEventListener('pointerdown', interrupted, true)
     document.addEventListener('keydown', interrupted, true)

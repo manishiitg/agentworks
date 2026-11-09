@@ -21,7 +21,7 @@ import type { WorkSession } from '../products/work/workSessions'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { intersectAllowedProductSurfaces, isEnabledProductSurface, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
+import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { AGENTWORKS_SUBTITLE, AgentWorksIcon, isOwnAgentWorks } from './ui/AgentWorksIdentity'
 import { openQuickNavigation, quickNavigationItems, type QuickNavigationItem, type QuickNavigationScope } from '../utils/quickNavigation'
@@ -285,7 +285,7 @@ const activeSessionSearchText = (session?: ActiveSessionInfo): string =>
   session ? `${session.current_execution_name || ''} ${session.session_id}` : ''
 
 function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
-  const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : undefined)
+  const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'crew' ? 'work' : undefined)
   if (item.action === 'create' || item.scope === 'create') return <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
   if (surface) return <ProductSurfaceIcon surface={surface} />
   const Icon = item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
@@ -481,7 +481,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'workflow' as const,
           id: `workflow:${preset.id}`,
           label: preset.label,
-          subtitle: `${preset.workflowKind === 'relay' ? 'Flow' : 'Goal'}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
+          subtitle: `Workflow${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
           searchText: `${preset.selectedFolder!.filepath} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === workflowSurfaceForPreset(preset.id) && isWorkflowMode && preset.id === activePresetId,
           lastAccessedAt: recentPresetAccessedAt[preset.id] || (() => {
@@ -494,22 +494,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
-    const workflowChatItems: ChatTabItem[] = Object.values(agentWorksTabs).flatMap(tab => {
-      const meta = tab.metadata
-      if (meta?.mode !== 'workflow' || !meta.workflowOwnerTabID || meta.isViewOnly || meta.isScheduledRun || meta.isBotRun || meta.isExecutionRun) return []
-      const preset = workflowPresets.find(candidate => candidate.id === meta.presetQueryId)
-      if (!preset) return []
-      const activeSession = tab.sessionId ? activeSessionsByID.get(tab.sessionId) : undefined
-      return [{
-        type: 'chat' as const, id: `chat:${tab.tabId}`, label: tab.name || 'Builder',
-        subtitle: `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, ''),
-        searchText: `${preset.label} ${activeSessionSearchText(activeSession)}`, preset, tabId: tab.tabId,
-        isActive: productSurface === workflowSurfaceForPreset(preset.id) && tab.tabId === activeTabId,
-        lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0, activeSession, hasLocalActivity: tabHasRunningWork(tab),
-      }]
-    })
-
-    const listedTabIds = new Set([...chatItems, ...crewItems, ...workflowChatItems].map(item => item.tabId))
+    const listedTabIds = new Set([...chatItems, ...crewItems].map(item => item.tabId))
     const activeItems: ActiveWorkItem[] = visibleActiveSessions
       .map(session => {
         const tab = findTabForSession(allTabs, session.session_id)
@@ -545,7 +530,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       return a.label.localeCompare(b.label)
     })
 
-    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowChatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
+    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)
@@ -554,18 +539,18 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const visibleProducts = new Set(visibleProductSurfaceIDs(user?.allowed_products))
     return [...projectItems.filter(item => {
       if (item.type === 'crew') return visibleProducts.has('work')
-      if ((item.type === 'workflow' || item.type === 'chat') && item.preset) return visibleProducts.has(item.preset.workflowKind === 'relay' ? 'relays' : 'agentworks')
+      if ((item.type === 'workflow' || item.type === 'chat') && item.preset) return visibleProducts.has('agentworks')
       if (item.type === 'active') {
         if (isWorkProductSession(item.session)) return visibleProducts.has('work')
       }
-      return visibleProducts.has('agentworks') || visibleProducts.has('relays')
+      return visibleProducts.has('agentworks')
     }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems, ...(currentChatFindRoot() ? [chatFindItem] : [])]
   }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products])
 
   // Filter and sort
   const matchingItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/)
+    const scopeMatch = rawQuery.match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/)
     const scope = scopeMatch?.[1] || scopeFilter
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
@@ -575,8 +560,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           const creates = (surface: string) => item.type === 'menu' && item.action === 'create' && item.surface === surface
           if (scope === 'create') return item.type === 'menu' && item.action === 'create'
           if (scope === 'active') return item.type === 'active' || (!item.activeSession && item.hasLocalActivity)
-          if (scope === 'workflow' || scope === 'workflows') return ((item.type === 'workflow' || item.type === 'chat') && item.preset && item.preset.workflowKind !== 'relay') || creates('agentworks')
-          if (scope === 'relay' || scope === 'relays') return ((item.type === 'workflow' || item.type === 'chat') && item.preset && item.preset.workflowKind === 'relay') || creates('relays')
+          if (scope === 'workflow' || scope === 'workflows') return ((item.type === 'workflow' || item.type === 'chat') && item.preset) || creates('agentworks')
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel' || item.type === 'chat-find'
@@ -622,7 +606,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [query, scopeFilter, allItems])
 
   const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
-    const explicitScope = query.trim().match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
+    const explicitScope = query.trim().match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
     return (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
   }, [matchingItems, allItems, query, scopeFilter])
   const firstMatchRef = useRef<string | undefined>(undefined)
@@ -851,7 +835,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.label}
                       </span>
                       {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? (item.preset.workflowKind === 'relay' ? 'Flow' : 'Goal') : item.type === 'crew' ? 'Crew' : item.type === 'chat-find' ? 'search' : item.type}
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Crew' : item.type === 'chat-find' ? 'search' : item.type}
                       </span>}
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (

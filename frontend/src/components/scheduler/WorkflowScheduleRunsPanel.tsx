@@ -29,7 +29,6 @@ interface WorkflowScheduleRunsPanelProps {
   workflowScope?: WorkflowScope
   entityType?: 'workflow' | 'product'
   productProfileId?: string
-  workflowKind?: 'workflow' | 'relay'
   canManage?: boolean
   scopeNoun?: 'automation' | 'project'
   productTriggerScope?: ProductTriggerScope
@@ -43,8 +42,8 @@ interface WorkflowScheduleRunsPanelProps {
   onStatus?: (status: ScheduleStatusSnapshot) => void
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, workflowKind, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
-  const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, workflowKind, canManage, active })
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
+  const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isGloballyPaused, pauseProductLabel, isWorkflowScoped } = panel
   useEffect(() => {
     if (refreshToken) void loadJobs(true)

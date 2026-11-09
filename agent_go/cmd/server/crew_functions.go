@@ -366,9 +366,9 @@ func offeredCrewFunctions(_ context.Context, _ triggerTarget, functions []crewFu
 }
 
 // errWorkflowFunctionsAreTriggers refuses define/project_functions_delete on a
-// workflow: its functions are function triggers owned by its Builder.
+// workflow: its functions are function triggers owned by its Crew.
 func errWorkflowFunctionsAreTriggers(target triggerTarget) error {
-	return fmt.Errorf("workflow %q defines its functions as function triggers in its Builder chat (manage_workflow_webhook kind=function: a route plus typed inputs bound to workflow variables); ask its Builder to add or change one", target.Label)
+	return fmt.Errorf("workflow %q defines its functions as function triggers in its workflow (manage_workflow_webhook kind=function: a route plus typed inputs bound to workflow variables); ask the Crew's chat to add or change one", target.Label)
 }
 
 func findCrewFunction(functions []crewFunction, name string) (crewFunction, bool) {
@@ -1519,7 +1519,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		fn, ok := findCrewFunction(functions, function)
 		if !ok {
 			if len(functions) == 0 {
-				return "", fmt.Errorf("%s %q offers no functions; ask its Builder to expose one (a function trigger with typed inputs)", target.Kind, target.Label)
+				return "", fmt.Errorf("%s %q offers no functions; ask the Crew's chat to expose one (a function trigger with typed inputs)", target.Kind, target.Label)
 			}
 			return "", fmt.Errorf("%s %q has no function %q; it has: %s", target.Kind, target.Label, function, strings.Join(crewFunctionNames(functions), ", "))
 		}

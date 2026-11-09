@@ -626,173 +626,79 @@ func (hcpo *StepBasedWorkflowOrchestrator) HasBrowserCapability() bool {
 	return false
 }
 
-// CreateTodoList orchestrates the human-controlled todo planning process
-// - Single execution (no iterations)
-// - Includes validation phase (runs later in the workflow)
-// - Includes critique phase during writer validation loop
-// - Skips cleanup phase
-// - Simple direct planning approach
-// - NEW: Includes human approval loop with iterative plan refinement
+// CreateTodoList runs the saved Python script with its canonical inputs.
 func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, objective, workspacePath string) (string, error) {
-	hcpo.ApplyWorkflowLogContext(workspacePath, orchestrator.SingleSelectedGroupName(func() []string {
-		if hcpo.executionOptions == nil {
-			return nil
-		}
-		return hcpo.executionOptions.EnabledGroupNames
-	}()))
-	hcpo.GetLogger().Info(fmt.Sprintf("🚀 Starting human-controlled todo planning for objective: %s", objective))
-	hcpo.GetLogger().Info(fmt.Sprintf("🔍 [DEBUG] CreateTodoList: Starting - workspacePath=%s", workspacePath))
-
-	// Set objective and workspace path directly
-	// WorkspacePath is the base workspace path (no subdirectory)
-	// The workspace API will handle internal resolution to ../workspace-docs/ when needed
+	hcpo.ApplyWorkflowLogContext(workspacePath, "")
 	hcpo.SetObjective(objective)
 	hcpo.SetWorkspacePath(workspacePath)
-	hcpo.observeRunReferences("")
-	// Direct execution does not pass through Builder's ReadCurrentPlan.
-	// Resolve the persisted layout before selecting any saved scripts or deps.
 	if err := hcpo.loadCodeLayout(ctx); err != nil {
 		return "", err
 	}
-	hcpo.GetLogger().Info(fmt.Sprintf("🔍 [DEBUG] CreateTodoList: Objective and workspace path set to %s", workspacePath))
-
-	// PHASE 0: Check both variables and plan at start (before any prompts)
-	// Check if variables.json exists - OPTIONAL (planning agent can create it)
-	variablesPath := fmt.Sprintf("%s/variables/variables.json", hcpo.GetWorkspacePath())
-	variablesExist, existingVariablesManifest, err := hcpo.variableManager.checkExistingVariables(ctx, variablesPath)
-	if err != nil {
-		return "", fmt.Errorf("read workflow inputs: %w", err)
+	if hcpo.directCrewScript == nil {
+		return "", fmt.Errorf("This workflow needs a saved Python script. Ask your Crew to create or convert it before running it.")
 	}
-
-	if hcpo.directCrewScript != nil {
-		variablesExist = true
-		existingVariablesManifest = hcpo.directCrewScript.InputDefinitions()
+	hcpo.variablesManifest = hcpo.directCrewScript.InputDefinitions()
+	existingPlan := CrewScriptPlan(hcpo.directCrewScript, hcpo.GetWorkspacePath())
+	if hcpo.directCrewScriptConfig != nil {
+		existingPlan.Steps[0].(*ScriptedPlanStep).crewScript = hcpo.directCrewScriptConfig
 	}
-	var templatedObjective string
-	if variablesExist && existingVariablesManifest != nil {
-		// Variables exist - use them
-		hcpo.variablesManifest = existingVariablesManifest // Store in orchestrator so formatVariableNames/Values can access it
-		templatedObjective = hcpo.GetObjective()
-		hcpo.GetLogger().Info(fmt.Sprintf("✅ Using existing variables.json with %d variables", len(existingVariablesManifest.Variables)))
-	} else {
-		// No variables.json - planning agent can extract variables if needed
-		hcpo.variablesManifest = nil
-		// Use original objective (no templating)
-		templatedObjective = hcpo.GetObjective()
-	}
-
-	// Check if plan.json exists - REQUIRED for execution
-	// Use relative path - ReadWorkspaceFile auto-prepends workspacePath
-	planPath := "planning/plan.json"
-	planExists, existingPlan, err := hcpo.checkExistingPlan(ctx, planPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to check for existing plan: %w", err)
-	}
-	if !planExists && hcpo.directCrewScript != nil {
-		existingPlan = CrewScriptPlan(hcpo.directCrewScript, hcpo.GetWorkspacePath())
-		if hcpo.directCrewScriptConfig != nil {
-			existingPlan.Steps[0].(*ScriptedPlanStep).crewScript = hcpo.directCrewScriptConfig
-		}
-		planExists = true
-	}
-	if !planExists {
-		return "", fmt.Errorf("plan.json not found at %s - planning must be run first as a separate phase", planPath)
-	}
-
 	if err := hcpo.hydrateCrewScripts(ctx, existingPlan); err != nil {
 		return "", err
 	}
-
-	// Plan exists - use it
-
-	// Safety check: Ensure plan has steps
-	if len(existingPlan.Steps) == 0 {
-		hcpo.GetLogger().Error(fmt.Sprintf("❌ Existing plan has no steps"), nil)
-		return "", fmt.Errorf(fmt.Sprintf("existing plan has no steps"), nil)
+	if err := hcpo.validateScriptSecrets(hcpo.directCrewScript); err != nil {
+		return "", err
 	}
 
-	// Validate inputs before creating a run or dispatching a step.
-	var variableValues map[string]string
-	if hcpo.isRelayExecution() {
-		variableValues, err = hcpo.relayVariableValues()
-	} else {
-		opts := hcpo.executionOptions
-		preset := ""
-		var inputs map[string]string
-		if opts != nil {
-			if opts.EnabledGroupNames != nil {
-				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
-			}
-			preset, inputs = opts.InputPreset, cloneWorkflowStringMap(opts.Inputs)
-			if inputs == nil {
-				inputs = map[string]string{}
-			}
-			for name, value := range opts.WebhookVariables {
-				inputs[name] = value
-			}
+	// Inputs and presets belong to script.json. Old plan and variable files
+	// never replace the current saved script or its declared inputs.
+	opts := hcpo.executionOptions
+	preset := ""
+	var inputs map[string]string
+	if opts != nil {
+		if opts.EnabledGroupNames != nil {
+			return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 		}
-		if opts != nil && opts.ResumeFromStep > 0 {
-			if !opts.AllowRunContinuation {
-				return "", fmt.Errorf("only a Builder can continue an existing run; start a new run instead")
-			}
-			variableValues, err = hcpo.readExistingRunInputs(ctx, opts.SelectedRunFolder)
-		} else if opts != nil && opts.ResolvedInputs != nil {
-			variableValues = cloneWorkflowStringMap(opts.ResolvedInputs)
-		} else {
-			variableValues, err = ResolveWorkflowInputs(hcpo.variablesManifest, preset, inputs)
-			if err == nil {
-				err = ValidateWorkflowLaunchInputs(hcpo.variablesManifest, variableValues)
-			}
+		preset, inputs = opts.InputPreset, cloneWorkflowStringMap(opts.Inputs)
+		if inputs == nil {
+			inputs = map[string]string{}
+		}
+		for name, value := range opts.WebhookVariables {
+			inputs[name] = value
+		}
+	}
+	var variableValues map[string]string
+	var err error
+	if opts != nil && opts.ResumeFromStep > 0 {
+		if !opts.AllowRunContinuation {
+			return "", fmt.Errorf("Only the Crew owner can continue an existing run; start a new run instead")
+		}
+		variableValues, err = hcpo.readExistingRunInputs(ctx, opts.SelectedRunFolder)
+	} else if opts != nil && opts.ResolvedInputs != nil {
+		variableValues = cloneWorkflowStringMap(opts.ResolvedInputs)
+	} else {
+		variableValues, err = ResolveWorkflowInputs(hcpo.variablesManifest, preset, inputs)
+		if err == nil {
+			err = ValidateWorkflowLaunchInputs(hcpo.variablesManifest, variableValues)
 		}
 	}
 	if err != nil {
 		return "", err
 	}
+
 	if hcpo.GetWorkspaceEnvRef() == nil {
 		hcpo.SetWorkspaceEnvRef(map[string]string{})
 	}
 	hcpo.variableValues = variableValues
 	SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, variableValues)
 
-	// Switch to templated objective for all subsequent phases
-	hcpo.SetObjective(templatedObjective)
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ Using templated objective with {{VARIABLES}}: %s", templatedObjective))
-
-	// Populate runtime fields on plan steps for execution
-	stepConfigs, err := hcpo.ReadStepConfigs(ctx)
-	if err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to read step_config.json: %v (using defaults)", err))
-		stepConfigs = []StepConfig{}
-	}
-	for _, step := range existingPlan.Steps {
-		if err := populateRuntimeFields(step, stepConfigs); err != nil {
-			return "", fmt.Errorf("failed to populate runtime fields: %w", err)
-		}
-	}
-	breakdownSteps := existingPlan.Steps // Use PlanStepInterface directly
-	if err := bindWebhookStep(hcpo.executionOptions, breakdownSteps); err != nil {
-		return "", err
-	}
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ Prepared existing plan: %d steps with runtime fields populated", len(breakdownSteps)))
-
-	// Pin this execution to its loaded plan; builder reads cannot replace it.
+	breakdownSteps := existingPlan.Steps
 	ctx = withExecutionPlan(ctx, existingPlan)
-	if hcpo.isRelayExecution() {
-		return hcpo.runRelayExecution(ctx, breakdownSteps)
-	}
 
-	// Note: Learning integration phase removed - execution agent now auto-discovers learning files and scripts
-
-	execOpts := hcpo.executionOptions
 	selectedRunFolder, err := hcpo.prepareCurrentRun(ctx, hcpo.GetWorkspacePath())
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve run folder: %w", err)
 	}
 	hcpo.selectedRunFolder = selectedRunFolder
-	preset := ""
-	if execOpts != nil {
-		preset = execOpts.InputPreset
-	}
 	hcpo.variableValues, err = hcpo.resolveRunInputs(ctx, selectedRunFolder, preset, variableValues)
 	if err != nil {
 		return "", err

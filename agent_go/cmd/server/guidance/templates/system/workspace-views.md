@@ -47,11 +47,10 @@ shared panel skill for other tasks. Inspect the actual question before answering
 a decision. Discussion alone does not select an option; saving an answer and
 implementing the chosen change are separate results.
 
-## Flows and boundaries
+## Product boundaries
 
-Flows use `relay-builder`, `panel-plan` and `panel-runs`: a Python/DBOS
-graph, source code and versioned calls, not a Goal step plan. Crew uses the
-separate `work-ui-control` skill.
+Crew uses the separate `work-ui-control` skill. Its Python workflows use saved
+source outlines and recorded runs; read `python-workflows` for that contract.
 
 - Opening or refreshing a panel changes presentation only. Use the existing
   authorized management tool for configuration, files, data or execution.

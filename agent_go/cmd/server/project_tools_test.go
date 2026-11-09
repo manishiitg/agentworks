@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -68,27 +67,15 @@ func testWorkspaceCreate(kind string, spec map[string]any) map[string]any {
 	for k, v := range spec {
 		input[k] = v
 	}
-	key := ""
-	if kind == "relay" {
-		key = externalArg(input, "submission_id")
-		delete(input, "submission_id")
-	}
-	if key == "" {
-		raw, _ := json.Marshal(input)
-		key = fmt.Sprintf("%x", sha256.Sum256(raw))
-	}
+	raw, _ := json.Marshal(input)
+	key := fmt.Sprintf("%x", sha256.Sum256(raw))
 	return map[string]any{"action": "create", "kind": kind, "spec": input, "idempotency_key": key}
 }
-func (f *externalRelayFixture) createRelay(t *testing.T, raw string, spec map[string]any, want int) map[string]any {
-	t.Helper()
-	return f.relayCall(t, raw, "workspace", testWorkspaceCreate("relay", spec), want)
-}
-
 func newProjectToolsFixture(t *testing.T) *externalToolsFixture {
 	t.Helper()
 	tokenTestSetup(t)
 	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator","products":["agentworks","work","relays"]},{"id":"other","role":"creator","products":["agentworks","work","relays"]},{"id":"reader","role":"viewer","products":["agentworks","work","relays"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator","products":["agentworks","work"]},{"id":"other","role":"creator","products":["agentworks","work"]},{"id":"reader","role":"viewer","products":["agentworks","work"]}]}`)
 	f.api.logger = loggerv2.NewNoop()
 	f.write(t, "Workflow/source/workflow.json", `{"schema_version":1,"id":"source","label":"Shared Goal","created_by":"other","access":{"owners":["other"],"readers":["owner"]}}`)
 	f.write(t, "Workflow/source/planning/plan.json", `{"steps":[]}`)
@@ -103,7 +90,7 @@ func projectTestToken(t *testing.T) *UserClaims {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	token, _, err := store.Issue(t.Context(), accesstokens.Token{Name: "Creation/copy test", UserID: "owner", Username: "owner", Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute", "relays:write", "crews:read", "crews:write"}, AllCrews: true, AllWorkflows: true, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	token, _, err := store.Issue(t.Context(), accesstokens.Token{Name: "Creation/copy test", UserID: "owner", Username: "owner", Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute", "crews:read", "crews:write"}, AllCrews: true, AllWorkflows: true, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,8 +106,6 @@ func projectCreateTestArgs(kind, key string) map[string]any {
 	switch kind {
 	case "crew":
 		spec = map[string]any{"name": "Research " + key, "purpose": "Research sample work"}
-	case "relay":
-		spec = map[string]any{"label": "Process " + key}
 	}
 	return map[string]any{"kind": kind, "spec": spec, "idempotency_key": key}
 }
@@ -130,36 +115,17 @@ func projectCreateTestArgs(kind, key string) map[string]any {
 func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	f := newProjectToolsFixture(t)
 	caller := &UserClaims{UserID: "owner", Username: "owner"}
-	for _, surface := range []string{"goal", "crew", "relay"} {
+	for _, surface := range []string{"crew"} {
 		t.Run(surface, func(t *testing.T) {
 			draft := &productSurfaceDraft{}
-			if surface == "crew" {
-				profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
-				if err != nil {
-					t.Fatal(err)
-				}
-				resolved := &resolvedAgentProfile{Definition: profile, ToolCallerClaims: caller}
-				if err = f.api.registerAgentProfileTools(draft, newProductToolGate(resolved), resolved, "owner", "create-crew-chat", externalCommandCrewRoot, false, QueryRequest{}); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				root := "Workflow/native-" + surface
-				f.write(t, root+"/workflow.json", fmt.Sprintf(`{"schema_version":1,"id":"native-%s","label":"Source","created_by":"owner","access":{"owners":["owner"]}}`, surface))
-				f.write(t, root+"/planning/plan.json", `{"steps":[]}`)
-				session, err := workflow.NewWorkshopChatSession(t.Context(), &workflow.WorkshopConfig{Logger: f.api.logger, WorkspacePath: root})
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer session.Close()
-				sid := "native-create-" + surface
-				f.api.workshopChatSessions.Store(sid, session)
-				vars := map[string]string{"WorkshopMode": "workshop"}
-				if surface == "relay" {
-					vars["WorkflowKind"] = "relay"
-				}
-				if err = f.api.installWorkflowPhaseTools(context.WithValue(t.Context(), UserContextKey, caller), draft, sid, "owner", "workflow-builder", root, "", vars, nil, nil, nil, nil, nil, QueryRequest{}, false); err != nil {
-					t.Fatal(err)
-				}
+
+			profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved := &resolvedAgentProfile{Definition: profile, ToolCallerClaims: caller}
+			if err = f.api.registerAgentProfileTools(draft, newProductToolGate(resolved), resolved, "owner", "create-crew-chat", externalCommandCrewRoot, false, QueryRequest{}); err != nil {
+				t.Fatal(err)
 			}
 			tool, ok := draft.tools["create_project"]
 			if !ok {
@@ -168,7 +134,7 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 			if !reflect.DeepEqual(tool.params, projectCreateDefinition().InputSchema) {
 				t.Fatal("native create schema differs from the common action")
 			}
-			for _, kind := range []string{"crew"} { // Relay creation is parked (PLAT-746-265).
+			for _, kind := range []string{"crew"} {
 				args := projectCreateTestArgs(kind, surface+"-new-"+kind)
 				first, err := tool.exec(t.Context(), args)
 				if err != nil {
@@ -197,7 +163,7 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	srv := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
-	for _, kind := range []string{"crew"} { // Relay creation is parked (PLAT-746-265).
+	for _, kind := range []string{"crew"} {
 		args := projectCreateTestArgs(kind, "mcp-new-"+kind)
 		args["action"] = "create"
 		got := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workspace", "arguments": args})
@@ -310,11 +276,13 @@ func TestProjectCopyRequiresSourceReadAndDestinationWrite(t *testing.T) {
 	for i := 0; i < 65; i++ {
 		f.write(t, fmt.Sprintf("Workflow/source/many/file-%02d.txt", i), "sample")
 	}
-	if _, err = tool.exec(t.Context(), map[string]any{"source_project": "source", "source_path": "many", "target_project": "work:team", "target_path": "too-many"}); err == nil {
-		t.Fatal("copied over the file count limit")
+	// PLAT-825: a007cd577 removed the artificial 64-file copy limit.
+	// Keep the larger-folder success case along with the secret/access refusals.
+	if _, err = tool.exec(t.Context(), map[string]any{"source_project": "source", "source_path": "many", "target_project": "work:team", "target_path": "many-copy"}); err != nil {
+		t.Fatalf("copy of a larger shared folder failed: %v", err)
 	}
-	if _, err = os.Stat(filepath.Join(f.docs, externalCommandCrewRoot, "too-many")); !os.IsNotExist(err) {
-		t.Fatal("over-limit copy wrote a partial folder")
+	if got := f.read(t, externalCommandCrewRoot+"/many-copy/file-64.txt"); got != "sample" {
+		t.Fatalf("copy lost the last file: %q", got)
 	}
 	// Exercise the public MCP copy action as well, through real workspace I/O.
 	srv := serveExternalMCP(t, f.api, claims)

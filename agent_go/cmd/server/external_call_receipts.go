@@ -32,7 +32,7 @@ func (api *StreamingAPI) externalRetryReceipt(w http.ResponseWriter, r *http.Req
 	identity := uuid.NewSHA1(uuid.NameSpaceURL, []byte("external-call\x00"+claims.UserID+"\x00"+tool.Name+"\x00"+key)).String()
 	lock := productConversationRegistryMutex("external-call:" + identity)
 	lock.Lock()
-	store, err := openExternalBuilderStore()
+	store, err := openMCPOAuthStore()
 	if err == nil {
 		_, err = store.db.ExecContext(r.Context(), `CREATE TABLE IF NOT EXISTS external_call_receipts (identity TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, status INTEGER NOT NULL, body BLOB NOT NULL)`)
 	}

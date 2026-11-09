@@ -52,7 +52,7 @@ function CurrentHomeRecentWork({ personalAgentId }: { personalAgentId?: string }
     if (!current) return []
     const chats = sidebarChats({ tabs, active, recent: current.recent, projects: current.projects, projectInventoryKnown: current.inventoryKnown, presets, allowed, allowedWorkflowIds: user?.allowed_workflow_ids })
     return sidebarWorkspaceGroups(chats, current.projects, presets, true).flatMap(group => {
-      if (!['work', 'agentworks', 'relays'].includes(group.surface) || group.id === `work:${personalAgentId}`) return []
+      if (!['work', 'agentworks'].includes(group.surface) || group.id === `work:${personalAgentId}`) return []
       const row = group.chats.find(item => item.projectId || item.workflowId)
       const project = current.projects.find(item => `${item.surface}:${item.id}` === group.id)
       const id = row?.projectId || row?.workflowId || project?.id

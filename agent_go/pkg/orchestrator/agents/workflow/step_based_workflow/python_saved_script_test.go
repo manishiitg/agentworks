@@ -54,7 +54,7 @@ func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
 	c.SetWorkspaceEnvRef(map[string]string{"MCP_API_TOKEN": "saved-script-fixture-token"})
 	c.variableValues = map[string]string{"parent_only": "must not become a child's input"}
 	scripts := pythonSavedScripts{}
-	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required", "failing"} {
+	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required", "failing", "timed-out"} {
 		definition := CrewScriptDefinition{ID: id, Name: id, Inputs: []Variable{{Name: "count", Type: "integer", Value: "3"}, {Name: "next", Type: "string"}}, Outputs: []string{"result.json"}}
 		if id == "required" {
 			definition.Inputs = []Variable{{Name: "count", Type: "integer", Required: true}}
@@ -89,6 +89,11 @@ print('saved-script-finished')
 		if id == "failing" {
 			source = "raise RuntimeError('fixture child failure')\n"
 		}
+		if id == "timed-out" {
+			seconds := 1
+			definition.TimeoutSeconds = &seconds
+			source = "import time\nprint('timeout-script-started', flush=True)\ntime.sleep(30)\nraise RuntimeError('timeout did not stop the script')\n"
+		}
 		write("code/"+id+"/main.py", source)
 		raw, _ := json.Marshal(definition)
 		write("code/"+id+"/script.json", string(raw))
@@ -96,6 +101,11 @@ print('saved-script-finished')
 	}
 	// The caller is A. Its extra launch value must not leak into B's defaults.
 	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A", Inputs: []Variable{{Name: "parent_only", Type: "string"}}}
+	if err := c.upsertRunMetadata(t.Context(), c.selectedRunFolder, func(metadata map[string]interface{}) {
+		metadata["source_snapshot_hash"] = "main-script-snapshot"
+	}); err != nil {
+		t.Fatal(err)
+	}
 	parent := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "A", Title: "A"}, Script: "A", crewScript: &CrewScriptConfiguration{Definition: *c.directCrewScript}}
 	handlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
 	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +170,9 @@ print('saved-script-finished')
 	if !strings.Contains(read(call("default-b", "B", map[string]interface{}{}, false)), `"count": 3`) {
 		t.Fatal("child defaults lost")
 	}
+	if metadata, err := c.ReadWorkspaceFile(t.Context(), "runs/"+c.selectedRunFolder+"/run_metadata.json"); err != nil || !strings.Contains(metadata, `"source_snapshot_hash": "main-script-snapshot"`) {
+		t.Fatalf("child call replaced its main script's source hash: %s %v", metadata, err)
+	}
 	for _, invalid := range []struct {
 		id     string
 		inputs map[string]interface{}
@@ -176,6 +189,17 @@ print('saved-script-finished')
 	}
 	if reply := call("started-failure", "failing", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "fixture child failure") || reply.Value == nil || !strings.Contains(reply.Text, "did not complete") {
 		t.Fatalf("launched failure lost honest receipt: %+v", reply)
+	}
+	// PLAT-746-482: enforce the declared limit through the actual Python/shell
+	// path, not only a captured timeout parameter or a simulated timeout result.
+	timeoutStart := time.Now()
+	if reply := call("whole-script-timeout", "timed-out", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "1-second limit") {
+		t.Fatalf("saved script ignored its whole-process limit: %+v", reply)
+	} else if log, err := os.ReadFile(reply.LogFile); err != nil || !strings.Contains(string(log), "timeout-script-started") || strings.Contains(string(log), "timeout did not stop") {
+		t.Fatalf("timeout lost actual execution evidence: %s %v", log, err)
+	}
+	if time.Since(timeoutStart) > 15*time.Second {
+		t.Fatal("declared one-second timeout did not bound the running Python process")
 	}
 	if reply := call("self", "A", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "A → A") {
 		t.Fatalf("self recursion: %+v", reply)

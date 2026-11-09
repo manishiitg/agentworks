@@ -68,7 +68,7 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 		t.Fatalf("a function guest turn keeps its outward tools: %q", msg)
 	}
 	common.SetSessionCrewAskReadOnly(sid, true)
-	for _, tool := range []string{"execute_shell_command", "send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "project_functions_call", "slack"} {
+	for _, tool := range []string{"execute_shell_command", "send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "project_functions_define", "project_functions_reply", "slack"} {
 		if msg := readerDeniedToolRefusal(ctx, tool); msg == "" {
 			t.Errorf("%s must be refused in a read-only ask", tool)
 		}
@@ -213,8 +213,10 @@ func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
 			t.Errorf("%s must be allowed: it is how a non-owner acts", tool)
 		}
 	}
-	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["project_functions_call"] {
-		t.Error("no shell and no calls to other Crews or workflows in a non-owner's chat")
+	// project_functions_call is allowed above: in a non-owner's chat it is the published-function tool (this Crew only), registered by
+	// registerCrewPublishedFunctionTools, not the owner's call of other Crews and workflows.
+	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["project_functions_define"] || crewAskAllowedTools["project_functions_reply"] {
+		t.Error("no shell, no defining functions and no replying to other Crews' calls in a non-owner's chat")
 	}
 	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, "functions` action=call") || !strings.Contains(notice, "Run mode") || !strings.Contains(notice, "check whether one of the Crew's functions answers the question better") || !strings.Contains(notice, "Unknown means ask, not run") {
 		t.Fatalf("the notice must teach the published-function tool:\n%s", notice)

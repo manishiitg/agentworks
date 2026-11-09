@@ -51,8 +51,7 @@ import { usePlanData } from './workflow/hooks/usePlanData'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { selectTerminalEvents, toolErrorContextByEventID } from '../utils/terminalEventTranscript'
 import { formatToolCallArguments } from '../utils/toolCallFormatting'
-import type { PlanStep } from '../utils/stepConfigMatching'
-import { requestWorkflowPlanStepFocus } from '../utils/workflowPlanFocus'
+import type { PlanStep } from '../utils/workflowPlan'
 import { mergeNewerTerminalEventPage, mergeTerminalEventPages, terminalEventSequenceBounds } from '../utils/terminalEventPage'
 import { projectExecutionTreeTerminals } from '../utils/terminalExecutionProjection'
 import { hydrateTabEvents } from '../utils/sessionRestore'
@@ -3722,21 +3721,6 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
     || (selectedTerminalView ? planTitleForTerminal(selectedTerminalView) : '')
     || (selectedTerminalView ? terminalRailTitle(selectedTerminalView) : '')
     || (selectedTerminalView ? formatTerminalTitle(selectedTerminalView) : '')
-  const showSelectedPlanStep = useCallback(() => {
-    if (!selectedPlanStep) return
-
-    // Match the existing Plan toolbar behavior before asking the mounted canvas
-    // to reveal the node and its read-only detail sidebar. openWorkspaceView
-    // shows the pane, sets the view, and minimizes the file workspace.
-    const workflowStore = useWorkflowStore.getState()
-    workflowStore.openWorkspaceView('flow')
-    workflowStore.setFocusedPane('preview')
-    requestWorkflowPlanStepFocus({
-      stepId: selectedPlanStep.id,
-      workspacePath: terminalWorkflowPathFilter,
-    })
-  }, [selectedPlanStep, terminalWorkflowPathFilter])
-
   const priorArchivedTurns = useMemo(
     () => (selectedTerminalView ? findPriorArchivedTurns(selectedTerminalView, terminals) : []),
     [selectedTerminalView, terminals],
@@ -4999,17 +4983,6 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
                       >
                         {selectedHeaderTitle}
                       </span>
-                      {selectedPlanStep && (
-                        <button
-                          type="button"
-                          onClick={showSelectedPlanStep}
-                          className="inline-flex shrink-0 items-center justify-center rounded p-0.5 text-neutral-500 hover:bg-neutral-800/80 hover:text-neutral-100"
-                          title="Show step in plan"
-                          aria-label={`Show ${selectedTerminalDisplayTitle} in plan`}
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      )}
                       {!showFormattedView && (
                         <>
                           <span className="shrink-0 opacity-35" aria-hidden="true">·</span>

@@ -46,7 +46,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'relays', 'knowledgebase', 'mcp-gateway'], admin = true, seed?: () => void) {
+async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'knowledgebase', 'mcp-gateway'], admin = true, seed?: () => void) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: allowed, gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
@@ -70,11 +70,9 @@ it('defaults to running workflows and Crews before idle work, with browse and na
       crew: { tabId: 'crew', name: 'Crew', createdAt: 2, isSyntheticTurn: true, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Running Crew' } },
     } as never, activeSessionsCache: [
       { session_id: 'workflow-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'workflow' },
-      { session_id: 'relay-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'relay' },
     ] as never })
     useGlobalPresetStore.setState({ workflowPresets: [
       { id: 'workflow', label: 'Running workflow', selectedFolder: { filepath: 'Workflow/example' } },
-      { id: 'relay', label: 'Running Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/relay' } },
     ] as never })
   })
   const rows = [...host.querySelectorAll('[data-navigation-id]')]
@@ -86,7 +84,6 @@ it('defaults to running workflows and Crews before idle work, with browse and na
   expect(rows[3].textContent).toContain('Idle current')
   expect(rows[4].getAttribute('data-navigation-id')).toBe('browse:active')
   expect(host.querySelector('[data-navigation-id="browse:workflows"]')).not.toBeNull()
-  expect(host.querySelector('[data-navigation-id="browse:relays"]')).toBeNull()
   expect(host.querySelector('[data-navigation-id="menu:providers"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Quick navigation shortcuts"]')?.textContent).not.toContain('@')
 })
@@ -161,11 +158,10 @@ it('keeps named panel commands ahead of recently visited incidental matches, wit
   expect(ids).toContain('crew:recent')
 })
 
-it('browses workflows without offering disabled Flows from footer icons without requiring typed scopes', async () => {
+it('browses workflows from footer icons without requiring typed scopes', async () => {
   const { host, onClose } = await renderNavigation('', undefined, true, () => {
     useGlobalPresetStore.setState({ workflowPresets: [
       { id: 'workflow', label: 'Daily report', selectedFolder: { filepath: 'Workflow/report' } },
-      { id: 'relay', label: 'Invoice Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/invoice' } },
     ] as never })
   })
   const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
@@ -173,7 +169,6 @@ it('browses workflows without offering disabled Flows from footer icons without 
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow'])
   expect(host.querySelector('input')!.value).toBe('')
   expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All Goals')
-  expect(shortcuts.querySelector('[aria-label="All Flows"]')).toBeNull()
   expect(onClose).not.toHaveBeenCalled()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show all work and navigation"]')!.click())
   expect(host.querySelector('[data-navigation-id="browse:crew"]')).not.toBeNull()
@@ -294,7 +289,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
   open.mockClear(); onClose.mockClear()
   const row = host.querySelector('[data-navigation-id="panel:files"]')!
   await act(async () => {
-    useAuthStore.setState({ user: { allowed_products: ['relays'] } as never })
+    useAuthStore.setState({ user: { allowed_products: [] } as never })
     row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
   })
   expect(open).not.toHaveBeenCalled()
@@ -341,20 +336,20 @@ it('retains a Crew creation request through lazy mounting, opens the real form o
   expect(opened).toHaveBeenCalledOnce()
   await act(async () => {
     useCommandDialogStore.getState().requestProductCreate('work')
-    useProductSurfaceStore.getState().setProductSurface('relays')
+    useProductSurfaceStore.getState().setProductSurface('agentworks')
   })
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
   await act(async () => {
-    useCommandDialogStore.getState().requestProductCreate('relays')
-    openProductWorkspace('relays')
+    useCommandDialogStore.getState().requestProductCreate('work')
+    openProductWorkspace('work')
   })
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
 })
 
 it('hides creation for unavailable products and respects the per-product create gate at activation time', async () => {
   // Each product has its own create permission (PLAT-767): this account may create Crew projects only.
-  const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'work'], false, () => {
-    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { work: true }, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'work'] } as never })
+  const { host } = await renderNavigation('@create ', ['agentworks', 'work'], false, () => {
+    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { work: true }, can_write_workflows: true, allowed_products: ['agentworks', 'work'] } as never })
   })
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:work'])
   const crew = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === 'create:work')!
@@ -366,7 +361,7 @@ it('hides creation for unavailable products and respects the per-product create 
 })
 
 
-const localProducts = ['agentworks', 'work', 'relays', 'knowledgebase', 'mcp-gateway']
+const localProducts = ['agentworks', 'work', 'knowledgebase', 'mcp-gateway']
 
 it.each([false, true])('filters Ctrl+K products for local server-product opt-in=%s', async optIn => {
   const { host } = await renderNavigation('@products ', localProducts, true, () => {
@@ -485,23 +480,6 @@ it('keeps same-named projects separate and a matching child selected beneath its
   expect(useChatStore.getState().activeTabId).toBe('p2')
 })
 
-it.each(['goal'])('finds a named %s Builder chat under its project and opens that exact chat', async kind => {
-  const { host, onClose } = await renderNavigation(`@${kind === 'relay' ? 'relays' : 'workflows'} Research`, ['agentworks', 'relays'], false, () => {
-    useGlobalPresetStore.setState({ workflowPresets: [{ id: 'plan', label: 'Example project', workflowKind: kind === 'relay' ? 'relay' : undefined, selectedFolder: { filepath: 'Workflow/example' } }] as never })
-    useChatStore.setState({ chatTabs: { research: { tabId: 'research', name: 'Research', createdAt: 1, config: {}, events: [], metadata: { mode: 'workflow', presetQueryId: 'plan', phaseId: 'workflow-builder', workflowOwnerTabID: 'owner-tab' } } } as never })
-  })
-  const rows = [...host.querySelectorAll('[role="option"]')]
-  expect(rows).toHaveLength(2)
-  expect(rows[0].getAttribute('data-navigation-id')).toBe('workflow:plan')
-  expect(rows[0].textContent).toContain('Example project')
-  expect(rows[1].getAttribute('data-navigation-parent')).toBe('workflow:plan')
-  expect(rows[1].getAttribute('aria-selected')).toBe('true')
-  await act(async () => { host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
-  expect(useChatStore.getState().activeTabId).toBe('research')
-  expect(useProductSurfaceStore.getState().productSurface).toBe(kind === 'relay' ? 'relays' : 'agentworks')
-  expect(onClose).toHaveBeenCalledOnce()
-})
-
 it('omits global Goal activity from navigation and search', async () => {
   for (const query of ['', 'Goal activity']) {
     const { host } = await renderNavigation(query)
@@ -516,7 +494,7 @@ it('keeps Home during creation instead of navigating to a remembered project', a
     for (const surface of ['work'] as const) {
       window.history.replaceState({}, '', '/home')
       useProductSurfaceStore.setState({ selectedWorkProjectId: 'existing-crew' })
-      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal', workflowKind: 'workflow' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
+      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
       const creation = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(item => item.id === `create:${surface}`)!
       await act(async () => {
         expect(openQuickNavigation(creation)).toBe(true)

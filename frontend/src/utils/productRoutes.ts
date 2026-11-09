@@ -2,7 +2,7 @@ import type { ProductSurface } from '../products/productSurfaceConfig'
 
 export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; overview?: boolean; agent?: string }
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
-  agentworks: '/goals', relays: '/relays', work: '/crew',
+  agentworks: '/goals', work: '/crew',
   knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
 }
 // The product was called Bullpen; its old address still opens it (and is shown as /agentbridge).
@@ -54,14 +54,14 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
     if (surface === 'bullpen' && parts.length === 2 && parts[1] === 'connect') view = 'setup'
     else {
       const project = surface === 'work'
-      if (!overview && parts[0] !== 'agentworks' && surface !== 'relays' && !project) return undefined
+      if (!overview && parts[0] !== 'agentworks' && !project) return undefined
       const offset = project ? 2 : 1
       if (project && parts[1] !== 'projects') return undefined
       id = parts[offset]
       if (!id || !segment(id) || parts.length > offset + 2) return undefined
       if (parts.length === offset + 2) {
         if (parts[offset + 1] !== 'dashboard') return undefined
-        view = surface === 'agentworks' || surface === 'relays' ? 'report' : 'dashboard'
+        view = surface === 'agentworks' ? 'report' : 'dashboard'
       }
     }
   }

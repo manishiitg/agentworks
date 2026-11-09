@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 import NotifyBell from './topbar/NotifyBell'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
-import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
+import { Settings, Copy, Eye } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
-import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
 import { hasProductCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
 import { useModeStore } from '../stores/useModeStore'
 import { useGlobalPresetStore, usePresetApplication, usePresetManagement } from '../stores/useGlobalPresetStore'
@@ -56,7 +55,6 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
     useCodeExecutionMode: caps?.use_code_execution_mode || false,
     llmConfig: caps?.llm_config ? { ...caps.llm_config } : undefined,
     employee_id: manifest.ownership?.employee_id ?? undefined,
-    workflowKind: manifest.kind === 'relay' ? 'relay' : 'workflow',
   }
 }
 
@@ -75,7 +73,6 @@ interface ModePresetBarProps {
 
 export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, activityMonitorInWorkspace = false }) => {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
-  const isRelaySurface = productSurface === 'relays'
   const hasProductSchedules = ['agentworks', 'work'].includes(productSurface)
   const { selectedModeCategory, setModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
     selectedModeCategory: state.selectedModeCategory,
@@ -90,8 +87,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     agentMode: state.agentMode,
   })))
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
-  // Workflows and Flows each have their own create permission (PLAT-767).
-  const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, isRelaySurface ? 'relays' : 'agentworks'))
+  // Workflow creation follows the existing account permission.
+  const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, 'agentworks'))
   const schedulerPaused = useGlobalSchedulerPaused(productSurface)
   // Use toolList to get all available servers, not just enabled ones
   const toolList = useMCPStore(state => state.toolList)
@@ -122,7 +119,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const selectedPreset = presetModeCategory === null
     ? null
     : getActivePreset(presetModeCategory)
-  const activePreset = selectedPreset && (selectedPreset.workflowKind === 'relay') === isRelaySurface ? selectedPreset : null
+  const activePreset = selectedPreset
   const activeWorkspacePath = activePreset?.selectedFolder?.filepath?.replace(/\/+$/, '')
   const activeWorkflowAccess = useWorkflowManifestStore(state =>
     activeWorkspacePath ? state.workflows.find(workflow => workflow.workspace_path === activeWorkspacePath)?.my_access : undefined,
@@ -136,9 +133,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const allPresetsForMode = presetModeCategory === null
     ? []
     : getPresetsForMode(presetModeCategory)
-  const presetsForMode = selectedModeCategory === 'workflow'
-    ? allPresetsForMode.filter(preset => (preset.workflowKind === 'relay') === isRelaySurface)
-    : allPresetsForMode
+  const presetsForMode = allPresetsForMode
 
   const [showPresetDropdown, setShowPresetDropdown] = useState(false)
   const [showPresetModal, setShowPresetModal] = useState(false)
@@ -213,39 +208,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     setShowPresetModal(true)
   }, [])
 
-  // Keep the create action discoverable beside the automation selector. It is
-  // intentionally rendered for accounts without create access too, but the
-  // account-level create permission keeps the action disabled rather than
-  // opening a form that the server can never save.
-  // New automations are Python scripts made in a Crew's chat (PLAT-746); only Flows are still created here.
-  const handleAddWorkflow = useCallback(() => {
-    if (!isRelaySurface) return
-    if (!canCreateWorkflows) {
-      useChatStore.getState().addToast(
-        'Your account can use existing automations but cannot create new ones. Ask an administrator to enable automation creation.',
-        'info',
-      )
-      return
-    }
-    setEditingPreset(null)
-    setShowPresetDropdown(false)
-    setShowPresetModal(true)
-    setWorkspaceMinimized(true)
-  }, [canCreateWorkflows, isRelaySurface, setWorkspaceMinimized])
-
-  useProductCreateRequest(
-    !reduced && presetModeCategory === 'workflow' && productSurface === 'relays' ? productSurface : null,
-    handleAddWorkflow,
-  )
-
-  // Intro pages reuse the same creation dialog and permission check as the plus button.
-  const showPresetCreate = useCommandDialogStore(s => s.showPresetCreate)
-  useEffect(() => {
-    if (!showPresetCreate || presetModeCategory !== 'workflow' || reduced) return
-    useCommandDialogStore.getState().closeDialog('presetCreate')
-    handleAddWorkflow()
-  }, [showPresetCreate, presetModeCategory, reduced, handleAddWorkflow])
-
   // Listen for external trigger to open preset settings (e.g. from workflow toolbar)
   const showPresetSettings = useCommandDialogStore(s => s.showPresetSettings)
   useEffect(() => {
@@ -309,8 +271,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     useCodeExecutionMode?: boolean,
     selectedGlobalSecretNames?: string[] | null,
     browserMode?: 'none' | 'extension' | 'headless' | 'cdp',
-    icon?: string,
-    workflowKind?: 'relay' | 'workflow'
+    icon?: string
   ) => {
     const startedAtHome = window.location.pathname === '/home'
     const identity = captureChatIdentity()
@@ -364,14 +325,13 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         editingPreset?.id,
         selectedGlobalSecretNames,
         browserMode,
-        icon,
-        workflowKind
+        icon
       )
 
       // Apply the preset immediately if it's a new one
       if (savedPreset && !editingPreset) {
         handlePresetClick(savedPreset)
-        if (startedAtHome && effectiveMode === 'workflow' && window.location.pathname === '/home' && isChatIdentityCurrent(identity)) openAppProduct({ surface: workflowKind === 'relay' ? 'relays' : 'agentworks', id: savedPreset.id })
+        if (startedAtHome && effectiveMode === 'workflow' && window.location.pathname === '/home' && isChatIdentityCurrent(identity)) openAppProduct({ surface: 'agentworks', id: savedPreset.id })
       }
 
       setShowPresetModal(false)
@@ -516,55 +476,30 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
               {(() => {
                 // For workflow mode only, always show preset selector
                 // Chat mode no longer supports presets
-                if (selectedModeCategory === 'workflow' && (productSurface === 'agentworks' || productSurface === 'relays')) {
+                if (selectedModeCategory === 'workflow' && (productSurface === 'agentworks')) {
                   return (
                     <TopBarEntitySelector
                       label={activePreset?.label}
                       leading={activePreset ? <WorkflowIcon icon={activePreset.icon} label={activePreset.label} /> : undefined}
                       compactOnNarrow
-                      placeholder={isRelaySurface ? 'Select Flow' : 'Select Automation'}
+                      placeholder="Select Automation"
                       title={activePreset?.label
                         ? (currentSessionStatusLabel ? `${activePreset.label} · ${currentSessionStatusLabel}` : activePreset.label)
-                        : isRelaySurface ? 'Select Flow' : 'Select Automation'}
+                        : 'Select Automation'}
                       open={showPresetDropdown}
                       onToggle={handlePresetDropdownToggle}
                       onClose={() => setShowPresetDropdown(false)}
-                      onAdd={isRelaySurface ? handleAddWorkflow : undefined}
-                      addLabel={isRelaySurface ? 'Add Flow' : undefined}
-                      addTitle={!canCreateWorkflows ? 'Your account cannot create workflows. Ask an administrator to enable creation.' : 'Add Flow'}
-                      addDisabled={!canCreateWorkflows}
-                      addTestId="add-workflow-button"
                       dataTour="workflow-add-edit"
                       testId="tour-workflow-add-edit"
                       badge={currentTriggerLabel && <span className="rounded border border-border px-1 text-[10px] text-muted-foreground">{currentTriggerLabel}</span>}
                     >
                           <div className="p-2 space-y-1 max-h-96 overflow-y-auto">
-                            {isRelaySurface && <>
-                            {/* Add a Flow */}
-                            <button
-                              onClick={handleAddWorkflow}
-                              disabled={!canCreateWorkflows}
-                              title={!canCreateWorkflows ? 'Ask an administrator to enable automation creation for your account.' : undefined}
-                              className="w-full rounded-md p-2 text-left text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-slate-700"
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span className="font-medium">+ Add Flow</span>
-                              </div>
-                            </button>
 
-                            {!canCreateWorkflows && (
-                              <div className="rounded-md bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                                Your account can use existing automations, but it cannot create new ones. Ask an administrator to enable automation creation.
-                              </div>
-                            )}
-
-                            </>}
 
                             {/* Loading state */}
                             {presetsLoading && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
-                                Loading {isRelaySurface ? 'relays' : 'automations'}...
+                                Loading automations...
                               </div>
                             )}
 
@@ -572,8 +507,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             {!presetsLoading && presetsForMode.length === 0 && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
                                 {canCreateWorkflows
-                                  ? `No ${isRelaySurface ? 'relays' : 'automations'} available. Create one to get started.`
-                                  : `No ${isRelaySurface ? 'relays' : 'automations'} are available to your account.`}
+                                  ? 'No automations available. Create one in your Crew chat.'
+                                  : 'No automations are available to your account.'}
                               </div>
                             )}
 
@@ -596,7 +531,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                                       <WorkflowIcon icon={preset.icon} label={preset.label} />
                                       <div className="flex-1">
                                         <div className="font-medium">{preset.label}</div>
-                                        {'workflowKind' in preset && preset.workflowKind === 'relay' && <span className="text-[10px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Flow</span>}
                                       </div>
                                     </div>
                                   </button>
@@ -728,7 +662,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         fixedAgentMode={editingPreset?.agentMode || (selectedModeCategory ? (getAgentModeFromCategory(selectedModeCategory) as 'multi-agent' | 'workflow') : undefined)}
         agentMode={agentMode}
         onDeleteWorkflow={handleDeleteWorkflow}
-        fixedWorkflowKind={isRelaySurface ? 'relay' : 'workflow'}
       />}
 
       <ConfirmationDialog

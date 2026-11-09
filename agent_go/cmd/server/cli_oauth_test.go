@@ -103,7 +103,7 @@ func TestCLIDeviceOAuthBrowserApprovalAndRestrictions(t *testing.T) {
 		t.Fatal("device replay", replay.Code)
 	}
 	tools := request("GET", "/api/external/v1/tools", "", pair.Access, "")
-	if tools.Code != 200 || !strings.Contains(tools.Body.String(), "list_workflows") {
+	if tools.Code != 200 || !strings.Contains(tools.Body.String(), `"name":"workflow"`) {
 		t.Fatal("CLI access failed", tools.Code, tools.Body)
 	}
 	// The actual CLI grant must reach both protocol adapters, not only /call.

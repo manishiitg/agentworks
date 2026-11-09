@@ -25,8 +25,8 @@ export function integrationProductAvailable(requiredProduct: ProductSurface | un
   return !requiredProduct || visibleProductSurfaceIDs(allowedProducts).includes(requiredProduct)
 }
 
-export function projectIntegrationSections(allowedProducts?: string[] | null, relayMode = false): IntegrationSectionOption[] {
+export function projectIntegrationSections(allowedProducts?: string[] | null): IntegrationSectionOption[] {
   const vaultAvailable = integrationProductAvailable('mcp-gateway', allowedProducts)
-  return PROJECT_INTEGRATION_SECTIONS.filter(option => integrationProductAvailable(option.requiredProduct, allowedProducts) && (!relayMode || option.value === 'apps' || option.value === 'gmail' || option.value === 'slack' || option.value === 'whatsapp'))
+  return PROJECT_INTEGRATION_SECTIONS.filter(option => integrationProductAvailable(option.requiredProduct, allowedProducts))
     .map(option => option.value === 'apps' && !vaultAvailable ? { ...option, description: 'MCPs and project secrets.' } : option)
 }

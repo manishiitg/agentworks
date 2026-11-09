@@ -84,8 +84,7 @@ func codingAgentTurnAttended(claims *UserClaims, req *QueryRequest, sessionID st
 		return false
 	}
 	// MCP and API callers come first: the fields below are plain request JSON they could set.
-	if strings.TrimSpace(req.ExternalBuilderOperationID) != "" ||
-		claims != nil && (claims.AccessToken != nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "") {
+	if claims != nil && (claims.AccessToken != nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "") {
 		return false
 	}
 	// "Make interactive" hands a schedule session to the person on purpose.

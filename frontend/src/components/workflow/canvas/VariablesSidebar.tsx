@@ -5,7 +5,6 @@ import type { VariablesManifest } from '../../../services/api-types'
 
 interface VariablesSidebarProps {
   workspacePath: string | null
-  relayMode?: boolean
   scriptMode?: boolean
   onClose: () => void
   onUpdate?: (manifest: VariablesManifest) => void
@@ -13,7 +12,7 @@ interface VariablesSidebarProps {
   embedded?: boolean
 }
 
-export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode = false, onClose, onUpdate, showChatArea = false, embedded = false }: VariablesSidebarProps) {
+export function VariablesSidebar({ workspacePath, scriptMode = false, onClose, onUpdate, showChatArea = false, embedded = false }: VariablesSidebarProps) {
   const [manifest, setManifest] = useState<VariablesManifest | null>(null)
   const [preset, setPreset] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -29,28 +28,16 @@ export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode 
       if (!current) return
       if (!response.success) throw new Error(response.error || 'Could not load inputs.')
       const data = response.manifest ?? { objective: '', extraction_date: '', variables: [] }
-      if (relayMode && (data.groups?.length ?? 0) > 1) {
-        setManifest({ ...data, variables: [...data.variables, ...(!data.variables.some(variable => variable.name === 'INPUT') ? [{ name: 'INPUT', value: '{}', description: '' }] : [])] })
-        setBlocked(true)
-        throw new Error('This legacy Flow has multiple variable groups. Ask the Builder to choose the configuration values to keep and remove the groups before editing here.')
-      }
+
       const normalized = { ...data, variables: (data.variables ?? []).map(variable => ({ ...variable })) }
-      if (relayMode) {
-        for (const [name, value] of Object.entries(data.groups?.[0]?.values ?? {})) {
-          const variable = normalized.variables.find(variable => variable.name === name)
-          if (variable) variable.value = value
-          else normalized.variables.push({ name, value, description: '' })
-        }
-        delete normalized.groups
-        if (!normalized.variables.some(variable => variable.name === 'INPUT')) normalized.variables.push({ name: 'INPUT', value: '{}', description: 'Sample input object for testing the program.' })
-      }
+
       setManifest(normalized)
       setPreset(null)
       setDirty(false)
     }).catch(cause => { if (current) { setError(cause instanceof Error ? cause.message : 'Could not load inputs.'); setBlocked(true) } })
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false }
-  }, [workspacePath, relayMode])
+  }, [workspacePath])
   useEffect(() => {
     if (embedded) return
     const opener = document.activeElement as HTMLElement | null
@@ -63,11 +50,7 @@ export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode 
     if (!manifest || !workspacePath) return
     setSaving(true); setError('')
     try {
-      if (relayMode) {
-        const sample = manifest.variables.find(variable => variable.name === 'INPUT')?.value ?? '{}'
-        const parsed: unknown = JSON.parse(sample)
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Sample INPUT must be a JSON object.')
-      }
+
       const response = await agentApi.updateVariableGroups(workspacePath, manifest)
       if (!response.success) throw new Error(response.message || 'Could not save inputs.')
       setDirty(false); onUpdate?.(manifest)
@@ -77,7 +60,7 @@ export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode 
   const saved = preset === null ? null : manifest?.groups?.[preset]
   const content = <>
     <div className="flex items-center gap-2 border-b p-4">
-      <h3 className="flex-1 text-sm font-medium">{relayMode ? 'Configuration' : 'Inputs'}</h3>
+      <h3 className="flex-1 text-sm font-medium">{'Inputs'}</h3>
       <button className="flex items-center gap-2 rounded border px-3 py-1.5 text-sm disabled:opacity-50" disabled={!dirty || saving || blocked} onClick={() => void save()}>
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
       </button>
@@ -86,7 +69,7 @@ export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode 
     <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {loading ? <p className="text-sm text-muted-foreground">Loading inputs…</p> : manifest && <>
-        {!relayMode && !scriptMode && <div className="flex flex-wrap items-center gap-2">
+        {!scriptMode && <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">Values <select aria-label="Edit input values" className="ml-2 rounded border bg-background p-2" value={preset ?? ''} onChange={event => setPreset(event.target.value === '' ? null : Number(event.target.value))}>
             <option value="">Workflow defaults</option>
             {(manifest.groups ?? []).map((group, index) => <option key={index} value={index}>{group.name}</option>)}
@@ -103,7 +86,7 @@ export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode 
           <input aria-label="Saved input name" className="min-w-0 flex-1 rounded border bg-background p-2 text-sm" value={saved.name} onChange={event => update({ ...manifest, groups: manifest.groups?.map((group, index) => index === preset ? { ...group, name: event.target.value } : group) })} />
           <button aria-label="Delete saved inputs" onClick={() => { update({ ...manifest, groups: manifest.groups?.filter((_, index) => index !== preset) }); setPreset(null) }}><Trash2 className="h-4 w-4" /></button>
         </div>}
-        <p className="text-sm text-muted-foreground">{saved ? 'Only changed values are saved here. Other values use the workflow defaults.' : relayMode ? 'Configuration values for this program. Keep credentials in Vault.' : 'Define inputs here once. Chat, schedules, functions and webhooks use the same types and defaults. “Needed to start” asks for a value when no default is set. Keep credentials in Vault.'}</p>
+        <p className="text-sm text-muted-foreground">{saved ? 'Only changed values are saved here. Other values use the workflow defaults.' : 'Define inputs here once. Chat, schedules, functions and webhooks use the same types and defaults. “Needed to start” asks for a value when no default is set. Keep credentials in Vault.'}</p>
         {!manifest.variables.length && <p className="text-sm text-muted-foreground">No inputs needed. This workflow can run as it is.</p>}
         {manifest.variables.map((variable, index) => <div key={index} className="space-y-2 border-b pb-4">
           {saved ? <label className="block text-sm font-medium" htmlFor={`input-value-${index}`}>{variable.name}</label> : <div className="flex items-center gap-2">
@@ -117,18 +100,18 @@ export function VariablesSidebar({ workspacePath, relayMode = false, scriptMode 
             }} />
             <button aria-label={`Delete input ${variable.name}`} onClick={() => update({ ...manifest, variables: manifest.variables.filter((_, i) => i !== index), groups: manifest.groups?.map(group => { const values = { ...group.values }; delete values[variable.name]; return { ...group, values } }) })}><Trash2 className="h-4 w-4" /></button>
           </div>}
-          {!saved && !relayMode && <div className="flex flex-wrap items-center gap-3 text-sm">
+          {!saved && <div className="flex flex-wrap items-center gap-3 text-sm">
             <label>Type <select aria-label={`${variable.name || 'New input'} type`} className="ml-2 rounded border bg-background p-1.5" value={variable.type ?? (typeof variable.schema?.type === 'string' ? variable.schema.type : 'string')} onChange={event => update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, type: event.target.value as typeof entry.type } : entry) })}>
               <option value="string">Text</option><option value="integer">Whole number</option><option value="number">Number</option><option value="boolean">True / false</option><option value="object">JSON object</option><option value="array">JSON list</option>
             </select></label>
             <label className="flex items-center gap-2"><input aria-label={`${variable.name || 'New input'} needed to start`} type="checkbox" checked={variable.required ?? false} onChange={event => update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, required: event.target.checked } : entry) })} /> Needed to start</label>
           </div>}
-          <textarea id={`input-value-${index}`} disabled={blocked} aria-label={relayMode ? variable.name === 'INPUT' ? 'Sample INPUT JSON' : variable.name : `${variable.name || 'New input'} value`} className="min-h-16 w-full rounded border bg-background p-2 text-sm" value={saved ? saved.values[variable.name] ?? variable.value ?? '' : variable.value ?? ''} onChange={event => {
+          <textarea id={`input-value-${index}`} disabled={blocked} aria-label={`${variable.name || 'New input'} value`} className="min-h-16 w-full rounded border bg-background p-2 text-sm" value={saved ? saved.values[variable.name] ?? variable.value ?? '' : variable.value ?? ''} onChange={event => {
             if (saved) update({ ...manifest, groups: manifest.groups?.map((group, i) => i === preset ? { ...group, values: { ...group.values, [variable.name]: event.target.value } } : group) })
             else update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, value: event.target.value } : entry) })
           }} />
           {saved && Object.hasOwn(saved.values, variable.name) && <button className="text-xs text-muted-foreground underline" onClick={() => update({ ...manifest, groups: manifest.groups?.map((group, i) => { if (i !== preset) return group; const values = { ...group.values }; delete values[variable.name]; return { ...group, values } }) })}>Use workflow default</button>}
-          {!saved && !relayMode ? <input aria-label={`${variable.name || 'New input'} description`} placeholder="Description (optional)" className="w-full rounded border bg-background p-2 text-sm" value={variable.description} onChange={event => update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, description: event.target.value } : entry) })} /> : variable.description && <p className="text-xs text-muted-foreground">{variable.description}</p>}
+          {!saved ? <input aria-label={`${variable.name || 'New input'} description`} placeholder="Description (optional)" className="w-full rounded border bg-background p-2 text-sm" value={variable.description} onChange={event => update({ ...manifest, variables: manifest.variables.map((entry, i) => i === index ? { ...entry, description: event.target.value } : entry) })} /> : variable.description && <p className="text-xs text-muted-foreground">{variable.description}</p>}
 
         </div>)}
         {!saved && <button className="flex items-center gap-2 rounded border px-3 py-2 text-sm" disabled={blocked} onClick={() => update({ ...manifest, variables: [...manifest.variables, { name: '', value: '', description: '' }] })}><Plus className="h-4 w-4" /> Add input</button>}

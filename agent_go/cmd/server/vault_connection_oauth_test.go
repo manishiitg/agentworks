@@ -28,7 +28,7 @@ func TestVaultConnectionOAuthAccountsAreIsolated(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	oauth.SetTokenSealer(platformClientSealer{})
-	defer oauth.SetTokenSealer(nil)
+	t.Cleanup(func() { oauth.SetTokenSealer(credentialSealer{}) }) // the production sealer, not nil
 	var mu sync.Mutex
 	const one = "c-11111111"
 	const two = "c-22222222"

@@ -5,11 +5,9 @@ const mocks = vi.hoisted(() => ({
   current: true,
   stop: vi.fn(async () => {}),
   closeSide: vi.fn(async () => {}),
-  closeGoal: vi.fn(async () => ({})),
   activate: vi.fn(),
 }))
-vi.mock('../services/api', () => ({ agentApi: { stopSession: mocks.stop, closeAgentProfileSideChat: mocks.closeSide, manageWorkflowChats: mocks.closeGoal } }))
-vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { getState: () => ({ workflowPresets: [{ id: 'wf', selectedFolder: { filepath: 'Workflow/example' } }] }) } }))
+vi.mock('../services/api', () => ({ agentApi: { stopSession: mocks.stop, closeAgentProfileSideChat: mocks.closeSide } }))
 vi.mock('../stores/useChatStore', () => ({ useChatStore: { getState: () => mocks.state } }))
 vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: { getState: () => ({ productSurface: 'work' }) } }))
 vi.mock('./activateTab', () => ({ activateTab: mocks.activate }))
@@ -44,13 +42,11 @@ it.each(['multi-agent', 'workflow'] as const)('closes a %s run view with inherit
     mode, agentProfileId: 'work', agentProfileProjectId: 'p',
     agentProfileConversationKey: 'p', presetQueryId: 'moved-preset',
     isViewOnly: true, isScheduledRun: true,
-    workflowOwnerTabID: 'moved-preset:chat:main', workflowOwnerTabIsMain: true,
     agentProfileTabCanWrite: false,
   }, { isStreaming: true })
   setup(run)
   expect(canCloseWorkspaceChatTab(run, mocks.state.chatTabs)).toBe(true)
   await closeWorkspaceChatTab('run', 'primary')
-  expect(mocks.closeGoal).not.toHaveBeenCalled()
   expect(mocks.closeSide).not.toHaveBeenCalled()
   expect(mocks.stop).not.toHaveBeenCalled()
   expect(mocks.state.closeTab).toHaveBeenCalledWith('run', false)
@@ -119,17 +115,6 @@ it('keeps another owner’s named tab visible without allowing Close to control 
 })
 
 
-it('closes an owned Goal side tab through the shared backend without stopping another conversation', async () => {
-  const builder = tab('builder', { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'wf', workflowOwnerTabID: 'wf:chat:main', workflowOwnerTabIsMain: true, agentProfileTabCanWrite: true })
-  const own = tab('owned', { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'wf', workflowOwnerTabID: 'wf:chat:review', workflowOwnerTabIsMain: false, agentProfileTabCanWrite: true })
-  setup(own)
-  mocks.state.chatTabs = { builder, owned: own }
-  await closeWorkspaceChatTab('owned')
-  expect(mocks.closeGoal).toHaveBeenCalledWith('wf', 'Workflow/example', 'close', 'wf:chat:review')
-  expect(mocks.state.closeTab).toHaveBeenCalledWith('owned', false)
-  expect(mocks.stop).not.toHaveBeenCalled()
-  expect(mocks.activate).toHaveBeenCalledWith('builder')
-})
 it('closes only the tab of a schedule\'s own conversation, leaving the conversation and its runs alone', async () => {
   const automation = tab('automation', { agentProfileId: 'work', agentProfileProjectId: 'p', agentProfileConversationKey: 'p:schedule:daily', isAutomationConversation: true })
   setup(automation)

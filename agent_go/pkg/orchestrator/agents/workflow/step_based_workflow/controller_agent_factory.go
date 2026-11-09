@@ -289,6 +289,13 @@ func registerStepSessionShellEnv(sessionID, stepOutputAbsPath, stepExecutionAbsP
 		env["DB_PATH"] = dbAbsPath
 	}
 	env["RUN_FOLDER"] = runFolder
+	// Native providers snapshot this session environment at construction. They
+	// do not pass through the structured shell executor's bridge injection.
+	env["MCP_SESSION_ID"] = sessionID
+	if scopedURL := buildSessionScopedMCPAPIURL(sessionID); scopedURL != "" {
+		env["MCP_API_URL"] = scopedURL
+	}
+	common.PopulateMCPBridgeShortEnv(env)
 	common.SetSessionShellEnv(sessionID, env)
 }
 
@@ -1270,6 +1277,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	toolsToRegister, executorsToUse := hcpo.prepareExecutionTools(stepConfig, planStep, subAgentExecCtx, dbAccess)
 	if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
 		toolsToRegister, executorsToUse = selection.filterTools(toolsToRegister, executorsToUse)
+		if hcpo.platformStoresEnabled() {
+			for _, name := range []string{"query_workflow_db", "mutate_workflow_db"} {
+				bound := false
+				for _, tool := range toolsToRegister {
+					if tool.Function != nil && tool.Function.Name == name && tool.Function.Parameters != nil {
+						execute, ok := executorsToUse[name].(func(context.Context, map[string]interface{}) (string, error))
+						bound = ok && execute != nil
+						break
+					}
+				}
+				if !bound {
+					return nil, fmt.Errorf("This workflow's database tools are unavailable. Ask its Crew chat to reconnect them, then retry.")
+				}
+			}
+		}
 	}
 	if subAgentExecCtx != nil {
 		var helperErr error
@@ -1301,6 +1323,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 			dbAbsPath = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
+		if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
+			selection.Runtime.apply(workspaceEnv)
+		}
 		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 		workspaceEnv = appendScriptedDelegationEnv(ctx, workspaceEnv)
 		if directDBAccess && hcpo.usesCodeTree() {

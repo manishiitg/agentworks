@@ -16,8 +16,6 @@ function productCommand(name: string, prompt: string, extra?: Partial<Agentworks
 
 function agentworksFixture(): AgentworksProductCommand[] {
   return [
-    productCommand('design-plan', 'Call get_workflow_command_guidance(kind="design-plan", focus="{{context}}") and follow the returned instructions verbatim.'),
-    productCommand('run-plan-drift', 'Run the /run-plan-drift review in this turn. Part 1 may apply bounded safe compatibility and prompt repairs; Part 2 remains read-only. Persist typed review and repair outcomes with their lifecycle outcomes. Focus: {{context}}.', { aliases: ['review-artifact-drift'], menuHidden: true }),
     productCommand('design-dashboard', 'Call get_workflow_command_guidance(kind="design-reporting-ui", focus="{{context}}") and follow the returned instructions verbatim.', { aliases: ['design-reporting-ui'] }),
     productCommand('setup-goals', 'Call get_workflow_command_guidance(kind="setup-goals", focus="{{context}}") and follow the returned instructions verbatim.', { aliases: ['define-success'] }),
     productCommand('run-goal-work', 'Run the /run-goal-work pass in this turn. Call get_workflow_command_guidance(kind="strategy-auditor", focus="{{context}}"). Then present Needs your decision proposals.', { aliases: ['strategy-auditor', 'goal-advisor'] }),
@@ -154,63 +152,6 @@ describe('Autopilot slash commands', () => {
     expect(submitted).not.toContain('run_in_background')
     expect(submitted).toContain('Needs your decision proposals')
     expect(submitted).not.toContain('agent=')
-  })
-
-  it('uses design-plan as the single comprehensive plan review command', () => {
-    const workshopCommands = getCommands('workflow', 'workshop').map(command => command.command)
-    const runCommands = getCommands('workflow', 'run').map(command => command.command)
-
-    expect(workshopCommands).toContain('design-plan')
-    expect(runCommands).not.toContain('design-plan')
-    expect(findCommand('design-plan', 'workflow')?.requiredWorkshopMode).toBe('workshop')
-    expect(workshopCommands).not.toContain('review-plan')
-    expect(runCommands).not.toContain('review-plan')
-  })
-
-  it('keeps design-plan coordination in the main conversation', () => {
-    const command = findCommand('design-plan', 'workflow')
-    let submitted = ''
-
-    command?.execute({
-      beforeSlash: '',
-      onSubmit: (message: string) => { submitted = message },
-    } as CommandContext)
-
-    expect(submitted).toContain('get_workflow_command_guidance')
-    expect(submitted).not.toContain('Run the /design-plan review as a BACKGROUND task')
-  })
-
-  it('preserves Plan Drift repair authority in the background wrapper', () => {
-    const command = findCommand('review-artifact-drift', 'workflow')
-    let submitted = ''
-
-    command?.execute({
-      beforeSlash: '',
-      onSubmit: (message: string) => { submitted = message },
-      workshopMode: 'workshop',
-    } as CommandContext)
-
-    expect(submitted).toContain('Part 1 may apply bounded safe compatibility and prompt repairs')
-    expect(submitted).toContain('Part 2 remains read-only')
-    expect(submitted).not.toContain('do not modify implementation files')
-    expect(submitted).toContain('lifecycle outcomes')
-  })
-
-  it('routes saved-code review to the read-only architecture flow', () => {
-    let submitted = ''
-    findCommand('review-code', 'workflow')?.execute({
-      beforeSlash: 'check the report exporter',
-      onSubmit: (message: string) => { submitted = message },
-      workshopMode: 'workshop',
-    } as unknown as CommandContext)
-
-    expect(submitted).toContain('kind="design-plan"')
-    expect(submitted).not.toContain('kind="review-code"')
-    expect(submitted).toContain('workflow.json.code_layout_version')
-    expect(submitted).toContain('Architecture focus')
-    expect(submitted).toContain('do not apply changes in this review')
-    expect(submitted).not.toContain('agent=')
-    expect(submitted).toContain('check the report exporter')
   })
 
   it('keeps workflow configuration actions out of the generic chat slash menu', () => {

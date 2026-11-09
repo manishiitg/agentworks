@@ -10,6 +10,22 @@ import (
 // Laptop commands run as the person, with no sandbox, so only the Crew's main owner may ever be given the laptop tools. A person
 // using the Crew in Run mode, even when the owner has a folder shared and commands on, gets none of them.
 func TestOnlyTheCrewOwnerGetsLaptopTools(t *testing.T) {
+	// PLAT-746-471: a retired Goal phase cannot acquire the owner's laptop.
+	for _, check := range []struct {
+		request QueryRequest
+		allowed bool
+	}{
+		{QueryRequest{AgentProfileID: "work"}, true},
+		{QueryRequest{AgentProfileID: "work", IsAutoNotification: true, TriggeredBy: "schedule"}, true},
+		{QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", admittedWorkflowPhase: true}, false},
+		{QueryRequest{AgentProfileID: "work", PinRunMode: true}, false},
+		{QueryRequest{AgentProfileID: "work", BotPlatform: "slack"}, false},
+		{QueryRequest{AgentProfileID: "work", AgentMessageFromOtherPerson: true}, false},
+	} {
+		if laptopBuilderTurn(check.request, laptopProfileForRequest(check.request)) != check.allowed {
+			t.Fatalf("wrong laptop authority for profile=%q mode=%q trigger=%q", check.request.AgentProfileID, check.request.AgentMode, check.request.TriggeredBy)
+		}
+	}
 	api := tokenTestSetup(t)
 	// The owner's saved choice: a Read & write folder with terminal commands on.
 	saveTestLaptopSettings(t, "laptop", []localfiles.FolderSelection{{ID: "project", Path: "/tmp/project", Access: "write"}})

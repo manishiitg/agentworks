@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -32,6 +33,7 @@ type pythonAgentSelection struct {
 	Servers []string
 	Scripts []mcpagent.ToolDefinition
 	Browser bool
+	Runtime pythonScriptRuntime // Executed source and dependencies, bound by the server.
 }
 
 // The helper omits implicit browser tools; the ordinary factory keeps its own
@@ -87,6 +89,7 @@ type pythonAgentArguments struct {
 	Messages       []string `json:"messages"`
 	Model          string   `json:"model"`
 	Tier           string   `json:"tier"`
+	Reasoning      string   `json:"reasoning"`
 	Scripts        []string `json:"scripts"`
 	MCP            []string `json:"mcp"`
 	Skills         []string `json:"skills"`
@@ -118,6 +121,40 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAgentConversationPath(id string
 	return filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "helpers", "conversations", id+".json")), nil
 }
 
+// Agent transcripts are service-written evidence, separate from the run's
+// writable output folder. Reuse helper-state modes for the existing slot group.
+func (hcpo *StepBasedWorkflowOrchestrator) protectPythonAgentArtifacts(id string) error {
+	if _, err := hcpo.pythonAgentConversationPath(id); err != nil {
+		return err
+	}
+	root, relative, err := workflowfiles.OpenWorkflowDirectory(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "execution")))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	execution, err := workflowfiles.OpenDirectory(root, relative, true)
+	if err != nil {
+		return err
+	}
+	defer execution.Close()
+	info, err := execution.Stat(".")
+	if err != nil {
+		return err
+	}
+	if info.Mode()&fs.ModeSetgid != 0 {
+		// This parent also holds ordinary outputs: preserve its write bits.
+		if err := execution.Chmod(".", info.Mode()|0050); err != nil {
+			return err
+		}
+	}
+	artifacts, err := workflowfiles.OpenDirectory(execution, id, true)
+	if err != nil {
+		return err
+	}
+	defer artifacts.Close()
+	return workflowfiles.ProtectServerTree(artifacts)
+}
+
 func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Context, parent PlanStepInterface, args pythonAgentArguments) (*pythonAgentConversation, *pythonAgentSelection, error) {
 	if strings.TrimSpace(args.Name) == "" || len(args.Messages) == 0 {
 		return nil, nil, fmt.Errorf("An agent needs a name and at least one message.")
@@ -126,6 +163,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if strings.TrimSpace(message) == "" {
 			return nil, nil, fmt.Errorf("Agent messages must not be empty.")
 		}
+	}
+	if args.Reasoning != "" && !slices.Contains([]string{"low", "medium", "high"}, args.Reasoning) {
+		return nil, nil, fmt.Errorf("Choose reasoning=low, medium or high, or omit it to keep the model's default.")
 	}
 	if args.Model != "" && args.Tier != "" {
 		return nil, nil, fmt.Errorf("Choose model or tier, not both.")
@@ -149,8 +189,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.ParentStepID != parent.GetID() || saved.StepID != args.ConversationID {
 			return nil, nil, fmt.Errorf("This conversation does not belong to this script and run.")
 		}
-		if args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || len(args.Apps) > 0 && !reflect.DeepEqual(args.Apps, saved.Settings.Apps) || args.Browser && !saved.Settings.Browser {
-			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier and resource selections. Start a fresh agent to change them.")
+		if args.Reasoning != "" && args.Reasoning != saved.Settings.Reasoning || args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || len(args.Apps) > 0 && !reflect.DeepEqual(args.Apps, saved.Settings.Apps) || args.Browser && !saved.Settings.Browser {
+			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier, reasoning and resource selections. Start a fresh agent to change them.")
 		}
 	} else {
 		saved = pythonAgentConversation{WorkflowContinuationState: WorkflowContinuationState{SchemaVersion: 1, WorkspacePath: hcpo.GetWorkspacePath(), RunFolder: hcpo.selectedRunFolder, StepID: "python-agent-" + uuid.NewString(), OwnerKind: "python_agent"}, ParentStepID: parent.GetID(), Name: args.Name, FirstMessage: args.Messages[0], Settings: args}
@@ -191,6 +231,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			return nil, nil, fmt.Errorf("No agent model is configured for this automation; choose its model in the Crew chat.")
 		}
 		saved.Config.ExecutionLLM = &AgentLLMConfig{Provider: resolved.Primary.Provider, ModelID: resolved.Primary.ModelID, ConnectionID: resolved.Primary.ConnectionID, Options: resolved.Primary.Options}
+		if args.Reasoning != "" {
+			model := saved.Config.ExecutionLLM
+			metadata, err := orchestrator.CodingAgentModelMetadata(model.Provider, model.ModelID)
+			if err != nil || metadata == nil || !metadata.SupportsReasoningEffort || !slices.Contains(metadata.ReasoningEffortLevels, args.Reasoning) {
+				return nil, nil, fmt.Errorf("Model %s/%s does not offer reasoning=%s. Omit reasoning or choose a model that supports that level.", model.Provider, model.ModelID, args.Reasoning)
+			}
+			model.Options = maps.Clone(model.Options)
+			if model.Options == nil {
+				model.Options = map[string]interface{}{}
+			}
+			model.Options["reasoning_effort"] = args.Reasoning
+		}
+
 	}
 	if saved.Settings.Knowledge == "" {
 		saved.Settings.Knowledge = "read"
@@ -205,6 +258,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 	}
 
 	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
+	selection.Runtime, _ = ctx.Value(pythonScriptRuntimeKey{}).(pythonScriptRuntime)
 	saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
 	appTools, err := pythonAppSelections(saved.Settings.Apps)
 	if err != nil {
@@ -371,6 +425,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	if err != nil {
 		return pythonHelperReply{Error: err.Error()}
 	}
+	defer func() {
+		if err := hcpo.protectPythonAgentArtifacts(saved.StepID); err != nil {
+			reply.OK = false
+			reply.Error = "The agent's run files could not be made readable: " + redaction.Text(err.Error())
+		}
+	}()
 	if args.TimeoutSeconds != nil {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(*args.TimeoutSeconds*float64(time.Second)))
@@ -385,6 +445,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	defer func() { log.Close(); reply.LogComplete, reply.LogError = log.Error() == "", log.Error() }()
 	step := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: saved.StepID, Title: saved.Name, Description: saved.FirstMessage}, AgentConfigs: &saved.Config}
 	runRoot := filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder))
+	// The native cwd is this writable run root. Frozen source uses read-only
+	// modes; deliberate chmod by the service UID is an accepted boundary limit.
 	read, write := hcpo.setupAgentFolderGuard(saved.StepID, saved.StepID, &saved.Config, AgentWriteAccess{DB: true, Knowledgebase: saved.Settings.Knowledge == "write"})
 	write = append(write, hcpo.GetWorkspacePath()+"/.sandbox-cache")
 	// A native continuation retains its original private cwd and owner session.
@@ -413,6 +475,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		runtime = made
 		cleanup.runtime.Agent = made
 		cleanup.runtime.Provider = made.GetConfig().LLMConfig.Primary.Provider
+		if err := hcpo.protectPythonAgentArtifacts(saved.StepID); err != nil {
+			return nil, err
+		}
 		common.SetSessionWorkingDir(toolsSession, workflowAbsPath(runRoot))
 		if err = made.GetBaseAgent().AddObserver(&pythonAgentLogObserver{log: log}); err != nil {
 			return nil, err

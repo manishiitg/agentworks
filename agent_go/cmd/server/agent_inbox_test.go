@@ -316,6 +316,40 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	init(pat)
-	// Fails on main since about 27 Oct: a PAT can register a name. Open owner question (17 Oct decision vs ease of use).
-	call(pat, map[string]any{"action": "register", "agent_name": "spoofed"}, false)
+	// A person's own access token may use an inbox in its own account (owner: ease of use first); it adds no
+	// authority over another person's names. The refusals below must come from name ownership, not from the CLI-only message.
+	_, otherPAT, err := patStore.Issue(ctx, accesstokens.Token{Name: "Other person's token", UserID: "other", Username: "other", Scopes: []string{"workflows:read", "runs:execute"}, AllWorkflows: true, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	init(otherPAT)
+	call(pat, map[string]any{"action": "register", "agent_name": "pat-helper"}, true)
+	store2, err := readAgentMessageStore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range store2.Agents {
+		if a.Name == "pat-helper" && a.UserID != "owner" {
+			t.Fatalf("a token registered a name outside its own account: %+v", a)
+		}
+	}
+	refusedText := func(args map[string]any) string {
+		t.Helper()
+		result := rpc(otherPAT, "tools/call", map[string]any{"name": externalMCPToolCall, "arguments": map[string]any{"name": "messages", "arguments": args}})
+		if !result.IsError {
+			t.Fatalf("another person's token reached a name it does not own: %v", args)
+		}
+		raw, err := json.Marshal(result.Content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(raw)
+		if strings.Contains(text, "AgentWorks CLI") {
+			t.Fatalf("refused by the CLI-only message instead of name ownership: %s", text)
+		}
+		return text
+	}
+	refusedText(map[string]any{"action": "read", "agent_name": "browser-helper"})
+	refusedText(map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "delivered"})
+	refusedText(map[string]any{"action": "send", "agent_name": "browser-helper", "target": "agent:terminal-helper", "message": "As someone else", "submission_id": "other-pat-send"})
 }

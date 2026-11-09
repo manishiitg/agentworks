@@ -119,6 +119,19 @@ func CodeRuntimeEnvironment(workspacePath string) map[string]string {
 	}
 }
 
+// A running script and its native agents read the executed snapshot, never
+// newer authoring files. This changes addresses, not the caller's read grants.
+func useExecutedScriptSource(env map[string]string, directory string) {
+	if directory == "" {
+		return
+	}
+	env["WORKFLOW_CODE_ROOT"], env["SCRIPT_SOURCE_DIR"] = directory, directory
+	env["PYTHONPATH"] = directory
+	if deps := env["WORKFLOW_CODE_DEPS"]; deps != "" {
+		env["PYTHONPATH"] += string(filepath.ListSeparator) + deps
+	}
+}
+
 func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string) map[string]string {
 	if env == nil {
 		env = map[string]string{}

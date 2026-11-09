@@ -10,6 +10,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -63,6 +64,7 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 	manifest := NewWorkflowManifest(definition.Name)
 	manifest.ID = binding.ID
 	manifest.Description = definition.Description
+	manifest.DeclaredSecrets = append([]string{}, definition.Secrets...)
 	manifest.CreatedBy = owner
 	manifest.Access = &WorkflowAccess{Owners: []string{owner}}
 	manifest.crewExecutable = binding
@@ -181,66 +183,61 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 	return result, fmt.Errorf("saved script is unavailable; choose a script from this Crew")
 }
 
-func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesManifest) error {
+func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesManifest, edits ...*scriptEntryInputEdits) error {
 	definition, err := readCrewScript(ctx, root)
 	if err != nil {
 		return err
 	}
-	if err := workflow.ValidateWorkflowInputDefinitions(inputs); err != nil {
-		return err
-	}
-	if err := validateWorkflowInputReferences(ctx, root, inputs); err != nil {
-		return err
-	}
-	definition.Inputs = inputs.Variables
-	definition.InputPresets = inputs.Groups
-	if binding, err := findCrewExecutable(root); err != nil {
-		return err
-	} else if binding != nil {
-		if _, err := crewScriptConsumers(ctx, binding, definition); err != nil {
-			return err
-		}
-	}
-	encoded, err := json.MarshalIndent(definition, "", "  ")
-	if err != nil {
-		return err
-	}
+	definition.Inputs, definition.InputPresets = inputs.Variables, inputs.Groups
 	binding, err := findCrewExecutable(root)
 	if err != nil || binding == nil {
 		return fmt.Errorf("saved script is unavailable")
 	}
-	if err := writeFileToWorkspace(ctx, path.Join(binding.Root, "code", "script.json"), string(encoded)); err != nil {
-		return err
+	var entries *scriptEntryInputEdits
+	if len(edits) > 0 {
+		entries = edits[0]
 	}
-	invalidateWorkflowManifestIndex()
-	return nil
+	return saveCrewScriptDefinition(ctx, binding, definition, entries)
 }
 
 func crewScriptEditableFile(file string) bool {
-	return workflow.CrewScriptBundleFile(file) && (file == "script.json" || strings.HasSuffix(file, ".py"))
+	return workflow.CrewScriptBundleFile(file) && (file == "script.json" || file == "requirements.txt" || strings.HasSuffix(file, ".py"))
 }
 
-func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, file, content string) error {
+func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, file, content string, edits ...*scriptEntryInputEdits) error {
 	if !crewScriptEditableFile(file) {
-		return fmt.Errorf("choose script.json or a Python file from this script")
+		return fmt.Errorf("choose script.json, requirements.txt or a Python file from this script")
+	}
+	if file == "requirements.txt" {
+		if len(content) > 64<<10 {
+			return fmt.Errorf("requirements.txt must be no larger than 64 KB")
+		}
+		if !utf8.ValidString(content) || strings.ContainsRune(content, 0) {
+			return fmt.Errorf("requirements.txt must be UTF-8 text listing the needed packages.")
+		}
+		// Match the installer before saving: one file is the complete package
+		// contract, including continued lines and an optional UTF-8 BOM.
+		text := strings.TrimPrefix(content, "\ufeff")
+		text = strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", ""), "\\\n", "")
+		for _, line := range strings.Split(text, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "-") {
+				return fmt.Errorf("Put the package pins directly in requirements.txt; included files, constraints and installer option lines are not supported.")
+			}
+		}
+	}
+	if file != "script.json" && len(edits) > 0 && edits[0] != nil {
+		return fmt.Errorf("save entry_mappings with script.json or Inputs")
 	}
 	if file == "script.json" {
 		definition, err := workflow.ReadCrewScriptDefinition(ctx, binding.Root, func(context.Context, string) (string, error) { return content, nil })
 		if err != nil {
 			return err
 		}
-		if definition.ID != binding.ID {
-			return fmt.Errorf("keep the saved script identity")
+		var entries *scriptEntryInputEdits
+		if len(edits) > 0 {
+			entries = edits[0]
 		}
-		if _, err := crewScriptCapabilities(ctx, binding.CrewRoot, definition); err != nil {
-			return err
-		}
-		if _, err := crewScriptConsumers(ctx, binding, definition); err != nil {
-			return err
-		}
-		if err := workflow.ValidateWorkflowInputReferences(ctx, binding.Root, definition.InputDefinitions()); err != nil {
-			return err
-		}
+		return saveCrewScriptDefinition(ctx, binding, definition, entries)
 	}
 	if err := writeFileToWorkspace(ctx, path.Join(binding.Root, "code", file), content); err != nil {
 		return err
@@ -279,7 +276,7 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 	}
 	file := r.URL.Query().Get("file")
 	if !crewScriptEditableFile(file) {
-		http.Error(w, "Choose script.json or a Python file.", 400)
+		http.Error(w, "Choose script.json, requirements.txt or a Python file.", 400)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -293,13 +290,16 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var input struct {
-		Content string `json:"content"`
+		Content       string                 `json:"content"`
+		EntryMappings *scriptEntryInputEdits `json:"entry_mappings,omitempty"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20)).Decode(&input); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
 		http.Error(w, "Provide the file content.", 400)
 		return
 	}
-	if err := writeCrewScriptFile(r.Context(), binding, file, input.Content); err != nil {
+	if err := writeCrewScriptFile(r.Context(), binding, file, input.Content, input.EntryMappings); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}

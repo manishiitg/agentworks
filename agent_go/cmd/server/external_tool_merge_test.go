@@ -118,21 +118,7 @@ func TestExternalMergedFilesAreNarrowedForReaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := &UserClaims{UserID: "r", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "files:read"}, AllWorkflows: true}}
-	for _, tool := range externalListedTools(reader, catalog) {
-		if tool.Name != "relay" {
-			continue
-		}
-		required, _ := tool.InputSchema["required"].([]any)
-		found := false
-		for _, key := range required {
-			if key == "action" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("narrowed Relay permits omitted action: %+v", tool.InputSchema)
-		}
-	}
+
 	for _, tool := range externalListedTools(reader, catalog) {
 		if tool.Name != "files" {
 			continue
@@ -194,7 +180,7 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 		t.Fatalf("strict selected member accepted an unknown argument: %v", err)
 	}
 	// PLAT-746: a real writer retry lost run_folder, started a new run and
-	// failed on missing upstream topic data. Preserve it through to the model.
+	// failed on missing upstream topic data. Preserve it through the merged action.
 	runs, ok := externalCatalogTool("runs")
 	if !ok {
 		t.Fatal("runs unavailable")
@@ -202,9 +188,6 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 	step, args, err := externalResolveMerged(runs, map[string]any{"action": "step", "workflow_id": "w", "step_id": "write", "run_folder": "run-existing"})
 	if err != nil || step.Name != "execute_step" || args["run_folder"] != "run-existing" {
 		t.Fatalf("existing-run step arguments lost: %v %v", args, err)
-	}
-	if !strings.Contains(externalRunInstruction(step.Name, args), `"run_folder":"run-existing"`) {
-		t.Fatal("run instruction lost the requested existing run")
 	}
 	if step.validator.Validate(map[string]any{"workflow_id": "w", "run_folder": 5}) == nil {
 		t.Fatal("non-string run folder accepted")
@@ -225,9 +208,6 @@ func TestExternalFunctionAuthoringHasOneFlatShape(t *testing.T) {
 	props := listed.InputSchema["properties"].(map[string]any)
 	for _, spec := range tool.actions {
 		for _, name := range externalMemberNames(spec) {
-			if name == "update_crew" {
-				continue
-			}
 			member, _ := externalCatalogTool(name)
 			for key := range member.InputSchema["properties"].(map[string]any) {
 				if props[key] == nil {
@@ -236,20 +216,17 @@ func TestExternalFunctionAuthoringHasOneFlatShape(t *testing.T) {
 			}
 		}
 	}
-	if props["functions"] != nil || props["files"] != nil || props["execution"] == nil {
-		t.Fatalf("function schema inherited project fields or lost execution: %v", props)
+	// Functions are written with define (one top-level definition) and delete (a name); the project-settings
+	// patch (update_crew with a nested functions list) is no longer a function action.
+	if props["functions"] != nil || props["files"] != nil || props["definition"] == nil {
+		t.Fatalf("function schema inherited project fields or lost its definition: %v", props)
 	}
-	_, _, err := externalResolveMerged(tool, map[string]any{"action": "update", "crew_id": "c", "functions": map[string]any{"upsert": []any{map[string]any{"name": "summarize"}}}})
-	if err == nil || !strings.Contains(err.Error(), "top-level") {
-		t.Fatalf("nested patch should get an actionable refusal: %v", err)
+	if _, _, err := externalResolveMerged(tool, map[string]any{"action": "update", "crew_id": "c", "functions": map[string]any{"upsert": []any{map[string]any{"name": "summarize"}}}}); err == nil {
+		t.Fatal("a nested functions patch must not resolve to any function action")
 	}
-	member, rest, err := externalResolveMerged(tool, map[string]any{"action": "update", "crew_id": "c", "name": "summarize", "description": "Summarize input", "instructions": "Summarize the request", "execution": "tab", "agent": "summaries"})
-	if err != nil || member.Name != "update_crew" {
-		t.Fatalf("flat function dispatch: %s %v", member.Name, err)
-	}
-	fn := rest["functions"].(map[string]any)["upsert"].([]any)[0].(map[string]any)
-	if fn["name"] != "summarize" || fn["execution"] != "tab" || fn["agent"] != "summaries" || rest["name"] != nil || rest["agent"] != nil {
-		t.Fatalf("function fields lost or treated as project fields: %v", rest)
+	member, rest, err := externalResolveMerged(tool, map[string]any{"action": "define", "project": "c", "definition": map[string]any{"name": "summarize", "execution": "tab"}})
+	if err != nil || member.Name != "project_functions_define" || rest["definition"] == nil {
+		t.Fatalf("flat function dispatch: %s %v %v", member.Name, rest, err)
 	}
 }
 

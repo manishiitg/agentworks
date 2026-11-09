@@ -58,8 +58,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const current = directory?.scope === scope ? directory : null
   const projects = [
     ...(allowed.includes('work') ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
-    ...(allowed.includes('agentworks') ? presets.filter(preset => preset.workflowKind !== 'relay' &&
-      (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(preset.id)))
+    ...(allowed.includes('agentworks') ? presets.filter(preset => (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(preset.id)))
       .map(preset => ({ id: preset.id, name: preset.label, icon: preset.icon, kind: 'goal' as const })) : []),
   ].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
 

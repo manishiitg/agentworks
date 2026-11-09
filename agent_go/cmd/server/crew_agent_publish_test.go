@@ -24,7 +24,8 @@ func TestPublishAgentPreflightDistinguishesDisabledProgramFromMissingLogin(t *te
 	}{
 		{"disabled with portable alternative", "muse-cli", "claude-code", false, "Muse"},
 		{"enabled without own login", "muse-cli", "muse-cli", true, ""},
-		{"no portable alternative", "pi-cli", "claude-code", false, ""},
+		// A "no portable alternative" case is retired: every program the server can offer now supports Publish (pi-cli and agy-cli
+		// joined, crewAgentPublishProgramSupported), so a disabled program always has an enabled alternative to name.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("SUPPORTED_LLM_PROVIDERS", tc.enabled)

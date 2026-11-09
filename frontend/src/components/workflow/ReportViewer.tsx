@@ -46,7 +46,6 @@ type ReportDocument = {
 }
 
 const DashboardChatArea = lazy(() => import('../ChatArea'))
-const DefaultRelayDashboard = lazy(() => import('./reportWidgets/DefaultRelayDashboard'))
 
 interface ReportViewerProps {
   workspacePath: string
@@ -70,7 +69,6 @@ interface ReportViewProps {
   dashboardConversation?: boolean
   /** Standalone Crew links keep the caller's native chat beside the UI. */
   crewConversationPane?: boolean
-  defaultRelayDashboard?: boolean
   /** Standalone dashboard pages show the dashboard alone, without the app's help, refresh and close buttons. */
   hideToolbar?: boolean
 }
@@ -141,10 +139,7 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
           throw new Error(typeof detail === 'string' ? detail : detail?.message || 'This file could not be added.')
         }
       },
-      getRelayRuns: async (options = {}) => {
-        const response = await api.get('/api/workflow/report-preview/relay-runs', { params: { workspace: workspacePath, ...options } })
-        return response.data
-      },
+
       getCosts: (options) => agentApi.getCosts(workspacePath, { ...options, view: 'summary' }),
       sendChatMessage: (...args: Parameters<ReportDataApi['sendChatMessage']>) => sendChatMessageRef.current(...args),
       query: createReportQuery(workspacePath, async body => {
@@ -243,7 +238,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, crewConversationPane = false, defaultRelayDashboard = false }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, crewConversationPane = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -312,7 +307,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   }, [workspacePath])
 
   const currentCatalog = catalog?.workspacePath === workspacePath ? catalog : null
-  const emptyChat = crewConversationPane && !loading && !error && !report && !defaultRelayDashboard
+  const emptyChat = crewConversationPane && !loading && !error && !report
   const dashboardTitle = emptyChat ? 'Chat' : !loading && !error && report ? report.label : 'Dashboard'
   const title = !documentPath && currentCatalog && currentCatalog.documents.length > 1
     ? <select aria-label="Choose dashboard" title={dashboardTitle} value={currentCatalog.activePath} disabled={loading}
@@ -342,14 +337,14 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           tabIndex={0}
           aria-label="Dashboard content"
           data-report-viewport
-          className={`min-h-0 flex-1 overscroll-y-contain ${conversationPane ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'} ${!loading && !error && !report && !defaultRelayDashboard && !emptyChat ? 'flex flex-col' : ''}`}
+          className={`min-h-0 flex-1 overscroll-y-contain ${conversationPane ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'} ${!loading && !error && !report && !emptyChat ? 'flex flex-col' : ''}`}
         >
-          <div className={`${conversationPane ? 'flex min-h-0 w-full flex-1 flex-col' : shellClass} ${!loading && !error && !report && !defaultRelayDashboard && !emptyChat ? 'flex flex-1 items-center justify-center' : ''}`}>
+          <div className={`${conversationPane ? 'flex min-h-0 w-full flex-1 flex-col' : shellClass} ${!loading && !error && !report && !emptyChat ? 'flex flex-1 items-center justify-center' : ''}`}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
-            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} renderEmptyState={canCreate => <DashboardEmptyState description={emptyDescription} action={canCreate ? emptyAction : undefined} onRefresh={refresh} />} /></Suspense>}
+
             {emptyChat && <ProjectAskPane key={workspacePath} workspacePath={workspacePath} />}
-            {!loading && !error && !report && !defaultRelayDashboard && !emptyChat && (
+            {!loading && !error && !report && !emptyChat && (
               <DashboardEmptyState description={emptyDescription} action={emptyAction} onRefresh={refresh} />
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}

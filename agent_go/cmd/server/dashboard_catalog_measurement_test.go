@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -22,14 +21,6 @@ func logDashboardCatalogFootprints(t *testing.T, api *StreamingAPI) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	flowBuilder, err := relayproduct.BuilderTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	flowRun, err := relayproduct.RunTools()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, surface := range []struct {
 		name string
 		gate *productToolGate
@@ -37,8 +28,6 @@ func logDashboardCatalogFootprints(t *testing.T, api *StreamingAPI) {
 	}{
 		{"goal-builder", newProductToolGateForAllowlist("goal-builder", agentworksproduct.ChatTools("builder")), false},
 		{"goal-run", newProductToolGateForAllowlist("goal-run", agentworksproduct.ChatTools("run")), false},
-		{"flow-builder", newProductToolGateForAllowlist("flow-builder", flowBuilder), false},
-		{"flow-run", newProductToolGateForAllowlist("flow-run", flowRun), false},
 		{"crew-builder", newProductToolGate(&resolvedAgentProfile{Definition: crew}), true},
 		{"crew-run-ask", newProductToolGate(&resolvedAgentProfile{Definition: crew}), true},
 	} {

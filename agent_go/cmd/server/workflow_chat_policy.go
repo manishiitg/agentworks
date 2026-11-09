@@ -9,11 +9,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 )
 
 type workflowChatPolicy struct {
@@ -49,8 +47,6 @@ func readOnlyForRequest(access WorkflowAccessLevel, req QueryRequest) bool {
 func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveSessionInfo, readOnly bool) workflowChatPolicy {
 	origin := "interactive"
 	switch {
-	case req.ExternalBuilderOperationID != "":
-		origin = "external_builder"
 	case req.ParentSessionID != "" || req.SessionKind != "" || active != nil && (active.ParentSessionID != "" || active.SessionKind != ""):
 		origin = "child"
 	case req.BotPlatform != "" || active != nil && active.BotPlatform != "":
@@ -71,7 +67,7 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	if workspace == "" && active != nil {
 		workspace = active.WorkspacePath
 	}
-	roleOrigin, authority := origin, req.ExternalBuilderOperationID
+	roleOrigin, authority := origin, ""
 	if origin == "notification" {
 		if snapshot, ok := chatPolicyRoleSnapshotFor(session); ok {
 			roleOrigin, authority = snapshot.Origin, snapshot.Authority
@@ -159,15 +155,9 @@ func (p workflowChatPolicy) sessionKey() string {
 func (api *StreamingAPI) chatPolicySessionKey(p workflowChatPolicy, workflowKind ...string) string {
 	h := sha256.New()
 	h.Write([]byte(p.sessionKey()))
-	if len(workflowKind) > 0 && workflowKind[0] == "relay" {
-		key, err := relayproduct.BuilderDefinitionKey()
-		if err != nil {
-			key = "invalid-relay-builder:" + err.Error()
-		}
-		h.Write([]byte(key))
-	} else {
-		h.Write([]byte(agentworksproduct.ChatDefinitionKey(p.Mode)))
-	}
+
+	h.Write([]byte(agentworksproduct.ChatDefinitionKey(p.Mode)))
+
 	// Never log config contents or secret values. A changed install/auth/config
 	// causes the existing durable-history reconnect path on the next user turn.
 	for _, path := range []string{api.mcpConfigPath, api.getUserConfigPath()} {
@@ -300,34 +290,6 @@ func isRetiredGeneralChat(req *QueryRequest, profile *resolvedAgentProfile, sess
 // An MCP Builder turn admits linked workflow context exactly like the website.
 func admitWorkflowBuilderContextPaths(ctx context.Context, req *QueryRequest) error {
 	return admitTurnContextPaths(ctx, req)
-}
-
-// Phase tools are registered through the same source of truth as browser
-// Builder, intersected with this operation's explicit tool boundary.
-type externalBuilderDefinitionRegistrar struct {
-	definitionRegistrar
-	claims *UserClaims
-}
-
-func externalBuilderRegistrar(registrar definitionRegistrar, claims *UserClaims) definitionRegistrar {
-	if claims == nil || claims.ExternalBuilderOperationID == "" {
-		return registrar
-	}
-	return externalBuilderDefinitionRegistrar{registrar, claims}
-}
-
-func (r externalBuilderDefinitionRegistrar) RegisterCustomTool(name, description string, schema map[string]interface{}, run func(context.Context, map[string]interface{}) (string, error), category string) error {
-	if externalBuilderToolDenied(r.claims, name) {
-		return nil
-	}
-	return r.definitionRegistrar.RegisterCustomTool(name, description, schema, auditExternalBuilderPlanTool(name, run), category)
-}
-
-func (r externalBuilderDefinitionRegistrar) RegisterCustomToolWithTimeout(name, description string, schema map[string]interface{}, run func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
-	if externalBuilderToolDenied(r.claims, name) {
-		return nil
-	}
-	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, auditExternalBuilderPlanTool(name, run), timeout, category)
 }
 
 func (api *StreamingAPI) isWorkflowStepTurn(req QueryRequest, sessionID string) bool {

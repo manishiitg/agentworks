@@ -20,6 +20,7 @@ import (
 )
 
 func TestCrewAdmissionAndRetainedInputKeepTrustedMode(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir()) // admission checks the Crew's folders on disk
 	fx := newCrewRunModeFixture(t)
 	var builderKey string
 	for _, tc := range []struct {
