@@ -103,8 +103,6 @@ type ScheduledJobResponse struct {
 	// Starts is the one plain line the Automations pages print for what this schedule starts ("Runs the workflow ·
 	// <saved setting>" or "Sends a message to <agent>"; see automation_starts_line.go).
 	Starts string `json:"starts,omitempty"`
-	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
-	pauseProduct string
 
 	CreatedAt      string `json:"created_at,omitempty"`
 	UpdatedAt      string `json:"updated_at,omitempty"`
@@ -197,10 +195,6 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		collisionPolicy = ""
 		concurrencyMode = ""
 	}
-	pauseProduct := "agentworks"
-	if manifest != nil && manifest.Kind == "relay" {
-		pauseProduct = "relays"
-	}
 	destination, chatKey, chatID, destinations := goalScheduleDestinationView(manifest, workspacePath, sched)
 	return ScheduledJobResponse{
 		RunDestination:  destination,
@@ -208,7 +202,6 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		ChatID:          chatID,
 		RunDestinations: destinations,
 		Starts:          workflowScheduleStartsLine(manifest, sched),
-		pauseProduct:    pauseProduct,
 		Kind:            normalizeTriggerKind(sched.Kind),
 		StepID:          workflowWebhookDTO(sched).StepID,
 		ID:              sched.ID,

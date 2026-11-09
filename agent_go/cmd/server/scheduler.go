@@ -1570,7 +1570,7 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	}
 	s.runtimeStatesMu.RUnlock()
 
-	paused, cfg, err := s.IsProductPaused(context.Background(), workflowPauseProduct(sctx.WorkflowKind))
+	paused, cfg, err := s.IsGloballyPaused(context.Background())
 	if err != nil {
 		s.logf(sctx, "[SCHEDULER] ⚠️ Failed to read scheduler config before trigger %s: %v", schedID, err)
 	} else if paused {
@@ -1581,12 +1581,9 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 		if pausedAt != "" {
 			s.logf(sctx, "[SCHEDULER] ⏸️ Global scheduler pause active since %s, skipping %s", pausedAt, schedID)
 		} else {
-			s.logf(sctx, "[SCHEDULER] ⏸️ Scheduler pause active for %s, skipping %s", workflowPauseProduct(sctx.WorkflowKind), schedID)
+			s.logf(sctx, "[SCHEDULER] ⏸️ Global scheduler pause active, skipping %s", schedID)
 		}
 		reason := "global scheduler pause is active"
-		if cfg != nil && !cfg.GloballyPaused {
-			reason = "this product's schedules are paused"
-		}
 		s.recordScheduleFireDecision(ctx, sctx, "skipped_paused", reason, "", now.UTC())
 		return
 	}

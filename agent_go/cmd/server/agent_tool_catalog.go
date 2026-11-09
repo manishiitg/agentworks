@@ -54,7 +54,7 @@ func agentSourceMutates(source, operation string, original bool) bool {
 	case brainAdminTool:
 		return brainAdminWriteActions[operation]
 	case "manage_schedules":
-		return operation != "list" && operation != "runs"
+		return operation != "list" && operation != "runs" && operation != "scheduler_status"
 	case "manage_triggers":
 		return operation != "list" && operation != "runs" && operation != "status"
 	case "manage_condition_triggers":
@@ -111,6 +111,9 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 	action, ok := agentSourceAction(tool.Name)
 	if !ok {
 		return true
+	}
+	if action.Source == "manage_schedules" && globalSchedulerAction(action.SourceAction) {
+		return schedulerAdminAllowed(claims)
 	}
 	args := map[string]any{action.SourceParameter(): action.SourceAction}
 	if action.Source == brainAdminTool && brainAdminWriteActions[action.SourceAction] && claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("knowledgebase:write") {
