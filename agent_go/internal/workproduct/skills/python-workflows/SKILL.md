@@ -171,7 +171,8 @@ api_key = secret("API_KEY")  # Pass to the service's client; never print or save
 
 - **Branches are Python.** Use `if`/`elif` where an old workflow used routes.
 - **Repair once.** When an agent's output fails a check, send the error once to the same agent (`conversation_id=reply.conversation_id`), check again, and fail plainly if it still fails.
-- **One database per Crew.** Use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
+- **Python and agent shells.** The parent workflow and platform-run scripts can import `agentworks` and `agentworks_db`. Native shells inside `agent()` do not have that helper environment. Agents use the registered `database` tool (`action="query"` or `"mutate"`), or write artifacts for the parent to check and persist. Do not ask an agent to run a helper that imports either module.
+- **One database per Crew.** In parent Python or platform-run scripts, use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
 - **Durable files** that later runs need go under `WORKFLOW_DATA_ROOT`; everything else stays in `run_folder`.
 - **Check command output.** For a Docker command that must return output, require both exit code zero and nonempty output. Empty output is a failed check, not evidence that a database has no rows. Record the return code and stdout/stderr byte counts without secret values.
 - **Nobody is asked mid-run.** A run never waits for a person. A missing value fails the run with a clear reason.
@@ -219,6 +220,7 @@ send explicitly through the current helpers. Do not keep a plan runner or read
   check both a missing field and an invalid supplied value. Save input/caller
   changes together through the canonical writer as described below. Preserve
   caller authentication, enabled state and schedule timing.
+- **Agent-run helpers.** Keep `agentworks` and `agentworks_db` imports in parent Python or platform-run scripts, never in helpers an agent must launch from its native shell. Preserve each helper's business work: have the agent use the `database` tool, or return files that the parent validates and stores.
 - **Managed database.** Replace retired `query_workflow_db` and
   `mutate_workflow_db` calls with `database` and `action="query"` / `"mutate"`,
   or use `agentworks_db`. Keep SQL, parameters and paging intact, check mutation
