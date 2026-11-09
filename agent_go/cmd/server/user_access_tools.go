@@ -100,6 +100,9 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 				state, err = api.setProjectAccessLists(ctx, claims, path, manifest, owners, readers, ownersSet, readersSet)
 			}
 			if err != nil {
+				if strings.Contains(err.Error(), "no account with an email matches") {
+					return "", fmt.Errorf("Use the email address of someone in your company. %w", err)
+				}
 				return "", err
 			}
 			out, _ := json.Marshal(state)
@@ -143,11 +146,7 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 		rec := &accessToolResponse{header: make(http.Header)}
 		handler(rec, req)
 		if rec.status >= 400 {
-			detail := strings.TrimSpace(rec.String())
-			if strings.Contains(detail, "no account with an email matches") {
-				return "", fmt.Errorf("Use the email address of someone in your company. %s", detail)
-			}
-			return "", fmt.Errorf("User/access operation failed (%d): %s", rec.status, detail)
+			return "", fmt.Errorf("User/access operation failed (%d): %s", rec.status, strings.TrimSpace(rec.String()))
 		}
 		return rec.String(), nil
 	}, "user_management")
