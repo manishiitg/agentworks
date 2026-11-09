@@ -536,14 +536,18 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None, entry_inp
     return changes, documents, report
 
 
-def apply(changes, documents, state, backup=None, identity='runtime-roots', append_platform_rows=False):
-    if not changes:
+def apply(changes, documents, state, backup=None, identity='runtime-roots', append_platform_rows=False, moves=()):
+    if not changes and not moves:
         return None
     backup = backup or state / 'migrations' / ('workflow-python-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ'))
     backup = backup / safe_id(identity)
     if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
         raise ValueError('This workflow backup already contains a snapshot. Keep it and choose a new backup folder.')
     copies = dict(documents, ownership=state / 'ownership')
+    for index, (source, target) in enumerate(moves):
+        if target.exists():
+            raise ValueError('Dashboard source destination already exists; inspect the collision before repair.')
+        copies['dashboard-source-' + str(index)] = source
     for source in copies.values():
         if backup == source or source in backup.parents or backup in source.parents:
             raise ValueError('Choose a backup outside the active automation storage.')
@@ -569,6 +573,9 @@ def apply(changes, documents, state, backup=None, identity='runtime-roots', appe
         if any(source['tables'].values()):
             target['path'].parent.mkdir(parents=True, exist_ok=True)
             merge_database_tables(target, [source])
+    for source, target in moves:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
     for path, raw in changes.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
@@ -584,6 +591,84 @@ ADOPTION_HELPERS = ('migrate-goal-to-crew', 'migrate-project-schedules', 'migrat
 def missing_adoption_helpers():
     here = Path(__file__).resolve().parent
     return [name + '.py' for name in ADOPTION_HELPERS if not (here / (name + '.py')).is_file()]
+
+
+def retarget_dashboard_links(docs, changes, old_root, workflow_id, crew_root, crew_id):
+    """Retarget registered dashboards, never execution identities or short codes."""
+    file = docs / '_system/dashboard_questions/resources.json'
+    if file not in changes and not file.exists():
+        return []
+    document = json.loads(changes[file]) if file in changes else json.loads(file.read_text())
+    rows = document.get('resources')
+    if not isinstance(rows, list):
+        raise ValueError('Dashboard resource registry needs a resources list.')
+    result = []
+    for row in rows:
+        if row.get('root') != old_root:
+            continue
+        if row.get('project_id') != workflow_id or row.get('kind') != 'workflow':
+            raise ValueError('A dashboard resource has a conflicting workflow identity; inspect it before adoption.')
+        before = dict(row)
+        row.update(root=crew_root, project_id=crew_id, kind='crew')
+        result.append({'before': before, 'after': dict(row)})
+    if result:
+        changes[file] = encode(document)
+    return result
+
+
+def dashboard_source_move(source, target):
+    """Move dashboard render source once; business scripts and report data stay put."""
+    contained(source.parent, source.name)
+    contained(target.parent, target.name)
+    if not source.exists():
+        return [], []
+    if target.exists():
+        raise ValueError('Dashboard source destination already exists; inspect the collision before repair.')
+    files = []
+    for file in sorted(source.rglob('*')):
+        contained(source, str(file.relative_to(source)))
+        if file.is_file():
+            files.append({'before':str(file), 'after':str(target/file.relative_to(source)),
+                          'sha256':hashlib.sha256(file.read_bytes()).hexdigest()})
+    return [(source, target)], files
+
+
+def repair_dashboard_links(docs, state, workflow_id):
+    matches = []
+    for file in (state / 'ownership/crew-executables').glob('*.json'):
+        binding = json.loads(file.read_text())
+        if binding.get('id') == workflow_id:
+            matches.append((file, binding))
+    if len(matches) != 1:
+        raise ValueError('Choose one already adopted workflow ID.')
+    file, binding = matches[0]
+    safe_id(workflow_id)
+    runtime_root(binding.get('runtime_root'), workflow_id)
+    root = binding.get('workspace_path', '')
+    if binding.get('kind') != 'script' or len(root.split('/')) != 2 or not root.startswith('Workflow/'):
+        raise ValueError('Choose an existing adopted Python workflow.')
+    if file.name != hashlib.sha256(root.encode()).hexdigest() + '.json':
+        raise ValueError('The saved workflow binding does not match its identity.')
+    safe_id(root.split('/')[1])
+    projects = json.loads((state / 'ownership/projects.json').read_text())['projects']
+    crews = [p for p in projects.values() if p.get('product') == 'work' and p.get('project_id') == binding.get('crew_id')]
+    owners_file = state / 'ownership/workflows.json'
+    owners = json.loads(owners_file.read_text()) if owners_file.exists() else {}
+    if len(crews) != 1 or binding.get('crew_root') != 'Crew/' + crews[0]['folder'] or owners.get(root) != crews[0]['owner_id']:
+        raise ValueError('The adopted workflow and destination Crew must have the same trusted owner.')
+    crew = crews[0]
+    safe_id(crew['folder'])
+    safe_id(binding['crew_id'])
+    safe_id(workflow_id)
+    files = Path(crew.get('local_root') or docs / binding['crew_root'])
+    if not files.is_absolute():
+        raise ValueError('Destination project folder must be absolute.')
+    resources = files / '.agentworks' if crew.get('local_root') else files
+    moves, moved_files = dashboard_source_move(files/'.agentworks/code'/workflow_id/'reports', resources/'code/reports')
+    changes = {}
+    rows = retarget_dashboard_links(docs, changes, root, workflow_id, binding['crew_root'], binding['crew_id'])
+    registry = docs / '_system/dashboard_questions/resources.json'
+    return changes, {'dashboard-registry': registry}, {'workflow_id': workflow_id, 'dashboard_retargets': rows, 'dashboard_source_moves':moved_files}, moves
 
 
 def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None, entry_inputs=None):
@@ -632,6 +717,15 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     conversion.counts['carried_crew_links'] = len(links)
     conversion.counts.update(entry_report)
     conversion.counts['dependencies'] = dependency_inventory(conversion.source/'code', payload)
+    conversion.dashboard_retargets = retarget_dashboard_links(docs, conversion.writes, conversion.root,
+        workflow_id, conversion.crew_root, crew_id)
+    resources = conversion.files / '.agentworks' if conversion.project.get('local_root') else conversion.files
+    moves, conversion.dashboard_source_moves = dashboard_source_move(conversion.source/'code/reports', resources/'code/reports')
+    conversion.moves[0:0] = moves
+    if moves:
+        for file in list(conversion.writes):
+            if (conversion.code/'reports') in file.parents:
+                conversion.writes[resources/'code/reports'/file.relative_to(conversion.code/'reports')] = conversion.writes.pop(file)
     conversion.python_source = True
     return conversion
 
@@ -916,12 +1010,20 @@ def main():
     parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
     parser.add_argument('--deployment-mode', choices=('local', 'server'), help='Required for standalone adoption: this installation runs locally or on a server.')
     parser.add_argument('--retire-old-plan', action='store_true', help='After at least one completed converted run, remove the old plan-engine files (planning/, its changelog and unused plan revisions). Never workflow.json, variables, code/, runs, the database or timers.')
+    parser.add_argument('--repair-dashboard-links', action='store_true', help='Retarget saved dashboard links for one already adopted Python workflow, preserving their IDs and short codes.')
     parser.add_argument('--single-db', action='store_true', help='One database per Crew: point each Crew at its only database with rows, or copy the other tables into the largest one (refusing on a table-name clash). Inspect by default; nothing is deleted.')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup', type=Path, help='Backup parent folder; each workflow gets its own new snapshot, never overwriting an earlier one.')
     args = parser.parse_args()
     if args.entry_inputs and (args.single_db or args.retire_old_plan or not args.workflow_id):
         parser.error('--entry-inputs needs --workflow-id, separately from database or plan retirement')
+    if args.repair_dashboard_links:
+        if not args.workflow_id or args.source or args.adopt_into_crew or args.entry_inputs or args.single_db or args.retire_old_plan or args.initialize_runtime_roots:
+            parser.error('--repair-dashboard-links takes only --workflow-id, --docs, --state and optional --apply/--backup')
+        changes, documents, report, moves = repair_dashboard_links(args.docs.resolve(), args.state.resolve(), args.workflow_id)
+        report['backup'] = apply(changes, documents, args.state.resolve(), args.backup, args.workflow_id + '-dashboard-links', moves=moves) if args.apply else None
+        print(json.dumps(report, indent=2))
+        return
     if args.single_db:
         if args.workflow_id or args.source or args.adopt_into_crew or args.initialize_runtime_roots or args.retire_old_plan:
             parser.error('--single-db takes no other step (only --backup and --apply)')
