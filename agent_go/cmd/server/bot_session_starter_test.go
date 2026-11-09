@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	pkgevents "github.com/manishiitg/mcpagent/events"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
@@ -241,19 +244,19 @@ func TestNormalizeSlackChannelRoutingDefaultsNewRoutesToRun(t *testing.T) {
 // Muse delivery while the conversation is running. The terminal delivery
 // boundary is stubbed; no real user chat is messaged.
 func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
-	workspace, _ := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("TRACING_PROVIDER", "noop")
 	const sessionID = "bot-steer-query-p0"
-	const userID = "bot-steer-owner"
+	const userID = "owner"
 	store := internalevents.NewEventStore(20)
 	defer store.Stop()
 	terminalStore := terminals.NewStore()
 	terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "mlp-muse-cli-int-bot-steer"))
 	deliveries := 0
 	api := &StreamingAPI{
+		agentProfiles: f.api.agentProfiles, provider: "muse-cli",
 		eventStore: store, terminalStore: terminalStore,
-		activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, UserID: userID, Status: "running"}},
+		activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, UserID: userID, Status: "running", WorkspacePath: externalCommandCrewRoot}},
 		internalRetainedTerminalInputHandler: func(_ context.Context, provider llmproviders.Provider, _, owner, message string) error {
 			if provider != llmproviders.ProviderMuseCLI || owner != sessionID || message != "use Notion instead" {
 				t.Fatalf("wrong steer: provider=%s owner=%s message=%q", provider, owner, message)
@@ -272,8 +275,35 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := api.sendFollowUpInternal(ctx, map[string]interface{}{"query": "use Notion instead", "agent_mode": "workflow_phase", "phase_id": "workflow-builder"}, sessionID, userID); err != nil {
-		t.Fatal(err)
+	// Model the same admitted Crew definition that launched the retained turn.
+	// A profileless general chat is retired; bots keep the Crew's real access checks.
+	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Test Team"}, SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli", ModelID: "muse-spark-1.3"}
+	profile, _, admitErr := api.admitQueryTarget(internalBotRequestContext(ctx, userID), &query, userID, sessionID)
+	if admitErr != nil {
+		t.Fatal(admitErr)
+	}
+	api.launchedAgentProfileKeyBySession = map[string]string{sessionID: agentProfileSessionKey(profile)}
+	api.lastQueryRequests = map[string]QueryRequest{sessionID: query}
+	request := map[string]interface{}{
+		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
+		"agent_profile_conversation_key": "team", "selected_folder": externalCommandCrewRoot, "provider": "muse-cli", "model_id": "muse-spark-1.3",
+		"agent_profile_context": map[string]interface{}{"project_title": "Test Team"},
+	}
+	if err := api.sendFollowUpInternal(ctx, request, sessionID, userID); err != nil {
+		if deliveries != 0 {
+			t.Fatal(err)
+		}
+		// The channel error deliberately hides bodies. Diagnose only this synthetic
+		// refused request, before any stub delivery; never widen production errors.
+		body, _ := json.Marshal(request)
+		r := httptest.NewRequest("POST", "/api/query", strings.NewReader(string(body)))
+		r = r.WithContext(internalBotRequestContext(ctx, userID, request))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Session-ID", sessionID)
+		r.Header.Set("X-User-ID", userID)
+		response := httptest.NewRecorder()
+		api.handleQuery(response, r)
+		t.Fatalf("%v; synthetic refusal HTTP=%d body=%s", err, response.Code, response.Body.String())
 	}
 	if deliveries != 1 {
 		t.Fatalf("retained tmux deliveries=%d, want 1", deliveries)
