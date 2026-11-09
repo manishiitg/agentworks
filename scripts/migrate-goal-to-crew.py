@@ -854,6 +854,8 @@ class Conversion:
                 'next':('Start the upgraded app and test this Python automation from its Crew chat.' if getattr(self, 'python_source', False) else 'Ask this Crew’s chat to update this workflow before running it. Task text and code were not rewritten.'),
                 'owner_evidence':self.owner_proof,
                 'carried_crew_links':getattr(self, 'carried_crew_links', []),
+                'dashboard_retargets':getattr(self, 'dashboard_retargets', []),
+                'dashboard_source_moves':getattr(self, 'dashboard_source_moves', []),
                 'database_columns_with_old_paths':self.database_path_columns,
                 'backup_skipped':[str(p.relative_to(self.source)) for p in self.backup_skipped],
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}

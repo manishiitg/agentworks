@@ -96,6 +96,13 @@ class Migration(unittest.TestCase):
         (source/'main.py').write_text('print("new engine")\n')
         requirements = b'# explicit authored dependencies\r\nhttpx==0.28.1\r\n'
         (source/'requirements.txt').write_bytes(requirements)
+        # PLAT-746-511: adoption must retain the original public link and move
+        # only dashboard render source to the Crew's canonical report paths.
+        registry_file = self.docs/'_system/dashboard_questions/resources.json'
+        original_resource = {'id':'resource-kept','root':'Workflow/old-goal','project_id':'old-goal',
+                             'kind':'workflow','dashboard':'overview','code':'abcdefghjk'}
+        write(registry_file, {'resources':[original_resource]})
+        write(self.source/'code/reports/managed/overview/rev/data.py', {'source':'render'})
         before = hashes(self.base)
         conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
         self.assertEqual(hashes(self.base),before)
@@ -139,6 +146,33 @@ class Migration(unittest.TestCase):
         self.assertEqual((conversion.code/'requirements.txt').read_bytes(), requirements)
         self.assertTrue((conversion.code/'one/main.py').is_file())
         self.assertTrue((self.runtime/'runs/iteration-1/run_metadata.json').is_file())
+        resource = m.read(registry_file)['resources'][0]
+        self.assertEqual(resource,dict(original_resource,root='Crew/target',project_id='crew',kind='crew'))
+        canonical = self.docs/'Crew/target/code/reports'
+        moved = canonical/'managed/overview/rev/data.py'
+        self.assertTrue(moved.is_file())
+        self.assertFalse((conversion.code/'reports').exists())
+        self.assertEqual(result['dashboard_source_moves'][0]['sha256'],hashlib.sha256(moved.read_bytes()).hexdigest())
+        # Exercise the actual inspect/apply CLI on an already-adopted installation
+        # with the old registry/source placement, including a no-change second run.
+        import shutil
+        old_reports = conversion.code/'reports'
+        shutil.move(str(canonical),str(old_reports))
+        write(registry_file,{'resources':[original_resource]})
+        command=[sys.executable,str(Path(python.__file__)), '--docs',str(self.docs),'--state',str(self.state),
+                 '--workflow-id','old-goal','--repair-dashboard-links']
+        snapshot = hashes(self.base)
+        inspect = subprocess.run(command,check=True,capture_output=True,text=True)
+        self.assertEqual(hashes(self.base),snapshot)
+        self.assertEqual(json.loads(inspect.stdout)['dashboard_retargets'][0]['before'],original_resource)
+        subprocess.run(command+['--apply','--backup',str(self.base/'repair-backup')],check=True,capture_output=True,text=True)
+        self.assertTrue(moved.is_file())
+        self.assertEqual(m.read(registry_file)['resources'][0],resource)
+        snapshot = hashes(self.base)
+        again = subprocess.run(command+['--apply'],check=True,capture_output=True,text=True)
+        self.assertEqual(hashes(self.base),snapshot)
+        self.assertEqual(json.loads(again.stdout)['dashboard_source_moves'],[])
+        self.assertEqual(json.loads(again.stdout)['dashboard_retargets'],[])
         with self.assertRaisesRegex(ValueError,'standalone workflow ID'):
             python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
 
