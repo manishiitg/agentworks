@@ -96,6 +96,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 
+		if rel == "Crew/dashboard-team/product.json" || rel == "Crew/dashboard-team/workflow.json" {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.GetDocument(c)
+			return
+		}
 		if strings.HasPrefix(rel, "_users/") && strings.HasSuffix(rel, "/chat_history/product-conversations.json") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.GetDocument(c)
