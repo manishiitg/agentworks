@@ -448,8 +448,9 @@ func crewAgentCopyLine(t crewTeam, a crewTeamAgent) (string, string) {
 	if name == "" {
 		return "", "Give this agent a name first, then copy its line."
 	}
-	return fmt.Sprintf("Connect to AgentWorks, then ask the agent %q in my %q Crew to help me (workspace action=ask, workspace_id=%s:%s, chat_id=%q).",
-		name, firstNonEmptyTrimmed(t.Name, "Crew"), crewProfileID, t.ProjectID, name), ""
+	network := firstNonEmptyTrimmed(effectiveShareBaseURL(), "my connected AgentWorks network")
+	return fmt.Sprintf("Use my AgentWorks connection for %q.\nCrew: %s\nAgent: %s\nPurpose: %s\n\nSend my request to this existing agent using the AgentWorks workspace tool (action=ask, workspace_id=%s:%s, chat_id=%q). Do not create or attach a different chat. If this connection or agent is unavailable, tell me what I need to connect first.\n\nMy request: [write what you need help with]",
+		network, firstNonEmptyTrimmed(t.Name, "Crew"), name, firstNonEmptyTrimmed(a.Purpose, "Ask this agent what it can help with."), crewProfileID, t.ProjectID, name), ""
 }
 
 // crewTeamSoloAgents are the owner's own agents while the Team is off, each with its Public on AgentBridge: a Mac
