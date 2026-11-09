@@ -7,7 +7,7 @@ description: Publish this local project's files and current chat to an online Cr
 
 Publish only when the person asks. Save this project's files and this exact
 chat; hosted work continues from a private summary on the disclosed company
-account while the computer is offline. Native chat resume comes later.
+account while the computer is offline. This CLI import path uses the returned continuation mode. Other native continuation paths are provider-specific; read the current Crew-on-Mac guide and receipt rather than promising universal resume or claiming it is all future work.
 
 Use the current AgentWorks connection. Discover destinations with the existing
 workspace list tool if the person wants an existing Crew. Preserve their choice:
@@ -34,15 +34,9 @@ returned next step. Republishing follows the saved project/agent link and
 preserves online working data and conversations.
 
 
-If the project offers functions, keep functions.json in the common Crew format.
-Each function has a stable unique id and name, enabled, description, action,
-fixed input, input_schema and optional result_schema. For example:
-
-```json
-{"functions":[{"id":"report_ready","name":"report_ready","description":"Prepare a report","enabled":true,"action":{"type":"message"},"input":{"messages":["Prepare the requested report."]},"input_schema":{"type":"object"}}]}
-```
-
-Use a message action for a published Crew function; input.messages holds its
-instructions. Do not write the retired top-level instructions/version format.
-Current Crew sharing controls who may call. Keep caller input and results free
-of secret values. Publish again to change the immutable source.
+If the project offers Actions, discover the existing `functions` tool and current
+definitions before changing them. Use the managed define/update service instead
+of hand-writing protected functions.json. Preserve stable names, declared inputs,
+caller restrictions and result contracts. Sharing and publishing are separate:
+inspect the saved audience and returned publication state, and keep credentials
+out of both input and output. A source save is not a published update.
