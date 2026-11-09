@@ -38,7 +38,7 @@ func TestWorkMCPSelectionToolPersistsConnectedServerForProject(t *testing.T) {
 	if _, err := tool.exec(ctx, map[string]interface{}{"action": "select", "server": vaultServerName(id)}); err != nil {
 		t.Fatal(err)
 	}
-	selected, initialized, err := productSelectedServers(ctx, "work", workspacePath)
+	selected, initialized, err := productAppSelection(ctx, "work", workspacePath)
 	if err != nil || !initialized || len(selected) != 1 || selected[0] != vaultServerName(id) {
 		t.Fatalf("selected=%v initialized=%v err=%v", selected, initialized, err)
 	}
@@ -55,7 +55,7 @@ func TestWorkMCPSelectionToolPersistsConnectedServerForProject(t *testing.T) {
 	if _, err := tool.exec(ctx, map[string]interface{}{"action": "deselect", "server": vaultServerName(id)}); err != nil {
 		t.Fatal(err)
 	}
-	if selected, _, err := productSelectedServers(ctx, "work", workspacePath); err != nil || len(selected) != 0 {
+	if selected, _, err := productAppSelection(ctx, "work", workspacePath); err != nil || len(selected) != 0 {
 		t.Fatalf("deselect did not persist: selected=%v err=%v", selected, err)
 	}
 }
@@ -84,7 +84,7 @@ func TestWorkMCPSelectionToolRejectsUnconnectedServer(t *testing.T) {
 	if _, err := registrar.tools[updateProjectMCPServerSelectionTool].exec(ctx, map[string]interface{}{"action": "select", "server": vaultServerName(crewForeignConnection)}); err == nil {
 		t.Fatal("accepted another Vault's connection")
 	}
-	if selected, _, err := productSelectedServers(ctx, "work", workspacePath); err != nil || len(selected) != 0 {
+	if selected, _, err := productAppSelection(ctx, "work", workspacePath); err != nil || len(selected) != 0 {
 		t.Fatalf("rejected selection changed manifest: selected=%v err=%v", selected, err)
 	}
 }
