@@ -275,8 +275,15 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 	if _, known := cachedCrewStepCount(t.Context(), graphRoot); known {
 		t.Fatal("edited saved source reused its previous outline count")
 	}
-	// Warm display data never admits someone who cannot open the Crew.
-	if _, _, code := call("outsider", "panel-crew-00"); code != 403 {
-		t.Fatalf("private Crew panel admitted outsider: %d", code)
+	// Registry sharing is the rule: this initially shared Crew permits another
+	// real account, then revoking it must refuse that same account after warm reads.
+	if _, _, code := call("other", "panel-crew-00"); code != 200 {
+		t.Fatalf("shared Crew panel refused allowed account: %d", code)
+	}
+	if err := defaultProjectOwners().SetPrivate("work", "panel-crew-00", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, code := call("other", "panel-crew-00"); code != 403 {
+		t.Fatalf("private Crew panel admitted revoked account: %d", code)
 	}
 }
