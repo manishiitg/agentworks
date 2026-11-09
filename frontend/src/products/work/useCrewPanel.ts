@@ -22,8 +22,7 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
     let reading = false
     let again = false
     let retryTimer: ReturnType<typeof setTimeout> | undefined
-    let nextAttempt = 0
-    async function read(attempt = nextAttempt) {
+    async function read(attempt = 0) {
       clearTimeout(retryTimer)
       retryTimer = undefined
       if (reading) { again = true; return }
@@ -32,7 +31,6 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
       try {
         const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { session_id: session, refresh_attempt: attempt || undefined }, signal: controller.signal, skipSessionContext: true })
         if (!controller.signal.aborted) {
-          nextAttempt = data.refresh_attempt ?? 0
           lastKnown.set(key, data)
           setState({ key, data, error: data.refresh_note })
           // The server alone chooses the retry time and next attempt. A fresh
