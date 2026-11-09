@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -1334,8 +1335,8 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 	s.rememberScheduleCaller(sctx, originSessionID)
 	startTime := time.Now().UTC()
 	sctx.ScheduledFor = startTime
-	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != scheduleDependencyReady {
-		if disposition == scheduleDependencyWaiting && s.queueScheduleOccurrence(ctx, sctx, reason, startTime, "retry") {
+	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != productschedule.DependencyReady {
+		if disposition == productschedule.DependencyWaiting && s.queueScheduleOccurrence(ctx, sctx, reason, startTime, "retry") {
 			return "queued", nil
 		}
 		_ = s.recordScheduleFireDecision(ctx, sctx, "blocked_dependency", reason, "", startTime)
@@ -1670,8 +1671,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	startTime := time.Now().UTC()
 	freshCtx.QueuedExpiresAt = sctx.QueuedExpiresAt
 	freshCtx.QueuedOccurrenceCount = sctx.QueuedOccurrenceCount
-	if disposition, reason := s.scheduleDependencyDisposition(ctx, freshCtx, startTime); disposition != scheduleDependencyReady {
-		if disposition == scheduleDependencyBlocked {
+	if disposition, reason := s.scheduleDependencyDisposition(ctx, freshCtx, startTime); disposition != productschedule.DependencyReady {
+		if disposition == productschedule.DependencyBlocked {
 			decision := "blocked_dependency"
 			if strings.Contains(reason, "deadline") {
 				decision = "expired_dependency_deadline"
@@ -1855,109 +1856,15 @@ func (s *SchedulerService) markScheduleWaiting(sctx *ScheduleContext, reason str
 	})
 }
 
-type scheduleDependencyResult int
-
-const (
-	scheduleDependencyReady scheduleDependencyResult = iota
-	scheduleDependencyWaiting
-	scheduleDependencyBlocked
-)
-
-func (s *SchedulerService) scheduleDependencyDisposition(ctx context.Context, sctx *ScheduleContext, now time.Time) (scheduleDependencyResult, string) {
-	dependencyIDs := scheduleDependencyIDs(sctx.Schedule)
-	if len(dependencyIDs) == 0 {
-		return scheduleDependencyReady, ""
-	}
+func (s *SchedulerService) scheduleDependencyDisposition(ctx context.Context, sctx *ScheduleContext, now time.Time) (productschedule.DependencyResult, string) {
 	scopeType, scopeID, _ := scheduleStateScope(sctx)
-	location, err := time.LoadLocation(strings.TrimSpace(sctx.Schedule.Timezone))
-	if err != nil {
-		location = time.UTC
-	}
-	occurrence := sctx.ScheduledFor
-	if occurrence.IsZero() {
-		occurrence = time.Now()
-	}
-	localOccurrence := occurrence.In(location)
-	year, month, day := localOccurrence.Date()
-	dayStart := time.Date(year, month, day, 0, 0, 0, 0, location).UTC()
-	dayEnd := dayStart.In(location).AddDate(0, 0, 1).UTC()
-	// A later occurrence of the prerequisite must never release an older
-	// dependent occurrence after restart. Limit the lookup to prerequisite
-	// occurrences scheduled no later than this dependent's own durable time.
-	if dependentEnd := occurrence.UTC().Add(time.Nanosecond); dependentEnd.Before(dayEnd) {
-		dayEnd = dependentEnd
-	}
-	var dependencyDeadline time.Time
-	if deadline := strings.TrimSpace(sctx.Schedule.DependencyDeadline); deadline != "" {
-		parsed, _ := time.Parse("15:04", deadline)
-		dependencyDeadline = time.Date(year, month, day, parsed.Hour(), parsed.Minute(), 0, 0, location)
-	}
+	when := projectactions.When{Timezone: sctx.Schedule.Timezone, After: &projectactions.After{
+		Schedules: scheduleDependencyIDs(sctx.Schedule), Outcome: sctx.Schedule.AfterTerminalStatus,
+		DelayMinutes: sctx.Schedule.AfterDelayMinutes, Deadline: sctx.Schedule.DependencyDeadline,
+	}}
 	s.stateStoreMu.RLock()
-	store := s.stateStore
-	if store == nil {
-		s.stateStoreMu.RUnlock()
-		return scheduleDependencyWaiting, "dependency state is unavailable"
-	}
 	defer s.stateStoreMu.RUnlock()
-	terminalPolicy := strings.TrimSpace(sctx.Schedule.AfterTerminalStatus)
-	if terminalPolicy == "" {
-		terminalPolicy = "completed"
-	}
-	waitingReasons := make([]string, 0, len(dependencyIDs))
-	for _, dependencyID := range dependencyIDs {
-		run, err := store.RunForScheduleOccurrence(ctx, scopeType, scopeID, dependencyID, dayStart, dayEnd)
-		if err != nil {
-			if errors.Is(err, schedulerstate.ErrRunNotFound) {
-				if decision, decisionErr := store.FireDecisionForScheduleOccurrence(ctx, scopeType, scopeID, dependencyID, dayStart, dayEnd); decisionErr == nil && terminalScheduleFireDecision(decision.Decision) {
-					return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s did not run: %s", dependencyID, decision.Reason)
-				}
-				waitingReasons = append(waitingReasons, fmt.Sprintf("waiting for prerequisite schedule %s occurrence on %04d-%02d-%02d", dependencyID, year, month, day))
-				continue
-			}
-			waitingReasons = append(waitingReasons, fmt.Sprintf("could not read prerequisite schedule %s occurrence: %v", dependencyID, err))
-			continue
-		}
-		if !schedulerstate.IsTerminal(run.State) {
-			waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s occurrence %s is still %s", dependencyID, run.RunID, run.State))
-			continue
-		}
-		if terminalPolicy == "completed" && run.State != schedulerstate.StateCompleted {
-			return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s occurrence %s ended %s; completed is required", dependencyID, run.RunID, run.State)
-		}
-		if !dependencyDeadline.IsZero() {
-			if run.CompletedAt == nil {
-				waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s is terminal but its completion timestamp is unavailable", dependencyID))
-				continue
-			}
-			releaseAt := run.CompletedAt.Add(time.Duration(sctx.Schedule.AfterDelayMinutes) * time.Minute)
-			if releaseAt.After(dependencyDeadline) {
-				return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s released at %s after dependency deadline %s", dependencyID, releaseAt.Format(time.RFC3339), dependencyDeadline.Format(time.RFC3339))
-			}
-		}
-		if delay := sctx.Schedule.AfterDelayMinutes; delay > 0 {
-			if run.CompletedAt == nil {
-				waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s is terminal but its completion timestamp is unavailable", dependencyID))
-				continue
-			}
-			releaseAt := run.CompletedAt.Add(time.Duration(delay) * time.Minute)
-			if now.Before(releaseAt) {
-				waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s completed; waiting until %s for configured delay", dependencyID, releaseAt.Format(time.RFC3339)))
-			}
-		}
-	}
-	if len(waitingReasons) > 0 {
-		if !dependencyDeadline.IsZero() && !now.Before(dependencyDeadline) {
-			return scheduleDependencyBlocked, fmt.Sprintf("dependency deadline %s %s passed before prerequisites %s released: %s", sctx.Schedule.DependencyDeadline, location, strings.Join(dependencyIDs, ", "), strings.Join(waitingReasons, "; "))
-		}
-		return scheduleDependencyWaiting, strings.Join(waitingReasons, "; ")
-	}
-	return scheduleDependencyReady, ""
-}
-
-func terminalScheduleFireDecision(decision string) bool {
-	return strings.HasPrefix(decision, "skipped_") || strings.HasPrefix(decision, "blocked_") ||
-		strings.HasPrefix(decision, "expired_") || decision == "failed_to_start" ||
-		decision == "missed_scheduler_gap" || decision == "launch_outcome_unknown"
+	return productschedule.EvaluateDependencies(ctx, s.stateStore, scopeType, scopeID, when, sctx.ScheduledFor, now)
 }
 
 // End this occurrence before dropping its queue row. Dependents can then follow
