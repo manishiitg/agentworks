@@ -246,11 +246,9 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  return <>{children(expanded, () => toggle(key, initialOpen))}{expanded && <div className="ml-6 border-l border-border pl-1.5">
-    {selected ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
+  return <>{children(expanded, () => toggle(key, initialOpen))}{expanded && (selected ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
       const session = activity?.find(item => item.session_id === chat.session_id && item.crew_project_id === projectId)
       const asking = runtimeNeedsUserInput(session)
       return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span>{asking ? <span title="Needs your input" aria-label="Needs your input" className="h-2 w-2 rounded-full bg-amber-400" /> : session && hasActiveSessionWork(session) ? <span title="Running" aria-label="Running" className="h-2 w-2 rounded-full bg-sky-500" /> : null}</button>
-    })}</div>}
-  </div>}</>
+    })}</div>)}</>
 }
