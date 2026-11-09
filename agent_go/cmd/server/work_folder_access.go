@@ -604,3 +604,29 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 		return "Folder detached from Work.", nil
 	})
 }
+
+// workFolderGuardDiagnostic explains, in one log line, why a turn got the
+// attached folders it got (PLAT-856-562): who the request is, which stored
+// key matched, whether the grants file could be read, and the admin check.
+// Names and emails are never printed, only which field matched.
+func workFolderGuardDiagnostic(ctx context.Context, claims *UserClaims) string {
+	if claims == nil {
+		return "diag: claims=nil"
+	}
+	doc, err := workFolderAccessStore.read(ctx)
+	if err != nil {
+		return fmt.Sprintf("diag: store_read_error=%v", err)
+	}
+	key := workFolderAccessKeyForClaims(doc, claims)
+	field := "none"
+	for name, value := range map[string]string{"user_id": claims.UserID, "username": claims.Username, "email": claims.Email} {
+		if key != "" && normalizeWorkflowPermissionKey(value) == key {
+			field = name
+			break
+		}
+	}
+	_, hasGrants := doc.Grants[key]
+	return fmt.Sprintf("diag: key_field=%s key_has_grants=%t grants=%d roots=%d admin=%t website_device=%t provider=%q access_token=%t scope=%t exec_principal=%t doc_grant_keys=%d",
+		field, hasGrants, len(doc.Grants[key]), len(workFolderRootsForKey(doc, key)), workFolderClaimsAreAdmin(claims),
+		websiteDeviceClaims(claims), claims.Provider, claims.AccessToken != nil, claims.Scope != "", claims.ExecutionPrincipal != nil, len(doc.Grants))
+}

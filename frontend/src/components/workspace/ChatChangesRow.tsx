@@ -14,8 +14,8 @@ export function ChatChangesRow({ section, onOpen }: { section?: CrewPanelSection
     <span className="min-w-0 flex-1"><span className="block truncate text-sm">{repo.label}</span><span className="block truncate text-xs text-muted-foreground">{repo.detail}</span></span>
   </button>
   return <div>
-    <WorkspaceContextRow icon={FileDiff} hint="Current staged, unstaged and new files in this project's Git repositories. Committing clears these changes; Branch / PR shows committed work." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>{section.title}</WorkspaceContextRow>
+    <WorkspaceContextRow icon={FileDiff} hint="Current staged, unstaged and new files in this project's Git repositories. Untracked dependencies and caches are excluded. Committing clears these changes; Branch / PR shows committed work." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>{section.title}</WorkspaceContextRow>
     {used.length > 0 && <div className="mt-1"><p className="px-2 py-1 text-xs text-muted-foreground">Used in this chat</p>{used.map(repoRow)}</div>}
-    {others.length > 0 && <details className="mt-1 group/other"><summary className="flex cursor-pointer list-none items-center gap-1 px-2 py-2 text-xs text-muted-foreground"><ChevronRight className="h-3 w-3 group-open/other:rotate-90" aria-hidden="true" />Other worktrees <span className="ml-auto">{others.length}</span></summary>{others.map(repoRow)}</details>}
+    {others.length > 0 && <details className="mt-1 group/other"><summary className="flex cursor-pointer list-none items-center gap-1 px-2 py-2 text-xs text-muted-foreground"><ChevronRight className="h-3 w-3 group-open/other:rotate-90" aria-hidden="true" />Other repositories <span className="ml-auto">{others.length}</span></summary>{others.map(repoRow)}</details>}
   </div>
 }
