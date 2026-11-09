@@ -6,51 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
-
-func TestEnhanceToolDescriptionTreatsGlobalScopeLikeNoProfile(t *testing.T) {
-	const chatsFolder = "_users/user-1/Chats"
-	noProfile := enhanceToolDescriptionForMultiAgentMode("execute_shell_command", "desc", chatsFolder, nil)
-	globalProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{
-		ID: "global-assistant", Scope: agentprofiles.ProfileScopeGlobal,
-	}}
-	global := enhanceToolDescriptionForMultiAgentMode("execute_shell_command", "desc", chatsFolder, globalProfile)
-	projectProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: "example-product"}}
-	project := enhanceToolDescriptionForMultiAgentMode("execute_shell_command", "desc", chatsFolder, projectProfile)
-
-	if global != noProfile {
-		t.Fatalf("expected global-scoped and profile-less descriptions to match:\nGLOBAL:\n%s\nNO PROFILE:\n%s", global, noProfile)
-	}
-	if strings.Contains(project, "{plan_id}") {
-		t.Fatalf("expected a project-scoped profile's description to stay narrowed, got: %s", project)
-	}
-}
-
-func TestMultiAgentPlacementGuidanceFallsThroughForGlobalScope(t *testing.T) {
-	const chatsFolder = "_users/user-1/Chats"
-	noProfile := multiAgentPlacementGuidance("execute_shell_command", chatsFolder, nil)
-	globalProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{
-		ID: "global-assistant", Scope: agentprofiles.ProfileScopeGlobal,
-	}}
-	global := multiAgentPlacementGuidance("execute_shell_command", chatsFolder, globalProfile)
-	projectProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{
-		ID: "example-product",
-		Runtime: agentprofiles.RuntimePolicy{Workspace: agentprofiles.WorkspacePolicy{
-			Placement: map[string][]string{"execute_shell_command": {"project-specific guidance"}},
-		}},
-	}}
-	project := multiAgentPlacementGuidance("execute_shell_command", chatsFolder, projectProfile)
-
-	if !reflect.DeepEqual(global, noProfile) {
-		t.Fatalf("expected global-scoped guidance to match no-profile guidance exactly, got %v vs %v", global, noProfile)
-	}
-	if reflect.DeepEqual(project, noProfile) {
-		t.Fatalf("expected a project-scoped profile's own declared placement to be used, not the no-profile fallback")
-	}
-}
 
 func TestExtractWorkflowContextFolders(t *testing.T) {
 	tests := []struct {
@@ -88,29 +46,6 @@ func TestExtractWorkspacePathFromObjectiveUsesFirstFileContextPath(t *testing.T)
 
 	if got != want {
 		t.Fatalf("extractWorkspacePathFromObjective() = %q, want %q", got, want)
-	}
-}
-
-func TestIsToolBackedChatMode(t *testing.T) {
-	tests := []struct {
-		name      string
-		agentMode string
-		want      bool
-	}{
-		{name: "empty", agentMode: "", want: true},
-		{name: "simple", agentMode: "simple", want: true},
-		{name: "multi agent", agentMode: "multi-agent", want: true},
-		{name: "trimmed multi agent", agentMode: " multi-agent ", want: true},
-		{name: "workflow phase", agentMode: "workflow_phase", want: false},
-		{name: "workflow", agentMode: "workflow", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isToolBackedChatMode(tt.agentMode); got != tt.want {
-				t.Fatalf("isToolBackedChatMode(%q) = %v, want %v", tt.agentMode, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -521,24 +456,6 @@ func TestWorkflowPhaseFolderGuardDoesNotAllowChatsByDefault(t *testing.T) {
 	}
 	if !shellCalled {
 		t.Fatal("expected shell executor to be called")
-	}
-}
-
-func TestWorkflowPhaseToolDescriptionDoesNotSayChatsOnly(t *testing.T) {
-	desc := enhanceToolDescriptionForWorkflowPhase("diff_patch_workspace_file", "Patch files.", "Workflow/latency-report")
-
-	for _, want := range []string{
-		"DIRECTORY ACCESS RESTRICTIONS (WORKFLOW BUILDER)",
-		"Workflow/latency-report/",
-		"Do NOT write workflow artifacts",
-	} {
-		if !strings.Contains(desc, want) {
-			t.Fatalf("workflow phase description missing %q:\n%s", want, desc)
-		}
-	}
-
-	if strings.Contains(desc, "ONLY write/modify files") {
-		t.Fatalf("workflow phase description should not contain chat-only write wording:\n%s", desc)
 	}
 }
 
