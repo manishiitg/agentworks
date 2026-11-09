@@ -280,7 +280,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 			o.coveredCounts[text] = count
 		}
 		for text, count := range counts {
-			if count > o.coveredCounts[text] {
+			if !nativeMessagesHaveOccurrenceIDs(messages) && count > o.coveredCounts[text] {
 				o.coveredCounts[text] = count
 			}
 		}
@@ -294,13 +294,14 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 			o.coveredCounts[text] += delta
 		}
 	}
-	newUsers := nativeTerminalNewUsers(o.users, users)
+	newUsers := nativeTerminalNewUserOccurrences(o.previous, messages)
 	if o.path == "" {
 		// A log can appear after attach. Only Enter attempts made since the
 		// baseline can belong to this viewer; older recovered history is baseline.
 		attempts := int(tmuxinput.Default.InteractiveSubmissionCount(o.snapshot.TmuxSession) - o.initialSubmissions)
 		if len(newUsers) > attempts {
-			for _, text := range newUsers[:len(newUsers)-attempts] {
+			for _, message := range newUsers[:len(newUsers)-attempts] {
+				text := strings.TrimSpace(builderConversationMessageText(message))
 				o.nativeCounts[text]++
 				if o.coveredCounts[text] < o.nativeCounts[text] {
 					o.coveredCounts[text] = o.nativeCounts[text]
@@ -309,7 +310,8 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 			newUsers = newUsers[len(newUsers)-attempts:]
 		}
 	}
-	for _, text := range newUsers {
+	for _, message := range newUsers {
+		text := strings.TrimSpace(builderConversationMessageText(message))
 		o.nativeCounts[text]++
 		if o.nativeCounts[text] <= o.coveredCounts[text] {
 			continue
@@ -322,7 +324,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		}
 		o.coveredCounts[text]++
 		acceptedAt := nativeTerminalPromptTime(path, o.provider, text, o.lastRead)
-		o.accept(text, acceptedAt)
+		o.accept(text, acceptedAt, message.NativeID)
 	}
 	if o.hasNativeInputs() {
 		o.mu.Lock()
@@ -354,8 +356,12 @@ func (o *nativeTerminalObserver) hasNativeInputs() bool {
 	return o.nativeInputs
 }
 
-func (o *nativeTerminalObserver) accept(text string, acceptedAt time.Time) {
-	key := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:%s", o.snapshot.SessionID, o.nativeID, o.nativeCounts[text], text)))
+func (o *nativeTerminalObserver) accept(text string, acceptedAt time.Time, occurrenceID string) {
+	identity := fmt.Sprintf("%s:%s:%d:%s", o.snapshot.SessionID, o.nativeID, o.nativeCounts[text], text)
+	if occurrenceID != "" {
+		identity = o.snapshot.SessionID + ":" + o.nativeID + ":" + occurrenceID
+	}
+	key := sha256.Sum256([]byte(identity))
 	id := fmt.Sprintf("user-message-native-%x", key[:12])
 	event := unifiedevents.NewUserMessageEvent(0, text, "user")
 	event.Timestamp = acceptedAt
@@ -403,6 +409,40 @@ func nativeTerminalUsers(messages []builderConversationMessage) []string {
 		if message.Role == "human" || message.Role == "user" {
 			if text := strings.TrimSpace(builderConversationMessageText(message)); text != "" {
 				out = append(out, text)
+			}
+		}
+	}
+	return out
+}
+
+// Journal IDs carry absolute occurrence identity even when a full window of
+// identical prompts slides. Other adapters retain their existing sequence contract.
+func nativeMessagesHaveOccurrenceIDs(messages []builderConversationMessage) bool {
+	for _, message := range messages {
+		if message.NativeID != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func nativeTerminalNewUserOccurrences(previous, current []builderConversationMessage) []builderConversationMessage {
+	if !nativeMessagesHaveOccurrenceIDs(current) {
+		var out []builderConversationMessage
+		for _, text := range nativeTerminalNewUsers(nativeTerminalUsers(previous), nativeTerminalUsers(current)) {
+			out = append(out, builderConversationMessage{Role: "human", Parts: []builderConversationPart{{Text: text}}})
+		}
+		return out
+	}
+	seen := make(map[string]bool, len(previous))
+	for _, message := range previous {
+		seen[message.NativeID] = true
+	}
+	var out []builderConversationMessage
+	for _, message := range current {
+		if (message.Role == "human" || message.Role == "user") && !seen[message.NativeID] {
+			if text := strings.TrimSpace(builderConversationMessageText(message)); text != "" {
+				out = append(out, message)
 			}
 		}
 	}

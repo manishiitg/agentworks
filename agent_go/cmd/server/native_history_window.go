@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -130,8 +132,10 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 		}
 		end := bytes.LastIndexByte(raw, '\n') + 1
 		consumed := end
+		rowOffset := start
 		if reset && start > 0 {
 			first := bytes.IndexByte(raw[:end], '\n') + 1
+			rowOffset += int64(first)
 			raw = raw[first:end]
 		} else {
 			raw = raw[:end]
@@ -142,6 +146,8 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 			}
 			next := bytes.IndexByte(raw, '\n')
 			line := raw[:next]
+			identity := fmt.Sprintf("%s:%d:%x", provider, rowOffset, sha256.Sum256(line))
+			rowOffset += int64(next + 1)
 			raw = raw[next+1:]
 			// Large tool/image rows are not visible prose; skip before JSON decoding.
 			if len(line) > 1<<20 || !json.Valid(line) {
@@ -159,6 +165,7 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 			if !ok {
 				continue
 			}
+			message.NativeID = identity
 			text := builderConversationMessageText(message)
 			if len(text) > nativeHistoryMessageBytes {
 				complete = false

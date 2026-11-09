@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -116,19 +117,30 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 			visibleUsers[text] = count
 		}
 	}
+	currentOccurrences := make(map[string]bool)
+	for _, message := range current {
+		if message.NativeID != "" {
+			currentOccurrences[message.NativeID] = true
+		}
+	}
 	now := time.Now()
 	published := 0
 	for index, message := range refreshed {
+		occurrenceKnown := message.NativeID != "" && len(currentOccurrences) > 0
+		if occurrenceKnown && currentOccurrences[message.NativeID] {
+			continue
+		}
+
 		if includeUsers && (message.Role == "human" || message.Role == "user") {
 			text := strings.TrimSpace(builderConversationMessageText(message))
 			if text == "" {
 				continue
 			}
 			refreshedUsers[text]++
-			if refreshedUsers[text] <= currentUsers[text] || refreshedUsers[text] <= visibleUsers[text] {
+			if !occurrenceKnown && (refreshedUsers[text] <= currentUsers[text] || refreshedUsers[text] <= visibleUsers[text]) {
 				continue
 			}
-			id := fmt.Sprintf("native-transcript-sync-user-%s-%d", sessionID, index)
+			id := nativeRecoveredMessageID(sessionID, message, index, true)
 			user := agentevents.NewUserMessageEvent(0, text, "user")
 			user.Timestamp = now
 			user.Metadata = map[string]interface{}{"source": "native_transcript_sync", "message_id": id, "delivery_status": "sent_to_cli", "recovered_live": true}
@@ -149,7 +161,7 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 		}
 		refreshedCounts[key]++
 		ordinal := refreshedCounts[key]
-		if ordinal <= currentCounts[key] || ordinal <= eventCounts[key] {
+		if !occurrenceKnown && (ordinal <= currentCounts[key] || ordinal <= eventCounts[key]) {
 			continue
 		}
 
@@ -171,7 +183,7 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 		agentEvent.SessionID = sessionID
 		agentEvent.Component = "coding_agent"
 		api.eventStore.AddEvent(sessionID, storeevents.Event{
-			ID:              fmt.Sprintf("native-transcript-sync-%s-%d", sessionID, index),
+			ID:              nativeRecoveredMessageID(sessionID, message, index, false),
 			Type:            string(agentevents.StreamingChunk),
 			Timestamp:       now,
 			SessionID:       sessionID,
@@ -184,6 +196,19 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 		log.Printf("[CHAT_HISTORY] Published recovered native assistant reply to live chat session=%s history_index=%d chars=%d", sessionID, index, len(text))
 	}
 	return published
+}
+
+// A display index moves when the bounded journal window slides; the source
+// occurrence does not. Hash it so journal paths/content never enter event IDs.
+func nativeRecoveredMessageID(sessionID string, message builderConversationMessage, index int, user bool) string {
+	prefix := "native-transcript-sync-"
+	if user {
+		prefix += "user-"
+	}
+	if message.NativeID != "" {
+		return fmt.Sprintf("%s%s-%x", prefix, sessionID, sha256.Sum256([]byte(message.NativeID)))
+	}
+	return fmt.Sprintf("%s%s-%d", prefix, sessionID, index)
 }
 
 func builderConversationRoleIsAssistant(role string) bool {
