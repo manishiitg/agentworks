@@ -449,22 +449,30 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   // swallowed. A callback may be sync or return a promise; both are covered,
   // which is the specific gap that made `load().then(...)` with no `.catch()`
   // fail silently. Returns the settled promise so the lifecycle can wait on it.
+  // Late module loads may register ready() after the first empty callback
+  // batch settled. Track that work too, including nested ready callbacks.
+  const beginReportWork = () => {
+    win.__reportPendingWork = (win.__reportPendingWork || 0) + 1
+    if (doc.documentElement?.getAttribute(REPORT_STATE_ATTR) !== 'error') setLifecycle(doc, 'loading')
+  }
+  const finishReportWork = () => {
+    win.__reportPendingWork = Math.max(0, (win.__reportPendingWork || 0) - 1)
+    if (!win.__reportPendingWork && doc.documentElement?.getAttribute(REPORT_STATE_ATTR) !== 'error') setLifecycle(doc, 'ready')
+  }
   const runReportCallback = (fn: unknown): Promise<void> => {
     if (typeof fn !== 'function') return Promise.resolve()
+    beginReportWork()
     try {
-      const result = (fn as () => unknown)()
-      const maybe = result as AnyWindow
-      if (maybe && typeof maybe.then === 'function') {
-        return Promise.resolve(maybe).then(
-          () => undefined,
-          (err: AnyWindow) => { showReportError(err?.stack || err?.message || String(err), 'report.ready()') },
-        )
-      }
+      return Promise.resolve((fn as () => unknown)()).then(
+        () => undefined,
+        (err: AnyWindow) => { showReportError(err?.stack || err?.message || String(err), 'report.ready()') },
+      ).finally(finishReportWork)
     } catch (err) {
       const e = err as AnyWindow
       showReportError(e?.stack || e?.message || String(e), 'report.ready()')
+      finishReportWork()
+      return Promise.resolve()
     }
-    return Promise.resolve()
   }
   win.__runReportCallback = runReportCallback
 
@@ -585,6 +593,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
 
   if (!dispatchData) return
 
+  beginReportWork()
   debug('report:data dispatched', { title })
   // Mark the API live BEFORE flushing, so a ready() registered from inside
   // a callback runs immediately rather than waiting for the next refresh.
@@ -608,9 +617,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   // settled -- the point at which a report has either drawn its data or
   // failed. A report that listens to report:data directly settles at
   // dispatch. Errors leave the state at 'error'.
-  void Promise.allSettled([...settled, ...replayed]).then(() => {
-    if (doc.documentElement?.getAttribute(REPORT_STATE_ATTR) !== 'error') setLifecycle(doc, 'ready')
-  })
+  void Promise.allSettled([...settled, ...replayed]).then(finishReportWork)
 }
 
 export interface ReportHostState {
