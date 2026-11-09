@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -75,6 +76,8 @@ type crewShareAgent struct {
 	Actions []crewShareAction `json:"actions"`
 	// ActionsLine is the muted line of the Actions part ("None yet." when there are none).
 	ActionsLine string `json:"actions_line"`
+	// ConnectedLine is the muted line under a workflow card for Crew-to-Crew connections (no ids): "Called by 3 other Crews".
+	ConnectedLine string `json:"connected_line,omitempty"`
 	// SetupAsk is the draft "✦ Ask AI to set up an action" opens in the viewer's Main; WizardFor names the agent in the
 	// first-time wizard (no actions yet). Both empty when the viewer cannot set up actions here.
 	SetupAsk  string `json:"setup_ask,omitempty"`
@@ -159,13 +162,59 @@ func crewShareWorkflows(ctx context.Context, crewWorkspace string) []crewShareWo
 	return out
 }
 
-// crewShareActionTitle is an action's name in plain words: "review_pull_request" -> "Review pull request".
-func crewShareActionTitle(name string) string {
-	words := strings.TrimSpace(strings.ReplaceAll(name, "_", " "))
-	if words == "" {
-		return "Action"
+// crewShareBindingName matches the name generated for a Crew-to-Crew connection ("binding_<uuid>"): a connection,
+// not an action a person set up.
+var crewShareBindingName = regexp.MustCompile(`^binding_[0-9a-f_-]{16,}$`)
+
+// crewShareIsBinding: a generated connection, or an unnamed function that only names callers.
+func crewShareIsBinding(fn *WorkflowFunctionSpec) bool {
+	return crewShareBindingName.MatchString(fn.Name) || (strings.TrimSpace(fn.Description) == "" && len(fn.AllowedCallers) > 0)
+}
+
+var crewShareAcronyms = map[string]string{"pr": "PR", "id": "ID", "url": "URL", "api": "API", "sql": "SQL", "csv": "CSV"}
+
+func crewShareWords(name string) string {
+	words := strings.Fields(strings.ReplaceAll(strings.ToLower(name), "_", " "))
+	for i, w := range words {
+		if up, ok := crewShareAcronyms[w]; ok {
+			words[i] = up
+		}
 	}
-	return strings.ToUpper(words[:1]) + words[1:]
+	return strings.Join(words, " ")
+}
+
+// crewShareActionWords is an action's title and the line under it. A short first sentence of the description is the
+// title ("Review a pull request"); otherwise the name in plain words ("review_pr" -> "Review PR"). The rest of the
+// description is the line.
+func crewShareActionWords(name, description string) (string, string) {
+	description = strings.TrimSpace(description)
+	if description != "" {
+		first, rest, found := strings.Cut(description, ". ")
+		if !found {
+			first, rest = strings.TrimSuffix(description, "."), ""
+		}
+		if n := len([]rune(first)); n > 0 && n <= 60 && !strings.Contains(first, "\n") {
+			return first, strings.TrimSpace(rest)
+		}
+	}
+	words := crewShareWords(name)
+	if words == "" {
+		return "Action", description
+	}
+	return strings.ToUpper(words[:1]) + words[1:], description
+}
+
+// crewShareInputWords prints input names as plain words: GITHUB_OWNER -> "owner", PR_NUMBER -> "PR number".
+func crewShareInputWords(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		words := crewShareWords(strings.TrimPrefix(strings.ToUpper(name), "GITHUB_"))
+		if words == "" {
+			words = name
+		}
+		out = append(out, words)
+	}
+	return out
 }
 
 func crewShareSchemaInputs(schema map[string]interface{}) []string {
@@ -183,7 +232,7 @@ func crewShareSchemaInputs(schema map[string]interface{}) []string {
 func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange bool) (map[string][]crewShareAction, map[string]string) {
 	groups, names := map[string][]crewShareAction{}, map[string]string{}
 	add := func(fn crewFunction, on, published bool) {
-		if fn.Name == "" || fn.Name == crewFunctionAskName {
+		if fn.Name == "" || fn.Name == crewFunctionAskName || crewShareBindingName.MatchString(fn.Name) {
 			return
 		}
 		agent := strings.TrimSpace(fn.Agent)
@@ -194,7 +243,8 @@ func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange boo
 		if _, ok := names[key]; !ok {
 			names[key] = agent
 		}
-		a := crewShareAction{Name: fn.Name, Title: crewShareActionTitle(fn.Name), Line: fn.Description, Inputs: crewShareSchemaInputs(fn.InputSchema), On: on, CanChange: canChange && !published}
+		title, line := crewShareActionWords(fn.Name, fn.Description)
+		a := crewShareAction{Name: fn.Name, Title: title, Line: line, Inputs: crewShareInputWords(crewShareSchemaInputs(fn.InputSchema)), On: on, CanChange: canChange && !published}
 		switch {
 		case published:
 			a.Fixed = crewSharePublishedAction
@@ -275,16 +325,18 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	var groups map[string][]crewShareAction
 	var groupNames map[string]string
 	var workflows []crewShareWorkflow
+	dashWorkspace := ""
 	if src, ok := api.crewShareSourceFor(ctx, viewer, t.ProjectID); ok {
 		groups, groupNames = crewShareActionsFor(ctx, src, canActions)
 		workflows = crewShareWorkflows(ctx, src.workspace)
+		dashWorkspace = src.workspace
 	}
 	sharedAgents, actionsOn := 0, 0
 	for _, a := range tab.Agents {
 		if !a.Mine {
 			continue
 		}
-		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && (a.CanUnshare || !a.InTeam) && !onMac, CanEdit: a.CanEditRule && !onMac,
+		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !onMac, CanEdit: a.CanEditRule && !onMac,
 			ChangesLabel: "Let them make changes", ChangesLine: "Off: they only get answers.", ChatShare: a.ChatShare, ChatShareLabel: "Your chat with it", ChatShareOptions: crewShareChatOptions}
 		if a.CanMakeChanges != nil {
 			ask.CanMakeChanges = *a.CanMakeChanges
@@ -294,8 +346,6 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			ask.Fixed = crewChangeOnMacLine
 		case !t.On:
 			ask.Note = crewShareTeamOffNote
-		case !ask.CanChange:
-			ask.Fixed = a.Fixed
 		}
 		if a.InTeam && t.On {
 			sharedAgents++
@@ -323,14 +373,25 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	}
 	for _, wf := range workflows {
 		card := crewShareAgent{Key: "workflow:" + wf.id, Name: wf.label, Line: "Workflow", Target: wf.id, Actions: []crewShareAction{}}
+		callers := map[string]bool{}
 		for _, sched := range wf.functions {
-			a := crewShareAction{Name: sched.Function.Name, Title: crewShareActionTitle(sched.Function.Name), Line: firstNonEmptyTrimmed(sched.Function.Description, sched.Name), Inputs: append([]string{}, sched.Function.Inputs...), On: sched.Enabled, CanChange: canActions}
+			if crewShareIsBinding(sched.Function) {
+				for _, c := range sched.Function.AllowedCallers {
+					callers[c.Type+":"+c.ID] = true
+				}
+				continue
+			}
+			title, line := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
+			a := crewShareAction{Name: sched.Function.Name, Title: title, Line: line, Inputs: crewShareInputWords(sched.Function.Inputs), On: sched.Enabled, CanChange: canActions}
 			if !canActions {
 				a.Fixed = crewShareOwnerOnlyActions
 			}
 			card.Actions = append(card.Actions, a)
 		}
 		sort.Slice(card.Actions, func(i, j int) bool { return card.Actions[i].Title < card.Actions[j].Title })
+		if n := len(callers); n > 0 {
+			card.ConnectedLine = fmt.Sprintf("Called by %d other %s", n, plural(n, "Crew", "Crews"))
+		}
 		page.Agents = append(page.Agents, card)
 	}
 	for i := range page.Agents {
@@ -362,6 +423,13 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	// Read only: the Crew's published dashboards (the same rows as its Dashboards list).
 	rows, _ := api.crewTeamDashboardRows(httptest.NewRecorder(), r, t, root, false)
 	page.Dashboards = len(rows)
+	// Shared means shared with someone: the same read the Crew menu prints, so both say the same thing.
+	dashShared := false
+	if page.Dashboards > 0 && dashWorkspace != "" {
+		if _, shared, err := api.crewDashboardSharing(r, dashWorkspace); err == nil {
+			dashShared = shared != "Not shared"
+		}
+	}
 	if page.Dashboards == 0 && owner {
 		page.DashboardAsk = "Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."
 	}
@@ -390,12 +458,17 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	}
 	readStatus := "Off"
 	if page.Dashboards > 0 {
-		readStatus = fmt.Sprintf("On · %d %s", page.Dashboards, plural(page.Dashboards, "dashboard", "dashboards"))
+		noun := plural(page.Dashboards, "dashboard", "dashboards")
+		if dashShared {
+			readStatus = fmt.Sprintf("On · %d %s shared", page.Dashboards, noun)
+		} else {
+			readStatus = fmt.Sprintf("Off · %d %s not shared yet", page.Dashboards, noun)
+		}
 	}
 	page.Options = []crewShareOption{
 		{Key: "team", Title: "Work on it with your team", Line: "They build and run this Crew with you: same files, same agents, their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
 		{Key: "agents", Title: "Share agents", Line: "Let others ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
-		{Key: "read_only", Title: "Read only", Line: "Others look at results on dashboards. They cannot change anything.", Chips: []string{"for: anyone you choose", "view only"}, Status: readStatus, On: page.Dashboards > 0},
+		{Key: "read_only", Title: "Read only", Line: "Others look at results on dashboards. They cannot change anything.", Chips: []string{"for: anyone you choose", "view only"}, Status: readStatus, On: dashShared},
 	}
 	anyOpen := false
 	for i := range page.Options {

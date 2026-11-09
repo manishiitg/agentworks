@@ -23,26 +23,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 	}
 	sources := []crewPanelSource{
 		{id: "sharing", title: "Sharing", allowed: dashboardScopeAllowed(claims, "share_status"), read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Owner    bool
-				CanShare bool `json:"can_share"`
-				Mode     string
-				People   []struct{ ID string }
-			}
-			err := crewPanelRead(r.WithContext(ctx), api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]string{"workspace": workspace, "action": "share_status"}, &data)
-			detail, shared := "Only you", "Not shared"
-			if !data.Owner && !data.CanShare {
-				detail, shared = "Shared with you", "Shared with you"
-			} else if data.Mode == "everyone" {
-				detail, shared = "Everyone", "Everyone"
-			} else if data.Mode == "people" && len(data.People) > 0 {
-				people := map[string]bool{}
-				for _, person := range data.People {
-					people[person.ID] = true
-				}
-				detail = fmt.Sprintf("Shared with %d", len(people))
-				shared = fmt.Sprintf("%d %s", len(people), plural(len(people), "person", "people"))
-			}
+			detail, shared, err := api.crewDashboardSharing(r.WithContext(ctx), workspace)
 			return crewPanelSection{Detail: detail, shared: shared}, err
 		}},
 
@@ -463,4 +444,31 @@ func crewWorkflowTriggerRows(ctx context.Context, workspace string, webhooks boo
 		}
 	}
 	return rows
+}
+
+// crewDashboardSharing is who the Crew's dashboards are shared with, in the words the Crew menu prints: detail
+// ("Only you", "Shared with 2") and shared ("Not shared", "2 people", "Everyone", "Shared with you"). The Share page
+// reads the same function, so both say the same thing.
+func (api *StreamingAPI) crewDashboardSharing(r *http.Request, workspace string) (detail, shared string, err error) {
+	var data struct {
+		Owner    bool
+		CanShare bool `json:"can_share"`
+		Mode     string
+		People   []struct{ ID string }
+	}
+	err = crewPanelRead(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]string{"workspace": workspace, "action": "share_status"}, &data)
+	detail, shared = "Only you", "Not shared"
+	if !data.Owner && !data.CanShare {
+		detail, shared = "Shared with you", "Shared with you"
+	} else if data.Mode == "everyone" {
+		detail, shared = "Everyone", "Everyone"
+	} else if data.Mode == "people" && len(data.People) > 0 {
+		people := map[string]bool{}
+		for _, person := range data.People {
+			people[person.ID] = true
+		}
+		detail = fmt.Sprintf("Shared with %d", len(people))
+		shared = fmt.Sprintf("%d %s", len(people), plural(len(people), "person", "people"))
+	}
+	return detail, shared, err
 }

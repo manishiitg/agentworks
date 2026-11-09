@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
-import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
@@ -103,7 +103,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
       <FolderLine view={view} target={target} projectId={projectId} />
-      {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
+      {team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
         <TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} />
@@ -425,6 +425,17 @@ export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent
       <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks; the agent knows who is asking. It follows it; it isn't a lock.</p>
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
+  </div>
+}
+
+/** What teammates' agents use from the owner: one quiet line that opens the server's card (closed by default). */
+function LentFold({ lent, target, projectId }: { lent: TeamLent; target: TeamTarget; projectId: string }) {
+  const [open, setOpen] = useState(false)
+  return <div>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground">
+      {lent.title}<ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+    </button>
+    {open && <div className="mt-2"><LentCard lent={lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} /></div>}
   </div>
 }
 
