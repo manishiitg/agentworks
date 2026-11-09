@@ -260,6 +260,9 @@ func TestDependenciesUseScopedOccurrenceOutcomeDelayAndDeadline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if err := store.RecordFireDecision(ctx, schedulerstate.FireDecision{DecisionID: id + "-start", ScopeType: "crew", ScopeID: "crew-a", ScheduleID: schedule, TriggerSource: "cron", Decision: "started", RunID: id, ScheduledFor: at, FiredAt: at}); err != nil {
+			t.Fatal(err)
+		}
 		for _, state := range []schedulerstate.State{schedulerstate.StateWorkflowRunning, schedulerstate.StateWorkflowFinished, terminal} {
 			if err := store.Transition(ctx, schedulerstate.Transition{RunID: id, To: state, At: finished}); err != nil {
 				t.Fatal(err)
