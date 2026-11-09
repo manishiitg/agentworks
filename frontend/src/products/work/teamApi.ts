@@ -12,7 +12,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 
 export type Team = { change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
-export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[] }
+export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[]; groups: { title: string; line: string; key?: boolean; names: string[] }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
@@ -180,7 +180,7 @@ export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: st
 export type CrewPeopleView = {
   kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; add_everyone?: string
   can_add: boolean; can_share: boolean; owner: CrewPeoplePerson; people: CrewPeoplePerson[]; levels: CrewPeopleLevel[]
-  gets: { label: string; dashboards_only: string; works_with_me: string }[]
+  gets: { title: string; tagline: string; items: { text: string; yes: boolean }[] }[]
 }
 export type CrewPeoplePreview = { person: string; from: string; to: string; summary: string; gains: string[]; loses: string[]; notes: string[] }
 export type CrewPeopleChange = { person: string; level: CrewPeopleLevelKey | 'none'; confirm?: boolean; create_dashboard?: boolean }
@@ -268,7 +268,9 @@ export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; n
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[] }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; target: string; ask?: CrewShareAsk; actions: CrewShareAction[]; actions_line: string; connected_line?: string; setup_ask?: string; wizard_for?: string }
-export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; dashboards: number; dashboard_ask?: string }
+/** What other people share with the viewer (crew_share_page.go crewShareSharedWithYou): people, then their agents and actions. */
+export type CrewShareShared = { name: string; role: string; items: { name: string; line: string; can: string }[] }
+export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; dashboards: number; dashboard_ask?: string; shared_with_you: CrewShareShared[] }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
 }

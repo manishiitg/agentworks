@@ -64,10 +64,16 @@ type crewPeoplePerson struct {
 	Moves []string `json:"moves,omitempty"`
 }
 
+// crewPeopleGets is one level's card: its title, tagline and what it does (Yes) or does not give.
 type crewPeopleGets struct {
-	Label      string `json:"label"`
-	Dashboards string `json:"dashboards_only"`
-	Works      string `json:"works_with_me"`
+	Title   string               `json:"title"`
+	Tagline string               `json:"tagline"`
+	Items   []crewPeopleGetsItem `json:"items"`
+}
+
+type crewPeopleGetsItem struct {
+	Text string `json:"text"`
+	Yes  bool   `json:"yes"`
 }
 
 type crewPeopleView struct {
@@ -124,12 +130,18 @@ func crewPeopleLevels(kind string) []crewPeopleLevel {
 // crewPeopleGetsTable is what each level gets, in the server's words.
 func crewPeopleGetsTable() []crewPeopleGets {
 	return []crewPeopleGets{
-		{"Dashboards", "All this Crew's dashboards", "All of them"},
-		{"Ask this Crew", "Yes", "Yes, plus their own agents"},
-		{"Shared files", "No", "Yes, edit both ways"},
-		{"Agents' chats", "No", "Yes, unless kept private"},
-		{"Change the Crew", "No", "Add folders and agents"},
-		{"Team on/off, remove folders", "No", "No: owner only"},
+		{Title: "Dashboards only", Tagline: "Look and ask. Nothing else.", Items: []crewPeopleGetsItem{
+			{"See all this Crew's dashboards", true},
+			{"Ask this Crew", true},
+			{"Files, agents' chats, changes", false},
+		}},
+		{Title: "Works with me", Tagline: "Works in the Crew with you.", Items: []crewPeopleGetsItem{
+			{"Everything in \"Dashboards only\"", true},
+			{"Shared files, edit both ways", true},
+			{"Agents' chats (unless kept private)", true},
+			{"Their own agents; add folders and agents", true},
+			{"Only you turn the Team on or off, remove folders", false},
+		}},
 	}
 }
 

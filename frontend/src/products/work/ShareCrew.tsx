@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
-import { AgentDetails, Saving, TeamTab } from './TeamTab'
+import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAgent, type CrewShareOption, type CrewShareOptionKey, type CrewSharePage, type TeamTarget } from './teamApi'
 
@@ -60,6 +60,7 @@ export function ShareCrew({ projectId, onBack, onTurnOn, focus }: { projectId: s
       {option.key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => setOpen(prev => ({ ...prev, team: true }))} />}
       {option.key === 'read_only' && <CrewDashboardsTab projectId={projectId} embedded />}
     </ShareOption>)}
+    {state.view?.can_leave && <LeaveTeam target={target} />}
   </div>
 }
 
@@ -84,9 +85,22 @@ function ShareOption({ option, open, onToggle, children }: { option: CrewShareOp
 /** Share agents: one card per agent (Ask and Actions), then "Who can use these". */
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
+  const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
+    {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents · what you share with others</p>}
     {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} intro={page.agents_intro} target={target} projectId={projectId} onWizard={setWizard} />)}
     {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
+    {shared.length > 0 && <>
+      <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Shared with you · agents other people in this Crew share with you</p>
+      {shared.map(person => <div key={person.name + person.role} className="rounded-xl border border-border px-3.5 py-3 text-sm">
+        <p className="text-[15px] font-semibold">{person.name}</p>
+        <p className="text-xs text-muted-foreground">{person.role}</p>
+        {person.items.map(item => <div key={item.name + item.line} className="mt-2 flex items-start gap-3 border-t border-border pt-2">
+          <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block text-xs text-muted-foreground">{item.line}</span></span>
+          <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
+        </div>)}
+      </div>)}
+    </>}
     <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
     {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}
   </div>

@@ -96,6 +96,102 @@ type crewSharePage struct {
 	// Read only: how many dashboards, and the draft "Ask the Crew" opens in Main when there is none.
 	Dashboards   int    `json:"dashboards"`
 	DashboardAsk string `json:"dashboard_ask,omitempty"`
+	// SharedWithYou: what other people in this Crew share with the viewer (people -> agents -> actions), read only.
+	// Empty (the page prints no heading) when nobody shares anything.
+	SharedWithYou []crewShareSharedPerson `json:"shared_with_you"`
+}
+
+// crewShareSharedPerson is one person whose agents (and, for the Crew's owner, actions) are shared with the viewer.
+type crewShareSharedPerson struct {
+	Name string `json:"name"`
+	// Role is "Owner of this Crew" or "Team member".
+	Role  string                 `json:"role"`
+	Items []crewShareSharedEntry `json:"items"`
+}
+
+// crewShareSharedEntry is one shared agent or action: its name, where it runs or what it takes, and what the viewer can do.
+type crewShareSharedEntry struct {
+	Name string `json:"name"`
+	Line string `json:"line"`
+	Can  string `json:"can"`
+}
+
+// crewShareSharedWithYou lists the agents other people share with the viewer, from the Team tab's own rows, and the
+// Crew owner's enabled actions when the viewer is not the owner. The viewer's rights come from the same rules the
+// rows already carry (can_make_changes, chat_share); this adds no access.
+func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, groups map[string][]crewShareAction, workflows []crewShareWorkflow) []crewShareSharedPerson {
+	out := []crewShareSharedPerson{}
+	at := map[string]int{}
+	person := func(id, name string) *crewShareSharedPerson {
+		i, ok := at[id]
+		if !ok {
+			role := "Team member"
+			if id == t.OwnerID {
+				role = "Owner of this Crew"
+			}
+			out = append(out, crewShareSharedPerson{Name: name, Role: role, Items: []crewShareSharedEntry{}})
+			i = len(out) - 1
+			at[id] = i
+		}
+		return &out[i]
+	}
+	for _, a := range rows {
+		if a.Mine || !a.InTeam {
+			continue
+		}
+		line := a.PlaceLabel
+		if line == "" {
+			line = "On the server · always on"
+			if a.Place == "mac" {
+				line = "On their Mac"
+			}
+		}
+		can := "ask it"
+		if a.CanMakeChanges != nil && *a.CanMakeChanges {
+			can = "make changes"
+		}
+		switch a.ChatShare {
+		case crewChatShareLive:
+			can += " · see its live chat"
+		case crewChatShareHistory:
+			can += " · see its saved chat"
+		default:
+			can += " · chat hidden"
+		}
+		p := person(a.OwnerID, a.OwnerName)
+		p.Items = append(p.Items, crewShareSharedEntry{Name: a.Name, Line: line, Can: "You can: " + can})
+	}
+	if viewer != t.OwnerID {
+		var actions []crewShareAction
+		keys := make([]string, 0, len(groups))
+		for key := range groups {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			actions = append(actions, groups[key]...)
+		}
+		for _, wf := range workflows {
+			for _, sched := range wf.functions {
+				if sched.Enabled && !crewShareIsBinding(sched.Function) {
+					title, _ := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
+					actions = append(actions, crewShareAction{Title: title, Inputs: crewShareInputWords(sched.Function.Inputs), On: true})
+				}
+			}
+		}
+		for _, a := range actions {
+			if !a.On {
+				continue
+			}
+			line := "Action"
+			if len(a.Inputs) > 0 {
+				line += " · " + strings.Join(a.Inputs, ", ")
+			}
+			p := person(t.OwnerID, crewPersonShortName(t.OwnerID))
+			p.Items = append(p.Items, crewShareSharedEntry{Name: a.Title, Line: line, Can: "You can: use it"})
+		}
+	}
+	return out
 }
 
 const (
@@ -394,6 +490,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		}
 		page.Agents = append(page.Agents, card)
 	}
+	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, groups, workflows)
 	for i := range page.Agents {
 		card := &page.Agents[i]
 		for _, a := range card.Actions {
