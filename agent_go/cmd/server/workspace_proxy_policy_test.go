@@ -67,6 +67,8 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		// workflow.json (the access record) is owner-only.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Workflow/shared/workflow.json", map[string]any{"content": "{}"}, false},
 		{"alice", http.MethodPut, "/api/wp/api/documents/Workflow/shared/workflow.json", map[string]any{"content": "{}"}, false},
+		// The protected Team source rule does not forbid ordinary owner writes elsewhere.
+		{"alice", http.MethodPut, "/api/wp/api/documents/Workflow/private/workflow.json", map[string]any{"content": "{}"}, true},
 		// The caller's own tree is untouched by these rules.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Chats/notes.md", map[string]any{"content": "x"}, true},
 		{"bob", http.MethodGet, "/api/wp/api/documents", nil, true},
