@@ -177,7 +177,9 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	if _, err := os.Stat(roots.Private); !os.IsNotExist(err) {
 		t.Fatal("Crew private root remains", err)
 	}
-	if err := client.DeleteFolder(ctx, logical); err != nil {
-		t.Fatal("deletion retry", err)
+	// The current canonical guard requires a live Crew binding; a removed
+	// private root must not become a new write grant on a repeated request.
+	if err := client.DeleteFolder(ctx, logical); err == nil {
+		t.Fatal("deleted Crew root was still admitted for mutation")
 	}
 }
