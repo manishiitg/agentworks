@@ -51,12 +51,24 @@ func TestBackgroundTranscriptBurstFlushesLocallyAndHonorsDeletion(t *testing.T) 
 	content, _ := header.Marshal()
 	write(file, []byte(content))
 	var requests atomic.Int64
-	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests.Add(1)
-		http.Error(w, "unexpected workspace request", 500)
-	}))
+	remote := &fakeDocumentsAPI{files: map[string]string{orchevents.BackgroundAgentTranscriptPath("Workflow/example", "chat", "agent"): content}}
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); remote.ServeHTTP(w, r) }))
 	defer service.Close()
 	bo := &BaseOrchestrator{WorkspaceClient: workspace.NewClient(service.URL), workspacePath: "Workflow/example", logger: silentLoggerV2{}}
+	// Measure the existing HTTP transport on the same 120-event workload,
+	// rather than projecting a request count from implementation inspection.
+	t.Setenv("WORKSPACE_DOCS_PATH", "")
+	for i := 0; i < 120; i++ {
+		if err := bo.AppendBackgroundAgentTranscriptEvent(t.Context(), "chat", "agent", orchevents.BackgroundAgentTranscriptEvent{Type: "user_message", Text: fmt.Sprintf("message-%03d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	referenceRequests := requests.Load()
+	if referenceRequests != 240 {
+		t.Fatalf("reference transport requests=%d", referenceRequests)
+	}
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	requests.Store(0)
 	bridge := NewContextAwareEventBridge(noopListener{}, silentLoggerV2{})
 	bridge.SetBackgroundAgentTranscriptWriter(bo)
 	ctx := context.WithValue(t.Context(), orchevents.ParentExecutionIDKey, "agent")
@@ -90,7 +102,7 @@ func TestBackgroundTranscriptBurstFlushesLocallyAndHonorsDeletion(t *testing.T) 
 	if requests.Load() != 0 {
 		t.Fatalf("local event burst made %d HTTP requests", requests.Load())
 	}
-	t.Logf("120 events persisted in %s; workspace HTTP requests=%d", time.Since(start), requests.Load())
+	t.Logf("120 events: reference transport HTTP requests=%d; batched local HTTP requests=%d; local flush elapsed=%s", referenceRequests, requests.Load(), time.Since(start))
 	if err := backgroundtranscript.Delete("Workflow/example", "chat", func() error { return os.Remove(file) }); err != nil {
 		t.Fatal(err)
 	}
