@@ -318,17 +318,27 @@ func ensureColumn(ctx context.Context, db *sql.DB, table, column, definition str
 }
 
 func (s *Store) BeginRun(ctx context.Context, run Run) error {
-	return s.beginRun(ctx, run, false)
+	return s.beginRun(ctx, run, false, false)
 }
 
 // BeginQueuedRun atomically consumes the durable pending occurrence and claims
 // its workflow lease. If the lease insert fails, SQLite rolls the deletion
 // back, so a busy workflow or process crash cannot lose queued work.
 func (s *Store) BeginQueuedRun(ctx context.Context, run Run) error {
-	return s.beginRun(ctx, run, true)
+	return s.beginRun(ctx, run, true, false)
 }
 
-func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) error {
+// RecordAdmittedRun records a Crew timer already admitted by its dispatcher.
+// The per-run evidence key does not take a second conversation or scope lease.
+// Its started occurrence link and run row commit together for dependency reads.
+func (s *Store) RecordAdmittedRun(ctx context.Context, run Run) error {
+	run.LockKey = "admitted/" + run.RunID
+	run.OrderedScheduleIDs = nil
+	run.State = StateStarting
+	return s.beginRun(ctx, run, false, true)
+}
+
+func (s *Store) beginRun(ctx context.Context, run Run, consumePending, admitted bool) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("schedule state store is unavailable")
 	}
@@ -351,8 +361,10 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := s.checkPendingPriority(ctx, tx, run); err != nil {
-		return err
+	if !admitted {
+		if err := s.checkPendingPriority(ctx, tx, run); err != nil {
+			return err
+		}
 	}
 	if consumePending {
 		result, deleteErr := tx.ExecContext(ctx, `DELETE FROM schedule_pending_occurrences
@@ -383,6 +395,17 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) erro
 	if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_run_events (run_id, from_state, to_state, reason, created_at)
 		VALUES (?, '', ?, 'run claimed', ?)`, run.RunID, run.State, formatTime(run.StartedAt)); err != nil {
 		return err
+	}
+	if admitted {
+		_, err := recordFireDecision(ctx, tx, FireDecision{
+			DecisionID: run.RunID, ScopeType: run.ScopeType, ScopeID: run.ScopeID,
+			ScheduleID: run.ScheduleID, TriggerSource: run.TriggerSource,
+			Decision: "started", Reason: "admitted by Crew dispatcher", RunID: run.RunID,
+			ScheduledFor: run.ScheduledFor, FiredAt: run.StartedAt,
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -593,6 +616,20 @@ func (s *Store) RecordFireDecision(ctx context.Context, decision FireDecision) e
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	updated, err := recordFireDecision(ctx, tx, decision)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if !updated {
+		log.Printf("[SCHEDULER_STATE] preserved started receipt scope=%s/%s schedule=%s scheduled_for=%s refused_decision=%s", decision.ScopeType, decision.ScopeID, decision.ScheduleID, formatTime(decision.ScheduledFor), decision.Decision)
+	}
+	return nil
+}
+
+func recordFireDecision(ctx context.Context, tx *sql.Tx, decision FireDecision) (bool, error) {
 	// Once accepted, this slot belongs to its run. A duplicate attempt or
 	// queue/skip update must not erase the link used by dependency and recovery.
 	result, err := tx.ExecContext(ctx, `INSERT INTO schedule_fire_decisions (
@@ -605,7 +642,7 @@ func (s *Store) RecordFireDecision(ctx context.Context, decision FireDecision) e
 		decision.ScheduleID, decision.TriggerSource, decision.Decision, decision.Reason, decision.RunID,
 		formatTime(decision.ScheduledFor), formatTime(decision.FiredAt))
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM schedule_fire_decisions
 		WHERE scope_type = ? AND scope_id = ? AND schedule_id = ? AND trigger_source = ?
@@ -616,15 +653,10 @@ func (s *Store) RecordFireDecision(ctx context.Context, decision FireDecision) e
 		)`, decision.ScopeType, decision.ScopeID, decision.ScheduleID,
 		decision.TriggerSource, decision.ScopeType, decision.ScopeID, decision.ScheduleID,
 		decision.TriggerSource, fireDecisionRetentionPerSchedule); err != nil {
-		return err
+		return false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
-		log.Printf("[SCHEDULER_STATE] preserved started receipt scope=%s/%s schedule=%s scheduled_for=%s refused_decision=%s", decision.ScopeType, decision.ScopeID, decision.ScheduleID, formatTime(decision.ScheduledFor), decision.Decision)
-	}
-	return nil
+	affected, err := result.RowsAffected()
+	return affected != 0, err
 }
 
 func (s *Store) ListFireDecisions(ctx context.Context, scopeType, scopeID, scheduleID string, limit int) ([]FireDecision, error) {

@@ -2,12 +2,19 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 func TestProductScheduleJobIDRoundTrip(t *testing.T) {
@@ -197,5 +204,157 @@ func TestAgentProfileSchedulesRequireSingletonConversation(t *testing.T) {
 	}
 	if err := agentprofiles.Validate(profile); err == nil || !strings.Contains(err.Error(), "singleton") {
 		t.Fatalf("keyed profiles must reject schedules, got %v", err)
+	}
+}
+
+// PLAT-871-33: actual Crew binding/workspace HTTP and SQLite occurrence evidence.
+// Only the provider turn is replaced. Stop/setup errors cannot strand a run,
+// and a second independent Crew chat must not acquire a new scope-wide lease.
+func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testing.T) {
+	for _, outcome := range []string{"completed", "failed", "stopped", "setup_failed", "ledger_unavailable"} {
+		t.Run(outcome, func(t *testing.T) {
+			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+			env := newTriggerLinkEnv(t)
+			env.svc.heldConversation = nil
+			store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule.sqlite"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			env.api.scheduler.stateStore = store
+			if outcome == "ledger_unavailable" {
+				env.api.scheduler.stateStore = nil
+			}
+			profile, err := env.svc.registry.Resolve("work", 0, "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			job := productScheduleJob{UserID: "owner", Profile: profile, ProjectID: "beta", ProjectTitle: "Beta", WorkspacePath: linkBetaPath,
+				Schedule: productschedule.Schedule{ID: "first", Name: "First", Enabled: true, CronExpression: "* * * * *", Timezone: "UTC", Messages: []string{"do work"}, Isolated: true}}
+			if outcome == "setup_failed" {
+				job.Profile.Runtime.Conversation.Mode = ""
+			}
+			started := make(chan struct{}, 2)
+			release := make(chan struct{})
+			var once sync.Once
+			t.Cleanup(func() { once.Do(func() { close(release) }) })
+			var calls atomic.Int32
+			env.svc.automationTurnRunner = func(ctx context.Context, _ map[string]interface{}, _, _ string) (internalSessionTurnResult, error) {
+				if calls.Add(1) == 1 {
+					started <- struct{}{}
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return internalSessionTurnResult{}, ctx.Err()
+					}
+					if err := ctx.Err(); err != nil {
+						return internalSessionTurnResult{}, err
+					}
+					if outcome == "failed" {
+						return internalSessionTurnResult{}, fmt.Errorf("provider failed")
+					}
+				}
+				return internalSessionTurnResult{FinalResponse: "Done"}, nil
+			}
+			ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
+			occurrence := time.Now().UTC().Truncate(time.Minute)
+			done := make(chan error, 1)
+			go func() { _, err := env.svc.Run(ctx, job, "cron", occurrence); done <- err }()
+			if outcome != "setup_failed" && outcome != "ledger_unavailable" {
+				select {
+				case <-started:
+				case <-time.After(3 * time.Second):
+					t.Fatal("timer did not reach provider boundary")
+				}
+				when := projectactions.When{Timezone: "UTC", After: &projectactions.After{Schedules: []string{"first"}}}
+				if state, _ := productschedule.EvaluateDependencies(ctx, store, "crew", "beta", when, occurrence, time.Now()); state != productschedule.DependencyWaiting {
+					t.Fatalf("active prerequisite released dependent: %v", state)
+				}
+				if outcome == "completed" {
+					second := job
+					second.Schedule.ID, second.Schedule.Name = "second", "Second"
+					if _, err := env.svc.Run(ctx, second, "cron", occurrence); err != nil {
+						t.Fatalf("second independent Crew chat took a scope lease: %v", err)
+					}
+				}
+				if outcome == "stopped" && !env.svc.Stop("owner", job.ID()) {
+					t.Fatal("Stop did not find timer")
+				}
+				once.Do(func() { close(release) })
+			}
+			select {
+			case err := <-done:
+				if (err == nil) != (outcome == "completed") {
+					t.Fatalf("outcome %s returned %v", outcome, err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("timer did not settle")
+			}
+			decisions, err := store.ListFireDecisions(ctx, "crew", "beta", "first", 10)
+			if outcome == "ledger_unavailable" {
+				if err != nil || len(decisions) != 0 || calls.Load() != 0 {
+					t.Fatalf("unavailable ledger started work/evidence: calls=%d decisions=%v err=%v", calls.Load(), decisions, err)
+				}
+				if _, running := env.svc.Running("owner", job.ID()); running {
+					t.Fatal("unavailable ledger stranded dispatcher claim")
+				}
+				return
+			}
+			if err != nil || len(decisions) != 1 || decisions[0].Decision != "started" {
+				t.Fatalf("admission evidence = %+v, %v", decisions, err)
+			}
+			saved, err := store.GetRun(ctx, decisions[0].RunID)
+			want := schedulerstate.State(outcome)
+			if outcome == "setup_failed" {
+				want = schedulerstate.StateFailed
+			}
+			if err != nil || saved.State != want || saved.CompletedAt == nil {
+				t.Fatalf("terminal evidence = %+v, %v", saved, err)
+			}
+			if err := store.RecordAdmittedRun(ctx, saved); !errors.Is(err, schedulerstate.ErrRunAlreadyActive) {
+				t.Fatalf("same run ID re-admitted: %v", err)
+			}
+			receipts, err := store.ListFireDecisions(ctx, "crew", "beta", "first", 10)
+			if err != nil || len(receipts) != 1 || receipts[0].RunID != saved.RunID {
+				t.Fatalf("duplicate admission changed occurrence evidence: %v, %v", receipts, err)
+			}
+
+			if _, running := env.svc.Running("owner", job.ID()); running {
+				t.Fatal("terminal timer retained dispatcher claim")
+			}
+			when := projectactions.When{Timezone: "UTC", After: &projectactions.After{Schedules: []string{"first"}}}
+			state, reason := productschedule.EvaluateDependencies(ctx, store, "crew", "beta", when, occurrence, time.Now())
+			wantDependency := productschedule.DependencyBlocked
+			if outcome == "completed" {
+				wantDependency = productschedule.DependencyReady
+			}
+			if state != wantDependency {
+				t.Fatalf("dependent decision = %v (%s), want %v", state, reason, wantDependency)
+			}
+			if outcome != "setup_failed" {
+				runs, err := ReadScheduleRuns(ctx, agentProfileRuntimeWorkspace("owner", linkBetaPath))
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, projected := range runs {
+					if projected.ID == saved.RunID {
+						found = true
+						status := "error"
+						if outcome == "completed" {
+							status = "success"
+						} else if outcome == "stopped" {
+							status = "stopped"
+						}
+						if projected.Status != status || projected.CompletedAt == nil {
+							t.Fatalf("projection disagrees with ledger: %+v", projected)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("terminal ledger run absent from Crew run projection")
+				}
+			}
+		})
 	}
 }

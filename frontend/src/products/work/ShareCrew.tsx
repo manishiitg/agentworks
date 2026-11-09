@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BarChart3, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, BarChart3, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -27,7 +27,7 @@ const optionIcons: Record<CrewShareOptionKey, { icon: LucideIcon; tone: string }
  * Crew's dashboards. The server's /share reply writes every line and says what this person may change; the page
  * prints it and sends their change to the existing routes. The same page for the owner and every teammate.
  */
-export function ShareCrew({ projectId, onTurnOn, focus }: { projectId: string; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
+export function ShareCrew({ projectId, onBack, onTurnOn, focus }: { projectId: string; onBack?: () => void; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
@@ -47,9 +47,12 @@ export function ShareCrew({ projectId, onTurnOn, focus }: { projectId: string; o
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   const isOpen = (option: CrewShareOption) => open[option.key] ?? option.open
   return <div className="space-y-3">
-    <div className="px-1">
-      <h2 className="text-[17px] font-semibold">{page.title}</h2>
-      <p className="text-[13px] text-muted-foreground">{page.lead}</p>
+    <div className="flex items-start gap-2 px-1">
+      {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>}
+      <div>
+        <h2 className="text-[17px] font-semibold">{page.title}</h2>
+        <p className="text-[13px] text-muted-foreground">{page.lead}</p>
+      </div>
     </div>
     {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
     {page.options.map(option => <ShareOption key={option.key} option={option} open={isOpen(option)} onToggle={() => setOpen(prev => ({ ...prev, [option.key]: !isOpen(option) }))}>
