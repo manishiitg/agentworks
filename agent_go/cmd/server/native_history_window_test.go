@@ -221,6 +221,22 @@ func TestNativeHistorySlidingWindowKeepsOccurrenceIdentities(t *testing.T) {
 				t.Fatalf("reattached observer reused a user event ID: %v", counts)
 			}
 
+			// PLAT-746: the UI excerpt must not become the durable submitted input.
+			prompt := strings.Repeat("long prompt ", nativeHistoryMessageBytes/4)
+			appendRow("user", prompt)
+			longWindow, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			last := longWindow[len(longWindow)-1]
+			if builderConversationMessageText(last) == prompt || len(builderConversationMessageText(last)) > nativeHistoryMessageBytes+3 {
+				t.Fatal("display prompt was not bounded")
+			}
+			fresh.consume(longWindow, path, false)
+			if counts := nativeTerminalEventUserCounts(o.api.eventStore, o.snapshot.SessionID); counts[prompt] != 1 {
+				t.Fatal("durable input did not retain the complete submitted prompt")
+			}
+
 		})
 	}
 }
