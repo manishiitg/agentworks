@@ -1638,12 +1638,12 @@ func buildAgentAccessNote(writeAccess AgentWriteAccess, dbAccess string) string 
 	}
 	var extras []string
 	if writeAccess.DB {
-		extras = append(extras, "database rows via mutate_workflow_db")
+		extras = append(extras, "database rows via database action=mutate")
 	}
 	if writeAccess.Knowledgebase {
 		extras = append(extras, "knowledgebase/notes/")
 	}
-	note := "Database rows go through query_workflow_db/mutate_workflow_db; the raw database file is not readable."
+	note := "Database rows go through the admitted database tool (action=query for reads, action=mutate only within the effective write grant); the raw database file is not readable."
 	if len(extras) > 0 {
 		note += " Besides the Write folders, this item may write: " + strings.Join(extras, ", ") + "."
 	}
