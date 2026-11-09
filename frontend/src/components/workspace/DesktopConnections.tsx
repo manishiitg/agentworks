@@ -1,7 +1,6 @@
 import { openConnectedServers } from './ConnectedServersMenuItem'
-import { LocationFilter } from './LocationFilter'
 import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
-import { connectedProjectKey, serverIconColors } from '../../utils/connectedWorkPresentation'
+import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
@@ -10,7 +9,7 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
-import { ChevronRight, Laptop } from 'lucide-react'
+import { Laptop } from 'lucide-react'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
@@ -104,9 +103,16 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, refreshActivity, error: directoryError } = state
   const { recent, pinned, canPin, setPinned, visit } = useWorkHistory(projects)
-  const [filter, setFilter] = useState('all')
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   const invites = useTeamInviteRows()
-  useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
+  useEffect(() => {
+    if (!connections.length) return
+    setSelectedLocations(previous => {
+      const remaining = previous.filter(id => connections.some(connection => connection.id === id))
+      const next = remaining.length ? remaining : [connections.find(connection => connection.id === active)?.id || connections[0].id]
+      return next.length === previous.length && next.every((id, index) => id === previous[index]) ? previous : next
+    })
+  }, [connections, active])
   useEffect(() => {
     void refresh().then(() => refreshActivity())
     const onFocus = () => { void refresh(); void refreshActivity() }
@@ -128,9 +134,8 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
-  // The filter is only which server (owner, 4 Nov).
-  const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
-  const serverColors = serverIconColors(connections)
+  // Location buttons only filter navigation; the current chat keeps its connection.
+  const visible = rows.filter(row => selectedLocations.includes(row.connection.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
   // Saved shortcuts contain IDs only. Resolve them against the current admitted inventory on every render.
   const crewByKey = new Map(rows.filter(row => row.kind === 'crew' && !row.personal_agent).map(row => [keyFor(row), row]))
@@ -145,7 +150,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={attention ? 'Needs your input' : running ? 'Running' : undefined}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       selected={project.connection.id === active && project.selected}
-      location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} remote={project.connection.id !== 'local'} showLocation={shortcut}
+      location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} remote={project.connection.id !== 'local'} showLocation={shortcut || selectedLocations.length > 1}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && project.kind === 'crew' && !project.personal_agent ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onOpen={() => {
         visit(key)
@@ -156,29 +161,31 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       ? <ExpandableCrew key={key} projectId={project.id} connectionId={project.connection.id} selected={project.connection.id === active && !!project.selected} initialOpen={shortcut || (project.connection.id === active && !!project.selected)}>{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
-  const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
+  const locations = connections.filter(connection => selectedLocations.includes(connection.id))
+  const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)))
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <div className="flex items-center px-2 py-2">
-        {connections.length > 1 && <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} />}
-      </div>
+      {connections.length > 1 && <div role="group" aria-label="Show Crews from" className="mb-2 flex items-center gap-1 overflow-x-auto px-1 py-2">
+        {connections.map(connection => {
+          const selected = selectedLocations.includes(connection.id)
+          const name = connection.id === 'local' ? 'Mac' : connection.name
+          return <button key={connection.id} type="button" aria-pressed={selected} title={connection.id === 'local' ? 'On your Mac' : connection.name}
+            onClick={() => setSelectedLocations(previous => previous.includes(connection.id)
+              ? previous.length > 1 ? previous.filter(id => id !== connection.id) : previous
+              : [...previous, connection.id])}
+            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+            {connection.id === 'local' ? <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ServerIdentityIcon connectionId={connection.id} hidden className="h-3.5 w-3.5 shrink-0" />}
+            <span className="max-w-28 truncate">{name}</span>
+          </button>
+        })}
+      </div>}
       {invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
-      {locations.map(connection => {
-        const projectsHere = visible.filter(row => row.connection.id === connection.id && !pinnedKeys.has(keyFor(row)))
-        if (!projectsHere.length) return null
-        const local = connection.id === 'local'
-        const localConnected = inventory[connection.id]?.status === 'connected'
-        const name = local ? 'On your Mac' : connection.name
-        return <NetworkSection key={connection.id} name={name} active={connection.id === active || filter === connection.id}
-          icon={local ? <><Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span role="img" aria-label={localConnected ? 'Local connection available' : 'Local connection not ready'} className={`h-1.5 w-1.5 shrink-0 rounded-full ${localConnected ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></> : <ServerIdentityIcon connectionId={connection.id} hidden className={`h-3.5 w-3.5 shrink-0 ${serverColors[connection.server] || 'text-muted-foreground'}`} />}>
-          {projectsHere.filter(project => project.personal_agent).map(project => renderProject(project))}
-          <ProjectList projects={projectsHere} render={project => renderProject(project)} invites={[]} />
-        </NetworkSection>
-      })}
-      {(filter === 'all' || filter === active) && children}
+      {unpinnedRows.filter(project => project.personal_agent).map(project => renderProject(project))}
+      <div className="space-y-1"><ProjectList projects={unpinnedRows} render={project => renderProject(project)} invites={[]} /></div>
+      {selectedLocations.includes(active) && children}
         {locations.map(connection => {
         const status = inventory[connection.id]?.status
         if (!status) return <p key={connection.id} role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading {connection.name}…</p>
@@ -186,24 +193,11 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
         return null
       })}
-      {!visible.length && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
+      {!visible.length && locations.length > 0 && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
     </div>
     {directoryError && <p role="alert" className="px-3 text-xs text-destructive">{directoryError}</p>}
 
   </div>
-}
-
-/** Browse a network without changing the connection used by the current chat. */
-function NetworkSection({ name, active, icon, children }: { name: string; active: boolean; icon: ReactNode; children: ReactNode }) {
-  const [expanded, setExpanded] = useState(active)
-  useEffect(() => { if (active) setExpanded(true) }, [active])
-  return <section aria-label={`Network: ${name}`} className="mb-2 space-y-1">
-    <button type="button" aria-label={`${name} Crews`} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
-      className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[13px] font-medium text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />{icon}<span className="truncate">{name}</span>
-    </button>
-    {expanded && children}
-  </section>
 }
 
 /** Each expanded Crew loads its own admitted chats, including on other connections. */
