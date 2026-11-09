@@ -6,7 +6,9 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -262,5 +264,22 @@ func TestSettingUpNoticeOncePerChat(t *testing.T) {
 	reply("chat-a", "busy-2", "busy")
 	if a, b, busy := count("chat-a", "setting_up"), count("chat-b", "setting_up"), count("chat-a", "busy"); a != 1 || b != 1 || busy != 2 {
 		t.Fatalf("setting_up chat-a=%d chat-b=%d busy=%d, want 1 1 2", a, b, busy)
+	}
+}
+
+// PR1803/PLAT-746-319: deadline-killed Git processes return ExitError, not
+// context.DeadlineExceeded. Exercise that native process boundary explicitly.
+func TestCrewSnapshotDeadlineKeepsKilledProcessReason(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX process boundary")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
+	defer cancel()
+	err := exec.CommandContext(ctx, "sh", "-c", "exec sleep 60").Run()
+	if _, ok := err.(*exec.ExitError); !ok {
+		t.Fatalf("fixture did not reach a killed process: %T %v", err, err)
+	}
+	if reason := crewSnapshotFailureReason(crewSnapshotContextError(ctx, err)); reason != "timeout" {
+		t.Fatalf("killed capture lost its deadline reason: %s", reason)
 	}
 }
