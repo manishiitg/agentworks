@@ -208,13 +208,28 @@ func (s Store) command(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
+// CaptureLimitLost reports whether the capture limit left out a file this
+// reply may have changed. Files the reply did not touch were already moved
+// out of Skipped when it finished, so they never raise the warning.
+func (r Record) CaptureLimitLost() bool {
+	if r.BeforeCapture.BudgetSkipped == 0 && r.AfterCapture.BudgetSkipped == 0 {
+		return false
+	}
+	for _, p := range r.Skipped {
+		if !sizeOnlyOmission(r, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // Unchanged reports whether the reply's saved before and after states hold the same files: such a reply has nothing
 // to review, so no changed-files card is published for it (owner, 2026-10-28: "still shows 0").
 func (s Store) Unchanged(ctx context.Context, r Record) bool {
 	if r.Before == "" || r.After == "" {
 		return false
 	}
-	if r.BeforeCapture.BudgetSkipped > 0 || r.AfterCapture.BudgetSkipped > 0 {
+	if r.CaptureLimitLost() {
 		return false // An exceeded capture limit is not proof of no file changes.
 	}
 	// A file left uncaptured (too large, over budget) with a different size/time
