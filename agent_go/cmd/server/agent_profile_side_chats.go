@@ -10,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 
 	"github.com/gorilla/mux"
 )
@@ -364,6 +367,8 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 	}
 	slotDone := time.Now()
 	store := defaultProductConversationRegistryStore()
+	var changedKey string
+	var beforeIdentity ProductAgentIdentity
 	if r.Method == http.MethodPost {
 		key := strings.TrimSpace(input.ConversationKey)
 		if key != projectID && !strings.HasPrefix(key, projectID+codeChatSideMarker) {
@@ -399,10 +404,17 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 				return
 			}
 		}
+		previous, readErr := store.agentIdentity(r.Context(), userID, slot.profile.ID, key)
+		if readErr != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "Could not read this chat's model")
+			return
+		}
+		beforeIdentity = previous
 		if _, err := store.setAgentModel(r.Context(), userID, slot.profile.ID, key, input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID, userID); err != nil {
 			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
+		changedKey = key
 	}
 	saveDone := time.Now()
 	allTabs, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
@@ -449,6 +461,25 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			row.ConnectionID = ""
 		}
 		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
+		if changedKey == chat.ConversationKey && tab.OwnerID == userID && api.eventStore != nil {
+			before, beforeErr := effectiveProfileChatModel(slot.profile, slot.binding, chat, beforeIdentity)
+			if beforeErr == nil && (before.Provider != row.Provider || before.ModelID != row.ModelID || before.ReasoningEffort != row.ReasoningEffort) {
+				previousLabel := chatModelDisplayLabel(slot.profile.Runtime, before.Engine, before.ModelID)
+				fields := map[string]interface{}{"previous_model": previousLabel, "model": row.DisplayLabel, "previous_effort": before.ReasoningEffort, "effort": row.ReasoningEffort}
+				now := time.Now()
+				event := unifiedevents.NewAgentEvent(storeevents.NewGenericEventData("chat_model_changed", fields))
+				event.SessionID = chat.SessionID
+				api.eventStore.SetSessionOwner(chat.SessionID, userID)
+				if err := api.eventStore.SetSessionPersistenceClass(chat.SessionID, storeevents.SessionPersistenceInteractiveChat); err == nil {
+					err = api.eventStore.AddEventChecked(chat.SessionID, storeevents.Event{ID: "model-change:" + uuid.NewString(), Type: "chat_model_changed", Timestamp: now, SessionID: chat.SessionID, Data: event})
+					if err != nil {
+						log.Printf("[CHAT_MODELS] session=%s model notice failed: %v", chat.SessionID, err)
+					}
+				} else {
+					log.Printf("[CHAT_MODELS] session=%s journal unavailable: %v", chat.SessionID, err)
+				}
+			}
+		}
 		effective = append(effective, row)
 	}
 	rows := make([]string, 0, len(effective))
