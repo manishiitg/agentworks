@@ -11,6 +11,7 @@ import (
 )
 
 func TestBuilderWebhookToolCreatesAndTestsSignedPing(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
 	manifest := NewWorkflowManifest("API test")

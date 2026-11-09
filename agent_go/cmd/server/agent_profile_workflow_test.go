@@ -92,6 +92,12 @@ func TestCrewPythonStartRequiresOwnEditableWorkflowAndStaysLazy(t *testing.T) {
 		}
 		return reg
 	}
+	// PLAT-746-500: declaring the capability on another product/root must
+	// not expose a targetless legacy workflow start.
+	otherRoot := &productSurfaceDraft{}
+	if err := api.registerAgentProfileWorkflowTools(ctx, otherRoot, resolved, "owner", "owner-chat", "Chats/work", nil, nil, QueryRequest{}, false); err != nil || len(otherRoot.tools) != 0 {
+		t.Fatalf("non-Crew root received a workflow runtime: %v", err)
+	}
 	if len(register("owner", false).tools) != 0 {
 		t.Fatal("Crew without a workflow received workflow tools")
 	}

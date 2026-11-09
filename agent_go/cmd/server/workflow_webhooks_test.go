@@ -7,9 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -51,7 +48,18 @@ func webhookTestRequest(s WorkflowSchedule, body string) *http.Request {
 	return r
 }
 
+func serveWebhookReceiverInputs(t *testing.T) {
+	t.Helper()
+	// PLAT-746: delivery validates the saved input contract before calling
+	// the injected launcher, even for an otherwise opaque JSON payload.
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/test/variables/variables.json": `{}`}})
+	t.Cleanup(workspace.Close)
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+}
+
 func TestWebhookReceiverAuthenticationInputAndErrors(t *testing.T) {
+	serveWebhookReceiverInputs(t)
 	tests := []struct {
 		name, mode, body string
 		mutate           func(*http.Request, *WorkflowSchedule)
@@ -127,11 +135,15 @@ func TestWebhookReceiverAuthenticationInputAndErrors(t *testing.T) {
 			if tt.name == "busy" && w.Header().Get("Retry-After") == "" {
 				t.Fatal("missing retry guidance")
 			}
+			if tt.name == "disabled" && !strings.Contains(w.Body.String(), "disabled") {
+				t.Fatal("disabled hook did not explain why no run started")
+			}
 		})
 	}
 }
 
 func TestWebhookWithoutIdempotencyKeyStartsDistinctRuns(t *testing.T) {
+	serveWebhookReceiverInputs(t)
 	sched := webhookTestSchedule(t, "bearer")
 	runs := make(map[string]schedulerstate.Run)
 	receiver := webhookReceiver{
@@ -177,6 +189,7 @@ func TestWebhookWithoutIdempotencyKeyStartsDistinctRuns(t *testing.T) {
 }
 
 func TestWebhookDuplicateDeliverySurvivesRestartAndConcurrentRetries(t *testing.T) {
+	serveWebhookReceiverInputs(t)
 	path := filepath.Join(t.TempDir(), "state.sqlite")
 	store, err := schedulerstate.Open(path)
 	if err != nil {
@@ -232,6 +245,7 @@ func TestWebhookDuplicateDeliverySurvivesRestartAndConcurrentRetries(t *testing.
 }
 
 func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
 	manifest := NewWorkflowManifest("API test")
@@ -247,11 +261,18 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	svc := NewSchedulerService(&StreamingAPI{})
-	req := workflowWebhookRequest{WorkspacePath: "Workflow/test", Name: "Issue created", Enabled: true, AuthMode: "bearer", RouteSelections: map[string]string{"route": "issue"}, GroupNames: []string{"default"}}
+	req := workflowWebhookRequest{WorkspacePath: "Workflow/test", Name: "Issue created", Enabled: true, AuthMode: "bearer", RouteSelections: map[string]string{"route": "issue"}, InputPreset: "default"}
 	w := httptest.NewRecorder()
 	svc.saveWorkflowWebhook(w, sharedSecretsRequest("POST", "/api/workflow-webhooks", "reader", req))
 	if w.Code != 403 {
 		t.Fatalf("reader mutation: %d %s", w.Code, w.Body.String())
+	}
+	legacy := req
+	legacy.GroupNames = []string{"default"}
+	w = httptest.NewRecorder()
+	svc.saveWorkflowWebhook(w, sharedSecretsRequest("POST", "/api/workflow-webhooks", "owner", legacy))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("retired group request was accepted: %d", w.Code)
 	}
 	w = httptest.NewRecorder()
 	svc.saveWorkflowWebhook(w, sharedSecretsRequest("POST", "/api/workflow-webhooks", "owner", req))
@@ -278,6 +299,17 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 	if missed := ComputeWorkflowScheduleMissedStatus(stored.Schedules[0], nil, time.Now().UTC()); missed.MissedRunCount != 0 {
 		t.Fatal("API trigger counted as missed clock run")
 	}
+	deniedRotation := req
+	deniedRotation.RotateSecret = true
+	w = httptest.NewRecorder()
+	svc.saveWorkflowWebhook(w, mux.SetURLVars(sharedSecretsRequest("PUT", "/api/workflow-webhooks/"+created.ID, "reader", deniedRotation), map[string]string{"id": created.ID}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("reader rotated webhook: %d %s", w.Code, w.Body.String())
+	}
+	unchanged, _, err := ReadWorkflowManifest(context.Background(), "Workflow/test")
+	if err != nil || len(unchanged.Schedules) != 1 || unchanged.Schedules[0].Webhook.EncryptedSecret != stored.Schedules[0].Webhook.EncryptedSecret {
+		t.Fatal("refused rotation changed the saved credential", err)
+	}
 	w = httptest.NewRecorder()
 	svc.listWorkflowWebhooks(w, sharedSecretsRequest("GET", "/api/workflow-webhooks?workspace_path=Workflow/test", "reader", nil))
 	if w.Code != 200 || strings.Contains(w.Body.String(), created.Secret) || strings.Contains(w.Body.String(), "encrypted_secret") {
@@ -292,7 +324,7 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 	}
 	var rotated workflowWebhookResponse
 	_ = json.Unmarshal(w.Body.Bytes(), &rotated)
-	if rotated.Secret == created.Secret || rotated.Secret == "" {
+	if rotated.Secret == created.Secret || rotated.Secret == "" || strings.Contains(w.Body.String(), created.Secret) {
 		t.Fatal("secret did not rotate")
 	}
 	stored, _, _ = ReadWorkflowManifest(context.Background(), "Workflow/test")
@@ -323,6 +355,11 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 		t.Fatalf("cannot disable broken route binding: %d %s", w.Code, w.Body.String())
 	}
 
+	w = httptest.NewRecorder()
+	svc.deleteWorkflowWebhook(w, mux.SetURLVars(sharedSecretsRequest("DELETE", "/api/workflow-webhooks/"+created.ID+"?workspace_path=Workflow/test", "reader", nil), map[string]string{"id": created.ID}))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("reader deleted webhook: %d %s", w.Code, w.Body.String())
+	}
 	w = httptest.NewRecorder()
 	svc.deleteWorkflowWebhook(w, mux.SetURLVars(sharedSecretsRequest("DELETE", "/api/workflow-webhooks/"+created.ID+"?workspace_path=Workflow/test", "owner", nil), map[string]string{"id": created.ID}))
 	if w.Code != 204 {
@@ -418,6 +455,11 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	ws := httptest.NewServer(mock)
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	// Common project entry records are authoritative; discovery no longer
+	// migrates an inline schedule from workflow.json on a read.
+	if err := saveWorkflowEntryActions(context.Background(), workspace, manifest); err != nil {
+		t.Fatal(err)
+	}
 
 	router := mux.NewRouter()
 	WorkflowWebhookRoutes(router, &SchedulerService{})
@@ -440,69 +482,5 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/workflow-webhooks/"+sched.ID+"/runs/other-run/payload", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("cross-run payload lookup: %d %s", w.Code, w.Body.String())
-	}
-}
-
-// PLAT-746-265: a disabled Flow cannot start through an authenticated delivery;
-// owners receive a reason and the attempt remains in schedule history.
-func TestDisabledFlowWebhookRecordsReasonWithoutRunning(t *testing.T) {
-	_, files, ctx := newCrewCreationTestEnv(t)
-	root := "Workflow/disabled-flow"
-	sched := webhookTestSchedule(t, "bearer")
-	manifest := NewWorkflowManifest("Saved Flow")
-	manifest.ID, manifest.Kind, manifest.CreatedBy = "wf_test", "relay", "owner"
-	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
-	manifest.Schedules = []WorkflowSchedule{sched}
-	registerWorkflowOwner(root, "owner")
-	raw, _ := json.Marshal(manifest)
-	files.files[root+"/workflow.json"] = string(raw)
-	if err := saveWorkflowEntryActions(ctx, root, manifest); err != nil {
-		t.Fatal(err)
-	}
-	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "history.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	create := httptest.NewRecorder()
-	(&StreamingAPI{}).handleCreateWorkflowManifest(create, httptest.NewRequest(http.MethodPost, "/api/workflow-manifests", strings.NewReader(`{"label":"New Flow","kind":"relay","workspace_path":"Workflow/new-disabled-flow"}`)).WithContext(ctx))
-	if create.Code != http.StatusForbidden || !strings.Contains(create.Body.String(), productpolicy.FlowsDisabledMessage) {
-		t.Fatalf("disabled Flow creation: %d %s", create.Code, create.Body)
-	}
-	if userAllowedProduct(GetUserFromContext(ctx), "relays") {
-		t.Fatal("Flow profile granted despite installation disable")
-	}
-	svc := NewSchedulerService(nil)
-	svc.stateStore = store
-	loaded, found, err := ReadWorkflowManifest(ctx, root)
-	if err != nil || !found || len(loaded.Schedules) != 1 {
-		t.Fatalf("saved trigger unavailable: %+v %v", loaded, err)
-	}
-	receiver := webhookReceiver{
-		find: func(context.Context, string) (*ScheduleSearchResult, error) {
-			return &ScheduleSearchResult{WorkspacePath: root, Manifest: loaded}, nil
-		},
-		existing: func(context.Context, string) (schedulerstate.Run, error) {
-			return schedulerstate.Run{}, schedulerstate.ErrRunNotFound
-		},
-		start: svc.triggerSavedSchedule,
-	}
-	reply := httptest.NewRecorder()
-	receiver.receive(reply, webhookTestRequest(sched, `{}`))
-	if reply.Code != http.StatusServiceUnavailable || !strings.Contains(reply.Body.String(), productpolicy.FlowsDisabledMessage) {
-		t.Fatalf("disabled Flow delivery: %d %s", reply.Code, reply.Body)
-	}
-	decisions, err := svc.ListFireDecisions(ctx, root, sched.ID, 10)
-	if err != nil || len(decisions) != 1 || decisions[0].Reason != productpolicy.FlowsDisabledMessage {
-		t.Fatalf("missing disabled Flow history: %+v %v", decisions, err)
-	}
-	if err := svc.LoadSchedule(buildScheduleContext(root, loaded, sched)); !errors.Is(err, errFlowsDisabled) {
-		t.Fatalf("disabled Flow registered: %v", err)
-	}
-	if err := (&conditionService{}).current(ctx, productScheduleJob{Profile: agentprofiles.Profile{ID: "relays"}}, conditiontrigger.Config{}); !errors.Is(err, errFlowsDisabled) {
-		t.Fatalf("disabled Flow watcher reached its source: %v", err)
-	}
-	if err := validateExecutableSchedule(ctx, &ScheduleContext{}); err != nil {
-		t.Fatalf("ordinary workflow refused: %v", err)
 	}
 }

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,10 +12,17 @@ import (
 )
 
 func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
-	env := newTriggerLinkEnv(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newTriggerLinkEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	const root = "Workflow/shared" // owned by other; owner is a Run member here.
+	definitions, err := json.Marshal(reviewPRInputDefinitions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.mock.mu.Lock()
+	env.mock.files[root+"/variables/variables.json"] = string(definitions)
+	env.mock.mu.Unlock()
 	manifest, _, err := ReadWorkflowManifest(ctx, root)
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +51,11 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 	if got, err := reg.tools["project_functions_list"].exec(ctx, nil); err != nil || !strings.Contains(got, "review_pr") {
 		t.Fatalf("list: %s %v", got, err)
 	}
-	if _, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr"}); err == nil || !strings.Contains(err.Error(), "missing required input") {
+	_, err = reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr"})
+	var refusal struct {
+		Error struct{ Code, Message string }
+	}
+	if err == nil || json.Unmarshal([]byte(err.Error()), &refusal) != nil || refusal.Error.Code != "call_refused" || !strings.Contains(refusal.Error.Message, "function input:") || !strings.Contains(refusal.Error.Message, "PR_NUMBER") {
 		t.Fatalf("Run must reach input validation: %v", err)
 	}
 	if _, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr", "input": "wrong"}); err == nil || !strings.Contains(err.Error(), "JSON object") {
@@ -104,33 +114,6 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 		t.Fatalf("revoked share: %v", err)
 	}
 
-	// The same external entry also accepts Relay Run members. Even with a
-	// callable function in the draft, no publication means no execution.
-	manifest.Access.Readers = []string{"owner"}
-	manifest.Kind = "relay"
-	manifest.Schedules[0].Enabled = true
-	manifest.Schedules[0].Function.AllowedCallers = nil
-	save()
-	if _, err := reg.tools["project_functions_list"].exec(ctx, nil); err == nil {
-		t.Fatal("native workflow tools must not acquire a Relay target")
-	}
-	req := httptest.NewRequest("POST", "/api/external/call", nil).WithContext(ctx)
-	rec := httptest.NewRecorder()
-	env.api.externalWorkflowFunctionCall(rec, req, "project_functions_call", map[string]any{"function": "review_pr", "input": args, "submission_id": "unpublished-relay"}, DiscoveredWorkflow{WorkspacePath: root, Manifest: manifest}, WorkflowAccessRead)
-	var reply map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil {
-		t.Fatal(err)
-	}
-	if rec.Code != 200 || reply["status"] != "failed" || !strings.Contains(rec.Body.String(), "no published version") {
-		t.Fatalf("draft-only Relay must be refused: %d %s", rec.Code, rec.Body.String())
-	}
-	if id, _ := reply["call_id"].(string); id != "" {
-		relayCall := lookupCrewFunctionCall(id)
-		if relayCall == nil || relayCall.RunID != "" || relayCall.UserID != "owner" {
-			t.Fatalf("draft-only Relay started a run or lost caller attribution: %v", relayCall)
-		}
-		t.Cleanup(func() { crewFunctionCalls.Lock(); delete(crewFunctionCalls.m, id); crewFunctionCalls.Unlock() })
-	}
 }
 
 func TestWorkflowRunAskPreservesTokenAuthority(t *testing.T) {

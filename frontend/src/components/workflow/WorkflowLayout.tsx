@@ -114,14 +114,13 @@ import { GoalStarterGuide } from '../chat/ProductStarterGuide'
 
 const WorkflowNewChatGuide = () => <GoalStarterGuide />
 
-import { agentApi, workflowManifestApi } from '../../services/api'
+import { agentApi } from '../../services/api'
 import {
   type ActiveSessionInfo,
   type ChatHistorySession,
   type ExecutionOptions,
   type PollingEvent,
   type RunningWorkflowInfo,
-  type WorkflowContractUpgradeStatus,
 } from '../../services/api-types'
 import { findOrCreateWorkflowTab, isChatCompatiblePhase } from '../../utils/chatSubmitHelpers'
 import { useWorkflowViewPresentations } from './useWorkflowViewPresentations'
@@ -137,7 +136,7 @@ import {
 } from '../../utils/workflowTabHydration'
 import { isVisibleActivitySession } from '../../utils/activitySessions'
 import { isWorkspacePaneView } from './workspaceViews'
-import { WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT } from './workflowContractUpgradeEvents'
+import WorkflowMissingSecretsNotice, { useWorkflowMissingSecrets } from './WorkflowMissingSecretsNotice'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
 
 const WORKFLOW_RESTORE_TIMEOUT_MS = 8000
@@ -853,44 +852,10 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     return () => { cancelled = true }
   }, [activePresetId, runsOnly, selectedModeCategory, workspacePath])
 
-  const [workflowStatus, setWorkflowStatus] = useState<{
-    workspacePath: string
-    contractUpgrade: WorkflowContractUpgradeStatus | null
-    missingSecrets: string[]
-  } | null>(null)
-  const currentWorkflowStatus = workflowStatus?.workspacePath === workspacePath ? workflowStatus : null
-  const contractUpgrade = currentWorkflowStatus?.contractUpgrade ?? null
-  const missingSecrets = currentWorkflowStatus?.missingSecrets ?? []
-  const contractUpgradeWorkspaceRef = useRef(workspacePath)
-  contractUpgradeWorkspaceRef.current = workspacePath
-  const contractUpgradeRequestRef = useRef(0)
+  const missingSecrets = useWorkflowMissingSecrets(workspacePath)
   const activeWorkflowAccess = useMemo(() => (
     workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === workspacePath)?.my_access
   ), [activePresetId, workflowManifests, workspacePath])
-
-  const refreshContractUpgrade = useCallback(async () => {
-    const requestId = ++contractUpgradeRequestRef.current
-    if (!workspacePath) {
-      setWorkflowStatus(null)
-      return
-    }
-    try {
-      const response = await workflowManifestApi.getWorkflowManifest(workspacePath)
-      if (contractUpgradeWorkspaceRef.current !== workspacePath || contractUpgradeRequestRef.current !== requestId) return
-      const status = response.contract_upgrade ?? null
-      setWorkflowStatus({ workspacePath, contractUpgrade: status, missingSecrets: response.missing_secrets ?? [] })
-      window.dispatchEvent(new CustomEvent(WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, {
-        detail: { workspacePath, status },
-      }))
-    } catch {
-      if (contractUpgradeWorkspaceRef.current !== workspacePath || contractUpgradeRequestRef.current !== requestId) return
-      setWorkflowStatus(null)
-    }
-  }, [workspacePath])
-
-  useEffect(() => {
-    void refreshContractUpgrade()
-  }, [refreshContractUpgrade])
 
   // Never expose the previous workflow's messages or a false first-time chat
   // while the durable conversation for a newly selected workflow is resolving.
@@ -2081,18 +2046,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
               </div>
             )}
 
-            {missingSecrets.length > 0 && (
-              <div
-                role="status"
-                data-testid="missing-secrets-banner"
-                className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-200"
-              >
-                {missingSecrets.length === 1 ? 'This workflow uses a secret that has no value: ' : 'This workflow uses secrets that have no value: '}
-                <span className="font-medium">{missingSecrets.join(', ')}</span>.
-                {' '}Runs still start, but anything that needs {missingSecrets.length === 1 ? 'it' : 'them'} will get an empty value.
-                {' '}Add the value in Connections → Add connection → Secrets, or remove the selection.
-              </div>
-            )}
+            <WorkflowMissingSecretsNotice names={missingSecrets} />
 
             <div className="relative min-h-0 flex-1 overflow-hidden">
               {isWorkflowConversationResolving && (

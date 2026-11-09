@@ -269,6 +269,35 @@ sys.exit(1)
 	if manifest.Capabilities.BrowserMode != "headless" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || len(manifest.Capabilities.SelectedServers) != 1 || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
 		t.Fatal("saved script lost the Crew's model/browser/MCP/secret-name selections")
 	}
+	// PLAT-746-500: retiring upgrade metadata must keep the real manifest
+	// read and missing-secret notice for admitted owners and Run people.
+	manifestEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(api.handleGetWorkflowManifest)))
+	defer manifestEndpoint.Close()
+	for _, user := range []string{"owner", "runner"} {
+		token, err := GenerateJWT(user, user, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequest(http.MethodGet, manifestEndpoint.URL+"/api/workflows/manifest?workspace_path="+script.Root, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var reply map[string]json.RawMessage
+		err = json.NewDecoder(response.Body).Decode(&reply)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK || err != nil {
+			t.Fatalf("manifest read user=%s HTTP%d: %v", user, response.StatusCode, err)
+		}
+		if _, exists := reply["contract_upgrade"]; exists {
+			t.Fatal("retired contract_upgrade exposed by manifest read")
+		}
+		var missing []string
+		if err := json.Unmarshal(reply["missing_secrets"], &missing); err != nil || len(missing) != 1 || missing[0] != "EXAMPLE_CREDENTIAL" {
+			t.Fatalf("manifest read lost selected missing-secret names: %s %v", reply["missing_secrets"], err)
+		}
+	}
 	changed := `{"id":"qualify","name":"Qualify","secrets":["FIXTURE_KEY"],"inputs":[{"name":"count","type":"integer","value":"2"}],"capabilities":{"browser_mode":"extension"}}`
 	if code := request("runner", changed, "script.json"); code != 403 {
 		t.Fatalf("Run person changed script settings HTTP%d", code)

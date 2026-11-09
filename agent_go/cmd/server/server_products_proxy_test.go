@@ -194,6 +194,8 @@ func TestServerProductLLMOnlyDeploymentAndTokenClientIdentity(t *testing.T) {
 	}
 }
 
+// PLAT-746-503: known failing until the owner settles personal PAT inference
+// versus MCP role-derived scopes; keep the actual llm:use success assertion.
 func TestServerProductPATUsesUnscopedClaimsWithoutAdminAuthority(t *testing.T) {
 	api := tokenTestSetup(t)
 	t.Setenv("MULTI_USER_MODE", "true")
