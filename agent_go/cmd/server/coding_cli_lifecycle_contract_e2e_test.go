@@ -27,6 +27,9 @@ import (
 // hermetic, so every push verifies identical lifecycle behavior for all active
 // coding providers without consuming provider quota.
 func TestCodingCLILifecycleMatrixHermeticTmux(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is required for the coding CLI lifecycle contract")
+	}
 	// PLAT-746: Unix sockets need a short path even when TMPDIR is a long verifier path.
 	// This is a private server; never reuse or change the host's tmux directory.
 	socketDir, err := os.MkdirTemp("/tmp", "aw-tmux-")
@@ -38,9 +41,6 @@ func TestCodingCLILifecycleMatrixHermeticTmux(t *testing.T) {
 		_ = runTerminalTmuxCommand(context.Background(), "", "kill-server")
 		_ = os.RemoveAll(socketDir)
 	})
-	if _, err := exec.LookPath("tmux"); err != nil {
-		t.Skip("tmux is required for the coding CLI lifecycle contract")
-	}
 
 	providers := []struct {
 		name   string
