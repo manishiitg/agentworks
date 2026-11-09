@@ -14,10 +14,10 @@ type Preview = { messages: { role: string; text: string }[]; total_messages: num
 export type ImportedLocalChat = { conversation_key: string; conversation_id: string; session_id: string; name: string; provider: string; connection_id: string; engine: string; model_id: string }
 
 type LocalChatPickerProps = { onClose: () => void } & (
-  { projectId: string; onImported: (chat: ImportedLocalChat) => Promise<void>; folder?: never; onSelected?: never } |
-  { folder: string; onSelected: (chat: LocalChat) => void; projectId?: never; onImported?: never }
+  { projectId: string; onImported: (chat: ImportedLocalChat) => Promise<void>; folder?: never; onSelected?: never; onStartFresh?: never } |
+  { folder: string; onSelected: (chat: LocalChat) => void; onStartFresh?: () => void; projectId?: never; onImported?: never }
 )
-export function LocalChatPicker({ projectId, folder, onClose, onImported, onSelected }: LocalChatPickerProps) {
+export function LocalChatPicker({ projectId, folder, onClose, onImported, onSelected, onStartFresh }: LocalChatPickerProps) {
   const [chats, setChats] = useState<LocalChat[]>([])
   const [selected, setSelected] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -96,7 +96,7 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
           {previewLoading ? <p role="status" className="text-sm text-muted-foreground">Loading history…</p> : preview && <><p className="mb-3 text-xs text-muted-foreground">{localChatProgram(current?.provider || '').name} · {current?.account}{preview.total_messages > preview.messages.length ? ` · Latest ${preview.messages.length} messages` : ''}</p>{preview.messages.map((item, index) => <div key={index} className="border-b border-border py-4 last:border-b-0"><p className="mb-2 text-xs text-muted-foreground">{item.role === 'human' || item.role === 'user' ? 'You' : 'Assistant'}</p><p className="whitespace-pre-wrap break-words text-sm">{item.text}</p></div>)}</>}
         </section>
       </div>
-      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{current?.provider === 'cursor-cli' ? `${current.in_use ? 'This chat appears open in Cursor. ' : ''}Continues the same Cursor CLI conversation${onSelected ? ' after creation' : ''}. Close it in Cursor before sending here.` : `${onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.`}<br />The project files are shared.</p><button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></footer>
+      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{current?.provider === 'cursor-cli' ? `${current.in_use ? 'This chat appears open in Cursor. ' : ''}Continues the same Cursor CLI conversation${onSelected ? ' after creation' : ''}. Close it in Cursor before sending here.` : `${onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.`}<br />The project files are shared.</p><div className="flex items-center gap-3">{onStartFresh && <button type="button" disabled={importing} onClick={onStartFresh} className="rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted disabled:opacity-50">Start fresh</button>}<button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></div></footer>
     </div>
   </div></ModalPortal>
 }
