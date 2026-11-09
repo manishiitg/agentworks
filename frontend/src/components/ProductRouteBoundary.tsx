@@ -113,7 +113,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         const activate = await resolveProductRoute(destination, controller.signal)
         if (controller.signal.aborted) return
         activate()
-        if (saved) {
+        if (saved && !destination.agent) {
           await restoreWorkspaceChat(saved, controller.signal).catch(() => {
             if (!controller.signal.aborted) useWorkspaceReturnStore.setState({ note: 'Your workspace opened, but its saved chat could not be restored.' })
           })

@@ -4,13 +4,13 @@ import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow
 import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
-import { activateTab } from '../../utils/activateTab'
+import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
-const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
+const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
 /** The open Crew's agents in the app's left menu: one row each with its
  * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */

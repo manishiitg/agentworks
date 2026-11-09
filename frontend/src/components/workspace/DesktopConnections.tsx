@@ -12,7 +12,7 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
-import { activateTab } from '../../utils/activateTab'
+import { openAgentTab } from '../../utils/openAgentTab'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
 import { ChevronRight, Laptop } from 'lucide-react'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
@@ -279,8 +279,8 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     const route = { surface: 'work' as const, id: projectId, agent }
     if (connectionId === getRawActiveWorkspaceId()) {
       const existing = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === chat.session_id && tab.metadata?.agentProfileProjectId === projectId)
-      if (existing) activateTab(existing.tabId)
-      openAppProduct(route)
+      if (existing) openAgentTab(existing.tabId)
+      else openAppProduct(route)
     }
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))

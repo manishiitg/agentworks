@@ -111,7 +111,7 @@ export type WorkChatTabShortcut = { kind: 'tab'; index: number } | { kind: 'new'
  * same modifier as Cmd/Ctrl+K (owner 2026-10-07). In a browser tab, Chrome
  * keeps Cmd/Ctrl+1..8 for its own tabs, so Alt+1..5 stays as the fallback.
  * Alt+Shift+T opens a new chat (Cmd/Ctrl+Shift+T reopens a browser tab).
- * Cmd/Ctrl+Left/Right moves between visible chats, including from the composer.
+ * Cmd/Ctrl+Left/Right follows browser Back/Forward, including from the composer.
  * The physical key is read, because Option changes the character on a Mac.
  */
 export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'code' | 'key'>): WorkChatTabShortcut | null {
@@ -125,7 +125,7 @@ export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlK
   return digit ? { kind: 'tab', index: Number(digit) - 1 } : null
 }
 
-/** Command arrows switch chats from the composer, but remain editing keys elsewhere. */
+/** Command arrows navigate history from the composer, but remain editing keys elsewhere. */
 export function chatTabArrowTargetAllowed(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true
   if (target.closest('[data-chat-composer]')) return true

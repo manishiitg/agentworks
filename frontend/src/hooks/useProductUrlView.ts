@@ -3,7 +3,7 @@ import type { ProductSurface } from '../products/productSurfaceConfig'
 import { registerProductUrlView, productUrlViewChanged } from '../utils/productUrlNavigation'
 
 /** A mounted surface exposes its actual view state to the shared history adapter. */
-export function useProductUrlView(surface: ProductSurface, selection: { id?: string; view?: string; folder?: string }, navigationRevision?: number) {
+export function useProductUrlView(surface: ProductSurface, selection: { id?: string; view?: string; folder?: string; agent?: string }, navigationRevision?: number) {
   const current = useRef(selection)
   current.current = selection
   useLayoutEffect(() => registerProductUrlView(surface, () => current.current), [surface])
@@ -11,9 +11,10 @@ export function useProductUrlView(surface: ProductSurface, selection: { id?: str
   useEffect(() => {
     const old = previous.current
     previous.current = { selection, navigationRevision }
-    if (old.selection.id !== selection.id || old.selection.view !== selection.view || old.selection.folder !== selection.folder) {
-      const projection = old.selection.id !== selection.id || (navigationRevision !== undefined && old.navigationRevision === navigationRevision)
+    if (old.selection.id !== selection.id || old.selection.view !== selection.view || old.selection.folder !== selection.folder || old.selection.agent !== selection.agent) {
+      const agentNavigation = old.selection.agent !== undefined && old.selection.agent !== selection.agent && old.selection.id === selection.id
+      const projection = !agentNavigation && (old.selection.id !== selection.id || (old.selection.agent === undefined && selection.agent !== undefined) || (navigationRevision !== undefined && old.navigationRevision === navigationRevision))
       productUrlViewChanged(projection)
     }
-  }, [selection.id, selection.view, selection.folder, navigationRevision])
+  }, [selection.id, selection.view, selection.folder, selection.agent, navigationRevision])
 }

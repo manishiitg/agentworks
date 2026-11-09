@@ -6,7 +6,7 @@ import { useWorkflowStore } from '../stores/useWorkflowStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
 import { currentProductRoute, productRoutePath, type ProductRoute } from './productRoutes'
 
-type ViewReader = () => { id?: string; view?: string; folder?: string }
+type ViewReader = () => { id?: string; view?: string; folder?: string; agent?: string }
 type HistoryChange = 'projection' | 'navigation' | 'redirect'
 const readers = new Map<ProductSurface, Set<ViewReader>>()
 let notify: ((change: HistoryChange) => void) | undefined
@@ -81,6 +81,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       // A fresh deep link names its view before the mounted surface has
       // applied it; a projection must not rewrite the link to the default.
       if (replaceEntry && currentProductRoute()?.view && projected.view !== currentProductRoute()?.view) { lastSelection = productRoutePath(projected); return }
+      if (replaceEntry && currentProductRoute()?.agent && projected.agent !== currentProductRoute()?.agent) { lastSelection = productRoutePath(projected); return }
       onSelection?.(projected)
       const path = productRoutePath(projected)
       if (path === lastSelection && !replaceEntry && !fromDashboards && !fromHome && !fromSettings) return
