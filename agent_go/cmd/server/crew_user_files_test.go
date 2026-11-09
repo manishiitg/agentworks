@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -177,7 +178,9 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	if _, err := os.Stat(roots.Private); !os.IsNotExist(err) {
 		t.Fatal("Crew private root remains", err)
 	}
-	if err := client.DeleteFolder(ctx, logical); err != nil {
-		t.Fatal("deletion retry", err)
+	// PLAT-746-502 requires a live binding on every file operation. After
+	// deletion the former folder grant must receive that same access refusal.
+	if err := client.DeleteFolder(ctx, logical); !errors.Is(err, errLinkedCrewUnavailable) {
+		t.Fatalf("deleted Crew mutation did not hit the current binding rule: %v", err)
 	}
 }
