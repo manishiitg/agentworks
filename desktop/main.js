@@ -471,6 +471,10 @@ function withDesktopVersionCacheBust(url) {
 // IPC Handlers for Settings
 ipcMain.handle('get-settings', () => loadSettings());
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.on('get-window-focused', event => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  event.returnValue = !!(window && window === mainWindow && window.isVisible() && !window.isMinimized() && window.isFocused());
+});
 ipcMain.handle('pick-docs-dir', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Select workspace-docs folder',
@@ -1812,6 +1816,21 @@ function createWindow(initialUrl) {
       process.env.AGENTWORKS_DESKTOP_SOCKET, currentDesktopOrigin(), currentDesktopAppOrigin()) : undefined,
   });
   }
+  // The native window is authoritative when the person switches to another app.
+  // Renderer visibility alone stays visible when Chrome covers an open chat.
+  const chatWindow = mainWindow;
+  let lastNotificationFocus;
+  const reportNotificationFocus = () => {
+    if (chatWindow.isDestroyed() || chatWindow.webContents.isDestroyed()) return;
+    const focused = chatWindow.isVisible() && !chatWindow.isMinimized() && chatWindow.isFocused();
+    chatWindow.webContents.send('window-focus-changed', focused);
+    if (focused !== lastNotificationFocus) {
+      diagLog(`[notify] window_focus=${focused}`);
+      lastNotificationFocus = focused;
+    }
+  };
+  ['focus', 'blur', 'hide', 'minimize', 'restore', 'show'].forEach(event => chatWindow.on(event, reportNotificationFocus));
+  chatWindow.webContents.on('did-finish-load', reportNotificationFocus);
   mainWindow.loadURL(targetUrl);
 
   ['minimize', 'hide', 'restore', 'show', 'focus'].forEach((eventName) => {

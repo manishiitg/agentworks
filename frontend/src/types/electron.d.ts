@@ -10,6 +10,8 @@ interface ElectronUpdateProgress {
 interface ElectronBridge {
   getDesktopApiBaseUrl?: () => string | null
   getDesktopConnection?: () => string | null
+  isWindowFocused?: () => boolean
+  onWindowFocusChanged?: (callback: (focused: boolean) => void) => () => void
   openDesktopConnection?: (id: string, route: string) => Promise<void>
   isWalkthroughDismissed?: (key: string) => boolean
   dismissWalkthrough?: (key: string) => void
