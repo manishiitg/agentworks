@@ -172,6 +172,31 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 	if warm[0].Error != "" || !warm[0].Stale || len(warm[0].Rows) != 1 || warm[0].Rows[0].Label != "Example" {
 		t.Fatalf("overlapping refresh lost last snapshot: %+v", warm)
 	}
+	// One Python workflow with two helper files and one legacy workflow means
+	// exactly two menu rows, not zero Python rows or one row per helper file.
+	write("Workflow/panel-load-01/code/another_helper.py", "def another_helper(): return 2\n")
+	legacy := crewExecutableBinding{ID: "panel-legacy", CrewID: "panel-crew-01", CrewRoot: "Crew/panel-crew-01", Root: "Workflow/panel-legacy", Kind: "workflow"}
+	if err := registerCrewExecutable(legacy); err != nil {
+		t.Fatal(err)
+	}
+	write(legacy.Root+"/workflow.json", `{"id":"panel-legacy","label":"Legacy workflow","created_by":"owner"}`)
+	f.api.crewPanels.mu.Lock()
+	for key, value := range f.api.crewPanels.entries {
+		value.at = time.Now().Add(-6 * time.Second)
+		f.api.crewPanels.entries[key] = value
+	}
+	f.api.crewPanels.mu.Unlock()
+	_, mixed, mixedCode := call("owner", "panel-crew-01")
+	mixedRows := 0
+	for _, section := range mixed.Sections {
+		if section.ID == "workflow" {
+			mixedRows = len(section.Rows)
+		}
+	}
+	if mixedCode != 200 || mixedRows != 2 {
+		t.Fatalf("Python/legacy menu lost workflows or listed helper files: status=%d rows=%d", mixedCode, mixedRows)
+	}
+	t.Logf("PANEL_LOAD mixed_python_legacy_rows=%d helper_files=2", mixedRows)
 	// A normal saved-script outline read, not the menu, supplies its saved-source count.
 	graphRoot := "Workflow/panel-saved-script"
 	if err := registerCrewExecutable(crewExecutableBinding{ID: "panel-saved-script", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: graphRoot, Kind: "script"}); err != nil {
