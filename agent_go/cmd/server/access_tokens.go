@@ -3,12 +3,14 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -632,7 +634,7 @@ type accessTokenSessionRegistry struct {
 	sessions map[string]accessTokenSession
 }
 
-func (api *StreamingAPI) cancelAccessTokenSessions(id string) {
+func (api *StreamingAPI) cancelAccessTokenSessions(id string) []string {
 	api.accessTokenSessions.Lock()
 	sessions := []string{}
 	for sid, s := range api.accessTokenSessions.sessions {
@@ -645,6 +647,7 @@ func (api *StreamingAPI) cancelAccessTokenSessions(id string) {
 	for _, sid := range sessions {
 		api.cancelSessionRuntimeWork(sid, "access token revoked or expired", runtimePhaseCanceled)
 	}
+	return sessions
 }
 
 func (api *StreamingAPI) watchAccessTokenSession(c *UserClaims, sessionID, workspace string, access WorkflowAccessLevel) {
@@ -670,42 +673,104 @@ func (api *StreamingAPI) watchAccessTokenSession(c *UserClaims, sessionID, works
 				return
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-			allowed := accessTokenSessionAllowed(ctx, entry)
+			ended := api.recheckAccessTokenSession(ctx, entry)
 			cancel()
-			if !allowed {
-				api.cancelAccessTokenSessions(entry.tokenID)
+			if ended {
 				return
 			}
 		}
 	}()
 }
 
-func accessTokenSessionAllowed(ctx context.Context, entry accessTokenSession) bool {
+// A failed lookup is not evidence of revocation. Calls still refuse when
+// authorization is unavailable; the watcher preserves already-authorized work.
+// PLAT-746-512: one slow manifest lookup used to cancel every run of a token.
+type tokenSessionVerdict struct {
+	reason string
+	token  bool
+}
+
+func accessTokenSessionCheck(ctx context.Context, entry accessTokenSession) (tokenSessionVerdict, error) {
+	var token accesstokens.Token
 	if strings.HasPrefix(entry.tokenID, "oauth-") {
 		grant, err := mcpOAuthFamilyActive(ctx, strings.TrimPrefix(entry.tokenID, "oauth-"))
-		if err != nil {
-			return false
+		if errors.Is(err, sql.ErrNoRows) {
+			return tokenSessionVerdict{"revoked_or_expired", true}, nil
 		}
-		claims, err := accessTokenClaims(mcpOAuthTokenForGrant(grant))
 		if err != nil {
-			return false
+			return tokenSessionVerdict{}, err
 		}
-		level, manifest := workflowAccessForWorkspacePath(ctx, claims, entry.workspace)
-		return manifest != nil && level == entry.access
-	}
-	store, err := openAccessTokens()
-	if err != nil {
-		return false
-	}
-	defer store.Close()
-	token, err := store.Active(ctx, entry.tokenID, time.Now())
-	if err != nil {
-		return false
+		token = mcpOAuthTokenForGrant(grant)
+	} else {
+		store, err := openAccessTokens()
+		if err != nil {
+			return tokenSessionVerdict{}, err
+		}
+		defer store.Close()
+		token, err = store.Active(ctx, entry.tokenID, time.Now())
+		if errors.Is(err, accesstokens.ErrInvalid) {
+			return tokenSessionVerdict{"revoked_or_expired", true}, nil
+		}
+		if err != nil {
+			return tokenSessionVerdict{}, err
+		}
 	}
 	claims, err := accessTokenClaims(token)
+	if errors.Is(err, accesstokens.ErrInvalid) {
+		return tokenSessionVerdict{"account_access_changed", false}, nil
+	}
 	if err != nil {
+		return tokenSessionVerdict{}, err
+	}
+	manifest, exists, err := ReadWorkflowManifest(ctx, entry.workspace)
+	if err != nil {
+		return tokenSessionVerdict{}, err
+	}
+	if !exists || manifest == nil || workflowAccessForManifest(claims, manifest) != entry.access {
+		return tokenSessionVerdict{"project_access_changed", false}, nil
+	}
+	return tokenSessionVerdict{}, nil
+}
+
+func accessTokenSessionAllowed(ctx context.Context, entry accessTokenSession) bool {
+	verdict, err := accessTokenSessionCheck(ctx, entry)
+	return err == nil && verdict.reason == ""
+}
+
+// Confirm a definite negative with a second store/access read. A deadline, busy
+// database or unavailable workspace stays unknown and is retried on the next tick.
+func (api *StreamingAPI) recheckAccessTokenSession(ctx context.Context, entry accessTokenSession) bool {
+	verdict, err := accessTokenSessionCheck(ctx, entry)
+	if err == nil && verdict.reason == "" {
 		return false
 	}
-	level, manifest := workflowAccessForWorkspacePath(ctx, claims, entry.workspace)
-	return manifest != nil && level == entry.access
+	prefix := entry.tokenID
+	if len(prefix) > 16 {
+		prefix = prefix[:16]
+	}
+	if err != nil {
+		log.Printf("[TOKEN_WATCH] unknown token=%s session=%s reason=%q", prefix, entry.sessionID, err)
+		return false
+	}
+	confirmed, err := accessTokenSessionCheck(ctx, entry)
+	if err != nil || confirmed != verdict {
+		log.Printf("[TOKEN_WATCH] unknown token=%s session=%s reason=negative_not_confirmed error=%v", prefix, entry.sessionID, err)
+		return false
+	}
+	log.Printf("[TOKEN_WATCH] denied token=%s session=%s reason=%s confirmed_reads=2 checked_at=%s", prefix, entry.sessionID, verdict.reason, time.Now().UTC().Format(time.RFC3339Nano))
+	if verdict.token {
+		logTokenWatchOAuthExpiry(ctx, entry.tokenID)
+		canceled := api.cancelAccessTokenSessions(entry.tokenID)
+		// Setup may have registered its runtime after an earlier revocation
+		// already removed this session from the watch registry (Codex1758 P1).
+		if !containsID(canceled, entry.sessionID) {
+			api.cancelSessionRuntimeWork(entry.sessionID, "access token revoked or expired", runtimePhaseCanceled)
+		}
+	} else {
+		api.accessTokenSessions.Lock()
+		delete(api.accessTokenSessions.sessions, entry.sessionID)
+		api.accessTokenSessions.Unlock()
+		api.cancelSessionRuntimeWork(entry.sessionID, "access token project or account access changed", runtimePhaseCanceled)
+	}
+	return true
 }
