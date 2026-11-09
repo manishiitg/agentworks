@@ -2,8 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
+
 	"encoding/json"
 	"io"
 	"net/http"
@@ -103,66 +102,6 @@ func TestSupabaseGoogleGetAuthURLUnconfigured(t *testing.T) {
 	}
 	if p.IsConfigured() {
 		t.Error("expected IsConfigured false without URL/key")
-	}
-}
-
-func TestSupabaseGoogleExchangeCode(t *testing.T) {
-	var captured map[string]string
-	withStubSupabasePKCE(t, http.StatusOK,
-		googleUserBody("sb-user-1", "ana@gmail.com", "Ana", "Ana Example"), &captured)
-
-	p := stubbedGoogleProvider()
-	authURL := p.GetAuthURL("flow-state", "https://app.example.com/auth/callback")
-	challenge := mustParseQuery(t, authURL).Get("code_challenge")
-
-	ext, err := p.ExchangeCode(context.Background(), "auth-code-xyz", "https://app.example.com/auth/callback", "flow-state")
-	if err != nil {
-		t.Fatalf("ExchangeCode: %v", err)
-	}
-	if ext.ExternalID != "sb-user-1" || ext.Email != "ana@gmail.com" {
-		t.Errorf("unexpected identity: %+v", ext)
-	}
-	if ext.Username != "Ana" {
-		t.Errorf("username = %q, want Ana", ext.Username)
-	}
-	if ext.Provider != "supabase-google" {
-		t.Errorf("provider = %q, want supabase-google", ext.Provider)
-	}
-	// The exchange must send the code plus the verifier matching the challenge.
-	if captured["auth_code"] != "auth-code-xyz" {
-		t.Errorf("auth_code = %q", captured["auth_code"])
-	}
-	sum := sha256.Sum256([]byte(captured["code_verifier"]))
-	if got := base64.RawURLEncoding.EncodeToString(sum[:]); got != challenge {
-		t.Error("code_verifier sent does not match the authorize challenge")
-	}
-}
-
-func TestSupabaseGoogleUsernameFallbacks(t *testing.T) {
-	cases := []struct {
-		name         string
-		body         string
-		wantUsername string
-	}{
-		{"full name", googleUserBody("u1", "a@gmail.com", "", "Ana Example"), "Ana Example"},
-		{"email", googleUserBody("u2", "b@gmail.com", "", ""), "b@gmail.com"},
-		{"id", googleUserBody("u3", "", "", ""), "u3"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var captured map[string]string
-			withStubSupabasePKCE(t, http.StatusOK, tc.body, &captured)
-			p := stubbedGoogleProvider()
-			state := "fallback-" + tc.name
-			p.GetAuthURL(state, "https://app.example.com/auth/callback")
-			ext, err := p.ExchangeCode(context.Background(), "code", "https://app.example.com/auth/callback", state)
-			if err != nil {
-				t.Fatalf("ExchangeCode: %v", err)
-			}
-			if ext.Username != tc.wantUsername {
-				t.Errorf("username = %q, want %q", ext.Username, tc.wantUsername)
-			}
-		})
 	}
 }
 

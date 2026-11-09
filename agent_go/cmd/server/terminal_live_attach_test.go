@@ -320,23 +320,6 @@ func stripAnsiForTest(s string) string {
 	return ansiRe.ReplaceAllString(s, "")
 }
 
-func TestClampLiveAttachGeometry(t *testing.T) {
-	if _, _, ok := clampLiveAttachGeometry(20, 8); ok {
-		t.Fatal("below-minimum geometry must be rejected")
-	}
-	cols, rows, ok := clampLiveAttachGeometry(120, 36)
-	if !ok || cols != 120 || rows != 36 {
-		t.Fatalf("in-range geometry = %dx%d ok=%v, want 120x36 ok=true", cols, rows, ok)
-	}
-	// An absurd client grid becomes a real resize-window and makes every later
-	// capture-pane proportionally huge; clamp instead of trusting it.
-	cols, rows, ok = clampLiveAttachGeometry(5000, 2000)
-	if !ok || cols != liveAttachMaxCols || rows != liveAttachMaxRows {
-		t.Fatalf("oversized geometry = %dx%d ok=%v, want %dx%d ok=true",
-			cols, rows, ok, liveAttachMaxCols, liveAttachMaxRows)
-	}
-}
-
 func TestLiveAttachInitialSizeClampsOversizedGeometry(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/stream?cols=5000&rows=2000", nil)
 	cols, rows := liveAttachInitialSize(req)

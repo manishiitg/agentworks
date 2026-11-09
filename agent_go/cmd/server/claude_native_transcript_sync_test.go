@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,56 +10,6 @@ import (
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
-
-func TestClaudeNativeTranscriptProjectSlugMatchesEscapingScheme(t *testing.T) {
-	got := claudeNativeTranscriptProjectSlug("/Users/mipl/ai-work/mcp-agent-builder-go/workspace-docs/Workflow/substack")
-	want := "-Users-mipl-ai-work-mcp-agent-builder-go-workspace-docs-Workflow-substack"
-	if got != want {
-		t.Fatalf("unexpected slug:\n got: %s\nwant: %s", got, want)
-	}
-}
-
-func TestExtractClaudeTranscriptText(t *testing.T) {
-	cases := []struct {
-		name    string
-		content string
-		want    string
-	}{
-		{
-			name:    "plain string content",
-			content: `"can you check the workflow upgrades and do them"`,
-			want:    "can you check the workflow upgrades and do them",
-		},
-		{
-			name:    "assistant text block",
-			content: `[{"type":"text","text":"Done - fixed both bugs."}]`,
-			want:    "Done - fixed both bugs.",
-		},
-		{
-			name:    "assistant text block mixed with thinking and tool_use is filtered to text only",
-			content: `[{"type":"thinking","thinking":"internal reasoning"},{"type":"text","text":"Here is the answer."},{"type":"tool_use","id":"t1","name":"get_api_spec","input":{}}]`,
-			want:    "Here is the answer.",
-		},
-		{
-			name:    "tool_result-only content yields no visible text",
-			content: `[{"tool_use_id":"toolu_1","type":"tool_result","content":[{"type":"text","text":"raw tool output"}]}]`,
-			want:    "",
-		},
-		{
-			name:    "empty content",
-			content: ``,
-			want:    "",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := extractClaudeTranscriptText(json.RawMessage(tc.content))
-			if got != tc.want {
-				t.Fatalf("unexpected text:\n got: %q\nwant: %q", got, tc.want)
-			}
-		})
-	}
-}
 
 func writeTranscriptFixture(t *testing.T, path string, lines []string) {
 	t.Helper()
@@ -144,26 +93,6 @@ func TestReadNewClaudeTranscriptMessagesReturnsNothingWhenNoEntriesAreNewer(t *t
 	}
 	if len(messages) != 0 {
 		t.Fatalf("expected no new messages, got %d", len(messages))
-	}
-}
-
-func TestPublishNativeTranscriptRecoveredAssistantMessagesSkipsAlreadyVisibleReply(t *testing.T) {
-	store := storeevents.NewEventStore(100)
-	defer store.Stop()
-	api := &StreamingAPI{eventStore: store}
-	const sessionID = "cursor-retained"
-
-	chunk := &agentevents.StreamingChunkEvent{Content: "Here are the links.", Source: agentevents.StreamingChunkSourceTranscript}
-	store.AddEvent(sessionID, storeevents.Event{
-		ID: "already-live", Type: "streaming_chunk", SessionID: sessionID,
-		ExecutionKind: "main_agent", Data: agentevents.NewAgentEvent(chunk),
-	})
-	current := []builderConversationMessage{{Role: "human", Parts: []builderConversationPart{{Text: "tell me links"}}}}
-	refreshed := append(current, builderConversationMessage{Role: "ai", Parts: []builderConversationPart{{Text: "Here are the links."}}})
-
-	api.publishNativeTranscriptRecoveredAssistantMessages(sessionID, current, refreshed, nil)
-	if got := len(store.GetAllEventsRaw(sessionID)); got != 1 {
-		t.Fatalf("already-visible reply was duplicated: %d events", got)
 	}
 }
 

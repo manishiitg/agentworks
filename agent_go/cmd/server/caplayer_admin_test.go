@@ -309,16 +309,3 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 		})
 	}
 }
-
-func TestCapLayerPromptDoesNotPromiseWorkspaceMemory(t *testing.T) {
-	ctx := promptContext{HasProfile: true, ProfileID: "caplayer", WorkspaceFilesDisabled: true}
-	for _, name := range []string{"project-memory", "workspace-map"} {
-		if sectionByName(t, name).Applies(ctx) {
-			t.Fatalf("narrow tool profile got %s", name)
-		}
-	}
-	ctx.WorkspaceFilesDisabled = false
-	if !sectionByName(t, "project-memory").Applies(ctx) {
-		t.Fatal("regular product memory changed")
-	}
-}

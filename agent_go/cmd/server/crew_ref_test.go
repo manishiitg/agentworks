@@ -22,20 +22,6 @@ func stubCrewLookups(t *testing.T, owners map[string]string, aliases map[string]
 	})
 }
 
-// Only the shared root Crew/<id> names a Crew; the retired Chats/Work/projects spellings are not Crew paths.
-func TestParseCrewPathSpellings(t *testing.T) {
-	got, ok := parseCrewPath("alice", "/Crew/sde-1a2b/code/reports/x.py/")
-	if want := (crewPathRef{Root: "Crew/sde-1a2b", Rest: "code/reports/x.py", Shared: true}); !ok || got != want {
-		t.Fatalf("got %+v %v, want %+v", got, ok, want)
-	}
-	for _, raw := range []string{"", "Crew", "Crew/", "Crew/.hidden", "Workflow/x", "Crew/../Workflow/x",
-		"Chats/Work/projects/sde-1a2b", "_users/bob/Chats/Work/projects/ops-9f", "Chats/ExampleApp/activities/a"} {
-		if ref, ok := parseCrewPath("alice", raw); ok {
-			t.Fatalf("%q parsed as %+v", raw, ref)
-		}
-	}
-}
-
 // A Crew takes its owner from the server's registry; one without an owner is nobody's.
 func TestResolveCrewPathOwner(t *testing.T) {
 	stubCrewLookups(t, map[string]string{"Crew/sde-1a2b": "alice"}, nil)

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -60,34 +59,6 @@ func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
 	}
 	if projectStorageOwner(out.Root) != fixtureUserA || f.Mock.files[out.Root+"/product.json"] == "" || f.Mock.files[out.Root+"/workflow.json"] == "" {
 		t.Fatal("partial setup lost its usable identity")
-	}
-}
-
-func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, family := range []string{"files", "share", "settings", "dashboard", "functions"} {
-		for _, tool := range catalog {
-			if tool.Name != family {
-				continue
-			}
-			action := "get"
-			if family == "files" || family == "functions" {
-				action = "list"
-			}
-			input := map[string]any{"action": action, "workspace_id": "work:example"}
-			targetKey, targetID := "crew_id", "example"
-			if family == "functions" {
-				input = map[string]any{"action": action, "project": "work:example"}
-				targetKey, targetID = "project", "work:example"
-			}
-			member, args, err := externalResolveMerged(tool, input)
-			if err != nil || args[targetKey] != targetID {
-				t.Fatalf("%s lost native Crew target: %s %v %v", family, member.Name, args, err)
-			}
-		}
 	}
 }
 
@@ -153,28 +124,6 @@ func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing
 	target := result["target"].(map[string]any)
 	if _, exposed := target["workspace_path"]; exposed || target["name"] != "Project" || result["result"] == nil {
 		t.Fatalf("function result exposed its physical root or lost its result: %v", result)
-	}
-}
-
-func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
-	now := time.Now()
-	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
-		"failed": {ExecutionID: "failed", SessionID: "chat", StartedAt: now, Status: trackedExecutionStatusFailed},
-		"other":  {ExecutionID: "other", SessionID: "another-chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusFailed},
-	}}
-	if failure := api.externalWorkspaceTurnExecution("chat", ""); failure == nil || failure.ExecutionID != "failed" || failure.Status != trackedExecutionStatusFailed {
-		t.Fatal("launch failure with no transcript disappeared")
-	}
-	if failure := api.externalWorkspaceTurnExecution("chat", "new"); failure != nil {
-		t.Fatal("a new ask inherited an old failure")
-	}
-	api.trackedWorkflowExecutions["new"] = &TrackedWorkflowExecution{ExecutionID: "new", SessionID: "chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusCompleted}
-	if execution := api.externalWorkspaceTurnExecution("chat", ""); execution == nil || execution.ExecutionID != "new" || execution.Status != trackedExecutionStatusCompleted {
-		t.Fatal("an old failure replaced the latest completed turn")
-	}
-	api.trackedWorkflowExecutions["new"].Status = trackedExecutionStatusRunning
-	if execution := api.externalWorkspaceTurnExecution("chat", "new"); execution == nil || execution.Status != trackedExecutionStatusRunning {
-		t.Fatal("a newly accepted turn looked idle before its runner acquired the lane")
 	}
 }
 

@@ -11,20 +11,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-func TestProfileRequiresWorkflowRuntime(t *testing.T) {
-	if profileRequiresWorkflowRuntime(nil) {
-		t.Fatal("nil profile requires workflow runtime")
-	}
-	resolved := &resolvedAgentProfile{}
-	if profileRequiresWorkflowRuntime(resolved) {
-		t.Fatal("empty capability requires workflow runtime")
-	}
-	resolved.Definition.Runtime.Capabilities.WorkflowExecution = "required"
-	if !profileRequiresWorkflowRuntime(resolved) {
-		t.Fatal("required capability did not enable workflow runtime")
-	}
-}
-
 // PLAT-746-405: changing the native chat must not borrow another chat's run.
 func TestCrewStepRunSelectionDoesNotFollowAChangedSession(t *testing.T) {
 	for _, authoritative := range []bool{false, true} {

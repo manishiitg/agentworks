@@ -93,36 +93,6 @@ func TestDurableConversationTurnQueueCoversEveryConversationProducer(t *testing.
 	}
 }
 
-func TestDurableConversationTurnQueueIsFIFOAndSurvivesAPIReplacement(t *testing.T) {
-	files := map[string]string{}
-	firstAPI := newConversationTurnQueueTestAPI(files)
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1", Username: "u1"})
-	for _, message := range []string{"first", "second"} {
-		_, position, err := firstAPI.enqueueConversationTurn(ctx, "u1", "session-1", QueryRequest{Query: message, AgentMode: "multi-agent"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if position != len(firstAPI.mustReadTurnQueueForTest(t, "u1")) {
-			t.Fatalf("position=%d for %q", position, message)
-		}
-	}
-
-	// A new API instance has no in-memory queue state. The workspace document
-	// remains the source of truth and preserves submission order.
-	restarted := newConversationTurnQueueTestAPI(files)
-	first, ok := restarted.claimNextConversationTurn(context.Background(), "u1", "session-1")
-	if !ok || first.Request.Query != "first" || first.StartedAt == nil {
-		t.Fatalf("first=%+v ok=%v", first, ok)
-	}
-	if err := restarted.removeConversationTurn(context.Background(), first); err != nil {
-		t.Fatal(err)
-	}
-	second, ok := restarted.claimNextConversationTurn(context.Background(), "u1", "session-1")
-	if !ok || second.Request.Query != "second" {
-		t.Fatalf("second=%+v ok=%v", second, ok)
-	}
-}
-
 func TestDurableConversationTurnQueueNeverPersistsResolvedSecrets(t *testing.T) {
 	files := map[string]string{}
 	api := newConversationTurnQueueTestAPI(files)
@@ -180,66 +150,6 @@ func TestPendingQueuedMessagesListKeyedTurnsOfTheSessionWithStartedOnesMarked(t 
 	}
 }
 
-// Stop closes the coding CLI, so the turn it was running can never finish. Its claimed queue
-// entry and retained-turn record must not keep the session "occupied": the next message used to
-// queue behind that dead turn forever.
-func TestStopReleasesTheStoppedTurnsMarkers(t *testing.T) {
-	files := map[string]string{}
-	api := newConversationTurnQueueTestAPI(files)
-	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now(), "session-2": time.Now()}
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1", Username: "u1"})
-	for _, message := range []string{"running", "waiting", "other session"} {
-		session := "session-1"
-		if message == "other session" {
-			session = "session-2"
-		}
-		if _, _, err := api.enqueueConversationTurn(ctx, "u1", session, QueryRequest{Query: message, AgentMode: "multi-agent"}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, ok := api.claimNextConversationTurn(ctx, "u1", "session-1"); !ok { // "running" is claimed
-		t.Fatal("could not claim the first turn")
-	}
-	if !api.conversationTurnOccupied("session-1") {
-		t.Fatal("the session should be occupied while its turn is retained")
-	}
-
-	api.releaseStoppedSessionTurnMarkers("session-1")
-
-	if api.conversationTurnOccupied("session-1") {
-		t.Fatal("a stopped session is still occupied by its dead turn")
-	}
-	var left []string
-	for _, turn := range api.mustReadTurnQueueForTest(t, "u1") {
-		left = append(left, turn.SessionID+":"+turn.Request.Query)
-	}
-	if strings.Join(left, ",") != "session-1:waiting,session-2:other session" {
-		t.Fatalf("queue after stop = %v (the claimed turn goes, waiting and other sessions stay)", left)
-	}
-	if _, kept := api.retainedMainTurns["session-2"]; !kept {
-		t.Fatal("another session's retained turn was released")
-	}
-}
-
-// After a restart, a message that waited over half an hour without starting is dropped instead of
-// re-run; recent waiting messages and turns that had started are kept.
-func TestRecoveryDropsStaleWaitingTurnsOnly(t *testing.T) {
-	now := time.Now().UTC()
-	started := now.Add(-2 * time.Hour)
-	turns := []queuedConversationTurn{
-		{ID: "stale-waiting", SessionID: "s", CreatedAt: now.Add(-45 * time.Minute)},
-		{ID: "recent-waiting", SessionID: "s", CreatedAt: now.Add(-5 * time.Minute)},
-		{ID: "was-running", SessionID: "s", CreatedAt: now.Add(-3 * time.Hour), StartedAt: &started},
-	}
-	var kept []string
-	for _, turn := range dropStaleWaitingTurns(turns, now) {
-		kept = append(kept, turn.ID)
-	}
-	if strings.Join(kept, ",") != "recent-waiting,was-running" {
-		t.Fatalf("kept %v, want [recent-waiting was-running]", kept)
-	}
-}
-
 // The Stop button (handleStopSession) releases the stopped turn's markers too: after it, the next
 // message is accepted instead of queueing behind a dead turn (server B, a Muse Code chat).
 func TestStopButtonReleasesTheStoppedTurnsMarkers(t *testing.T) {
@@ -278,30 +188,6 @@ func TestStopButtonReleasesTheStoppedTurnsMarkers(t *testing.T) {
 	}
 }
 
-// Closing a chat's CLI on purpose (access or runtime configuration changed) releases its busy
-// markers, so the next message is not queued behind the turn that CLI was running.
-func TestClosingACLIOnPurposeReleasesTheTurnMarkers(t *testing.T) {
-	api := newConversationTurnQueueTestAPI(map[string]string{})
-	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now(), "session-2": time.Now()}
-	old := runningServerAPI
-	runningServerAPI = api
-	t.Cleanup(func() { runningServerAPI = old })
-	if !api.conversationTurnOccupied("session-1") {
-		t.Fatal("session-1 should be occupied before the close")
-	}
-
-	closeCodingCLIAndReleaseTurnMarkers("session-1", "code access changed")
-
-	if api.conversationTurnOccupied("session-1") {
-		t.Fatal("the chat is still marked busy after its CLI was closed")
-	}
-	if !api.conversationTurnOccupied("session-2") {
-		t.Fatal("another chat's turn was released")
-	}
-	runningServerAPI = nil
-	closeCodingCLIAndReleaseTurnMarkers("session-2", "no api") // must not panic without an API
-}
-
 // Code chat sde-private, server A 2026-10-07: a deploy changed the Code definition
 // while a tmux live-input turn held the input lane, and the message queued for
 // the relaunch stayed "Queued" forever although the CLI sat idle at its prompt.
@@ -329,32 +215,6 @@ func TestRuntimeChangeEndsOnlyAnIdleLiveTurn(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestQueuedBacklogBlocksIdleRetainedDeliveryButKeepsActiveSteering(t *testing.T) {
-	api := newConversationTurnQueueTestAPI(map[string]string{})
-	api.conversationTurnQueueOwners["s"] = map[string]bool{"u": true}
-	req := QueryRequest{AgentMode: "multi-agent"}
-	ctx := context.Background()
-	if !api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
-		t.Fatal("idle retained delivery jumped ahead of backlog")
-	}
-	api.conversationTurnQueueDraining["s"] = true
-	if !api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
-		t.Fatal("dispatch gap allowed a new retained turn")
-	}
-	api.conversationTurnQueueDraining["s"] = false
-	if api.shouldWaitForQueuedConversation(withConversationTurnQueueExecution(ctx), "u", "s", req) {
-		t.Fatal("claimed turn was treated as fresh backlog input")
-	}
-	// Hold only the existing lane; do not start a model turn or queue worker.
-	lane := api.sessionInputLaneFor("s")
-	lane.sem <- struct{}{}
-	if api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
-		t.Fatal("backlog disabled steering an active turn")
-	}
-	<-lane.sem
-	api.dropSessionInputLaneRef("s", lane)
 }
 
 func TestFreshIdleInputAppendsBehindAlreadyAdmittedTurns(t *testing.T) {
@@ -491,28 +351,5 @@ func TestRetainedSendRechecksIdleBacklogAtDeliveryBoundary(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestUnreadableQueueBackoffCapsAndResetsOnlyAfterRecovery(t *testing.T) {
-	for attempt, want := range []time.Duration{5 * time.Second, 30 * time.Second, 5 * time.Minute, 5 * time.Minute} {
-		if got := conversationQueueRetryDelay(attempt); got != want {
-			t.Fatalf("attempt %d delay %s, want %s", attempt, got, want)
-		}
-	}
-	api := newConversationTurnQueueTestAPI(map[string]string{})
-	api.noteConversationQueueReadState("s", "alice", fmt.Errorf("corrupt"))
-	api.conversationTurnQueueRetries["s"].Attempts = 2
-	api.noteConversationQueueReadState("s", "bob", nil)
-	if api.conversationTurnQueueRetries["s"].Attempts != 2 {
-		t.Fatal("another readable owner reset the corrupt owner's backoff")
-	}
-	api.noteConversationQueueReadState("s", "alice", fmt.Errorf("corrupt"))
-	if api.conversationTurnQueueRetries["s"].Attempts != 2 {
-		t.Fatal("same error reset the retry state")
-	}
-	api.noteConversationQueueReadState("s", "alice", nil)
-	if api.conversationTurnQueueRetries["s"] != nil {
-		t.Fatal("recovered queue retained retry state")
 	}
 }

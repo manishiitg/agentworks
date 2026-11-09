@@ -79,9 +79,9 @@ func TestSecretSourcesCrewShareAndPrivateAccess(t *testing.T) {
 		}
 		f.api.chatStore = store
 		f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["VLT_A00001__TEAM_KEY"]}}`)
-		before := f.read(t, externalCommandCrewRoot+"/workflow.json")
+		before := f.read(t, externalCommandCrewState+"/workflow.json")
 		w := f.call(t, "owner", "settings", map[string]any{"action": "secret_sources", "crew_id": "team"})
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"available"`) || f.read(t, externalCommandCrewRoot+"/workflow.json") != before {
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"available"`) || f.read(t, externalCommandCrewState+"/workflow.json") != before {
 			t.Fatalf("Crew source view: %d %s", w.Code, w.Body)
 		}
 		w = f.call(t, "other", "settings", map[string]any{"action": "secret_sources", "crew_id": "team"})

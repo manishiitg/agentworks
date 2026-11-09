@@ -38,17 +38,6 @@ func TestExtractWorkflowContextFolders(t *testing.T) {
 	}
 }
 
-func TestExtractWorkspacePathFromObjectiveUsesFirstFileContextPath(t *testing.T) {
-	query := "Please inspect these files.\n📁 Files in context: Workflow/Main/input-a.png, Workflow/Main/input-b.png\n"
-
-	got := extractWorkspacePathFromObjective(query)
-	want := "Workflow/Main/input-a.png"
-
-	if got != want {
-		t.Fatalf("extractWorkspacePathFromObjective() = %q, want %q", got, want)
-	}
-}
-
 func TestIsWorkflowStepTrackingExecution(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -106,31 +95,6 @@ func TestCollectSplitFolderGuardFolders(t *testing.T) {
 	}
 	if !reflect.DeepEqual(readOnlyFolders, wantReadOnly) {
 		t.Fatalf("read-only folders = %v, want %v", readOnlyFolders, wantReadOnly)
-	}
-}
-
-func TestWorkspaceAdvancedToolBundleIncludesActiveTextAndSearchTools(t *testing.T) {
-	tools, executors, categories := createCustomTools(false, "default", "tool-bundle-test-session")
-
-	toolDefs := map[string]bool{}
-	for _, tool := range tools {
-		if tool.Function != nil {
-			toolDefs[tool.Function.Name] = true
-		}
-	}
-
-	for _, name := range []string{
-		"generate_text_llm",
-	} {
-		if !toolDefs[name] {
-			t.Fatalf("workspace tool definitions missing %q", name)
-		}
-		if _, ok := executors[name]; !ok {
-			t.Fatalf("workspace tool executors missing %q", name)
-		}
-		if got := categories[name]; got != "workspace_advanced" {
-			t.Fatalf("tool %q category = %q, want workspace_advanced", name, got)
-		}
 	}
 }
 

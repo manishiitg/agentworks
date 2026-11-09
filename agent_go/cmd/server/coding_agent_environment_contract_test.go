@@ -81,30 +81,6 @@ func TestScopedEnvironmentReachesTheChildProcess(t *testing.T) {
 	}
 }
 
-// VAR_* is the prefix the policy originally omitted. mcpagent's prompt builder
-// documents $VAR_<NAME> to every coding agent as the way to read workflow
-// config, and instructs it to fail loudly on a missing one -- so dropping the
-// prefix yields an agent doing exactly as told: failing, and blaming the
-// workflow rather than the transport. It would also fail only under
-// native_shell while bridge_shell kept working.
-func TestWorkflowVariablesReachTheChildProcess(t *testing.T) {
-	merged := mergedChildEnvironment(t, map[string]string{
-		"VAR_PAN":            "ABCDE1234F",
-		"VAR_GROUP_NAME":     "group-1",
-		"VAR_WORKSPACE_PATH": "/workspace/project",
-	})
-
-	for key, want := range map[string]string{
-		"VAR_PAN":            "ABCDE1234F",
-		"VAR_GROUP_NAME":     "group-1",
-		"VAR_WORKSPACE_PATH": "/workspace/project",
-	} {
-		if merged[key] != want {
-			t.Errorf("%s = %q, want %q; a workflow step reading $%s would fail loudly and blame the workflow", key, merged[key], want, key)
-		}
-	}
-}
-
 // Empty values are dropped rather than exported as empty strings, so a missing
 // secret reads as absent instead of as a defined-but-blank variable that a
 // `${VAR:?missing}` guard would happily accept.

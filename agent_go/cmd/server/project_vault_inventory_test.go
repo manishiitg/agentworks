@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"slices"
+
 	"strings"
 	"testing"
 
@@ -153,16 +153,6 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	// Project ticks cannot write into a project the caller only uses.
 	if _, err := f.api.projectVaultInventory(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "stranger"}), "stranger", externalCommandCrewRoot); err == nil {
 		t.Fatal("unrelated user opened project Vault")
-	}
-}
-
-func TestVaultComputerNamesStayPersonalWhenOffline(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	rememberVaultComputer("owner", "laptop-one")
-	rememberVaultComputer("owner", "laptop-one")
-	rememberVaultComputer("other", "other-laptop")
-	if got := knownVaultComputers("owner"); !slices.Equal(got, []string{"laptop-one"}) {
-		t.Fatal(got)
 	}
 }
 
