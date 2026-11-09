@@ -383,7 +383,7 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 		}
 		summary["note"] = crewSnapshotUnavailableText["incomplete"]
 	}
-	if record.BeforeCapture.BudgetSkipped > 0 || record.AfterCapture.BudgetSkipped > 0 {
+	if record.CaptureLimitLost() {
 		if !ok || summary["files"] == 0 {
 			api.publishCrewSnapshotUnavailable(snapshot, "budget")
 			return
