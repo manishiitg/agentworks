@@ -227,6 +227,8 @@ type productScheduleRun struct {
 	SessionID string
 	StartedAt time.Time
 	cancel    context.CancelFunc
+	// True only when this invocation minted the resolved session identity.
+	ownsSession bool
 	// Keep the conversation claimed until Stop has closed its native runtime.
 	stopDone chan struct{}
 }
@@ -967,8 +969,8 @@ func (s *ProjectActionDispatcher) Running(userID, jobID string) (productSchedule
 	return *r, true
 }
 
-// Stop cancels the live run and its bound native runtime before releasing
-// the conversation to another queued delivery (PLAT-871-40).
+// Stop cancels the waiter, and native work only in a session minted by this
+// invocation, before releasing the conversation (PLAT-871-40).
 func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 	s.mu.Lock()
 	r, ok := s.running[userID+"\x1f"+jobID]
@@ -981,16 +983,18 @@ func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 		return true
 	}
 	r.stopDone = make(chan struct{})
-	done, sessionID := r.stopDone, r.SessionID
+	done, sessionID, ownsSession := r.stopDone, r.SessionID, r.ownsSession
 	r.cancel()
 	s.mu.Unlock()
 	defer close(done)
 	// Runtime teardown can reenter the dispatcher. The finish path waits
 	// outside the mutex, so cancellation cannot reach a queued successor.
-	if sessionID != "" {
+	if sessionID != "" && ownsSession {
 		scheduleLogf("[SCHEDULER] stopping native run job=%s session=%s", jobID, sessionID)
 		s.api.cancelSessionRuntimeWork(sessionID, "scheduled job stopped by user", runtimePhaseCanceled)
 		scheduleLogf("[SCHEDULER] native stop complete job=%s session=%s", jobID, sessionID)
+	} else if sessionID != "" {
+		scheduleLogf("[SCHEDULER] native stop skipped: shared conversation job=%s session=%s", jobID, sessionID)
 	}
 	return true
 }
@@ -1371,6 +1375,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	}
 	var binding productConversationBinding
 	var bindErr error
+	freshSessionID := ""
 	newAgentName := "" // set when this run creates a named Crew agent's tab
 	if job.Profile.ID == "relays" && !productEnabled("relays") {
 		bindErr = errFlowsDisabled
@@ -1386,6 +1391,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		conversationKey := job.ConversationKey
 		if job.Schedule.New {
 			conversationKey = runID
+			freshSessionID = "product-" + uuid.NewString()
 		}
 		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, conversationKey), title)
 	} else if job.ProjectID != "" {
@@ -1426,7 +1432,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		s.failAutomationSetupRun(job, options, setupErr)
 		return "", setupErr
 	}
-	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(runCtx, job.UserID, job.Profile, binding, "")
+	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(runCtx, job.UserID, job.Profile, binding, freshSessionID)
 	if err != nil {
 		setupErr := fmt.Errorf("open product conversation: %w", err)
 		s.failAutomationSetupRun(job, options, setupErr)
@@ -1486,6 +1492,9 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		scheduleLogf("[SCHEDULER] cleared stopped guard for admitted run job=%s session=%s", job.ID(), sessionID)
 	}
 	run.SessionID = sessionID
+	// A saved/persistent identity wins over the preferred fresh one. In that
+	// case this invocation does not own the session and cannot tear it down.
+	run.ownsSession = freshSessionID != "" && sessionID == freshSessionID
 	s.mu.Unlock()
 	for _, cb := range onStarted {
 		if cb != nil {
