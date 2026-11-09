@@ -1589,6 +1589,7 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		RunDestination:      scheduleRunDestination(job.Schedule),
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
+		Starts:              productScheduleStartsLine(job),
 	}
 	resp.TargetWorkflowID, resp.InputPreset, resp.Inputs, resp.RouteSelections = sched.WorkflowID, sched.InputPreset, sched.Inputs, sched.RouteSelections
 	if sched.WorkflowID != "" {

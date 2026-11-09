@@ -100,11 +100,11 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       {triggers.map(trigger => <PageRow key={trigger.id} testId={`webhook-${trigger.id}`}
         lead={<Switch aria-label={`${trigger.enabled ? 'Turn off' : 'Turn on'} ${trigger.name}`} checked={trigger.enabled} disabled={busy} onCheckedChange={enabled => void save({ ...trigger, enabled })} />}
         title={trigger.name}
-        lines={[`Asks: “${trigger.message}” · ${where(trigger)}`, trigger.enabled ? lastCall(trigger.id) : `Off · ${lastCall(trigger.id)}`]}
+        lines={[[trigger.starts, where(trigger)].filter(Boolean).join(' · '), trigger.enabled ? lastCall(trigger.id) : `Off · ${lastCall(trigger.id)}`]}
         action={<RowButton onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy address</RowButton>}
         open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}>
         <DetailLine label="When">{trigger.auth_mode === 'github' ? 'GitHub sends a signed request to' : 'A request with the secret key to'} <code className="break-all select-all">{apiTriggerURL(trigger.path)}</code> · <button type="button" className="text-primary hover:underline" onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy</button> · <button type="button" disabled={busy} className="text-primary hover:underline disabled:opacity-50" onClick={() => void save(trigger, true)}>New secret</button></DetailLine>
-        <DetailLine label="What runs">Asks: “{trigger.message}”{onAsk && <> · <button type="button" className="text-primary hover:underline" onClick={() => void onAsk(`Change the message of the webhook “${trigger.name}” (id ${trigger.id}) in this Crew.`)}>Change</button></>}</DetailLine>
+        <DetailLine label="What runs">{trigger.starts ? `${trigger.starts}: ` : ''}“{trigger.message}”{onAsk && <> · <button type="button" className="text-primary hover:underline" onClick={() => void onAsk(`Change the message of the webhook “${trigger.name}” (id ${trigger.id}) in this Crew.`)}>Change</button></>}</DetailLine>
         <DetailLine label="Where"><select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as ProductAPITrigger['run_destination'] })} className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
           {(destinations.length ? destinations : [{ id: trigger.run_destination || 'chat', label: trigger.run_destination || 'chat' }]).map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
         </select></DetailLine>
