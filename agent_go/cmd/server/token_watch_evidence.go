@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// This is diagnostic evidence only: it never changes the ActiveFamily verdict.
+// This is diagnostic evidence only: it never changes the runtime sign-in verdict.
 // PLAT-746-512: a generic revoked-or-expired reason could not distinguish a
 // short access expiry from loss of the whole sign-in family after an incident.
 func logTokenWatchOAuthExpiry(ctx context.Context, tokenID string) {
@@ -38,5 +38,5 @@ func logTokenWatchOAuthExpiry(ctx context.Context, tokenID string) {
 		}
 		return time.Unix(value.Int64, 0).UTC().Format(time.RFC3339)
 	}
-	log.Printf("[TOKEN_WATCH] expiry_evidence token=%s reason=no_active_access access_expires_at=%s family_refresh_expires_at=%s revoked_at=%s checked_at=%s", prefix, stamp(access), stamp(refresh), stamp(revoked), checked)
+	log.Printf("[TOKEN_WATCH] expiry_evidence token=%s reason=no_live_family access_expires_at=%s family_refresh_expires_at=%s revoked_at=%s checked_at=%s", prefix, stamp(access), stamp(refresh), stamp(revoked), checked)
 }
