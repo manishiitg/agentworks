@@ -62,7 +62,7 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: crewID, ProjectID: crewID, OwnerID: "owner"}); err != nil {
 			t.Fatal(err)
 		}
-		f.write(t, "_system/crew-data/"+crewID+"/product.json", fmt.Sprintf(`{"schema_version":1,"product":"work","id":%q,"title":%q}`, crewID, crewID))
+		f.write(t, "_system/crew-data/"+crewID+"/product.json", fmt.Sprintf(`{"schema_version":1,"product":"work","id":%q,"title":%q,"session_id":%q}`, crewID, crewID, "session-"+crewID))
 		f.write(t, "_system/crew-data/"+crewID+"/workflow.json", fmt.Sprintf(`{"id":%q,"label":%q,"created_by":"owner"}`, crewID, crewID))
 		if err := os.MkdirAll(filepath.Join(f.docs, crewRoot), 0700); err != nil {
 			t.Fatal(err)
@@ -107,6 +107,9 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		crewID := fmt.Sprintf("panel-crew-%02d", i)
 		for read := 0; read < readCount; read++ {
 			elapsed, out, code := call("owner", crewID)
+			if code != http.StatusOK {
+				t.Fatalf("panel fixture was not admitted: status=%d crew=%s", code, crewID)
+			}
 			rows := 0
 			for _, section := range out.Sections {
 				if section.ID == "workflow" {
