@@ -534,75 +534,57 @@ func claudeNativeTranscriptProjectSlug(workingDir string) string {
 // since, converted to the same builderConversationMessage shape the rest of
 // the builder conversation log already uses.
 func readNewClaudeTranscriptMessages(path string, since time.Time) ([]builderConversationMessage, time.Time, error) {
-	data, err := os.ReadFile(path)
+	return readRecentNativeTranscript(path, "claude-code", since)
+}
+
+func parseClaudeTranscriptLine(line []byte) (builderConversationMessage, time.Time, bool) {
+	var entry claudeTranscriptEntry
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	if entry.Type != "user" && entry.Type != "assistant" && entry.Type != "attachment" {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	// Native helper notifications use a user-role storage envelope. They
+	// never represent a person typing into the terminal and must not enter
+	// ObserveNativeInput or its human-message recovery path.
+	if entry.Type == "user" && ((entry.Origin != nil && entry.Origin.Kind == "task-notification") || entry.TurnOrigin == "task_notification") {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, entry.Timestamp)
 	if err != nil {
-		return nil, time.Time{}, err
+		return builderConversationMessage{}, time.Time{}, false
 	}
 
-	var messages []builderConversationMessage
-	maxTimestamp := since
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var entry claudeTranscriptEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-		if entry.Type != "user" && entry.Type != "assistant" && entry.Type != "attachment" {
-			continue
-		}
-		// Native helper notifications use a user-role storage envelope. They
-		// never represent a person typing into the terminal and must not enter
-		// ObserveNativeInput or its human-message recovery path.
-		if entry.Type == "user" && ((entry.Origin != nil && entry.Origin.Kind == "task-notification") || entry.TurnOrigin == "task_notification") {
-			continue
-		}
-		ts, err := time.Parse(time.RFC3339Nano, entry.Timestamp)
-		if err != nil {
-			continue
-		}
-		if !ts.After(since) {
-			continue
-		}
-		role := "ai"
-		if entry.Type == "user" {
-			role = "human"
-		}
-		text := ""
-		if entry.Type == "attachment" {
-			var attachment claudeTranscriptAttachment
-			if len(entry.Attachment) == 0 || json.Unmarshal(entry.Attachment, &attachment) != nil ||
-				attachment.Type != "queued_command" || !attachment.HumanTurn || attachment.Origin == nil ||
-				!strings.EqualFold(strings.TrimSpace(attachment.Origin.Kind), "human") {
-				continue
-			}
-			role = "human"
-			text = unwrapClaudeQueuedCommandPrompt(attachment.Prompt)
-		} else {
-			if len(entry.Message) == 0 {
-				continue
-			}
-			var msg claudeTranscriptMessage
-			if err := json.Unmarshal(entry.Message, &msg); err != nil {
-				continue
-			}
-			text = extractClaudeTranscriptText(msg.Content)
-		}
-		if text == "" || isClaudeLocalCommandMessage(role, text) {
-			continue
-		}
-
-		messages = append(messages, builderConversationMessage{
-			Role:  role,
-			Parts: []builderConversationPart{{Text: text}},
-		})
-		if ts.After(maxTimestamp) {
-			maxTimestamp = ts
-		}
+	role := "ai"
+	if entry.Type == "user" {
+		role = "human"
 	}
-	return messages, maxTimestamp, nil
+	text := ""
+	if entry.Type == "attachment" {
+		var attachment claudeTranscriptAttachment
+		if len(entry.Attachment) == 0 || json.Unmarshal(entry.Attachment, &attachment) != nil ||
+			attachment.Type != "queued_command" || !attachment.HumanTurn || attachment.Origin == nil ||
+			!strings.EqualFold(strings.TrimSpace(attachment.Origin.Kind), "human") {
+			return builderConversationMessage{}, time.Time{}, false
+		}
+		role = "human"
+		text = unwrapClaudeQueuedCommandPrompt(attachment.Prompt)
+	} else {
+		if len(entry.Message) == 0 {
+			return builderConversationMessage{}, time.Time{}, false
+		}
+		var msg claudeTranscriptMessage
+		if err := json.Unmarshal(entry.Message, &msg); err != nil {
+			return builderConversationMessage{}, time.Time{}, false
+		}
+		text = extractClaudeTranscriptText(msg.Content)
+	}
+	if text == "" || isClaudeLocalCommandMessage(role, text) {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+
+	return builderConversationMessage{Role: role, Parts: []builderConversationPart{{Text: text}}}, ts, true
 }
 
 // Claude Code records a prompt typed while the agent is busy as a
