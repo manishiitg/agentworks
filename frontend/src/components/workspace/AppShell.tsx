@@ -1,4 +1,4 @@
-import { chatTabArrowTargetAllowed, workChatTabShortcut } from '../../products/work/workTabs'
+import { workChatTabShortcut } from '../../products/work/workTabs'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useAppViewport } from '../../hooks/useAppViewport'
 import { useNotifyFocus } from '../../hooks/useNotifyFocus'
@@ -16,10 +16,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   useNotifyFocus()
   useEffect(() => {
     const navigate = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || !chatTabArrowTargetAllowed(event.target)) return
+      if (event.isComposing) return
       const action = workChatTabShortcut(event)
       if (action?.kind !== 'adjacent') return
+      // Reserved app navigation, including focused composers, editors and
+      // native terminals. Do not also deliver it as a cursor/terminal key.
       event.preventDefault()
+      event.stopImmediatePropagation()
       window.history.go(action.direction)
     }
     window.addEventListener('keydown', navigate, true)
