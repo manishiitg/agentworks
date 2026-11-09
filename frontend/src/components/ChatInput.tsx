@@ -1,3 +1,6 @@
+import { nextComposerHint } from '../utils/composerHints'
+import { chatTabSwitchKeys } from '../products/work/workTabs'
+import { useAuthStore } from '../stores/useAuthStore'
 import { resolveSlashCommandInput } from '../commands/commandPrompt'
 import { presetDraftChange, type AppliedPreset } from './presetDraft'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
@@ -2850,13 +2853,32 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
 
   const showComposerHints = isProductSurface || activeTab?.metadata?.agentProfileId === 'work'
+  const hintOwner = useAuthStore(state => state.user?.id || '')
+  const [occasionalHint, setOccasionalHint] = useState<string | null>(null)
+  useEffect(() => { setOccasionalHint(null) }, [activeTabId, hintOwner])
+  const showOccasionalHint = () => {
+    if (!showComposerHints) return
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform)
+    const command = mac ? '⌘' : 'Ctrl+'
+    const tabs = chatTabSwitchKeys()
+    setOccasionalHint(nextComposerHint(hintOwner, [
+      '/ commands · @ files · # Crews',
+      'While working, Shift+Enter queues your message.',
+      `${AGENT_NEWLINE_KEY} adds a new line.`,
+      `${command}← / ${command}→ goes back / forward across agents and projects.`,
+      `${mac ? tabs.mac : tabs.other} switches agents in this project.`,
+      `${command}K opens search.`,
+      `${mac ? '⌥⇧T' : 'Alt+Shift+T'} opens a new agent.`,
+    ]))
+  }
+
 
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
-    if (showComposerHints) return placeholderOverride || 'Ask anything…'
+    if (showComposerHints) return occasionalHint || placeholderOverride || 'Ask anything…'
     if (placeholderOverride) return placeholderOverride
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
     if (isWorkflowPhaseChat) {
@@ -2866,7 +2888,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, showComposerHints, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+  }, [agentProfileWorkspace, showComposerHints, occasionalHint, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -3151,14 +3173,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               ref={textareaRef}
               value={inputText}
               onChange={handleTextChange}
-              onFocus={() => { void ensureMultiAgentTabReady() }}
+              onFocus={() => { setOccasionalHint(null); void ensureMultiAgentTabReady() }}
+              onBlur={showOccasionalHint}
               onKeyDown={handleKeyDown}
               onSelect={event => updateComposerPicker(event.currentTarget)}
               onCompositionStart={() => { composingRef.current = true; closeComposerPickers() }}
               onCompositionEnd={event => { composingRef.current = false; updateComposerPicker(event.currentTarget) }}
               role="combobox"
               aria-label="Message"
-              aria-describedby={showComposerHints ? `${composerIdRef.current}-hints` : undefined}
               aria-autocomplete="list"
               aria-expanded={showCommandDialog || showFileDialog}
               aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : undefined}
@@ -3176,11 +3198,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               data-chat-composer
             />
             </div>
-            {showComposerHints && <p id={`${composerIdRef.current}-hints`} className="flex flex-wrap items-center justify-between gap-x-4 px-1.5 pt-1 text-[10px] leading-4 text-muted-foreground/60">
-              <span>/ commands · @ files · # Crews</span>
-              {isTurnInFlight && <span title={`Enter to ${deliveryMode === 'queue' ? 'queue' : 'steer'} · Shift+Enter to queue · ${AGENT_NEWLINE_KEY} for a new line`}>⇧Enter queue</span>}
-              <span className="sr-only">{isTurnInFlight ? `Enter to ${deliveryMode === 'queue' ? 'queue' : 'steer'}; Shift+Enter to queue; ${AGENT_NEWLINE_KEY} for a new line.` : 'Enter to send; Shift+Enter for a new line.'}</span>
-            </p>}
             {isDraggingFiles && (
               <div className="text-[11px] text-blue-600 dark:text-blue-400 px-1">
                 Drop files to upload and attach to this chat
