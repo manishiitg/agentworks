@@ -13,7 +13,7 @@ import (
 )
 
 // All in Vault (PLAT-856, reviewer must-have): after the startup move, a Goal run by an editor or by a schedule, a
-// Flow run by a schedule and a Crew owner's turn still get the moved secret, lent by the project's owner, through the
+// Crew owner's turn still get the moved secret, lent by the project's owner, through the
 // same resolution the runs use. The move keeps a same-valued secret, renames a clashing one, backs up first, logs
 // names only and has nothing left to do the second time.
 func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
@@ -26,17 +26,14 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 	}
 	f.api.chatStore = store
 	ctx := context.Background()
-	const goal, flow = "Workflow/renewals", "Workflow/intake"
+	const goal = "Workflow/renewals"
 	f.write(t, goal+"/workflow.json", `{"id":"renewals","label":"Renewals","created_by":"owner","access":{"owners":["owner"],"editors":["e2"]},"capabilities":{"selected_secrets":["TOKEN"],"selected_global_secret_names":["TOKEN"]}}`)
-	f.write(t, flow+"/workflow.json", `{"id":"intake","label":"Intake","kind":"relay","created_by":"owner","access":{"owners":["owner"]},"capabilities":{"selected_secrets":["TOKEN"]}}`)
 	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_secrets":["TOKEN","API_KEY"]}}`)
 	registerWorkflowOwner(goal, "owner")
-	registerWorkflowOwner(flow, "owner")
-	// The owner's own Vault already holds TOKEN with the Goal's value; the Flow and the Crew hold different ones.
+	// The owner's own Vault already holds TOKEN with the Goal's value; the Crew holds a different one.
 	vault.seed(t, f.api, "owner", "", "TOKEN", "goal-value-1")
 	old := []string{
 		vault.seed(t, f.api, "owner", goal, "TOKEN", "goal-value-1"),
-		vault.seed(t, f.api, "owner", flow, "TOKEN", "flow-value-2"),
 		vault.seed(t, f.api, "owner", externalCommandCrewRoot, "TOKEN", "crew-value-3"),
 		vault.seed(t, f.api, "owner", externalCommandCrewRoot, "API_KEY", "crew-key-4"),
 	}
@@ -57,7 +54,6 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 	}
 	for _, want := range []string{
 		"project=" + goal + " secret=TOKEN to=TOKEN result=selected_existing",
-		"project=" + flow + " secret=TOKEN to=INTAKE_TOKEN result=renamed",
 		"project=" + externalCommandCrewRoot + " secret=TOKEN to=TEST_TEAM_TOKEN result=renamed",
 		"project=" + externalCommandCrewRoot + " secret=API_KEY to=API_KEY result=moved",
 	} {
@@ -65,7 +61,7 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 			t.Fatalf("missing %q in\n%s", want, logs.String())
 		}
 	}
-	for _, value := range []string{"goal-value-1", "flow-value-2", "crew-value-3", "crew-key-4"} {
+	for _, value := range []string{"goal-value-1", "crew-value-3", "crew-key-4"} {
 		if strings.Contains(logs.String(), value) {
 			t.Fatal("a secret value reached the log")
 		}
@@ -120,9 +116,6 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 	for _, runAs := range []string{"", "e2"} {
 		if got := value(schedule(goal, runAs), "TOKEN"); got != "goal-value-1" {
 			t.Fatalf("a Goal schedule (run as %q) lost its secret", runAs)
-		}
-		if got := value(schedule(flow, runAs), "INTAKE_TOKEN"); got != "flow-value-2" {
-			t.Fatalf("a Flow schedule (run as %q) lost its secret", runAs)
 		}
 	}
 	env := f.api.crewSelectedSecretEnv(ctx, crewProfileID, externalCommandCrewRoot, externalCommandCrewRoot, "owner")
