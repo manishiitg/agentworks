@@ -152,7 +152,7 @@ class Migration(unittest.TestCase):
         moved = canonical/'managed/overview/rev/data.py'
         self.assertTrue(moved.is_file())
         self.assertFalse((conversion.code/'reports').exists())
-        self.assertEqual(conversion.report()['dashboard_source_moves'][0]['sha256'],hashlib.sha256(moved.read_bytes()).hexdigest())
+        self.assertEqual(result['dashboard_source_moves'][0]['sha256'],hashlib.sha256(moved.read_bytes()).hexdigest())
         # Exercise the actual inspect/apply CLI on an already-adopted installation
         # with the old registry/source placement, including a no-change second run.
         import shutil
