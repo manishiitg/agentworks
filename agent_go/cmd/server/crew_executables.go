@@ -249,7 +249,6 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		type entry struct {
 			crewExecutableBinding
 			Manifest *WorkflowManifest `json:"manifest"`
-			UsedBy   []crewScriptUsage `json:"used_by,omitempty"`
 			// What a person can change before a run, and the saved settings that fill it in (a Python workflow's script.json).
 			Inputs       []workflow.Variable      `json:"inputs,omitempty"`
 			InputPresets []workflow.VariableGroup `json:"input_presets,omitempty"`
@@ -257,14 +256,6 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			Files []string `json:"files,omitempty"`
 		}
 		entries := []entry{}
-		// Python that a workflow's own steps run: listed beside the saved Crew scripts, each labelled by where it is used.
-		type stepScript struct {
-			WorkflowID string `json:"workflow_id"`
-			Workflow   string `json:"workflow"`
-			StepID     string `json:"step_id"`
-			Step       string `json:"step"`
-		}
-		stepScripts := []stepScript{}
 		for _, binding := range records {
 			if binding.CrewRoot != root {
 				continue
@@ -275,7 +266,6 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 				return
 			}
 			if found {
-				var consumers []crewScriptUsage
 				var inputs []workflow.Variable
 				var presets []workflow.VariableGroup
 				var files []string
@@ -289,16 +279,11 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 							}
 						}
 					}
-					consumers, err = crewScriptConsumers(r.Context(), &binding, nil)
-					if err != nil {
-						http.Error(w, err.Error(), 500)
-						return
-					}
 					if definition, readErr := readCrewScript(r.Context(), binding.Root); readErr == nil {
 						inputs, presets = definition.Inputs, definition.InputPresets
 					}
 				}
-				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets, Files: files})
+				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, Inputs: inputs, InputPresets: presets, Files: files})
 			}
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Manifest.Label < entries[j].Manifest.Label })
@@ -308,7 +293,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "step_scripts": stepScripts, "agents": agents})
+		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents})
 		return
 	}
 	if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {
