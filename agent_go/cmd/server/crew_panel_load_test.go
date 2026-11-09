@@ -67,12 +67,13 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(f.docs, crewRoot), 0700); err != nil {
 			t.Fatal(err)
 		}
-		binding := crewExecutableBinding{ID: id, CrewID: crewID, CrewRoot: crewRoot, Root: "Workflow/" + id, Kind: "workflow", RuntimeRoot: "workflows/" + id}
+		binding := crewExecutableBinding{ID: id, CrewID: crewID, CrewRoot: crewRoot, Root: "Workflow/" + id, Kind: "script", RuntimeRoot: "workflows/" + id}
 		if err := registerCrewExecutable(binding); err != nil {
 			t.Fatal(err)
 		}
 		write(binding.Root+"/workflow.json", fmt.Sprintf(`{"id":%q,"label":%q,"created_by":"owner"}`, id, id))
 		write(binding.Root+"/code/script.json", fmt.Sprintf(`{"id":%q,"name":%q}`, id, id))
+		write(binding.Root+"/code/helper.py", "def helper(): return 1\n")
 		write(binding.Root+"/code/main.py", "from agentworks import step\n@step('First')\ndef first(): return 1\n@step('Second')\ndef second(): return 2\nfirst()\nsecond()\n")
 		for run := 0; run < 100; run++ {
 			name := fmt.Sprintf("%s/runs/run-%03d", binding.Root, run)
