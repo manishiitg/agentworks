@@ -45,8 +45,9 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
   const network = connected.filter(agent => !agent.provider || agent.network)
   // Crews you own or that are shared with you, and their shared agents; never this Crew itself.
   const crewsAndAgents = agents?.filter(agent => (agent.kind === 'crew' || agent.kind === 'crew_agent') && agent.id !== target && agent.target !== target) || []
-  // The backend determines reachability. Preview/search change presentation only.
+  // The backend supplies presence and access. Do not count offline/unknown saved entries as available.
   const networkRows = [...connected, ...crewsAndAgents.filter(agent => agent.kind === 'crew_agent')]
+    .filter(agent => agent.online === true)
     .filter((agent, index, rows) => rows.findIndex(row => row.id === agent.id) === index)
     .sort((a, b) => Number(b.online === true) - Number(a.online === true) || name(a).localeCompare(name(b)))
   const matching = networkRows.filter(agent => `${name(agent)} ${agent.purpose || agent.description || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
@@ -72,7 +73,7 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
         </div>
       </details>)}
     </div>
-    {agents && !matching.length && !error && <p className="text-xs text-muted-foreground">{query.trim() ? 'No agents match your search.' : 'No agents available on this network yet.'}</p>}
+    {agents && !matching.length && !error && <p className="text-xs text-muted-foreground">{query.trim() ? 'No agents match your search.' : 'No agents are online on this network right now.'}</p>}
     {agents && !query.trim() && matching.length > 4 && <button type="button" aria-expanded={showAll} onClick={() => setShowAll(value => !value)} className="text-xs text-primary hover:underline">{showAll ? 'Show fewer' : `View all (${matching.length})`}</button>}
   </div>
   const row = (agent: Agent, onComputer: boolean) => <button type="button" key={agent.id} onClick={() => ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Show recent messages and ask what I want to send. Use this exact agent and report its actual delivery status. If it is unavailable, tell me; do not substitute execution in this server Crew.`)} className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left hover:bg-muted ${onComputer ? 'border-primary/50 bg-background' : 'border-border'}`}><Cable aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${onComputer ? 'text-primary' : 'text-muted-foreground'}`} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate font-medium">{name(agent)}</span>{onComputer && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">{providerLabel(agent.provider)}</span>}</span><span className="flex items-center gap-1.5 text-xs text-muted-foreground">{agent.online === true && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-green-500" />}{agent.presence || (agent.online === true ? 'Online' : agent.online === false ? 'Offline' : 'Connection unknown')}</span>{agent.purpose && <span className="block text-xs text-muted-foreground">{agent.purpose}</span>}</span><MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /></button>

@@ -61,7 +61,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
   </section>
   {state.target && <section aria-label="Agents on your network" className={teamCard}>
     <h3 className="font-semibold">Agents on your network</h3>
-    <p className="text-[12.5px] text-muted-foreground">Agents you can reach. You don’t need to publish your own agent to find them.</p>
+    <p className="text-[12.5px] text-muted-foreground">Agents currently online. You don’t need to publish your own agent to find them.</p>
     <ProjectAgentBridgePanel target={`workspace:work:${projectId}`} view="network" onAsk={message => {
       if (!fillMainDraft(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'info')
     }} />
