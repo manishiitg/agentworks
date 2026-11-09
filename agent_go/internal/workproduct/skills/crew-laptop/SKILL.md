@@ -53,7 +53,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 
 ## When it is refused
 
-- "Operation not permitted" on a folder outside the shared one comes from the computer's own privacy rules, not the Crew. Say so once. The person can add the folder in the Crew's laptop settings; if it still fails, the AgentWorks app or terminal needs access in the computer's privacy settings. Do not retry in a loop or look for a way around it.
+- "Operation not permitted" on a folder outside the shared one comes from the computer's own privacy rules, not the Crew. Say so once. On a local Mac, attach the folder yourself when the person asks: `files action=folder_attach` (Integrations → Folders on this Mac shows the same list), then tell them to send one more message, because it applies from the next turn. On a hosted Crew, the person adds the folder in the Crew's laptop settings. If it still fails, the AgentWorks app or terminal needs access in the computer's privacy settings. Do not retry in a loop or look for a way around it.
 - For cloud CLIs (AWS and similar) on the laptop: with the commands switch on, run them as the person would, for example `aws sts get-caller-identity`. If the person's login has expired, ask them to sign in themselves (`aws sso login`). Do not print, copy or send their key or config files.
 - A command that timed out or lost the connection may have run. Look at the result before trying again.
 
