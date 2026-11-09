@@ -649,7 +649,13 @@ export function readReportDocumentState(doc: Document | null): ReportHostState {
   // Source bundles and explicitly hidden content are not rendered page text.
   const contentLeaves = Array.from(doc.body?.querySelectorAll('*') ?? [])
     .filter((el) => el.children.length === 0 && !el.closest('script, style, template, noscript, [hidden]'))
+  // PLAT-746-517: hidden skeletons are not pending visible content. Preview
+  // uses this list for readiness, so CSS-hidden placeholders must not block it.
   const loadingTexts = contentLeaves
+    .filter(el => {
+      const rect = el.getBoundingClientRect(), style = win?.getComputedStyle(el)
+      return rect.width > 0 && rect.height > 0 && style?.display !== 'none' && style?.visibility !== 'hidden' && style?.visibility !== 'collapse'
+    })
     .map((el) => (el.textContent || '').trim())
     .filter((text) => /^(loading|loading…|loading\.\.\.|fetching)\b/i.test(text))
     .filter((text, index, all) => all.indexOf(text) === index)
