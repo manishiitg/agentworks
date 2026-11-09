@@ -10,7 +10,7 @@ import { useCanPauseSchedules } from '../../../hooks/useCanPauseSchedules'
 type ScheduleRunsHeaderProps = {
   panel: Pick<ScheduleRunsPanelState,
     | 'panelTitle' | 'isLoading' | 'isWorkflowScoped' | 'workflowScheduleSummary' | 'summary'
-    | 'isSchedulerPaused' | 'isGloballyPaused' | 'pauseProductLabel' | 'isReadOnlyUser' | 'handleToggleGlobalPause' | 'isUpdatingSchedulerPause' | 'loadJobs'
+    | 'isSchedulerPaused' | 'isReadOnlyUser' | 'handleToggleGlobalPause' | 'isUpdatingSchedulerPause' | 'loadJobs'
   >
   onClose: () => void
   /** Embedded workspace views are closed by their parent layout, not here. */
@@ -27,8 +27,6 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
     workflowScheduleSummary,
     summary,
     isSchedulerPaused,
-    isGloballyPaused,
-    pauseProductLabel,
     isReadOnlyUser,
     handleToggleGlobalPause,
     isUpdatingSchedulerPause,
@@ -44,7 +42,7 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
       title={compact ? '' : panelTitle}
       context={compact ? <>
         {navigation}
-        <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ` · ${isGloballyPaused ? 'All' : pauseProductLabel} schedules paused` : ''}</span>
+        <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ' · All schedules paused' : ''}</span>
       </> : undefined}
       below={!compact ? statusPills : undefined}
       actions={<>
@@ -65,7 +63,7 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
             ) : (
               <Pause className="w-3.5 h-3.5" />
             )}
-            {isGloballyPaused ? 'Resume all schedules' : isSchedulerPaused ? `Resume ${pauseProductLabel} schedules` : `Pause ${pauseProductLabel} schedules`}
+            {isSchedulerPaused ? 'Resume all schedules' : 'Pause all schedules'}
           </button>
         )}
         <Tooltip>

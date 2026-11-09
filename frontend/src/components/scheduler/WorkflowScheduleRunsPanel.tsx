@@ -44,7 +44,7 @@ interface WorkflowScheduleRunsPanelProps {
 
 const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
-  const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isGloballyPaused, pauseProductLabel, isWorkflowScoped } = panel
+  const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
   useEffect(() => {
     if (refreshToken) void loadJobs(true)
   }, [refreshToken, loadJobs])
@@ -168,19 +168,19 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
           {isSchedulerPaused && !isLoading && !error && (
-            <div role="status" aria-label={isGloballyPaused ? 'All schedules paused' : `${pauseProductLabel} schedules paused`} className="border-b border-border bg-muted/30 px-4 py-2">
+            <div role="status" aria-label="All schedules paused" className="border-b border-border bg-muted/30 px-4 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                   <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                     <Pause className="h-3.5 w-3.5 shrink-0" />
-                    {isGloballyPaused ? 'All schedules are paused.' : `${pauseProductLabel} schedules are paused.`}
+                    All schedules are paused.
                   </span>
-                  <span className="text-muted-foreground">{isGloballyPaused ? "Timed runs of every product won't start until you resume them." : "Timed runs won't start until you resume them. Other products keep running."}</span>
+                  <span className="text-muted-foreground">Timed runs across the company won't start until you resume them.</span>
                 </div>
                 {!isReadOnlyUser && canPauseSchedules && (
                   <Button variant="outline" size="sm" onClick={() => void handleToggleGlobalPause()} disabled={isUpdatingSchedulerPause}>
                     {isUpdatingSchedulerPause ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                    {isGloballyPaused ? 'Resume all schedules' : `Resume ${pauseProductLabel} schedules`}
+                    Resume all schedules
                   </Button>
                 )}
               </div>

@@ -64,6 +64,9 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}
+	if err := initializeCrewScriptSource(ctx, child, "Example Python workflow"); err != nil {
+		t.Fatal(err)
+	}
 	manifest := NewWorkflowManifest("Example Python workflow")
 	manifest.ID, manifest.CreatedBy = child.ID, "owner"
 	manifest.Schedules = []WorkflowSchedule{{ID: "workflow-timer", Name: "Workflow timer", Enabled: true, ScheduleType: "cron", CronExpression: "* * * * *", Timezone: "UTC"}}
