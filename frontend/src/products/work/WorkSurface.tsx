@@ -92,7 +92,7 @@ const WORK_UI_PRESENTATION_VIEWS = {
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  history: 'Chat history', context: 'Context', report: 'Dashboard', goals: 'Progress', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
+  history: 'Chat history', context: 'Context', report: 'Dashboard', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
   suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
   llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack',
 }
