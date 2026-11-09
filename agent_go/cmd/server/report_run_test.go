@@ -45,32 +45,36 @@ func TestReportRunMCPSessionScope(t *testing.T) {
 	}
 }
 
-// A crew Dashboard is runnable by its owner and by users with the Crew
-// product; anyone else is refused before anything runs.
+// PLAT-746: current Crew roots use registry ownership/sharing, not retired personal paths (8106ccb9de).
 func TestReportRunCrewAccess(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"outsider","username":"outsider","can_create":true,"products":["agentworks"]}]}`)
-	api := &StreamingAPI{}
-	post := func(claims *UserClaims) int {
-		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"_users/owner/Chats/Work/projects/sde","path":"code/x.py"}`))
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"reader","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["agentworks"]}]}`)
+	post := func(user, root string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"`+root+`","path":"code/x.py"}`))
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		w := httptest.NewRecorder()
-		api.handleReportRun(w, r)
-		return w.Code
+		f.api.handleReportRun(w, r)
+		return w
 	}
-	if code := post(&UserClaims{UserID: "outsider", Username: "outsider"}); code != http.StatusForbidden {
-		t.Fatalf("user without the Crew product: %d", code)
+	if w := post("outsider", externalCommandCrewRoot); w.Code != http.StatusForbidden {
+		t.Fatalf("user without the Crew product: %d %s", w.Code, w.Body)
 	}
-	// The owner passes the access check (the script itself does not exist).
-	if code := post(&UserClaims{UserID: "owner", Username: "owner"}); code != http.StatusNotFound {
-		t.Fatalf("owner: %d", code)
+	// Both admitted callers reach the missing-script check; this starts no process.
+	for _, user := range []string{"owner", "reader"} {
+		if w := post(user, externalCommandCrewRoot); w.Code != http.StatusNotFound {
+			t.Fatalf("admitted %s: %d %s", user, w.Code, w.Body)
+		}
 	}
-	// Same through the user-relative path the owner's own Dashboard sends.
-	r := httptest.NewRequest("POST", reportPreviewAPIPrefix+"run", strings.NewReader(`{"workspace":"Chats/Work/projects/sde","path":"code/x.py"}`))
-	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
-	w := httptest.NewRecorder()
-	api.handleReportRun(w, r)
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("owner via relative path: %d %s", w.Code, w.Body.String())
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	if w := post("reader", externalCommandCrewRoot); w.Code != http.StatusForbidden {
+		t.Fatalf("unshared Crew remained runnable by another person: %d %s", w.Code, w.Body)
+	}
+	for _, root := range []string{"Chats/Work/projects/sde", "_users/owner/Chats/Work/projects/sde"} {
+		if w := post("owner", root); w.Code != http.StatusBadRequest {
+			t.Fatalf("retired Crew path %s: %d %s", root, w.Code, w.Body)
+		}
 	}
 }
 
