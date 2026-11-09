@@ -2377,6 +2377,18 @@ export interface RunPythonEvidence {
 }
 
 export interface RunMetadata {
+  /** Server-recorded Crew asks. Reply bytes stay in answer_file, read only when opened. */
+  python_asks?: Record<string, {
+    id: string;
+    crew: string;
+    status: string;
+    inbox_id?: string;
+    message_id?: string;
+    reply_message_id?: string;
+    detail?: string;
+    log_file?: string;
+    answer_file?: string;
+  }>;
   /** Current server-computed eligibility; full Resume admission may still refuse. */
   can_resume?: boolean;
   python_resume_calls?: Array<{ key: string; action: string; reused: boolean; reason: string; execution_id: string; at: string; source_call?: string }>;

@@ -4,17 +4,19 @@ import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { RunFolderInfo, RunMetadata } from '../../services/api-types'
 
-const http = vi.hoisted(() => ({ post: vi.fn(), inspections: vi.fn() }))
+const http = vi.hoisted(() => ({ post: vi.fn(), inspections: vi.fn(), file: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: http, agentApi: {
   getRunCostTotals: async () => ({ runs: [] }),
   getWorkspaceStepInspections: http.inspections,
+  getPlannerFileContent: http.file,
 } }))
+vi.mock('../../components/ui/MarkdownRenderer', () => ({ MarkdownRenderer: ({ content }: { content: string }) => <span>{content}</span> }))
 vi.mock('../../api/runEvidence', () => ({ runEvidenceApi: { get: async () => [] } }))
 vi.mock('../../api/crewScriptGraph', () => ({ crewScriptGraphApi: { get: async () => ({ nodes: [], edges: [], errors: [] }) } }))
 vi.mock('../../components/workflow/costs/useCostsData', () => ({ useCostsData: () => ({ runCosts: [] }) }))
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-beforeEach(() => { http.post.mockReset(); http.inspections.mockReset().mockResolvedValue({ items: [] }) })
+beforeEach(() => { http.post.mockReset(); http.inspections.mockReset().mockResolvedValue({ items: [] }); http.file.mockReset() })
 
 async function screen(options: { status?: string; script?: boolean; refresh?: () => Promise<void>; metadata?: Partial<RunMetadata> } = {}) {
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -118,5 +120,34 @@ it('assigns check counts by server step ID and shows per-call saved-result reuse
     expect(page.host.textContent).toContain('Old unassigned check')
     expect(rows.find(button => button.textContent?.includes('gather-record'))?.textContent).toContain('Reused saved result')
     expect(rows.find(button => button.textContent?.includes('review-record'))?.textContent).toContain('Ran again')
+  } finally { await page.close() }
+})
+
+// PLAT-746-498: a pending send is not an answer; reply bytes require the existing file reader's grant.
+it.each([true, false])('reads a replied ask only on expansion and respects file access=%s', async allowed => {
+  const path = 'Workflow/report/runs/run-failed/helpers/answers/ask-one.txt'
+  if (allowed) http.file.mockResolvedValue({ success: true, data: { content: 'The requested summary.' } })
+  else http.file.mockRejectedValue(new Error('Access denied'))
+  const page = await screen({ metadata: { python_asks: {
+    first: { id: 'first', crew: 'Research', status: 'replied', answer_file: path },
+    waiting: { id: 'waiting', crew: 'Planning', status: 'pending', detail: 'Sent; no reply yet, do not resend.' },
+    refused: { id: 'refused', crew: 'Finance', status: 'refused', detail: 'This Crew is unavailable to you.' },
+    unknown: { id: 'unknown', crew: 'Review', status: 'unknown', detail: 'The receipt is unreadable. Do not resend.' },
+  } } })
+  try {
+    expect(http.file).not.toHaveBeenCalled()
+    const buttons = [...page.host.querySelectorAll('button')]
+    const replied = buttons.find(button => button.textContent?.includes('Asked Research'))!
+    expect(replied.disabled).toBe(false)
+    expect(buttons.find(button => button.textContent?.includes('Asked Planning'))?.disabled).toBe(true)
+    expect(page.host.textContent).toContain('waiting for a reply (sent, do not resend)')
+    expect(page.host.textContent).toContain('refused: This Crew is unavailable to you.')
+    expect(page.host.textContent).toContain('receipt unclear (do not resend)')
+    await act(async () => replied.click())
+    expect(http.file).toHaveBeenCalledExactlyOnceWith(path)
+    expect(page.host.textContent?.includes('The requested summary.')).toBe(allowed)
+    expect(page.host.textContent?.includes('Open full reply')).toBe(allowed)
+    expect(page.host.textContent).not.toContain('Access denied')
+    expect(http.post).not.toHaveBeenCalled()
   } finally { await page.close() }
 })
