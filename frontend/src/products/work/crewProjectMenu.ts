@@ -36,6 +36,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (has('mcp')) {
     // One Share row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
     add('mcp', 'Share', 'Share', UsersRound, 'access', 'Share')
+    // The Slack bot row opens Share › Slack (owner, 9 Nov; WorkIntegrationsPanel maps its slack-bot target there).
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }

@@ -4,7 +4,7 @@ import { activateTab } from '../../utils/activateTab'
 import type { CrewAsk } from './YourComputerPanel'
 
 // Opening the Access page at a tab (WorkSurface listens), from an agent's tab or the side panel's Access lines.
-export type CrewAccessSection = 'mac' | 'publish' | 'team' | 'dashboards'
+export type CrewAccessSection = 'mac' | 'publish' | 'team' | 'dashboards' | 'slack'
 let pendingAccess: { projectId: string; tab: string; section: CrewAccessSection } | null = null
 export function hasPendingCrewAccess(projectId: string) { return pendingAccess?.projectId === projectId }
 /** Which Access tab a pending open asks for (Team unless said otherwise). */
