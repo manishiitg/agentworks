@@ -24,9 +24,10 @@ Dashboards have their own **Dashboards** tab next to Share: everything the
 Crew publishes, who can open each one, or "No dashboard yet" with Ask the Crew.
 Share an existing publication, or ask whether to create a standard dashboard
 when one is required. Set `create_dashboard=true` only after agreement. Listing
-or publishing an Action does not create a dashboard. The Crew menu shows one
-dashboards line and lists each dashboard by name; a name opens that dashboard,
-the line opens the Dashboards tab.
+or publishing an Action does not create a dashboard. The Crew menu has a
+**Dashboards** header (how many, and who can open them) that opens and closes
+the list of dashboards by name; a name opens that dashboard, and **Manage
+dashboards** opens the Dashboards tab.
 
 There is one **Actions** group for the whole Crew, separate from agent Ask
 switches. An Action either **Starts the workflow** with typed inputs and saved

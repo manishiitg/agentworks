@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Bot, CalendarClock, Eye, FolderSync, Globe, Laptop, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bot, CalendarClock, ChevronRight, Eye, FolderSync, Globe, Laptop, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -50,6 +50,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
+  // Open or closed, remembered per Crew in this browser (a per-person convenience; open by default).
+  const dashboardsKey = `agentworks.menu-dashboards-closed:${projectId}`
+  const [dashboardsOpen, setDashboardsOpen] = useState(() => { try { return localStorage.getItem(dashboardsKey) !== '1' } catch { return true } })
+  useEffect(() => { try { setDashboardsOpen(localStorage.getItem(dashboardsKey) !== '1') } catch { setDashboardsOpen(true) } }, [dashboardsKey])
+  const toggleDashboards = () => setDashboardsOpen(current => {
+    try { if (current) localStorage.setItem(dashboardsKey, '1'); else localStorage.removeItem(dashboardsKey) } catch { /* kept for this visit only */ }
+    return !current
+  })
   const computerState = access?.place
   const accessTree = access?.tree || []
   const asking = access?.asking || []
@@ -132,6 +140,27 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const treeLines = accessTree.map((line, index) => {
     const Icon = lineIcon[line.kind] || Globe
+    // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line, then
+    // "Manage dashboards" for the Dashboards tab. With none, the server's one line and its Ask, as before.
+    if (line.kind === 'dashboard' && line.dashboards?.length) {
+      const dashboard = byId.get('dashboard')
+      return <div key={`${line.kind}:${index}`} role="listitem">
+        <button type="button" aria-expanded={dashboardsOpen} onClick={toggleDashboards} className={`${lineButton} items-center`}>
+          <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
+          <span className="font-medium text-foreground">{line.title}</span>
+          {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
+          {line.tag && <span className="ml-auto shrink-0 rounded-full border border-border px-1.5 text-[10px] leading-4 text-muted-foreground">{line.tag}</span>}
+        </button>
+        {dashboardsOpen && <div className="ml-3 border-l border-border pl-1.5">
+          {dashboard && line.dashboards.map(item => <button key={item.path} type="button" title={item.name} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} group/dash items-center`}>
+            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
+            <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
+            <span aria-hidden="true" className="shrink-0 text-muted-foreground opacity-0 group-hover/dash:opacity-100">Open</span>
+          </button>)}
+          <button type="button" onClick={() => openLine(line)} className={`${lineButton} text-muted-foreground hover:text-foreground`}>Manage dashboards ›</button>
+        </div>}
+      </div>
+    }
     return <div key={`${line.kind}:${index}`} role="listitem">
       <button type="button" onClick={() => openLine(line)} className={lineButton}>
         <Icon aria-hidden="true" className={`mt-0.5 h-3 w-3 shrink-0 ${line.kind === 'clash' ? 'text-amber-600' : 'text-muted-foreground'}`} />
@@ -140,10 +169,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
         </span>
       </button>
-      {/* The dashboard line lists each dashboard by name; each opens that dashboard (the Crew's dashboard view). */}
-      {byId.has('dashboard') && line.dashboards?.map(item => <button key={item.path} type="button" onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }} className={`${lineButton} pl-6`}>
-        <span className="min-w-0 flex-1 break-words text-foreground">{item.name}</span>
-      </button>)}
       {line.people?.map(person => <button key={person.user_id} type="button" onClick={() => openPerson(person.user_id)} title={person.online_label} className={`${lineButton} pl-6`}>
         <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
         <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents_label && ` · ${person.agents_label}`}</span>
