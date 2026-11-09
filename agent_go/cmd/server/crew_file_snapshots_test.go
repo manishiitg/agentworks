@@ -202,6 +202,20 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if deniedResponse.Code != 404 {
 		t.Fatalf("HTTP Crew token bound: %d %s", deniedResponse.Code, deniedResponse.Body.String())
 	}
+	// PLAT-746-319: a failed before-capture has an ID but no saved record.
+	// Keep the actual timeout reason instead of calling Finish and reporting
+	// the secondary missing-record error as a generic failure.
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "failed-before-user", Type: "user_message", SessionID: "session"})
+	beforeDone := make(chan struct{})
+	close(beforeDone)
+	failedBefore := &crewTurnSnapshot{store: snapshot.store, root: snapshot.root, executionID: "failed-before", sessionID: "session", startSequence: api.crewSnapshotSequence("session"), beforeDone: beforeDone, beforeErr: context.DeadlineExceeded, record: filesnapshots.Record{ID: filesnapshots.ID("failed-before")}}
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "failed-before-reply", Type: "unified_completion", SessionID: "session"})
+	failedBefore.outputDone.Store(true)
+	api.finishCrewTurnSnapshot(failedBefore)
+	failure, _ := json.Marshal(api.eventStore.LastEventsRaw("session", 1)[0])
+	if !strings.Contains(string(failure), `"reason":"timeout"`) || strings.Contains(string(failure), "no such file") {
+		t.Fatalf("lost before-capture failure reason: %s", failure)
+	}
 	// A rejected delivery leaves no made-up comparison or active observer.
 	api.prepareCrewTurnSnapshot("rejected", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	api.discardUnstartedCrewSnapshot("rejected")
