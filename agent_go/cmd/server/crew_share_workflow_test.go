@@ -41,9 +41,7 @@ func (x *shareWorkflowFixture) seed(t *testing.T, id string, records []projectFu
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
-	manifest := NewWorkflowManifest("Example Python workflow")
-	manifest.ID, manifest.CreatedBy = id, "owner"
-	if err := WriteWorkflowManifest(x.ctx, binding.Root, manifest); err != nil {
+	if err := initializeCrewScriptSource(x.ctx, binding, "Example Python workflow"); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeProjectFunctionDefinitions(x.ctx, binding.Root, records); err != nil {
