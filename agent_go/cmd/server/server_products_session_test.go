@@ -9,15 +9,17 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AUTH_SECRET", strings.Repeat("j", 32))
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_PRODUCTS", "llm-gateway")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "llm-gateway")
-	directory := withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"admin","products":["llm-gateway"]}]}`)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"admin","products":["llm-gateway"]},{"id":"bob","username":"bob","role":"viewer","products":["work"]}]}`)
 	calls := 0
 	forwardedAdmin := ""
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +43,17 @@ func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
 		api.handleServerProduct(w, r)
 	}))
 	mint := func(exp time.Time, scope string) string {
-		token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &UserClaims{UserID: "alice", Username: "alice", Scope: scope, RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(exp)}}).SignedString(GetAuthSecret())
+		// Use real sign-in identity; vary only expiry/purpose for the refusal cases.
+		signed, err := generateSessionJWT("alice", "alice", "", "local", uuid.NewString())
+		if err != nil {
+			t.Fatal(err)
+		}
+		claims := &UserClaims{}
+		if _, err := jwt.ParseWithClaims(signed, claims, func(*jwt.Token) (interface{}, error) { return GetAuthSecret(), nil }); err != nil {
+			t.Fatal(err)
+		}
+		claims.ExpiresAt, claims.Scope = jwt.NewNumericDate(exp), scope
+		token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(GetAuthSecret())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,6 +147,13 @@ func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
 	if w := request("GET", "/api/server-products/llm-gateway/me", mint(expiry, serverProductUIScope("llm-gateway")), nil, nil); w.Code != 403 {
 		t.Fatal("signed scope accepted as server session")
 	}
+	foreign, err := generateSessionJWT("bob", "bob", "", "local", uuid.NewString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := request("POST", "/api/server-products/llm-gateway/session", foreign, nil, map[string]string{"X-AgentWorks-Product-Session": "1"}); w.Code != 403 || len(w.Result().Cookies()) != 0 {
+		t.Fatal("person without product access bootstrapped a cookie", w.Code)
+	}
 	if w := request("POST", "/api/server-products/llm-gateway/session?token="+parent, "", nil, map[string]string{"X-AgentWorks-Product-Session": "1"}); w.Code < 400 || len(w.Result().Cookies()) != 0 {
 		t.Fatal("query token bootstrapped cookie")
 	}
@@ -167,6 +186,10 @@ func TestServerProductBrowserSessionPurposeAndRevocation(t *testing.T) {
 			t.Fatal("logout retained cookie")
 		}
 	}
+	if w := request("POST", "/api/server-products/llm-gateway/session", parent, nil, map[string]string{"X-AgentWorks-Product-Session": "1"}); w.Code != 401 || len(w.Result().Cookies()) != 0 {
+		t.Fatal("signed-out parent bootstrapped a fresh cookie", w.Code)
+	}
+	parent = mint(expiry, "")
 	cookie = bootstrap(parent)
 	key := sha256.Sum256([]byte(cookie.Value))
 	serverProductBrowserSessions.Lock()
