@@ -331,6 +331,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				}
 				section.Rows = append(section.Rows, row)
 			}
+			section.Rows = append(section.Rows, crewWorkflowTriggerRows(ctx, workspace, false)...)
 			section.Detail = crewPanelCount(len(section.Rows), "schedule")
 			return section, err
 		}},
@@ -371,6 +372,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				}
 				section.Rows = append(section.Rows, crewPanelRow{ID: "trigger:" + item.ID, Label: item.Name, Detail: label, Destination: "schedules:triggers"})
 			}
+			section.Rows = append(section.Rows, crewWorkflowTriggerRows(ctx, workspace, true)...)
 			return section, err
 		}},
 		// One row per Crew workflow, from the Crew's own records (any person with access to the Crew sees the summary).
@@ -448,4 +450,38 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 		}},
 	}
 	return sources
+}
+
+// The Crew's workflows keep their own timers and web addresses in their manifest. They are listed beside the Crew-level ones:
+// webhooks are the GitHub and bearer addresses; functions and the Crew's own calls are not triggers a person set up.
+func crewWorkflowTriggerRows(ctx context.Context, workspace string, webhooks bool) []crewPanelRow {
+	records, err := readCrewExecutables()
+	if err != nil {
+		return nil
+	}
+	var rows []crewPanelRow
+	for _, binding := range records {
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
+			continue
+		}
+		manifest, found, manifestErr := ReadWorkflowManifest(ctx, binding.Root)
+		if manifestErr != nil || !found {
+			continue
+		}
+		for _, schedule := range manifest.Schedules {
+			if schedule.Kind != "" || (schedule.ScheduleType == "webhook") != webhooks {
+				continue
+			}
+			label := "Paused"
+			if schedule.Enabled {
+				label = "On"
+			}
+			prefix := "schedule:"
+			if webhooks {
+				prefix = "trigger:"
+			}
+			rows = append(rows, crewPanelRow{ID: prefix + schedule.ID, Label: schedule.Name, Detail: label + " · " + manifest.Label, Destination: "workflow"})
+		}
+	}
+	return rows
 }

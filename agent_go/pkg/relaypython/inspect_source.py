@@ -192,7 +192,7 @@ def python_type_notes(files):
     import tempfile
     checker = shutil.which('pyright') or shutil.which('basedpyright')
     if not checker:
-        return [], ['The checker is not installed here. The script can still run.']
+        return [], []  # no checker on this server: nothing to say
     root = pathlib.Path.cwd().resolve()
     saved = [file.resolve() for name in files for file in [root / name]
              if not file.is_symlink() and file.is_file() and file.resolve().is_relative_to(root)]
@@ -445,10 +445,8 @@ def inspect_automation_source(files):
                 if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Match)):
                     if has_step(module, statement):
                         structured(module, statement, expand)
-                    else:
-                        add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
-                elif not walk_call(module, statement, expand) and any(isinstance(item, ast.Call) for item in ast.walk(statement)):
-                    add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
+                else:
+                    walk_call(module, statement, expand)
 
         def structured(module, statement, expand):
             """Draw a block that holds steps: a container row, with its steps nested inside."""

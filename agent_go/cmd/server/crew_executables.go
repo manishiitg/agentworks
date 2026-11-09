@@ -249,6 +249,8 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			// What a person can change before a run, and the saved settings that fill it in (a Python workflow's script.json).
 			Inputs       []workflow.Variable      `json:"inputs,omitempty"`
 			InputPresets []workflow.VariableGroup `json:"input_presets,omitempty"`
+			// The other files a Python workflow's main.py uses (helpers, prompts), relative to its code folder.
+			Files []string `json:"files,omitempty"`
 		}
 		entries := []entry{}
 		// Python that a workflow's own steps run: listed beside the saved Crew scripts, each labelled by where it is used.
@@ -272,7 +274,17 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 				var consumers []crewScriptUsage
 				var inputs []workflow.Variable
 				var presets []workflow.VariableGroup
+				var files []string
 				if binding.Kind == "script" {
+					codeRoot := path.Join(binding.Root, "code")
+					if listed, listErr := listWorkspaceFilesRecursive(r.Context(), codeRoot); listErr == nil {
+						for _, name := range listed {
+							name = strings.TrimPrefix(strings.TrimPrefix(name, codeRoot), "/")
+							if name != "main.py" && name != "script.json" && crewScriptEditableFile(name) {
+								files = append(files, name)
+							}
+						}
+					}
 					consumers, err = crewScriptConsumers(r.Context(), &binding, nil)
 					if err != nil {
 						http.Error(w, err.Error(), 500)
@@ -282,7 +294,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 						inputs, presets = definition.Inputs, definition.InputPresets
 					}
 				}
-				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets})
+				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets, Files: files})
 				if binding.Kind == "workflow" {
 					if plan, planErr := readPlanFromWorkspace(r.Context(), binding.Root); planErr == nil {
 						for _, step := range workflow.CrewWorkflowOwnScriptSteps(plan) {
