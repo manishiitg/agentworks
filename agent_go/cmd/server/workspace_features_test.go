@@ -187,6 +187,8 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
 	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
 	f := newMultiUserFixture(t, layout)
+	// Real creation also materializes the private root required by workspace mutations.
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
 	profile := f.Crew
 	profile.Version++
 	profile.Runtime.Workspace.ProjectsRoot = "Crew"
@@ -195,9 +197,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	}
 	f.put("Crew/other/product.json", `{"schema_version":1,"product":"work","id":"other-crew","title":"Other","session_id":"work:project:other-crew"}`)
 	f.put("Crew/other/workflow.json", `{"schema_version":1,"id":"other-crew","label":"Other","capabilities":{}}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "other", ProjectID: "other-crew", OwnerID: fixtureUserB, Shared: true}); err != nil {
-		t.Fatal(err)
-	}
+	registerTestCrew(t, "other", fixtureUserB, true, "other-crew")
 	withProjectSharing(t, true)
 	if err := defaultProjectOwners().SetRunPeople("work", fixtureCrewFolder, []string{fixtureUserB}); err != nil {
 		t.Fatal(err)
