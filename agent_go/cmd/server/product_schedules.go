@@ -756,6 +756,8 @@ func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, bind
 	if err := saveCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
 		return err
 	}
+	// Timers have one saved record; the manifest carries only the read projection.
+	manifest.Schedules = nil
 	manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if filepath.Base(filepath.FromSlash(binding.ManifestPath)) == "workflow.json" {
 		if strings.TrimSpace(manifest.Label) == "" {
@@ -790,6 +792,9 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if strings.TrimSpace(schedule.CreatedAt) == "" {
 		schedule.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	if err := normalizeCrewScheduleDependencies(&schedule, profileID, projectID); err != nil {
+		return productScheduleJob{}, err
+	}
 	manifest.Schedules = append(manifest.Schedules, schedule)
 	if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
 		return productScheduleJob{}, err
@@ -815,6 +820,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 	for i := range manifest.Schedules {
 		if manifest.Schedules[i].ID == job.Schedule.ID {
 			update(&manifest.Schedules[i])
+			if err := normalizeCrewScheduleDependencies(&manifest.Schedules[i], job.Profile.ID, job.ProjectID); err != nil {
+				return job, err
+			}
 			// A schedule has one timing form: a new cron, cadence or run_at replaces saved dates.
 			if s := &manifest.Schedules[i]; s.When != nil && (s.CronExpression != "" || s.CadenceHours > 0 || s.RunAt != "") {
 				s.When.Dates = nil
@@ -972,6 +980,10 @@ func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 // record a run, send every message in turn, then record the outcome.
 // onStarted, when given, is called once the session id is known.
 func (s *ProjectActionDispatcher) Run(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, onStarted ...func(sessionID string)) (string, error) {
+	if automaticSchedulePaused(ctx, triggerSource) {
+		scheduleLogf("[SCHEDULER] held by global pause job=%s source=%s", job.ID(), triggerSource)
+		return "", productschedule.ErrSkip
+	}
 	if job.Schedule.Condition != nil {
 		return s.conditionService().poll(ctx, job, triggerSource, scheduledFor)
 	}
@@ -1206,6 +1218,33 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		cancel()
 	}()
 
+	// Recheck after conversation queueing; a pause can begin while a turn waits.
+	// No admission record is written, so a dependency retry stays pending in
+	// the single clock and keeps its original expiry window.
+	if automaticSchedulePaused(runCtx, triggerSource) {
+		scheduleLogf("[SCHEDULER] held at admission by global pause job=%s source=%s", job.ID(), triggerSource)
+		return "", productschedule.ErrSkip
+	}
+
+	if triggerSource == "queued" && job.Profile.ID == "work" && job.ProjectID != "" && job.AutomationKind == "" && job.Schedule.Condition == nil {
+		current, err := s.Job(runCtx, job.UserID, job.ID())
+		if err != nil {
+			return "", err
+		}
+		if s.api == nil || s.api.scheduler == nil {
+			return "", fmt.Errorf("Crew timer run ledger is unavailable")
+		}
+		decision, source := s.api.scheduler.crewTimerDependencyDecision(runCtx, current, time.Now().UTC())
+		if !decision.Run || source != "queued" || !decision.ScheduledFor.Equal(scheduledFor) {
+			scheduleLogf("[SCHEDULER] queued admission held job=%s reason=%s", job.ID(), decision.Reason)
+			return "", productschedule.ErrSkip
+		}
+		job, err = applyCalendarOccurrenceInput(current, scheduledFor)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	// One identity for the run record.
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())
 	ledger, err := s.recordCrewTimerAdmission(runCtx, job, runID, triggerSource, scheduledFor, run.StartedAt)
@@ -1223,6 +1262,16 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	// Setup errors and Stop must be terminal before the dispatcher releases
 	// its claim or starts the next queued conversation turn.
 	defer func() { resultErr = errors.Join(resultErr, finishEvidence(resultSessionID, resultErr)) }()
+	var workflowContext *ScheduleContext
+	var workflowPreflightErr error
+	if job.Schedule.WorkflowID != "" {
+		// Enabled controls cron only; manual runs validate all required inputs.
+		timer := job.Schedule
+		timer.Enabled = true
+		workflowContext, workflowPreflightErr = crewTimerWorkflowContext(runCtx, job.WorkspacePath, job.ProjectID, job.UserID, timer)
+		// Preflight failures still pass through the ordinary history/state
+		// completion path, so the timer shows its failed run to the person.
+	}
 	var binding productConversationBinding
 	var bindErr error
 	newAgentName := "" // set when this run creates a named Crew agent's tab
@@ -1347,6 +1396,9 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		Status:        "running",
 		StartedAt:     startedAt,
 	}
+	if workflowContext != nil {
+		entry.ExecutionWorkspacePath = workflowContext.WorkspacePath
+	}
 	if !scheduledFor.IsZero() {
 		sf := scheduledFor.UTC()
 		entry.ScheduledFor = &sf
@@ -1371,9 +1423,20 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 
 	messages := job.Effective().Messages
 	scheduleLogf("[PRODUCT-SCHEDULE] 🚀 %s (%s) for user %s: %d message(s), session %s", job.ID(), job.Schedule.Name, job.UserID, len(messages), sessionID)
-	var runErr error
+	runErr := workflowPreflightErr
 	finalResponse := ""
 	tokenUsage := &workflowtypes.CrewRunTokenUsage{}
+	if job.Schedule.WorkflowID != "" {
+		messages = nil
+	}
+	if workflowContext != nil && runErr == nil {
+		workflowContext.ScheduledFor = scheduledFor
+		finalResponse, runErr = s.executeCrewWorkflowTimer(runCtx, job, workflowContext, conversation, runsWorkspace, runID, triggerSource)
+		messages = nil
+		// The existing cost source/run attribution covers Python descendants.
+		// A missing ledger stays unknown rather than reporting a fake zero.
+		tokenUsage = automationRunUsage(runCtx, s.api.costLedger, job.UserID, runID, startedAt)
+	}
 	for i := 0; i < len(messages); i++ {
 		if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
 			runErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
@@ -1541,7 +1604,7 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		ID:                  job.ID(),
 		ChatKey:             scheduleChatKey(job),
 		ChatID:              strings.TrimPrefix(scheduleChatKey(job), strings.TrimSpace(job.ProjectID)+codeChatSideMarker),
-		RunDestinations:     projectRunDestinations(job),
+		RunDestinations:     messageScheduleRunDestinations(job),
 		Name:                sched.Name,
 		Description:         sched.Description,
 		EntityType:          "product",
@@ -1563,6 +1626,19 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		RunDestination:      scheduleRunDestination(job.Schedule),
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
+		Starts:              productScheduleStartsLine(job),
+	}
+	if when := sched.When; when != nil && when.After != nil {
+		after := when.After
+		resp.AfterTerminalStatus = after.Outcome
+		for _, id := range after.Schedules {
+			resp.AfterScheduleIDs = append(resp.AfterScheduleIDs, projectScheduleJobID(job.Profile.ID, job.ProjectID, id))
+		}
+		resp.AfterDelayMinutes, resp.DependencyDeadline = after.DelayMinutes, after.Deadline
+	}
+	resp.TargetWorkflowID, resp.InputPreset, resp.Inputs, resp.RouteSelections = sched.WorkflowID, sched.InputPreset, sched.Inputs, sched.RouteSelections
+	if sched.WorkflowID != "" {
+		resp.Kind = "workflow"
 	}
 	if sched.Condition != nil {
 		resp.Kind = "condition"
@@ -1670,6 +1746,25 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 	sort.Slice(tabs, func(i, j int) bool { return strings.ToLower(tabs[i].Label) < strings.ToLower(tabs[j].Label) })
 	out = append(out, tabs...)
 	return append(out, ScheduleRunDestination{ID: runDestinationIsolated, Label: runDestinationChoiceIsolated.Label})
+}
+
+// messageScheduleRunDestinations are the places a person picks for a Crew message schedule (owner, 9 Nov): its own
+// chat first (the default), then an existing chat: Main and each of their tabs. "A new chat each time" is listed only
+// for a schedule already saved with it, so its row still shows where it runs; workflow timers keep
+// projectRunDestinations (crewExecutableChatChoices).
+func messageScheduleRunDestinations(job productScheduleJob) []ScheduleRunDestination {
+	all := projectRunDestinations(job)
+	if len(all) == 0 {
+		return nil
+	}
+	out := []ScheduleRunDestination{{ID: runDestinationIsolated, Label: runDestinationChoiceIsolated.Label}}
+	for _, choice := range all {
+		if choice.ID == runDestinationIsolated || (choice.ID == runDestinationNew && !job.Schedule.New) {
+			continue
+		}
+		out = append(out, choice)
+	}
+	return out
 }
 
 // projectScheduleChatKey turns a tab's chat id (from the project's chat list)

@@ -23,16 +23,17 @@ import (
 const clarificationPromptPrefix = "clarification:"
 
 type pendingCodingAgentClarification struct {
-	sessionID string
-	provider  string
-	promptID  string
-	questions []unifiedevents.CodingAgentQuestionPrompt
-	answers   chan []unifiedevents.CodingAgentQuestionAnswer
-	ctx       context.Context
-	askedAt   time.Time
-	ask       *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
-	turnID    string
-	askedTurn string // the turn that asked, as clarificationTurnToken saw it
+	sessionID   string
+	provider    string
+	promptID    string
+	questions   []unifiedevents.CodingAgentQuestionPrompt
+	answers     chan []unifiedevents.CodingAgentQuestionAnswer
+	ctx         context.Context
+	askedAt     time.Time
+	ask         *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
+	turnID      string
+	askedTurn   string // the turn that asked, as clarificationTurnToken saw it
+	nativeAsync bool   // transcript question; answer continues the admitted chat instead of a waiting tool
 }
 
 func codingAgentClarificationSchema() map[string]interface{} {
@@ -372,6 +373,14 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 	if err != nil {
 		return clarificationOutcome{}, err
 	}
+	if p.nativeAsync {
+		api.lastQueryMu.RLock()
+		_, admitted := api.lastQueryRequests[sessionID]
+		api.lastQueryMu.RUnlock()
+		if !admitted {
+			return clarificationOutcome{}, fmt.Errorf("send a message in this chat before answering this question")
+		}
+	}
 	if err := api.settleCodingAgentClarificationLocked(p, auto, input); err != nil {
 		return clarificationOutcome{}, err
 	}
@@ -380,7 +389,12 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 	current := api.clarificationTurnToken(sessionID)
 	ended := clarificationAskingTurnEnded(p.askedTurn, current)
 	log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s answered turn=%s asked_turn=%s asking_turn_ended=%t after_ms=%d", promptID, sessionID, provider, turnTokenKind(current), turnTokenKind(p.askedTurn), ended, time.Since(p.askedAt).Milliseconds())
-	return clarificationOutcome{askingTurnEnded: ended, message: clarificationFollowUpMessage(p.questions, answers)}, nil
+	message := clarificationFollowUpMessage(p.questions, answers)
+	if p.nativeAsync {
+		ended = true // Async tools already returned an acknowledgement, never an answer waiter.
+		message = nativeAsyncQuestionReply(p.questions, answers)
+	}
+	return clarificationOutcome{askingTurnEnded: ended, message: message}, nil
 }
 
 // clarificationTurnToken names the turn running in a chat: what occupies it ("" when idle) and, for a retained CLI
@@ -504,7 +518,7 @@ func (api *StreamingAPI) submitSharedAgentQuestion(sessionID, provider, promptID
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()
 	p := api.codingAgentClarifications[sessionID]
-	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil || p.ask != nil || clarificationAskingTurnEnded(p.askedTurn, api.clarificationTurnToken(sessionID)) {
+	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil || p.ask != nil || p.nativeAsync || clarificationAskingTurnEnded(p.askedTurn, api.clarificationTurnToken(sessionID)) {
 		return fmt.Errorf("this question is no longer pending")
 	}
 	return api.settleCodingAgentClarificationLocked(p, auto, input)

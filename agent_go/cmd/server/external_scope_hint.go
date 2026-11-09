@@ -13,6 +13,9 @@ import (
 // Only scopes the account could hold are named. Empty when nothing helps (a
 // role or Crew/workflow bound is what refuses it).
 func externalMissingScopeHint(claims *UserClaims, tool externalTool) string {
+	if globalSchedulerMember(tool.Name) {
+		return " Ask an administrator to manage the pause for all schedules from Schedules, using an administrator connection."
+	}
 	if claims == nil || claims.AccessToken == nil {
 		return ""
 	}

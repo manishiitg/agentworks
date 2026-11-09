@@ -23,7 +23,7 @@ const schedulerPauseLogKeep = 200
 type SchedulerPauseEvent struct {
 	At          time.Time  `json:"at"`
 	Action      string     `json:"action"`            // "paused" | "resumed"
-	Product     string     `json:"product,omitempty"` // set when one product was paused or resumed on its own
+	Product     string     `json:"product,omitempty"` // Historical provenance only; new changes always pause every schedule.
 	UserID      string     `json:"user_id,omitempty"`
 	Username    string     `json:"username,omitempty"`
 	Via         string     `json:"via,omitempty"` // the client's paused_by label, e.g. frontend-user
@@ -89,7 +89,9 @@ func recentSchedulerPauseEvents(ctx context.Context, n int) []SchedulerPauseEven
 	events := readSchedulerPauseEvents(ctx)
 	out := make([]SchedulerPauseEvent, 0, n)
 	for i := len(events) - 1; i >= 0 && len(out) < n; i-- {
-		out = append(out, events[i])
+		if events[i].Product == "" {
+			out = append(out, events[i])
+		}
 	}
 	return out
 }

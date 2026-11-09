@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -182,7 +181,7 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		}
 		for _, wf := range workflows {
 			for _, sched := range wf.functions {
-				if sched.Enabled && !crewShareIsBinding(sched.Function) {
+				if sched.Enabled && !crewShareIsBinding(sched) {
 					title, _ := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
 					actions = append(actions, crewShareAction{Title: title, Inputs: crewShareInputWords(sched.Function.Inputs), On: true})
 				}
@@ -253,20 +252,18 @@ func crewShareWorkflows(ctx context.Context, crewWorkspace string) []crewShareWo
 	}
 	wf := crewShareWorkflow{id: binding.ID, root: binding.Root, label: firstNonEmptyTrimmed(manifest.Label, "Workflow")}
 	for _, sched := range manifest.Schedules {
-		if sched.IsFunctionTrigger() {
+		if sched.IsFunctionTrigger() || crewShareIsBinding(sched) {
 			wf.functions = append(wf.functions, sched)
 		}
 	}
 	return []crewShareWorkflow{wf}
 }
 
-// crewShareBindingName matches the name generated for a Crew-to-Crew connection ("binding_<uuid>"): a connection,
-// not an action a person set up.
-var crewShareBindingName = regexp.MustCompile(`^binding_[0-9a-f_-]{16,}$`)
-
-// crewShareIsBinding: a generated connection, or an unnamed function that only names callers.
-func crewShareIsBinding(fn *WorkflowFunctionSpec) bool {
-	return crewShareBindingName.MatchString(fn.Name) || (strings.TrimSpace(fn.Description) == "" && len(fn.AllowedCallers) > 0)
+// Native loading projects InputMapping records as internal triggers with a
+// caller. A named function's optional description and allowed callers are not
+// evidence that it is a generated connection.
+func crewShareIsBinding(schedule WorkflowSchedule) bool {
+	return isInternalTriggerKind(schedule.Kind) && schedule.Caller != nil
 }
 
 var crewShareAcronyms = map[string]string{"pr": "PR", "id": "ID", "url": "URL", "api": "API", "sql": "SQL", "csv": "CSV"}
@@ -330,7 +327,7 @@ func crewShareSchemaInputs(schema map[string]interface{}) []string {
 func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange bool) (map[string][]crewShareAction, map[string]string) {
 	groups, names := map[string][]crewShareAction{}, map[string]string{}
 	add := func(fn crewFunction, on, published bool) {
-		if fn.Name == "" || fn.Name == crewFunctionAskName || crewShareBindingName.MatchString(fn.Name) {
+		if fn.Name == "" || fn.Name == crewFunctionAskName {
 			return
 		}
 		agent := strings.TrimSpace(fn.Agent)
@@ -481,10 +478,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	callers := map[string]bool{}
 	for _, wf := range workflows {
 		for _, sched := range wf.functions {
-			if crewShareIsBinding(sched.Function) {
-				for _, c := range sched.Function.AllowedCallers {
-					callers[c.Type+":"+c.ID] = true
-				}
+			if crewShareIsBinding(sched) {
+				c := sched.Caller
+				callers[c.Type+":"+c.ID] = true
 				continue
 			}
 			title, line := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
@@ -659,9 +655,15 @@ func (api *StreamingAPI) handleCrewShareAction(w http.ResponseWriter, r *http.Re
 	root := crewFunctionRoot(r.Context(), src.target)
 	if in.Target != "" {
 		root = ""
-		for _, wf := range crewShareWorkflows(r.Context(), src.workspace) {
-			if wf.id == in.Target {
-				root = wf.root
+		// A submitted target is authorized by its current Crew binding, not
+		// by which saved workflow the screen happens to show.
+		records, err := readCrewExecutables()
+		if err == nil {
+			for _, binding := range records {
+				if binding.ID == in.Target && canonicalCrewWorkspaceRoot(binding.CrewRoot) == canonicalCrewWorkspaceRoot(src.workspace) {
+					root = binding.Root
+					break
+				}
 			}
 		}
 		if root == "" {

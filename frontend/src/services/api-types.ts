@@ -609,36 +609,6 @@ export interface ReportHumanInputResponse {
   apply_message?: string
 }
 
-export interface GoalMeasurements {
-  metrics: GoalMetric[]
-  observations: GoalObservation[]
-}
-
-/** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
-
-export interface GoalMetric {
-  goal_id?: string
-  goal_name?: string
-  supports?: string[]
-  support_kind?: 'breakdown' | 'diagnostic' | 'guardrail'
-  dimensions?: Record<string, string>
-  id: string
-  criterion_id: string
-  name: string
-  role: 'primary' | 'supporting'
-  unit: string
-  direction: 'increase' | 'decrease' | 'maintain'
-  definition: string
-  source: string
-  window: string
-  route: string
-  environment: string
-  collection_frequency: string
-  freshness_hours: number
-  target?: number
-  target_date?: string
-}
-
 // Slack Feedback Configuration types
 
 // ChannelRoute maps a Slack channel ID to a specific workflow, including the workspace path
@@ -2520,6 +2490,7 @@ export interface GmailOAuthClientsResponse {
 
 // Scheduled Jobs
 export interface ScheduledJob {
+  target_workflow_id?: string
   crew_workspace_path?: string
   kind?: string
 
@@ -2586,6 +2557,8 @@ export interface ScheduledJob {
   run_outcome?: string
   /** One plain sentence about the last run; the raw error stays in last_error as detail. */
   last_result?: string
+  /** One plain line from the server: what this schedule starts ("Runs the workflow · <saved setting>" or "Sends a message to <agent>"). */
+  starts?: string
   // Pulse schedules synthesize their run-specific messages from current
   // evidence; they intentionally do not persist ordinary messages[].
 
@@ -2597,7 +2570,7 @@ export interface ScheduledJob {
   run_destination?: 'chat' | 'isolated' | 'new'
   /** The tab a Crew or Goal schedule runs in; empty is the main chat. */
   chat_id?: string
-  /** Where this Crew or Goal message schedule can run, listed by the server: main chat, each tab, own conversation. */
+  /** Where this Crew or Goal message schedule can run, listed by the server: its own chat (Crew default), main chat, each tab. */
   run_destinations?: { id: string; label: string }[]
 }
 
@@ -2689,6 +2662,7 @@ export interface ListScheduledJobsResponse {
 }
 
 export interface ScheduledJobRun {
+  execution_workspace_path?: string
   id: string
   job_id: string
   webhook?: { trigger_name: string; delivery_id: string; event?: string; received_at: string; commit_sha?: string; component?: string; env?: string; deployed_at?: string }
@@ -2742,8 +2716,6 @@ export interface SkippedWhilePaused {
 export interface SchedulerConfig {
   /** Holds the timed runs of every product. */
   globally_paused: boolean
-  /** Products paused on their own: 'agentworks' (Goals), 'work' (Crews), 'code'. */
-  paused_products?: string[]
   paused_at?: string
   paused_by?: string
   updated_at?: string
@@ -3014,21 +2986,4 @@ export interface WorkspaceStepInspection {
 export interface WorkspaceStepInspectionsResponse {
   items: WorkspaceStepInspection[]
   next_cursor: string | null
-}
-
-export interface GoalObservation {
-  observation_id: string
-  criterion_id: string
-  metric: string
-  run_id: string
-  route?: string
-  environment?: string
-  value?: number
-  status?: string
-  unit?: string
-  observed_at: string
-  window_start?: string
-  window_end?: string
-  evidence?: string[]
-  recorded_at?: string
 }

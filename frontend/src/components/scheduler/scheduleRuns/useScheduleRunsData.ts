@@ -185,12 +185,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   // Keep running jobs responsive; idle panels must still discover later cron runs.
   const hasRunningJob = panelJobs.some(j => j.last_status === 'running')
   const activeScheduleCount = panelJobs.filter(j => j.enabled).length
-  // Each product pauses on its own, besides the pause of everything (PLAT-782).
-  const pauseProduct = entityType === 'product' ? (productProfileId === 'code' ? 'code' : 'work') : 'agentworks'
-  const pauseProductLabel = ({ agentworks: 'Workflow', work: 'Crew', code: 'Code' } as Record<string, string>)[pauseProduct] ?? 'These'
-  const isGloballyPaused = !!schedulerConfig?.globally_paused
-  const isProductPaused = !!schedulerConfig?.paused_products?.includes(pauseProduct)
-  const isSchedulerPaused = isGloballyPaused || isProductPaused
+  const isSchedulerPaused = !!schedulerConfig?.globally_paused
   const potentialOverlaps = useMemo(
     () => isSchedulerPaused ? new Map<string, string>() : getPotentialScheduleOverlaps(panelJobs, presetMap),
     [panelJobs, presetMap, isSchedulerPaused],
@@ -759,14 +754,13 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   }, [workflowScope?.workspacePath])
 
   const handleToggleGlobalPause = async () => {
-    if (!isSchedulerPaused && !window.confirm(`Pause ${pauseProductLabel} schedules? Their timed runs will not start until you resume them. Other products keep running.`)) return
+    if (!isSchedulerPaused && !window.confirm('Pause all schedules? Timed runs across the company will not start until you resume them.')) return
     setIsUpdatingSchedulerPause(true)
     try {
-      // Resuming while everything is paused resumes everything; otherwise only this product changes.
-      const others = (schedulerConfig?.paused_products ?? []).filter(product => product !== pauseProduct)
-      const updated = await schedulerApi.updateConfig(isGloballyPaused
-        ? { globally_paused: false, paused_by: '', paused_products: schedulerConfig?.paused_products ?? [] }
-        : { globally_paused: false, paused_by: !isProductPaused ? 'frontend-user' : '', paused_products: isProductPaused ? others : [...others, pauseProduct] })
+      const updated = await schedulerApi.updateConfig({
+        globally_paused: !isSchedulerPaused,
+        paused_by: !isSchedulerPaused ? 'frontend-user' : '',
+      })
       setSchedulerConfig(updated)
     } catch (e) {
       console.error('Failed to update scheduler config:', e)
@@ -836,8 +830,6 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     panelTitle,
     loadJobs,
     isSchedulerPaused,
-    isGloballyPaused,
-    pauseProductLabel,
     workflowScheduleSummary,
     summary,
     normalizedSearch,

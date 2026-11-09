@@ -39,7 +39,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 			users[userID] = struct{}{}
 		}
 	}
-	// The scheduler pause holds timed runs here too: for every product (the global pause) or one at a time (PLAT-782).
+	// The scheduler pause holds timed runs here too: one switch for every schedule.
 	pauseConfig, pauseErr := LoadSchedulerConfig(ctx)
 	if pauseErr != nil {
 		scheduleLogf("[PRODUCT-SCHEDULE] cannot read the scheduler pause, timed runs continue: %v", pauseErr)
@@ -51,7 +51,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 			continue
 		}
 		for _, job := range jobs {
-			if pauseConfig.ProductPaused(job.Profile.ID) {
+			if pauseConfig != nil && pauseConfig.GloballyPaused {
 				continue
 			}
 			if job.Schedule.Condition != nil && job.Effective().Enabled {
@@ -89,8 +89,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 				in.SinceInteractive = s.sinceInteractive(userID, job.Profile)
 			}
 			d := productschedule.Decide(job.Effective(), in)
+			triggerSource := "cron"
 			if job.ProjectID != "" {
-				d = projectTimerDecision(job, now)
+				d, triggerSource = scheduler.crewTimerDependencyDecision(ctx, job, now)
 			}
 			if d.Deferred {
 				s.setDeferred(userID, job.ID(), d.Reason)
@@ -120,37 +121,62 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 					continue
 				}
 			}
-			go func(job productScheduleJob, scheduledFor time.Time) {
+			go func(job productScheduleJob, scheduledFor time.Time, triggerSource string) {
 				// Schedules due the same minute would otherwise all open their
 				// provider connection in the same instant; spread them by a few seconds.
 				time.Sleep(time.Duration(rand.Int63n(int64(scheduledStartJitter))))
-				if when := job.Schedule.When; when != nil {
-					loc, err := time.LoadLocation(when.Timezone)
-					if err != nil {
-						scheduleLogf("[SCHEDULER] invalid calendar timezone job=%s", job.ID())
-						return
-					}
-					for _, date := range when.Dates {
-						at, err := time.ParseInLocation("2006-01-02 15:04", date.Date+" "+date.Time, loc)
-						if err != nil || !at.Equal(scheduledFor) || len(date.Input) == 0 {
-							continue
-						}
-						var input scheduleExecutionInput
-						if err := json.Unmarshal(date.Input, &input); err != nil {
-							scheduleLogf("[SCHEDULER] invalid calendar input job=%s", job.ID())
-							return
-						}
-						if input.Messages != nil {
-							job.Schedule.Messages = input.Messages
-						}
-					}
+				job, err := applyCalendarOccurrenceInput(job, scheduledFor)
+				if err != nil {
+					return
 				}
-				if _, err := s.Run(context.Background(), job, "cron", scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
+				if _, err := s.Run(context.Background(), job, triggerSource, scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
 					scheduleLogf("[PRODUCT-SCHEDULE] %s failed for %s: %v", job.ID(), job.UserID, err)
 				}
-			}(job, d.ScheduledFor)
+			}(job, d.ScheduledFor, triggerSource)
 		}
 	}
+}
+
+// applyCalendarOccurrenceInput applies the saved date's overrides after a job
+// load, including when a dependency retry reloads its current definition.
+func applyCalendarOccurrenceInput(job productScheduleJob, scheduledFor time.Time) (productScheduleJob, error) {
+	if when := job.Schedule.When; when != nil {
+		loc, err := time.LoadLocation(when.Timezone)
+		if err != nil {
+			scheduleLogf("[SCHEDULER] invalid calendar timezone job=%s", job.ID())
+			return job, err
+		}
+		for _, date := range when.Dates {
+			at, err := time.ParseInLocation("2006-01-02 15:04", date.Date+" "+date.Time, loc)
+			if err != nil || !at.Equal(scheduledFor) || len(date.Input) == 0 {
+				continue
+			}
+			var input scheduleExecutionInput
+			if err := json.Unmarshal(date.Input, &input); err != nil {
+				scheduleLogf("[SCHEDULER] invalid calendar input job=%s", job.ID())
+				return job, err
+			}
+			if input.Messages != nil {
+				job.Schedule.Messages = input.Messages
+			}
+			if job.Schedule.WorkflowID != "" {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(date.Input, &fields); err != nil {
+					return job, err
+				}
+				if _, set := fields["input_preset"]; set {
+					job.Schedule.InputPreset = input.InputPreset
+				}
+				if input.Inputs != nil {
+					job.Schedule.Inputs = input.Inputs
+				}
+				if input.Routes != nil {
+					job.Schedule.RouteSelections = input.Routes
+				}
+			}
+		}
+	}
+	return job, nil
 }
 
 func projectTimerDecision(job productScheduleJob, now time.Time) productschedule.Decision {

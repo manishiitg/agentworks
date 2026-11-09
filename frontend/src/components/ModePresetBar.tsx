@@ -89,7 +89,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
   // Workflow creation follows the existing account permission.
   const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, 'agentworks'))
-  const schedulerPaused = useGlobalSchedulerPaused(productSurface)
+  const schedulerPaused = useGlobalSchedulerPaused()
   // Use toolList to get all available servers, not just enabled ones
   const toolList = useMCPStore(state => state.toolList)
   const availableServers = React.useMemo(() =>

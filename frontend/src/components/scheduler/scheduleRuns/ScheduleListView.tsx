@@ -13,7 +13,6 @@ import {
   getLocalizedJobName,
   getMissedScheduleDelayMs,
   getScheduleDependencyIds,
-  getScheduleExecutionScope,
   isScheduleWaitingStatus,
   timeAgo,
 } from './helpers'
@@ -57,7 +56,6 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
         const cronDesc = job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
         const localizedJobName = getLocalizedJobName(job)
         const workflowDisplayLabel = preset?.label || job.workflow_label || job.name
-        const executionScope = getScheduleExecutionScope(job)
         const dependencyNames = getScheduleDependencyIds(job).map(id => jobsList.find(candidate => candidate.id === id)?.name ?? id)
         const isRunningJob = job.last_status === 'running'
         const isWaitingJob = isScheduleWaitingStatus(job.last_status)
@@ -69,12 +67,10 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
         const open = openId === job.id
         const isWebhook = job.schedule_type === 'webhook'
 
-        // First line: what it runs and when it runs next.
-        const routes = Object.values(job.route_selections ?? {}).filter(Boolean)
-        const what = job.query ? `Asks: "${job.query}"`
-          : routes.length === 1 ? `Runs the ${routes[0]} route`
-          : executionScope ? `Runs: ${executionScope.label}` : localizedJobName
-        const where = job.run_destination === 'new' ? 'new chat each time' : job.run_destination === 'isolated' ? 'own conversation' : ''
+        // First line: what it starts (one plain line from the server) and when it runs next.
+        const what = job.query ? `Asks: "${job.query}"` : job.starts || localizedJobName
+        // A Crew schedule's starts line already names its chat (server); older workflow schedules still say it here.
+        const where = job.entity_type === 'product' ? '' : job.run_destination === 'new' ? 'new chat each time' : job.run_destination === 'isolated' ? 'its own chat' : ''
         const next = !quiet && !isMissedJob && !isRunningJob && !isWebhook ? nextLabel(job.next_run_at) : ''
         const firstLine = [showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', what, next ? `next ${next}` : '', where].filter(Boolean).join(' · ')
 
@@ -122,8 +118,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
             onToggle={() => setOpenId(open ? null : job.id)}
           >
             <DetailLine label="Name">{localizedJobName}</DetailLine>
-            {executionScope && <DetailLine label="Runs"><span title={executionScope.title}>{executionScope.label}</span></DetailLine>}
-            {job.input_preset && <DetailLine label="Inputs"><span title={job.input_preset}>Saved inputs: {job.input_preset}</span></DetailLine>}
+            {job.starts && <DetailLine label="Runs">{job.starts}</DetailLine>}
             {(job.entity_type === 'product' || Boolean(job.run_destinations?.length)) && (
               <DetailLine label="Where">
                 <label className="inline-flex items-center gap-1.5">
@@ -135,7 +130,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                     onChange={event => void handleRunDestination(job, event.target.value)}
                     className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
                   >
-                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'chat', label: 'Main chat' }, { id: 'isolated', label: 'Own conversation' }]).map(item => (
+                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'isolated', label: 'Its own chat' }, { id: 'chat', label: 'Main chat' }]).map(item => (
                       <option key={item.id} value={item.id}>{item.label}</option>
                     ))}
                   </select>

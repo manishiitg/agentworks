@@ -10,7 +10,6 @@ import { getReportCosts, renderReportCosts } from './reportOperationalMetrics'
 import type { ReportActivityOptions, ReportTableOptions } from './reportComposition'
 import { renderReportActivity, renderReportTable } from './reportComposition'
 import type { ReportChatWidgetApi, ReportCostOptions, ReportDataApi } from './reportEmbedContext'
-import { getReportGoalMetrics, renderReportGoalProgress } from './reportGoalProgress'
 import { REPORT_OPEN_ATTR, REPORT_SRC_ATTR } from './reportMarkdownLinks'
 import { reportDaisyUiHead } from './reportDaisyUi'
 import { selectReportDocument } from '../reportDocuments'
@@ -83,7 +82,7 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
       });
     };
   }
-  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
+  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
     api[name] = queueCall(name);
   });
   api.openFile = function(){
@@ -449,22 +448,30 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   // swallowed. A callback may be sync or return a promise; both are covered,
   // which is the specific gap that made `load().then(...)` with no `.catch()`
   // fail silently. Returns the settled promise so the lifecycle can wait on it.
+  // Late module loads may register ready() after the first empty callback
+  // batch settled. Track that work too, including nested ready callbacks.
+  const beginReportWork = () => {
+    win.__reportPendingWork = (win.__reportPendingWork || 0) + 1
+    if (doc.documentElement?.getAttribute(REPORT_STATE_ATTR) !== 'error') setLifecycle(doc, 'loading')
+  }
+  const finishReportWork = () => {
+    win.__reportPendingWork = Math.max(0, (win.__reportPendingWork || 0) - 1)
+    if (!win.__reportPendingWork && doc.documentElement?.getAttribute(REPORT_STATE_ATTR) !== 'error') setLifecycle(doc, 'ready')
+  }
   const runReportCallback = (fn: unknown): Promise<void> => {
     if (typeof fn !== 'function') return Promise.resolve()
+    beginReportWork()
     try {
-      const result = (fn as () => unknown)()
-      const maybe = result as AnyWindow
-      if (maybe && typeof maybe.then === 'function') {
-        return Promise.resolve(maybe).then(
-          () => undefined,
-          (err: AnyWindow) => { showReportError(err?.stack || err?.message || String(err), 'report.ready()') },
-        )
-      }
+      return Promise.resolve((fn as () => unknown)()).then(
+        () => undefined,
+        (err: AnyWindow) => { showReportError(err?.stack || err?.message || String(err), 'report.ready()') },
+      ).finally(finishReportWork)
     } catch (err) {
       const e = err as AnyWindow
       showReportError(e?.stack || e?.message || String(e), 'report.ready()')
+      finishReportWork()
+      return Promise.resolve()
     }
-    return Promise.resolve()
   }
   win.__runReportCallback = runReportCallback
 
@@ -472,8 +479,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
 
   const getCosts = (costOptions?: ReportCostOptions) => getReportCosts(dataApi, costOptions)
   const renderCosts = (target: string | HTMLElement, costOptions?: ReportCostOptions) => renderReportCosts(doc, dataApi, target, costOptions)
-  const getGoalMetrics = () => getReportGoalMetrics(dataApi.query)
-  const renderGoalProgress = (target: string | HTMLElement) => renderReportGoalProgress(doc, dataApi.query, target)
   const renderTable = (target: string | HTMLElement, tableOptions: ReportTableOptions) => renderReportTable(doc, dataApi.query, target, tableOptions)
   const renderActivity = (target: string | HTMLElement, activityOptions?: ReportActivityOptions) => renderReportActivity(doc, dataApi, target, activityOptions)
 
@@ -486,8 +491,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
       close: () => {},
     },
     getCosts, renderCosts,
-    getGoalMetrics,
-    renderGoalProgress,
     renderTable,
     renderActivity,
     ready: (fn: unknown) => {
@@ -523,8 +526,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   const realReportMethods: Record<string, ((...args: unknown[]) => unknown) | undefined> = {
     getCosts: getCosts as (...args: unknown[]) => unknown,
     renderCosts: renderCosts as (...args: unknown[]) => unknown,
-    getGoalMetrics,
-    renderGoalProgress: renderGoalProgress as (...args: unknown[]) => unknown,
     renderTable: renderTable as (...args: unknown[]) => unknown,
     renderActivity: renderActivity as (...args: unknown[]) => unknown,
     query: dataApi.query as (...args: unknown[]) => unknown,
@@ -585,6 +586,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
 
   if (!dispatchData) return
 
+  beginReportWork()
   debug('report:data dispatched', { title })
   // Mark the API live BEFORE flushing, so a ready() registered from inside
   // a callback runs immediately rather than waiting for the next refresh.
@@ -608,9 +610,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   // settled -- the point at which a report has either drawn its data or
   // failed. A report that listens to report:data directly settles at
   // dispatch. Errors leave the state at 'error'.
-  void Promise.allSettled([...settled, ...replayed]).then(() => {
-    if (doc.documentElement?.getAttribute(REPORT_STATE_ATTR) !== 'error') setLifecycle(doc, 'ready')
-  })
+  void Promise.allSettled([...settled, ...replayed]).then(finishReportWork)
 }
 
 export interface ReportHostState {
@@ -649,7 +649,13 @@ export function readReportDocumentState(doc: Document | null): ReportHostState {
   // Source bundles and explicitly hidden content are not rendered page text.
   const contentLeaves = Array.from(doc.body?.querySelectorAll('*') ?? [])
     .filter((el) => el.children.length === 0 && !el.closest('script, style, template, noscript, [hidden]'))
+  // PLAT-746-517: hidden skeletons are not pending visible content. Preview
+  // uses this list for readiness, so CSS-hidden placeholders must not block it.
   const loadingTexts = contentLeaves
+    .filter(el => {
+      const rect = el.getBoundingClientRect(), style = win?.getComputedStyle(el)
+      return rect.width > 0 && rect.height > 0 && style?.display !== 'none' && style?.visibility !== 'hidden' && style?.visibility !== 'collapse'
+    })
     .map((el) => (el.textContent || '').trim())
     .filter((text) => /^(loading|loading…|loading\.\.\.|fetching)\b/i.test(text))
     .filter((text, index, all) => all.indexOf(text) === index)

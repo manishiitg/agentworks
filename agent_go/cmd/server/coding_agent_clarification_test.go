@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func clarificationTestArgs() map[string]interface{} {
@@ -362,5 +363,44 @@ func TestSharedAgentQuestionAnswerStaysInSenderThread(t *testing.T) {
 	}
 	if err := api.submitSharedAgentQuestion("sender-thread", p.provider, p.promptID, true, nil); err == nil {
 		t.Fatal("settled question was accepted again")
+	}
+}
+
+// PLAT-746-764: async native questions survive the asking turn, correlate the
+// answer once, and cannot resume an owner's agent through the shared relay.
+func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.T) {
+	api := &StreamingAPI{eventStore: events.NewEventStore(100), lastQueryRequests: map[string]QueryRequest{"session": {}}}
+	record := llmtypes.NativeRecord{Provider: "codex-cli", SessionID: "native-session", TurnID: "finished-turn", ID: "call-question", Name: "request_user_input_async", Kind: "question", State: "requested", Timestamp: time.Now(), Text: `{"questions":[{"title":"Which folder?","options":["Existing","New"]}]}`}
+	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
+		t.Fatal(err)
+	}
+	p := api.codingAgentClarifications["session"]
+	if p == nil || p.ctx.Err() != nil {
+		t.Fatal("question was not retained independently of the turn")
+	}
+	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.eventStore.GetAllEventsRaw("session")) != 1 {
+		t.Fatal("native replay duplicated question")
+	}
+	if err := api.submitSharedAgentQuestion("session", "codex-cli", p.promptID, true, nil); err == nil {
+		t.Fatal("shared answer could resume owner's native async question")
+	}
+	outcome, err := api.submitCodingAgentClarificationOutcome("session", "codex-cli", p.promptID, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.askingTurnEnded || !strings.Contains(outcome.message, `questionItemId`) || !strings.Contains(outcome.message, `call-question`) || !strings.Contains(outcome.message, `Existing`) {
+		t.Fatalf("missing native continuation correlation: %+v", outcome)
+	}
+	if _, err := api.submitCodingAgentClarificationOutcome("session", "codex-cli", p.promptID, true, nil); err == nil {
+		t.Fatal("duplicate answer could start another turn")
+	}
+	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
+		t.Fatal(err)
+	}
+	if api.codingAgentClarifications["session"] != nil {
+		t.Fatal("replay resurrected answered question")
 	}
 }

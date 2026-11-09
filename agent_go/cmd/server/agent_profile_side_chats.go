@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -229,6 +230,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		out = append(out, row)
 	}
+	out = append(out, scheduleOwnChatRows(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, mine)...)
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].Position, out[j].Position
 		if (a > 0) != (b > 0) {
@@ -243,6 +245,36 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		out = append([]AgentProfileSideChat{*main}, out...)
 	}
 	return out, nil
+}
+
+// scheduleOwnChatRows lists the person's message schedules that run in their own chat (owner, 9 Nov: "Its own chat",
+// kept across runs and shown with the Crew's chats), once the schedule has run. The chat is named after the schedule.
+// Only the schedule's owner has it; function, webhook and new-chat-each-run conversations are never listed.
+func scheduleOwnChatRows(ctx context.Context, userID, profileID, projectID, workspace string, mine map[string]ProductAgentIdentity) []AgentProfileSideChat {
+	chats, err := defaultProductConversationRegistryStore().scheduleOwnChats(ctx, userID, profileID, projectID)
+	if err != nil || len(chats) == 0 {
+		return nil
+	}
+	schedules, err := readProjectSchedules(ctx, workspace)
+	if err != nil {
+		return nil
+	}
+	rows := []AgentProfileSideChat{}
+	for _, schedule := range schedules {
+		if schedule.Action.Type == "run" || schedule.Action.Conversation != runDestinationIsolated {
+			continue
+		}
+		key := isolatedAutomationConversationKey(projectID, "schedule", schedule.ID)
+		record, ok := chats[key]
+		if !ok {
+			continue
+		}
+		identity := mine[key]
+		rows = append(rows, AgentProfileSideChat{ConversationKey: key, ConversationID: record.ConversationID, SessionID: record.SessionID,
+			Name: firstNonEmptyTrimmed(schedule.Name, "Schedule"), Position: identity.Position, Pinned: !identity.Unpinned,
+			TabOwnerID: userID, CanWrite: true, Purpose: "This schedule's own chat; each run continues it."})
+	}
+	return rows
 }
 
 // AgentProfileChatModel is one chat's own model on the Crew's Models page; an empty Engine follows the Crew's model.

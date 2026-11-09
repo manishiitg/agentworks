@@ -324,7 +324,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		}
 		o.coveredCounts[text]++
 		acceptedAt := nativeTerminalPromptTime(path, o.provider, text, o.lastRead)
-		o.accept(text, acceptedAt, message.NativeID)
+		o.accept(strings.TrimSpace(nativeTerminalInputText(path, o.provider, message)), acceptedAt, message.NativeID)
 	}
 	if o.hasNativeInputs() {
 		o.mu.Lock()

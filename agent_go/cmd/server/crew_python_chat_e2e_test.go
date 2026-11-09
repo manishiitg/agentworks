@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,9 +23,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -38,6 +42,18 @@ import (
 // does not claim a model interpreted a message or a deployed AI was exercised.
 func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	checkCrewChatPythonStop(t, "bound")
+}
+
+// PLAT-871-33: authenticated Crew timer create/list/run/Stop uses the actual
+// saved Python runner, with typed inputs and the single Crew run ledger.
+func TestCrewWorkflowTimerRunsPythonAndSupportsHTTPStop(t *testing.T) {
+	checkCrewChatPythonStop(t, "crew-timer")
+}
+
+// PLAT-871-33: an on-time dependency wait survives the ordinary clock window,
+// uses its original occurrence, and launches real Python only after release.
+func TestCrewWorkflowTimerWaitsForPrerequisiteWithoutCatchup(t *testing.T) {
+	checkCrewChatPythonStop(t, "crew-timer-dependency")
 }
 
 // PLAT-746-506: a trigger in a Crew must be real background work
@@ -151,7 +167,11 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 			return true
 		})
 	})
-	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}), 35*time.Second)
+	timeout := 35 * time.Second
+	if entry == "crew-timer-dependency" {
+		timeout = 60 * time.Second // the actual clock adds up to five seconds of launch jitter
+	}
+	ctx, cancel := context.WithTimeout(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}), timeout)
 	defer cancel()
 	stopRun := func(id string) {
 		api.scheduler.cancelScheduleRunContext(id)
@@ -160,6 +180,12 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 		}
 	}
 	binding := crewExecutableBinding{ID: "chat-saved", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/chat-saved", Kind: "script", RuntimeRoot: "workflows/chat-saved"}
+	if strings.HasPrefix(entry, "crew-timer") {
+		// The Python adoption converter preserves Workflow/<same-id> and stores
+		// kind=script, runtime_root=workflows/<same-id> (not kind=workflow).
+		// Exercise that adopted binding, rather than the new automations layout.
+		binding.ID, binding.Root, binding.RuntimeRoot = "adopted-same-id", "Workflow/adopted-same-id", "workflows/adopted-same-id"
+	}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
@@ -183,8 +209,146 @@ child.wait()
 `); err != nil {
 		t.Fatal(err)
 	}
-	var runID string
-	if entry == "bound" {
+	var runID, timerJobID string
+	var dependencyOccurrence time.Time
+	var timerHTTP func(string, string, any) (int, []byte)
+	if strings.HasPrefix(entry, "crew-timer") {
+		api.costLedger = installWorkflowCostTestLedger(t)
+		routes := mux.NewRouter()
+		SchedulerRoutes(routes, api.scheduler)
+		server := httptest.NewServer(AuthMiddleware(routes))
+		defer server.Close()
+		token, err := GenerateJWT("owner", "owner", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		timerHTTP = func(method, path string, data any) (int, []byte) {
+			t.Helper()
+			raw, _ := json.Marshal(data)
+			req, _ := http.NewRequestWithContext(ctx, method, server.URL+path, bytes.NewReader(raw))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			body, _ := io.ReadAll(res.Body)
+			return res.StatusCode, body
+		}
+		create := map[string]any{"entity_type": "product", "product_profile_id": "work", "product_project_id": "team", "name": "Saved Python timer", "schedule_type": "cron", "cron_expression": "0 0 1 1 *", "timezone": "UTC", "enabled": false, "target_workflow_id": binding.ID, "input_preset": "Saved", "inputs": map[string]string{"enabled": "true"}}
+		registerTestCrew(t, "foreign", "other", true, "foreign")
+		if err := registerCrewExecutable(crewExecutableBinding{ID: "foreign-script", CrewID: "foreign", CrewRoot: "Crew/foreign", Root: "Workflow/foreign-script", Kind: "script", RuntimeRoot: "workflows/foreign-script"}); err != nil {
+			t.Fatal(err)
+		}
+		create["target_workflow_id"] = "foreign-script"
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs", create); status != 400 || !strings.Contains(string(body), "this Crew") {
+			t.Fatalf("foreign target was not refused by ownership: HTTP%d %s", status, body)
+		}
+		create["target_workflow_id"] = binding.ID
+		var prerequisite string
+		if entry == "crew-timer-dependency" {
+			create["after_schedule_ids"] = []string{projectScheduleJobID("work", "foreign", "timer")}
+			if status, body := timerHTTP("POST", "/api/scheduler/jobs", create); status != 400 || !strings.Contains(string(body), "this Crew") {
+				t.Fatalf("foreign prerequisite accepted: HTTP%d %s", status, body)
+			}
+			delete(create, "after_schedule_ids")
+			status, body := timerHTTP("POST", "/api/scheduler/jobs", map[string]any{"entity_type": "product", "product_profile_id": "work", "product_project_id": "team", "name": "Prerequisite", "schedule_type": "cron", "cron_expression": "0 0 1 1 *", "timezone": "UTC", "enabled": false, "messages": []string{"Collect the data"}})
+			var saved ScheduledJobResponse
+			if status != 201 || json.Unmarshal(body, &saved) != nil {
+				t.Fatalf("prerequisite create: HTTP%d %s", status, body)
+			}
+			prerequisite = strings.TrimPrefix(saved.ID, "product-project:work:team:")
+			create["enabled"], create["cron_expression"] = true, "* * * * *"
+			create["after_schedule_ids"], create["after_delay_minutes"] = []string{saved.ID}, 0
+		}
+		status, body := timerHTTP("POST", "/api/scheduler/jobs", create)
+		var saved ScheduledJobResponse
+		if status != 201 || json.Unmarshal(body, &saved) != nil || saved.TargetWorkflowID != binding.ID || saved.Inputs["enabled"] != "true" {
+			t.Fatalf("create lost target/inputs: HTTP%d %s", status, body)
+		}
+		timerJobID = saved.ID
+		if status, body := timerHTTP("GET", "/api/scheduler/jobs/"+timerJobID, nil); status != 200 || !strings.Contains(string(body), binding.ID) {
+			t.Fatalf("timer list lost target: HTTP%d %s", status, body)
+		}
+		if entry == "crew-timer-dependency" {
+			if len(saved.AfterScheduleIDs) != 1 || saved.AfterScheduleIDs[0] != projectScheduleJobID("work", "team", prerequisite) || saved.AfterDelayMinutes != 0 {
+				t.Fatalf("create lost dependency projection: %+v", saved)
+			}
+			dependencyOccurrence = time.Now().UTC().Truncate(time.Minute)
+			rawID := strings.TrimPrefix(timerJobID, "product-project:work:team:")
+			// The real admission guard rechecks wall time after clock dispatch.
+			// Backdate only the fixture activation cursor, not the occurrence or
+			// completion, so that guard can observe the same ready prerequisite.
+			if err := api.projectActions.updateStateByKey(ctx, "owner", projectScheduleStateKey("work", "team", rawID), func(state *productScheduleUserState) {
+				state.ActivatedAt = dependencyOccurrence.Add(-time.Minute).Format(time.RFC3339)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			checkWaiting := func(at time.Time) {
+				t.Helper()
+				api.scheduler.dispatchProjectTimers(ctx, at)
+				pending, err := store.GetPendingOccurrence(ctx, "crew", "team", rawID)
+				if err != nil || !pending.ScheduledFor.Equal(dependencyOccurrence) || pending.Policy != "retry" {
+					t.Fatalf("dependency occurrence lost: %+v %v", pending, err)
+				}
+				decisions, _ := store.ListFireDecisions(ctx, "crew", "team", rawID, 10)
+				for _, decision := range decisions {
+					if decision.RunID != "" {
+						t.Fatalf("Python admitted before its prerequisite: %+v", decision)
+					}
+				}
+			}
+			checkWaiting(dependencyOccurrence)
+			checkWaiting(dependencyOccurrence.Add(5 * time.Minute))
+			completePrerequisite := func(id string, occurrence, completed time.Time) {
+				t.Helper()
+				if err := store.RecordAdmittedRun(ctx, schedulerstate.Run{RunID: id, ScopeType: "crew", ScopeID: "team", ScheduleID: prerequisite, TriggerSource: "cron", ScheduledFor: occurrence, StartedAt: occurrence}); err != nil {
+					t.Fatal(err)
+				}
+				if err := store.ForceTerminal(ctx, schedulerstate.Transition{RunID: id, To: schedulerstate.StateCompleted, At: completed}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A later prerequisite occurrence cannot release this older wait.
+			completePrerequisite("later-prerequisite", dependencyOccurrence.Add(time.Minute), dependencyOccurrence.Add(2*time.Minute))
+			checkWaiting(dependencyOccurrence.Add(5 * time.Minute))
+			completePrerequisite("matching-prerequisite", dependencyOccurrence, time.Now().UTC())
+			api.scheduler.dispatchProjectTimers(ctx, dependencyOccurrence.Add(5*time.Minute))
+		} else if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
+			t.Fatalf("manual Crew workflow timer: HTTP%d %s", status, body)
+		}
+		var admissions []schedulerstate.FireDecision
+		for ctx.Err() == nil {
+			decisions, err := store.ListFireDecisions(ctx, "crew", "team", strings.TrimPrefix(saved.ID, "product-project:work:team:"), 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			admissions = nil
+			for _, decision := range decisions {
+				if decision.RunID != "" {
+					admissions = append(admissions, decision)
+				}
+			}
+			if len(admissions) != 0 {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if len(admissions) != 1 {
+			t.Fatalf("one timer admission: %+v %v", admissions, ctx.Err())
+		}
+		runID = admissions[0].RunID
+		if entry == "crew-timer-dependency" {
+			if !admissions[0].ScheduledFor.Equal(dependencyOccurrence) || admissions[0].TriggerSource != "queued" {
+				t.Fatalf("dependency retry replaced original occurrence: %+v", admissions[0])
+			}
+			if _, err := store.GetPendingOccurrence(ctx, "crew", "team", strings.TrimPrefix(timerJobID, "product-project:work:team:")); !errors.Is(err, schedulerstate.ErrRunNotFound) {
+				t.Fatalf("admission did not consume pending occurrence: %v", err)
+			}
+		}
+		t.Cleanup(func() { api.projectActions.Stop("owner", timerJobID) })
+	} else if entry == "bound" {
 		resolved := &resolvedAgentProfile{}
 		resolved.Definition.ID = crewProfileID
 		resolved.Definition.Version = 1
@@ -334,6 +498,145 @@ child.wait()
 	if err != nil || json.Unmarshal(pidBytes, &pids) != nil || pids.Parent <= 0 || pids.Child <= 0 || pids.Parent == pids.Child || pids.Group <= 0 {
 		t.Fatalf("heartbeat was not from the actual child: %s %v", pidBytes, err)
 	}
+	if strings.HasPrefix(entry, "crew-timer") {
+		// PR1798: direct Python does not pass through the message router, so
+		// cron and manual starts must hold the same conversation claim.
+		job, err := api.projectActions.Job(ctx, "owner", timerJobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		claim, err := api.projectActions.claimAutomationRun(ctx, job, "cron", time.Now(), productScheduleRunOptions{}, nil)
+		if !errors.Is(err, productschedule.ErrAlreadyRunning) {
+			if claim != nil {
+				claim.cancel()
+				api.projectActions.finishAutomationRun(claim.jobKey, claim.convKey)
+			}
+			t.Fatalf("cron overlapped the running manual workflow: %v", err)
+		}
+		// Real SQLite entries exercise the visitor's date bounds and run/user
+		// attribution. These are fixture costs, not a model billing assertion.
+		for i, owner := range []string{"owner", "other"} {
+			if err := api.costLedger.Append(costledger.Entry{EventID: fmt.Sprintf("timer-cost-%d", i), UserID: owner, SourceRunID: runID, ModelID: "fixture", Provider: "fixture", PromptTokens: 100, TotalCostUSD: 0.25, LLMCallCount: 1}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/stop", nil); status != 200 {
+			t.Fatalf("Crew timer Stop: HTTP%d %s", status, body)
+		}
+		stoppedAt := time.Now()
+		for ctx.Err() == nil {
+			saved, err := store.GetRun(ctx, runID)
+			_, busy := api.projectActions.Running("owner", timerJobID)
+			if err == nil && saved.State == schedulerstate.StateStopped && !busy {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if ctx.Err() != nil {
+			t.Fatal("Crew workflow Stop did not settle terminal evidence/claim")
+		}
+		assertCrewPythonHeartbeatStops(t, ctx, heartbeat, stoppedAt)
+		runsWorkspace, err := api.projectActions.RunsWorkspace(ctx, job)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runs, _, err := ListScheduleRuns(ctx, runsWorkspace, timerJobID, 10, 0)
+		if err != nil || len(runs) != 1 || runs[0].Usage == nil || runs[0].Usage.PromptTokens != 100 || runs[0].Usage.CostUSD != 0.25 {
+			t.Fatalf("attributed SQLite usage missing or includes another person: %+v %v", runs, err)
+		}
+		if err := writeFileToWorkspace(ctx, binding.Root+"/code/main.py", "from agentworks import inputs, run_folder\nassert inputs['count']==7 and inputs['enabled'] is True\n(run_folder/'result.txt').write_text('timer finished')\n"); err != nil {
+			t.Fatal(err)
+		}
+		if entry == "crew-timer-dependency" {
+			// Run now is the explicit override, even while the clock would wait.
+			status, body := timerHTTP("PUT", "/api/scheduler/jobs/"+timerJobID, map[string]any{"after_delay_minutes": 1440})
+			var updated ScheduledJobResponse
+			if status != 200 || json.Unmarshal(body, &updated) != nil || updated.AfterDelayMinutes != 1440 {
+				t.Fatalf("dependency update lost existing setting: HTTP%d %s", status, body)
+			}
+		}
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
+			t.Fatalf("second manual timer: HTTP%d %s", status, body)
+		}
+		var completed schedulerstate.Run
+		for ctx.Err() == nil {
+			decisions, _ := store.ListFireDecisions(ctx, "crew", "team", strings.TrimPrefix(timerJobID, "product-project:work:team:"), 10)
+			for _, d := range decisions {
+				if d.RunID != "" && d.RunID != runID {
+					completed, _ = store.GetRun(ctx, d.RunID)
+				}
+			}
+			if schedulerstate.IsTerminal(completed.State) {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if completed.State != schedulerstate.StateCompleted || completed.RunFolder == "" {
+			t.Fatalf("actual saved Python completion: %+v", completed)
+		}
+		result, err := os.ReadFile(filepath.Join(layout.Runtime, "runs", completed.RunFolder, "result.txt"))
+		if err != nil || string(result) != "timer finished" {
+			t.Fatalf("actual Python result: %q %v", result, err)
+		}
+		if status, body := timerHTTP("GET", "/api/scheduler/jobs/"+timerJobID+"/runs", nil); status != 200 || !strings.Contains(string(body), completed.RunID) || !strings.Contains(string(body), binding.Root) {
+			t.Fatalf("Crew history lost run/definition path: HTTP%d %s", status, body)
+		}
+		file, found, err := api.liveConversationPath("owner", completed.ActiveSessionID, externalCommandCrewRoot)
+		if err != nil || !found {
+			t.Fatalf("timer conversation missing: %s %v", file, err)
+		}
+		history, found, err := readConversationTailFromWorkspace(ctx, file, 100)
+		if err != nil || !found || !strings.Contains(history, runID+":stopped") || !strings.Contains(history, completed.RunID+":completed") {
+			t.Fatalf("durable Stop/completion chat receipts missing: %s %v", history, err)
+		}
+		// Two enabled future timers may become stale together. Pausing/deleting
+		// one must not revalidate the unchanged sibling's launch inputs.
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/enable", nil); status != 200 {
+			t.Fatalf("enable valid timer: HTTP%d %s", status, body)
+		}
+		secondTimer := map[string]any{"entity_type": "product", "product_profile_id": "work", "product_project_id": "team", "name": "Second future timer", "schedule_type": "cron", "cron_expression": "0 0 1 1 *", "timezone": "UTC", "enabled": true, "target_workflow_id": binding.ID, "input_preset": "Saved", "inputs": map[string]string{"enabled": "true"}}
+		status, body := timerHTTP("POST", "/api/scheduler/jobs", secondTimer)
+		var sibling ScheduledJobResponse
+		if status != 201 || json.Unmarshal(body, &sibling) != nil {
+			t.Fatalf("create sibling timer: HTTP%d %s", status, body)
+		}
+		// A later definition edit can invalidate a saved preset. Its attempted
+		// run must remain visible in the same user-facing history and status.
+		if err := saveCrewScriptInputs(ctx, binding.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "integer", Value: "2"}, {Name: "enabled", Type: "boolean", Value: "false"}}}); err != nil {
+			t.Fatal(err)
+		}
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
+			t.Fatalf("preflight attempt not recorded: HTTP%d %s", status, body)
+		}
+		var latest ScheduledJobResponse
+		for ctx.Err() == nil {
+			status, body := timerHTTP("GET", "/api/scheduler/jobs/"+timerJobID, nil)
+			if status != 200 || json.Unmarshal(body, &latest) != nil {
+				t.Fatalf("read preflight result: HTTP%d %s", status, body)
+			}
+			if latest.LastStatus == "error" {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		runs, _, err = ListScheduleRuns(ctx, runsWorkspace, timerJobID, 10, 0)
+		if ctx.Err() != nil || err != nil || latest.ConsecutiveFailures != 1 || latest.LastError == "" || len(runs) != 3 || runs[0].Status != "error" || runs[0].Error == "" {
+			t.Fatalf("preflight failure absent from history/state: job=%+v runs=%+v err=%v", latest, runs, err)
+		}
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/disable", nil); status != 200 {
+			t.Fatalf("stale sibling blocked pausing timer: HTTP%d %s", status, body)
+		}
+		if status, body := timerHTTP("DELETE", "/api/scheduler/jobs/"+timerJobID, nil); status != 204 {
+			t.Fatalf("stale sibling blocked deleting timer: HTTP%d %s", status, body)
+		}
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+sibling.ID+"/disable", nil); status != 200 {
+			t.Fatalf("remaining stale timer cannot be paused: HTTP%d %s", status, body)
+		}
+		if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+sibling.ID+"/enable", nil); status != 400 || !strings.Contains(string(body), `saved inputs "Saved" not found`) {
+			t.Fatalf("re-enable accepted stale inputs: HTTP%d %s", status, body)
+		}
+		return
+	}
 	routes := mux.NewRouter()
 	routes.HandleFunc("/api/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork)
 	routes.HandleFunc("/api/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork)
@@ -439,37 +742,8 @@ child.wait()
 			t.Fatal("Python worker did not return after its Stop")
 		}
 	}
-	// Cancellation is asynchronous: wait for the actual process's writes to stop,
-	// rather than treating a registry status alone as proof it ended.
-	var last string
-	stable := 0
-	for stable < 10 && ctx.Err() == nil && time.Since(stoppedAt) < 5*time.Second {
-		raw, err := os.ReadFile(heartbeat)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(raw) == last {
-			stable++
-		} else {
-			last, stable = string(raw), 0
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if stable < 10 {
-		t.Fatal("Python kept writing after the authenticated HTTP Stop")
-	}
-	if remaining := time.Until(stoppedAt.Add(5 * time.Second)); remaining > 0 {
-		time.Sleep(remaining)
-	}
-	before, err := os.Stat(heartbeat)
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(300 * time.Millisecond)
-	after, err := os.Stat(heartbeat)
-	if err != nil || !after.ModTime().Equal(before.ModTime()) || after.ModTime().After(stoppedAt.Add(5*time.Second)) {
-		t.Fatalf("actual child heartbeat advanced after Stop +5s: before=%v after=%v err=%v", before, after, err)
-	}
+	assertCrewPythonHeartbeatStops(t, ctx, heartbeat, stoppedAt)
+
 	if entry == "trigger" {
 		// A timer has no originating chat: it remains a normal durable Crew run,
 		// with no new background item or dependency on the parent chat staying open.
@@ -507,5 +781,40 @@ child.wait()
 			t.Fatalf("unattended timer registered in originating chat: %+v", items)
 		}
 		stopRun(timerRun)
+	}
+}
+
+func assertCrewPythonHeartbeatStops(t *testing.T, ctx context.Context, heartbeat string, stoppedAt time.Time) {
+	t.Helper()
+	// Cancellation is asynchronous: wait for the actual process's writes to stop,
+	// rather than treating a registry status alone as proof it ended.
+	var last string
+	stable := 0
+	for stable < 10 && ctx.Err() == nil && time.Since(stoppedAt) < 5*time.Second {
+		raw, err := os.ReadFile(heartbeat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) == last {
+			stable++
+		} else {
+			last, stable = string(raw), 0
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if stable < 10 {
+		t.Fatal("Python kept writing after the authenticated HTTP Stop")
+	}
+	if remaining := time.Until(stoppedAt.Add(5 * time.Second)); remaining > 0 {
+		time.Sleep(remaining)
+	}
+	before, err := os.Stat(heartbeat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	after, err := os.Stat(heartbeat)
+	if err != nil || !after.ModTime().Equal(before.ModTime()) || after.ModTime().After(stoppedAt.Add(5*time.Second)) {
+		t.Fatalf("actual child heartbeat advanced after Stop +5s: before=%v after=%v err=%v", before, after, err)
 	}
 }

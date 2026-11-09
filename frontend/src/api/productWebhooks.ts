@@ -13,6 +13,8 @@ export interface ProductAPITrigger {
   run_destination: 'chat' | 'isolated' | 'new'
   kind?: string
   caller?: { type: string; id: string; profile_id?: string }
+  /** One plain line from the server: what this webhook starts ("Sends a message to Main"). */
+  starts?: string
 }
 
 /** One place a trigger's messages can run, from the server's shared list of choices. */

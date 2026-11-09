@@ -20,6 +20,7 @@ type Project struct {
 // execution mode. Conversation is only the Crew's existing isolated destination.
 type Action struct {
 	Type         string `json:"type"`
+	WorkflowID   string `json:"workflow_id,omitempty"`
 	Step         string `json:"step,omitempty"`
 	Tab          string `json:"tab,omitempty"`
 	Function     string `json:"function,omitempty"`
@@ -31,6 +32,35 @@ type After struct {
 	Outcome      string   `json:"outcome,omitempty"`
 	DelayMinutes int      `json:"delay_minutes,omitempty"`
 	Deadline     string   `json:"deadline,omitempty"`
+}
+
+// Validate keeps dependency settings identical for every product clock.
+func (a *After) Validate(scheduleID string) error {
+	if a == nil {
+		return nil
+	}
+	if len(a.Schedules) == 0 {
+		return fmt.Errorf("choose a prerequisite schedule before setting its outcome, delay or deadline")
+	}
+	for _, id := range a.Schedules {
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(id) == scheduleID {
+			return fmt.Errorf("prerequisite schedules must be named and cannot include this schedule itself")
+		}
+	}
+	switch strings.TrimSpace(a.Outcome) {
+	case "", "completed", "any_terminal":
+	default:
+		return fmt.Errorf("after_terminal_status must be completed or any_terminal")
+	}
+	if a.DelayMinutes < 0 {
+		return fmt.Errorf("after_delay_minutes cannot be negative")
+	}
+	if deadline := strings.TrimSpace(a.Deadline); deadline != "" {
+		if _, err := time.Parse("15:04", deadline); err != nil {
+			return fmt.Errorf("dependency_deadline must be HH:MM in the schedule timezone")
+		}
+	}
+	return nil
 }
 
 type Date struct {
@@ -105,5 +135,5 @@ func (s Schedule) Validate() error {
 	if !json.Valid(s.Input) {
 		return fmt.Errorf("schedule input must be JSON")
 	}
-	return nil
+	return s.When.After.Validate(s.ID)
 }

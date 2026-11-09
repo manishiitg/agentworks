@@ -1,4 +1,3 @@
-import GoalOverview from '../GoalOverview'
 import { inspectionKey } from '../../../utils/stepInspection'
 import { WorkspacePanelNavigationProvider } from '../../workspace/WorkspacePanelNavigation'
 import { WorkspacePanelHeader } from '../../workspace/WorkspacePanelHeader'
@@ -137,8 +136,6 @@ function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string
         // WorkspaceViewHost renders the caller-supplied Workshop panel before
         // reaching InspectorBody. Keep this branch for registry exhaustiveness.
         return null
-      case 'goals':
-        return workspacePath ? <GoalOverview key={workspacePath} workspacePath={workspacePath} /> : null
       case 'human-actions':
         return <HumanActionsView workspacePath={workspacePath} />
       case 'access':

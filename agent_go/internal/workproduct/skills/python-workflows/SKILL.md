@@ -7,6 +7,26 @@ description: Read before creating or changing a workflow in a Crew. New workflow
 
 A new workflow is a Python script: a `script.json` that declares its inputs and outputs, and a `main.py` that does the work with the `agentworks` helpers. There is no plan file to build. Ordinary Python decides the order: functions, `if`/`elif`, loops.
 
+## One workflow per Crew
+
+A Crew has one workflow. A new task is a new path inside it, not a new workflow:
+
+- Add an input that picks the task (for example `TASK`) and an `if`/`elif` branch for it in `main.py`.
+- Save a preset (a saved setting) for that task, such as `{"name": "Weekly report", "values": {"TASK": "report"}}`.
+- Point the task's schedule, webhook or action at that preset.
+
+Put reusable code in a helper `.py` file beside `main.py` and import it normally:
+
+```python
+# gate.py
+def run_gate():
+    ...
+
+# main.py
+import gate
+gate.run_gate()
+```
+
 Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. In Crew chat, run it with `functions action=run_trigger`, passing its `workflow:<id>` in `workspace_path`, then read the result with `functions action=trigger_status`. If several saved workflows could match the request, ask which one; never choose silently.
 
 ## External MCP and CLI
@@ -48,7 +68,7 @@ source-editing, account and file grants.
 For a failed run, `runs action=resume` with its `workflow_id` and `run_folder`
 keeps the frozen source, input proof and folder, preserves logs and starts a new
 attempt from the top of Python. Builder/edit authority is required. Successful
-explicitly keyed `agent()` or `run_script()` results may be reused and expose
+explicitly keyed `agent()` results may be reused and expose
 `reply.reused`; keys name logical calls, so use a unique key per loop iteration.
 The same key twice in one attempt is refused. Changed arguments execute fresh.
 Other Python code, database/app calls, checks and notices execute again;
@@ -59,7 +79,7 @@ in a new folder instead. Inspect the failed receipt before choosing either.
 During an upgrade, inspect the source outline's notes for calls without keys.
 Give expensive or effectful work a semantic key, such as one per record ID;
 never insert a fixed key per source line or rewrite loops automatically.
-To make long phases resumable, give each `agent()` or `run_script()` a stable
+To make long phases resumable, give each `agent()` call a stable
 explicit `key`, such as `key="research"` or `key=f"research:{customer_id}"` in
 a loop. Keys identify work, so do not reuse one for different calls. Keep sends
 and orders as ordinary calls; keys are not permission to resend them. Inspect
@@ -85,7 +105,7 @@ is refused while the same run is active.
 - `inputs` are typed (`string`, `integer`, `number`, `boolean`) with an optional default in `value`; add `"required": true` when there is no sensible default.
 - `input_presets` are optional named sets of values, for example one per market. A run picks one preset or passes its own values.
 - `outputs` names the files the run must leave in its run folder.
-- Optional `timeout_seconds` limits the whole script, including its agent and script calls. The default is 3600 (one hour); choose an integer from 1 to 21600 (six hours). Stop can still end it sooner.
+- Optional `timeout_seconds` limits the whole script, including its agent calls. The default is 3600 (one hour); choose an integer from 1 to 21600 (six hours). Stop can still end it sooner.
 - Put third-party Python packages in one plain `requirements.txt` beside `main.py`, preferably with versions such as `httpx==0.28.1`. List pins directly; included files, constraints and installer option lines are refused. The runner installs them with bundled uv (pip when uv is unavailable), then reuses this script's read-only package cache. Changing the file creates a new cache entry. Its agents use the same packages. No system-wide install is needed.
 - Declare needed Vault names in `"secrets": ["API_KEY"]`. The existing selected/lent Vault account supplies them; a missing name stops the run before any step. `from agentworks import secret`, then `secret("API_KEY")`, reads its existing `SECRET_API_KEY` environment value. An undeclared name is refused. Never put values in inputs, files, helper arguments or logs.
 
@@ -151,8 +171,7 @@ else:
 - `run_folder`: this run's own folder. Write outputs here.
 - `@step("Title")` on a function: a label in the Plan and Runs views. The function runs normally every time; nothing is cached or retried.
 - A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
-- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
-- `run_script(id, inputs)`: run another saved script of this Crew and get its output files.
+- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None)`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `ask_agent(crew, message, wait_seconds=25)`: ask an accessible Crew by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
