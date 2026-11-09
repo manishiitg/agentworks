@@ -78,14 +78,19 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 	}
 
 	record := &publishedProject{Root: externalCommandCrewRoot, WorkspaceID: "team", ProfileID: "work", OwnerID: "owner", PublisherID: "owner", ProjectID: "laptop", Revision: "main-publication", SourcePaths: []string{"functions.json"}}
-	source := f.read(t, crewFunctionRoot(ctx, target)+"/functions.json")
+	source, found, err := readFileFromWorkspace(ctx, crewFunctionRoot(ctx, target)+"/functions.json")
+	if err != nil || !found {
+		t.Fatalf("read saved actions: found=%v err=%v", found, err)
+	}
 	f.write(t, record.sourceRoot()+"/functions.json", source)
+	// Publication is the source of truth, including disabled definitions;
+	// the runtime Crew need not carry its own functions file.
+	if err := writeFileToWorkspace(ctx, crewFunctionRoot(ctx, target)+"/functions.json", `{"functions":[]}`); err != nil {
+		t.Fatal(err)
+	}
 	if err := savePublishedProject(record); err != nil {
 		t.Fatal(err)
 	}
-	// Publication is the source of truth, including disabled definitions;
-	// the runtime Crew need not carry its own functions file.
-	f.write(t, crewFunctionRoot(ctx, target)+"/functions.json", `{"functions":[]}`)
 	for _, user := range []string{"owner", "other"} {
 		for _, action := range readActions(user) {
 			if action.CanChange || !strings.Contains(action.Fixed, "publish again") {
