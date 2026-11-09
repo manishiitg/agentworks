@@ -9,6 +9,12 @@ external_tools: [workflow, workspace, runs, functions]
 A workflow belongs to a Crew. Its saved source is `script.json` (typed inputs,
 optional presets and expected outputs), `main.py`, and any nested Python files.
 The server runs it in that Crew with its current permissions and connected apps.
+
+The parent workflow and platform-run scripts can import `agentworks` and
+`agentworks_db`. A native shell inside `agent()` does not have that helper
+environment. Agents use the registered `database` tool (`action="query"` or
+`"mutate"`), or write files that the parent checks and stores. When converting
+a workflow, keep these imports out of helpers an agent must launch itself.
 An optional `timeout_seconds` in `script.json` limits the whole script, including
 its helper calls: default 3600 seconds, allowed integers 1 through 21600 (six
 hours). Stop can end it sooner.
