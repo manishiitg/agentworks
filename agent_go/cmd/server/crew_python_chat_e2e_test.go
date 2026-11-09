@@ -260,7 +260,7 @@ child.wait()
 			}
 			prerequisite = strings.TrimPrefix(saved.ID, "product-project:work:team:")
 			create["enabled"], create["cron_expression"] = true, "* * * * *"
-			create["after_schedule_ids"], create["after_delay_minutes"] = []string{saved.ID}, 1
+			create["after_schedule_ids"], create["after_delay_minutes"] = []string{saved.ID}, 0
 		}
 		status, body := timerHTTP("POST", "/api/scheduler/jobs", create)
 		var saved ScheduledJobResponse
@@ -272,11 +272,19 @@ child.wait()
 			t.Fatalf("timer list lost target: HTTP%d %s", status, body)
 		}
 		if entry == "crew-timer-dependency" {
-			if len(saved.AfterScheduleIDs) != 1 || saved.AfterScheduleIDs[0] != projectScheduleJobID("work", "team", prerequisite) || saved.AfterDelayMinutes != 1 {
+			if len(saved.AfterScheduleIDs) != 1 || saved.AfterScheduleIDs[0] != projectScheduleJobID("work", "team", prerequisite) || saved.AfterDelayMinutes != 0 {
 				t.Fatalf("create lost dependency projection: %+v", saved)
 			}
-			dependencyOccurrence = time.Now().UTC().Truncate(time.Minute).Add(time.Minute)
+			dependencyOccurrence = time.Now().UTC().Truncate(time.Minute)
 			rawID := strings.TrimPrefix(timerJobID, "product-project:work:team:")
+			// The real admission guard rechecks wall time after clock dispatch.
+			// Backdate only the fixture activation cursor, not the occurrence or
+			// completion, so that guard can observe the same ready prerequisite.
+			if err := api.projectActions.updateStateByKey(ctx, "owner", projectScheduleStateKey("work", "team", rawID), func(state *productScheduleUserState) {
+				state.ActivatedAt = dependencyOccurrence.Add(-time.Minute).Format(time.RFC3339)
+			}); err != nil {
+				t.Fatal(err)
+			}
 			checkWaiting := func(at time.Time) {
 				t.Helper()
 				api.scheduler.dispatchProjectTimers(ctx, at)
@@ -305,7 +313,7 @@ child.wait()
 			// A later prerequisite occurrence cannot release this older wait.
 			completePrerequisite("later-prerequisite", dependencyOccurrence.Add(time.Minute), dependencyOccurrence.Add(2*time.Minute))
 			checkWaiting(dependencyOccurrence.Add(5 * time.Minute))
-			completePrerequisite("matching-prerequisite", dependencyOccurrence.Add(-time.Minute), dependencyOccurrence.Add(2*time.Minute))
+			completePrerequisite("matching-prerequisite", dependencyOccurrence, time.Now().UTC())
 			api.scheduler.dispatchProjectTimers(ctx, dependencyOccurrence.Add(5*time.Minute))
 		} else if status, body := timerHTTP("POST", "/api/scheduler/jobs/"+timerJobID+"/trigger", nil); status != 200 {
 			t.Fatalf("manual Crew workflow timer: HTTP%d %s", status, body)
