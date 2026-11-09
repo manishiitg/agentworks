@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -245,6 +246,32 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	}
 	if runtime.WorkshopMode != crewCLIMode(false) || runtime.AgentToolsMode != normalizeAgentToolsMode(currentProfile.Runtime.AgentTools.Mode) || runtime.AgentSessionHandle.Provider.WorkingDir != wantCwd {
 		t.Fatal("resume changed Crew mode or canonical cwd")
+	}
+	// PLAT-746-531: bounded history cannot prove an uncertain prompt absent.
+	binding := runtime.AgentSessionHandle.Provider
+	_, _, importedPath, importedFound, importedErr := nativeTranscriptMessagesForBinding("claude-code", runtime.ExternalSessionID, binding.WorkingDir, binding.RuntimeDir, "")
+	if importedErr != nil || !importedFound {
+		t.Fatalf("imported transcript: %v", importedErr)
+	}
+	record := chatSubmissionRecord{Owner: "default", Session: response.SessionID, Project: virtual, Message: "never submitted", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	if !f.api.canRetryUncertainChatSubmission(context.Background(), record) {
+		t.Fatal("complete transcript did not prove non-delivery")
+	}
+	writeClaudeChatTurns(t, importedPath, strings.Repeat("long accepted prompt ", 2000))
+	if f.api.canRetryUncertainChatSubmission(context.Background(), record) {
+		t.Fatal("truncated prompt authorized an uncertain resend")
+	}
+	// The original can grow after import without blocking its existing copy.
+	growing, growErr := os.OpenFile(path, os.O_WRONLY, 0600)
+	if growErr != nil {
+		t.Fatal(growErr)
+	}
+	if _, growErr = growing.Seek(128<<20, 0); growErr == nil {
+		_, growErr = growing.WriteString("\n")
+	}
+	growing.Close()
+	if growErr != nil {
+		t.Fatal(growErr)
 	}
 	w = request(http.MethodPost, "", body, owner)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), response.SessionID) {

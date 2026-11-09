@@ -488,8 +488,8 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	messages, maxTimestamp, _, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
-	if err != nil || !ok || maxTimestamp.IsZero() {
+	messages, maxTimestamp, transcriptPath, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
+	if err != nil || !ok || maxTimestamp.IsZero() || !nativeHistoryCanProveAbsence(provider, transcriptPath) {
 		return false
 	}
 	want := strings.TrimSpace(record.Message)
@@ -504,7 +504,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 func writeSubmissionUncertain(w http.ResponseWriter, id string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": "delivery_uncertain", "delivery_status": "delivery_uncertain", "submission_id": id, "message": fmt.Sprintf("Submission %s is durable but delivery is uncertain. Reconcile this submission before sending it again.", id)})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "delivery_uncertain", "delivery_status": "delivery_uncertain", "submission_id": id, "message": "Not sure the last message was delivered. Check this chat before sending it again."})
 }
 
 // ListUnresolvedChatSubmissions exposes durable accepted input for recovery.
