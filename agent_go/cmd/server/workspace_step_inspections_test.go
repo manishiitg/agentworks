@@ -31,9 +31,14 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	api.activeSessions = map[string]*ActiveSessionInfo{}
 	manifest := func(owner, kind string) {
 		t.Helper()
-		if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", fmt.Sprintf(`{"id":"goal","kind":%q,"created_by":%q,"access":{"owners":[%q],"readers":["bob"]}}`, kind, owner, owner)); err != nil {
-			t.Fatal(err)
+		// Model authoritative saved access changes, not ordinary authoring
+		// (which preserves created_by). Normal workflow kind is omitted.
+		if kind == "workflow" {
+			kind = ""
 		}
+		workspace.mu.Lock()
+		workspace.files["Workflow/example/workflow.json"] = fmt.Sprintf(`{"id":"goal","kind":%q,"created_by":%q,"access":{"owners":[%q],"readers":["bob"]}}`, kind, owner, owner)
+		workspace.mu.Unlock()
 	}
 	manifest("alice", "workflow")
 	// PLAT-825: a fresh Goal may have a database before any background work.
@@ -261,7 +266,7 @@ func TestWorkspaceRunEvidenceUsesProjectReadGrantAndBoundsPublicFields(t *testin
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator"},{"id":"bob","username":"bob","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
-	workspace := &mockWorkspaceAPI{files: map[string]string{"Workflow/evidence/workflow.json": `{"id":"evidence","kind":"workflow","created_by":"alice","access":{"owners":["alice"],"readers":["bob"]}}`}}
+	workspace := &mockWorkspaceAPI{files: map[string]string{"Workflow/evidence/workflow.json": `{"id":"evidence","created_by":"alice","access":{"owners":["alice"],"readers":["bob"]}}`}}
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
