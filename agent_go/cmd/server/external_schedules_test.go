@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 // manage_schedules follows the Schedules page: a reader cannot create one, and
@@ -109,4 +112,75 @@ func TestExternalManageMessagingGuards(t *testing.T) {
 	if w := f.call(t, "owner", "manage_messaging", map[string]any{"workflow_id": "invoices", "action": "whatsapp_link"}); w.Code != 200 || !strings.Contains(w.Body.String(), "QR code") {
 		t.Fatalf("whatsapp_link: %d %s", w.Code, w.Body)
 	}
+}
+
+// PLAT-746: the panel showed a Crew's child workflow timers while chat listed
+// only message timers. The list must include those saved timers,
+// without exposing it to another person's chat or changing its timing.
+func TestCrewChatListsItsWorkflowTimerButNotAnotherPersons(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"other","username":"other","products":["work"]}]}`)
+	state, err := schedulerstate.Open(filepath.Join(t.TempDir(), "scheduler.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = state.Close() })
+	f.api.scheduler = &SchedulerService{api: f.api, stateStore: state, runtimeStates: map[string]*ScheduleRuntimeState{}}
+	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	child := crewExecutableBinding{ID: "chat-timed-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/chat-timed-workflow", Kind: "script", RuntimeRoot: "workflows/chat-timed-workflow"}
+	if err := registerCrewExecutable(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := initializeCrewScriptSource(ctx, child, "Example workflow"); err != nil {
+		t.Fatal(err)
+	}
+	manifest := NewWorkflowManifest("Example workflow")
+	manifest.ID, manifest.CreatedBy = child.ID, "owner"
+	manifest.Schedules = []WorkflowSchedule{{ID: "chat-workflow-timer", Name: "Sunday", Enabled: false, ScheduleType: "cron", CronExpression: "0 16 * * 0", Timezone: "UTC"}}
+	if err := WriteWorkflowManifest(ctx, child.Root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	reg := crewCapabilityRegistrar{}
+	if err := f.api.registerWorkScheduleTools(reg, crewProfileID, "owner", "schedule-test", externalCommandCrewRoot, false); err != nil {
+		t.Fatal(err)
+	}
+	body, err := reg["list_project_schedules"].execute(ctx, map[string]interface{}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var list struct {
+		Schedules []ScheduledJobResponse `json:"schedules"`
+	}
+	if err := json.Unmarshal([]byte(body), &list); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range list.Schedules {
+		if row.ID == "chat-workflow-timer" {
+			found = row.CrewWorkspacePath == externalCommandCrewRoot
+		}
+	}
+	if !found {
+		t.Fatalf("chat omitted the workflow timer visible in its Crew panel: %s", body)
+	}
+	other := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
+	otherRows, err := f.api.chatProjectScheduleRows(other, "other", externalCommandCrewRoot)
+	if err == nil {
+		for _, row := range otherRows {
+			if row.ID == "chat-workflow-timer" {
+				t.Fatal("another person's chat read the private workflow timer")
+			}
+		}
+	}
+	got, found, err := ReadWorkflowManifest(ctx, child.Root)
+	if err != nil || !found {
+		t.Fatalf("read back timer: %v", err)
+	}
+	if got.Schedules[0].CronExpression != "0 16 * * 0" || got.Schedules[0].Enabled || got.Schedules[0].Timezone != "UTC" {
+		t.Fatalf("listing changed the saved timer: %+v", got.Schedules[0])
+	}
+
 }
