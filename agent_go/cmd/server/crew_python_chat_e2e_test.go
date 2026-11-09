@@ -173,12 +173,13 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileToWorkspace(ctx, binding.Root+"/code/main.py", `import time
+	if err := writeFileToWorkspace(ctx, binding.Root+"/code/main.py", `import json, os, subprocess, sys
 from agentworks import inputs, run_folder
 assert inputs['count'] == 7 and inputs['enabled'] is True, inputs
-while True:
-    (run_folder / 'heartbeat.txt').write_text(str(time.monotonic_ns()))
-    time.sleep(0.05)
+child_source = "import signal,sys,time\nfrom pathlib import Path\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\nfor i in range(2400):\n Path(sys.argv[1]).write_text(str(time.monotonic_ns()))\n time.sleep(0.05)\n"
+child = subprocess.Popen([sys.executable, '-u', '-c', child_source, str(run_folder / 'heartbeat.txt')])
+(run_folder / 'worker-pids.json').write_text(json.dumps({'parent': os.getpid(), 'child': child.pid, 'group': os.getpgid(child.pid)}))
+child.wait()
 `); err != nil {
 		t.Fatal(err)
 	}
@@ -329,6 +330,17 @@ while True:
 	if heartbeat == "" {
 		t.Fatalf("registered Crew tool never started Python: %v", ctx.Err())
 	}
+	// PLAT-746-506: the real writer is a child of the waiting Python worker,
+	// not the tracked launcher. A TERM-ignoring child exposes wrapper-only Stop.
+	pidBytes, err := os.ReadFile(filepath.Join(filepath.Dir(heartbeat), "worker-pids.json"))
+	var pids struct {
+		Parent int `json:"parent"`
+		Child  int `json:"child"`
+		Group  int `json:"group"`
+	}
+	if err != nil || json.Unmarshal(pidBytes, &pids) != nil || pids.Parent <= 0 || pids.Child <= 0 || pids.Parent == pids.Child || pids.Group <= 0 {
+		t.Fatalf("heartbeat was not from the actual child: %s %v", pidBytes, err)
+	}
 	routes := mux.NewRouter()
 	routes.HandleFunc("/api/sessions/{session_id}/background-work", api.handleGetSessionBackgroundWork)
 	routes.HandleFunc("/api/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork)
@@ -408,6 +420,7 @@ while True:
 	if status, body := call(http.MethodPost, "/api/sessions/"+sessionID+"/background-work/"+id+"/stop"); status != 200 {
 		t.Fatalf("actual Python Stop: HTTP%d %s", status, body)
 	}
+	stoppedAt := time.Now()
 	for api.bgAgentRegistry.Get(sessionID, id).GetStatus() == BGAgentRunning && ctx.Err() == nil {
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -437,7 +450,7 @@ while True:
 	// rather than treating a registry status alone as proof it ended.
 	var last string
 	stable := 0
-	for stable < 10 && ctx.Err() == nil {
+	for stable < 10 && ctx.Err() == nil && time.Since(stoppedAt) < 5*time.Second {
 		raw, err := os.ReadFile(heartbeat)
 		if err != nil {
 			t.Fatal(err)
@@ -451,6 +464,18 @@ while True:
 	}
 	if stable < 10 {
 		t.Fatal("Python kept writing after the authenticated HTTP Stop")
+	}
+	if remaining := time.Until(stoppedAt.Add(5 * time.Second)); remaining > 0 {
+		time.Sleep(remaining)
+	}
+	before, err := os.Stat(heartbeat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	after, err := os.Stat(heartbeat)
+	if err != nil || !after.ModTime().Equal(before.ModTime()) || after.ModTime().After(stoppedAt.Add(5*time.Second)) {
+		t.Fatalf("actual child heartbeat advanced after Stop +5s: before=%v after=%v err=%v", before, after, err)
 	}
 	if entry == "trigger" {
 		// A timer has no originating chat: it remains a normal durable Crew run,

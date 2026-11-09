@@ -532,16 +532,7 @@ func ExecuteShellCommand(c *gin.Context) {
 		return
 	}
 	processRecord := registerShellProcess(cmd, ownerFromShellRequest(req.ExtraEnv, workingDir, fullCommand), fullCommand, workingDir, timeoutSeconds)
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			killShellCommandProcessGroup(cmd)
-		case <-done:
-		}
-	}()
 	err := cmd.Wait()
-	close(done)
 	executionTime := time.Since(startTime)
 	if ctx.Err() != nil {
 		fullLog.Force("command context ended: " + ctx.Err().Error())
@@ -744,33 +735,50 @@ func configureShellCommandProcessGroup(cmd *exec.Cmd) {
 		return
 	}
 	setProcessGroup(cmd)
+	if cmd.Cancel != nil {
+		// CommandContext must signal the group itself. A second cancellation
+		// goroutine races its default wrapper-only Kill and can lose the PGID.
+		cmd.Cancel = func() error { return cancelShellCommandProcessGroup(cmd) }
+	}
 }
 
-func killShellCommandProcessGroup(cmd *exec.Cmd) {
+func cancelShellCommandProcessGroup(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
-		return
+		return os.ErrProcessDone
 	}
 	pid := cmd.Process.Pid
 	if pid <= 0 {
-		return
+		return os.ErrProcessDone
 	}
 	if slots.IsWrapped(cmd) {
 		// A slotted command's processes belong to another account, so a kill from here would stop only sudo and
 		// leave the command running. A graceful signal is passed on by sudo to the slot program, which stops the
 		// whole group and kills what is left after its grace period; the hard kill below is the last resort.
-		_ = cmd.Process.Signal(syscall.SIGTERM)
+		log.Printf("[SHELL_CANCEL] pid=%d slotted=true signal=TERM target=launcher", pid)
+		err := cmd.Process.Signal(syscall.SIGTERM)
 		time.AfterFunc(slots.StopGrace*3, func() {
-			if pgid, err := getProcessGroup(pid); err == nil && pgid > 0 {
+			if pgid, err := getProcessGroup(pid); err == nil && pgid == pid {
 				_ = signalProcessGroup(pgid, syscall.SIGKILL)
 			}
 			_ = cmd.Process.Kill()
 		})
-		return
+		return err
 	}
-	if pgid, err := getProcessGroup(pid); err == nil && pgid > 0 {
-		if err := signalProcessGroup(pgid, syscall.SIGKILL); err == nil {
-			return
-		}
+	pgid, err := getProcessGroup(pid)
+	if err != nil || pgid != pid {
+		// Windows has no Unix groups. Never signal a foreign Unix group.
+		log.Printf("[SHELL_CANCEL] pid=%d pgid=%d group_verified=false target=process", pid, pgid)
+		return cmd.Process.Kill()
 	}
-	_ = cmd.Process.Kill()
+	log.Printf("[SHELL_CANCEL] pid=%d pgid=%d group_verified=true signal=TERM", pid, pgid)
+	if err := signalProcessGroup(pgid, syscall.SIGTERM); err != nil {
+		return cmd.Process.Kill()
+	}
+	// The launcher can exit before a child that ignores TERM. Retain the group
+	// verified above instead of looking it up through an already-dead wrapper.
+	time.AfterFunc(250*time.Millisecond, func() {
+		err := signalProcessGroup(pgid, syscall.SIGKILL)
+		log.Printf("[SHELL_CANCEL] pid=%d pgid=%d signal=KILL err=%v", pid, pgid, err)
+	})
+	return nil
 }
