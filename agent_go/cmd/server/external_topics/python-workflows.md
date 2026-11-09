@@ -50,7 +50,7 @@ keeps its original reasoning choice, recorded with its run.
    This inspects the syntax without executing or importing authored code and
    requires source-editor access. Python `@step` labels are normal function
    calls, not separate runnable or resumable plan steps. Branches and loops
-   appear as “Other code”; large scripts can return an outline-limit message.
+   with no step or agent inside are left out; large scripts can return an outline-limit message.
    Read the saved source for the complete logic.
 
 Never put secret values into source or presets. Use the project's existing

@@ -176,7 +176,7 @@ async def run(INPUT):
 
 // PLAT-746: the Script outline draws control flow. Blocks that hold steps or
 // agent() calls become container rows with their steps nested; a block with
-// none stays one "Other code" row.
+// none is left out.
 func TestAutomationOutlineDrawsControlFlow(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 unavailable")
@@ -284,7 +284,6 @@ def main():
 		"mode is gold, and check_limit(account) [case] in Choose a path",
 		"Check limit in mode is gold, and check_limit(account)",
 		"Send receipt in mode is gold, and check_limit(account)",
-		"Other code",
 	}
 	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("outline rows:\n%s\nwant:\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))

@@ -31,7 +31,7 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
       if (!node.role) {
         const step = stepOf(node)
         return <PageRow key={node.id} lead={numbered ? <StepNumber n={index + 1} status={step?.status} /> : <RunDot state={dotState(step?.status)} />} title={node.label}
-          lines={[node.type === 'agent' ? 'Agent' : node.label === 'Other code' ? 'Code with no step or agent inside' : '', step?.detail, checkLines.get(step?.id ?? '')]} />
+          lines={[node.type === 'agent' ? 'Agent' : '', step?.detail, checkLines.get(step?.id ?? '')]} />
       }
       const inside = stepsIn(node.id)
       const count = node.role === 'branch' ? `${nodes.filter(child => child.parent === node.id).length} cases` : `${inside.length} step${inside.length === 1 ? '' : 's'}`
@@ -46,19 +46,16 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
 }
 
 /**
- * What a workflow does, in order: the server's outline of its steps (labelled with @step, agents and "Other code"),
+ * What a workflow does, in order: the server's outline of its steps (labelled with @step and agents),
  * each with how it went in the latest run. With no outline (too large, or unreadable) the steps of the latest run
  * are listed instead; with neither, the card still shows Run and a way to the code.
  */
-export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], onRun, runPresets = [], runBusy = false, onCode, onAsk }: {
+export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], onCode, onAsk }: {
   workspacePath: string
   title: string
   /** The python steps of the latest run, in the order they started. */
   latestSteps: RunPythonStep[]
   latestEvidence?: RunPythonEvidence[]
-  onRun: (preset?: string) => void
-  runPresets?: string[]
-  runBusy?: boolean
   onCode: () => void
   onAsk: (task: string) => void | Promise<void>
 }) {
@@ -85,19 +82,11 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
     !(typeNotes.length && note.startsWith('Type hints show ')),
   )
   const note = state.graph?.errors[0]
-  const count = nodes.length ? nodes.filter(node => !node.role && node.label !== 'Other code').length : latestSteps.length
+  const count = nodes.length ? nodes.filter(node => !node.role).length : latestSteps.length
   const lastAt = latestSteps.map(step => step.completed_at || step.started_at).sort().pop()
   const lastRun = !latestSteps.length ? 'not run yet' : latestSteps.some(step => step.status === 'failed') ? 'last run failed' : latestSteps.some(step => step.status === 'running') ? 'running now' : `last run finished ${relativeTime(lastAt)}`.trim()
   return <PageCard title={title} hint={`${count} step${count === 1 ? '' : 's'} · ${lastRun}`} onAsk={() => onAsk('Help me change this workflow.')}
-    action={<div className="flex shrink-0 items-center gap-1">
-      <RowButton primary disabled={runBusy} onClick={() => onRun()}>{runBusy ? 'Starting…' : 'Run'}</RowButton>
-      {runPresets.length > 0 && <select aria-label="Run with saved settings" value="" disabled={runBusy}
-        onChange={event => { if (event.target.value) onRun(event.target.value) }}
-        className="max-w-40 rounded-full border border-border bg-background px-2 py-0.5 text-xs disabled:opacity-50">
-        <option value="" disabled>Run with…</option>
-        {runPresets.map(preset => <option key={preset} value={preset}>{preset}</option>)}
-      </select>}
-    </div>} testId="crew-workflow-steps">
+    testId="crew-workflow-steps">
     {nodes.length
       ? <OutlineRows nodes={nodes} byName={byName} checkLines={checkLines} numbered open={open} toggle={toggle} />
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>

@@ -212,7 +212,7 @@ sys.exit(1)
 	if err := os.Remove(checker); err != nil {
 		t.Fatal(err)
 	}
-	if code := request("owner", "print('owner update')\n"); code != 200 || !strings.Contains(lastReply, "checker is not installed") {
+	if code := request("owner", "print('owner update')\n"); code != 200 || strings.Contains(lastReply, "checker is not installed") {
 		t.Fatalf("missing checker blocked save or prompted installation: HTTP%d %s", code, lastReply)
 	}
 
