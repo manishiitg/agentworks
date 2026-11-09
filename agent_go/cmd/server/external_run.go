@@ -132,11 +132,8 @@ func (api *StreamingAPI) forwardRunTurn(w http.ResponseWriter, r *http.Request, 
 	if claims.AccessToken != nil {
 		// Close revocation/expiry races during setup, which may outlive the HTTP auth check.
 		checkCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		allowed := accessTokenSessionAllowed(checkCtx, accessTokenSession{claims.AccessToken.ID, sessionID, workflow.WorkspacePath, workflowAccessForManifest(claims, workflow.Manifest)})
+		api.recheckAccessTokenSession(checkCtx, accessTokenSession{claims.AccessToken.ID, sessionID, workflow.WorkspacePath, workflowAccessForManifest(claims, workflow.Manifest)})
 		cancel()
-		if !allowed {
-			api.cancelSessionRuntimeWork(sessionID, "access token no longer authorized", runtimePhaseCanceled)
-		}
 	}
 }
 
