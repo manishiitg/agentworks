@@ -34,6 +34,8 @@ type crewAccessLine struct {
 	Target string `json:"target,omitempty"` // dashboard: the Share tab the line opens ("dashboards")
 	// Dashboards (dashboard line): each dashboard the viewer may open, by name; each opens that dashboard.
 	Dashboards []crewAccessDashboard `json:"dashboards,omitempty"`
+	Count      int                   `json:"count,omitempty"` // dashboard: how many
+	Tag        string                `json:"tag,omitempty"`   // dashboard: who can open them ("not shared", "your team", ...)
 	People     []crewAccessPerson    `json:"people,omitempty"`
 	Progress   *crewTeamRound        `json:"progress,omitempty"`
 }
@@ -160,19 +162,13 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 
 // crewAccessDashboardLine is the Crew's dashboard in the Share tree (owner, 5 Nov: one place for Share and the
 // dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
-// One line (owner, 9 Nov): "2 dashboards · not shared", then each dashboard by name.
+// One header (owner, 9 Nov mock): "Dashboards", how many and who can open them, then each dashboard by name.
 func crewAccessDashboardLine(items []crewAccessDashboard, shared string) crewAccessLine {
 	if len(items) == 0 {
 		return crewAccessLine{Kind: "dashboard", Title: "No dashboard yet · ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
 	}
-	title := "1 dashboard"
-	if len(items) > 1 {
-		title = fmt.Sprintf("%d dashboards", len(items))
-	}
-	if words := crewAccessDashboardShared(shared); words != "" {
-		title += " · " + words
-	}
-	return crewAccessLine{Kind: "dashboard", Title: title, Path: items[0].Path, Target: "dashboards", Dashboards: items}
+	// Mock approved 9 Nov: a header "Dashboards  N" with who can open them as a tag, then one row per dashboard.
+	return crewAccessLine{Kind: "dashboard", Title: "Dashboards", Count: len(items), Tag: crewAccessDashboardShared(shared), Path: items[0].Path, Target: "dashboards", Dashboards: items}
 }
 
 // crewAccessDashboard is one dashboard under the dashboard line: its name and the document it opens.
