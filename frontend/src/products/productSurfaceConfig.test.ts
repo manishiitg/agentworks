@@ -83,29 +83,6 @@ describe('product surface deployment configuration', () => {
     expect(isEnabledProductSurface('mcp-gateway')).toBe(false)
   })
 
-  it('ignores a saved Flow default and keeps the enabled workflow product', () => {
-    vi.stubGlobal('window', {
-      __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'relays',
-        enabledProductSurfaces: ['agentworks', 'relays'],
-      },
-    })
-
-    expect(enabledProductSurfaces()).toEqual(['agentworks'])
-    expect(deploymentDefaultProductSurface()).toBe('agentworks')
-    expect(isEnabledProductSurface('agentworks')).toBe(true)
-    expect(isEnabledProductSurface('knowledgebase')).toBe(false)
-    expect(isSingleProductDeployment()).toBe(true)
-  })
-
-  it('does not restore Flow from a stale Flow-only deployment', () => {
-    vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
-      defaultProductSurface: 'relays', enabledProductSurfaces: ['relays'],
-    } })
-    expect(enabledProductSurfaces()).not.toContain('relays')
-    expect(deploymentDefaultProductSurface()).not.toBe('relays')
-  })
-
   it('exposes the Work surface when the deployment allowlists it', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {

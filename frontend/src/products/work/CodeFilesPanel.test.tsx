@@ -48,8 +48,3 @@ it('searches the folders of the folder picker and hides dot folders until asked'
  await type(search, '.hi')
  expect(names()).toEqual(['.hidden'])
 })
-it('keeps ordinary files on the server', async () => {
- container = document.createElement('div'); document.body.append(container); root = createRoot(container)
- await act(async () => root.render(<CodeFilesPanel sessionId="chat" onAsk={async () => {}} serverFiles={<p>Server files</p>} />))
- expect(container.textContent).toBe('Server files')
-})

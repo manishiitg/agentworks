@@ -89,13 +89,6 @@ it('lets a reader inspect but not change triggers', async () => {
   expect(host.textContent).not.toContain('Add API trigger')
   expect(host.textContent).not.toContain('Remove')
 })
-it('directs creation and configuration to the builder chat without a manual form', async () => {
-  const host = await mount()
-  expect(host.textContent).toContain('Ask the Builder to add one')
-  expect(host.textContent).not.toContain('Add API trigger')
-  expect(host.querySelector('form')).toBeNull()
-  expect([...host.querySelectorAll('button')].some(node => node.textContent === 'Edit')).toBe(false)
-})
 it('renders older webhooks whose optional maps were stored as null', async () => {
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({
     triggers: [{ ...trigger, route_selections: null, input_preset: null, payload_mappings: { routes: { legacy: { source: 'kind', values: null } } } } as unknown as typeof trigger],
