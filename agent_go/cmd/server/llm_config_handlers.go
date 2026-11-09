@@ -469,7 +469,7 @@ func discoveryModelOptions(provider string) []string {
 	case "pi-cli":
 		return piCuratedModelIDs()
 	case "muse-cli":
-		return []string{llmproviders.DefaultMuseCLIModel, "muse-wonder-1.0", "muse-spark-1.3-contributor"}
+		return []string{llmproviders.DefaultMuseCLIModel, "muse-wonder-1.0", "muse-ember-1.0", "muse-spark-1.3-contributor"}
 	case "agy-cli":
 		return []string{"gemini-3.8-flash-high"}
 	case "claude-code":
