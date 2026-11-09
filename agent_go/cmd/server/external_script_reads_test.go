@@ -110,7 +110,7 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 			t.Fatalf("script disappeared after entry-point save: %v", listed)
 		}
 		row := rows[0].(map[string]any)
-		for field, want := range map[string]int{"schedules": timers, "schedules_enabled": enabled, "webhooks": 2, "webhooks_enabled": 1, "function_triggers": 2, "function_triggers_enabled": 1} {
+		for field, want := range map[string]int{"schedules": timers, "schedules_enabled": enabled, "webhooks": 2, "webhooks_enabled": 1, "function_triggers": 2, "function_triggers_enabled": 1, "other": 0, "other_enabled": 0} {
 			if row[field] != float64(want) {
 				t.Fatalf("%s = %v, want %d: %v", field, row[field], want, row)
 			}
@@ -122,6 +122,11 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 		{"id":"timer-off","name":"Paused daily","project":{"kind":"goal","id":"SCRIPT_ID"},"when":{"cron":"0 10 * * *","timezone":"UTC"},"enabled":false,"action":{"type":"run"},"input":{},"run_as":"owner"}
 	]}`, "SCRIPT_ID", script.ID))
 	assertCounts(2, 1)
+	// Unknown future execution types remain visible instead of inflating timers.
+	unknown := externalCompactWorkflow(DiscoveredWorkflow{Manifest: &WorkflowManifest{Schedules: []WorkflowSchedule{{ScheduleType: "unknown", Enabled: true}}}})
+	if unknown["schedules"] != 0 || unknown["other"] != 1 || unknown["other_enabled"] != 1 {
+		t.Fatalf("unknown entry point counted as a timer: %v", unknown)
+	}
 	// Source stays with Builder even when a token can read workflow files.
 	readOnly := crewReader("owner")
 	readOnly.AccessToken.AllWorkflows = true
