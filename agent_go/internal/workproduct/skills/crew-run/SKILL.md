@@ -10,7 +10,7 @@ the task needs and keep other people's chats and secret values private.
 
 List attached workflows and their triggers with the available tools. Run a
 permitted trigger only when asked; the backend rechecks workflow permissions.
-Poll its run tool for progress. Do not call other Crews or define functions.
+Inspect its returned run tool for progress. Call another Crew’s declared Action only when requested or needed by an incoming typed call and admitted by the current session; never define or delete functions.
 For an incoming typed function, follow the execution’s supplied output contract:
 report progress with `report_function_progress` when provided, write required
 JSON to `FUNCTION_RESULT_FILE`, and explain the outcome in the final response.
