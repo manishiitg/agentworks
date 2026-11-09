@@ -45,11 +45,12 @@ function useWorkHistory(projects: SidebarProject[]) {
   const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
   const pinned = useProjectMenuHistoryStore(state => state.pinned[historyScope])
   const setPinned = useProjectMenuHistoryStore(state => state.setPinned)
+  const movePinned = useProjectMenuHistoryStore(state => state.movePinned)
   const visit = useProjectMenuHistoryStore(state => state.visit)
   const selectedProject = projects.find(project => project.selected)
   const selectedKey = selectedProject ? connectedProjectKey(active, selectedProject.kind, selectedProject.id) : ''
   useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
-  return { recent, pinned, canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
+  return { recent, pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
   const crews = projects.filter(project => project.kind === 'crew')
@@ -68,7 +69,7 @@ function AllProjects({ children }: { children: ReactNode }) {
   </section>
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
-  const { recent, pinned, canPin, setPinned, visit } = useWorkHistory(projects)
+  const { recent, pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
   const orderedProjects = [...projects].sort((a, b) => {
     const rank = (project: SidebarProject) => {
       const index = recent?.indexOf(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)) ?? -1
@@ -78,7 +79,13 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   })
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
   const renderProject = ({ location, mac, state, ...project }: SidebarProject) => {
+    const pinnedIndex = pinnedProjects.findIndex(item => item.id === project.id && item.kind === project.kind)
+    const move = (offset: number) => {
+      const target = pinnedProjects[pinnedIndex + offset]
+      if (target) movePinned(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id), connectedProjectKey(getRawActiveWorkspaceId(), target.kind, target.id))
+    }
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined}
+    onMoveUp={canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={canPin && pinnedIndex >= 0 && pinnedIndex < pinnedProjects.length - 1 ? () => move(1) : undefined}
     showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
     pinned={pinned?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))} onTogglePin={canPin && !project.personal_agent ? () => { const key = connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id); setPinned(key, !pinned?.includes(key)) } : undefined}
     stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
@@ -90,7 +97,10 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
       : <Fragment key={`${project.kind}:${project.id}`}>{row()}</Fragment>
   }
   const invites = useTeamInviteRows()
-  const pinnedProjects = orderedProjects.filter(project => !project.personal_agent && pinned?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)))
+  const pinnedProjects = (pinned || []).flatMap(key => {
+    const project = orderedProjects.find(item => !item.personal_agent && connectedProjectKey(getRawActiveWorkspaceId(), item.kind, item.id) === key)
+    return project ? [project] : []
+  })
   const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">{pinnedProjects.map(renderProject)}</section>}
@@ -117,7 +127,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, refreshActivity, error: directoryError } = state
-  const { recent, pinned, canPin, setPinned, visit } = useWorkHistory(projects)
+  const { recent, pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   const invites = useTeamInviteRows()
   useEffect(() => {
@@ -159,8 +169,14 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     .flatMap(key => { const row = crewByKey.get(key); return row ? [row] : [] })
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const key = keyFor(project)
+    const pinnedIndex = pinnedRows.findIndex(item => keyFor(item) === key)
+    const move = (offset: number) => {
+      const target = pinnedRows[pinnedIndex + offset]
+      if (target) movePinned(key, keyFor(target))
+    }
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string) => <SidebarProjectRow {...project} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
+      onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={project.connection.id === active && project.selected}
       location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} remote={project.connection.id !== 'local'} showLocation={shortcut || selectedLocations.length > 1}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && project.kind === 'crew' && !project.personal_agent ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
