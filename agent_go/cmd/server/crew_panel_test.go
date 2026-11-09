@@ -98,7 +98,7 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 		{ID: "timer-one", Name: "First timer", ScheduleType: "cron", CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: true},
 		{ID: "timer-two", Name: "Second timer", ScheduleType: "cron", CronExpression: "0 10 * * *", Timezone: "UTC", Enabled: false},
 		{ID: "timer-three", Name: "Third timer", ScheduleType: "cron", CronExpression: "0 11 * * *", Timezone: "UTC", Enabled: true},
-		{ID: "incoming", Name: "Incoming webhook", ScheduleType: "webhook", Enabled: true, Webhook: &WorkflowWebhookConfig{AuthMode: "bearer"}},
+		{ID: "incoming", Name: "Incoming webhook", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "opaque-fixture"}},
 	}
 	if err := WriteWorkflowManifest(t.Context(), child.Root, manifest); err != nil {
 		t.Fatal(err)
