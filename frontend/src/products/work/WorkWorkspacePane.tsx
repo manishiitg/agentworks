@@ -295,10 +295,24 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
         {view === 'files' && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.repoRoot}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialRepoRoot={filesView.repoRoot} initialScope={filesView.uncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
-        {view === 'identity' && <WorkIdentityPanel
+        {(view === 'identity' || view === 'memory') && <WorkIdentityPanel
 
           workspacePath={workspacePath}
           shared={Boolean(shared)}
+          settingsView={view}
+          onSettingsTabChange={tab => {
+            const nextView = tab === 'general' ? 'identity' : 'memory'
+            setWorkspaceViewTarget(nextView, tab)
+            onViewChange(nextView)
+          }}
+          skillsPanel={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
+          memoryPanel={<WorkMemoryPanel
+            workspacePath={workspacePath}
+            onOpenFile={filePath => { void openProjectFile(filePath) }}
+            fileClient={sharedFiles ?? undefined}
+            skillsEnabled={false}
+            embedded
+          />}
           projectId={projectId}
           projectTitle={projectTitle}
           projectDescription={projectDescription}
@@ -331,14 +345,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onWorkflowContextPathsChange={onWorkflowContextPathsChange}
           onAccessPage={setAccessPage}
           onBack={() => onViewChange('context')}
-        />}
-        {view === 'memory' && <WorkMemoryPanel
-          workspacePath={workspacePath}
-          onOpenFile={filePath => { void openProjectFile(filePath) }}
-          fileClient={sharedFiles ?? undefined}
-          memoryEnabled={!enabledPanels || enabledPanels.has('memory')}
-          skillsEnabled={!enabledPanels || enabledPanels.has('skills')}
-          skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
           {(view === 'dashboard' || view === 'goals') && <CrewDashboardPanel
