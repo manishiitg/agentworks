@@ -7,22 +7,25 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
 )
 
-// The Share page (owner, 9 Nov, approved mock "Share a Crew"): one page "Share this Crew" with three options, each a
-// card with a status: Work on it with your team (the Team and the People list), Share agents (people ask the viewer's
-// agents, or start actions the owner set up) and Read only (dashboards). The server writes every line, chip and status
+// The Share page (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page "Share this Crew" with
+// four options, each a card with a status: Work on it with your team (the Team and the People list), Share agents
+// (people ask the viewer's agents, or start actions the owner set up), Slack (the Crew's Slack bot, today's bot
+// settings moved here from the Crew menu) and Read only (dashboards). The server writes every line, chip and status
 // and says which controls this viewer may change; the page prints them and sends the person's change to the existing
-// routes (Team save, people, agent-visibility, agent-rule, dashboard share), plus POST action for one action's on/off.
+// routes (Team save, people, agent-visibility, agent-rule, dashboard share, the Slack bot routes), plus POST action for
+// one action's on/off.
 //
 // It is its own reply, not part of /tab: /tab is re-read by every screen on each panel notice, and this reads the
 // Crew's actions, its workflows and its dashboards, which are needed only while the page is open.
 
 type crewShareOption struct {
-	// Key is team, agents or read_only.
+	// Key is team, agents, slack or read_only.
 	Key    string   `json:"key"`
 	Title  string   `json:"title"`
 	Line   string   `json:"line"`
@@ -107,6 +110,110 @@ type crewSharePage struct {
 	// SharedWithYou: what other people in this Crew share with the viewer (people -> agents -> actions), read only.
 	// Empty (the page prints no heading) when nobody shares anything.
 	SharedWithYou []crewShareSharedPerson `json:"shared_with_you"`
+	// Slack: the Slack option's "Who can talk to it" lines; nil when the Slack option is not shown.
+	Slack *crewShareSlack `json:"slack,omitempty"`
+}
+
+// crewShareSlack is Share › Slack's "Who can talk to it": today's Slack message rules in plain words (no new rule).
+type crewShareSlack struct {
+	Rules []crewShareSlackRule `json:"rules"`
+	Note  string               `json:"note"`
+}
+
+// crewShareSlackRule is one line: who may talk to the Crew there (Allowed) or who is refused.
+type crewShareSlackRule struct {
+	Allowed bool   `json:"allowed"`
+	Where   string `json:"where,omitempty"`
+	Line    string `json:"line"`
+}
+
+// crewShareSlackRules words today's rules: a channel @mention answers as the Crew's owner in a thread (Run mode, no
+// changes to the Crew); a direct message runs as its sender with their own access, for people the Crew is shared with;
+// guests, other workspaces and Slack emails that are not exactly one AgentWorks account are refused.
+func crewShareSlackRules(owner bool) *crewShareSlack {
+	as := "the Crew's owner"
+	if owner {
+		as = "you"
+	}
+	return &crewShareSlack{
+		Rules: []crewShareSlackRule{
+			{Allowed: true, Where: "In a channel:", Line: "anyone in that channel. It answers as " + as + ", in a thread; it can't change the Crew."},
+			{Allowed: true, Where: "In a direct message:", Line: "people this Crew is shared with, as themselves, with their own access."},
+			{Allowed: false, Line: "Guests, people from other Slack workspaces, and anyone whose Slack email isn't an AgentWorks account."},
+		},
+		Note: "Each Slack thread becomes its own chat in this Crew. Who the Crew is shared with is set under “Work on it with your team”.",
+	}
+}
+
+// crewSlackBotChoice is the Slack bot a Crew answers with, from the same /api/integrations/slack/bots reply its Slack
+// settings print: the Crew menu's Slack bot row and the Share page's Slack option say the same thing.
+type crewSlackBotChoice struct {
+	// Allowed is false when this Crew may not use Slack bots (an administrator's limit).
+	Allowed bool
+	// Selected: a saved bot is chosen for this Crew.
+	Selected                      bool
+	ID, Name                      string
+	Configured, Enabled, Verified bool
+}
+
+// Label is the chosen bot's state: Needs setup, Paused, Identity verified or Saved.
+func (c crewSlackBotChoice) Label() string {
+	switch {
+	case !c.Configured:
+		return "Needs setup"
+	case !c.Enabled:
+		return "Paused"
+	case c.Verified:
+		return "Identity verified"
+	}
+	return "Saved"
+}
+
+// Status is the Share page's Slack status: On · <bot> when a set-up, enabled bot is chosen, else Needs setup, Paused
+// or Off.
+func (c crewSlackBotChoice) Status() (string, bool) {
+	switch {
+	case !c.Selected:
+		return "Off", false
+	case !c.Configured:
+		return "Needs setup", false
+	case !c.Enabled:
+		return "Paused", false
+	}
+	return "On · " + c.Name, true
+}
+
+func (api *StreamingAPI) crewSlackBotChoiceFor(r *http.Request, workspace string, vars map[string]string) (crewSlackBotChoice, error) {
+	var data struct {
+		Selected string `json:"selected_id"`
+		Allow    *bool  `json:"allow_bots"`
+		Bots     []struct {
+			ID, Name            string
+			Configured, Enabled bool
+			Identity            struct {
+				Name     string
+				Verified bool
+			}
+		}
+	}
+	err := crewPanelRead(r, api.handleSlackVaultBots, http.MethodGet, "/api/integrations/slack/bots", vars, url.Values{"workspace_path": {workspace}, "profile_id": {"work"}}, nil, &data)
+	choice := crewSlackBotChoice{Allowed: data.Allow == nil || *data.Allow}
+	for _, b := range data.Bots {
+		if b.ID != data.Selected {
+			continue
+		}
+		name := b.Identity.Name
+		if name == "" {
+			name = b.Name
+		}
+		if name == "Default" {
+			name = "Saved Slack bot"
+		}
+		choice.Selected, choice.ID, choice.Name = true, b.ID, name
+		choice.Configured, choice.Enabled, choice.Verified = b.Configured, b.Enabled, b.Identity.Verified
+		break
+	}
+	return choice, err
 }
 
 // crewShareSharedPerson is one person whose agents (and, for the Crew's owner, actions) are shared with the viewer.
@@ -536,7 +643,18 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		page.DashboardAsk = "Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."
 	}
 
-	// The three options, each with its status.
+	// Slack: shown when this viewer can read the Crew's Slack bot choice and bots are allowed here (the same read as the
+	// Crew menu's Slack bot row); who may change it stays the Slack bot routes' own rule (can_select, can_manage).
+	slackOption := []crewShareOption{}
+	if dashWorkspace != "" {
+		if bot, err := api.crewSlackBotChoiceFor(r, dashWorkspace, nil); err == nil && bot.Allowed {
+			slackStatus, slackOn := bot.Status()
+			slackOption = append(slackOption, crewShareOption{Key: "slack", Title: "Slack", Line: "People talk to this Crew in Slack: in channels, and in direct messages.", Chips: []string{}, Status: slackStatus, On: slackOn})
+			page.Slack = crewShareSlackRules(owner)
+		}
+	}
+
+	// The options, each with its status.
 	members := 1
 	for _, p := range t.People {
 		if crewTeamAccountActive(p.UserID) {
@@ -570,11 +688,18 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	page.Options = []crewShareOption{
 		{Key: "team", Title: "Work on it with your team", Line: "They build and run this Crew with you: same files, same agents, their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
 		{Key: "agents", Title: "Share agents", Line: "Let others ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
+	}
+	page.Options = append(page.Options, slackOption...)
+	page.Options = append(page.Options, []crewShareOption{
 		{Key: "read_only", Title: "Read only", Line: "Others look at results on dashboards. They cannot change anything.", Chips: []string{"for: anyone you choose", "view only"}, Status: readStatus, On: dashShared},
+	}...)
+	if len(page.Options) == 4 {
+		page.Lead = "Four ways. Use any of them. Click one to set it up."
 	}
 	anyOpen := false
 	for i := range page.Options {
-		page.Options[i].Open = page.Options[i].On && page.Options[i].Key != "read_only"
+		// Read only and Slack open only when asked (the dashboards line, the Slack bot row).
+		page.Options[i].Open = page.Options[i].On && page.Options[i].Key != "read_only" && page.Options[i].Key != "slack"
 		anyOpen = anyOpen || page.Options[i].Open
 	}
 	if !anyOpen {

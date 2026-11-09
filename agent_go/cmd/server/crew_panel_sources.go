@@ -206,44 +206,13 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 			return crewPanelSection{Rows: []crewPanelRow{{ID: "github", Label: "GitHub", Detail: label, Destination: "mcp:github", Connected: data.Connected}}}, err
 		}},
 		{id: "slack_bot", title: "Slack bot", allowed: connections, noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Selected string `json:"selected_id"`
-				Allow    *bool  `json:"allow_bots"`
-				Bots     []struct {
-					ID, Name            string
-					Configured, Enabled bool
-					Identity            struct {
-						Name     string
-						Verified bool
-					}
-				}
-			}
-			err := read(ctx, api.handleSlackVaultBots, "/api/integrations/slack/bots", q, &data)
+			// Its row opens Share › Slack, which reads the same choice (crewSlackBotChoiceFor).
+			bot, err := api.crewSlackBotChoiceFor(r.WithContext(ctx), workspace, vars)
 			section := crewPanelSection{}
-			if data.Allow != nil && !*data.Allow {
+			if !bot.Allowed || !bot.Selected {
 				return section, err
 			}
-			for _, b := range data.Bots {
-				if b.ID != data.Selected {
-					continue
-				}
-				name := b.Identity.Name
-				if name == "" {
-					name = b.Name
-				}
-				if name == "Default" {
-					name = "Saved Slack bot"
-				}
-				label := "Saved"
-				if !b.Configured {
-					label = "Needs setup"
-				} else if !b.Enabled {
-					label = "Paused"
-				} else if b.Identity.Verified {
-					label = "Identity verified"
-				}
-				section.Rows = append(section.Rows, crewPanelRow{ID: "bot:" + b.ID, Label: name, Detail: name + " · " + label, Destination: "mcp:slack-bot", Connected: b.Configured && b.Enabled && b.Identity.Verified, Attention: !b.Configured})
-			}
+			section.Rows = append(section.Rows, crewPanelRow{ID: "bot:" + bot.ID, Label: bot.Name, Detail: bot.Name + " · " + bot.Label(), Destination: "mcp:slack-bot", Connected: bot.Configured && bot.Enabled && bot.Verified, Attention: !bot.Configured})
 			return section, err
 		}},
 		{id: "computer_use", title: "Computer use", allowed: connections && IsLocalMode(), read: func(ctx context.Context) (crewPanelSection, error) {
