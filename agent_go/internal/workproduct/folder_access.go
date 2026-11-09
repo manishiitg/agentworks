@@ -135,5 +135,5 @@ func FolderGrantAvailable(path string) bool {
 // BuildAttachedFoldersPrompt renders the "### Attached Folders" system
 // prompt section listing the resolved grants.
 func BuildAttachedFoldersPrompt(grants []FolderGrant) string {
-	return workflowtypes.FolderGrantsPrompt(grants, "WORK_FOLDER_", "No server workspace folders are attached. The user can select a folder authorized by an administrator; an agent cannot approve a host path for itself.\n")
+	return workflowtypes.FolderGrantsPrompt(grants, "WORK_FOLDER_", "No folders are attached. When the person asks for a folder on their computer, attach it with files action=folder_attach; it applies from their next message.\n")
 }
