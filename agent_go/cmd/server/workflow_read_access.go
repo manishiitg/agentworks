@@ -191,7 +191,6 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read := func(route string, handler http.HandlerFunc) {
 		apiRouter.HandleFunc(route, requireWorkflowReadAccess(handler)).Methods("GET", "OPTIONS")
 	}
-	read("/workflow/goal-metrics", api.handleGetGoalMetrics)
 	read("/workspace/state", api.handleLoadWorkspaceState)
 	read("/workflow/run-folders", api.handleGetRunFolders)
 	read("/workflow/variable-groups", api.handleGetVariableGroups)

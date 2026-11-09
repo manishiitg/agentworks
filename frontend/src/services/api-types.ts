@@ -609,36 +609,6 @@ export interface ReportHumanInputResponse {
   apply_message?: string
 }
 
-export interface GoalMeasurements {
-  metrics: GoalMetric[]
-  observations: GoalObservation[]
-}
-
-/** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
-
-export interface GoalMetric {
-  goal_id?: string
-  goal_name?: string
-  supports?: string[]
-  support_kind?: 'breakdown' | 'diagnostic' | 'guardrail'
-  dimensions?: Record<string, string>
-  id: string
-  criterion_id: string
-  name: string
-  role: 'primary' | 'supporting'
-  unit: string
-  direction: 'increase' | 'decrease' | 'maintain'
-  definition: string
-  source: string
-  window: string
-  route: string
-  environment: string
-  collection_frequency: string
-  freshness_hours: number
-  target?: number
-  target_date?: string
-}
-
 // Slack Feedback Configuration types
 
 // ChannelRoute maps a Slack channel ID to a specific workflow, including the workspace path
@@ -3016,21 +2986,4 @@ export interface WorkspaceStepInspection {
 export interface WorkspaceStepInspectionsResponse {
   items: WorkspaceStepInspection[]
   next_cursor: string | null
-}
-
-export interface GoalObservation {
-  observation_id: string
-  criterion_id: string
-  metric: string
-  run_id: string
-  route?: string
-  environment?: string
-  value?: number
-  status?: string
-  unit?: string
-  observed_at: string
-  window_start?: string
-  window_end?: string
-  evidence?: string[]
-  recorded_at?: string
 }

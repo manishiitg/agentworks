@@ -54,7 +54,7 @@ const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ d
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -347,7 +347,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onBack={() => onViewChange('context')}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
-          {(view === 'dashboard' || view === 'goals') && <CrewDashboardPanel
+          {view === 'dashboard' && <CrewDashboardPanel
             projectId={projectId}
             workspacePath={workspacePath}
             dashboardConversation
