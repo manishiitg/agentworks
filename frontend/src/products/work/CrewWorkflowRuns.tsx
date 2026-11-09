@@ -6,7 +6,8 @@ import { isAxiosError } from 'axios'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
-import type { ExecutionInspectionTarget, RunFolderInfo, RunPythonStep, WorkspaceStepInspection } from '../../services/api-types'
+import type { ExecutionInspectionTarget, RunFolderInfo, RunMetadata, RunPythonStep, WorkspaceStepInspection } from '../../services/api-types'
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { PageCard, PageRow, RowButton, RunDot } from '../../components/automation/AutomationKit'
 import { useCostsData } from '../../components/workflow/costs/useCostsData'
 import { formatCost, formatDuration } from '../../components/workflow/costs/helpers'
@@ -158,6 +159,41 @@ export function runStepLines(records: WorkspaceStepInspection[], outline: RelayS
 export type RunsView = { run: string | null; costs: boolean; detail: 'log' | 'costs' | null }
 export const noRunsView: RunsView = { run: null, costs: false, detail: null }
 
+type RunAsk = NonNullable<RunMetadata['python_asks']>[string]
+
+/** Read the server's answer only on expansion; its normal file grants still decide access. */
+function AskAnswer({ path }: { path: string }) {
+  const [text, setText] = useState<string | null>(null)
+  useEffect(() => {
+    let current = true
+    setText(null)
+    agentApi.getPlannerFileContent(path).then(response => {
+      if (current && response.success && typeof response.data?.content === 'string') setText(response.data.content)
+    }).catch(() => { /* A refused file read adds nothing to the receipt. */ })
+    return () => { current = false }
+  }, [path])
+  if (text === null) return null
+  return <>
+    <p className="whitespace-pre-wrap break-words">{text.slice(0, 4096)}{text.length > 4096 ? '…' : ''}</p>
+    <MarkdownRenderer content={`[Open full reply](#workspace/${encodeURIComponent(path)})`} />
+  </>
+}
+
+function AskRow({ ask }: { ask: RunAsk }) {
+  const [open, setOpen] = useState(false)
+  const status = ask.status === 'replied' ? 'replied'
+    : ask.status === 'pending' ? 'waiting for a reply (sent, do not resend)'
+    : ask.status === 'refused' ? `refused${ask.detail ? `: ${ask.detail}` : ''}`
+    : ask.status === 'unknown' ? 'receipt unclear (do not resend)'
+    : 'status unavailable'
+  const answer = ask.status === 'replied' ? ask.answer_file : undefined
+  return <PageRow title={`Asked ${ask.crew}: ${status}`}
+    lines={ask.status !== 'replied' && ask.status !== 'refused' ? [ask.detail] : undefined}
+    open={open} onToggle={answer ? () => setOpen(value => !value) : undefined}>
+    {answer ? <AskAnswer path={answer} /> : undefined}
+  </PageRow>
+}
+
 /** The Runs tab: a card of runs, a Costs card, and one opened run with its steps, logs and cost. */
 export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, folders, loading, onRefresh, onAsk, view, onView }: {
   workflowId: string
@@ -280,6 +316,7 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
       <p className="px-4 pt-3 text-xs font-semibold">Calls during Resume</p>
       {meta.python_resume_calls.map((call, index) => <PageRow key={`resume:${index}`} title={call.key} lines={[call.reused ? 'Reused saved result' : 'Ran again']} aside={whenLabel(call.at)} />)}
     </>}
+    {Object.values(meta?.python_asks ?? {}).map(ask => <AskRow key={ask.id} ask={ask} />)}
     {checks.length > 0 && <>
       <p className="px-4 pt-3 text-xs font-semibold">Checks</p>
       {checks.map((item, index) => <PageRow key={`check:${index}`} lead={<RunDot state={item.ok === false ? 'stopped' : 'finished'} />} title={item.name || 'Check'} lines={[item.detail]} aside={whenLabel(item.at)} />)}
