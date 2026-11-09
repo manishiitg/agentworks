@@ -355,6 +355,7 @@ class Conversion:
         self.journal = self.state/"structured-chat-events-v2.sqlite"
         self.archives = {}
         self.chat_imports = []
+        self.chat_history_checks = {}
         self.counts = {}
         self.binding_file = self.state / 'ownership/crew-executables' / (hashlib.sha256(self.root.encode()).hexdigest() + '.json')
         self.receipt = self.state / 'migrations/goal-to-crew' / (workflow + '.json')
@@ -663,7 +664,10 @@ class Conversion:
             self.move(file, target)
             # The JSON header's history_log points at this canonical append-only
             # sibling (workspace/chatlog.HistoryLogPath), not a disposable cache.
-            self.move(file.with_suffix('.history.jsonl'), target.with_suffix('.history.jsonl'))
+            history, history_target = file.with_suffix('.history.jsonl'), target.with_suffix('.history.jsonl')
+            self.move(history, history_target)
+            if history.exists():
+                self.chat_history_checks[history_target] = (history.stat().st_size, hashlib.sha256(history.read_bytes()).hexdigest())
             # Preserve every message; only routing metadata changes.
             for key in ['workspace_path', 'workflow_workspace_path']:
                 if record.get(key) == self.root:
@@ -919,6 +923,9 @@ class Conversion:
             for source,target in self.moves:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(source), str(target))
+            for history, (size, digest) in self.chat_history_checks.items():
+                if history.stat().st_size != size or hashlib.sha256(history.read_bytes()).hexdigest() != digest:
+                    raise ValueError('Moved chat history differs from its original snapshot.')
             # Binding last: the next start sees only the canonical authored paths.
             for file,data in sorted(self.writes.items(), key=lambda kv: kv[0] == self.binding_file):
                 file.parent.mkdir(parents=True, exist_ok=True)

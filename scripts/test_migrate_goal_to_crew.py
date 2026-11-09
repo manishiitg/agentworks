@@ -417,6 +417,15 @@ class Migration(unittest.TestCase):
         history.write_bytes(original_history)
         history.chmod(0o640)
         original_stat = history.stat()
+        # Refuse an existing destination rather than merge or overwrite history.
+        collision = self.private/'builder/conversation/users/owner'/history.parent.name/history.name
+        collision.parent.mkdir(parents=True, exist_ok=True)
+        collision.write_bytes(b'existing destination history\n')
+        before_collision = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'Destination already exists'):
+            self.conversion()
+        self.assertEqual(hashes(self.base), before_collision)
+        collision.unlink()
         registry_path = self.docs/'_users/owner/chat_history/product-conversations.json'
         registry = m.read(registry_path)
         registry['entries']['work/crew:chat:existing'] = {'profile_id':'work','conversation_key':'crew:chat:existing','session_id':'destination-session','resource_id':'crew','workspace_path':'Crew/target'}
