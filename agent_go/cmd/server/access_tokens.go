@@ -758,6 +758,7 @@ func (api *StreamingAPI) recheckAccessTokenSession(ctx context.Context, entry ac
 	}
 	log.Printf("[TOKEN_WATCH] denied token=%s session=%s reason=%s confirmed_reads=2 checked_at=%s", prefix, entry.sessionID, verdict.reason, time.Now().UTC().Format(time.RFC3339Nano))
 	if verdict.token {
+		logTokenWatchOAuthExpiry(ctx, entry.tokenID)
 		api.cancelAccessTokenSessions(entry.tokenID)
 	} else {
 		api.accessTokenSessions.Lock()
