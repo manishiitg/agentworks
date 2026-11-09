@@ -9,7 +9,7 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
-import { Laptop } from 'lucide-react'
+import { ChevronRight, Laptop } from 'lucide-react'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
@@ -54,6 +54,17 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
   const crews = projects.filter(project => project.kind === 'crew')
   return hasDesktopConnections() ? <ConnectedServers projects={crews}>{children}</ConnectedServers> : <StandaloneWork projects={crews}>{children}</StandaloneWork>
 }
+function AllProjects({ children }: { children: ReactNode }) {
+  const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
+  const expanded = useSidebarExpansionStore(state => state.expanded[key] ?? false)
+  const toggle = useSidebarExpansionStore(state => state.toggle)
+  return <section aria-label="All projects">
+    <button type="button" aria-expanded={expanded} onClick={() => toggle(key)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />All projects
+    </button>
+    {expanded && <div className="mt-1">{children}</div>}
+  </section>
+}
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const { recent, pinned, canPin, setPinned, visit } = useWorkHistory(projects)
   const orderedProjects = [...projects].sort((a, b) => {
@@ -81,6 +92,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">{pinnedProjects.map(renderProject)}</section>}
+    <AllProjects>
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
@@ -93,6 +105,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     <div className="space-y-1"><ProjectList projects={server} render={renderProject} invites={invites} /></div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
+    </AllProjects>
   </div>
 }
 
@@ -168,6 +181,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
+      <AllProjects>
       {connections.length > 1 && <div role="group" aria-label="Show Crews from" className="mb-2 flex items-center gap-1 overflow-x-auto px-1 py-2">
         {connections.map(connection => {
           const selected = selectedLocations.includes(connection.id)
@@ -194,6 +208,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         return null
       })}
       {!visible.length && locations.length > 0 && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
+      </AllProjects>
     </div>
     {directoryError && <p role="alert" className="px-3 text-xs text-destructive">{directoryError}</p>}
 
