@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
@@ -1193,7 +1194,7 @@ func (s *ProjectActionDispatcher) failAutomationSetupRun(job productScheduleJob,
 
 // executeAutomationRun runs one claimed automation turn to completion, then
 // releases the conversation and starts the next queued delivery, if any.
-func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, cancel context.CancelFunc, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, run *productScheduleRun, jobKey, convKey string, onStarted []func(sessionID string)) (string, error) {
+func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, cancel context.CancelFunc, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, run *productScheduleRun, jobKey, convKey string, onStarted []func(sessionID string)) (resultSessionID string, resultErr error) {
 	if options.FunctionCallID != "" {
 		runCtx = virtualtools.WithFeedbackOperation(runCtx, options.FunctionCallID)
 	}
@@ -1207,6 +1208,21 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 
 	// One identity for the run record.
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())
+	ledger, err := s.recordCrewTimerAdmission(runCtx, job, runID, triggerSource, scheduledFor, run.StartedAt)
+	if err != nil {
+		return "", err
+	}
+	evidenceFinished := false
+	finishEvidence := func(sessionID string, runErr error) error {
+		if evidenceFinished {
+			return nil
+		}
+		evidenceFinished = true
+		return finishCrewTimerEvidence(runCtx, ledger, job, runID, sessionID, runErr)
+	}
+	// Setup errors and Stop must be terminal before the dispatcher releases
+	// its claim or starts the next queued conversation turn.
+	defer func() { resultErr = errors.Join(resultErr, finishEvidence(resultSessionID, resultErr)) }()
 	var binding productConversationBinding
 	var bindErr error
 	newAgentName := "" // set when this run creates a named Crew agent's tab
@@ -1277,6 +1293,14 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		}
 	}
 	sessionID := conversation.SessionID
+	if ledger != nil {
+		ledger.stateStoreMu.RLock()
+		err := ledger.stateStore.Transition(runCtx, schedulerstate.Transition{RunID: runID, To: schedulerstate.StateWorkflowRunning, SessionID: sessionID, Reason: "Crew timer conversation ready"})
+		ledger.stateStoreMu.RUnlock()
+		if err != nil {
+			return sessionID, err
+		}
+	}
 	var functionCall *crewFunctionCall
 	if job.AutomationKind == "function" && options.FunctionCallID != "" {
 		functionCall = lookupCrewFunctionCall(options.FunctionCallID)
@@ -1431,6 +1455,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		}
 	}
 
+	runErr = errors.Join(runErr, finishEvidence(sessionID, runErr))
 	status := "success"
 	errMsg := ""
 	if runErr != nil {
