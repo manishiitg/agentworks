@@ -3,6 +3,10 @@ package productschedule
 import (
 	"context"
 	"errors"
+	"path/filepath"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"testing"
 	"time"
 )
@@ -231,4 +235,55 @@ func TestOneTimeScheduleRunsOnceAndOnlyOnce(t *testing.T) {
 			t.Fatalf("should be refused: %+v", bad)
 		}
 	}
+}
+
+// PLAT-871-33: extracting Crew timer dependencies must preserve the durable
+// occurrence boundary; a later or another Crew's run cannot release this timer.
+func TestDependenciesUseScopedOccurrenceOutcomeDelayAndDeadline(t *testing.T) {
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedules.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := t.Context()
+	occurrence := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
+	when := projectactions.When{Timezone: "UTC", After: &projectactions.After{Schedules: []string{"collect"}, DelayMinutes: 5, Deadline: "10:30"}}
+	check := func(label, scope string, now time.Time, want DependencyResult) {
+		t.Helper()
+		if got, reason := EvaluateDependencies(ctx, store, "crew", scope, when, occurrence, now); got != want {
+			t.Fatalf("%s: result=%v want=%v reason=%s", label, got, want, reason)
+		}
+	}
+	run := func(id, schedule string, at, finished time.Time, terminal schedulerstate.State) {
+		t.Helper()
+		err := store.BeginRun(ctx, schedulerstate.Run{RunID: id, ScopeType: "crew", ScopeID: "crew-a", LockKey: id, ScheduleID: schedule, TriggerSource: "cron", ScheduledFor: at, StartedAt: at})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, state := range []schedulerstate.State{schedulerstate.StateWorkflowRunning, schedulerstate.StateWorkflowFinished, terminal} {
+			if err := store.Transition(ctx, schedulerstate.Transition{RunID: id, To: state, At: finished}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	check("missing prerequisite", "crew-a", occurrence, DependencyWaiting)
+	run("later", "collect", occurrence.Add(5*time.Minute), occurrence.Add(6*time.Minute), schedulerstate.StateCompleted)
+	check("future occurrence cannot release an older timer", "crew-a", occurrence.Add(20*time.Minute), DependencyWaiting)
+	run("prior", "collect", occurrence.Add(-5*time.Minute), occurrence, schedulerstate.StateCompleted)
+	check("delay not reached", "crew-a", occurrence.Add(4*time.Minute), DependencyWaiting)
+	check("delay reached", "crew-a", occurrence.Add(5*time.Minute), DependencyReady)
+	check("another Crew's completion is not evidence", "crew-b", occurrence.Add(5*time.Minute), DependencyWaiting)
+	when.After.Deadline = "10:04"
+	check("completion plus delay misses deadline", "crew-a", occurrence.Add(5*time.Minute), DependencyBlocked)
+	when.After = &projectactions.After{Schedules: []string{"failed"}}
+	run("failed", "failed", occurrence.Add(-time.Minute), occurrence, schedulerstate.StateFailed)
+	check("failed prerequisite cannot satisfy completed", "crew-a", occurrence, DependencyBlocked)
+	when.After.Outcome = "any_terminal"
+	check("explicit any terminal admits failure", "crew-a", occurrence, DependencyReady)
+	when.After = &projectactions.After{Schedules: []string{"skipped"}}
+	err = store.RecordFireDecision(ctx, schedulerstate.FireDecision{DecisionID: "skip", ScopeType: "crew", ScopeID: "crew-a", ScheduleID: "skipped", TriggerSource: "cron", Decision: "missed_scheduler_gap", Reason: "offline gap", ScheduledFor: occurrence, FiredAt: occurrence})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("skipped prerequisite blocks rather than waiting forever", "crew-a", occurrence, DependencyBlocked)
 }
