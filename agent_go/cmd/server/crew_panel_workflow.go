@@ -163,7 +163,7 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 		return section, err
 	}
 	for _, binding := range records {
-		if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
@@ -171,12 +171,22 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 		}
 		label := "Workflow"
 		filesystem := workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: binding.Root}
-		if raw, err := fs.ReadFile(filesystem, "workflow.json"); err == nil {
+		header := "workflow.json"
+		if binding.Kind == "script" {
+			header = "code/script.json"
+		}
+		if raw, err := fs.ReadFile(filesystem, header); err == nil {
 			var saved struct {
+				Name  string `json:"name"`
 				Label string `json:"label"`
 			}
-			if json.Unmarshal(raw, &saved) == nil && saved.Label != "" {
-				label = saved.Label
+			if json.Unmarshal(raw, &saved) == nil {
+				if binding.Kind == "script" && saved.Name != "" {
+					label = saved.Name
+				}
+				if binding.Kind == "workflow" && saved.Label != "" {
+					label = saved.Label
+				}
 			}
 		}
 		steps, known := crewScriptStepCount(ctx, binding)
