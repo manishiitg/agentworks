@@ -49,7 +49,6 @@ import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButt
 import { markNextSubmissionVoice } from '../voice/voiceMessages'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { hasActiveSessionWork } from '../utils/activitySessions'
-import { shouldClearAcceptedChatDraft } from '../utils/chatSubmissionDraft'
 import { sendQueuedChatMessage } from '../utils/chatQueueController'
 import { captureChatDraft, updateOwnedChatDraft } from '../utils/chatDraftOwnership'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -1598,8 +1597,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [showSkillPopup, customCommandWorkspacePath])
 
   const queryToSubmit = inputText
-  const latestQueryToSubmitRef = useRef(queryToSubmit)
-  latestQueryToSubmitRef.current = queryToSubmit
 
   const canBootstrapMultiAgentTab = isMultiAgentMode && !showWorkflowsOverview
   // Workflow builder tabs are intentionally created before their backend session.
@@ -1670,7 +1667,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Guard: prevent form submit from firing when Stop button click causes a button swap
   // (React re-renders Stop→Send mid-click, causing the browser to dispatch submit on the new button)
 
-  const clearInputState = useCallback(() => {
+  const clearInputState = useCallback((clearFiles = false) => {
     latestInputTextRef.current = ''
     setLocalInputText('')
     if (syncToStoreTimeoutRef.current) {
@@ -1678,7 +1675,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       syncToStoreTimeoutRef.current = null
     }
     if (activeTabId) {
-      setTabConfig(activeTabId, { inputText: '' })
+      setTabConfig(activeTabId, { inputText: '', ...(clearFiles ? { fileContext: [] } : {}) })
     }
   }, [activeTabId, setTabConfig])
 
@@ -2034,17 +2031,20 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const submittedTabId = activeTabId || undefined
         const submittedDraft = {
           inputText,
+          fileContext: [...(useChatStore.getState().getTabConfig(submittedTabId || '')?.fileContext || [])],
         }
         // Live-input acknowledgement can lag while the retained CLI wakes up.
         // The conversation adds an optimistic user row immediately, so release
         // the composer now instead of leaving the submitted text looking stuck.
-        clearInputState()
+        clearInputState(true)
         const clearedDraft = captureChatDraft(submittedTabId)
         let accepted: boolean | void
         let restoreRefusedDraft = true
         try {
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
+            fileContext: submittedDraft.fileContext,
+            fileContextConsumed: true,
             deliveryMode: deliveryOverride ?? deliveryMode,
             submissionId,
             onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
@@ -2072,26 +2072,22 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (canSubmitImmediately) {
       const submittedTabId = activeTabId || undefined
-      const submittedDraft = captureChatDraft(submittedTabId)
+      const submittedDraft = { inputText, fileContext: [...(useChatStore.getState().getTabConfig(submittedTabId || '')?.fileContext || [])] }
+      clearInputState(true)
+      const clearedDraft = captureChatDraft(submittedTabId)
       let accepted: boolean | void
+      let restoreRefusedDraft = true
       try {
-        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode: deliveryOverride ?? deliveryMode, submissionId })
+        accepted = await onSubmit(query, { sourceTabId: submittedTabId, fileContext: submittedDraft.fileContext, fileContextConsumed: true, deliveryMode: deliveryOverride ?? deliveryMode, submissionId,
+          onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
+        })
       } catch (error) {
         console.error('[ChatInput] Message submission failed', error)
         accepted = false
       }
-      if (shouldClearAcceptedChatDraft({
-        accepted,
-        submittedTabId,
-        currentTabId: inputOwnerTabIdRef.current,
-        submittedMessage: query,
-        currentMessage: latestQueryToSubmitRef.current,
-      }) && updateOwnedChatDraft(submittedDraft, { inputText: '' })) {
-        if (composerMountedRef.current) {
-          latestInputTextRef.current = ''
-          setLocalInputText('')
-        }
-      } else if (accepted === false) {
+      if (accepted === false && restoreRefusedDraft && updateOwnedChatDraft(clearedDraft, submittedDraft) && composerMountedRef.current) {
+        latestInputTextRef.current = submittedDraft.inputText
+        setLocalInputText(submittedDraft.inputText)
         addToast('Message was not accepted. Your draft was kept.', 'warning')
       }
     } else {

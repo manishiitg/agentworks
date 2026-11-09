@@ -2851,7 +2851,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     // file chip.
     let effectiveFileContext: Array<{ name: string; path: string; type: 'file' | 'folder' }> = []
     if ((submitModeCategory === 'multi-agent' || submitModeCategory === 'workflow') && currentTab?.config) {
-      effectiveFileContext = currentTab.config.fileContext
+      effectiveFileContext = options?.fileContext ?? currentTab.config.fileContext
     }
 
     const shouldResumeRestoredConversation =
@@ -2922,7 +2922,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       const config = useChatStore.getState().getTabConfig(currentTab.tabId)
       if (!config) return
       const submittedPaths = new Set(effectiveFileContext.map(file => file.path))
-      const remaining = config.fileContext.filter(file => !submittedPaths.has(file.path))
+      const remaining = options?.fileContextConsumed ? config.fileContext : config.fileContext.filter(file => !submittedPaths.has(file.path))
       const consumedRestore = restoredConversationPath && config.restoredConversationPath === restoredConversationPath
       if (remaining.length !== config.fileContext.length || consumedRestore) {
         chatStore.setTabConfig(currentTab.tabId, {
@@ -3330,7 +3330,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           query.trim(),
           store.getTabEvents(sourceTab.sessionId),
           submissionId,
-          (store.getTabConfig(sourceTab.tabId)?.fileContext ?? [])
+          (captured.fileContext ?? store.getTabConfig(sourceTab.tabId)?.fileContext ?? [])
             .map((file: { path: string }) => file.path)
             .filter((path: string) => path !== store.getTabConfig(sourceTab.tabId)?.restoredConversationPath),
         )
