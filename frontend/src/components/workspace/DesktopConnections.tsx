@@ -61,7 +61,8 @@ function AllProjects({ children }: { children: ReactNode }) {
   const toggle = useSidebarExpansionStore(state => state.toggle)
   return <section aria-label="All projects">
     <button type="button" aria-expanded={expanded} onClick={() => toggle(key)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />All projects
+      <span className="min-w-0 flex-1">All projects</span>
+      <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
     </button>
     {expanded && <div className="mt-1">{children}</div>}
   </section>
