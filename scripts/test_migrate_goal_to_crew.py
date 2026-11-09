@@ -410,6 +410,13 @@ class Migration(unittest.TestCase):
         self.assertNotIn('input_schema', fn)
 
     def test_one_goal_preserves_history_ids_other_goal_and_private_chats(self):
+        # PLAT-746: the first real migrated timer lost its canonical JSONL
+        # companion, then failed creating a new one in root-created parents.
+        history = (self.docs/self.oldpath).with_suffix('.history.jsonl')
+        original_history = b'{"role":"user","content":"Preserve the entire append-only history"}\n'
+        history.write_bytes(original_history)
+        history.chmod(0o640)
+        original_stat = history.stat()
         registry_path = self.docs/'_users/owner/chat_history/product-conversations.json'
         registry = m.read(registry_path)
         registry['entries']['work/crew:chat:existing'] = {'profile_id':'work','conversation_key':'crew:chat:existing','session_id':'destination-session','resource_id':'crew','workspace_path':'Crew/target'}
@@ -451,6 +458,13 @@ class Migration(unittest.TestCase):
         transcript=next((self.private/'builder/conversation').rglob('*-conversation.json'))
         self.assertEqual(m.read(transcript)['conversation_history'][0]['content'],'Do not rewrite Workflow/old-goal inside messages')
         self.assertEqual(m.read(transcript)['user_id'],'owner')
+        moved_history = transcript.with_suffix('.history.jsonl')
+        self.assertEqual(moved_history.read_bytes(), original_history)
+        self.assertEqual(moved_history.stat().st_mode & 0o777, 0o640)
+        self.assertEqual((moved_history.stat().st_uid, moved_history.stat().st_gid),
+                         (original_stat.st_uid, original_stat.st_gid))
+        self.assertFalse((self.runtime/history.relative_to(self.source)).exists())
+
         registry=m.read(self.docs/'_users/owner/chat_history/product-conversations.json')
         main_key = m.read(self.private/'product.json')['main_chat_key']
         row = registry['entries']['work/'+main_key]

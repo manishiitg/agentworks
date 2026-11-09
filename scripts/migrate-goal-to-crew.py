@@ -2,6 +2,7 @@
 """Convert ONE standalone Goal into a selected Crew, with the app stopped.
 
 Default: inspect without writes. --apply: back up affected data, then convert.
+Run as the app service account so new chat directories remain writable by it.
 Create the destination Crew normally first (or choose an existing Crew). The
 workflow and entry IDs remain stable. Authored code/definitions live in Crew
 Files; runs, business data and history move into Crew private storage. No startup fallback or automatic installation-wide conversion.
@@ -660,6 +661,9 @@ class Conversion:
                 raise ValueError('A non-owner Builder transcript needs its private Run-chat mapping repaired first.')
             target = self.private / 'builder/conversation/users' / safe_id(user) / day / file.name
             self.move(file, target)
+            # The JSON header's history_log points at this canonical append-only
+            # sibling (workspace/chatlog.HistoryLogPath), not a disposable cache.
+            self.move(file.with_suffix('.history.jsonl'), target.with_suffix('.history.jsonl'))
             # Preserve every message; only routing metadata changes.
             for key in ['workspace_path', 'workflow_workspace_path']:
                 if record.get(key) == self.root:
