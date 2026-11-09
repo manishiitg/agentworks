@@ -524,12 +524,13 @@ export function useWorkChatTab(
   }
 }
 
-export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats }: {
+export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity }: {
   projectId: string
   projectName: string
   canonicalTabId: string
   profileId: string
   allowSideChats: boolean
+  onOpenIdentity?: () => void
 }) {
   const { chatTabs, activeTabId } = useChatStore(useShallow(state => ({
     chatTabs: state.chatTabs,
@@ -796,7 +797,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     void syncRef.current()
   }
   return <><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
-    allowSideChats={allowSideChats} opening={opening} surface="work"
+    allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
     onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
@@ -1484,7 +1485,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats /> : <div className="min-w-0 flex-1" />}
+              tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
               toolbar={<><WorkWorkspaceToolbar tabId={tabId ?? undefined} onOpenChat={openChatPane} projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}

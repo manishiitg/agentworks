@@ -22,10 +22,7 @@ function ProjectList<T extends SidebarProject>({ projects, render, invites }: { 
   const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
   const dashboards = rest.filter(project => project.owned_by_caller === false && project.mode === 'run')
   return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
-    {mine.length > 0 && <section aria-label="My Crews" className="mb-3 space-y-1">
-      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">My Crews</h2>
-      {mine.map(render)}
-    </section>}
+    {mine.map(render)}
     {rest.filter(project => project.owned_by_caller === undefined).map(render)}
     {dashboards.length > 0 && <section aria-label="Dashboards shared with me" className="mb-3 space-y-1">
       <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Shared</h2>
@@ -47,7 +44,8 @@ function useWorkHistory(projects: SidebarProject[]) {
   return { recent, pinned, canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
-  return hasDesktopConnections() ? <ConnectedServers projects={projects}>{children}</ConnectedServers> : <StandaloneWork projects={projects}>{children}</StandaloneWork>
+  const crews = projects.filter(project => project.kind === 'crew')
+  return hasDesktopConnections() ? <ConnectedServers projects={crews}>{children}</ConnectedServers> : <StandaloneWork projects={crews}>{children}</StandaloneWork>
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const { recent, visit } = useWorkHistory(projects)
@@ -60,6 +58,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   })
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
   const renderProject = ({ location, mac, state, ...project }: SidebarProject) => <Fragment key={`${project.kind}:${project.id}`}><SidebarProjectRow {...project}
+    showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
     stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
@@ -104,7 +103,9 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   }
   const rows = connections.flatMap(connection => {
     const byId = new Map<string, SidebarProject>()
-    for (const project of inventory[connection.id]?.projects || []) byId.set(`${project.kind}:${project.id}`, project)
+    for (const project of inventory[connection.id]?.projects || []) {
+      if (project.kind === 'crew') byId.set(`${project.kind}:${project.id}`, project)
+    }
     if (connection.id === active) for (const project of projects) byId.set(`${project.kind}:${project.id}`, { ...byId.get(`${project.kind}:${project.id}`), ...project })
     return [...byId.values()].map(project => ({ ...project, connection }))
   }).sort((a, b) => {
@@ -123,8 +124,9 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const renderProject = (project: typeof rows[number], shortcut = false) => {
     const key = keyFor(project)
     return <Fragment key={key}><SidebarProjectRow {...project}
+      showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       selected={project.connection.id === active && project.selected}
-      location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} showLocation={shortcut}
+      location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} remote={project.connection.id !== 'local'} showLocation={shortcut}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && project.kind === 'crew' && !project.personal_agent ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onOpen={() => {
         visit(key)

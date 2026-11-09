@@ -82,18 +82,17 @@ it('keeps shared projects in the active server beside the owner navigation', asy
       { id: 'build', name: 'Build together', kind: 'crew', mode: 'builder', owned_by_caller: false, owner_name: 'Project owner' },
       { id: 'unclassified', name: 'Existing crew', kind: 'crew' },
       { id: 'agent', name: 'AgentWorks', kind: 'crew', mode: 'builder', owned_by_caller: true, personal_agent: true },
+      { id: 'script', name: 'Old workflow entry', kind: 'goal' },
     ] : [] })
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<DesktopConnections projects={[{ id: 'owned', name: 'Owned crew', kind: 'crew' }, { id: 'weekly', name: 'Weekly goal', kind: 'goal' }]} />))
     const group = host.querySelector('[aria-label="Connected work"]')!
-    const mine = group.querySelector('[aria-label="My Crews"]')!, dashboards = group.querySelector('[aria-label="Dashboards shared with me"]')!
-    expect(mine.textContent).toContain('Owned crew')
-    expect(mine.textContent).toContain('Build together') // a Crew shared to build in is not a dashboard
-    expect(mine.textContent).not.toContain('Shared crew')
-    expect(mine.textContent).not.toContain('AgentWorks') // the personal agent is separate from the ordinary Crew list
+    const dashboards = group.querySelector('[aria-label="Dashboards shared with me"]')!
+    expect(group.textContent).toContain('Owned crew')
+    expect(group.textContent).toContain('Build together') // a Crew shared to build in is not a dashboard
     expect(group.textContent).toContain('Your agent') // inside its own network, with its own label
-    expect(group.textContent!.indexOf('Your agent')).toBeLessThan(group.textContent!.indexOf('My Crews'))
+    expect(group.textContent!.indexOf('Your agent')).toBeLessThan(group.textContent!.indexOf('Owned crew'))
     expect(dashboards.textContent).toContain('Shared crew')
     expect(dashboards.textContent).not.toContain('Owned crew')
     // Shared destinations remain directly reachable, without another owner accordion.
@@ -101,7 +100,8 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     expect(dashboards.querySelectorAll('button[aria-label*="Shared dashboard"]')).toHaveLength(3)
     expect(group.textContent!.indexOf('Existing crew')).toBeLessThan(group.textContent!.indexOf('Shared crew'))
     expect(group.querySelector('section[aria-label="Network: Team"]')?.textContent).toContain('Your agent')
-    expect(group.textContent).toContain('Weekly goal')
+    expect(group.textContent).not.toContain('Weekly goal')
+    expect(group.textContent).not.toContain('Old workflow entry')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
   } finally {
     await act(async () => root.unmount()); window.electronAPI = previous
@@ -156,8 +156,9 @@ it('routes pinned and recent Crews by network and drops shortcuts absent from th
     expect(recent().querySelectorAll('[aria-label*=" · Crew · "]')).toHaveLength(6)
     expect(recent().textContent).toContain('Local crew')
     expect(recent().textContent).not.toContain('Other 0')
-    expect(recent().textContent).toContain('On your Mac')
-    expect(recent().textContent).toContain('Team')
+    // Location identity survives in the compact icon's hover label (PLAT-746-509).
+    expect(recent().querySelector('[role="img"][title="On your Mac"]')).not.toBeNull()
+    expect(recent().querySelector('[role="img"][title="Team"]')).not.toBeNull()
     await act(async () => useProjectMenuHistoryStore.getState().visit(scope, remoteKey))
     await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Remote crew · Crew · Team"]')!.click())
     expect(open).toHaveBeenLastCalledWith(remote, '/crew/projects/same')

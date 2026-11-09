@@ -63,6 +63,7 @@ describe('Crew native tab dragging', () => {
       agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true, agentProfileConversationKey: 'crew',
     } } as ChatTab
     useChatStore.setState({ chatTabs: { main }, activeTabId: 'main' })
+    const openIdentity = vi.fn()
     const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
     const get = api.get.bind(api)
     const requests = vi.spyOn(api, 'get').mockImplementation(async (url, config) => {
@@ -75,10 +76,13 @@ describe('Crew native tab dragging', () => {
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
-      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats onOpenIdentity={openIdentity} />))
       // Both the tab strip and sidebar layout must retain the general menu.
       for (const sidebar of [null, document.createElement('div')]) {
         await act(async () => useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: sidebar }))
+        openIdentity.mockClear()
+        await act(async () => host.querySelector<HTMLButtonElement>('[data-project-title]')!.click())
+        expect(openIdentity).toHaveBeenCalledOnce()
         const caret = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')
         expect(caret).not.toBeNull()
         await act(async () => caret!.click())
