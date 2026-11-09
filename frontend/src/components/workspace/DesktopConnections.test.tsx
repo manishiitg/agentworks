@@ -11,7 +11,7 @@ import { openAppProduct } from '../../utils/appNavigation'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../../services/desktopConnections', () => ({ desktopRequest: mocks.request }))
-vi.mock('../../services/api', () => ({ default: { get: () => new Promise(() => {}) }, getApiBaseUrl: () => '', getAuthToken: () => '', getLocalApiBaseUrl: () => 'http://127.0.0.1:18743', getDesktopApiBaseUrl: () => 'http://127.0.0.1:18743' }))
+vi.mock('../../services/api', () => ({ default: { get: () => new Promise(() => {}) }, agentApi: { listAgentProfileSideChats: async () => [], getHeaderSummary: async () => ({ active_sessions: [] }) }, getApiBaseUrl: () => '', getAuthToken: () => '', getLocalApiBaseUrl: () => 'http://127.0.0.1:18743', getDesktopApiBaseUrl: () => 'http://127.0.0.1:18743' }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../utils/appNavigation', () => ({ openAppProduct: vi.fn() }))
 beforeEach(() => {
@@ -131,7 +131,7 @@ it('website lists Mac Crews under their Mac, greyed with their last state when t
 })
 
 // PLAT-746: a saved shortcut cannot grant access or confuse equal Crew IDs on different networks.
-it('routes pinned and recent Crews by network and drops shortcuts absent from the current inventory', async () => {
+it('shows pinned Crews once and removes pins absent from the current inventory', async () => {
   const remote = 'c'.repeat(32), previous = window.electronAPI
   const open = vi.fn().mockResolvedValue(undefined)
   window.electronAPI = { getDesktopConnection: () => 'local', openDesktopConnection: open }
@@ -151,28 +151,21 @@ it('routes pinned and recent Crews by network and drops shortcuts absent from th
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<DesktopConnections />))
-    const recent = () => host.querySelector<HTMLElement>('[aria-label="Recent Crews"]')!
-    // One pin plus five unpinned visits; an old pin survives newer visits.
-    expect(recent().querySelectorAll('[aria-label*=" · Crew · "]')).toHaveLength(6)
-    expect(recent().textContent).toContain('Local crew')
-    expect(recent().textContent).not.toContain('Other 0')
-    // Location identity survives in the compact icon's hover label (PLAT-746-509).
-    expect(recent().querySelector('[role="img"][title="On your Mac"]')).not.toBeNull()
-    expect(recent().querySelector('[role="img"][title="Team"]')).not.toBeNull()
-    await act(async () => useProjectMenuHistoryStore.getState().visit(scope, remoteKey))
-    await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Remote crew · Crew · Team"]')!.click())
-    expect(open).toHaveBeenLastCalledWith(remote, '/crew/projects/same')
-    await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Local crew · Crew · On your Mac"]')!.click())
+    const pinned = () => host.querySelector<HTMLElement>('[aria-label="Pinned Crews"]')
+    expect(pinned()?.textContent).toContain('Local crew')
+    expect(pinned()?.textContent).not.toContain('Remote crew')
+    expect(host.querySelectorAll('[aria-label="Local crew · Crew · On your Mac"]')).toHaveLength(1)
+    expect(pinned()?.querySelector('[role="img"][title="On your Mac"]')).not.toBeNull()
+    await act(async () => pinned()!.querySelector<HTMLButtonElement>('[aria-label="Local crew · Crew · On your Mac"]')!.click())
     expect(openAppProduct).toHaveBeenLastCalledWith({ surface: 'work', id: 'same' })
-    await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Unpin Local crew · On your Mac"]')!.click())
+    await act(async () => pinned()!.querySelector<HTMLButtonElement>('[aria-label="Unpin Local crew · On your Mac"]')!.click())
     expect(useProjectMenuHistoryStore.getState().pinned[scope]).toEqual([])
     await act(async () => useProjectMenuHistoryStore.getState().setPinned(scope, remoteKey, true))
     await act(async () => useConnectedWorkStore.setState(state => ({ inventory: { ...state.inventory, [remote]: { status: 'connected', projects: [] } } })))
-    expect(recent().textContent).not.toContain('Remote crew')
-    expect(recent().textContent).toContain('Local crew')
+    expect(pinned()).toBeNull()
     await act(async () => invalidateChatIdentity())
     await act(async () => root.render(<DesktopConnections />))
-    expect(host.querySelector('[aria-label="Recent Crews"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Pinned Crews"]')).toBeNull()
   } finally {
     await act(async () => root.unmount()); window.electronAPI = previous
   }
