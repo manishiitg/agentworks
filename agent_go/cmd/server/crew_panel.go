@@ -490,27 +490,14 @@ func crewPanelAgo(since time.Duration) string {
 	return fmt.Sprintf("%dd ago", int(since.Hours()/24))
 }
 
-// crewPanelWorkflowLine is one workflow's summary from its newest run: "4 steps · last run finished 2h ago".
+// crewPanelWorkflowLine is the workflow's line from its newest run: "last run finished 2h ago". No counts.
 // folders arrive newest first.
-func crewPanelWorkflowLine(folders []RunFolderInfo, steps int, now time.Time) string {
+func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
 	if len(folders) == 0 || folders[0].Metadata == nil {
-		if steps < 0 {
-			return "Step count not loaded · not run yet"
-		}
-		if steps > 0 {
-			return crewPanelCount(steps, "step") + " · not run yet"
-		}
-		return "Not run yet"
+		return "not run yet"
 	}
 	meta := folders[0].Metadata
 	parts := []string{}
-	n := steps
-	if n < 0 {
-		parts = append(parts, "Step count not loaded")
-	}
-	if n > 0 {
-		parts = append(parts, crewPanelCount(n, "step"))
-	}
 	at, _ := runFolderTime(folders[0])
 	if meta.CompletedAt != nil {
 		at = *meta.CompletedAt
@@ -692,10 +679,8 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 			}
 		}
 	}
-	if len(workflows) == 1 {
+	if len(workflows) > 0 {
 		details["workflow"] = workflows[0].Detail
-	} else if len(workflows) > 1 {
-		details["workflow"] = fmt.Sprintf("%d workflows", len(workflows))
 	}
 	if len(automations) == 1 {
 		details["automations"] = automations[0].Detail

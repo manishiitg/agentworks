@@ -54,10 +54,8 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 			t.Fatal(err)
 		}
 		actions := map[string]crewShareAction{}
-		for _, agent := range page.Agents {
-			for _, action := range agent.Actions {
-				actions[action.Name] = action
-			}
+		for _, action := range page.ActionsGroup.Rows {
+			actions[action.Name] = action
 		}
 		if len(actions) != 2 || !actions["enabled_action"].On || actions["disabled_action"].On {
 			t.Fatalf("lost enabled or disabled Main actions: %+v", actions)
