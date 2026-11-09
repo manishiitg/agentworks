@@ -28,7 +28,7 @@ type crewExecutableBinding = crewroot.ExecutableBinding
 
 var crewExecutablesMu sync.Mutex
 
-var errCrewWorkflowExists = errors.New("this Crew already has a workflow; edit its existing steps or add a route")
+var errCrewWorkflowExists = errors.New("this Crew already has a workflow. Edit it, or add another way in: a saved setting, schedule or web address that takes a different path inside it")
 
 func crewExecutablesPath() (string, error) {
 	root, err := workflowCLIStateRoot()
@@ -339,6 +339,20 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	if input.Name == "" || len(input.Name) > 120 {
 		http.Error(w, "Enter a workflow name (up to 120 characters).", http.StatusBadRequest)
 		return
+	}
+	// One workflow per Crew (owner, 9 Nov): different tasks are paths inside it (branches its inputs choose, each way in
+	// with its own saved settings), not more workflows. An older plan workflow cannot run, so it does not count: it is
+	// replaced by the Python workflow.
+	existing, err := readCrewExecutables()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for _, record := range existing {
+		if record.CrewID == project.Binding.ResourceID && record.Kind == "script" {
+			http.Error(w, errCrewWorkflowExists.Error(), http.StatusConflict)
+			return
+		}
 	}
 	// PLAT-746: every new workflow is a Python script; kind "workflow" from an
 	// older caller creates one too. Existing plan workflows keep working.
