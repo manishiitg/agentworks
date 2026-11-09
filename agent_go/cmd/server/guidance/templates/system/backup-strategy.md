@@ -44,10 +44,10 @@ large binaries, logs and explicitly included chat archives in an approved
 large-file destination rather than duplicating them in Git history. Preserve
 existing recovery content; exclusion is not authorization to delete it.
 
-Keep settings separate from results: `backup/config.json` records approved
-scope/destinations, `backup/status.json` records each actual attempt, including
-partial failures. Preserve the existing schema and store names only, never secret
-values. A backup is not automatic merely because a workflow finished; use the
+Keep any existing backup notes separate from attempt evidence, including partial
+failures. Old workflow backup settings/status readers were removed; do not create
+a new platform settings file or claim it will be read automatically. Record only
+names, never secret values. A backup is not automatic merely because a workflow finished; use the
 requested backup action or existing schedule.
 
 Verify the commit and remote revision or destination receipt; check the actual
