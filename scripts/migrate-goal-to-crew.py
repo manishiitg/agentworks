@@ -855,6 +855,7 @@ class Conversion:
                 'owner_evidence':self.owner_proof,
                 'carried_crew_links':getattr(self, 'carried_crew_links', []),
                 'dashboard_retargets':getattr(self, 'dashboard_retargets', []),
+                'dashboard_source_moves':getattr(self, 'dashboard_source_moves', []),
                 'database_columns_with_old_paths':self.database_path_columns,
                 'backup_skipped':[str(p.relative_to(self.source)) for p in self.backup_skipped],
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}
