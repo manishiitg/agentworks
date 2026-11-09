@@ -143,6 +143,21 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 						if input.Messages != nil {
 							job.Schedule.Messages = input.Messages
 						}
+						if job.Schedule.WorkflowID != "" {
+							var fields map[string]json.RawMessage
+							if err := json.Unmarshal(date.Input, &fields); err != nil {
+								return
+							}
+							if _, set := fields["input_preset"]; set {
+								job.Schedule.InputPreset = input.InputPreset
+							}
+							if input.Inputs != nil {
+								job.Schedule.Inputs = input.Inputs
+							}
+							if input.Routes != nil {
+								job.Schedule.RouteSelections = input.Routes
+							}
+						}
 					}
 				}
 				if _, err := s.Run(context.Background(), job, "cron", scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {

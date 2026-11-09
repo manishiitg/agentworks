@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 
@@ -253,6 +254,17 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 			Messages: input.Messages, Condition: input.Condition, ChatKey: record.Action.Tab,
 			Isolated: record.Action.Conversation == runDestinationIsolated || record.Action.Conversation == runDestinationNew,
 			New:      record.Action.Conversation == runDestinationNew, When: &record.When}
+		if record.Action.Type == "run" {
+			if record.Action.WorkflowID == "" {
+				return fmt.Errorf("choose the Crew workflow this timer runs")
+			}
+			s.WorkflowID, s.InputPreset, s.Inputs, s.RouteSelections = record.Action.WorkflowID, input.InputPreset, input.Inputs, input.Routes
+		} else if record.Action.WorkflowID != "" {
+			return fmt.Errorf("a message timer cannot select a workflow")
+		}
+		if input.Groups != nil {
+			return fmt.Errorf(retiredWorkflowGroupsMessage)
+		}
 		manifest.Schedules = append(manifest.Schedules, s)
 	}
 	return nil
@@ -263,9 +275,18 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 	if !registered {
 		owner = manifest.OwnerID
 	}
+	previous, err := readProjectSchedules(ctx, root)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]projectactions.Schedule, len(previous))
+	for _, record := range previous {
+		byID[record.ID] = record
+	}
 	var records []projectactions.Schedule
 	for _, s := range manifest.Schedules {
-		raw, err := json.Marshal(scheduleExecutionInput{Messages: s.Messages, Condition: s.Condition})
+		input := scheduleExecutionInput{Messages: s.Messages, Condition: s.Condition, InputPreset: s.InputPreset, Inputs: s.Inputs, Routes: s.RouteSelections}
+		raw, err := json.Marshal(input)
 		if err != nil {
 			return err
 		}
@@ -273,11 +294,32 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 			Project: projectactions.Project{Kind: "crew", ID: manifest.ID}, Input: raw,
 			Action: projectactions.Action{Type: "message", Tab: s.ChatKey},
 			When:   projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone), Anchor: s.CreatedAt}}
+		if s.WorkflowID != "" {
+			record.Action.Type, record.Action.WorkflowID = "run", s.WorkflowID
+		}
 		if record.RunAs == "" && !IsMultiUserMode() {
 			record.RunAs = GetDefaultUserID()
 		}
 		if s.Isolated {
 			record.Action.Conversation = scheduleRunDestination(s)
+		}
+		if s.WorkflowID != "" {
+			old, exists := byID[s.ID]
+			var oldInput scheduleExecutionInput
+			if exists {
+				if err := json.Unmarshal(old.Input, &oldInput); err != nil {
+					return err
+				}
+			}
+			// Launch inputs may become stale after a definition edit. Do not
+			// let unchanged timers block pause/delete or unrelated timer edits.
+			// New/changed targets and re-enabling still validate before saving;
+			// execution always validates the current definition again.
+			if !exists || old.Action != record.Action || old.RunAs != record.RunAs || !reflect.DeepEqual(oldInput, input) || (!old.Enabled && s.Enabled) {
+				if _, err := crewTimerWorkflowContext(ctx, root, manifest.ID, owner, s); err != nil {
+					return err
+				}
+			}
 		}
 		if s.When != nil {
 			record.When = *s.When

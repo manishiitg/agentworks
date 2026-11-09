@@ -756,6 +756,8 @@ func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, bind
 	if err := saveCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
 		return err
 	}
+	// Timers have one saved record; the manifest carries only the read projection.
+	manifest.Schedules = nil
 	manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if filepath.Base(filepath.FromSlash(binding.ManifestPath)) == "workflow.json" {
 		if strings.TrimSpace(manifest.Label) == "" {
@@ -1223,6 +1225,16 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	// Setup errors and Stop must be terminal before the dispatcher releases
 	// its claim or starts the next queued conversation turn.
 	defer func() { resultErr = errors.Join(resultErr, finishEvidence(resultSessionID, resultErr)) }()
+	var workflowContext *ScheduleContext
+	var workflowPreflightErr error
+	if job.Schedule.WorkflowID != "" {
+		// Enabled controls cron only; manual runs validate all required inputs.
+		timer := job.Schedule
+		timer.Enabled = true
+		workflowContext, workflowPreflightErr = crewTimerWorkflowContext(runCtx, job.WorkspacePath, job.ProjectID, job.UserID, timer)
+		// Preflight failures still pass through the ordinary history/state
+		// completion path, so the timer shows its failed run to the person.
+	}
 	var binding productConversationBinding
 	var bindErr error
 	newAgentName := "" // set when this run creates a named Crew agent's tab
@@ -1347,6 +1359,9 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		Status:        "running",
 		StartedAt:     startedAt,
 	}
+	if workflowContext != nil {
+		entry.ExecutionWorkspacePath = workflowContext.WorkspacePath
+	}
 	if !scheduledFor.IsZero() {
 		sf := scheduledFor.UTC()
 		entry.ScheduledFor = &sf
@@ -1371,9 +1386,20 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 
 	messages := job.Effective().Messages
 	scheduleLogf("[PRODUCT-SCHEDULE] 🚀 %s (%s) for user %s: %d message(s), session %s", job.ID(), job.Schedule.Name, job.UserID, len(messages), sessionID)
-	var runErr error
+	runErr := workflowPreflightErr
 	finalResponse := ""
 	tokenUsage := &workflowtypes.CrewRunTokenUsage{}
+	if job.Schedule.WorkflowID != "" {
+		messages = nil
+	}
+	if workflowContext != nil && runErr == nil {
+		workflowContext.ScheduledFor = scheduledFor
+		finalResponse, runErr = s.executeCrewWorkflowTimer(runCtx, job, workflowContext, conversation, runsWorkspace, runID, triggerSource)
+		messages = nil
+		// The existing cost source/run attribution covers Python descendants.
+		// A missing ledger stays unknown rather than reporting a fake zero.
+		tokenUsage = automationRunUsage(runCtx, s.api.costLedger, job.UserID, runID, startedAt)
+	}
 	for i := 0; i < len(messages); i++ {
 		if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
 			runErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
@@ -1563,6 +1589,10 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		RunDestination:      scheduleRunDestination(job.Schedule),
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
+	}
+	resp.TargetWorkflowID, resp.InputPreset, resp.Inputs, resp.RouteSelections = sched.WorkflowID, sched.InputPreset, sched.Inputs, sched.RouteSelections
+	if sched.WorkflowID != "" {
+		resp.Kind = "workflow"
 	}
 	if sched.Condition != nil {
 		resp.Kind = "condition"
