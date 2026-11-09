@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
@@ -37,7 +37,7 @@ func TestInteractiveBuilderCallsOwnDeclaredFunction(t *testing.T) {
 			req := QueryRequest{SelectedFolder: linkAlphaPath, AgentProfileID: "work", TriggeredBy: tc.trigger, PinRunMode: tc.pinRun}
 			options := crewFunctionToolOptions{InteractiveOwnCalls: publishedBuilderHandoff(&req, false), ExecutionScope: tc.scope}
 			if tc.scope != "" {
-				options.FunctionTools = agentworksproduct.ExecutionFunctionTools()
+				options.FunctionTools = projectfunctions.ExecutionTools()
 			}
 			if err := env.api.registerCrewFunctionToolSet(reg, "owner", "sess-builder", req, crewTriggerLinkCaller(linkAlphaPath), nil, options); err != nil {
 				t.Fatal(err)

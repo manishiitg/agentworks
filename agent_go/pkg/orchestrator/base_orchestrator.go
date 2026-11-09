@@ -9,7 +9,7 @@ import (
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
@@ -171,7 +171,7 @@ func NewBaseOrchestrator(
 			immutableToolCategories[tool.Function.Name] = virtualtools.GetSubAgentToolCategory()
 		}
 	}
-	functionTools := agentworksproduct.ExecutionFunctionTools()
+	functionTools := projectfunctions.ExecutionTools()
 	for _, name := range functionTools.Tools {
 		immutableToolCategories[name] = functionTools.Category
 	}
