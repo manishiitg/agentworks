@@ -5,7 +5,7 @@ admitted tools and exact people/agents returned by the server. A link grants no
 access by itself. The server decides what the caller can change; a guide does
 not grant permission or another person's tab controls.
 
-Share has three routes:
+Share has two routes (team, agents):
 
 - **Work on it with your team:** People lists **Works with me** and **Dashboards
   only**. Read the Team procedure before invitations, level or folder changes.
@@ -13,12 +13,16 @@ Share has three routes:
   changes**, and chat visibility **Live / Saved only / Hidden**. Use the returned
   agent keys, current choices and changeability. Other people's agents appear
   under **Shared with you**; do not change their settings.
-- **Slack:** choose the Crew's saved bot, name, channels and direct-message
-  settings here. Read `panel-channels`' Slack bot procedure for setup and
-  diagnostics. Personal **Use Slack as me** stays in Connections.
 - **Leave this Team:** a member leaves with the button at the end of Share,
   which asks "Leave this Team?" first. In chat, leave only when the person asks
   to leave this Team; the owner cannot leave their own Crew.
+
+Slack has its own **Slack** tab next to Share (shown only where Slack bots are
+allowed): the Crew's saved bot, its name, channels and direct-message settings,
+and **Who can talk to it** (a channel @mention answers as the Crew's owner in a
+thread; people from other workspaces or whose Slack email is not an AgentWorks
+account are refused). Read `panel-channels`' Slack bot procedure for setup and
+diagnostics. Personal **Use Slack as me** stays in Connections.
 
 Dashboards have their own **Dashboards** tab next to Share: everything the
 Crew publishes in three kinds (Dashboards, Artifacts, Motion, each shown even at

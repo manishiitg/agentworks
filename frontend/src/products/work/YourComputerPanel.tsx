@@ -12,7 +12,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { AskButton, teamCard } from './TeamTab'
-import { ShareCrew } from './ShareCrew'
+import { ShareCrew, SlackTab } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
@@ -262,9 +262,8 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
   const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
   const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
   // A tab the server does not list for this person falls back to its first one. Dashboards have their own tab (owner,
-  // 9 Nov); the Slack bot is the Share tab's Slack option, so asking for it opens Share there.
-  const wanted: CrewAccessSection = section === 'slack' ? 'team' : section
-  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === wanted) ? wanted : tabs[0]?.id
+  // 9 Nov) and so does Slack.
+  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
   const needsServer = here && !connections.length && !online
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
@@ -349,7 +348,11 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     {/* Share this Crew (owner, 9 Nov mocks): the server's /share reply decides its options. The Mac app's own Crew turns
         the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <ShareCrew projectId={projectId} workspacePath={workspacePath} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} focus={section === 'slack' ? 'slack' : undefined} />
+      <ShareCrew projectId={projectId} workspacePath={workspacePath} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
+    </section>}
+    {/* Slack (owner, 9 Nov: its own tab next to Share): the Crew's Slack bot and who can talk to it. */}
+    {shown === 'slack' && <section role="tabpanel" id={`crew-access-panel-${projectId}-slack`} aria-labelledby={`crew-access-${projectId}-slack`} className="space-y-3">
+      <SlackTab projectId={projectId} workspacePath={workspacePath} />
     </section>}
     {/* Dashboards (owner, 9 Nov: their own tab next to Share): everything this Crew publishes, or "No dashboard yet" with
         its Ask; a Mac Crew that was never online lists its own. */}

@@ -181,6 +181,18 @@ func (c crewSlackBotChoice) Status() (string, bool) {
 	return "On · " + c.Name, true
 }
 
+// crewSlackTabOffered: the Access page lists a Slack tab when this viewer can read the Crew's Slack bot choice and bots
+// are allowed here (the same read as the Crew menu's Slack bot row); who may change it stays the Slack bot routes' own
+// rule (can_select, can_manage).
+func (api *StreamingAPI) crewSlackTabOffered(r *http.Request, viewer, project string) bool {
+	src, ok := api.crewShareSourceFor(r.Context(), viewer, project)
+	if !ok || src.workspace == "" {
+		return false
+	}
+	bot, err := api.crewSlackBotChoiceFor(r, src.workspace, nil)
+	return err == nil && bot.Allowed
+}
+
 func (api *StreamingAPI) crewSlackBotChoiceFor(r *http.Request, workspace string, vars map[string]string) (crewSlackBotChoice, error) {
 	var data struct {
 		Selected string `json:"selected_id"`
@@ -565,7 +577,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	tab := crewTeamTabFor(ctx, t, viewer)
 	root := crewProjectRootByID(t.ProjectID)
 	everyone, named := crewPeopleShareRecord(root)
-	page := crewSharePage{Title: "Share this Crew", Lead: "Three ways. Use any of them. Click one to set it up.", Agents: []crewShareAgent{}, AgentsIntro: crewShareActionsIntro,
+	page := crewSharePage{Title: "Share this Crew", Lead: "Two ways. Use any of them. Click one to set it up.", Agents: []crewShareAgent{}, AgentsIntro: crewShareActionsIntro,
 		WhoCanUse: crewShareWhoLine(t, everyone, named)}
 
 	// Share agents: the viewer's own agents with Ask, the owner's actions on them, then cards with actions only.
@@ -663,13 +675,10 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		page.AgentsEmpty = "No agents to share yet."
 	}
 
-	// Slack: shown when this viewer can read the Crew's Slack bot choice and bots are allowed here (the same read as the
-	// Crew menu's Slack bot row); who may change it stays the Slack bot routes' own rule (can_select, can_manage).
-	slackOption := []crewShareOption{}
+	// Slack is its own Access tab (owner, 9 Nov), offered by crewSlackTabOffered; this page only carries the "Who can
+	// talk to it" lines the Slack tab prints.
 	if dashWorkspace != "" {
 		if bot, err := api.crewSlackBotChoiceFor(r, dashWorkspace, nil); err == nil && bot.Allowed {
-			slackStatus, slackOn := bot.Status()
-			slackOption = append(slackOption, crewShareOption{Key: "slack", Title: "Slack", Line: "People talk to this Crew in Slack: in channels, and in direct messages.", Chips: []string{}, Status: slackStatus, On: slackOn})
 			page.Slack = crewShareSlackRules(owner)
 		}
 	}
@@ -694,14 +703,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		{Key: "team", Title: "Work on it with your team", Line: "They build and run this Crew with you: same files, same agents, their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
 		{Key: "agents", Title: "Share agents", Line: "Let others ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
 	}
-	page.Options = append(page.Options, slackOption...)
-	if len(page.Options) == 2 {
-		page.Lead = "Two ways. Use any of them. Click one to set it up."
-	}
 	anyOpen := false
 	for i := range page.Options {
-		// Slack opens only when asked (the Slack bot row).
-		page.Options[i].Open = page.Options[i].On && page.Options[i].Key != "slack"
+		page.Options[i].Open = page.Options[i].On
 		anyOpen = anyOpen || page.Options[i].Open
 	}
 	if !anyOpen {
