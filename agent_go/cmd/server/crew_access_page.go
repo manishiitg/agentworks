@@ -43,12 +43,11 @@ var crewAccessMacTabs = func() []crewAccessTab {
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// The Share page's two Crew tabs (owner, 6 Nov, approved mockups): People (who works here and how: the Team and the
-// Share as one list; its id stays "team") and Dashboards (what the Crew publishes). A Crew on the server, and a Team
-// member, have these two; a Crew on a Mac has Mac online before them.
+// The Share page's one Crew tab (owner, 9 Nov, approved mock "Share a Crew"): Share this Crew, with its three options
+// (work on it with your team, share agents, read only; crew_share_page.go). Its id stays "team". A Crew on a Mac has Mac
+// online before it.
 var crewAccessPeopleTabs = []crewAccessTab{
-	{ID: "team", Label: "People", Detail: "who works here"},
-	{ID: "dashboards", Label: "Dashboards", Detail: "what this Crew publishes"},
+	{ID: "team", Label: "Share", Detail: "people, agents and dashboards"},
 }
 
 var crewAccessTeamTab = crewAccessPeopleTabs
