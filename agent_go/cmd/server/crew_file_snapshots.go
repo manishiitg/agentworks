@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"log"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -187,8 +189,10 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return
 		}
-		if snapshot.record.ID == "" {
-			api.publishCrewSnapshotUnavailable(snapshot, "failed")
+		if snapshot.beforeErr != nil || snapshot.record.ID == "" {
+			reason := crewSnapshotFailureReason(snapshot.beforeErr)
+			log.Printf("[FILE_SNAPSHOT] phase=before_failed session=%s execution=%s snapshot=%s reason=%s error=%v", snapshot.sessionID, snapshot.executionID, snapshot.record.ID, reason, snapshot.beforeErr)
+			api.publishCrewSnapshotUnavailable(snapshot, reason)
 			return
 		}
 		// This runs asynchronously, just like the before boundary. Large
@@ -202,7 +206,7 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		case err == nil && (record.Status == "complete" || record.Status == "partial"):
 			api.publishCrewSnapshot(snapshot, roots, record)
 		default:
-			api.publishCrewSnapshotUnavailable(snapshot, "failed")
+			api.publishCrewSnapshotUnavailable(snapshot, crewSnapshotFailureReason(err))
 		}
 	})
 }
@@ -304,9 +308,27 @@ func (api *StreamingAPI) crewSnapshotReplyEnd(snapshot *crewTurnSnapshot) (int64
 var crewSnapshotUnavailableText = map[string]string{
 	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this Crew).",
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
-	"failed":     "File changes for this reply weren't saved (the file snapshot failed).",
+	"failed":     "Changes couldn't be saved for this reply. Your work is still available in Files.",
+	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files; use a smaller project folder if this keeps happening.",
+	"filename":   "File tracking couldn't save a filename in this project. Your work is still in Files; update AgentWorks and try again.",
+	"access":     "File tracking couldn't read the project folder. Check its folder access, then try again. Your work is still in Files.",
 	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
 	"incomplete": "Some file changes could not be saved for this reply.",
+}
+
+// Classify only known capture failures. Never put raw Git output, filenames
+// or a private store path into the owning-chat notice.
+func crewSnapshotFailureReason(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return "timeout"
+	case errors.Is(err, os.ErrPermission):
+		return "access"
+	case err != nil && strings.Contains(err.Error(), "fatal: invalid path"):
+		return "filename"
+	default:
+		return "failed"
+	}
 }
 
 // crewSetupNoticeShown remembers chats (per Crew store) that already got the
