@@ -208,6 +208,16 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 	if bundle == nil {
 		return nil, fmt.Errorf("native conversation unavailable")
 	}
+	// Match local import's existing full-copy budget before making another
+	// native copy. Saved dialogue remains the continuity path for larger chats.
+	var bytes int64
+	for _, file := range bundle.Files {
+		bytes += file.Size
+	}
+	free, spaceErr := localChatFreeBytes(roots.Private)
+	if bytes > 64<<20 || spaceErr != nil || free < uint64(bytes)*3+(256<<20) {
+		return nil, fmt.Errorf("native copy budget exceeded; continued from copied conversation")
+	}
 	cwd, err := crewCLIWorkingDir(roots.Virtual, claims.UserID, destination.SessionID, handle.Provider, false)
 	if err != nil {
 		return nil, err
