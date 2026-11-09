@@ -105,7 +105,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
         <section aria-label="Project folder">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-medium">Folder</h3>
-            {canChangeFolder && <button type="button" disabled={submitting} onClick={() => { setEditingFolder(value => !value); setFolderError(null) }} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted">{editingFolder ? 'Done' : <><FolderOpen aria-hidden="true" className="h-3.5 w-3.5" />Choose existing folder</>}</button>}
+            {canChangeFolder && !editingFolder && <button type="button" disabled={submitting} onClick={() => { setEditingFolder(true); setFolderError(null) }} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"><FolderOpen aria-hidden="true" className="h-3.5 w-3.5" />Choose existing folder</button>}
           </div>
           {editingFolder && canChangeFolder ? <>
             <div className="mt-1.5 flex gap-2">
