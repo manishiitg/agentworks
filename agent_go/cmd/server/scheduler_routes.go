@@ -27,6 +27,7 @@ type ScheduleRunDestination struct {
 // ScheduledJobResponse is the API response for a scheduled job.
 // Designed to be backward-compatible with the old DB-based ScheduledJob shape.
 type ScheduledJobResponse struct {
+	TargetWorkflowID  string            `json:"target_workflow_id,omitempty"`
 	CrewWorkspacePath string            `json:"crew_workspace_path,omitempty"`
 	InputPreset       string            `json:"input_preset,omitempty"`
 	Inputs            map[string]string `json:"inputs,omitempty"`
@@ -109,6 +110,7 @@ type ScheduledJobResponse struct {
 
 // CreateScheduleRequest is the request body for creating a schedule.
 type CreateScheduleRequest struct {
+	TargetWorkflowID         string                 `json:"target_workflow_id,omitempty"`
 	InputPreset              string                 `json:"input_preset,omitempty"`
 	Inputs                   map[string]string      `json:"inputs,omitempty"`
 	EntityType               string                 `json:"entity_type,omitempty"`
@@ -149,6 +151,7 @@ type CreateScheduleRequest struct {
 
 // UpdateScheduleRequest is the request body for updating a schedule.
 type UpdateScheduleRequest struct {
+	TargetWorkflowID         *string                `json:"target_workflow_id,omitempty"`
 	InputPreset              *string                `json:"input_preset"`
 	Inputs                   map[string]string      `json:"inputs"`
 	Name                     string                 `json:"name,omitempty"`
@@ -685,7 +688,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, "product schedules are not available", http.StatusNotFound)
 				return
 			}
-			if len(req.Messages) != 1 || strings.TrimSpace(req.Messages[0]) == "" {
+			if req.TargetWorkflowID == "" && (len(req.Messages) != 1 || strings.TrimSpace(req.Messages[0]) == "") {
 				http.Error(w, "a Work project schedule requires exactly one message", http.StatusBadRequest)
 				return
 			}
@@ -715,7 +718,8 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 			job, err := svc.api.projectActions.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
-				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages, Isolated: destination.Isolated, New: destination.New, ChatKey: chatKey,
+				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages,
+				WorkflowID: req.TargetWorkflowID, InputPreset: req.InputPreset, Inputs: req.Inputs, RouteSelections: req.RouteSelections, Isolated: destination.Isolated, New: destination.New, ChatKey: chatKey,
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1470,7 +1474,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 	case "enable", "disable":
 		updated, err := ps.SetEnabled(ctx, userID, id, action == "enable")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeScheduleSaveError(w, err)
 			return true
 		}
 		respond(updated)
@@ -1568,6 +1572,22 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 		}
 		updated, err := ps.UpdateProjectSchedule(ctx, userID, id, func(schedule *productschedule.Schedule) {
+			if req.TargetWorkflowID != nil {
+				schedule.WorkflowID = *req.TargetWorkflowID
+				if schedule.WorkflowID == "" {
+					schedule.InputPreset, schedule.Inputs, schedule.RouteSelections = "", nil, nil
+				}
+			}
+			if req.InputPreset != nil {
+				schedule.InputPreset = *req.InputPreset
+			}
+			if req.Inputs != nil {
+				schedule.Inputs = req.Inputs
+			}
+			if req.RouteSelections != nil {
+				schedule.RouteSelections = req.RouteSelections
+			}
+
 			if requestedChatKey != nil {
 				schedule.ChatKey = *requestedChatKey
 				if *requestedChatKey != "" {

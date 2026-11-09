@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"time"
 )
 
 // crewRunTokenUsageFromSummary converts one ledger execution summary into
@@ -39,4 +41,23 @@ func accumulateAutomationTurnUsage(ledger *costledger.Ledger, total *workflowtyp
 		return
 	}
 	total.Merge(crewRunTokenUsageFromSummary(summary))
+}
+
+// Workflow timers share their source run ID with all Python descendants.
+// Cost recording remains optional and never changes a business run outcome.
+func automationRunUsage(ctx context.Context, ledger *costledger.Ledger, userID, runID string, since time.Time) *workflowtypes.CrewRunTokenUsage {
+	if ledger == nil {
+		return nil
+	}
+	usage := &workflowtypes.CrewRunTokenUsage{}
+	err := ledger.VisitEntries(context.WithoutCancel(ctx), since.UTC().Format("2006-01-02"), time.Now().UTC().Format("2006-01-02"), func(e costledger.Entry) error {
+		if e.UserID == userID && e.SourceRunID == runID {
+			usage.AddModel(firstNonEmptyTrimmed(e.EffectiveModelID, e.ModelID), firstNonEmptyTrimmed(e.EffectiveProvider, e.Provider), e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens, e.CacheWriteTokens, e.TotalCostUSD, e.LLMCallCount)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil
+	}
+	return usage
 }

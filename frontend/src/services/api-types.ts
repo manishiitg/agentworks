@@ -2520,6 +2520,7 @@ export interface GmailOAuthClientsResponse {
 
 // Scheduled Jobs
 export interface ScheduledJob {
+  target_workflow_id?: string
   crew_workspace_path?: string
   kind?: string
 
@@ -2689,6 +2690,7 @@ export interface ListScheduledJobsResponse {
 }
 
 export interface ScheduledJobRun {
+  execution_workspace_path?: string
   id: string
   job_id: string
   webhook?: { trigger_name: string; delivery_id: string; event?: string; received_at: string; commit_sha?: string; component?: string; env?: string; deployed_at?: string }

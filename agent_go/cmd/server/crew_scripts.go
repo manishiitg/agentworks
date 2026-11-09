@@ -453,17 +453,25 @@ func (s *SchedulerService) executeCrewScriptSchedule(ctx context.Context, sctx *
 		return "", "", fmt.Errorf("this script schedule has no assigned run folder")
 	}
 	sessionID := s.newScheduleSessionID(sctx)
-	invocation := &workflow.ScheduleInvocation{RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: folder, TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor, AllowParallel: scheduleAllowsParallel(sctx.Schedule)}
-	s.api.scheduleInvocations.Store(sessionID, invocation)
-	defer s.api.scheduleInvocations.Delete(sessionID)
 	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) { state.LastSessionID = sessionID })
 	if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, folder, sessionID); err != nil {
 		return sessionID, folder, err
 	}
+	err := s.startCrewScriptInvocation(ctx, sctx, runID, sessionID, folder, nil)
+	sctx.ProducedRunEvidence = err == nil
+	return sessionID, folder, err
+}
+
+// Chat timers and the remaining old timer adapter share this direct saved
+// Python starter. The caller owns admission, chat receipts and the run ledger.
+func (s *SchedulerService) startCrewScriptInvocation(ctx context.Context, sctx *ScheduleContext, runID, sessionID, folder string, costJob *productScheduleJob) error {
+	invocation := &workflow.ScheduleInvocation{RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: folder, TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor, AllowParallel: costJob != nil || scheduleAllowsParallel(sctx.Schedule)}
+	s.api.scheduleInvocations.Store(sessionID, invocation)
+	defer s.api.scheduleInvocations.Delete(sessionID)
 	req := s.buildWorkshopRequest(ctx, sctx, runID)
 	opts, err := configureDirectWebhookRequest(req, sctx, folder)
 	if err != nil {
-		return sessionID, folder, err
+		return err
 	}
 	opts.RunKind = invocation.RunKind()
 	opts.ScheduleRunID = invocation.RunID
@@ -471,8 +479,9 @@ func (s *SchedulerService) executeCrewScriptSchedule(ctx context.Context, sctx *
 	opts.TriggerSource = invocation.TriggerSource
 	opts.ScheduledFor = invocation.ScheduledFor
 	req["query"] = "Script: " + sctx.Schedule.Name
+	if costJob != nil {
+		applyAutomationCostSource(req, *costJob, runID)
+	}
 	s.sessionLogf(sctx, sessionID, "[CREW_SCRIPT] Direct schedule execution run=%s run_as=%s folder=%s", runID, sctx.OwnerUserID, folder)
-	err = s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
-	sctx.ProducedRunEvidence = err == nil
-	return sessionID, folder, err
+	return s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
 }

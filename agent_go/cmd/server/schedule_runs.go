@@ -34,6 +34,7 @@ type ScheduleRunEntry struct {
 	// scheduled slot.
 	ScheduledFor             *time.Time `json:"scheduled_for,omitempty"`
 	RunFolder                string     `json:"run_folder,omitempty"`
+	ExecutionWorkspacePath   string     `json:"execution_workspace_path,omitempty"`
 	ConcurrencyMode          string     `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged bool       `json:"parallel_risk_acknowledged,omitempty"`
 	SessionID                string     `json:"session_id,omitempty"`
