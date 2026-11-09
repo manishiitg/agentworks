@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -166,6 +168,7 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 				continue
 			}
 			message.NativeID = identity
+			message.nativeTextBytes = len(builderConversationMessageText(message))
 			text := builderConversationMessageText(message)
 			if len(text) > nativeHistoryMessageBytes {
 				complete = false
@@ -221,4 +224,48 @@ func nativeHistoryCanProveAbsence(provider, path string) bool {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	return cache.complete && cache.info != nil && cache.offset == cache.info.Size()
+}
+
+// Only accepted terminal inputs need their full text. Re-read one bounded row
+// at its stable source offset rather than retaining large prompts in the UI cache.
+func nativeTerminalInputText(path, provider string, message builderConversationMessage) string {
+	excerpt := builderConversationMessageText(message)
+	if message.nativeTextBytes <= nativeHistoryMessageBytes {
+		return excerpt
+	}
+	unavailable := fmt.Sprintf("This long message could not be saved in full (%d bytes).\n%s", message.nativeTextBytes, excerpt)
+	parts := strings.Split(message.NativeID, ":")
+	if len(parts) != 3 || parts[0] != provider {
+		return unavailable
+	}
+	offset, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || offset < 0 {
+		return unavailable
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return unavailable
+	}
+	defer f.Close()
+	// The display reader accepts at most 1 MiB per source row. Use the same
+	// limit here, checking the hash before persisting any reread content.
+	raw, err := bufio.NewReader(io.NewSectionReader(f, offset, (1<<20)+1)).ReadBytes('\n')
+	if err != nil || len(raw) > (1<<20)+1 {
+		return unavailable
+	}
+	raw = bytes.TrimSuffix(raw, []byte{'\n'})
+	if fmt.Sprintf("%x", sha256.Sum256(raw)) != parts[2] {
+		return unavailable
+	}
+	var full builderConversationMessage
+	var ok bool
+	if provider == "codex-cli" {
+		full, _, ok = parseCodexTranscriptLine(raw)
+	} else {
+		full, _, ok = parseClaudeTranscriptLine(raw)
+	}
+	if !ok || (full.Role != "human" && full.Role != "user") {
+		return unavailable
+	}
+	return builderConversationMessageText(full)
 }
