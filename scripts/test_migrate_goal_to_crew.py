@@ -161,7 +161,13 @@ class Migration(unittest.TestCase):
         write(registry_file,{'resources':[original_resource]})
         command=[sys.executable,str(Path(python.__file__)), '--docs',str(self.docs),'--state',str(self.state),
                  '--workflow-id','old-goal','--repair-dashboard-links']
+        # Codex1730 P2: creating a backup under the move destination must
+        # refuse before making that directory or nesting reports/reports.
         snapshot = hashes(self.base)
+        refused = subprocess.run(command+['--apply','--backup',str(canonical/'backup')],capture_output=True,text=True)
+        self.assertNotEqual(refused.returncode,0)
+        self.assertEqual(hashes(self.base),snapshot)
+        self.assertFalse(canonical.exists())
         inspect = subprocess.run(command,check=True,capture_output=True,text=True)
         self.assertEqual(hashes(self.base),snapshot)
         self.assertEqual(json.loads(inspect.stdout)['dashboard_retargets'][0]['before'],original_resource)

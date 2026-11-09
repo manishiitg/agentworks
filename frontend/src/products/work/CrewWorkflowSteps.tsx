@@ -22,9 +22,10 @@ function ChangeButton({ onClick, label }: { onClick: () => void; label: string }
 }
 
 /** The outline nests: a branch holds its cases, a case its steps; a loop, try or block holds its steps. Nodes arrive in source order with `parent` set. */
-function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open, toggle, onAsk, workflow }: {
+function OutlineRows({ nodes, byName, byCall, checkLines, parent, numbered = false, open, toggle, onAsk, workflow }: {
   nodes: RelaySourceNode[]
   byName: Map<string, RunPythonStep>
+  byCall: Map<string, RunPythonStep>
   checkLines: Map<string, string>
   parent?: string
   /** The top level is numbered 1, 2, 3 …; nested rows use a dot. */
@@ -35,7 +36,7 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
   workflow: string
 }) {
   const stepsIn = (id: string): RelaySourceNode[] => nodes.filter(node => node.parent === id).flatMap(node => node.role ? stepsIn(node.id) : [node])
-  const stepOf = (node: RelaySourceNode) => node.type === 'script' ? byName.get(node.label.trim().toLowerCase()) : undefined
+  const stepOf = (node: RelaySourceNode) => node.step_call ? byCall.get(node.step_call) : node.type === 'script' ? byName.get(node.label.trim().toLowerCase()) : undefined
   return <>
     {nodes.filter(node => node.parent === parent).map((node, index) => {
       if (!node.role) {
@@ -52,7 +53,7 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
       const failed = inside.some(step => stepOf(step)?.status === 'failed')
       return <PageRow key={node.id} lead={numbered ? <StepNumber n={index + 1} status={failed ? 'failed' : undefined} /> : <RunDot state={failed ? 'stopped' : 'idle'} />} title={node.label} lines={[count]} open={open.has(node.id)} onToggle={() => toggle(node.id)}>
         <div className="-mx-4 -my-3 divide-y divide-border">
-          <OutlineRows nodes={nodes} byName={byName} checkLines={checkLines} parent={node.id} open={open} toggle={toggle} onAsk={onAsk} workflow={workflow} />
+          <OutlineRows nodes={nodes} byName={byName} byCall={byCall} checkLines={checkLines} parent={node.id} open={open} toggle={toggle} onAsk={onAsk} workflow={workflow} />
         </div>
       </PageRow>
     })}
@@ -90,6 +91,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   // An outline row has no execution identity. Match a single recorded label only; repeated labels stay in Runs.
   const nameOf = (name: string) => name.trim().toLowerCase()
   const byName = new Map(latestSteps.filter(step => latestSteps.filter(other => nameOf(other.name) === nameOf(step.name)).length === 1 && nodes.filter(node => !node.role && nameOf(node.label) === nameOf(step.name)).length === 1).map(step => [nameOf(step.name), step]))
+  const byCall = new Map(latestSteps.filter(step => step.source_call && latestSteps.filter(other => other.source_call === step.source_call).length === 1).map(step => [step.source_call!, step]))
   const typeNotes = state.graph?.type_notes ?? []
   // Saved-key guidance already has its own line, and detailed type notes have one expandable summary.
   const advisoryNotes = (state.graph?.notes ?? []).filter(note =>
@@ -108,7 +110,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
     </>} onAsk={() => onAsk('Help me change this workflow.')}
     testId="crew-workflow-steps">
     {nodes.length
-      ? <OutlineRows nodes={nodes} byName={byName} checkLines={checkLines} numbered open={open} toggle={toggle} onAsk={onAsk} workflow={title} />
+      ? <OutlineRows nodes={nodes} byName={byName} byCall={byCall} checkLines={checkLines} numbered open={open} toggle={toggle} onAsk={onAsk} workflow={title} />
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
       : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail, checkLines.get(step.id)]} />)}
     {!!state.graph?.unkeyed_calls?.length && <p className="px-4 py-3 text-xs text-muted-foreground">{state.graph.unkeyed_calls.length} calls have no saved-result key; add one so a failed run can continue.</p>}

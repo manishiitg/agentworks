@@ -319,16 +319,20 @@ def inspect_automation_source(files):
             return call.args[index] if len(call.args) > index else next((item.value for item in call.keywords if item.arg == name), None)
 
         def call_settings(call):
-            # Only plain string values written on the call itself; anything computed is left to the run.
+            # Null means supplied but unresolved; omission alone means default.
             found = {}
             for item in call.keywords:
-                if item.arg in ('model', 'tier', 'reasoning') and isinstance(item.value, ast.Constant) and isinstance(item.value.value, str):
-                    found[item.arg] = item.value.value
+                if item.arg is None:
+                    found['model'] = None  # **settings may choose an override.
+                elif item.arg in ('model', 'tier', 'reasoning'):
+                    if isinstance(item.value, ast.Constant) and item.value.value is None:
+                        continue
+                    found[item.arg] = item.value.value if isinstance(item.value, ast.Constant) and isinstance(item.value.value, str) else None
             return found
 
         parents, last = [], {}
 
-        def add(call, module, kind, label, identity, description=None, role=None, settings=None):
+        def add(call, module, kind, label, identity, description=None, role=None, settings=None, step_call=None):
             import hashlib
             parent = parents[-1] if parents else None
             # One row per occurrence: the same step reached in two cases gets two ids.
@@ -340,6 +344,8 @@ def inspect_automation_source(files):
                 node['role'] = role
             if settings:
                 node['settings'] = settings
+            if step_call:
+                node['step_call'] = step_call
             if parent:
                 node['parent'] = parent
             if any(existing['id'] == node['id'] for existing in graph['nodes']):
@@ -476,9 +482,9 @@ def inspect_automation_source(files):
                 if len(inner) == 1 and inner[0] is not None:
                     # A step whose body is one agent call is that agent: one row with the step's title and the call's own settings.
                     add(expression, module, 'agent', label, identity,
-                        literal(name_module, argument(inner[0], 1, 'message')), settings=call_settings(inner[0]))
+                        literal(name_module, argument(inner[0], 1, 'message')), settings=call_settings(inner[0]), step_call=identity)
                     return True
-                add(expression, module, 'script', label, identity)
+                add(expression, module, 'script', label, identity, step_call=identity)
                 if expand:
                     block(name_module, fn.body, False)
                 return True

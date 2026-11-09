@@ -117,6 +117,18 @@ func addOutlineModels(graph json.RawMessage, config *workflowtypes.PresetLLMConf
 		}
 		set, _ := node["settings"].(map[string]interface{})
 		delete(node, "settings")
+		unresolved := false
+		for _, key := range []string{"model", "tier", "reasoning"} {
+			if value, present := set[key]; present {
+				if _, known := value.(string); !known {
+					unresolved = true
+				}
+			}
+		}
+		if unresolved {
+			delete(node, "agent")
+			continue
+		}
 		pick := func(key string) string { value, _ := set[key].(string); return strings.TrimSpace(value) }
 		if agent := resolveOutlineAgent(tiers, pick("model"), pick("tier"), pick("reasoning")); agent != nil {
 			node["agent"] = agent

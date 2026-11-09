@@ -6,6 +6,8 @@ export interface RelaySourceNode {
   label: string
   description?: string
   call?: string
+  /** The decorated step receipt this row represents, even when displayed as one agent. */
+  step_call?: string
   input?: unknown
   output?: unknown
   system_prompt?: string
