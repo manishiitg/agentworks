@@ -398,7 +398,7 @@ while True:
 			t.Fatal("detaching origin canceled worker")
 		}
 		run, err := api.scheduler.existingWebhookRun(ctx, runID)
-		if err != nil || run.State != schedulerstate.StateRunning {
+		if err != nil || run.State != schedulerstate.StateWorkflowRunning {
 			t.Fatalf("detached worker missing from durable runs: %+v %v", run, err)
 		}
 		api.activeSessionsMux.Lock()
@@ -477,7 +477,7 @@ while True:
 		}
 		for ctx.Err() == nil {
 			run, err := api.scheduler.existingWebhookRun(ctx, timerRun)
-			if err == nil && run.State == schedulerstate.StateRunning {
+			if err == nil && run.State == schedulerstate.StateWorkflowRunning {
 				break
 			}
 			time.Sleep(20 * time.Millisecond)
