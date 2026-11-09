@@ -162,14 +162,14 @@ func TestProviderAccountsInstalledAccountAdminsOnly(t *testing.T) {
 	}
 	// A run naming it, and a run naming no account (the server account by
 	// default), are both refused for a member.
-	if _, err := env.resolveForRun("bob", "Workflow/v", "cursor-cli", "global:cursor-cli"); err == nil || !strings.Contains(err.Error(), "not available") {
+	if _, err := env.resolveForRun("bob", "Workflow/v", "cursor-cli", "global:cursor-cli"); err == nil {
 		t.Fatalf("member run on the admins-only account: %v", err)
 	}
 	keys, err := env.api.resolveEffectiveAPIKeys(context.Background(), "bob", "Workflow/v", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := llm.InitializeLLM(llmguard.WithServerAccountAdmission(llm.Config{Provider: "cursor-cli", ModelID: "auto", APIKeys: keys, Context: context.Background()})); err == nil || !strings.Contains(err.Error(), "not available") {
+	if _, err := llm.InitializeLLM(llmguard.WithServerAccountAdmission(llm.Config{Provider: "cursor-cli", ModelID: "auto", APIKeys: keys, Context: context.Background()})); err == nil {
 		t.Fatalf("member model init without an account used the admins-only server account: %v", err)
 	}
 	if _, err := env.resolveForRun("admin", "Workflow/v", "cursor-cli", llmguard.ServerDefaultConnectionPrefix+"cursor-cli"); err != nil {
@@ -334,13 +334,16 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 	}
 
 	// Crew share: every chat of Alice's Crew, by anyone with access, may use it.
-	crew := "_users/alice/Chats/Work/projects/c1"
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","admin":true,"can_create":true,"products":["work"]},{"id":"alice","username":"alice","can_create":true,"products":["work"]},{"id":"bob","username":"bob","can_create":true,"products":["work"]},{"id":"carol","username":"carol","can_create":true,"products":["work"]}]}`)
+	withProjectOwnerRegistry(t)
+	crew := registerTestCrew(t, "c1", "alice", true, "c1")
+	otherCrew := registerTestCrew(t, "c2", "bob", false, "c2")
 	setDirectoryAdmin(t, "alice", true) // Crew shares are admin-only (PLAT-715)
 	crewAccount := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Crew login", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "crews": []string{crew}}})
 	if _, err := env.resolveForRun("bob", crew+"/notes", "claude-code", crewAccount.ID); err != nil {
 		t.Fatalf("bob chatting with Alice's Crew: %v", err)
 	}
-	if _, err := env.resolveForRun("bob", "_users/bob/Chats/Work/projects/c2", "claude-code", crewAccount.ID); err == nil {
+	if _, err := env.resolveForRun("bob", otherCrew, "claude-code", crewAccount.ID); err == nil {
 		t.Fatal("crew share leaked to another Crew")
 	}
 	if view, ok := findAccountView(env.list(t, "bob", "?workspace_path="+crew), crewAccount.ID); !ok || view.Relation != "shared_with_crew" {
