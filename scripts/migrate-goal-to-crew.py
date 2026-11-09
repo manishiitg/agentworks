@@ -343,7 +343,7 @@ class RuntimeRelocation:
 
 
 class Conversion:
-    def __init__(self, docs, state, workflow, crew, agent_binary=None, split_schedule_groups=False, deployment_mode="local"):
+    def __init__(self, docs, state, workflow, crew, agent_binary=None, split_schedule_groups=False, deployment_mode="local", leave_schedules=False):
         self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
         self.source = self.docs / 'Workflow' / safe_id(workflow)
         self.root = 'Workflow/' + workflow
@@ -351,6 +351,8 @@ class Conversion:
         self.writes, self.moves = {}, []
         self.agent_binary = Path(agent_binary).resolve() if agent_binary else None
         self.split_schedule_groups = split_schedule_groups
+        self.leave_schedules = leave_schedules
+        self.left_schedules = None
         self.owner_proof = None
         self.journal = self.state/"structured-chat-events-v2.sqlite"
         self.archives = {}
@@ -440,6 +442,7 @@ class Conversion:
         self.readers = set(access.get("readers") or [])
         self.chat_keys = {}
         self.sessions = {}
+        self.prepare_left_schedules()
         self.prepare_legacy()
         self.prepare_manifest_locations(projects, deployment_mode)
         self.chats()
@@ -459,6 +462,29 @@ class Conversion:
     def document(self, path, default=None):
         return json.loads(self.writes[path]) if path in self.writes else read(path, default)
 
+    def prepare_left_schedules(self):
+        if not self.leave_schedules:
+            return
+        if self.split_schedule_groups:
+            raise ValueError('Choose leaving schedules or splitting schedules, not both.')
+        source = self.source/'schedules.json'
+        if not source.exists():
+            if self.manifest.get('schedules'):
+                raise ValueError('Leaving schedules needs the separate schedules.json store first.')
+            return
+        no_links(source)
+        raw = source.read_bytes()
+        rows = json.loads(raw).get('schedules')
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise ValueError('Schedules need a list of saved timer records.')
+        enabled = [str(row.get('id', '(missing ID)')) for row in rows if row.get('enabled') is not False]
+        if enabled:
+            raise ValueError('Leaving schedules requires already-disabled timers; unchanged IDs: ' + ', '.join(enabled))
+        target = self.private/'migration-archives/workflow-schedules'/self.workflow/'schedules.json'
+        self.move(source, target)
+        self.left_schedules = {'path':str(target), 'bytes':len(raw), 'sha256':hashlib.sha256(raw).hexdigest(),
+                               'timer_ids':[row.get('id') for row in rows], 'registered':False}
+
     def prepare_legacy(self):
         # Reuse the existing one-off entry/input converters, scoped to a
         # disposable copy of ONE Goal. No other Goal is scanned or modified.
@@ -471,10 +497,14 @@ class Conversion:
             source = stage/self.root
             source.mkdir(parents=True)
             for relative in ['workflow.json', 'schedules.json', 'functions.json', 'webhooks.json', 'variables/variables.json']:
+                if self.leave_schedules and relative == 'schedules.json':
+                    continue
                 file = self.source/relative
                 if file.exists():
                     target = source/relative; target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(file, target)
+            if self.leave_schedules:
+                (source/'schedules.json').write_bytes(encode({'schedules':[]}))
             timer_module = module('migrate-project-schedules')
             timer_changes, counts = timer_module.inspect(stage, self.owner)
             entry_changes = timer_module.entry_changes(stage, timer_changes, counts, self.owner)
@@ -483,6 +513,8 @@ class Conversion:
             for file in source.rglob('*'):
                 if file.is_file():
                     target = self.source/file.relative_to(source)
+                    if self.leave_schedules and target == self.source/'schedules.json':
+                        continue
                     if not target.exists() or file.read_bytes() != target.read_bytes():
                         self.writes[target] = file.read_bytes()
             self.manifest = self.document(self.source/'workflow.json')
@@ -552,6 +584,8 @@ class Conversion:
         with tempfile.TemporaryDirectory(prefix='goal-saved-groups-') as directory:
             stage = Path(directory)
             for relative in ['workflow.json', 'schedules.json', 'functions.json', 'webhooks.json', 'variables/variables.json']:
+                if self.leave_schedules and relative == 'schedules.json':
+                    continue
                 value = self.document(self.source/relative)
                 if value is None:
                     continue
@@ -770,6 +804,9 @@ class Conversion:
         if self.manifest.get('schedules'):
             raise ValueError('Convert legacy manifest schedules/functions to the current separate stores first.')
         for name, field in [('schedules.json','schedules'), ('functions.json','functions'), ('webhooks.json','webhooks')]:
+            if self.leave_schedules and field == 'schedules':
+                self.counts[field] = 0
+                continue
             file = self.source / name
             doc = self.document(file, {field: []})
             for entry in doc[field]:
@@ -854,6 +891,7 @@ class Conversion:
         if self.done:
             return {'status':'already migrated', 'crew_id':self.crew, 'workflow':self.root, 'backup':self.done['backup']}
         return {'status':'ready', 'workflow':self.root, 'crew_id':self.crew,
+                'left_schedules':self.left_schedules,
                 'counts':self.counts, 'moves':[{'from':str(a.relative_to(self.docs)), 'to':str(b)} for a,b in self.moves],
                 'preserved':['workflow identity','entry IDs and disabled state','run history and costs','business database','skills and knowledge','dashboard files and workflow-scoped links','secret references'],
                 'historical_run_note':'Old run folders remain readable; start a new run instead of resuming a retired grouped run.',
@@ -923,6 +961,10 @@ class Conversion:
             for source,target in self.moves:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(source), str(target))
+            if self.left_schedules:
+                archived = Path(self.left_schedules['path']).read_bytes()
+                if len(archived) != self.left_schedules['bytes'] or hashlib.sha256(archived).hexdigest() != self.left_schedules['sha256']:
+                    raise ValueError('Left schedules differ from their original snapshot.')
             for history, (size, digest) in self.chat_history_checks.items():
                 if history.stat().st_size != size or hashlib.sha256(history.read_bytes()).hexdigest() != digest:
                     raise ValueError('Moved chat history differs from its original snapshot.')
@@ -994,6 +1036,7 @@ def main():
     parser.add_argument('--workflow', required=True, help='One source folder name under Workflow/ (not a display name)')
     parser.add_argument('--crew', required=True, help='Destination Crew ID, created normally beforehand')
     parser.add_argument('--agent-binary', type=Path, help='This refactor build, for input validation and older JSON-only chat archives')
+    parser.add_argument('--leave-schedules', action='store_true', help='Archive already-disabled schedules byte-identically outside active stores; convert no timers. The receipt lists their IDs/path/hash for the later Crew timer migration.')
     parser.add_argument('--split-schedule-groups', action='store_true', help='Explicitly split a batched timer into one timer per saved input preset, preserving timing and enabled state')
     parser.add_argument('--deployment-mode', choices=('local', 'server'), default='local', help='Use the existing browser conversion policy for this installation')
     parser.add_argument('--apply', action='store_true')
@@ -1001,6 +1044,8 @@ def main():
     parser.add_argument('--cleanup-learnings', action='store_true', help='Report retired learnings; --apply backs up and deletes them only after the Crew stamps contract 1.0.52')
     args=parser.parse_args()
     try:
+        if args.leave_schedules and (args.finish_runtime or args.cleanup_learnings):
+            raise ValueError('--leave-schedules is only for adoption, not relocation or cleanup.')
         if args.finish_runtime and args.cleanup_learnings:
             raise ValueError('Choose either runtime relocation or post-upgrade cleanup.')
         if args.cleanup_learnings:
@@ -1008,7 +1053,7 @@ def main():
         elif args.finish_runtime:
             conversion = RuntimeRelocation(args.docs,args.state,args.workflow,args.crew)
         else:
-            conversion = Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary,split_schedule_groups=args.split_schedule_groups,deployment_mode=args.deployment_mode)
+            conversion = Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary,split_schedule_groups=args.split_schedule_groups,deployment_mode=args.deployment_mode,leave_schedules=args.leave_schedules)
         print(json.dumps(conversion.apply() if args.apply else conversion.report(), indent=2))
     except (ValueError, SyntaxError, OSError, RuntimeError, sqlite3.Error) as exc:
         print(json.dumps({'status':'needs attention','error':str(exc)}))
