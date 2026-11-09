@@ -980,6 +980,10 @@ func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 // record a run, send every message in turn, then record the outcome.
 // onStarted, when given, is called once the session id is known.
 func (s *ProjectActionDispatcher) Run(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, onStarted ...func(sessionID string)) (string, error) {
+	if automaticSchedulePaused(ctx, triggerSource) {
+		scheduleLogf("[SCHEDULER] held by global pause job=%s source=%s", job.ID(), triggerSource)
+		return "", productschedule.ErrSkip
+	}
 	if job.Schedule.Condition != nil {
 		return s.conditionService().poll(ctx, job, triggerSource, scheduledFor)
 	}
@@ -1213,6 +1217,14 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		s.finishAutomationRun(jobKey, convKey)
 		cancel()
 	}()
+
+	// Recheck after conversation queueing; a pause can begin while a turn waits.
+	// No admission record is written, so a dependency retry stays pending in
+	// the single clock and keeps its original expiry window.
+	if automaticSchedulePaused(runCtx, triggerSource) {
+		scheduleLogf("[SCHEDULER] held at admission by global pause job=%s source=%s", job.ID(), triggerSource)
+		return "", productschedule.ErrSkip
+	}
 
 	// One identity for the run record.
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())

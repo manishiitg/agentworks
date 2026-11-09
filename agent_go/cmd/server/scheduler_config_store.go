@@ -79,6 +79,20 @@ func LoadSchedulerConfig(ctx context.Context) (*SchedulerConfig, error) {
 	return sanitizeSchedulerConfig(&cfg), nil
 }
 
+// automaticSchedulePaused is checked at dispatch and again at admission. A
+// dependency retry is still a timed occurrence; manual runs remain explicit.
+func automaticSchedulePaused(ctx context.Context, triggerSource string) bool {
+	if triggerSource != "cron" && triggerSource != "queued" {
+		return false
+	}
+	cfg, err := LoadSchedulerConfig(ctx)
+	if err != nil {
+		scheduleLogf("[SCHEDULER] cannot read the scheduler pause at admission: %v", err)
+		return false
+	}
+	return cfg.GloballyPaused
+}
+
 // IsGloballyPaused reads the one switch holding every schedule.
 func (s *SchedulerService) IsGloballyPaused(ctx context.Context) (bool, *SchedulerConfig, error) {
 	cfg, err := LoadSchedulerConfig(ctx)

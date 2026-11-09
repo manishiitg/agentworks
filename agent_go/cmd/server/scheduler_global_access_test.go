@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
@@ -127,6 +129,17 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 	mustOK(httpConfig(owner, http.MethodPut, `{"globally_paused":true,"paused_by":"website"}`))
 	mustOK(mcp(owner, "scheduler_status", nil)) // no project selector
 	checkBoth(true)
+	// PLAT-746-747: queued dependency retries remain automatic and may not
+	// bypass a pause between the clock's decision and actual admission.
+	jobs, err := f.api.projectActions.JobsForUser(ctx, "owner")
+	if err != nil || len(jobs) == 0 {
+		t.Fatalf("saved timers unavailable for pause admission: %v", err)
+	}
+	for _, source := range []string{"cron", "queued"} {
+		if _, err := f.api.projectActions.Run(ctx, jobs[0], source, time.Now().UTC()); !errors.Is(err, productschedule.ErrSkip) {
+			t.Fatalf("%s automatic admission ignored global pause: %v", source, err)
+		}
+	}
 	// Exercise the actual due-workflow clock guard and its durable decision.
 	sctx := buildScheduleContext(child.Root, manifest, manifest.Schedules[0])
 	f.api.scheduler.triggerSchedule(sctx, time.Now().UTC())

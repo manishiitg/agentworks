@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, Play, Loader, Pause, Calendar } from 'lucide-react'
+import { X, Loader, Pause, Calendar } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip'
 import { WorkspaceViewHeader } from '../../workflow/WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../../workflow/WorkspaceViewIconButton'
@@ -46,24 +46,18 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
       </> : undefined}
       below={!compact ? statusPills : undefined}
       actions={<>
-        {!isWorkflowScoped && !isReadOnlyUser && canPauseSchedules && (
+        {!isWorkflowScoped && !isReadOnlyUser && canPauseSchedules && !isSchedulerPaused && (
           <button
             onClick={handleToggleGlobalPause}
             disabled={isUpdatingSchedulerPause}
-            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
-              isSchedulerPaused
-                ? 'border-border bg-background text-foreground hover:bg-muted'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
+            className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
           >
             {isUpdatingSchedulerPause ? (
               <Loader className="w-3.5 h-3.5 animate-spin" />
-            ) : isSchedulerPaused ? (
-              <Play className="w-3.5 h-3.5" />
             ) : (
               <Pause className="w-3.5 h-3.5" />
             )}
-            {isSchedulerPaused ? 'Resume all schedules' : 'Pause all schedules'}
+            Pause all schedules
           </button>
         )}
         <Tooltip>
