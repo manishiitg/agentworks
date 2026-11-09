@@ -1111,7 +1111,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
-  const { private: chatPrivateLine, note: chatShareNote } = useChatShareLines(tabId)
+  const { private: chatPrivateLine } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   useEffect(() => {
@@ -1573,7 +1573,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chat={<>
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
-                        {chatShareNote && <p role="status" className="border-b border-border px-3 py-1.5 text-center text-xs text-muted-foreground">{chatShareNote}</p>}
                         <div className="min-h-0 flex-1">
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}

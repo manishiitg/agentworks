@@ -65,9 +65,9 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
   // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
-  // agent; on someone else's, chat_private_line replaces the chat and chat_share_note sits above it. watch_key is its
+  // agent; on someone else's, chat_private_line replaces the chat. watch_key is its
   // tab's key where that differs.
-  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; chat_share_note?: string; watch_key?: string
+  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
@@ -260,12 +260,13 @@ export function teamFolders(target: TeamTarget, query: string): Promise<TeamFold
 }
 
 /** The Share page (crew_share_page.go, owner 9 Nov mocks): four options with the server's status and chips, the
- * viewer's agents (Ask with its two permissions) and the owner's actions, the who-can-use line and the dashboards
+ * viewer's agents (the share switch with its permissions) and the owner's actions, the who-can-use line and the dashboards
  * count. Every word and every "may change" is the server's; the page prints them and sends the person's change. */
 export type CrewShareOptionKey = 'team' | 'agents'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
-export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean; changes_label: string; changes_line: string
-  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[] }
+export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean
+  title: string; line: string; changes_label: string; changes_options: { value: boolean; label: string; line: string }[]
+  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */

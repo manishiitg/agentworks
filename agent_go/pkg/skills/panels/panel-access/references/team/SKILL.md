@@ -30,7 +30,7 @@ rather than copying action names or old workflow-team policy fields:
   and follow the service's confirmation requirement.
 - `agents` lists what teammates share. `agent_rule` changes only your own
   agent's instructions for others, change permission and chat visibility.
-  Use the offered enums; the website calls visibility Live, Saved only, Hidden.
+  Use the offered enums; the website calls chat visibility Live (empty) or Hidden (`agent`).
 - `clashes` shows both versions when the same lines changed. Read the Crew
   builder's clash procedure before `resolve`; save the requested version or
   merge, never silently discard either person's work.

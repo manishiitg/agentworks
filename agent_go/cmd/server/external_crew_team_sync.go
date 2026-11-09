@@ -33,7 +33,7 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 		"agent_key":        externalString("agent_rule: one of your own agents: its key from agents, or its name."),
 		"when_others_ask":  map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
 		"can_make_changes": map[string]any{"type": "boolean", "description": "agent_rule: for an agent on a Mac, false answers others only (default), true may make changes for them."},
-		"chat_share":       map[string]any{"type": "string", "enum": []any{crewChatShareLive, crewChatShareHistory, crewChatShareAgent}, "description": "agent_rule: what teammates see of your own agent's chat: empty for Live chat (the default: history and live updates), history for Chat history (the saved conversation, updated when a turn ends, no live view), agent for Just the agent (the chat is refused; they can still ask the agent)."},
+		"chat_share":       map[string]any{"type": "string", "enum": []any{crewChatShareLive, crewChatShareAgent}, "description": "agent_rule: what teammates see of your own agent's chat: empty for Live (the default: history and live updates), agent for Hidden (the chat is refused; they can still ask the agent)."},
 		"path":             externalString("resolve: the clashed file's path in the shared folder."),
 		"clash_id":         externalString("resolve: the clash's id from clashes."),
 		"keep":             map[string]any{"type": "string", "enum": []any{"current", "other"}, "description": "resolve: keep the file as it is now, or put the other person's version back."},

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, Bot, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -153,40 +153,50 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = view?.agents.find(item => item.key === agent.key && item.mine)
   const busy = Boolean(pending)
-  return <div className="rounded-xl border border-border px-3.5 py-3 text-sm">
-    <p className="text-[15px] font-semibold">{agent.name}</p>
-    {agent.line && <p className="text-xs text-muted-foreground">{agent.line}</p>}
-    {ask && <div className="mt-2.5 border-t border-border pt-2.5">
-      <div className="flex items-center gap-3">
-        <span className="min-w-0 flex-1"><span className="block font-semibold">Ask</span><span className="block text-xs text-muted-foreground">People talk to it.</span></span>
+  return <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
+    <div className="flex items-center gap-2.5 px-4 py-3.5">
+      <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Bot className="h-4 w-4" /></span>
+      <span className="min-w-0 truncate text-[17px] font-semibold">{agent.name}</span>
+      {agent.line && <span className="whitespace-nowrap text-[13px] text-muted-foreground">· {agent.line}</span>}
+    </div>
+    {ask && <>
+      <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+        <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold">{ask.title}</span><span className="block text-[13px] text-muted-foreground">{ask.line}</span></span>
         <span title={ask.fixed || undefined} className="inline-flex shrink-0 items-center gap-1.5">
           <Saving on={pending === 'ask'}>{null}</Saving>
-          <Switch aria-label={`${agent.name}: Ask`} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
+          <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
         </span>
       </div>
-      {(ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1 text-xs text-muted-foreground">{ask.note || ask.fixed}</p>}
-      {ask.on && ask.can_edit && <>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <span className="inline-flex items-center gap-2">
-            <Switch aria-label={`${agent.name}: ${ask.changes_label}`} checked={ask.can_make_changes} disabled={busy} onCheckedChange={on => void rule('can', { can_make_changes: on })} />
-            <span>{ask.changes_label}</span><Saving on={pending === 'can'}>{null}</Saving>
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="text-muted-foreground">{ask.chat_share_label}</span>
-            <span role="radiogroup" aria-label={`${agent.name}: ${ask.chat_share_label}`} className="flex overflow-hidden rounded-md border border-border">
+      {(ask.note || (!ask.can_change && ask.fixed)) && <p className="px-4 pb-3 text-[13px] text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
+      {ask.on && ask.can_edit && <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-muted-foreground">{ask.changes_label}</p>
+          <div role="radiogroup" aria-label={ask.changes_label} className="grid gap-2">
+            {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy}
+              onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
+              className={`flex gap-2.5 rounded-xl border px-3 py-2.5 text-left ${ask.can_make_changes === option.value ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/40'}`}>
+              <span aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 rounded-full border-2 ${ask.can_make_changes === option.value ? 'border-primary bg-primary' : 'border-muted-foreground/50'}`} />
+              <span><span className="block text-sm font-semibold">{option.label}</span><span className="block text-[13px] text-muted-foreground">{option.line}</span></span>
+            </button>)}
+          </div>
+          <Saving on={pending === 'can'}>{null}</Saving>
+        </div>
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-muted-foreground">{ask.chat_share_label}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex overflow-hidden rounded-lg border border-border">
               {ask.chat_share_options.map(option => <button key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy}
                 onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
-                className={`px-2 py-0.5 ${ask.chat_share === option.value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{option.label}</button>)}
+                className={`px-3 py-1 text-[13px] ${ask.chat_share === option.value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{option.label}</button>)}
             </span>
             <Saving on={pending === 'see'}>{null}</Saving>
-          </span>
-          {row && <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{row.has_rule ? '1 rule…' : 'Rules…'}</button>}
+            {row && <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-[13px] text-primary hover:underline">{ask.rules_label}</button>}
+          </div>
         </div>
-        {!ask.can_make_changes && <p className="mt-1 text-xs text-muted-foreground">{ask.changes_line}</p>}
         {rules && row && <AgentDetails agent={row} target={target} projectId={projectId} />}
-      </>}
-    </div>}
-    {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
+      </div>}
+    </>}
+    {error && <p role="alert" className="px-4 pb-3 text-xs text-destructive">{error}</p>}
   </div>
 }
 
