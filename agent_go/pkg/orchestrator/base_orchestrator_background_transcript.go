@@ -3,6 +3,10 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"io"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/backgroundtranscript"
@@ -35,10 +39,53 @@ func (bo *BaseOrchestrator) AppendBackgroundAgentTranscriptEvents(ctx context.Co
 		return nil
 	}
 
-	existingContent, err := bo.ReadWorkspaceFile(ctx, filePath)
+	read := func() (string, error) { return bo.ReadWorkspaceFile(ctx, filePath) }
+	write := func(content string) error { return bo.WriteWorkspaceFile(ctx, filePath, content) }
+	// The app and workspace share this explicitly configured local docs mount.
+	// Open only the already-registered transcript under the existing trusted
+	// workflow/Crew resolver and no-symlink directory walk. Remote-only clients
+	// retain the workspace transport; a local path failure never falls back.
+	if docs := strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH")); docs != "" {
+		relative := strings.TrimPrefix(filePath, strings.TrimSuffix(workspacePath, "/")+"/")
+		root, name, err := workflowfiles.OpenWorkflowDirectory(docs, workspacePath, relative)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("open transcript storage: %w", err)
+		}
+		defer root.Close()
+		parent, err := workflowfiles.OpenDirectory(root, path.Dir(name), false)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("open transcript directory: %w", err)
+		}
+		defer parent.Close()
+		name = path.Base(name)
+		read = func() (string, error) {
+			info, err := parent.Lstat(name)
+			if err != nil {
+				return "", err
+			}
+			if !info.Mode().IsRegular() {
+				return "", fmt.Errorf("transcript must be a regular file")
+			}
+			file, err := parent.Open(name)
+			if err != nil {
+				return "", err
+			}
+			defer file.Close()
+			data, err := io.ReadAll(file)
+			return string(data), err
+		}
+		write = func(content string) error { return workflowfiles.WriteServerRecord(parent, name, []byte(content)) }
+	}
+	existingContent, err := read()
 	if err != nil {
 		errStr := err.Error()
-		if strings.Contains(errStr, "not found") || strings.Contains(errStr, "no such file") {
+		if os.IsNotExist(err) || strings.Contains(errStr, "not found") || strings.Contains(errStr, "no such file") {
 			// No header exists for this execution owner. cmd/server's
 			// emitBackgroundAgentStarted is the ONLY writer that creates one,
 			// and it does so synchronously at registration, before the agent
@@ -87,7 +134,7 @@ func (bo *BaseOrchestrator) AppendBackgroundAgentTranscriptEvents(ctx context.Co
 	if err != nil {
 		return fmt.Errorf("marshal background agent transcript %s: %w", filePath, err)
 	}
-	if err := bo.WriteWorkspaceFile(ctx, filePath, content); err != nil {
+	if err := write(content); err != nil {
 		return fmt.Errorf("write background agent transcript %s: %w", filePath, err)
 	}
 	return nil
