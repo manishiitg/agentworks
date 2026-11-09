@@ -601,3 +601,53 @@ func TestTurnDiscoveryDoesNotLimitFileCount(t *testing.T) {
 		t.Fatalf("repository paths were capped: %v paths=%d skipped=%v", err, len(repos["z-project"].Dirty), skipped)
 	}
 }
+
+// PLAT-746: every reply in a large project warned "exceeded the capture size
+// limit" because files changed by others before the reply did not fit the
+// before capture, even when the reply never touched them. Warn only when a
+// file left out of the capture changed during the reply.
+func TestTurnCaptureLimitWarnsOnlyForFilesTheReplyChanged(t *testing.T) {
+	for _, touched := range []bool{false, true} {
+		t.Run(fmt.Sprint(touched), func(t *testing.T) {
+			f := newCrew(t)
+			for i := 0; i < 11; i++ {
+				f.put(fmt.Sprintf("assets/%02d.bin", i), "")
+				if err := os.Truncate(filepath.Join(f.s.Root, "assets", fmt.Sprintf("%02d.bin", i)), MaxFileBytes); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.put("notes.txt", "before\n")
+			f.backdateAll()
+			begun, err := f.s.BeginGitTurn(t.Context(), "turn")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if begun.BeforeCapture.BudgetSkipped == 0 || len(begun.Skipped) == 0 {
+				t.Fatalf("fixture did not exceed the capture limit: %+v", begun.BeforeCapture)
+			}
+			f.put("notes.txt", "after\n")
+			if touched {
+				asset, err := os.OpenFile(filepath.Join(f.s.Root, filepath.FromSlash(begun.Skipped[0])), os.O_WRONLY, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = asset.WriteAt([]byte("x"), 0)
+				asset.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			r, err := f.s.FinishGitTurn(t.Context(), "turn")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.CaptureLimitLost() != touched {
+				t.Fatalf("capture limit warning = %t, want %t: skipped=%v", r.CaptureLimitLost(), touched, r.Skipped)
+			}
+			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+			if err != nil || len(c.Changes) != 1 || c.Changes[0].Path != "notes.txt" {
+				t.Fatalf("want only the edited note, got %v %+v", err, c.Changes)
+			}
+		})
+	}
+}

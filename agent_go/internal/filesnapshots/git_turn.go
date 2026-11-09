@@ -474,6 +474,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	for _, p := range cacheSkipped {
 		skipped[p] = true
 	}
+	untouched := s.untouchedSkipped(r)
 	for _, root := range turnKeys(starts) {
 		start := starts[root]
 		dir := filepath.Join(s.Root, filepath.FromSlash(root))
@@ -547,7 +548,14 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			after[p] = a
 		}
 	}
-	r.Skipped = turnKeys(skipped)
+	r.Skipped = r.Skipped[:0]
+	for _, p := range turnKeys(skipped) {
+		if untouched[p] {
+			r.Omitted = append(r.Omitted, p)
+		} else {
+			r.Skipped = append(r.Skipped, p)
+		}
+	}
 	r.Before, err = s.writeTurnFiles(ctx, "refs/turns/"+r.ID+"/before", before)
 	if err != nil {
 		return r, err
@@ -657,6 +665,39 @@ func (s Store) treeTurnFile(ctx context.Context, list *exec.Cmd, blob func(strin
 		return turnBlob{}, false, readErr
 	}
 	return turnBlob{mode: fields[0], data: data}, true, waitErr
+}
+
+// untouchedSkipped names paths left out of the before capture (over the size
+// or capture limit) whose size, time and type are the same after the reply.
+// The reply did not change them, so nothing was lost: they stay out of both
+// sides like ignored paths and do not raise the capture-limit warning.
+func (s Store) untouchedSkipped(r Record) map[string]bool {
+	out := map[string]bool{}
+	root, err := os.OpenRoot(s.Root)
+	if err != nil {
+		return out
+	}
+	defer root.Close()
+	for p, before := range r.BeforeSkippedState {
+		now := r.AfterSkippedState[p]
+		if now == "" {
+			info, e := root.Lstat(p)
+			if e != nil {
+				continue
+			}
+			now = skippedFingerprint(info)
+		}
+		if now == before {
+			out[p] = true
+		}
+	}
+	return out
+}
+
+// skippedFingerprint is the size/time/type evidence saved for a path whose
+// bytes were not captured.
+func skippedFingerprint(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d:%d", info.Size(), info.ModTime().UnixNano(), info.Mode())
 }
 
 func turnKeys[T any](items map[string]T) []string {
