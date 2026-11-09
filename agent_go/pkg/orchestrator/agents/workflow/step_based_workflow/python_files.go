@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -22,13 +23,16 @@ func pythonCrewFileReader(workspace string) func(context.Context, map[string]int
 		}
 		p, ok := args["path"].(string)
 		clean, err := wf.CleanRelative(p)
-		if !ok || len(args) != 1 || err != nil || clean != p || p == "." || wf.Private(p) || strings.HasPrefix(p, "Crew/") || strings.HasPrefix(p, "Workflow/") || strings.HasPrefix(p, "_users/") {
+		if !ok || len(args) != 1 || err != nil || clean != p || p == "." || wf.Private(p) || publication.CredentialPath(p) || strings.HasPrefix(p, "Crew/") || strings.HasPrefix(p, "Workflow/") || strings.HasPrefix(p, "_users/") {
 			return "", fmt.Errorf("Choose a relative file in this Crew, such as knowledgebase/notes/example.md. Private files and other Crews are not available here.")
 		}
 		docs := GetPromptDocsRoot()
 		layout, found, err := crewroot.LookupExecutable(docs, workspace)
 		if err != nil || !found {
 			return "", fmt.Errorf("Run this helper from a saved workflow in its Crew, then choose a file from that Crew's Files.")
+		}
+		if strings.HasPrefix(p, "knowledgebase/") && localKnowledgebaseRetired(layout.Crew.Virtual) {
+			return "", fmt.Errorf("This Crew's knowledge is in shared Brain. Ask this Crew to read it through Brain instead of its retired local archive.")
 		}
 		guard := &wf.FolderGuard{ReadPaths: []string{"."}}
 		root, name, _, guard, _, err := wf.BoundCrewFileRequest(docs, layout.Crew.Virtual, p, "", guard)
