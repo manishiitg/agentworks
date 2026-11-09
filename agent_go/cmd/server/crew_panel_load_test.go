@@ -98,9 +98,14 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		}
 		return elapsed, out, w.Code
 	}
+	readCount := 3
+	if os.Getenv("PANEL_LOAD_BASELINE") == "1" {
+		readCount = 1
+	}
+	expensive := false
 	for i := 0; i < 20; i++ {
 		crewID := fmt.Sprintf("panel-crew-%02d", i)
-		for read := 0; read < 3; read++ {
+		for read := 0; read < readCount; read++ {
 			elapsed, out, code := call("owner", crewID)
 			rows := 0
 			for _, section := range out.Sections {
@@ -110,9 +115,12 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 			}
 			t.Logf("PANEL_LOAD workflows=20 runs=2000 crew=%d read=%d elapsed_ms=%d inspections=%d deep_walks=%d rows=%d status=%d", i, read, elapsed.Milliseconds(), inspections.Load(), walks.Load(), rows, code)
 			if code != 200 || rows != 1 || inspections.Load() != 0 || walks.Load() != 0 || elapsed > 1500*time.Millisecond {
-				t.Fatalf("panel performed expensive per-poll work: status=%d rows=%d time=%s inspections=%d walks=%d", code, rows, elapsed, inspections.Load(), walks.Load())
+				expensive = true
 			}
 		}
+	}
+	if expensive {
+		t.Fatal("panel performed expensive per-poll work")
 	}
 	// Overflow does not hide the workflow or fabricate a latest run from a partial list.
 	for run := 100; run < 5000; run++ {

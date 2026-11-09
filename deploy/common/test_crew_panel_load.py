@@ -16,7 +16,7 @@ repo = Path(__file__).resolve().parents[2]
 module = repo / "agent_go"
 if os.geteuid() == 0:
     raise SystemExit("Use the normal unprivileged verifier")
-base = "d5d093f7d8344b048778af86b15128cbb51f0644"
+base = "bac24e79ad6a0cf08cae7e7f43f2311996f39f78"
 files = ["crew_panel.go", "crew_panel_sources.go", "crew_scripts.go", "python_source_inspection.go"]
 paths = [module / "cmd/server" / name for name in files]
 fixed = {p: p.read_bytes() for p in paths}
@@ -25,7 +25,9 @@ report = {"base": base, "candidate": subprocess.check_output(["git", "rev-parse"
 
 def run(label):
     start = time.monotonic()
-    result = subprocess.run(command, cwd=module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    env = dict(os.environ)
+    if label == "before": env["PANEL_LOAD_BASELINE"] = "1"
+    result = subprocess.run(command, cwd=module, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     print(label, "seconds", round(time.monotonic()-start, 3), "exit", result.returncode)
     samples = [line for line in result.stdout.splitlines() if "PANEL_LOAD " in line]
     print("\n".join(samples))
