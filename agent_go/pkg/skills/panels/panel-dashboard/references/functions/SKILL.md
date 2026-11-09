@@ -1,9 +1,9 @@
-# Functions
+# Actions (published functions)
 
-Use the listed `functions` actions in chat or MCP. List before choosing or changing a function. A function says what work is available; a schedule says when to call it; a webhook brings an outside event. They keep the same project access and caller identity.
+Use the listed `functions` actions in chat or MCP. List before choosing or changing a function. An Action says what work is available; a schedule says when to call it; a webhook brings an outside event. They keep the same project access and caller identity.
 
 Call with `project`, `function` and `input`. Keep the returned `call_id`; read `functions action=status` until it settles. Answer a pending question with `action=reply` only when you are its caller. Current project members may read shared results. A saved or accepted call is not proof of completion.
 
-Builders use `action=define` to create or replace a `definition` (name, description, action, fixed input and exposed input names for workflows/scripts, or a caller schema for Crew message actions); `action=delete` removes it. Crew actions send instructions to the function's named tab, or use a fresh chat when declared. Workflow/script actions run their saved work with the shared typed input definitions. A Crew-owned executable saves its chat destination, Main by default, for updates. Preserve stable identity and caller restrictions when changing a function.
+Builders use `action=define` to create or replace a `definition` (name, description, action, fixed input and exposed input names for workflows/scripts, or a caller schema for Crew message actions); `action=delete` removes it. Crew actions send instructions to the function's named tab, or use a fresh chat when declared. Workflow Actions run the Crew’s single Python workflow with shared typed inputs, optional saved settings and fixed values selecting its task path. A Crew-owned executable saves its chat destination, Main by default, for updates. Preserve stable identity and caller restrictions when changing a function.
 
-Read [calls and authoring](references/calls.md) for schemas, results, retry IDs and existing saved step bindings.
+Read [calls and authoring](references/calls.md) for schemas, results, retry IDs and existing internal bindings.
