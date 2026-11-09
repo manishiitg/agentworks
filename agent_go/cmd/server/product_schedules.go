@@ -21,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 const productScheduleJobPrefix = "product:"
@@ -226,6 +227,8 @@ type productScheduleRun struct {
 	SessionID string
 	StartedAt time.Time
 	cancel    context.CancelFunc
+	// Keep the conversation claimed until Stop has closed its native runtime.
+	stopDone chan struct{}
 }
 
 // NewProjectActionDispatcher wires the service to the live profile registry.
@@ -964,15 +967,31 @@ func (s *ProjectActionDispatcher) Running(userID, jobID string) (productSchedule
 	return *r, true
 }
 
-// Stop cancels the live run for a job.
+// Stop cancels the live run and its bound native runtime before releasing
+// the conversation to another queued delivery (PLAT-871-40).
 func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	r, ok := s.running[userID+"\x1f"+jobID]
 	if !ok {
+		s.mu.Unlock()
 		return false
 	}
+	if r.stopDone != nil {
+		s.mu.Unlock()
+		return true
+	}
+	r.stopDone = make(chan struct{})
+	done, sessionID := r.stopDone, r.SessionID
 	r.cancel()
+	s.mu.Unlock()
+	defer close(done)
+	// Runtime teardown can reenter the dispatcher. The finish path waits
+	// outside the mutex, so cancellation cannot reach a queued successor.
+	if sessionID != "" {
+		scheduleLogf("[SCHEDULER] stopping native run job=%s session=%s", jobID, sessionID)
+		s.api.cancelSessionRuntimeWork(sessionID, "scheduled job stopped by user", runtimePhaseCanceled)
+		scheduleLogf("[SCHEDULER] native stop complete job=%s session=%s", jobID, sessionID)
+	}
 	return true
 }
 
@@ -1156,6 +1175,20 @@ func (s *ProjectActionDispatcher) claimAutomationRun(ctx context.Context, job pr
 // queued delivery, if any.
 func (s *ProjectActionDispatcher) finishAutomationRun(jobKey, convKey string) {
 	s.mu.Lock()
+	if run := s.running[jobKey]; run != nil && run.stopDone != nil {
+		done, sessionID := run.stopDone, run.SessionID
+		s.mu.Unlock()
+		waiting := time.NewTimer(30 * time.Second)
+		select {
+		case <-done:
+		case <-waiting.C:
+			scheduleLogf("[SCHEDULER] native stop still running job=%s session=%s waited=30s", jobKey, sessionID)
+			// A late teardown must not cancel a successor in this same chat.
+			<-done
+		}
+		waiting.Stop()
+		s.mu.Lock()
+	}
 	delete(s.running, jobKey)
 	delete(s.conversations, convKey)
 	s.mu.Unlock()
@@ -1438,6 +1471,20 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		}
 	}
 	s.mu.Lock()
+	// Stop may have arrived while the conversation was being resolved.
+	// Without a published session it cancels only this setup, never a guessed
+	// project session that could belong to another turn.
+	if err := runCtx.Err(); err != nil {
+		s.mu.Unlock()
+		return "", err
+	}
+	if s.api.isSessionMarkedStopped(sessionID) {
+		// A newly admitted occurrence intentionally starts work again. Clear
+		// both existing guards here, never from a canceled turn's recovery.
+		s.api.clearSessionStopped(sessionID)
+		mcpagent.ClearHTTPSessionStopped(sessionID)
+		scheduleLogf("[SCHEDULER] cleared stopped guard for admitted run job=%s session=%s", job.ID(), sessionID)
+	}
 	run.SessionID = sessionID
 	s.mu.Unlock()
 	for _, cb := range onStarted {
