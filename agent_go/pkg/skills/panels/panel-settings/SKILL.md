@@ -26,8 +26,6 @@ metadata:
     - manage_laptop_access
     - browser_connections
     - agent_browser
-    - get_contract_upgrades
-    - set_workflow_contract_version
   external-tools:
   - settings
   - workspace
@@ -36,7 +34,6 @@ metadata:
   - costs
   - terminal
   - browser
-  - workflow_upgrade
 ---
 
 # Settings
@@ -51,6 +48,6 @@ Start with the person's request and the current product. Read only the relevant 
 - Local laptop: read `references/local-laptop/SKILL.md` when needed.
 - Terminal: read `references/terminal/SKILL.md` when needed.
 - Browser: read `references/browser/SKILL.md` when needed.
-- Upgrades: read `references/upgrades/SKILL.md` when needed.
+- Old upgrade records: read `references/upgrades/SKILL.md` only when explaining an existing historical record; it offers no migration/stamp action.
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.
