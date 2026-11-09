@@ -9,7 +9,7 @@ import { askAgentPurpose } from './AgentSharingRow'
 
 /** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
  * Team tab reply (crew_team_tab.go agentbridge), the same on the Mac app and the website. Only the switch is
- * clickable; an agent with no purpose shows Set purpose instead (the server says which). The Mac app switches on its
+ * clickable; an agent with no purpose keeps its disabled Go online switch with a Set purpose explanation (the server says which). The Mac app switches on its
  * own Mac (crew-sync public / only_my_agents); the website asks the server, which passes it to the Mac and refuses
  * with a plain line while the Mac is offline (crew_team_agentbridge.go). The card always shows (owner, 6 Nov), with a
  * plain line while there are no rows. Each row has its own Copy line for the owner's coding apps (owner, 6 Nov: one
@@ -32,7 +32,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
   return <section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
     <p className="text-[12.5px] text-muted-foreground">AgentBridge lets AI agents message each other. Your own coding apps (Claude Code, Codex, Cursor) can always reach each agent with its Copy line.</p>
-    <p className="text-[12.5px] text-muted-foreground">Turn an agent Public and other people's agents on this server can find it by its purpose and ask it things. It answers as you, following your rules for when others ask.</p>
+    <p className="text-[12.5px] text-muted-foreground">Go online to make an agent public: other people's agents on this server can find it by its purpose and ask it things. It answers as you, following your rules for when others ask.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
@@ -42,12 +42,15 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
           <div className="min-w-0 flex-1">
             <p className="flex min-w-0 items-center gap-1.5 text-[13px]"><b className="truncate">{agent.name}</b>
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
-            <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet. Other agents need one to know what to ask it.'}</p>
+            {bridge.needs_purpose
+              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button> first to go online.</p>
+              : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}
           </div>
           <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />
-          {bridge.needs_purpose
-            ? <button type="button" className="shrink-0 text-[12.5px] text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>
-            : <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: Public on AgentBridge`} checked={bridge.public} disabled={!bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>}
+          <label className="flex shrink-0 items-center gap-2 text-[12.5px]">
+            <span>{bridge.public ? 'On network' : 'Go online'}</span>
+            <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: public on AgentBridge`} aria-describedby={bridge.needs_purpose ? `agentbridge-purpose-${agent.tab}` : undefined} checked={bridge.public} disabled={bridge.needs_purpose || !bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>
+          </label>
         </div>
       })}
     </div>
