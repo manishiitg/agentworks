@@ -196,7 +196,7 @@ export function recordTabMarkTelemetry(sessionId: string, tabId: string, status:
 }
 
 let viewSwitchStartedAt = 0
-/** The moment a person asks to switch between the chat and the terminal view; the paint after it is timed against this. */
+/** The moment a person selects an agent or switches chat/terminal view; the paint after it is timed against this. */
 export function markViewSwitchStart(): void {
   viewSwitchStartedAt = typeof performance !== 'undefined' ? performance.now() : 0
 }
@@ -207,7 +207,7 @@ export function takeViewSwitchStart(): number {
   return at
 }
 
-/** Content-free timings of the chat/terminal switch, so a slow switch shows up in the server log with its numbers.
+/** Content-free timings of agent and chat/terminal switches, so a slow switch shows up in the server log with its numbers.
  * view_switch: the click to the first paint of the new view (what = chat or terminal); terminal_ready: one of the terminal's own
  * loads (metadata, metadata_cached, history or first rendered stream_seed). */
 export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number) {

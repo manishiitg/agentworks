@@ -196,6 +196,13 @@ function selectedProjectIdFor(product: ProjectProductConfig): string | null {
 // product has its own cache and still refreshes from the server on entry.
 const workSessionLists = new Map<string, WorkSession[]>()
 
+/** In-memory inventory only, scoped like the mounted surface; never an access grant. */
+export function cachedWorkSession(projectId: string): WorkSession | undefined {
+  const user = useAuthStore.getState().user?.id ?? 'local'
+  const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  return workSessionLists.get(`work:${workspace}:${user}`)?.find(session => session.id === projectId)
+}
+
 function useWorkSessions(product: ProjectProductConfig) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const userId = useAuthStore(state => state.user?.id ?? 'local')
@@ -553,6 +560,15 @@ export function useWorkChatTab(
 }
 
 const workAgentLists = new Map<string, { listed: AgentProfileSideChat[]; mainPurpose?: string }>()
+
+/** Seed the list from the route's fresh server check before mounting the next project. */
+export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideChat[]) {
+  const user = useAuthStore.getState().user?.id ?? 'local'
+  const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  const key = JSON.stringify([workspace, user, 'work', projectId])
+  const main = rows.find(row => row.is_main)
+  workAgentLists.set(key, { listed: rows.filter(row => !row.is_main), mainPurpose: main ? main.purpose || '' : undefined })
+}
 
 export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity }: {
   projectId: string
