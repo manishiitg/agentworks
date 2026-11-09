@@ -112,6 +112,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	go func() {
 		defer cancel()
 		snapshot.record, snapshot.beforeErr = snapshot.store.BeginGitTurn(ctx, executionID)
+		snapshot.beforeErr = crewSnapshotContextError(ctx, snapshot.beforeErr)
 		close(snapshot.beforeDone)
 		api.logCrewBeforeCapture(snapshot)
 	}()
@@ -204,6 +205,7 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		defer cancel()
 		started := time.Now()
 		record, err := snapshot.store.FinishGitTurn(ctx, snapshot.executionID)
+		err = crewSnapshotContextError(ctx, err)
 		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s output_done=%t elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, snapshot.outputDone.Load(), time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		switch {
 		case err == nil && (record.Status == "complete" || record.Status == "partial"):
@@ -318,6 +320,15 @@ var crewSnapshotUnavailableText = map[string]string{
 	"access":     "File tracking couldn't read the project folder. Check its folder access, then try again. Your work is still in Files.",
 	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
 	"incomplete": "Some file changes could not be saved for this reply.",
+}
+
+// CommandContext can return "signal: killed" when its deadline stops Git.
+// Preserve the boundary's context cause instead of classifying it as I/O.
+func crewSnapshotContextError(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 // Classify only known capture failures. Never put raw Git output, filenames
