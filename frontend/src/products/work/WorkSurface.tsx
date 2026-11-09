@@ -85,8 +85,9 @@ const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   history: 'history', context: 'context', report: 'dashboard', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
-  // ?view=share and ?view=slack open the Access page on that section (links from the Mac app's Where it lives).
-  share: 'mcp', slack: 'mcp',
+  // ?view=share, ?view=slack and ?view=dashboards open the Access page on that section (links from the Mac app's Where
+  // it lives, and dashboard links).
+  share: 'mcp', slack: 'mcp', dashboards: 'mcp',
   // Legacy agent + preference ids land on the consolidated Setup views.
   llm: 'identity', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
@@ -94,7 +95,7 @@ type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
   history: 'Chat history', context: 'Context', report: 'Dashboard', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
   suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
-  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack',
+  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack', dashboards: 'Dashboards',
 }
 
 function workPresentationView(view: WorkWorkspaceView): WorkUIPresentationView {
@@ -1233,7 +1234,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   if (initialRouteView.current === undefined) {
     const route = currentProductRoute()
     const view = route?.surface === product.profileId && route.id ? normalizeWorkWorkspaceView(route.view) : null
-    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: 'slack-bot' } as Record<string, string>)[route.view ?? ''] } : null
+    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: 'slack-bot', dashboards: 'dashboards' } as Record<string, string>)[route.view ?? ''] } : null
   }
   const routeSuppliedView = selected
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))

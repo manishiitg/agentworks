@@ -5,7 +5,7 @@ admitted tools and exact people/agents returned by the server. A link grants no
 access by itself. The server decides what the caller can change; a guide does
 not grant permission or another person's tab controls.
 
-Share has four routes:
+Share has three routes:
 
 - **Work on it with your team:** People lists **Works with me** and **Dashboards
   only**. Read the Team procedure before invitations, level or folder changes.
@@ -16,14 +16,17 @@ Share has four routes:
 - **Slack:** choose the Crew's saved bot, name, channels and direct-message
   settings here. Read `panel-channels`' Slack bot procedure for setup and
   diagnostics. Personal **Use Slack as me** stays in Connections.
-- **Dashboards:** share an existing publication, or ask whether to create a
-  standard dashboard when one is required. Set `create_dashboard=true` only
-  after agreement. Listing or publishing an Action does not create a dashboard.
-  The Crew menu shows one dashboards line and lists each dashboard by name;
-  a name opens that dashboard, the line opens Share with only Read only open.
 - **Leave this Team:** a member leaves with the button at the end of Share,
   which asks "Leave this Team?" first. In chat, leave only when the person asks
   to leave this Team; the owner cannot leave their own Crew.
+
+Dashboards have their own **Dashboards** tab next to Share: everything the
+Crew publishes, who can open each one, or "No dashboard yet" with Ask the Crew.
+Share an existing publication, or ask whether to create a standard dashboard
+when one is required. Set `create_dashboard=true` only after agreement. Listing
+or publishing an Action does not create a dashboard. The Crew menu shows one
+dashboards line and lists each dashboard by name; a name opens that dashboard,
+the line opens the Dashboards tab.
 
 There is one **Actions** group for the whole Crew, separate from agent Ask
 switches. An Action either **Starts the workflow** with typed inputs and saved

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"sort"
@@ -15,18 +14,19 @@ import (
 )
 
 // The Share page (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page "Share this Crew" with
-// four options, each a card with a status: Work on it with your team (the Team and the People list), Share agents
-// (people ask the viewer's agents, or start actions the owner set up), Slack (the Crew's Slack bot, today's bot
-// settings moved here from the Crew menu) and Read only (dashboards). The server writes every line, chip and status
-// and says which controls this viewer may change; the page prints them and sends the person's change to the existing
-// routes (Team save, people, agent-visibility, agent-rule, dashboard share, the Slack bot routes), plus POST action for
-// one action's on/off.
+// up to three options, each a card with a status: Work on it with your team (the Team and the People list), Share
+// agents (people ask the viewer's agents, or start actions the owner set up) and Slack (the Crew's Slack bot, today's
+// bot settings moved here from the Crew menu). Dashboards have their own Access tab next to Share (owner, 9 Nov:
+// "we should have a separate tab for dashboards"; crew_dashboards_tab.go). The server writes every line, chip and
+// status and says which controls this viewer may change; the page prints them and sends the person's change to the
+// existing routes (Team save, people, agent-visibility, agent-rule, the Slack bot routes), plus POST action for one
+// action's on/off.
 //
 // It is its own reply, not part of /tab: /tab is re-read by every screen on each panel notice, and this reads the
-// Crew's actions, its workflows and its dashboards, which are needed only while the page is open.
+// Crew's actions and its workflows, which are needed only while the page is open.
 
 type crewShareOption struct {
-	// Key is team, agents, slack or read_only.
+	// Key is team, agents or slack.
 	Key    string   `json:"key"`
 	Title  string   `json:"title"`
 	Line   string   `json:"line"`
@@ -105,9 +105,6 @@ type crewSharePage struct {
 	WhoCanUse   string           `json:"who_can_use"`
 	// ActionsGroup: all actions in one group under the agents.
 	ActionsGroup crewShareActionsGroup `json:"actions_group"`
-	// Read only: how many dashboards, and the draft "Ask the Crew" opens in Main when there is none.
-	Dashboards   int    `json:"dashboards"`
-	DashboardAsk string `json:"dashboard_ask,omitempty"`
 	// SharedWithYou: what other people in this Crew share with the viewer (people -> agents -> actions), read only.
 	// Empty (the page prints no heading) when nobody shares anything.
 	SharedWithYou []crewShareSharedPerson `json:"shared_with_you"`
@@ -666,20 +663,6 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		page.AgentsEmpty = "No agents to share yet."
 	}
 
-	// Read only: the Crew's published dashboards (the same rows as its Dashboards list).
-	dashboardRows, _ := api.crewTeamDashboardRows(httptest.NewRecorder(), r, t, root, false)
-	page.Dashboards = len(dashboardRows)
-	// Shared means shared with someone: the same read the Crew menu prints, so both say the same thing.
-	dashShared := false
-	if page.Dashboards > 0 && dashWorkspace != "" {
-		if _, shared, err := api.crewDashboardSharing(r, dashWorkspace); err == nil {
-			dashShared = shared != "Not shared"
-		}
-	}
-	if page.Dashboards == 0 && owner {
-		page.DashboardAsk = "Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."
-	}
-
 	// Slack: shown when this viewer can read the Crew's Slack bot choice and bots are allowed here (the same read as the
 	// Crew menu's Slack bot row); who may change it stays the Slack bot routes' own rule (can_select, can_manage).
 	slackOption := []crewShareOption{}
@@ -692,12 +675,6 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	}
 
 	// The options, each with its status.
-	members := 1
-	for _, p := range t.People {
-		if crewTeamAccountActive(p.UserID) {
-			members++
-		}
-	}
 	teamStatus := "Off"
 	if t.On {
 		teamStatus = "On"
@@ -713,30 +690,18 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	if len(agentParts) > 0 {
 		agentStatus = "On · " + strings.Join(agentParts, " · ")
 	}
-	readStatus := "Off"
-	if page.Dashboards > 0 {
-		noun := plural(page.Dashboards, "dashboard", "dashboards")
-		if dashShared {
-			readStatus = fmt.Sprintf("On · %d %s shared", page.Dashboards, noun)
-		} else {
-			readStatus = fmt.Sprintf("Off · %d %s not shared yet", page.Dashboards, noun)
-		}
-	}
 	page.Options = []crewShareOption{
 		{Key: "team", Title: "Work on it with your team", Line: "They build and run this Crew with you: same files, same agents, their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
 		{Key: "agents", Title: "Share agents", Line: "Let others ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
 	}
 	page.Options = append(page.Options, slackOption...)
-	page.Options = append(page.Options, []crewShareOption{
-		{Key: "read_only", Title: "Read only", Line: "Others look at results on dashboards. They cannot change anything.", Chips: []string{"for: anyone you choose", "view only"}, Status: readStatus, On: dashShared},
-	}...)
-	if len(page.Options) == 4 {
-		page.Lead = "Four ways. Use any of them. Click one to set it up."
+	if len(page.Options) == 2 {
+		page.Lead = "Two ways. Use any of them. Click one to set it up."
 	}
 	anyOpen := false
 	for i := range page.Options {
-		// Read only and Slack open only when asked (the dashboards line, the Slack bot row).
-		page.Options[i].Open = page.Options[i].On && page.Options[i].Key != "read_only" && page.Options[i].Key != "slack"
+		// Slack opens only when asked (the Slack bot row).
+		page.Options[i].Open = page.Options[i].On && page.Options[i].Key != "slack"
 		anyOpen = anyOpen || page.Options[i].Open
 	}
 	if !anyOpen {
@@ -755,7 +720,7 @@ func (api *StreamingAPI) handleCrewSharePage(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "no-store")
 	page := api.crewSharePageFor(r, t, claims.UserID)
 	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
-		log.Printf("[CREW_SHARE] project=%s viewer=%s agents=%d dashboards=%d elapsed_ms=%d", t.ProjectID, claims.UserID, len(page.Agents), page.Dashboards, elapsed.Milliseconds())
+		log.Printf("[CREW_SHARE] project=%s viewer=%s agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, len(page.Agents), elapsed.Milliseconds())
 	}
 	externalJSON(w, page)
 }

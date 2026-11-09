@@ -43,12 +43,14 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
   useWorkspaceViewTarget('mcp', target => {
     // Sharing, where it lives (or laptop access) and connected agents are one Access page (owner, 3 Nov); old names open it.
     // The Slack bot is Share's Slack option (owner, 9 Nov): its menu row and the Connections row open Share there.
-    const next = ['share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'slack-bot'].includes(target) ? 'access' : target
+    // Dashboards are the Access page's own tab next to Share (owner, 9 Nov).
+    const next = ['share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'slack-bot', 'dashboards'].includes(target) ? 'access' : target
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
     if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
     if (target === 'slack-bot') openCrewAccess(projectId, '', 'slack')
+    if (target === 'dashboards') openCrewAccess(projectId, '', 'dashboards')
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
   useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])

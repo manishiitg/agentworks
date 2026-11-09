@@ -262,7 +262,7 @@ export function teamFolders(target: TeamTarget, query: string): Promise<TeamFold
 /** The Share page (crew_share_page.go, owner 9 Nov mocks): four options with the server's status and chips, the
  * viewer's agents (Ask with its two permissions) and the owner's actions, the who-can-use line and the dashboards
  * count. Every word and every "may change" is the server's; the page prints them and sends the person's change. */
-export type CrewShareOptionKey = 'team' | 'agents' | 'slack' | 'read_only'
+export type CrewShareOptionKey = 'team' | 'agents' | 'slack'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean; changes_label: string; changes_line: string
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[] }
@@ -274,7 +274,7 @@ export type CrewShareActionsGroup = { title: string; line: string; rows: CrewSha
 export type CrewShareShared = { name: string; role: string; items: { name: string; line: string; can: string }[] }
 /** Share › Slack's Who can talk to it (crew_share_page.go crewShareSlack): one line per rule, then a note. */
 export type CrewShareSlack = { rules: { allowed: boolean; where?: string; line: string }[]; note?: string }
-export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; actions_group: CrewShareActionsGroup; dashboards: number; dashboard_ask?: string; shared_with_you: CrewShareShared[] }
+export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
 }

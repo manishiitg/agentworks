@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// The Share page's Dashboards tab (owner, 6 Nov, approved mockup): everything the Crew publishes (dashboards, artifacts
-// and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
+// The Access page's Dashboards tab, next to Share (owner, 6 Nov mockup; its own tab again 9 Nov): everything the Crew
+// publishes (dashboards, artifacts and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
 // server writes every line; the card renders them. It reads the same rows and the same Team and Share records as the Team
 // card's Dashboards list (crew_team_dashboards.go), so it adds no access rule: the Crew's owner or a Team member opens
 // it, and only the owner changes who can open an item or its public link.
@@ -177,7 +177,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
 		if owner {
-			// The Share page's Read only option (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
+			// The Dashboards tab (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
 			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboard yet", Line: "Ask the Crew to make one from its results.",
 				Ask: "Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."}
 		}
