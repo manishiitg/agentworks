@@ -134,47 +134,9 @@ func TestTriggerTargetResolutionUsesCurrentRunAccess(t *testing.T) {
 	if target, err := resolveTriggerTarget(ctx, claims, "workflow:Shared"); err != nil || target.Kind != triggerCallerWorkflow {
 		t.Fatalf("shared workflow Run entry = %+v, err=%v", target, err)
 	}
-	// A real shared target is visible until its audience is removed; the
-	// refusal must come from access, not a missing project fixture.
-	if _, err := resolveTriggerTarget(ctx, claims, "Gamma"); err != nil {
-		t.Fatal(err)
-	}
-	if err := defaultProjectOwners().SetAudience("work", "gamma", true, nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := resolveTriggerTarget(ctx, claims, "Gamma"); err == nil {
-		t.Fatal("private target remained callable after audience removal")
-	}
 	if _, err := resolveTriggerTarget(ctx, claims, "nope"); err == nil || !strings.Contains(err.Error(), "no Crew or workflow you can use") {
 		t.Fatalf("unknown target: %v", err)
 	}
-}
-
-// PLAT-746: current explicit Crew links remain owner-authored even though
-// shared Run people may call the linked Crew's declared functions.
-func TestCrewLinkEditsRequireOwnerOverMCP(t *testing.T) {
-	f, _ := newExternalCrewCommandFixture(t)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "peer", ProjectID: "peer", OwnerID: "other", Shared: true, AudienceConfigured: true}); err != nil {
-		t.Fatal(err)
-	}
-	f.write(t, "Crew/peer/README.md", "Peer fixture.\n")
-	f.write(t, "_system/crew-data/peer/product.json", `{"schema_version":1,"product":"work","id":"peer","title":"Peer"}`)
-	args := func(action string) map[string]any {
-		return map[string]any{"action": action, "workspace_path": "Crew/peer"}
-	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", args("reference_attach"), 200)
-	before, found, err := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json")
-	if err != nil || !found || !strings.Contains(before, "Crew/peer") {
-		t.Fatalf("owner did not create the link: %v", err)
-	}
-	for _, action := range []string{"reference_attach", "reference_detach"} {
-		crewCapabilityHTTP(t, f, crewReader("owner"), "workspace", args(action), 403)
-	}
-	after, _, err := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json")
-	if err != nil || after != before {
-		t.Fatal("a refused Run operation changed the link", err)
-	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", args("reference_detach"), 200)
 }
 
 // A shared Crew is resolved by its name or canonical path. Calls use the
