@@ -17,8 +17,8 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
-// A message another agent sent into this chat (owner, 5 Nov): shown like a typed message, a bubble on the right, with
-// who sent it and the time in small text under it.
+// A server-attributed incoming message. Standard and native chat share this
+// body-first presentation; transport instructions never become the preview.
 export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
@@ -30,11 +30,11 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
     <article data-testid="agent-inbox-message" className="mb-3 mt-3 w-[min(100%,52rem)] overflow-hidden rounded-xl border border-border bg-muted/20 text-left">
       <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
         <Bot aria-hidden="true" className="h-4 w-4 shrink-0" />
-        <span className="font-medium text-foreground">{message.sender}</span>
+        <span className="min-w-0 break-words font-medium text-foreground">{message.sender}</span>
         {message.kind && <span>{message.kind}</span>}
         {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
       </header>
-      <div data-testid="agent-inbox-body" className="max-w-full break-words px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
+      <div data-testid="agent-inbox-body" className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
         <ConversationMarkdownRenderer content={shown} framed={false} maxHeight="none" copyableCode />
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}
