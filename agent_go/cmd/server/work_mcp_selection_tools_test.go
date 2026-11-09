@@ -15,7 +15,6 @@ import (
 func TestWorkMCPSelectionToolPersistsConnectedServerForProject(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	workspacePath := registerTestCrew(t, "agentworks", "user-1", false, "agentworks")
