@@ -359,7 +359,7 @@ func TestCrewFunctionGuards(t *testing.T) {
 	inflight.finish("completed", nil, "")
 
 	// Workflow targets take no mid-run questions.
-	wfCall := &crewFunctionCall{ID: "fn-wf", Function: "report", TargetKind: triggerCallerWorkflow, TargetID: "wf", CallerKind: triggerCallerCrew, CallerID: "alpha", Status: "running", done: make(chan struct{})}
+	wfCall := &crewFunctionCall{ID: "fn-wf", UserID: "owner", Function: "report", TargetKind: triggerCallerWorkflow, TargetID: "wf", CallerKind: triggerCallerCrew, CallerID: "alpha", Status: "running", done: make(chan struct{})}
 	crewFunctionCalls.Lock()
 	crewFunctionCalls.m[wfCall.ID] = wfCall
 	crewFunctionCalls.Unlock()
