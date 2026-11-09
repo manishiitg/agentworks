@@ -390,7 +390,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess
 	accessAt := -1
-	shared, listed, paths := "", false, []string{}
+	shared, listed, items := "", false, []crewAccessDashboard{}
 	for i := range sections {
 		switch s := &sections[i]; s.ID {
 		case "access":
@@ -403,7 +403,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 			listed = s.Error == ""
 			for _, row := range s.Rows {
 				if row.Path != "" {
-					paths = append(paths, row.Path)
+					items = append(items, crewAccessDashboard{Name: firstNonEmptyTrimmed(row.Label, "Dashboard"), Path: row.Path})
 				}
 			}
 		}
@@ -413,7 +413,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	}
 	// A copy: the cached section shares its Access, and adding the line in place would add it again on every read.
 	shown := *access
-	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items, shared))
 	sections[accessAt].Access = &shown
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeft, BarChart3, MessageSquare, Slack, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
@@ -44,9 +44,17 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (focus) setOpen(prev => ({ ...prev, [focus]: true })) }, [focus])
-  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch and its dashboards.
-  if (state.unbound) return <div className="space-y-3"><TeamTab projectId={projectId} onTurnOn={onTurnOn} /><CrewDashboardsTab projectId={projectId} /></div>
+  // Opened for one option (the menu's Dashboards row opens Read only): that option open at the top, the others closed.
+  useEffect(() => { if (focus) setOpen({ team: false, agents: false, slack: false, read_only: false, [focus]: true }) }, [focus])
+  const scrolled = useRef('')
+  useEffect(() => {
+    if (!focus || !page || scrolled.current === focus) return
+    scrolled.current = focus
+    document.querySelector(`[data-share-option="${focus}"]`)?.scrollIntoView({ block: 'start' })
+  }, [focus, page])
+  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch and its dashboards; opened
+  // for the dashboards, only the dashboards.
+  if (state.unbound) return focus === 'read_only' ? <CrewDashboardsTab projectId={projectId} /> : <div className="space-y-3"><TeamTab projectId={projectId} onTurnOn={onTurnOn} /><CrewDashboardsTab projectId={projectId} /></div>
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   const isOpen = (option: CrewShareOption) => open[option.key] ?? option.open
   return <div className="space-y-3">
@@ -64,13 +72,13 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
       {option.key === 'slack' && (workspacePath ? <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={page.slack && <ShareSlackRules slack={page.slack} />} /> : <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>)}
       {option.key === 'read_only' && <CrewDashboardsTab projectId={projectId} embedded />}
     </ShareOption>)}
-    {state.view?.can_leave && <LeaveTeam target={target} />}
+    {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
 }
 
 function ShareOption({ option, open, onToggle, children }: { option: CrewShareOption; open: boolean; onToggle: () => void; children: ReactNode }) {
   const { icon: Icon, tone } = optionIcons[option.key] || optionIcons.team
-  return <section aria-label={option.title} className="overflow-hidden rounded-2xl border border-border bg-card">
+  return <section aria-label={option.title} data-share-option={option.key} className="overflow-hidden rounded-2xl border border-border bg-card">
     <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-start gap-4 px-4 py-4 text-left hover:bg-muted/30">
       <span aria-hidden="true" className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tone}`}><Icon className="h-5 w-5" /></span>
       <span className="min-w-0 flex-1">

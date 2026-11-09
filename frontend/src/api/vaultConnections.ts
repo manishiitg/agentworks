@@ -1,6 +1,8 @@
 import api from '../services/api'
 export interface VaultConnectionRow {
  id: string; label: string; provider: string; status: string; can_manage: boolean
+ // detail tells apart two connections with the same name (where each one comes from), written by the server.
+ detail?: string
  tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>
 }
 export interface VaultCatalogApp { name:string; oauth:boolean; needs_admin_setup?:boolean }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -368,9 +369,39 @@ func crewShareWorkflows(ctx context.Context, crewWorkspace string) []crewShareWo
 
 // Native loading projects InputMapping records as internal triggers with a
 // caller. A named function's optional description and allowed callers are not
-// evidence that it is a generated connection.
+// evidence that it is a generated connection. An older record has no such
+// marker but keeps its generated name (internalFunctionName: "binding_" and the
+// id's uuid with underscores), so that name marks a connection too.
 func crewShareIsBinding(schedule WorkflowSchedule) bool {
-	return isInternalTriggerKind(schedule.Kind) && schedule.Caller != nil
+	if isInternalTriggerKind(schedule.Kind) && schedule.Caller != nil {
+		return true
+	}
+	return schedule.Function != nil && crewShareIsBindingName(schedule.Function.Name)
+}
+
+var crewShareBindingName = regexp.MustCompile(`^binding_[0-9a-fA-F]{8}(_[0-9a-fA-F]{4}){3}_[0-9a-fA-F]{12}$`)
+
+func crewShareIsBindingName(name string) bool {
+	return crewShareBindingName.MatchString(strings.TrimSpace(name))
+}
+
+// crewShareBindingCallers are the keys of the Crews (or workflows) a connection is for: its caller, else the allowed
+// callers an older record lists, else the connection itself (one other Crew).
+func crewShareBindingCallers(schedule WorkflowSchedule) []string {
+	callers := []triggerCaller{}
+	if schedule.Caller != nil {
+		callers = append(callers, *schedule.Caller)
+	} else if schedule.Function != nil {
+		callers = append(callers, schedule.Function.AllowedCallers...)
+	}
+	keys := []string{}
+	for _, c := range callers {
+		keys = append(keys, c.Type+":"+c.ID)
+	}
+	if len(keys) == 0 {
+		keys = append(keys, "connection:"+schedule.ID)
+	}
+	return keys
 }
 
 var crewShareAcronyms = map[string]string{"pr": "PR", "id": "ID", "url": "URL", "api": "API", "sql": "SQL", "csv": "CSV"}
@@ -434,7 +465,8 @@ func crewShareSchemaInputs(schema map[string]interface{}) []string {
 func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange bool) (map[string][]crewShareAction, map[string]string) {
 	groups, names := map[string][]crewShareAction{}, map[string]string{}
 	add := func(fn crewFunction, on, published bool) {
-		if fn.Name == "" || fn.Name == crewFunctionAskName {
+		// A generated Crew-to-Crew connection is not an action (crewShareIsBindingName).
+		if fn.Name == "" || fn.Name == crewFunctionAskName || crewShareIsBindingName(fn.Name) {
 			return
 		}
 		agent := strings.TrimSpace(fn.Agent)
@@ -554,7 +586,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		if !a.Mine {
 			continue
 		}
-		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && (!a.InTeam || a.CanUnshare) && !onMac, Fixed: a.Fixed, CanEdit: a.CanEditRule && !onMac,
+		// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
+		locked := a.InTeam && !a.CanUnshare
+		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
 			ChangesLabel: "Let them make changes", ChangesLine: "Off: they only get answers.", ChatShare: a.ChatShare, ChatShareLabel: "Your chat with it", ChatShareOptions: crewShareChatOptions}
 		if a.CanMakeChanges != nil {
 			ask.CanMakeChanges = *a.CanMakeChanges
@@ -564,6 +598,8 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			ask.Fixed = crewChangeOnMacLine
 		case !t.On:
 			ask.Note = crewShareTeamOffNote
+		case locked:
+			ask.Fixed = errCrewTeamLastShared.Error()
 		}
 		if a.InTeam && t.On {
 			sharedAgents++
@@ -586,8 +622,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	for _, wf := range workflows {
 		for _, sched := range wf.functions {
 			if crewShareIsBinding(sched) {
-				c := sched.Caller
-				callers[c.Type+":"+c.ID] = true
+				for _, key := range crewShareBindingCallers(sched) {
+					callers[key] = true
+				}
 				continue
 			}
 			title, line := crewShareActionWords(sched.Function.Name, firstNonEmptyTrimmed(sched.Function.Description, sched.Name))
