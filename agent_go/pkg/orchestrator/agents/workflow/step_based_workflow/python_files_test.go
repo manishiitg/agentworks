@@ -53,6 +53,14 @@ func TestPythonCrewFileReadIsFreshScopedAndKeepsRawSandboxClosed(t *testing.T) {
 	write(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(root)))), `{"id":"task","crew_id":"crew","crew_root":"Crew/example","workspace_path":"Workflow/files","kind":"script","runtime_root":"workflows/task"}`)
 	note := filepath.Join(private, "knowledgebase/notes/owner-handled.md")
 	write(note, "first")
+	write(filepath.Join(crew, "notes/visible.md"), "current resource")
+	for _, name := range []string{"service-account-prod.json", "credentials.yaml", "auth.json", "_files/auth.json", "knowledgebase/notes/credentials.yaml"} {
+		base := crew
+		if strings.HasPrefix(name, "knowledgebase/") {
+			base = private
+		}
+		write(filepath.Join(base, name), "must not be returned")
+	}
 	write(filepath.Join(private, "knowledgebase/notes/big.md"), strings.Repeat("x", pythonCrewFileLimit+1))
 	write(filepath.Join(private, "knowledgebase/notes/binary.md"), string([]byte{0xff}))
 	write(filepath.Join(private, "knowledgebase2/private.md"), "must not be returned")
@@ -82,7 +90,14 @@ else:
     raise AssertionError('parent received a raw Crew knowledge grant')
 assert files.read('knowledgebase/notes/owner-handled.md') == 'first'
 assert files.read('knowledgebase/notes/owner-handled.md') == 'second', 'read reused a saved helper result'
-for path in ('Crew/other/private-note.md', '../other/private-note.md', os.environ['FIXTURE_NOTE'], '.env', 'builder/conversation/chat.json', 'workflow.json', 'knowledgebase/notes/link.md', 'knowledgebase/linked/private-note.md', 'knowledgebase/notes/big.md', 'knowledgebase/notes/binary.md', 'knowledgebase/notes/huge.md', 'knowledgebase2/private.md', 'Knowledgebase/private.md'):
+assert files.read('notes/visible.md') == 'current resource', 'shared Brain disabled normal Crew files'
+try:
+    files.read('knowledgebase/notes/owner-handled.md')
+except AutomationError as error:
+    assert 'Brain' in str(error), str(error)
+else:
+    raise AssertionError('retired local archive was exposed after shared Brain cutover')
+for path in ('Crew/other/private-note.md', '../other/private-note.md', os.environ['FIXTURE_NOTE'], '.env', 'builder/conversation/chat.json', 'workflow.json', 'knowledgebase/notes/link.md', 'knowledgebase/linked/private-note.md', 'knowledgebase/notes/big.md', 'knowledgebase/notes/binary.md', 'knowledgebase/notes/huge.md', 'knowledgebase2/private.md', 'Knowledgebase/private.md', 'service-account-prod.json', 'credentials.yaml', 'auth.json', '_files/auth.json', 'knowledgebase/notes/credentials.yaml'):
     try:
         files.read(path)
     except AutomationError as error:
@@ -115,8 +130,13 @@ print('fresh-own-Crew-read-and-refusals-ok')
 		r.Header.Set("X-Session-ID", parts[1])
 		reply := httptest.NewRecorder()
 		handlers.HandlePerToolCustomRequest(reply, r, parts[4])
-		if reads.Add(1) == 1 {
+		switch reads.Add(1) {
+		case 1:
 			write(note, "second")
+		case 2:
+			write(filepath.Join(private, "workflow.json"), `{"knowledgebase_mode":"shared"}`)
+		case 4:
+			write(filepath.Join(private, "workflow.json"), `{"private":true}`)
 		}
 		for key, values := range reply.Header() {
 			w.Header()[key] = values
