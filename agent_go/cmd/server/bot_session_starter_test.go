@@ -246,7 +246,6 @@ func TestNormalizeSlackChannelRoutingDefaultsNewRoutesToRun(t *testing.T) {
 func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("TRACING_PROVIDER", "noop")
-	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"work":{"provider":"muse-cli","model":"muse-spark-1.3"}}`)
 	const sessionID = "bot-steer-query-p0"
 	const userID = "owner"
 	store := internalevents.NewEventStore(20)
@@ -278,7 +277,7 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	defer cancel()
 	// Model the same admitted Crew definition that launched the retained turn.
 	// A profileless general chat is retired; bots keep the Crew's real access checks.
-	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Test Team"}, SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli"}
+	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Test Team"}, SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli", ModelID: "muse-spark-1.3"}
 	profile, _, admitErr := api.admitQueryTarget(internalBotRequestContext(ctx, userID), &query, userID, sessionID)
 	if admitErr != nil {
 		t.Fatal(admitErr)
@@ -287,7 +286,7 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	api.lastQueryRequests = map[string]QueryRequest{sessionID: query}
 	request := map[string]interface{}{
 		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
-		"agent_profile_conversation_key": "team", "selected_folder": externalCommandCrewRoot, "provider": "muse-cli",
+		"agent_profile_conversation_key": "team", "selected_folder": externalCommandCrewRoot, "provider": "muse-cli", "model_id": "muse-spark-1.3",
 		"agent_profile_context": map[string]interface{}{"project_title": "Test Team"},
 	}
 	if err := api.sendFollowUpInternal(ctx, request, sessionID, userID); err != nil {
