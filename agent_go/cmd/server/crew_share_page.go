@@ -527,8 +527,8 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	}
 
 	// Read only: the Crew's published dashboards (the same rows as its Dashboards list).
-	rows, _ := api.crewTeamDashboardRows(httptest.NewRecorder(), r, t, root, false)
-	page.Dashboards = len(rows)
+	dashboardRows, _ := api.crewTeamDashboardRows(httptest.NewRecorder(), r, t, root, false)
+	page.Dashboards = len(dashboardRows)
 	// Shared means shared with someone: the same read the Crew menu prints, so both say the same thing.
 	dashShared := false
 	if page.Dashboards > 0 && dashWorkspace != "" {
