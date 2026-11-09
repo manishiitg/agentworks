@@ -24,17 +24,20 @@ func localDeviceTestServer(t *testing.T) (*StreamingAPI, *httptest.Server, *acce
 	t.Helper()
 	tokenTestSetup(t)
 	f := newExternalToolsFixture(t)
-	f.write(t, "Crew/local-test/product.json", `{"schema_version":1,"product":"work","id":"local-test","title":"Laptop test"}`)
-	f.write(t, "Crew/local-test/workflow.json", `{"capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "local-test", ProjectID: "local-test", OwnerID: "owner", CanonicalRoot: "Crew/local-test"}); err != nil {
 		t.Fatal(err)
 	}
 	// Real creation also makes the Crew's private-record folder (df0a2e472); the workspace refuses a Crew without it.
 	private, _ := crewroot.PrivateRoot(f.docs, "local-test")
-	if err := os.MkdirAll(private, 0o700); err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{private, filepath.Join(f.docs, "Crew/local-test")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
+	// Real creation stores manifests in the registered private root, not beside user files.
+	f.write(t, filepath.Join(crewroot.PrivateDirectory, "local-test", "product.json"), `{"schema_version":1,"product":"work","id":"local-test","title":"Laptop test"}`)
+	f.write(t, filepath.Join(crewroot.PrivateDirectory, "local-test", "workflow.json"), `{"capabilities":{}}`)
 	store, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
