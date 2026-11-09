@@ -78,13 +78,13 @@ func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
 				action = "list"
 			}
 			input := map[string]any{"action": action, "workspace_id": "work:example"}
-			targetKey := "crew_id"
+			targetKey, targetID := "crew_id", "example"
 			if family == "functions" {
 				input = map[string]any{"action": action, "project": "work:example"}
-				targetKey = "project"
+				targetKey, targetID = "project", "work:example"
 			}
 			member, args, err := externalResolveMerged(tool, input)
-			if err != nil || args[targetKey] != "work:example" {
+			if err != nil || args[targetKey] != targetID {
 				t.Fatalf("%s lost native Crew target: %s %v %v", family, member.Name, args, err)
 			}
 		}
