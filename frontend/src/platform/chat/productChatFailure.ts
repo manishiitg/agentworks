@@ -129,8 +129,8 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
 
   // A durable submission may already be running: the journal reconciles it.
   if (normalizedCode === 'delivery_uncertain') {
-    return { code: 'delivery_uncertain', title: 'Delivery is still being checked',
-      message: 'Your message was saved, but delivery has not been confirmed. Check the conversation before sending it again.',
+    return { code: 'delivery_uncertain', title: 'Delivery not confirmed',
+      message: 'Not sure the last message was delivered. Check this chat before sending it again.',
       retryable: false, technicalDetails }
   }
 

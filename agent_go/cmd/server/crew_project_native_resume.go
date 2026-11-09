@@ -50,12 +50,6 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		externalError(w, 404, "session_unavailable", "This session is no longer available on this computer. Refresh the session list.")
 		return
 	}
-	if !input.RecentOnly {
-		if reason := localNativeCopyUnavailable(*selected, roots.Private); reason != "" {
-			externalError(w, http.StatusUnprocessableEntity, "native_copy_unavailable", reason)
-			return
-		}
-	}
 
 	key := input.ProjectID + codeChatSideMarker + "import-" + selected.ID
 	if input.RecentOnly {
@@ -108,6 +102,12 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		externalFailure(w, err)
 		return
 	} else if !found {
+		if !input.RecentOnly {
+			if reason := localNativeCopyUnavailable(*selected, roots.Private); reason != "" {
+				externalError(w, http.StatusUnprocessableEntity, "native_copy_unavailable", reason)
+				return
+			}
+		}
 		messages, readErr := readLocalNativeMessages(*selected)
 		if readErr != nil || len(messages) == 0 {
 			externalError(w, 404, "session_unavailable", "This session is no longer available on this computer. Refresh the session list.")
@@ -217,7 +217,7 @@ func writeLocalProjectPreview(w http.ResponseWriter, r *http.Request, sessions [
 				preview = append(preview, map[string]string{"role": message.Role, "text": body})
 			}
 		}
-		writeAgentProfileJSON(w, 200, map[string]any{"session": session, "messages": preview, "total_messages": total, "history_note": "Most recent messages, up to 3 days of conversation. Older messages stay in the original chat.", "native_copy_unavailable": localNativeCopyUnavailable(session)})
+		writeAgentProfileJSON(w, 200, map[string]any{"session": session, "messages": preview, "total_messages": total, "history_note": "Most recent messages. Older messages stay in the original chat.", "native_copy_unavailable": localNativeCopyUnavailable(session)})
 		return
 	}
 	externalError(w, 404, "session_unavailable", "This conversation is no longer available. Refresh the list.")
@@ -237,7 +237,7 @@ func localProjectRecognitionAction(api *StreamingAPI, w http.ResponseWriter, r *
 		query.Set("sessions", "true")
 	}
 	if action == "native_resume" {
-		status, body := scheduleHandler(r, api.handleLocalProject, http.MethodPost, "/api/agent-profiles/work/local-project", nil, nil, map[string]string{"project_id": externalArg(args, "crew_id"), "id": externalArg(args, "native_id")})
+		status, body := scheduleHandler(r, api.handleLocalProject, http.MethodPost, "/api/agent-profiles/work/local-project", nil, nil, map[string]any{"project_id": externalArg(args, "crew_id"), "id": externalArg(args, "native_id"), "recent_only": args["recent_only"] == true})
 		externalScheduleRespond(w, status, body)
 		return
 	}

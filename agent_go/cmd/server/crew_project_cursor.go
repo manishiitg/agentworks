@@ -155,7 +155,7 @@ func readLocalNativeMessages(session localProjectNativeSession) ([]builderConver
 		if !found {
 			return nil, fmt.Errorf("this Cursor conversation has no saved history")
 		}
-		return builderConversationMessagesFromLLMTypes(transcript.Messages), nil
+		return boundedLocalCursorMessages(builderConversationMessagesFromLLMTypes(transcript.Messages)), nil
 	}
 	return nil, fmt.Errorf("this conversation's AI program is unavailable")
 }
@@ -190,4 +190,28 @@ func (api *StreamingAPI) continueLocalCursorRuntime(r *http.Request, roots crewr
 		return nil, fmt.Errorf("this Cursor conversation belongs to a different project folder")
 	}
 	return crewNativeRuntime(destination, conversation.SessionID, &sessiontransfer.Bundle{Provider: "cursor-cli", Transport: "tmux", Format: "cursor-cli-sqlite", SessionID: selected.NativeID}, cwd, runtimeDir), nil
+}
+
+// Cursor uses a full SQLite reader. Keep its preview/import response bounded
+// independently of the Claude/Codex journal window (PLAT-746-531).
+func boundedLocalCursorMessages(messages []builderConversationMessage) []builderConversationMessage {
+	if len(messages) > 60 {
+		messages = messages[len(messages)-60:]
+	}
+	result := make([]builderConversationMessage, 0, len(messages))
+	total := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		text := boundedNativeText(builderConversationMessageText(message))
+		if total+len(text) > nativeHistoryTextBytes {
+			break
+		}
+		total += len(text)
+		message.Parts = []builderConversationPart{{Text: text}}
+		result = append(result, message)
+	}
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	return result
 }
