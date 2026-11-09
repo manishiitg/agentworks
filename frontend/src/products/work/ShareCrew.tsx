@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, BarChart3, MessageSquare, Slack, Users, X, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, MessageSquare, Slack, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
-import { CrewDashboardsTab } from './CrewDashboardsTab'
 import { SlackBotChoice } from '../../components/integrations/ProductSlackPanel'
 import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewShareOption, type CrewShareOptionKey, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
 
@@ -19,16 +18,15 @@ const optionIcons: Record<CrewShareOptionKey, { icon: LucideIcon; tone: string }
   team: { icon: Users, tone: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
   agents: { icon: MessageSquare, tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
   slack: { icon: Slack, tone: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
-  read_only: { icon: BarChart3, tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
 }
 
 /**
- * Share this Crew (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page with four options, each
- * a card with the server's one-line explanation, chips and status; a click opens its setup. Work on it with your team
- * is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent, Slack is
- * the Crew's Slack bot (today's bot settings, moved here from the Crew menu), Read only is the Crew's dashboards. The
- * server's /share reply writes every line and says what this person may change; the page prints it and sends their
- * change to the existing routes. The same page for the owner and every teammate.
+ * Share this Crew (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page with the server's
+ * options, each a card with its one-line explanation, chips and status; a click opens its setup. Work on it with your
+ * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent, Slack
+ * is the Crew's Slack bot (today's bot settings, moved here from the Crew menu). Dashboards are their own Access tab
+ * next to this one. The server's /share reply writes every line and says what this person may change; the page prints
+ * it and sends their change to the existing routes. The same page for the owner and every teammate.
  */
 export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
   const state = useTeamTab(projectId)
@@ -44,17 +42,17 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Opened for one option (the menu's Dashboards row opens Read only): that option open at the top, the others closed.
-  useEffect(() => { if (focus) setOpen({ team: false, agents: false, slack: false, read_only: false, [focus]: true }) }, [focus])
+  // Opened for one option (the menu's Slack bot row opens Slack): that option open at the top, the others closed.
+  useEffect(() => { if (focus) setOpen({ team: false, agents: false, slack: false, [focus]: true }) }, [focus])
   const scrolled = useRef('')
   useEffect(() => {
     if (!focus || !page || scrolled.current === focus) return
     scrolled.current = focus
     document.querySelector(`[data-share-option="${focus}"]`)?.scrollIntoView({ block: 'start' })
   }, [focus, page])
-  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch and its dashboards; opened
-  // for the dashboards, only the dashboards.
-  if (state.unbound) return focus === 'read_only' ? <CrewDashboardsTab projectId={projectId} /> : <div className="space-y-3"><TeamTab projectId={projectId} onTurnOn={onTurnOn} /><CrewDashboardsTab projectId={projectId} /></div>
+  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch (its dashboards are on the
+  // Dashboards tab).
+  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   const isOpen = (option: CrewShareOption) => open[option.key] ?? option.open
   return <div className="space-y-3">
@@ -70,7 +68,6 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
       {option.key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
       {option.key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => setOpen(prev => ({ ...prev, team: true }))} />}
       {option.key === 'slack' && (workspacePath ? <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={page.slack && <ShareSlackRules slack={page.slack} />} /> : <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>)}
-      {option.key === 'read_only' && <CrewDashboardsTab projectId={projectId} embedded />}
     </ShareOption>)}
     {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>

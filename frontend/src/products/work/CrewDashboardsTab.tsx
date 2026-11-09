@@ -11,12 +11,12 @@ import { crewDashboardsTab, teamFailure, teamPublicLink, useTeamTab, type CrewDa
 const kindIcon: Record<string, LucideIcon> = { dashboard: LayoutDashboard, artifact: FileText, motion: Film }
 const openAccess = (projectId: string, section: 'mac' | 'team') => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section } }))
 
-/** The Share page's Dashboards tab (owner, 6 Nov, approved mockup): everything this Crew publishes (dashboards,
- * artifacts, motion), each with who can open it and, on a server Crew, its public link. The server's
+/** The Access page's Dashboards tab, next to Share (owner, 6 Nov mockup; its own tab again 9 Nov): everything this
+ * Crew publishes (dashboards, artifacts, motion), each with who can open it and, on a server Crew, its public link. The server's
  * /dashboards-tab writes every line and says what this person may change (owner: Change and the link; a teammate: the
  * list), and a Crew on a Mac says it needs to be online first; this only shows them. The same tab in the Mac app and on
  * the website. */
-export function CrewDashboardsTab({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
+export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   const { target, unbound } = useTeamTab(projectId)
   // A Mac Crew that was never online has no server copy: its own Mac app's server answers.
   const where: TeamTarget | undefined = unbound ? { project: projectId } : target
@@ -32,9 +32,8 @@ export function CrewDashboardsTab({ projectId, embedded = false }: { projectId: 
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [where?.project, where?.connection, kind]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading dashboards…</p>
-  // Embedded in the Share page's Read only option, which already has the heading and the card.
-  return <section aria-label="Dashboards" className={embedded ? 'space-y-2.5 text-sm' : teamCard}>
-    {!embedded && <h3 className="font-semibold">Dashboards</h3>}
+  return <section aria-label="Dashboards" className={teamCard}>
+    <h3 className="font-semibold">Dashboards</h3>
     {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
     {tab.filters.length > 1 && <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
       {tab.filters.map(filter => <button key={filter.key} type="button" aria-pressed={tab.filter === filter.key} onClick={() => setKind(filter.key)}
