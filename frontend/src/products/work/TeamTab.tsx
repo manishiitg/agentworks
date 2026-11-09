@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -9,7 +9,6 @@ import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
-const CrewFunctionsView = lazy(() => import('../../components/automation/CrewFunctionsView'))
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
@@ -103,9 +102,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
     <PeopleCard view={view} target={target} projectId={projectId} />
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
-      <SharesCard view={view} target={target} projectId={projectId} />
-      <AgentsCard view={view} target={target} projectId={projectId} />
-      <FunctionsCard projectId={projectId} />
+      <FolderLine view={view} target={target} projectId={projectId} />
       {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
@@ -311,6 +308,17 @@ function FolderRow({ folder, target, canRemove, saving, disabled, onRemove }: { 
   </div>
 }
 
+/** "They work in: team/ · change" (owner, 9 Nov mock): the shared folders in one line; change opens the folder card. */
+function FolderLine({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
+  const [open, setOpen] = useState(false)
+  const { folder, name } = view.team
+  const where = folder.whole ? `the whole ${name} folder` : (folder.folders || []).map(item => `${item}/`).join(', ') || 'no folder yet'
+  return <div className="space-y-2">
+    <p className="px-1 text-xs text-muted-foreground">They work in: <span className="text-foreground">{where}</span> · <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-primary hover:underline">{open ? 'done' : 'change'}</button></p>
+    {open && <SharesCard view={view} target={target} projectId={projectId} />}
+  </div>
+}
+
 /** What the team shares: Folders or the Whole Crew. The Crew's owner switches it, after the server's confirm box
  * (owner, 6 Nov: Whole Crew asks first), and stops sharing a folder (can_choose; never the last one, can_remove_folder); anyone in the Team adds one with "+ Share this folder"
  * (can_add_folder), picked from the Crew's folders the server lists where the Crew is. While a Mac Crew's Mac is off
@@ -385,94 +393,10 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** What the Team can call (owner, 8 Nov: functions go on Share, not Automations). One view for everyone the Crew is
- * shared with; the server says whether the viewer may change them (can_manage). */
-function FunctionsCard({ projectId }: { projectId: string }) {
-  return <section aria-label="Functions" className={card}>
-    <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
-      <CrewFunctionsView embedded scope={{ profileId: 'work', projectId }} onEdit={message => { if (!sendToMain(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }} />
-    </Suspense>
-  </section>
-}
-
-/** The agent sharing list (owner, 6 Nov, approved mockups): only the viewer's own agents, as the server marks them
- * (mine). Teammates' agents stay in the tab bar. The same rows in the Mac app and on the website. */
-function AgentsCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
-  const { pending, error, run } = useSave()
-  const agents = view.agents.filter(agent => agent.mine)
-  const visibility = (key: string, inTeam: boolean) => run(`agent:${key}`, async () => {
-    await teamRequest({ project: target.project, connection: target.connection }, '/agent-visibility', 'POST', { agent_key: key, in_team: inTeam })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  })
-  return <section aria-label="Agents" className={card}>
-    <div className="flex items-center gap-2">
-      <h3 className="flex-1 font-semibold">Agents</h3>
-      <AskButton projectId={projectId} card="agents" />
-    </div>
-    {view.agents_line && <p className="text-xs text-muted-foreground">{view.agents_line}</p>}
-    {agents.map(agent => <AgentRow key={agent.key} agent={agent} target={target} projectId={projectId} switching={pending === `agent:${agent.key}`} busy={Boolean(pending)} onShare={on => void visibility(agent.key, on)} />)}
-    {!agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-  </section>
-}
-
-// The status line's colour by the server's tone (crewAlwaysOnPlaceLabel): quiet grey unless something needs attention.
-const toneText: Record<string, string> = { wait: 'text-amber-700 dark:text-amber-300', server: 'text-sky-700 dark:text-sky-300' }
-
-/** One of the viewer's own agents (owner, 6 Nov, approved "calmer rows" mock): its name and one "Shared" switch, one
- * quiet status line the server words (place_label, coloured by place_tone only when it needs attention), and, while
- * shared, "Teammates can [Answer only | Make changes]", "Teammates see [Live chat | Chat history | Just the agent]" (its
- * words and choices from the server) and a Rules link. Purpose stays in the agent's own chat. Every
- * save goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
-function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; switching: boolean; busy: boolean; onShare: (on: boolean) => void }) {
-  const [rules, setRules] = useState(false)
-  const { pending, error, run } = useSave()
-  const save = (key: string, change: { can_make_changes?: boolean; chat_share?: string }) => run(key, async () => {
-    await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  })
-  const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
-  const status = agent.place_label || (!agent.in_team ? agent.not_shared_line : '') || ''
-  return <div className="space-y-1 border-t border-border pt-2">
-    <div className="flex items-center gap-2 text-[13px]">
-      <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b></span>
-      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
-        Shared<Saving on={switching}>{null}</Saving>
-        <Switch aria-label={`${agent.name}: shared`} checked={agent.in_team} disabled={locked || busy} onCheckedChange={onShare} />
-      </span>
-    </div>
-    {status && <p className={`text-xs ${toneText[agent.place_tone || ''] || 'text-muted-foreground'}`}>{status}</p>}
-    {agent.in_team && agent.can_edit_rule && <div className="flex flex-wrap items-center gap-2 text-xs">
-      {agent.can_make_changes !== undefined && <>
-        <label htmlFor={`can-${agent.key}`} className="text-muted-foreground">Teammates can</label>
-        <select id={`can-${agent.key}`} value={agent.can_make_changes ? 'change' : 'answer'} disabled={Boolean(pending)}
-          onChange={e => void save('can', { can_make_changes: e.target.value === 'change' })}
-          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-          <option value="answer">Answer only</option>
-          <option value="change">Make changes</option>
-        </select>
-        <Saving on={pending === 'can'}>{null}</Saving>
-      </>}
-      {agent.chat_share_options && <>
-        <label htmlFor={`see-${agent.key}`} className="text-muted-foreground">{agent.chat_share_label}</label>
-        <select id={`see-${agent.key}`} value={agent.chat_share} disabled={Boolean(pending)}
-          onChange={e => void save('see', { chat_share: e.target.value })}
-          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-          {agent.chat_share_options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <Saving on={pending === 'see'}>{null}</Saving>
-      </>}
-      <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{agent.has_rule ? '1 rule…' : 'Rules…'}</button>
-    </div>}
-    {agent.in_team && rules && <AgentDetails agent={agent} target={target} projectId={projectId} />}
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-  </div>
-}
-
 /** One agent's rule when others ask (owner, 5 Nov mockup "When others ask"): what it uses, as the server lists it (the
  * person's own sign-ins marked yours, sent only to them), and what it does when someone else asks. Its own person edits
  * the rule; everyone else reads the server's summary line. */
-function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
+export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
   const [rule, setRule] = useState(agent.when_others_ask || '')
   const { pending, error, run } = useSave()
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
