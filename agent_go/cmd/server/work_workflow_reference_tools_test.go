@@ -12,7 +12,8 @@ import (
 
 func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"reader","username":"reader","products":[]},{"id":"owner","username":"owner","products":[]}]}`)
+	withProjectSharing(t, true)
+	withMemoryUserDirectory(t, `{"users":[{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"owner","username":"owner","can_create":true,"products":["work"]}]}`)
 	// Crews are discovered from the owner registry, not from manifests found in the workspace.
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	// Registered Crew roots must exist on disk even when document transport is mocked.
