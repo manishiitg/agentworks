@@ -415,7 +415,7 @@ func TestPausedCalendarQueueRetainsOccurrenceUntilResume(t *testing.T) {
 	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		calls.Add(1)
 		called <- struct{}{}
-		return internalSessionTurnResult{Response: "calendar completed"}, nil
+		return internalSessionTurnResult{FinalResponse: "calendar completed"}, nil
 	}
 	if _, err := env.svc.Run(ctx, job, "cron", occurrence); !errors.Is(err, ErrProductRunQueued) {
 		t.Fatalf("busy timer was not accepted into the conversation queue: %v", err)
