@@ -359,6 +359,11 @@ func pluginCommand(o *options) *cobra.Command {
 		if !out.Attached || len(out.Messages) == 0 && out.SetupContext == "" && out.Held == 0 {
 			return nil
 		}
+		// Held or waiting messages with nothing to deliver now never stop the turn from ending: Stop used to
+		// block with an empty reason, which no one could act on and which repeated on every stop.
+		if input.Event == "Stop" && len(out.Messages) == 0 && out.SetupContext == "" {
+			return nil
+		}
 		text := pluginMessageText(out, req.Transport)
 		if out.Notice != "" {
 			text = out.Notice + "\n" + text
