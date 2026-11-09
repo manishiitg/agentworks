@@ -3122,7 +3122,7 @@ export const useChatStore = create<ChatState>()(
                 config: {
                   ...freshTab.config,
                   ...configUpdate,
-                  composerRevision: ('inputText' in configUpdate && configUpdate.inputText !== freshTab.config.inputText) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
+                  composerRevision: (['inputText', 'fileContext'] as const).some(key => key in configUpdate && configUpdate[key] !== freshTab.config[key]) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
                 }
               }
             }
