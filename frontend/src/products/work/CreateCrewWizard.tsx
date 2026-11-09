@@ -85,7 +85,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
         <section aria-label="Project folder">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-medium">Folder</h3>
-            {canChangeFolder && <button type="button" disabled={submitting} onClick={() => { setEditingFolder(value => !value); setFolderError(null) }} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">{editingFolder ? 'Done' : 'Change'}</button>}
+            {canChangeFolder && <button type="button" disabled={submitting} onClick={() => { setEditingFolder(value => !value); setFolderError(null) }} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted">{editingFolder ? 'Done' : <><FolderOpen aria-hidden="true" className="h-3.5 w-3.5" />Choose existing folder</>}</button>}
           </div>
           {editingFolder && canChangeFolder ? <>
             <div className="mt-1.5 flex gap-2">
@@ -98,7 +98,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
             </div>
             <button type="button" disabled={submitting} onClick={() => { changeFolder(''); setEditingFolder(false); setFolderError(null) }} className="mt-1.5 text-xs text-muted-foreground hover:text-foreground">Use default folder</button>
           </> : <p className="mt-1.5 break-all text-sm text-muted-foreground" title={rootPath || location?.folder}>{rootPath || (locationLoading ? 'Checking folder…' : locationError ? 'Could not load the project folder. Update and restart the local app if Retry does not help.' : location?.folder)}</p>}
-          {!rootPath && location && !locationLoading && !locationError && <p className="mt-1 text-xs text-muted-foreground">Your project files will be saved here.</p>}
+          {!rootPath && location && !locationLoading && !locationError && <p className="mt-1 text-xs text-muted-foreground">Your project files will be saved here. Choose an existing folder to continue a previous chat.</p>}
           {locationError && <button type="button" onClick={() => setLocationRevision(value => value + 1)} className="mt-1 text-xs text-primary">Retry folder lookup</button>}
           {folderError && <p role="alert" className="mt-1 text-xs text-destructive">{folderError}</p>}
         </section>
