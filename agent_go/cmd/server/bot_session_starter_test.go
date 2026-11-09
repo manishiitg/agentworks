@@ -241,19 +241,19 @@ func TestNormalizeSlackChannelRoutingDefaultsNewRoutesToRun(t *testing.T) {
 // Muse delivery while the conversation is running. The terminal delivery
 // boundary is stubbed; no real user chat is messaged.
 func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
-	workspace, _ := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("TRACING_PROVIDER", "noop")
 	const sessionID = "bot-steer-query-p0"
-	const userID = "bot-steer-owner"
+	const userID = "owner"
 	store := internalevents.NewEventStore(20)
 	defer store.Stop()
 	terminalStore := terminals.NewStore()
 	terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "mlp-muse-cli-int-bot-steer"))
 	deliveries := 0
 	api := &StreamingAPI{
+		agentProfiles: f.api.agentProfiles, provider: "muse-cli",
 		eventStore: store, terminalStore: terminalStore,
-		activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, UserID: userID, Status: "running"}},
+		activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, UserID: userID, Status: "running", WorkspacePath: externalCommandCrewRoot}},
 		internalRetainedTerminalInputHandler: func(_ context.Context, provider llmproviders.Provider, _, owner, message string) error {
 			if provider != llmproviders.ProviderMuseCLI || owner != sessionID || message != "use Notion instead" {
 				t.Fatalf("wrong steer: provider=%s owner=%s message=%q", provider, owner, message)
@@ -272,7 +272,18 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := api.sendFollowUpInternal(ctx, map[string]interface{}{"query": "use Notion instead", "agent_mode": "multi-agent"}, sessionID, userID); err != nil {
+	// Model the same admitted Crew definition that launched the retained turn.
+	// A profileless general chat is retired; bots keep the Crew's real access checks.
+	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli"}
+	profile, _, admitErr := api.admitQueryTarget(internalBotRequestContext(ctx, userID), &query, userID, sessionID)
+	if admitErr != nil {
+		t.Fatal(admitErr)
+	}
+	api.launchedAgentProfileKeyBySession = map[string]string{sessionID: agentProfileSessionKey(profile)}
+	if err := api.sendFollowUpInternal(ctx, map[string]interface{}{
+		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
+		"selected_folder": externalCommandCrewRoot, "provider": "muse-cli",
+	}, sessionID, userID); err != nil {
 		t.Fatal(err)
 	}
 	if deliveries != 1 {
