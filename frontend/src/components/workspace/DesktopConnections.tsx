@@ -81,7 +81,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   const pinnedProjects = orderedProjects.filter(project => !project.personal_agent && pinned?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)))
   const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-    {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1"><h2 className="px-3 pb-1 pt-2 text-xs text-muted-foreground">Pinned</h2>{pinnedProjects.map(renderProject)}</section>}
+    {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">{pinnedProjects.map(renderProject)}</section>}
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
@@ -160,7 +160,6 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">
-        <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Pinned</h2>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
       <div className="flex items-center px-2 py-2">

@@ -24,10 +24,12 @@ type transcriptCall struct {
 	evt       orchevents.BackgroundAgentTranscriptEvent
 }
 
-func (w *recordingTranscriptWriter) AppendBackgroundAgentTranscriptEvent(_ context.Context, sessionID, agentID string, evt orchevents.BackgroundAgentTranscriptEvent) error {
+func (w *recordingTranscriptWriter) AppendBackgroundAgentTranscriptEvents(_ context.Context, sessionID, agentID string, evts []orchevents.BackgroundAgentTranscriptEvent) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.calls = append(w.calls, transcriptCall{sessionID: sessionID, agentID: agentID, evt: evt})
+	for _, evt := range evts {
+		w.calls = append(w.calls, transcriptCall{sessionID: sessionID, agentID: agentID, evt: evt})
+	}
 	return nil
 }
 
@@ -80,7 +82,7 @@ func TestBackgroundAgentTranscriptAppendedForBackgroundExecution(t *testing.T) {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 
-	writer.waitForCall(t, time.Second)
+	writer.waitForCall(t, 3*time.Second)
 	calls := writer.snapshot()
 	if len(calls) != 1 {
 		t.Fatalf("writer calls = %d, want 1", len(calls))
