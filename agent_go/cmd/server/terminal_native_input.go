@@ -449,59 +449,7 @@ func nativeTerminalPromptTime(path, provider, text string, fallback time.Time) t
 	if strings.HasSuffix(path, ".db") {
 		return fallback
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return fallback
-	}
-	matched := fallback
-	for _, line := range strings.Split(string(raw), "\n") {
-		var row map[string]json.RawMessage
-		if json.Unmarshal([]byte(line), &row) != nil {
-			continue
-		}
-		var msg struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-			Type    string          `json:"type"`
-		}
-		encoded := row["message"]
-		if provider == "codex-cli" {
-			encoded = row["payload"]
-		}
-		if json.Unmarshal(encoded, &msg) != nil {
-			continue
-		}
-		var plain string
-		_ = json.Unmarshal(msg.Content, &plain)
-		if plain == "" {
-			var blocks []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}
-			_ = json.Unmarshal(msg.Content, &blocks)
-			var texts []string
-			for _, block := range blocks {
-				if block.Type == "text" || block.Type == "input_text" {
-					texts = append(texts, block.Text)
-				}
-			}
-			plain = strings.Join(texts, "\n\n")
-		}
-		var kind string
-		_ = json.Unmarshal(row["type"], &kind)
-		if msg.Role != "user" && kind != "user" {
-			continue
-		}
-		if strings.Join(strings.Fields(plain), " ") != strings.Join(strings.Fields(text), " ") {
-			continue
-		}
-		var timestamp string
-		_ = json.Unmarshal(row["timestamp"], &timestamp)
-		if at, err := time.Parse(time.RFC3339Nano, timestamp); err == nil {
-			matched = at
-		}
-	}
-	return matched
+	return recentNativePromptTime(path, provider, text, fallback)
 }
 
 func (api *StreamingAPI) nativeTerminalFinalResponse(tmuxSession string) string {

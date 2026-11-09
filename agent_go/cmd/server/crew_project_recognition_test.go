@@ -317,6 +317,49 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 		t.Fatal("Cursor preview trusted the hash over metadata")
 	}
 
+	// PLAT-746: a large journal must never enter the native-copy path before
+	// previewing. Recent-only is an explicit new chat, not native continuation.
+	largeID := "33333333-3333-4333-8333-333333333333"
+	largePath := filepath.Join(filepath.Dir(path), largeID+".jsonl")
+	recognitionWrite(t, largePath, fmt.Sprintf(`{"type":"user","sessionId":%q,"cwd":%q,"timestamp":"2026-10-27T10:00:00Z","message":{"content":"Old work"}}`+"\n", largeID, root))
+	large, err := os.OpenFile(largePath, os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = large.Seek(128<<20, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err = large.WriteString("\n" + fmt.Sprintf(`{"type":"user","sessionId":%q,"cwd":%q,"timestamp":"2026-11-09T10:00:00Z","message":{"content":"Recent work"}}`+"\n", largeID, root))
+	large.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeKey := localNativeSessionKey(localNativeSource{Provider: "claude-code", ConnectionID: "global:claude-code"}, largeID)
+	largeQuery := "?project_id=" + project + "&native_id=" + largeKey
+	if got := request(http.MethodGet, largeQuery, "", owner); got.Code != 200 || !strings.Contains(got.Body.String(), "Recent work") || strings.Contains(got.Body.String(), `"text":"Old work"`) {
+		t.Fatalf("large preview: %d %s", got.Code, got.Body.String())
+	}
+	largeBody := fmt.Sprintf(`{"project_id":%q,"id":%q}`, project, largeKey)
+	if got := request(http.MethodPost, "", largeBody, owner); got.Code != 422 || !strings.Contains(got.Body.String(), "native_copy_unavailable") {
+		t.Fatalf("large native copy was not refused before staging: %d", got.Code)
+	}
+	recentBody := fmt.Sprintf(`{"project_id":%q,"id":%q,"recent_only":true}`, project, largeKey)
+	got := request(http.MethodPost, "", recentBody, owner)
+	if got.Code != 200 || !strings.Contains(got.Body.String(), `"recent_only":true`) {
+		t.Fatalf("recent import: %d %s", got.Code, got.Body.String())
+	}
+	var recent struct {
+		SessionID string `json:"session_id"`
+	}
+	_ = json.Unmarshal(got.Body.Bytes(), &recent)
+	rawRecent, err := ReadChatHistoryConversation("default", recent.SessionID, virtual)
+	if err != nil || len(rawRecent) > nativeHistoryTextBytes || !strings.Contains(string(rawRecent), "Recent work") || strings.Contains(string(rawRecent), `"Text":"Old work"`) || strings.Contains(string(rawRecent), `"external_session_id"`) {
+		t.Fatalf("recent import claimed old context or expanded history: bytes=%d err=%v", len(rawRecent), err)
+	}
+	if info, err := os.Stat(largePath); err != nil || info.Size() < 128<<20 {
+		t.Fatal("large native original changed")
+	}
+
 }
 
 func recognitionCursorStore(t *testing.T, config, cwd, id string) string {

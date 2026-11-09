@@ -3609,6 +3609,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   return (
     <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container" data-chat-find-scope>
+      {activeTab?.metadata?.agentProfileConversationKey?.includes(':chat:import-') && activeTab.metadata.agentProfileConversationKey.endsWith('-recent') && <p className="px-4 py-2 text-xs text-muted-foreground">Recent messages imported into a new chat. Older context remains in the original chat.</p>}
       {/* Chat Content - Separated to prevent input re-renders.
           In terminal mode the inner pane owns its own scrolling
           (the rail + log scroll independently), so this wrapper

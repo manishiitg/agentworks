@@ -20,8 +20,9 @@ import (
 // Claude/Codex open independent copies; Cursor explicitly continues the original CLI conversation.
 func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ProjectID string `json:"project_id"`
-		ID        string `json:"id"`
+		ProjectID  string `json:"project_id"`
+		ID         string `json:"id"`
+		RecentOnly bool   `json:"recent_only"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
@@ -49,7 +50,17 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		externalError(w, 404, "session_unavailable", "This session is no longer available on this computer. Refresh the session list.")
 		return
 	}
+	if !input.RecentOnly {
+		if reason := localNativeCopyUnavailable(*selected, roots.Private); reason != "" {
+			externalError(w, http.StatusUnprocessableEntity, "native_copy_unavailable", reason)
+			return
+		}
+	}
+
 	key := input.ProjectID + codeChatSideMarker + "import-" + selected.ID
+	if input.RecentOnly {
+		key += "-recent"
+	}
 	profile, err := api.agentProfiles.Resolve("work", 0, roots.Owner)
 	if err != nil {
 		externalFailure(w, err)
@@ -127,7 +138,11 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			return
 		}
 		var runtime *ChatHistoryAgentRuntime
-		if selected.Provider == "cursor-cli" {
+		if input.RecentOnly {
+			// A fresh provider chat gets only the selected recent messages.
+			// It must never claim to resume the original native context.
+			runtime = nil
+		} else if selected.Provider == "cursor-cli" {
 			runtime, err = api.continueLocalCursorRuntime(r, roots, conversation, *selected, model)
 		} else {
 			runtime, err = api.copyLocalNativeRuntime(r, roots, conversation, *selected, model)
@@ -136,9 +151,11 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			externalError(w, 422, "resume_unavailable", err.Error())
 			return
 		}
-		runtime.WorkshopMode, runtime.AgentToolsMode = mode, normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)
+		if runtime != nil {
+			runtime.WorkshopMode, runtime.AgentToolsMode = mode, normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)
+		}
 
-		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "conversation_history": history, "runtime": runtime, "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
+		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "conversation_history": history, "runtime": runtime, "local_history_notice": localHistoryNotice(input.RecentOnly), "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
 		if err := writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
 			externalFailure(w, err)
 			return
@@ -151,13 +168,17 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			externalFailure(w, err)
 			return
 		}
-		log.Printf("[LOCAL_PROJECT] project=%s action=continue provider=%s source_native=%s native=%s session=%s account=%s", roots.ID, selected.Provider, selected.NativeID, runtime.ExternalSessionID, conversation.SessionID, selected.Source.ConnectionID)
+		native := ""
+		if runtime != nil {
+			native = runtime.ExternalSessionID
+		}
+		log.Printf("[LOCAL_PROJECT] project=%s action=continue provider=%s source_native=%s native=%s session=%s account=%s recent_only=%t messages=%d", roots.ID, selected.Provider, selected.NativeID, native, conversation.SessionID, selected.Source.ConnectionID, input.RecentOnly, len(history))
 	}
-	next := "A copy is open in its own tab, with the original history. Your original conversation is unchanged. Project files are shared; the Crew's current permissions apply."
-	if selected.Provider == "cursor-cli" {
+	next := localHistoryNotice(input.RecentOnly)
+	if selected.Provider == "cursor-cli" && !input.RecentOnly {
 		next = "The same Cursor CLI conversation is open in its own tab, with its saved history. Close it in Cursor before sending here. The Crew's current permissions apply."
 	}
-	writeAgentProfileJSON(w, 200, map[string]any{"conversation_key": key, "conversation_id": conversation.ConversationID, "session_id": conversation.SessionID, "provider": selected.Provider, "connection_id": selected.Source.ConnectionID, "name": selected.Title, "account": selected.Account, "engine": engine, "model_id": model, "next": next})
+	writeAgentProfileJSON(w, 200, map[string]any{"conversation_key": key, "conversation_id": conversation.ConversationID, "session_id": conversation.SessionID, "provider": selected.Provider, "connection_id": selected.Source.ConnectionID, "name": selected.Title, "account": selected.Account, "engine": engine, "model_id": model, "next": next, "recent_only": input.RecentOnly})
 }
 
 // Preview uses the same owner/account/folder admission as importing. The caller
@@ -183,9 +204,6 @@ func writeLocalProjectPreview(w http.ResponseWriter, r *http.Request, sessions [
 		}
 		messages = filterNativeContinuityMessagesUncapped(messages)
 		total := len(messages)
-		if len(messages) > 60 {
-			messages = messages[len(messages)-60:]
-		}
 		preview := []map[string]string{}
 		for _, message := range messages {
 			parts := []string{}
@@ -195,14 +213,11 @@ func writeLocalProjectPreview(w http.ResponseWriter, r *http.Request, sessions [
 				}
 			}
 			body := strings.Join(parts, "\n\n")
-			if len([]rune(body)) > 8000 {
-				body = string([]rune(body)[:8000]) + "…"
-			}
 			if body != "" {
 				preview = append(preview, map[string]string{"role": message.Role, "text": body})
 			}
 		}
-		writeAgentProfileJSON(w, 200, map[string]any{"session": session, "messages": preview, "total_messages": total})
+		writeAgentProfileJSON(w, 200, map[string]any{"session": session, "messages": preview, "total_messages": total, "history_note": "Most recent messages, up to 3 days of conversation. Older messages stay in the original chat.", "native_copy_unavailable": localNativeCopyUnavailable(session)})
 		return
 	}
 	externalError(w, 404, "session_unavailable", "This conversation is no longer available. Refresh the list.")
@@ -263,4 +278,40 @@ func (api *StreamingAPI) copyLocalNativeRuntime(r *http.Request, roots crewroot.
 	destination := conversation
 	destination.Provider, destination.ModelID, destination.ConnectionID = selected.Provider, model, selected.Source.ConnectionID
 	return api.importCrewNativeInto(r.Context(), GetUserFromContext(r.Context()), roots, destination, conversation.SessionID, fork, "")
+}
+
+// A large native fork is distinct from displaying recent messages. Refuse
+// before exporting/staging anything; the explicit recent-only action still works.
+func localNativeCopyUnavailable(session localProjectNativeSession, destinations ...string) string {
+	if session.Provider == "cursor-cli" {
+		return ""
+	}
+	info, err := os.Stat(session.Path)
+	if err != nil {
+		return "This conversation is no longer available. Refresh the list."
+	}
+	// The existing transfer makes and validates multiple full copies. Keep that
+	// work out of the interactive path for large journals until native fork jobs land.
+	if info.Size() > 64<<20 {
+		return "This chat is too large to copy here. You can import its recent messages into a new chat; older history stays in the original."
+	}
+	destination := filepath.Dir(session.Path)
+	if len(destinations) > 0 && destinations[0] != "" {
+		destination = destinations[0]
+	}
+	free, err := localChatFreeBytes(destination)
+	if err != nil {
+		return "Available storage could not be checked. You can import recent messages instead."
+	}
+	if free < uint64(info.Size())*3+(256<<20) {
+		return "There is not enough free space to copy this chat. You can import recent messages instead; the original stays unchanged."
+	}
+	return ""
+}
+
+func localHistoryNotice(recentOnly bool) string {
+	if recentOnly {
+		return "Recent messages imported into a new chat. Older context remains in the original chat."
+	}
+	return "Showing recent messages. Your agent keeps the original conversation context in its separate copy."
 }

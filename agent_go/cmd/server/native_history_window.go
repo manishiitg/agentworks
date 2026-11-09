@@ -1,0 +1,194 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"os"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+)
+
+// PLAT-746: native journals can be many gigabytes. UI history is a recent
+// window, not the provider's context. Never materialize an entire journal.
+const nativeHistoryReadBytes int64 = 8 << 20
+const nativeHistoryMessages = 200
+const nativeHistoryTextBytes = 512 << 10
+const nativeHistoryMessageBytes = 16 << 10
+
+type nativeHistoryRow struct {
+	message builderConversationMessage
+	stamp   time.Time
+}
+type nativeHistoryCache struct {
+	mu     sync.Mutex
+	info   os.FileInfo
+	offset int64
+	rows   []nativeHistoryRow
+	stamp  time.Time
+}
+
+var nativeHistoryWindows = struct {
+	sync.Mutex
+	entries map[string]*nativeHistoryCache
+}{entries: make(map[string]*nativeHistoryCache)}
+
+func nativeHistoryWindow(path, provider string) *nativeHistoryCache {
+	nativeHistoryWindows.Lock()
+	defer nativeHistoryWindows.Unlock()
+	key := provider + "\x00" + path
+	if cached := nativeHistoryWindows.entries[key]; cached != nil {
+		return cached
+	}
+	// A small fixed cache; eviction only loses an I/O optimization.
+	if len(nativeHistoryWindows.entries) >= 16 {
+		for old := range nativeHistoryWindows.entries {
+			delete(nativeHistoryWindows.entries, old)
+			break
+		}
+	}
+	cached := &nativeHistoryCache{}
+	nativeHistoryWindows.entries[key] = cached
+	return cached
+}
+
+func boundedNativeText(text string) string {
+	if len(text) <= nativeHistoryMessageBytes {
+		return text
+	}
+	cut := nativeHistoryMessageBytes
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
+}
+
+func (cache *nativeHistoryCache) trim() {
+	cutoff := cache.stamp.Add(-72 * time.Hour)
+	total := 0
+	start := len(cache.rows)
+	for start > 0 && len(cache.rows)-start < nativeHistoryMessages {
+		row := cache.rows[start-1]
+		size := len(builderConversationMessageText(row.message))
+		if row.stamp.Before(cutoff) || total+size > nativeHistoryTextBytes {
+			break
+		}
+		total += size
+		start--
+	}
+	cache.rows = append([]nativeHistoryRow(nil), cache.rows[start:]...)
+}
+
+func readRecentNativeTranscript(path, provider string, since time.Time) ([]builderConversationMessage, time.Time, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cache := nativeHistoryWindow(path, provider)
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	unchanged := cache.info != nil && os.SameFile(cache.info, info) && info.Size() == cache.info.Size() && info.ModTime().Equal(cache.info.ModTime())
+	if !unchanged {
+		start := cache.offset
+		reset := cache.info == nil || !os.SameFile(cache.info, info) || info.Size() < cache.info.Size() || (info.Size() == cache.info.Size() && !info.ModTime().Equal(cache.info.ModTime())) || info.Size()-start > nativeHistoryReadBytes
+		if reset {
+			start = max(int64(0), info.Size()-nativeHistoryReadBytes)
+		}
+		// ReadAt a bounded tail in blocks. Discard an incomplete first/last row.
+		raw := make([]byte, info.Size()-start)
+		for at := 0; at < len(raw); {
+			if err := ctx.Err(); err != nil {
+				return nil, time.Time{}, err
+			}
+			n, readErr := file.ReadAt(raw[at:min(at+(64<<10), len(raw))], start+int64(at))
+			at += n
+			if readErr != nil && readErr != io.EOF {
+				return nil, time.Time{}, readErr
+			}
+			if n == 0 {
+				raw = raw[:at]
+				break
+			}
+		}
+		rows, stamp := cache.rows, cache.stamp
+		if reset {
+			rows, stamp = nil, time.Time{}
+		}
+		end := bytes.LastIndexByte(raw, '\n') + 1
+		consumed := end
+		if reset && start > 0 {
+			first := bytes.IndexByte(raw[:end], '\n') + 1
+			raw = raw[first:end]
+		} else {
+			raw = raw[:end]
+		}
+		for len(raw) > 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, time.Time{}, err
+			}
+			next := bytes.IndexByte(raw, '\n')
+			line := raw[:next]
+			raw = raw[next+1:]
+			// Large tool/image rows are not visible prose; skip before JSON decoding.
+			if len(line) > 1<<20 {
+				continue
+			}
+			var message builderConversationMessage
+			var at time.Time
+			var ok bool
+			if provider == "codex-cli" {
+				message, at, ok = parseCodexTranscriptLine(line)
+			} else {
+				message, at, ok = parseClaudeTranscriptLine(line)
+			}
+			if !ok {
+				continue
+			}
+			message.Parts = []builderConversationPart{{Text: boundedNativeText(builderConversationMessageText(message))}}
+			if at.IsZero() {
+				at = info.ModTime()
+			}
+			if at.After(stamp) {
+				stamp = at
+			}
+			rows = append(rows, nativeHistoryRow{message, at})
+			if len(rows) > nativeHistoryMessages*2 {
+				rows = append([]nativeHistoryRow(nil), rows[len(rows)-nativeHistoryMessages:]...)
+			}
+		}
+		cache.rows, cache.stamp, cache.offset, cache.info = rows, stamp, start+int64(consumed), info
+		cache.trim()
+	}
+	messages := make([]builderConversationMessage, 0, len(cache.rows))
+	for _, row := range cache.rows {
+		if row.stamp.After(since) {
+			messages = append(messages, row.message)
+		}
+	}
+	return messages, cache.stamp, nil
+}
+
+func recentNativePromptTime(path, provider, text string, fallback time.Time) time.Time {
+	if _, _, err := readRecentNativeTranscript(path, provider, time.Time{}); err != nil {
+		return fallback
+	}
+	cache := nativeHistoryWindow(path, provider)
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	for i := len(cache.rows) - 1; i >= 0; i-- {
+		row := cache.rows[i]
+		if row.message.Role == "human" && strings.Join(strings.Fields(builderConversationMessageText(row.message)), " ") == strings.Join(strings.Fields(text), " ") {
+			return row.stamp
+		}
+	}
+	return fallback
+}
