@@ -367,40 +367,7 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 // crewScriptStepCount is the number of steps the Workflow page's Steps card counts: the outline's nodes that are
 // not containers. The Crew panel prints the same number from here. ok is false when there is no readable outline.
 func crewScriptStepCount(ctx context.Context, binding crewExecutableBinding) (int, bool) {
-	owner, found := crewProjectOwnerID(binding.CrewRoot)
-	if !found {
-		return 0, false
-	}
-	resource := &crewWorkflowResources{userID: owner}
-	source, err := resource.ResolveCrewScript(ctx, binding.Root, "")
-	if err != nil {
-		return 0, false
-	}
-	files := map[string]string{}
-	for name, content := range source.Files {
-		if strings.HasSuffix(name, ".py") {
-			files[name] = string(content)
-		}
-	}
-	raw, err := inspectPythonAutomationSource(ctx, binding.Root, files)
-	if err != nil {
-		return 0, false
-	}
-	var graph struct {
-		Nodes []struct {
-			Role string `json:"role"`
-		} `json:"nodes"`
-	}
-	if json.Unmarshal(raw, &graph) != nil || len(graph.Nodes) == 0 {
-		return 0, false
-	}
-	count := 0
-	for _, node := range graph.Nodes {
-		if node.Role == "" {
-			count++
-		}
-	}
-	return count, true
+	return cachedCrewStepCount(ctx, binding.Root)
 }
 
 type crewScriptUsage struct {

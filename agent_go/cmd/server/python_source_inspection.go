@@ -23,7 +23,11 @@ func inspectPythonAutomationSource(ctx context.Context, workspacePath string, fi
 	if len(raw) > 64*1024 {
 		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (64 KiB limit). You can still open and run it."]}`), nil
 	}
-	return inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), map[string]string{"VAR_AUTOMATION_CHECK_FILES": base64.StdEncoding.EncodeToString(raw), "VAR_AUTOMATION_TYPE_CHECK": "1"})
+	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), map[string]string{"VAR_AUTOMATION_CHECK_FILES": base64.StdEncoding.EncodeToString(raw), "VAR_AUTOMATION_TYPE_CHECK": "1"})
+	if err == nil {
+		rememberCrewStepCount(workspacePath, files, graph)
+	}
+	return graph, err
 }
 
 func inspectPythonSourceEnvironment(ctx context.Context, workspacePath, workingDirectory string, environment map[string]string) (json.RawMessage, error) {
