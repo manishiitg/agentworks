@@ -276,7 +276,7 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	defer cancel()
 	// Model the same admitted Crew definition that launched the retained turn.
 	// A profileless general chat is retired; bots keep the Crew's real access checks.
-	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli"}
+	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli"}
 	profile, _, admitErr := api.admitQueryTarget(internalBotRequestContext(ctx, userID), &query, userID, sessionID)
 	if admitErr != nil {
 		t.Fatal(admitErr)
@@ -284,7 +284,7 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	api.launchedAgentProfileKeyBySession = map[string]string{sessionID: agentProfileSessionKey(profile)}
 	request := map[string]interface{}{
 		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
-		"selected_folder": externalCommandCrewRoot, "provider": "muse-cli",
+		"agent_profile_conversation_key": "team", "selected_folder": externalCommandCrewRoot, "provider": "muse-cli",
 	}
 	if err := api.sendFollowUpInternal(ctx, request, sessionID, userID); err != nil {
 		if deliveries != 0 {
