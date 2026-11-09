@@ -1,3 +1,4 @@
+import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
@@ -5,7 +6,7 @@ import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
-import { chatTabArrowTargetAllowed, workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
+import { workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
@@ -207,6 +208,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const before = position > 0 ? ownedListed[position - 1].conversation_key : undefined
     const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
     return {
+      fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => { void forkChatTab(tab.tabId) } : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,
@@ -338,13 +340,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not pin this tab.', 'error')
     }
   }
-  // Cmd/Ctrl+arrows cycle visible chats (also from the composer); numbers pick a chat.
+  // Cmd/Ctrl+arrows use app history; numbers still pick a chat within this project.
   // Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while this product is on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
-  const visibleTabsRef = useRef(visibleTabs)
   // A Crew uses the left menu's order with the menu open or closed, so ⌘2 is the same agent either way (owner, 4 Nov).
-  visibleTabsRef.current = surface === 'work' && placeProject ? menuOrder.filter(listedInMenu) : visibleTabs
   const numberedTabsRef = useRef(tabs)
   numberedTabsRef.current = surface === 'work' && placeProject ? menuOrder : tabs
   useEffect(() => {
@@ -354,17 +354,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       if (event.target instanceof Element && event.target.closest('.xterm')) return
       const action = workChatTabShortcut(event)
       if (!action) return
-      if (action.kind === 'adjacent') {
-        // The owner chose tab switching from the chat input, including drafts.
-        if (!chatTabArrowTargetAllowed(event.target)) return
-        const shown = visibleTabsRef.current
-        const active = shown.findIndex(tab => isTabActive ? isTabActive(tab) : tab.tabId === useChatStore.getState().activeTabId)
-        if (shown.length < 2 || active < 0) return
-        event.preventDefault()
-        markFeatureUsed('chat-tab-keys')
-        onSelectTab(shown[(active + action.direction + shown.length) % shown.length].tabId)
-        return
-      }
+      if (action.kind === 'adjacent') return // The app shell owns browser Back/Forward.
       event.preventDefault()
       markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {

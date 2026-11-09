@@ -30,7 +30,7 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
   const labelFor = (item: CrewPanelRow) => item.destination === 'mcp:slack-bot' ? 'Slack bot' : item.label
   const iconFor = (item: CrewPanelRow) => item.destination === 'mcp:computer-use' ? MonitorCog : item.destination === 'mcp:github' ? Github : item.destination === 'mcp:gmail' ? Grid2X2 : item.destination === 'mcp:slack-bot' ? Bot : item.destination === 'mcp:whatsapp' ? MessageCircle : Slack
   if (!browserAllowed && !mcpAllowed && !accounts.length && !onManage) return null
-  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} detail={loading || unavailable ? undefined : details.connections} preview={<div className="isolate flex -space-x-1.5">
+  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} summaryOnly detail={unavailable ? 'Unavailable' : loading ? 'Checking…' : details.connections} preview={<div className="isolate flex -space-x-1.5">
     {browserAllowed && browser.connected && <ConnectionIcon icon={browserIcon} hint={browserHint} onClick={() => onOpen('browser')}/>}
     {accounts.filter(item => item.connected).map(item => <ConnectionIcon key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} onClick={() => onOpen(item.destination!)}/>)}
     {mcpAllowed && !loading && !unavailable && connectedMcps.length > 0 && <ConnectionIcon icon={Cable} hint={mcpHint} count={connectedMcps.length} onClick={() => onOpen('mcp:connected')}/>}

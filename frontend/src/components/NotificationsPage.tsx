@@ -6,15 +6,15 @@ import { ToggleRow } from './ui/ToggleRow'
 import { useChatStore } from '../stores'
 import { playNotificationSound } from '../utils/sound'
 import {
-  loadNotifySettings, notifyDeviceId, notifyErrorToast, removeNotifyDevice, saveNotifyChats, saveNotifyNeedsMe,
-  turnNotificationsOff, turnNotificationsOn, type NotifyChats, type NotifyDevice, type NotifySettings,
+  loadNotifySettings, notifyDeviceId, notifyErrorToast, removeNotifyDevice, saveNotifyNeedsMe,
+  turnNotificationsOff, turnNotificationsOn, type NotifyDevice, type NotifySettings,
 } from '../services/notifications'
 
 const isMacApp = () => !!window.electronAPI?.getDesktopConnection
 const isPhoneLabel = (device: NotifyDevice) => /iPhone|iPad|Android/.test(device.label)
 
 /**
- * Settings › Notifications (owner, 5 Nov, approved mockup): the same switch as the bell for this device, which chats,
+ * Settings › Notifications (owner, 5 Nov, approved mockup): the same switch as the bell for this device,
  * "needs me" alerts, the sound on a computer, and every device of this person. The server decides every send.
  */
 export default function NotificationsPage() {
@@ -45,7 +45,6 @@ export default function NotificationsPage() {
     const devices = value ? await turnNotificationsOn(current, isMacApp()) : await turnNotificationsOff()
     setSettings({ ...current, devices })
   })
-  const setChats = (chats: NotifyChats) => run(async () => setSettings(await saveNotifyChats(chats)))
   const setNeedsMe = (needsMe: boolean) => run(async () => setSettings(await saveNotifyNeedsMe(needsMe)))
   const setSound = (sound: boolean) => run(async current => {
     setSettings({ ...current, devices: await turnNotificationsOn(current, sound) })
@@ -65,15 +64,7 @@ export default function NotificationsPage() {
           ) : <section aria-label="Notification settings" className="space-y-3 rounded-lg border border-border p-4 text-xs">
             <div className="divide-y divide-border">
               <div className="pb-3">
-                <ToggleRow label="Notify me when an agent finishes" description="On this device" checked={on} disabled={busy} onCheckedChange={setOn} />
-              </div>
-              <div className="py-3">
-                <p className="text-muted-foreground">Which chats</p>
-                <span role="radiogroup" aria-label="Which chats" className="mt-1.5 inline-flex overflow-hidden rounded-full border border-border">
-                  {([['mine', 'Chats I started'], ['all', 'Every agent I can see']] as const).map(([value, label]) => <button key={value} type="button" role="radio" disabled={busy}
-                    aria-checked={(settings.chats === 'all' ? 'all' : 'mine') === value} onClick={() => setChats(value)}
-                    className={`px-3 py-1 text-xs ${(settings.chats === 'all' ? 'all' : 'mine') === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
-                </span>
+                <ToggleRow label="Show notifications" description="On this device" checked={on} disabled={busy} onCheckedChange={setOn} />
               </div>
               <div className="py-3">
                 <ToggleRow label="Also tell me when an agent needs me (a question or approval)" checked={settings.needs_me} disabled={busy} onCheckedChange={setNeedsMe} />
@@ -94,7 +85,7 @@ export default function NotificationsPage() {
                 </ul>}
               </div>
             </div>
-            <p className="text-muted-foreground">Not sent for a chat you have open in front of you. The notification says which agent and Crew, never the chat's text.</p>
+            <p className="text-muted-foreground">{isMacApp() ? 'Mac notifications appear only while AgentWorks is in the background.' : 'Not sent for a chat you have open in front of you.'} The notification says which agent and Crew, never the chat's text.</p>
           </section>}
         </div>
       </div>

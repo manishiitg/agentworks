@@ -4,13 +4,13 @@ import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow
 import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
-import { activateTab } from '../../utils/activateTab'
+import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
-const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
+const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
 /** The open Crew's agents in the app's left menu: one row each with its
  * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
@@ -85,7 +85,7 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
     onDrop={dragging && key ? event => { event.preventDefault(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
     <AgentHoverCard info={agent.info} shortcut={agent.shortcut}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+        className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         <span className="min-w-0 truncate">{agent.name}</span>
         <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}

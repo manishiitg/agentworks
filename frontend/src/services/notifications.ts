@@ -55,8 +55,6 @@ async function call<T>(base: string, path: string, method = 'GET', body?: unknow
 
 export const loadNotifySettings = () => call<NotifySettings>(deviceBase(), '/api/notifications')
 
-export const saveNotifyChats = (chats: NotifyChats) => call<NotifySettings>(deviceBase(), '/api/notifications', 'PUT', { chats })
-
 export const saveNotifyNeedsMe = (needsMe: boolean) => call<NotifySettings>(deviceBase(), '/api/notifications', 'PUT', { needs_me: needsMe })
 
 // removeNotifyDevice stops notifications on one of the person's devices; this device also drops its subscription.

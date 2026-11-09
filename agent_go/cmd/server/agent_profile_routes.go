@@ -1272,9 +1272,9 @@ func isSideChatConversationKey(key string) bool {
 }
 
 // handleCloseAgentProfileSideChat forgets a closed side chat (tab): its
-// registry entry goes, so other chats can no longer message it and reminders
-// set from it run in the main chat. Its transcript is kept. Before this a
-// closed tab stayed reachable (PLAT-648, PLAT-653).
+// registry entry and saved transcripts go, so other chats can no longer message
+// it. Hide only changes visibility; this explicit removal deletes its history
+// (PLAT-746). Earlier close behavior retained transcripts (PLAT-648, PLAT-653).
 func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -1316,7 +1316,7 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		return
 	}
 	store := defaultProductConversationRegistryStore()
-	current, hasCurrent, _, err := store.history(r.Context(), userID, profile, binding)
+	current, hasCurrent, previous, err := store.history(r.Context(), userID, profile, binding)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1324,13 +1324,50 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 	// A stopped pane may remain listed until the watchdog confirms (PLAT-815),
 	// and a finished chat retains an idle coding CLI. Release both here for app
 	// and MCP callers (PLAT-819); refuse a chat with a turn in flight.
-	if hasCurrent && api.sessionStillWorkingAfterIdleRelease(current.SessionID) {
-		writeAgentProfileError(w, http.StatusConflict, "This agent is still working. Stop it before closing.")
+	records := previous
+	if hasCurrent {
+		records = append([]ProductConversationRecord{current}, records...)
+	}
+	sessionIDs := make([]string, 0, len(records))
+	seen := make(map[string]bool, len(records))
+	for _, record := range records {
+		if record.SessionID == "" || seen[record.SessionID] {
+			continue
+		}
+		seen[record.SessionID] = true
+		if api.sessionStillWorkingAfterIdleRelease(record.SessionID) {
+			writeAgentProfileError(w, http.StatusConflict, "This agent is still working. Stop it before removing it.")
+			return
+		}
+		// The slot admits its owner; retain the transcript author check used by
+		// individual history deletion before removing any of its saved sessions.
+		if isCrewProjectPath(binding.WorkspacePath) {
+			if data, e := ReadChatHistoryConversation(userID, record.SessionID, binding.WorkspacePath); e == nil {
+				author, _ := chatHistoryConversationIdentity(data)
+				if author != "" && author != userID {
+					externalError(w, 403, "tab_owner", "Only this tab’s owner can delete it.")
+					return
+				}
+			}
+		}
+		sessionIDs = append(sessionIDs, record.SessionID)
+	}
+	// Keep the registry IDs until cleanup succeeds, so a failed deletion can
+	// be retried rather than leaving an undiscoverable history behind.
+	for _, sessionID := range sessionIDs {
+		if _, err := DeleteChatHistorySession(userID, sessionID, binding.WorkspacePath); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "remove agent history: "+err.Error())
+			return
+		}
+	}
+	if err := api.deleteDurableChatSessions(sessionIDs); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "remove agent event log: "+err.Error())
 		return
 	}
 	if _, err := store.removeSlot(r.Context(), userID, profile, binding); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
 		return
 	}
+	log.Printf("[CREW_AGENT_REMOVE] profile=%s sessions=%d history_deleted=true", profile.ID, len(sessionIDs))
 	w.WriteHeader(http.StatusNoContent)
 }

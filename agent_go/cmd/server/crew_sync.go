@@ -24,6 +24,7 @@ import (
 )
 
 type crewSyncRequest struct {
+	NetworkMessage        *crewNetworkMessage        `json:"network_message,omitempty"`
 	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
 	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
 	Provider              string                     `json:"provider,omitempty"`
@@ -55,6 +56,7 @@ type crewServerCopy struct {
 }
 
 type crewSyncReply struct {
+	NetworkMessage map[string]any `json:"network_message,omitempty"`
 	// Where the caller's own agents in this Crew work when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string `json:"where,omitempty"`
 	// AccessView is which Access page this person gets: "team" (the Team tab alone: a teammate, or the website copy
@@ -97,8 +99,8 @@ type crewSyncReply struct {
 	InboxID string `json:"inbox_id,omitempty"`
 	// The Access page's shape (crew_access_page.go): whether this app holds the Mac's controls ("mac"), its tabs,
 	// the Mac-only rows as text elsewhere, and its Who can use it and laptop access sections.
-	AccessHere string          `json:"access_here,omitempty"`
-	AccessTabs []crewAccessTab `json:"access_tabs,omitempty"`
+	AccessHere string             `json:"access_here,omitempty"`
+	AccessTabs []crewAccessTab    `json:"access_tabs,omitempty"`
 	AccessMac  *crewAccessMacCard `json:"access_mac,omitempty"`
 	// AccessMacLocked: Mac online stays on while the Team is on (owner, 6 Nov); the line its switch shows, locked on.
 	AccessMacLocked string          `json:"access_mac_locked,omitempty"`
@@ -241,6 +243,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Action == "share_agents" {
 		api.shareMacCrewAgents(w, r, mux.Vars(r)["project"], input)
+		return
+	}
+	if input.Action == "network_message" {
+		api.crewNetworkMessageOnServer(w, r, mux.Vars(r)["project"], input)
 		return
 	}
 	if input.Action == "team_message" {

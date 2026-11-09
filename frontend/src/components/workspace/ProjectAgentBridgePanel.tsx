@@ -7,7 +7,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 
 type Agent = {
-  id: string; target?: string; name?: string; agent_name?: string; label?: string; kind: string; provider?: string
+  id: string; target?: string; name?: string; agent_name?: string; label?: string; kind: string; provider?: string; network?: string
   purpose?: string; description?: string; online?: boolean; presence?: string
   chats?: { chat_id: string; name: string; purpose?: string; owner_name?: string }[]
 }
@@ -31,16 +31,16 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
   useEffect(() => {
     const identity = captureChatIdentity(), controller = new AbortController()
     setSnapshot(null); setError('')
-    void api.get<{ agents: Agent[] }>('/api/agent-directory', { signal: controller.signal, skipSessionContext: true, params: view === 'others' ? { view: 'message' } : undefined })
-      .then(({ data }) => { if (!controller.signal.aborted && isChatIdentityCurrent(identity)) setSnapshot({ scope, agents: data.agents || [] }) })
+    void api.get<{ agents: Agent[]; network_error?: string }>('/api/agent-directory', { signal: controller.signal, skipSessionContext: true, params: { ...(view === 'others' ? { view: 'message' } : {}), ...(target.startsWith('workspace:work:') ? { crew: target.slice('workspace:work:'.length) } : {}) } })
+      .then(({ data }) => { if (!controller.signal.aborted && isChatIdentityCurrent(identity)) { setSnapshot({ scope, agents: data.agents || [] }); if (data.network_error) setError(data.network_error) } })
       .catch(() => { if (!controller.signal.aborted && isChatIdentityCurrent(identity)) setError('Could not load agents. Try again.') })
     return () => controller.abort()
-  }, [target, user, server, scope, streaming, attempt])
+  }, [target, user, server, scope, streaming, attempt, view])
   const ask = (message: string) => { void Promise.resolve().then(() => onAsk(message)).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not open this chat.')) }
   const connected = agents?.filter(agent => ['connected_agent', 'agent'].includes(agent.kind)) || []
   // Provider identifies a native CLI, not which computer or person owns it.
-  const local = connected.filter(agent => agent.provider).sort((a, b) => Number(b.online === true) - Number(a.online === true))
-  const network = connected.filter(agent => !agent.provider)
+  const local = connected.filter(agent => agent.provider && !agent.network).sort((a, b) => Number(b.online === true) - Number(a.online === true))
+  const network = connected.filter(agent => !agent.provider || agent.network)
   // Crews you own or that are shared with you, and their shared agents; never this Crew itself.
   const crewsAndAgents = agents?.filter(agent => (agent.kind === 'crew' || agent.kind === 'crew_agent') && agent.id !== target && agent.target !== target) || []
   const row = (agent: Agent, onComputer: boolean) => <button type="button" key={agent.id} onClick={() => ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Show recent messages and ask what I want to send. Use this exact agent and report its actual delivery status. If it is unavailable, tell me; do not substitute execution in this server Crew.`)} className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left hover:bg-muted ${onComputer ? 'border-primary/50 bg-background' : 'border-border'}`}><Cable aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${onComputer ? 'text-primary' : 'text-muted-foreground'}`} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate font-medium">{name(agent)}</span>{onComputer && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">{providerLabel(agent.provider)}</span>}</span><span className="flex items-center gap-1.5 text-xs text-muted-foreground">{agent.online === true && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-green-500" />}{agent.presence || (agent.online === true ? 'Online' : agent.online === false ? 'Offline' : 'Connection unknown')}</span>{agent.purpose && <span className="block text-xs text-muted-foreground">{agent.purpose}</span>}</span><MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /></button>

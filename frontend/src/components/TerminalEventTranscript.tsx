@@ -14,7 +14,7 @@ import { prependedIndex, transcriptReadingState, useTranscriptScroll, type Trans
 import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Send, Terminal as TerminalIcon, XCircle } from 'lucide-react'
 import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
-import { isImageAttachmentPath } from '../utils/chatMessageContent'
+import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath } from '../utils/chatMessageContent'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
@@ -337,9 +337,15 @@ const TranscriptEvent: React.FC<{
     return <EventDispatcher event={event} onSendMessage={onSendMessage} compact hideOrchestratorContext />
   }
 
-  const metadata = payload.metadata && typeof payload.metadata === 'object'
+  const storedMetadata = payload.metadata && typeof payload.metadata === 'object'
     ? payload.metadata as Record<string, unknown>
     : undefined
+  // Native/replayed user messages can carry the request context without the
+  // preparer's attachments metadata. Use the same parser as the chat history.
+  const attachmentPaths = getUserMessageAttachmentPaths(content)
+  const metadata: Record<string, unknown> | undefined = messageAttachmentPaths(storedMetadata).length === 0 && attachmentPaths.length > 0
+    ? { ...storedMetadata, attachments: attachmentPaths }
+    : storedMetadata
   // The server keeps the typed text beside a wrapped prompt (continuity
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
@@ -394,7 +400,8 @@ function messageAttachmentPaths(metadata?: Record<string, unknown>): string[] {
   return paths.filter(path => path.trim() !== '')
 }
 
-const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {
+const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content: rawContent, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {
+  const content = getDisplaySafeUserMessageContent(rawContent)
   // Ask AI blocks collapse to their plain-words request; the builder-only
   // instructions stay one click away behind the usual expansion toggle.
   const askAI = hasAskAIMessage(content)

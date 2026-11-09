@@ -552,6 +552,8 @@ export const MermaidDiagram: React.FC<{ content: string }> = ({ content }) => {
                      document.documentElement.classList.contains('dark-plus')
       mermaid.initialize({
         startOnLoad: false,
+        // PLAT-746: keep parse/draw failures in our inline fallback, not document.body.
+        suppressErrorRendering: true,
         theme: isDark ? 'dark' : 'default',
         securityLevel: 'loose',
       })
