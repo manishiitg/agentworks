@@ -9,7 +9,10 @@ import (
 )
 
 func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
-	api := managedGlobalTestAPI(t)
+	f := newExternalToolsFixture(t)
+	api := f.api
+	f.write(t, sharedSecretsTestWorkflow+"/workflow.json", `{"id":"wf_shared","label":"Renewals","created_by":"a1","access":{"owners":["a1"],"readers":["c3"]}}`)
+	registerWorkflowOwner(sharedSecretsTestWorkflow, "a1")
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","role":"admin"},{"id":"a1","username":"owner","email":"owner@example.com","role":"creator"},{"id":"c3","username":"reader","email":"reader@example.com","role":"viewer"}]}`)
 	policy := workflowChatPolicy{Capabilities: map[string]bool{"user_management": true}}
 	register := func(id string) recordedTool {
@@ -42,8 +45,12 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 			t.Fatalf("invalid path %q accepted", path)
 		}
 	}
-	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{}, "readers": []string{"c3"}}); err == nil {
-		t.Fatal("last owner removed")
+	// The current main-owner rule keeps the owner even when omitted from the list.
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, manifest := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: "a1"}, sharedSecretsTestWorkflow); manifest == nil || !containsID(manifest.effectiveOwners(), "a1") {
+		t.Fatal("main owner was removed")
 	}
 	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"owner@example.com"}, "readers": []string{"reader@example.com"}}); err != nil {
 		t.Fatal(err)
