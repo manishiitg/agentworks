@@ -1,3 +1,4 @@
+import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
@@ -207,6 +208,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const before = position > 0 ? ownedListed[position - 1].conversation_key : undefined
     const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
     return {
+      fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => { void forkChatTab(tab.tabId) } : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,

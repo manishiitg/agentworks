@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { AGENT_KEY } from './AgentIcon'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
@@ -53,6 +53,7 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** One Crew's agents as its tab strip knows them, for the agent list in the app's left menu. */
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
+  fork?: () => void
   /** The saved order's key, for dragging rows. */
   orderKey?: string
   renameDraft?: string
@@ -152,7 +153,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         </> : <button type="button" onClick={() => setRemoving(true)} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>}
       </div>}
       {actions && <div className="mt-2 border-t border-border pt-1.5"><AgentActionsMenu name={info.name} actions={actions} pinned={pinned} onDone={() => setAt(null)} /></div>}
-      {!sheet && <p className="mt-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground">{AGENT_KEY}← {AGENT_KEY}→ switch agents</p>}
+      {!sheet && <p className="mt-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground">{AGENT_KEY}← {AGENT_KEY}→ back / forward</p>}
     </div></>, document.body)}
   </>
 }
@@ -191,6 +192,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}
     onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
+    {actions.fork && <button type="button" role="menuitem" className={item} onClick={() => run(actions.fork!)}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Fork chat</button>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}

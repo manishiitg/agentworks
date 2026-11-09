@@ -1,3 +1,4 @@
+import { chatForkedEvent } from '../../utils/forkChatTab'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
@@ -610,6 +611,16 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (tab && ((tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0) || (tab.metadata?.agentProfileTabPinned !== false) !== (chat.pinned !== false))) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0, agentProfileTabPinned: chat.pinned !== false })
     }
   }
+  useEffect(() => {
+    const onFork = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; chat: AgentProfileSideChat }>).detail
+      if (detail?.projectId !== projectId) return
+      setListed(current => [...(current || []).filter(row => row.conversation_key !== detail.chat.conversation_key), detail.chat])
+      void syncRef.current()
+    }
+    window.addEventListener(chatForkedEvent, onFork)
+    return () => window.removeEventListener(chatForkedEvent, onFork)
+  }, [projectId])
   const projectActivity = useChatStore(state => workProjectActivity(state.activeSessionsCache, tabs, projectId))
   const selectTab = (nextTabId: string) => { openAgentTab(nextTabId) }
   const closeProjectTab = (closingTabId: string) => {
