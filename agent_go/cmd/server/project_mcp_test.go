@@ -45,6 +45,11 @@ func projectMCPCrewFixture(t *testing.T) (triggerLinkEnv, string) {
 		if err := owners.Register(projectOwnerRecord{Product: "work", Folder: row.folder, ProjectID: row.id, OwnerID: row.owner, Shared: true, CanonicalRoot: root, Private: true, AudienceConfigured: true}); err != nil {
 			t.Fatal(err)
 		}
+		// Registration preserves an existing Crew's audience; the base fixture
+		// creates shared Crews, so explicitly make this OAuth fixture private.
+		if err := owners.SetAudience("work", row.folder, true, nil); err != nil {
+			t.Fatal(err)
+		}
 		raw, _ := json.Marshal(map[string]any{"schema_version": 1, "product": "work", "id": row.id, "title": row.id, "session_id": "sess-" + row.id, "owner_id": row.owner, "created_at": "2026-10-01T00:00:00Z"})
 		env.mock.files[root+"/product.json"] = string(raw)
 	}
