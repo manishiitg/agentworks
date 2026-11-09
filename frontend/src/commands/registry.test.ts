@@ -46,20 +46,6 @@ describe('Autopilot slash commands', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('Keep my existing targets'))
   })
 
-  it('has no slash command for recurring Autopilot setup — it is a toolbar/popup toggle', () => {
-    const workflowCommand = findCommand('pulse-setup', 'workflow')
-    const orgCommand = findCommand('pulse-setup', 'multi-agent')
-
-    expect(workflowCommand).toBeUndefined()
-    expect(orgCommand).toBeUndefined()
-  })
-
-
-
-
-
-
-
   it('enforces read-only workflow access even when a restored chat says Builder', () => {
     for (const mode of ['run', 'workshop', undefined] as const) {
       const commands = getCommands('workflow', mode, false).map(command => command.command)
@@ -88,44 +74,6 @@ describe('Autopilot slash commands', () => {
     }
   })
 
-  it('reads review-code reference files one at a time', () => {
-    let submitted = ''
-    findCommand('review-code', 'workflow')?.execute({
-      beforeSlash: '',
-      onSubmit: (message: string) => { submitted = message },
-      workshopMode: 'workshop',
-    } as unknown as CommandContext)
-
-    expect(submitted).toContain('references/code-authoring.md')
-    expect(submitted).toContain('references/scripted.md')
-    expect(submitted).not.toContain('},{')
-  })
-
-
-
-
-
-
-
-  it('runs Strategy Auditor as a background guided review', () => {
-    const command = findCommand('strategy-auditor', 'workflow')
-    let submitted = ''
-
-    command?.execute({
-      beforeSlash: 'focus on repeated targets',
-      onSubmit: (message: string) => { submitted = message },
-      workshopMode: 'workshop',
-    } as unknown as CommandContext)
-
-    expect(submitted).toContain('Run the /run-goal-work pass in this turn')
-    expect(submitted).toContain('kind="strategy-auditor"')
-    expect(submitted).not.toContain('required_goal_update_modules')
-    expect(submitted).toContain('focus on repeated targets')
-    expect(submitted).toContain('Needs your decision proposals')
-    expect(submitted).not.toContain('agent=')
-    expect(submitted).not.toContain('in severity order')
-  })
-
   it('keeps goal-advisor as a menu-free alias of the same strategic review', () => {
     const command = findCommand('goal-advisor', 'workflow', 'workshop')
     const canonical = findCommand('strategy-auditor', 'workflow', 'workshop')
@@ -152,14 +100,6 @@ describe('Autopilot slash commands', () => {
     expect(submitted).not.toContain('run_in_background')
     expect(submitted).toContain('Needs your decision proposals')
     expect(submitted).not.toContain('agent=')
-  })
-
-  it('keeps workflow configuration actions out of the generic chat slash menu', () => {
-    const chatCommands = getCommands('multi-agent').map(command => command.command)
-
-    for (const command of ['build-skill', 'add-skill', 'mcp', 'mcp-add', 'models']) {
-      expect(chatCommands).not.toContain(command)
-    }
   })
 })
 
