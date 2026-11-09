@@ -403,6 +403,11 @@ func saveNativeCodingState(s *nativeCodingRecordState) error {
 }
 
 func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.NativeRecord) error {
+	if record.Provider == "codex-cli" && record.Kind == "question" && record.Name == "request_user_input_async" {
+		if err := o.api.observeNativeAsyncQuestion(o.snapshot.SessionID, record); err != nil {
+			return err
+		}
+	}
 	id := nativeCodingEventID(o.snapshot.SessionID, record)
 	observedAt := time.Now()
 	activity := agentevents.NewCodingAgentNativeActivity(record)
