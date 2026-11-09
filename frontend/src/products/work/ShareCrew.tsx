@@ -155,6 +155,7 @@ function ShareAgentCard({ agent, intro, target, projectId, onWizard }: { agent: 
           <Switch aria-label={`${item.title}: on`} checked={item.on} disabled={!item.can_change || busy} onCheckedChange={on => void turn(item.name, on)} />
         </span>
       </div>)}
+      {agent.connected_line && <p className="pt-2 text-xs text-muted-foreground">{agent.connected_line}</p>}
       {agent.setup_ask && <button type="button" onClick={() => toMain(projectId, agent.setup_ask || '')} className="mt-2 text-[13px] text-primary hover:underline">✦ Ask AI to set up an action</button>}
       {agent.wizard_for && <button type="button" onClick={() => onWizard(agent.wizard_for || '')} className="mt-2 text-[13px] text-primary hover:underline">+ Set up an action</button>}
     </div>

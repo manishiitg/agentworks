@@ -267,7 +267,7 @@ export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: st
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean; changes_label: string; changes_line: string
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[] }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string }
-export type CrewShareAgent = { key: string; name: string; line?: string; target: string; ask?: CrewShareAsk; actions: CrewShareAction[]; actions_line: string; setup_ask?: string; wizard_for?: string }
+export type CrewShareAgent = { key: string; name: string; line?: string; target: string; ask?: CrewShareAsk; actions: CrewShareAction[]; actions_line: string; connected_line?: string; setup_ask?: string; wizard_for?: string }
 export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; dashboards: number; dashboard_ask?: string }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
