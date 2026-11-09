@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -17,6 +19,13 @@ import (
 // external MCP, then the actual turn account scope and credential admission.
 func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	journal, journalErr := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if journalErr != nil {
+		t.Fatal(journalErr)
+	}
+	defer journal.Close()
+	f.api.eventStore = storeevents.NewEventStore(100)
+	f.api.eventStore.SetDurableJournal(journal)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "crew-provider-test-secret")
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code,codex-cli,muse-cli")
@@ -63,7 +72,19 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		return w.Body.String()
 	}
 	save("other", private.ID, 403)
+	if events, err := journal.LoadTail(chat.SessionID, 10); err != nil || len(events) != 0 {
+		t.Fatalf("refused choice recorded an event: %v %v", events, err)
+	}
 	saved := save("other", personal.ID, 200)
+	events, err := journal.LoadTail(chat.SessionID, 10)
+	if err != nil || len(events) != 1 || events[0].Type != "chat_model_changed" {
+		t.Fatalf("accepted choice should record one history marker: %v %v", events, err)
+	}
+	save("other", personal.ID, 200)
+	events, err = journal.LoadTail(chat.SessionID, 10)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("unchanged choice should not add a marker: %v %v", events, err)
+	}
 	if !strings.Contains(saved, personal.ID) {
 		t.Fatal("own account was not returned")
 	}
