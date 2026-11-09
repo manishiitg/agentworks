@@ -222,7 +222,7 @@ func TestNativeHistorySlidingWindowKeepsOccurrenceIdentities(t *testing.T) {
 			}
 
 			// PLAT-746: the UI excerpt must not become the durable submitted input.
-			prompt := strings.Repeat("long prompt ", nativeHistoryMessageBytes/4)
+			prompt := strings.TrimSpace(strings.Repeat("long prompt ", nativeHistoryMessageBytes/4))
 			appendRow("user", prompt)
 			longWindow, _, err := readRecentNativeTranscript(path, provider, time.Time{})
 			if err != nil {
