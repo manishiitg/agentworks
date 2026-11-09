@@ -160,6 +160,7 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if len(reg.tools) != 0 {
 		t.Fatal("public MCP received local device tools")
 	}
+	toolContext := context.WithValue(t.Context(), UserContextKey, owner)
 	binary := []byte{0, 255, 10, 13, 128}
 	if err := os.WriteFile(filepath.Join(root, "sample.bin"), binary, 0600); err != nil {
 		t.Fatal(err)
@@ -168,14 +169,14 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if err != nil || string(copied.Bytes) != string(binary) {
 		t.Fatalf("binary transfer: %v", err)
 	}
-	if _, err := registrar.tools["copy_local_file_to_project"].exec(t.Context(), map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "uploads/import.bin"}); err != nil {
+	if _, err := registrar.tools["copy_local_file_to_project"].exec(toolContext, map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "uploads/import.bin"}); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := os.ReadFile(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Crew/local-test/uploads/import.bin"))
 	if err != nil || string(stored) != string(binary) {
 		t.Fatalf("Crew writer changed bytes: %v", err)
 	}
-	if _, err := registrar.tools["copy_local_file_to_project"].exec(t.Context(), map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "product.json"}); err == nil {
+	if _, err := registrar.tools["copy_local_file_to_project"].exec(toolContext, map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "product.json"}); err == nil {
 		t.Fatal("copy overwrote Crew manifest")
 	}
 	for _, name := range []string{"../escape", ".env", "locked/private.key"} {
