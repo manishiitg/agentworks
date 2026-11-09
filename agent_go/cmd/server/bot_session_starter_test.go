@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -280,11 +282,25 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 		t.Fatal(admitErr)
 	}
 	api.launchedAgentProfileKeyBySession = map[string]string{sessionID: agentProfileSessionKey(profile)}
-	if err := api.sendFollowUpInternal(ctx, map[string]interface{}{
+	request := map[string]interface{}{
 		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
 		"selected_folder": externalCommandCrewRoot, "provider": "muse-cli",
-	}, sessionID, userID); err != nil {
-		t.Fatal(err)
+	}
+	if err := api.sendFollowUpInternal(ctx, request, sessionID, userID); err != nil {
+		if deliveries != 0 {
+			t.Fatal(err)
+		}
+		// The channel error deliberately hides bodies. Diagnose only this synthetic
+		// refused request, before any stub delivery; never widen production errors.
+		body, _ := json.Marshal(request)
+		r := httptest.NewRequest("POST", "/api/query", strings.NewReader(string(body)))
+		r = r.WithContext(internalBotRequestContext(ctx, userID, request))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Session-ID", sessionID)
+		r.Header.Set("X-User-ID", userID)
+		response := httptest.NewRecorder()
+		api.handleQuery(response, r)
+		t.Fatalf("%v; synthetic refusal HTTP=%d body=%s", err, response.Code, response.Body.String())
 	}
 	if deliveries != 1 {
 		t.Fatalf("retained tmux deliveries=%d, want 1", deliveries)
