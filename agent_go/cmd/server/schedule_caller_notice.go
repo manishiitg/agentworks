@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -15,8 +16,25 @@ import (
 // only that session. A timer has no caller; it is reported to the linked Crew
 // by the scheduler as before.
 //
-// Webhook, function and watcher runs are not covered here: they either have no
-// chat or deliver to the caller through their own watch.
+// A chat-started trigger shares this registration and cancellation path.
+// Unattended deliveries have no caller; declared functions keep their own watch.
+
+// chatFunctionOrigin accepts only a session captured by the server's tool
+// registrar for this authenticated person, never a field in tool arguments.
+func (api *StreamingAPI) chatFunctionOrigin(ctx context.Context) string {
+	if api == nil {
+		return ""
+	}
+	id, _ := ctx.Value(structuredFunctionCallerSessionKey{}).(string)
+	if id == "" || isScheduledSessionIdentity(id, "") {
+		return ""
+	}
+	active, ok := api.getActiveSession(id)
+	if !ok || active.UserID != GetUserIDFromContext(ctx) {
+		return ""
+	}
+	return id
+}
 
 // scheduleCallerNotice is the pending result owed to the chat that started a run.
 type scheduleCallerNotice struct {
@@ -52,16 +70,20 @@ func (s *SchedulerService) beginCallerNotice(sctx *ScheduleContext, runID string
 		return nil
 	}
 	caller := sctx.CallerSessionID
+	parentSession, ok := s.api.getActiveSession(caller)
+	if !ok {
+		return nil
+	}
 	name := "Schedule " + firstNonEmptyString(sctx.Schedule.Name, sctx.Schedule.ID)
 	parent := firstNonEmptyString(sctx.CallerExecutionID, "session:"+caller)
 	notice := &scheduleCallerNotice{
-		notifier:    &workshopExecutionBgNotifier{api: s.api, sessionID: caller, workspacePath: sctx.WorkspacePath, userID: sctx.OwnerUserID},
+		notifier:    &workshopExecutionBgNotifier{api: s.api, sessionID: caller, workspacePath: parentSession.WorkspacePath, userID: parentSession.UserID},
 		executionID: "schedule-run-" + runID,
 		name:        name,
 	}
 	notice.notifier.OnExecutionStart(todo_creation_human.WorkshopExecutionStart{
 		ID: notice.executionID, ParentExecutionID: parent, Name: name,
-		Kind: "trigger_auto_notify", Cancel: func() {},
+		Kind: "trigger_auto_notify", Cancel: func() { s.stopChatWorkflowRun(runID, sctx.Schedule.ID) },
 		Metadata: map[string]string{
 			"execution_type": "schedule-run-auto-notify",
 			"schedule_id":    sctx.Schedule.ID,

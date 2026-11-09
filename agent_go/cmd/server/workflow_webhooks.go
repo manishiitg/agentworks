@@ -1047,5 +1047,12 @@ func (s *SchedulerService) dispatchInternalWorkflowTrigger(ctx context.Context, 
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
 	}
 	receiver := webhookReceiver{start: s.triggerSavedSchedule, existing: s.existingWebhookRun}
+	origin := s.api.chatFunctionOrigin(ctx)
+	// Declared calls already have a caller notifier; keep one background item.
+	if _, declared := ctx.Value(declaredFunctionDispatchKey{}).(*crewFunctionCall); !declared && origin != "" {
+		receiver.start = func(root, trigger, _ string, input *WorkflowWebhookDelivery) (string, error) {
+			return s.triggerSavedSchedule(root, trigger, origin, input)
+		}
+	}
 	return receiver.dispatchInternal(ctx, workspacePath, manifest, call.TriggerID, call)
 }
