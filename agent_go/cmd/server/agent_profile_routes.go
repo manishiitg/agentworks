@@ -1287,7 +1287,8 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid product conversation request: "+err.Error())
 		return
 	}
-	if !isSideChatConversationKey(input.ConversationKey) {
+	// A message schedule's own chat closes like a tab; its next run starts a new chat of its own.
+	if !isSideChatConversationKey(input.ConversationKey) && !isScheduleOwnChatKey(input.ConversationKey) {
 		writeAgentProfileError(w, http.StatusBadRequest, "only a side chat (tab) can be closed")
 		return
 	}

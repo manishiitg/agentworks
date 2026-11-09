@@ -49,7 +49,17 @@ func TestProjectScheduleJobIDRoundTrip(t *testing.T) {
 	}
 }
 
-func TestRunDestinationDefaultsToCrewChatAndAcceptsNewAndIsolated(t *testing.T) {
+// A new Crew message schedule that names no place gets its own chat (owner, 9 Nov); a chosen chat, a tab or a
+// workflow timer keeps what was asked. The parser itself still reads an empty value as the chat.
+func TestRunDestinationParsingAndNewCrewMessageScheduleGetsItsOwnChat(t *testing.T) {
+	for _, test := range []struct {
+		workflow, destination, chatID string
+		own                           bool
+	}{{"", "", "", true}, {"", runDestinationChat, "", false}, {"", "", "tab1", false}, {"report", "", "", false}} {
+		if got := crewMessageScheduleDefaultsToOwnChat(crewProfileID, "team", test.workflow, test.destination, test.chatID); got != test.own {
+			t.Fatalf("workflow=%q destination=%q chat=%q own chat = %v, want %v", test.workflow, test.destination, test.chatID, got, test.own)
+		}
+	}
 	for _, test := range []struct {
 		value    string
 		isolated bool

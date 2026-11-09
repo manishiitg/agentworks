@@ -712,6 +712,11 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			// A new Crew message schedule that names no place gets its own chat, kept across runs (owner, 9 Nov). A
+			// chosen place (run_destination, or chat_id for a tab) is kept; workflow timers have no chat.
+			if crewMessageScheduleDefaultsToOwnChat(req.ProductProfileID, req.ProductProjectID, req.TargetWorkflowID, req.RunDestination, req.ChatID) {
+				destination = runDestinationSetting{Isolated: true}
+			}
 			ownerID := productWorkspaceUserID(r.Context())
 			chatKey, err := projectScheduleChatKey(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, req.ChatID)
 			if err == nil && chatKey != "" && destination.Isolated {

@@ -1604,7 +1604,7 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		ID:                  job.ID(),
 		ChatKey:             scheduleChatKey(job),
 		ChatID:              strings.TrimPrefix(scheduleChatKey(job), strings.TrimSpace(job.ProjectID)+codeChatSideMarker),
-		RunDestinations:     projectRunDestinations(job),
+		RunDestinations:     messageScheduleRunDestinations(job),
 		Name:                sched.Name,
 		Description:         sched.Description,
 		EntityType:          "product",
@@ -1746,6 +1746,25 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 	sort.Slice(tabs, func(i, j int) bool { return strings.ToLower(tabs[i].Label) < strings.ToLower(tabs[j].Label) })
 	out = append(out, tabs...)
 	return append(out, ScheduleRunDestination{ID: runDestinationIsolated, Label: runDestinationChoiceIsolated.Label})
+}
+
+// messageScheduleRunDestinations are the places a person picks for a Crew message schedule (owner, 9 Nov): its own
+// chat first (the default), then an existing chat: Main and each of their tabs. "A new chat each time" is listed only
+// for a schedule already saved with it, so its row still shows where it runs; workflow timers keep
+// projectRunDestinations (crewExecutableChatChoices).
+func messageScheduleRunDestinations(job productScheduleJob) []ScheduleRunDestination {
+	all := projectRunDestinations(job)
+	if len(all) == 0 {
+		return nil
+	}
+	out := []ScheduleRunDestination{{ID: runDestinationIsolated, Label: runDestinationChoiceIsolated.Label}}
+	for _, choice := range all {
+		if choice.ID == runDestinationIsolated || (choice.ID == runDestinationNew && !job.Schedule.New) {
+			continue
+		}
+		out = append(out, choice)
+	}
+	return out
 }
 
 // projectScheduleChatKey turns a tab's chat id (from the project's chat list)

@@ -105,7 +105,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Choose chat to send a normal message into the project chat (steering it if already running), isolated for this schedule's own persistent automation conversation, or new for a new conversation every run.", map[string]interface{}{
+		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: isolated is its own chat (a new chat for this schedule that every run continues, listed with the Crew's chats; the default), chat is an existing chat (this chat, the main chat, or a tab by chat_id; steering it if already running). When the person did not say, ask them first: its own chat, or an existing chat (which one)?", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
@@ -115,8 +115,8 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"run_at":          map[string]interface{}{"type": "string", "description": "One-time: run once at this exact moment, RFC3339 with an offset, for example 2026-10-05T21:30:00+05:30. Must be in the future."},
 				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp},
-				"chat_id":         map[string]interface{}{"type": "string", "description": "Run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. Omit to use the chat this is called from."},
+				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "With run_destination chat: run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. With run_destination chat and no chat_id, it runs in the chat this is called from."},
 			},
 			"required": []string{"name", "message"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -139,6 +139,10 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			destinationSetting, err := parseRunDestination(destination)
 			if err != nil {
 				return "", err
+			}
+			// Naming no place gives the schedule its own chat (owner, 9 Nov); a chat_id or run_destination chat keeps a chat.
+			if chatID, _ := args["chat_id"].(string); crewMessageScheduleDefaultsToOwnChat(profileID, projectID, "", destination, chatID) {
+				destinationSetting = runDestinationSetting{Isolated: true}
 			}
 			isolated := destinationSetting.Isolated
 			if !hasEnabled {
@@ -180,7 +184,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"cron_expression": map[string]interface{}{"type": "string"}, "timezone": map[string]interface{}{"type": "string"},
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp},
+				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
 				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the main chat."},
 			},
 			"required": []string{"id"},
