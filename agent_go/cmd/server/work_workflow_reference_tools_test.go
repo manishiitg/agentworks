@@ -77,7 +77,7 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 		t.Fatalf("attach Crew out=%s err=%v", out, err)
 	}
 	crewReadRoot := researchRoot
-	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) || !containsWorkReferencePath(cfg.WritePaths, crewReadRoot) {
+	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) || !containsWorkReferencePath(cfg.WritePaths, crewReadRoot+"/") {
 		t.Fatalf("attached Crew did not receive its admitted file grants: %+v", cfg)
 	}
 	workspace.mu.Lock()
