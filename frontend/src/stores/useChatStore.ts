@@ -344,7 +344,8 @@ const shouldRetainEvent = (event: PollingEvent): boolean => {
     'coding_agent_background_task',
 		'coding_agent_native_activity',
     'coding_agent_question',
-    'context_compaction'
+    'context_compaction',
+    'chat_model_changed'
   ]
   return importantTypes.includes(event.type)
 }

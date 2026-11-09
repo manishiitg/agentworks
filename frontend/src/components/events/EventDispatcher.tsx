@@ -481,6 +481,15 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </CompactWrapper>
     )
   }
+  if (event.type === 'chat_model_changed') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const model = typeof data.model === 'string' ? data.model : ''
+    const previous = typeof data.previous_model === 'string' ? data.previous_model : ''
+    const effort = typeof data.effort === 'string' && data.effort ? ` · ${data.effort}` : ''
+    const oldEffort = typeof data.previous_effort === 'string' && data.previous_effort ? ` · ${data.previous_effort}` : ''
+    if (!model) return null
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Next reply: {previous && `${previous}${oldEffort} → `}{model}{effort}</span><span className="flex-1 border-t border-border" /></div>
+  }
   if (event.type === 'context_compaction') {
     return <ContextCompactionEventDisplay event={event} />
   }
