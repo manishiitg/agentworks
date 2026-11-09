@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
@@ -242,7 +242,7 @@ func TestWorkflowAgentFunctionToolsReachAgentInitialization(t *testing.T) {
 		t.Fatalf("prepared %d function tools, want 4", len(definitions))
 	}
 	for _, definition := range definitions {
-		if definition.DisplayGroup != agentworksproduct.ExecutionFunctionTools().Category || definition.Execute == nil {
+		if definition.DisplayGroup != projectfunctions.ExecutionTools().Category || definition.Execute == nil {
 			t.Fatalf("function tool lost category or executor: %+v", definition)
 		}
 	}

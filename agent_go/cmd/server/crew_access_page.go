@@ -43,11 +43,12 @@ var crewAccessMacTabs = func() []crewAccessTab {
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// The Share page's one Crew tab (owner, 9 Nov, approved mock "Share a Crew"): Share this Crew, with its three options
-// (work on it with your team, share agents, read only; crew_share_page.go). Its id stays "team". A Crew on a Mac has Mac
-// online before it.
+// The Crew's two Access tabs (owner, 9 Nov: "we should have a separate tab for dashboards"): Share this Crew, with its
+// options (work on it with your team, share agents, Slack; crew_share_page.go), its id still "team"; and Dashboards,
+// everything the Crew publishes (crew_dashboards_tab.go). A Crew on a Mac has Mac online before them.
 var crewAccessPeopleTabs = []crewAccessTab{
-	{ID: "team", Label: "Share", Detail: "people, agents and dashboards"},
+	{ID: "team", Label: "Share", Detail: "people, agents and Slack"},
+	{ID: "dashboards", Label: "Dashboards", Detail: "what this Crew publishes"},
 }
 
 var crewAccessTeamTab = crewAccessPeopleTabs
@@ -104,7 +105,7 @@ func crewAccessPage(out *crewSyncReply) {
 			out.AccessPublish = &crewAccessText{Line: "Publish moves this Crew, or one of its agents, from your Mac to this server, so it works with your Mac off.", Note: "Publish from the Mac app: Share, Publish."}
 		}
 	default:
-		// A Crew that lives on this server: its People and Dashboards tabs and laptop access for its owner.
+		// A Crew that lives on this server: its Share and Dashboards tabs and laptop access for its owner.
 		out.AccessTabs = crewAccessTeamTab
 		out.AccessLaptop = out.Role == "owner"
 	}

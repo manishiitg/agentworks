@@ -21,7 +21,8 @@ import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { openAppProduct } from '../../utils/appNavigation'
 import { productRoutePath } from '../../utils/productRoutes'
-import { runtimeHasBackgroundAgents, runtimeNeedsUserInput, sessionRuntimeStatus } from '../../utils/runtimeActivity'
+import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
+import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 
 
@@ -250,7 +251,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const localSessions = useChatStore(state => state.activeSessionsCache)
   const sessions = (connectionId === getRawActiveWorkspaceId() ? localSessions : activity || [])
     .filter(session => session.crew_project_id === projectId)
-  const running = sessions.some(session => sessionRuntimeStatus(session) === 'busy' || runtimeHasBackgroundAgents(session))
+  const running = sessions.some(hasActiveSessionWork)
   const activityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
   useEffect(() => {
     if (!expanded) return
@@ -295,6 +296,6 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
 function ProjectAgentMark({ projectId, sessionId, session, local }: { projectId: string; sessionId: string; session?: ActiveSessionInfo; local: boolean }) {
   const tabId = useChatStore(state => local ? Object.values(state.chatTabs).find(tab => tab.sessionId === sessionId && tab.metadata?.agentProfileProjectId === projectId)?.tabId : undefined)
   const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, undefined, local ? { sessionId } : undefined)
-  const remoteState = runtimeNeedsUserInput(session) ? 'waiting' : sessionRuntimeStatus(session) === 'busy' || runtimeHasBackgroundAgents(session) ? 'running' : null
+  const remoteState = runtimeNeedsUserInput(session) ? 'waiting' : session && hasActiveSessionWork(session) ? 'running' : null
   return <AgentMark state={local ? state : remoteState} />
 }

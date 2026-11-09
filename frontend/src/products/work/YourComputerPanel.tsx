@@ -13,6 +13,7 @@ import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { AskButton, teamCard } from './TeamTab'
 import { ShareCrew } from './ShareCrew'
+import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
@@ -51,7 +52,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'dashboard' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; path?: string; ask?: string; target?: string; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents_label?: string; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'dashboard' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { name: string; path: string }[]; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents_label?: string; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; chatOnly?: boolean; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
@@ -155,18 +156,18 @@ const tintedIcons = new Map<string, LucideIcon>()
  * server's crew-sync reply decides it: the tabs, and whether this app holds the Mac's controls (the Mac app's own Crew)
  * or shows those rows as text (the website, or a Crew from a server); then the People and Dashboards tabs and laptop
  * access where the server lists them. */
-export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
-  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} /></div>
+export function YourComputerPanel({ projectId, sessionId, workspacePath, onFullScreen, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} onFullScreen={onFullScreen} onBack={onBack} /></div>
 }
 
-function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
   const team = useTeamTab(projectId).view?.team
   const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team' || saved === 'dashboards') return saved } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team' || saved === 'dashboards' || saved === 'slack') return saved } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { setSectionState(next); try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
@@ -260,9 +261,9 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
   const network = networkName(target) || 'your server'
   const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
   const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
-  // A tab the server does not list for this person (a teammate has the Team tab only) falls back to its first one.
-  // Dashboards are the Share tab's Read only option now (owner, 9 Nov): asking for them opens Share there.
-  const wanted: CrewAccessSection = section === 'dashboards' ? 'team' : section
+  // A tab the server does not list for this person falls back to its first one. Dashboards have their own tab (owner,
+  // 9 Nov); the Slack bot is the Share tab's Slack option, so asking for it opens Share there.
+  const wanted: CrewAccessSection = section === 'slack' ? 'team' : section
   const shown: CrewAccessSection | undefined = tabs.some(item => item.id === wanted) ? wanted : tabs[0]?.id
   const needsServer = here && !connections.length && !online
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
@@ -282,7 +283,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     {(tabs.length > 1 || shown !== 'team') && <div className="flex items-stretch gap-2">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-    {tabs.length > 1 && <div role="tablist" aria-label="Share" className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
+    {tabs.length > 1 && <div role="tablist" aria-label="Share" className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={shown === item.id} tabIndex={shown === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
@@ -345,10 +346,15 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
       </div>
       {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
-    {/* Share this Crew (owner, 9 Nov mock): one page with three options, the server's /share reply decides its rows. The
-        Mac app's own Crew turns the Team on through the Mac while Mac online is off. */}
+    {/* Share this Crew (owner, 9 Nov mocks): the server's /share reply decides its options. The Mac app's own Crew turns
+        the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} focus={section === 'dashboards' ? 'read_only' : undefined} />
+      <ShareCrew projectId={projectId} workspacePath={workspacePath} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} focus={section === 'slack' ? 'slack' : undefined} />
+    </section>}
+    {/* Dashboards (owner, 9 Nov: their own tab next to Share): everything this Crew publishes, or "No dashboard yet" with
+        its Ask; a Mac Crew that was never online lists its own. */}
+    {shown === 'dashboards' && <section role="tabpanel" id={`crew-access-panel-${projectId}-dashboards`} aria-labelledby={`crew-access-${projectId}-dashboards`} className="space-y-3">
+      <CrewDashboardsTab projectId={projectId} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}

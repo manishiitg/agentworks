@@ -1,13 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, BarChart3, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ArrowLeft, MessageSquare, Slack, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
-import { CrewDashboardsTab } from './CrewDashboardsTab'
-import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewShareOption, type CrewShareOptionKey, type CrewSharePage, type TeamTarget } from './teamApi'
+import { SlackBotChoice } from '../../components/integrations/ProductSlackPanel'
+import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewShareOption, type CrewShareOptionKey, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
@@ -17,17 +17,18 @@ const toMain = (projectId: string, draft: string) => {
 const optionIcons: Record<CrewShareOptionKey, { icon: LucideIcon; tone: string }> = {
   team: { icon: Users, tone: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
   agents: { icon: MessageSquare, tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-  read_only: { icon: BarChart3, tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
+  slack: { icon: Slack, tone: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
 }
 
 /**
- * Share this Crew (owner, 9 Nov, approved mock "Share a Crew"): one page with three options, each a card with the
- * server's one-line explanation, chips and status; a click opens its setup. Work on it with your team is the Team
- * (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent, Read only is the
- * Crew's dashboards. The server's /share reply writes every line and says what this person may change; the page
- * prints it and sends their change to the existing routes. The same page for the owner and every teammate.
+ * Share this Crew (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page with the server's
+ * options, each a card with its one-line explanation, chips and status; a click opens its setup. Work on it with your
+ * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent, Slack
+ * is the Crew's Slack bot (today's bot settings, moved here from the Crew menu). Dashboards are their own Access tab
+ * next to this one. The server's /share reply writes every line and says what this person may change; the page prints
+ * it and sends their change to the existing routes. The same page for the owner and every teammate.
  */
-export function ShareCrew({ projectId, onBack, onTurnOn, focus }: { projectId: string; onBack?: () => void; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
+export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
@@ -41,9 +42,17 @@ export function ShareCrew({ projectId, onBack, onTurnOn, focus }: { projectId: s
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (focus) setOpen(prev => ({ ...prev, [focus]: true })) }, [focus])
-  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch and its dashboards.
-  if (state.unbound) return <div className="space-y-3"><TeamTab projectId={projectId} onTurnOn={onTurnOn} /><CrewDashboardsTab projectId={projectId} /></div>
+  // Opened for one option (the menu's Slack bot row opens Slack): that option open at the top, the others closed.
+  useEffect(() => { if (focus) setOpen({ team: false, agents: false, slack: false, [focus]: true }) }, [focus])
+  const scrolled = useRef('')
+  useEffect(() => {
+    if (!focus || !page || scrolled.current === focus) return
+    scrolled.current = focus
+    document.querySelector(`[data-share-option="${focus}"]`)?.scrollIntoView({ block: 'start' })
+  }, [focus, page])
+  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch (its dashboards are on the
+  // Dashboards tab).
+  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   const isOpen = (option: CrewShareOption) => open[option.key] ?? option.open
   return <div className="space-y-3">
@@ -58,15 +67,15 @@ export function ShareCrew({ projectId, onBack, onTurnOn, focus }: { projectId: s
     {page.options.map(option => <ShareOption key={option.key} option={option} open={isOpen(option)} onToggle={() => setOpen(prev => ({ ...prev, [option.key]: !isOpen(option) }))}>
       {option.key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
       {option.key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => setOpen(prev => ({ ...prev, team: true }))} />}
-      {option.key === 'read_only' && <CrewDashboardsTab projectId={projectId} embedded />}
+      {option.key === 'slack' && (workspacePath ? <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={page.slack && <ShareSlackRules slack={page.slack} />} /> : <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>)}
     </ShareOption>)}
-    {state.view?.can_leave && <LeaveTeam target={target} />}
+    {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
 }
 
 function ShareOption({ option, open, onToggle, children }: { option: CrewShareOption; open: boolean; onToggle: () => void; children: ReactNode }) {
   const { icon: Icon, tone } = optionIcons[option.key] || optionIcons.team
-  return <section aria-label={option.title} className="overflow-hidden rounded-2xl border border-border bg-card">
+  return <section aria-label={option.title} data-share-option={option.key} className="overflow-hidden rounded-2xl border border-border bg-card">
     <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-start gap-4 px-4 py-4 text-left hover:bg-muted/30">
       <span aria-hidden="true" className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tone}`}><Icon className="h-5 w-5" /></span>
       <span className="min-w-0 flex-1">
@@ -80,6 +89,18 @@ function ShareOption({ option, open, onToggle, children }: { option: CrewShareOp
     </button>
     {open && <div className="border-t border-border px-4 py-3.5">{children}</div>}
   </section>
+}
+
+/** Share › Slack's Who can talk to it: the server's lines (who may message the Crew in a channel, in a direct message,
+ * and who is refused), then its note. */
+function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
+  return <div className="space-y-1.5 text-[13.5px]">
+    {slack.rules.map(rule => <p key={rule.line} className="flex gap-2">
+      <span aria-hidden="true" className={rule.allowed ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>{rule.allowed ? '✓' : '✕'}</span>
+      <span className={rule.allowed ? undefined : 'text-muted-foreground'}>{rule.where && <b>{rule.where} </b>}{rule.line}</span>
+    </p>)}
+    {slack.note && <p className="pt-1 text-xs text-muted-foreground">{slack.note}</p>}
+  </div>
 }
 
 /** Share agents: one card per agent (Ask and Actions), then "Who can use these". */

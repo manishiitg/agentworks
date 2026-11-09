@@ -1095,8 +1095,8 @@ func (s *ProjectActionDispatcher) claimAutomationRun(ctx context.Context, job pr
 		jobKey += "#" + job.ConversationKey
 	}
 	convKey := job.UserID + "\x1f" + conversationKeyForJob(job)
-	if scheduleUsesCrewChatDelivery(job) && triggerSource != "cron" {
-		// Different schedules are independent messages to the same chat, just
+	if scheduleUsesCrewChatDelivery(job) && triggerSource != "cron" && triggerSource != "queued" {
+		// Non-timer deliveries are independent messages to the same chat, just
 		// like typed input. Keep only the per-job overlap guard here; the chat
 		// router owns live delivery and any necessary fallback queue.
 		convKey = jobKey

@@ -140,6 +140,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
         </span>
       </button>
+      {/* The dashboard line lists each dashboard by name; each opens that dashboard (the Crew's dashboard view). */}
+      {byId.has('dashboard') && line.dashboards?.map(item => <button key={item.path} type="button" onClick={() => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: item.path }) }} className={`${lineButton} pl-6`}>
+        <span className="min-w-0 flex-1 break-words text-foreground">{item.name}</span>
+      </button>)}
       {line.people?.map(person => <button key={person.user_id} type="button" onClick={() => openPerson(person.user_id)} title={person.online_label} className={`${lineButton} pl-6`}>
         <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
         <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents_label && ` · ${person.agents_label}`}</span>

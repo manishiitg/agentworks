@@ -153,7 +153,7 @@ export function AutomationHubPanel({
     onCounts={setTriggersCounts}
   />
     {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
-    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded pageRows={crewPage} title={child.manifest.label} hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
+    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded pageRows={crewPage} hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
   </div> : null
   const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} embedded={crewPage} /></div>
 
