@@ -196,8 +196,8 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 
 const (
 	crewShareActionsIntro     = "Ready-made jobs others can start, like “Review a pull request”. They fill in a few details and get the result back. The job uses your access, but they never get it."
-	crewShareOwnerOnlyActions = "Only the Crew's owner turns actions on or off."
-	crewSharePublishedAction  = "This action comes from a published agent. Change it there."
+	crewShareOwnerOnlyActions = "Only the Crew's owner turns actions on or off. Ask the owner to change this action."
+	crewSharePublishedAction  = "This action comes from published source. Change its source and publish again."
 	crewShareTeamOffNote      = "Turn on “Work on it with your team” first. Then people in it can ask this agent."
 )
 
@@ -351,16 +351,22 @@ func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange boo
 	}
 	if enabled, err := readCrewFunctions(ctx, src.target); err == nil {
 		for _, fn := range enabled {
-			add(fn, true, fn.publication != nil && fn.publication.AgentID != "")
+			add(fn, true, fn.publication != nil)
 		}
 	}
-	if records, err := readProjectFunctionDefinitions(ctx, crewFunctionRoot(ctx, src.target)); err == nil {
-		for _, record := range records {
-			if record.Enabled || record.InputMapping != nil || record.Action.Type != "message" {
-				continue
-			}
-			if fn, err := crewFunctionExecutionView(record); err == nil {
-				add(fn, false, false)
+	root := crewFunctionRoot(ctx, src.target)
+	if publication, err := readPublishedProject(ctx, root); err == nil {
+		if publication != nil {
+			root = publication.sourceRoot()
+		}
+		if records, err := readProjectFunctionDefinitions(ctx, root); err == nil {
+			for _, record := range records {
+				if record.Enabled || record.InputMapping != nil || record.Action.Type != "message" {
+					continue
+				}
+				if fn, err := crewFunctionExecutionView(record); err == nil {
+					add(fn, false, publication != nil)
+				}
 			}
 		}
 	}
@@ -596,6 +602,9 @@ func (api *StreamingAPI) handleCrewSharePage(w http.ResponseWriter, r *http.Requ
 // setProjectFunctionEnabled turns one saved action on or off in a project's functions file. An action that is off
 // stays saved but is not offered or callable (readCrewFunctionSource and workflow function triggers skip it).
 func setProjectFunctionEnabled(ctx context.Context, root, name string, on bool) error {
+	if refusal := publishedWriteRefusal(ctx, root+"/functions.json"); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
 	records, err := readProjectFunctionDefinitions(ctx, root)
 	if err != nil {
 		return err
