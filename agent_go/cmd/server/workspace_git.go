@@ -222,33 +222,33 @@ func workspaceGitExcludesFile() string {
 	return workspaceGitExcludesPath
 }
 
+// Set only after normal workspace admission and real-path confinement.
+// Downstream Git helpers keep the same boundary for linked worktree metadata.
+type workspaceGitRootKey struct{}
+
 func workspaceGitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	var config []string
 	if excludes := workspaceGitExcludesFile(); excludes != "" {
 		config = append(config, "core.excludesFile="+excludes)
 	}
-	return safegit.Command(ctx, dir, config, args...)
+	root := dir
+	if bound, ok := ctx.Value(workspaceGitRootKey{}).(string); ok {
+		root = bound
+	}
+	return safegit.CommandIn(ctx, root, dir, config, args...)
 }
 
-// workspaceGitIsRepo reports whether dir holds a plain .git directory. A .git
-// file or symlink (which can name a git dir elsewhere) and a repo borrowing
-// objects from another path (alternates) are not read.
-func workspaceGitIsRepo(dir string) bool {
-	info, err := os.Lstat(filepath.Join(dir, ".git"))
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	if _, err := os.Lstat(filepath.Join(dir, ".git", "objects", "info", "alternates")); err == nil {
-		return false
-	}
-	return true
+// Git metadata for a linked worktree is accepted only inside this workspace.
+func workspaceGitIsRepo(root, dir string) bool {
+	_, _, ok := safegit.CheckoutInside(root, dir)
+	return ok
 }
 
 // workspaceGitFindRepos lists repo folders under base: base itself, else the
 // repos found up to workspaceGitSearchDepth folders down (dependency and dot
 // folders skipped, a found repo's own subfolders not searched, bounded scan).
 func workspaceGitFindRepos(base string) []string {
-	if workspaceGitIsRepo(base) {
+	if workspaceGitIsRepo(base, base) {
 		return []string{base}
 	}
 	type level struct {
@@ -272,7 +272,7 @@ func workspaceGitFindRepos(base string) []string {
 			}
 			visited++
 			dir := filepath.Join(current.dir, name)
-			if workspaceGitIsRepo(dir) {
+			if workspaceGitIsRepo(base, dir) {
 				repos = append(repos, dir)
 				if len(repos) >= workspaceGitMaxRepos {
 					break
@@ -422,8 +422,8 @@ func workspaceGitResolveRepo(realBase, repoRel string) (dir string, status int, 
 	if !ok {
 		return "", http.StatusNotFound, "repo not found"
 	}
-	if !workspaceGitIsRepo(dir) {
-		return "", http.StatusNotFound, "not a git repository"
+	if !workspaceGitIsRepo(realBase, dir) {
+		return "", http.StatusNotFound, "Git data is not available inside this project folder."
 	}
 	return dir, 0, ""
 }
@@ -458,7 +458,7 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": []workspaceGitRepo{}, "git_unavailable": true})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), workspaceGitTimeout)
+	ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase), workspaceGitTimeout)
 	defer cancel()
 
 	query := r.URL.Query()
@@ -514,22 +514,43 @@ func workspaceGitCrewOwner(r *http.Request) string {
 // workspaceGitStatusRepos lists every repository under realBase with its
 // branch and changed files (Root relative to realBase).
 func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGitRepo {
+	ctx = context.WithValue(ctx, workspaceGitRootKey{}, realBase)
+	dirs := workspaceGitFindRepos(realBase) // Existing depth, scan and repo caps.
+	type result struct {
+		repo workspaceGitRepo
+		ok   bool
+	}
+	results := make([]result, len(dirs))
+	jobs := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for i, dir := range dirs {
+		jobs <- struct{}{}
+		wg.Add(1)
+		go func(i int, dir string) {
+			defer wg.Done()
+			defer func() { <-jobs }()
+			real, ok := workspaceGitConfined(realBase, dir)
+			if !ok {
+				return
+			}
+			repo, err := workspaceGitStatus(ctx, real)
+			if err != nil {
+				return
+			}
+			rel, _ := filepath.Rel(realBase, real)
+			if rel == "." {
+				rel = ""
+			}
+			repo.Root = filepath.ToSlash(rel)
+			results[i] = result{repo: repo, ok: true}
+		}(i, dir)
+	}
+	wg.Wait()
 	repos := []workspaceGitRepo{}
-	for _, dir := range workspaceGitFindRepos(realBase) {
-		real, ok := workspaceGitConfined(realBase, dir)
-		if !ok {
-			continue
+	for _, r := range results {
+		if r.ok {
+			repos = append(repos, r.repo)
 		}
-		repo, err := workspaceGitStatus(ctx, real)
-		if err != nil {
-			continue
-		}
-		rel, _ := filepath.Rel(realBase, real)
-		if rel == "." {
-			rel = ""
-		}
-		repo.Root = filepath.ToSlash(rel)
-		repos = append(repos, repo)
 	}
 	return repos
 }

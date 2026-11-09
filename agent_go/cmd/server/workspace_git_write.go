@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
@@ -70,12 +71,15 @@ var workspaceGitWriteAllowed = func(ctx context.Context, r *http.Request, claims
 
 // workspaceGitWriteSafe refuses repos whose own config could run a command
 // during add, restore or commit.
-func workspaceGitWriteSafe(repoDir string) error {
-	gitDir := filepath.Join(repoDir, ".git")
+func workspaceGitWriteSafe(root, repoDir string) error {
+	gitDir, common, ok := safegit.CheckoutInside(root, repoDir)
+	if !ok {
+		return errors.New("Git data is not available inside this project folder.")
+	}
 	if _, err := os.Lstat(filepath.Join(gitDir, "config.worktree")); err == nil {
 		return errors.New("this repo uses per-worktree config; ask the agent to make this change")
 	}
-	file, err := os.Open(filepath.Join(gitDir, "config"))
+	file, err := os.Open(filepath.Join(common, "config"))
 	if err != nil {
 		return nil
 	}
@@ -231,12 +235,12 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
 		return
 	}
-	if err := workspaceGitWriteSafe(repoDir); err != nil {
+	if err := workspaceGitWriteSafe(realBase, repoDir); err != nil {
 		writeWorkspaceGitJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 
-	serveWorkspaceGitAction(w, r, canonical, repoDir, req, claims)
+	serveWorkspaceGitAction(w, r.WithContext(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase)), canonical, repoDir, req, claims)
 }
 
 // Shared action implementation; callers must authorize and select the repository.
