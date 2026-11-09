@@ -17,7 +17,7 @@ def module(name, file):
 
 class StepOutline(unittest.TestCase):
     def test_inert_outline_resolves_aliases_and_agent_task_without_inventing_dynamic_order(self):
-        inspector = module('source_inspector', ROOT/'agent_go/pkg/relaypython/inspect_source.py')
+        inspector = module('source_inspector', ROOT/'agent_go/pkg/pythonruntime/inspect_source.py')
         files = {'actions.py': 'raise RuntimeError("never execute inspection")\nfrom agentworks import step as stage\n@stage("Collect")\ndef collect(): return 7\n',
                  'prompts.py': 'TASK = \"Read the collected report\"\n',
                  'main.py': 'raise RuntimeError("never execute inspection")\nfrom actions import collect as gather\nfrom agentworks import agent as worker\nfrom prompts import TASK\ndef main():\n    gather()\n    worker("Review", TASK)\n    worker("Dynamic", build_task())\n    for item in source():\n        gather()\n'}
@@ -34,7 +34,7 @@ class StepOutline(unittest.TestCase):
     def test_dynamic_model_override_and_collapsed_step_keep_their_execution_identity(self):
         # Codex1730 P2: an unresolved override is not the default model, and
         # collapsing one agent must keep the enclosing decorated step receipt.
-        inspector = module('review_outline', ROOT/'agent_go/pkg/relaypython/inspect_source.py')
+        inspector = module('review_outline', ROOT/'agent_go/pkg/pythonruntime/inspect_source.py')
         source = 'from agentworks import agent, step\n@step("Review")\ndef review():\n    return agent("Worker", "Review it", model=MODEL)\ndef main():\n    review()\n    agent("Dynamic tier", "Work", tier=INPUT["tier"])\n    agent("Literal", "Work", model="example/model")\n'
         graph = inspector.inspect_automation_source({'main.py':source})
         self.assertEqual(graph['errors'],[])

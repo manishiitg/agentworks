@@ -1,5 +1,5 @@
-// Package relaypython executes user-authored Python without a workflow plan.
-package relaypython
+// Package pythonruntime runs the Python workflow runtime without a workflow plan.
+package pythonruntime
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package relaypython
+package pythonruntime
 
 import (
 	"bytes"
