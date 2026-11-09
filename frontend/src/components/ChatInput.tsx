@@ -170,6 +170,7 @@ function isDismissedComposerTrigger(trigger: { kind: string; start: number; quer
 }
 
 const AUTO_NOTIFICATION_PREFIX = '[AUTO-NOTIFICATION]'
+const AGENT_NEWLINE_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Enter' : 'Ctrl+Enter'
 const FALLBACK_CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 const FALLBACK_LIVE_INPUT_PROVIDERS = FALLBACK_CODING_AGENT_PROVIDERS
 
@@ -2106,7 +2107,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Cursor sessions each own their native live-vs-next-turn behavior.
   //
   // STRUCTURED / NON-INTERACTIVE — keep the ordinary steer-or-queue behavior.
-  const routeSubmit = useCallback(async (query: string) => {
+  const routeSubmit = useCallback(async (query: string, deliveryOverride?: ChatSubmissionOptions['deliveryMode']) => {
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return
     const trimmed = query?.trim() || ''
     if (!trimmed) return
@@ -2152,7 +2153,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         try {
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
-            deliveryMode,
+            deliveryMode: deliveryOverride ?? deliveryMode,
             submissionId,
             onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
           })
@@ -2182,7 +2183,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const submittedDraft = captureChatDraft(submittedTabId)
       let accepted: boolean | void
       try {
-        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode, submissionId })
+        accepted = await onSubmit(query, { sourceTabId: submittedTabId, deliveryMode: deliveryOverride ?? deliveryMode, submissionId })
       } catch (error) {
         console.error('[ChatInput] Message submission failed', error)
         accepted = false
@@ -2246,7 +2247,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
 
-    // Handle normal Enter to submit. Shift/Ctrl/Cmd+Enter insert a newline.
+    // While work is in flight, Shift+Enter submits once with the server's queue option.
+    // It does not change the person's normal delivery setting.
+    if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && isTurnInFlight) {
+      e.preventDefault()
+      if (micStateRef.current === 'recording') { micRef.current?.stopDictation(); return }
+      if (!executeSlashCommandFromQuery(queryToSubmit.trim())) void routeSubmit(queryToSubmit, 'queue')
+      return
+    }
+
+    // Plain Enter sends; Ctrl/Cmd+Enter inserts a newline. Shift+Enter remains a newline while idle.
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault()
 
@@ -2280,7 +2290,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers])
+  }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -3146,6 +3156,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               onCompositionEnd={event => { composingRef.current = false; updateComposerPicker(event.currentTarget) }}
               role="combobox"
               aria-label="Message"
+              aria-describedby={isProductSurface ? `${composerIdRef.current}-hints` : undefined}
               aria-autocomplete="list"
               aria-expanded={showCommandDialog || showFileDialog}
               aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : undefined}
@@ -3163,6 +3174,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               data-chat-composer
             />
             </div>
+            {isProductSurface && <p id={`${composerIdRef.current}-hints`} className="px-1.5 pt-1 text-[10px] leading-4 text-muted-foreground">
+              {isTurnInFlight ? `Enter to ${deliveryMode === 'queue' ? 'queue' : 'steer'} · Shift+Enter to queue · ${AGENT_NEWLINE_KEY} for a new line` : 'Enter to send · Shift+Enter for a new line'}
+              <span className="ml-2">/ commands · @ files · # Crews</span>
+            </p>}
             {isDraggingFiles && (
               <div className="text-[11px] text-blue-600 dark:text-blue-400 px-1">
                 Drop files to upload and attach to this chat

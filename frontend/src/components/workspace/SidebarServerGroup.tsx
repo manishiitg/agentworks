@@ -21,14 +21,14 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       : activityLabel ? <span role="status" title={activityLabel} aria-label={activityLabel} className="mr-2 h-2 w-2 shrink-0 rounded-full bg-amber-400" /> : null}
     {/* A Crew that lives on its owner's Mac (the server's row says so): a laptop with the Mac's on/off dot. */}
     {shared_agents ? <span title={`${shared_agents} ${shared_agents === 1 ? 'agent' : 'agents'} others can message`} className="mr-1.5 shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">{shared_agents} shared</span> : null}
-    {onMac && <span title={onMac === 'on' ? 'On your Mac' : 'On your Mac · Mac off'} aria-label={onMac === 'on' ? 'On your Mac' : 'On your Mac, Mac off'} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
+    {agentsExpanded !== true && onMac && <span title={onMac === 'on' ? 'On your Mac' : 'On your Mac · Mac off'} aria-label={onMac === 'on' ? 'On your Mac' : 'On your Mac, Mac off'} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
       <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
       <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${onMac === 'on' ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
     </span>}
-    {showLocation && location && <span role="img" aria-label={remote ? `Network: ${location}` : location} title={location} className="inline-flex shrink-0 items-center pr-1 text-muted-foreground">
+    {agentsExpanded !== true && showLocation && location && <span role="img" aria-label={remote ? `Network: ${location}` : location} title={location} className="inline-flex shrink-0 items-center pr-1 text-muted-foreground">
       {remote ? <Network className="h-3.5 w-3.5" aria-hidden="true" /> : <Laptop className="h-3.5 w-3.5" aria-hidden="true" />}
     </span>}
-    {onTogglePin && <button type="button" aria-label={`${pinned ? 'Unpin' : 'Pin'} ${name}${location ? ` · ${location}` : ''}`} aria-pressed={Boolean(pinned)} title={pinned ? 'Unpin from Pinned' : 'Pin to top'} onClick={onTogglePin}
+    {agentsExpanded !== true && onTogglePin && <button type="button" aria-label={`${pinned ? 'Unpin' : 'Pin'} ${name}${location ? ` · ${location}` : ''}`} aria-pressed={Boolean(pinned)} title={pinned ? 'Unpin from Pinned' : 'Pin to top'} onClick={onTogglePin}
       className={`mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${pinned ? '' : 'md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100'}`}>
       <Pin className="h-3.5 w-3.5" fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
     </button>}

@@ -8,6 +8,8 @@ import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
+import { useCrewAgentsStore } from '../chat/AgentCard'
+import { activateTab } from '../../utils/activateTab'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
 import { ChevronRight, Laptop } from 'lucide-react'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
@@ -238,6 +240,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const expanded = saved ?? initialOpen
   const [loadedChats, setLoadedChats] = useState<{ identity: number; chats: AgentProfileSideChat[] }>({ identity: captureChatIdentity(), chats: [] })
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
+  const liveProjectId = useCrewAgentsStore(state => state.projectId)
   const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
   // The active-session cache is already refreshed for the current connection, including outside the desktop app.
@@ -248,7 +251,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const running = sessions.some(session => sessionRuntimeStatus(session) === 'busy' || runtimeHasBackgroundAgents(session))
   const activityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
   useEffect(() => {
-    if (!expanded || selected) return
+    if (!expanded) return
     let cancelled = false
     const identity = captureChatIdentity()
     const load = async () => {
@@ -268,15 +271,19 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     void load()
     const timer = window.setInterval(() => { if (!document.hidden) void load() }, 60000)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [expanded, selected, projectId, connectionId])
+  }, [expanded, projectId, connectionId])
   const open = (chat: AgentProfileSideChat) => {
     const agent = chat.is_main ? undefined : chat.conversation_key.split(':chat:')[1]
     const route = { surface: 'work' as const, id: projectId, agent }
-    if (connectionId === getRawActiveWorkspaceId()) openAppProduct(route)
+    if (connectionId === getRawActiveWorkspaceId()) {
+      const existing = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === chat.session_id && tab.metadata?.agentProfileProjectId === projectId)
+      if (existing) activateTab(existing.tabId)
+      openAppProduct(route)
+    }
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 border-l border-border pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
       const session = activity?.find(item => item.session_id === chat.session_id && item.crew_project_id === projectId)
       const asking = runtimeNeedsUserInput(session)
       return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span>{asking ? <span title="Needs your input" aria-label="Needs your input" className="h-2 w-2 rounded-full bg-amber-400" /> : session && hasActiveSessionWork(session) ? <span title="Running" aria-label="Running" className="h-2 w-2 rounded-full bg-sky-500" /> : null}</button>

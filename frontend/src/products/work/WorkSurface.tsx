@@ -451,9 +451,9 @@ export function useWorkChatTab(
         if (matching) chatStore.setTabMetadata(matching.tabId, projectMetadata)
 
         const previousActiveTabId = useChatStore.getState().activeTabId
-        const canonicalTabId = await chatStore.createChatTab('Chat', projectMetadata, conversation.session_id)
+        const canonicalTabId = await chatStore.createChatTab('Chat', projectMetadata, conversation.session_id, { activate: false })
         if (cancelled) return
-        // createChatTab activates the primary; keep a side chat the user picked (PLAT-571).
+        // Resolve Main without activating it over a side chat the person picked (PLAT-571).
         const keepActive = !previousActiveWasMain && workTabToKeepActive(useChatStore.getState().chatTabs, previousActiveTabId, target.id, canonicalTabId)
         if (keepActive) activateTab(keepActive)
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
@@ -513,12 +513,18 @@ export function useWorkChatTab(
   useLayoutEffect(() => {
     // Resolving a chat after navigating here must not dismiss the requested
     // Users, Providers or Schedules page. Activate it when returning to work.
+    const route = currentProductRoute()
+    const requestedAgent = route?.surface === product.profileId && route.id === projectId ? route.agent : undefined
+    if (requestedAgent && requestedAgent !== 'main') return
     if (canonicalTabId && !activeProjectTabId && !globalPageOpen && !showProviders) activateTab(canonicalTabId)
-  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders])
+  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders, product.profileId, projectId])
+  const destination = currentProductRoute()
+  const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
+  const activeConversation = activeProjectTabId ? useChatStore.getState().chatTabs[activeProjectTabId]?.metadata?.agentProfileConversationKey : undefined
+  const awaitingRequestedAgent = requestedAgent && requestedAgent !== 'main' && activeConversation !== `${projectId}:chat:${requestedAgent}`
   return {
-    // A previously prepared Crew tab is safe to display immediately while its
-    // durable binding is revalidated in the background.
-    tabId: activeProjectTabId ?? canonicalTabId ?? null,
+    // Do not flash Main while the specifically requested agent is being restored.
+    tabId: awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
     canonicalTabId: canonicalTabId ?? null,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
