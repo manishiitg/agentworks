@@ -6038,7 +6038,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						if len(grantEnv) > 0 {
 							common.SetSessionShellEnv(sessionID, grantEnv)
 						}
-						log.Printf("[WORK FOLDER GUARD] Applied %d attached folder(s) (write=%v)", len(grantRead), grantWrite)
+						log.Printf("[WORK FOLDER GUARD] Applied %d attached folder(s) (write=%v) %s", len(grantRead), grantWrite, workFolderGuardDiagnostic(r.Context(), GetUserFromContext(r.Context())))
 					}
 					// Crew Run mode: a reader turn keeps the project root
 					// readable but drops it from every write set, with an
