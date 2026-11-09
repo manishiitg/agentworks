@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +43,8 @@ type crewPanelSection struct {
 	Error  string           `json:"error,omitempty"`
 	Access *crewPanelAccess `json:"access,omitempty"`
 	// shared is the dashboard's audience in the Share tree's words (the sharing section only).
-	shared string
+	shared    string
+	refreshAt time.Time // Server-only: a cached/in-flight snapshot needs one later read.
 }
 type crewPanelAccess struct {
 	Where   string           `json:"where,omitempty"`
@@ -59,7 +61,10 @@ type crewPanelAsk struct {
 	Detail string `json:"detail"`
 }
 type crewPanelReply struct {
-	Details map[string]string `json:"details"`
+	Details        map[string]string `json:"details"`
+	RefreshAfterMS int64             `json:"refresh_after_ms,omitempty"`
+	RefreshAttempt int               `json:"refresh_attempt,omitempty"`
+	RefreshNote    string            `json:"refresh_note,omitempty"`
 
 	Project      string             `json:"project"`
 	Workspace    string             `json:"workspace"`
@@ -110,6 +115,7 @@ func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
 			delete(c.entries, k)
 		}
 	}
+	section.refreshAt = time.Time{}
 	section.Rows = append([]crewPanelRow{}, section.Rows...)
 	c.entries[key] = crewPanelCached{now, section}
 }
@@ -121,6 +127,7 @@ func (c *crewPanelCache) previous(key crewPanelCacheKey, maximum ...time.Duratio
 	age := crewPanelCacheTTL
 	if len(maximum) > 0 {
 		age = maximum[0]
+		v.section.refreshAt = v.at.Add(age)
 	}
 	return v.section, ok && time.Since(v.at) < age
 }
@@ -220,11 +227,15 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 				// A slow refresh keeps the last good answer, marked stale, rather than asking to try again.
 				out[i] = old
 				out[i].Stale = true
+				if sources[i].id == "workflow" {
+					out[i].refreshAt = time.Now().Add(2 * time.Second)
+				}
 				delete(pending, i)
 				return
 			}
 			if _, refreshing := err.(crewPanelRefreshing); refreshing {
 				out[i].Rows = []crewPanelRow{{ID: "workflow:loading", Label: "Loading"}}
+				out[i].refreshAt = time.Now().Add(100 * time.Millisecond)
 			} else {
 				out[i].Error = "Could not refresh. Try again."
 			}
@@ -245,6 +256,45 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 		}
 	}
 	return out
+}
+
+// PLAT-746-513: a connected live feed does not poll. A notification inside the
+// snapshot window therefore needs one server-directed trailing read. Loading
+// backs off; stale errors never retry faster than two seconds. Five attempts
+// stop without another timer, retaining the snapshot and a plain next step.
+func applyCrewPanelRefresh(out *crewPanelReply, rawAttempt string) {
+	var next time.Time
+	var floor time.Duration
+	for _, section := range out.Sections {
+		if !section.refreshAt.IsZero() && section.Stale {
+			floor = 2 * time.Second
+		}
+		if !section.refreshAt.IsZero() && (next.IsZero() || section.refreshAt.Before(next)) {
+			next = section.refreshAt
+		}
+	}
+	if next.IsZero() {
+		return
+	}
+	attempt, err := strconv.Atoi(rawAttempt)
+	if err != nil || attempt < 0 {
+		attempt = 0
+	}
+	if attempt >= 4 {
+		out.RefreshAttempt = 4
+		out.RefreshNote = "Still updating. Select Retry to check again."
+		return
+	}
+	minimum := [...]time.Duration{100 * time.Millisecond, 250 * time.Millisecond, 500 * time.Millisecond, time.Second}
+	delay := time.Until(next)
+	if delay < floor {
+		delay = floor
+	}
+	if delay < minimum[attempt] {
+		delay = minimum[attempt]
+	}
+	out.RefreshAfterMS = int64((delay + time.Millisecond - 1) / time.Millisecond)
+	out.RefreshAttempt = attempt + 1
 }
 
 // Authorization is read both before fan-out and before exposing any result,
@@ -298,6 +348,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	out := crewPanelReply{Project: project, Workspace: workspace, Sections: sections, Details: map[string]string{}}
+	applyCrewPanelRefresh(&out, r.URL.Query().Get("refresh_attempt"))
 	api.activeSessionsMux.RLock()
 	for _, session := range api.activeSessions {
 		if session.WorkspacePath == workspace && (session.Status == "running" || session.Status == "pending") {

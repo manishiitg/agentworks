@@ -5,7 +5,7 @@ import type { CloudState, CrewAccessLine, CrewAsk } from './YourComputerPanel'
 
 export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; used_in_chat?: boolean; motion?: boolean; artifact?: boolean }
 export type CrewPanelSection = { id: string; title: string; detail?: string; rows: CrewPanelRow[]; busy?: boolean; stale?: boolean; error?: string; access?: { where?: 'mac' | 'web'; place?: CloudState; role?: string; view?: string; summary?: string; tree?: CrewAccessLine[]; asking?: (CrewAsk & { label: string; detail: string })[] } }
-export type CrewPanel = { project: string; workspace: string; busy: boolean; mac_elsewhere: boolean; sections: CrewPanelSection[]; details: Record<string, string> }
+export type CrewPanel = { project: string; workspace: string; busy: boolean; mac_elsewhere: boolean; sections: CrewPanelSection[]; details: Record<string, string>; refresh_after_ms?: number; refresh_attempt?: number; refresh_note?: string }
 
 // The last answer for each scope, project and chat: the menu is mounted again every time a person comes back to it, and
 // a far-away server needs a few seconds to answer. Show what was last known at once; the new answer replaces it.
@@ -21,13 +21,26 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
     const controller = new AbortController()
     let reading = false
     let again = false
-    async function read() {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let nextAttempt = 0
+    async function read(attempt = nextAttempt) {
+      clearTimeout(retryTimer)
+      retryTimer = undefined
       if (reading) { again = true; return }
       if (!project || controller.signal.aborted) return
       reading = true
       try {
-        const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { session_id: session }, signal: controller.signal, skipSessionContext: true })
-        if (!controller.signal.aborted) { lastKnown.set(key, data); setState({ key, data }) }
+        const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { session_id: session, refresh_attempt: attempt || undefined }, signal: controller.signal, skipSessionContext: true })
+        if (!controller.signal.aborted) {
+          nextAttempt = data.refresh_attempt ?? 0
+          lastKnown.set(key, data)
+          setState({ key, data, error: data.refresh_note })
+          // The server alone chooses the retry time and next attempt. A fresh
+          // answer supplies neither, so this never becomes a polling loop.
+          if (data.refresh_after_ms !== undefined && data.refresh_after_ms > 0) {
+            retryTimer = setTimeout(() => { void read(data.refresh_attempt) }, data.refresh_after_ms)
+          }
+        }
       } catch {
         // Do not retain a previous account's or now-revoked Crew's data after
         // a failed admission. Section-level last-good values live on the server.
@@ -39,7 +52,7 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
     }
     refreshRef.current = () => { void read() }
     void read()
-    return () => { controller.abort(); refreshRef.current = () => {} }
+    return () => { controller.abort(); clearTimeout(retryTimer); refreshRef.current = () => {} }
   }, [key, project, session])
   const data = state?.key === key ? state.data : lastKnown.get(key)
   useLiveRefetch(() => refreshRef.current(), {
