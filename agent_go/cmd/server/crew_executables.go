@@ -96,19 +96,24 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 	return result, nil
 }
 
-// crewShownWorkflow is the one workflow a Crew screen shows: the Crew's Python workflow record. Nil when the Crew has none.
+// crewShownWorkflow selects the lowest registered Python workflow ID for every
+// Crew screen. Older Crews may still have several records; Go map order is not a selection rule.
 func crewShownWorkflow(crewWorkspace string) *crewExecutableBinding {
 	records, err := readCrewExecutables()
 	if err != nil || crewWorkspace == "" {
 		return nil
 	}
+	var selected *crewExecutableBinding
 	for _, binding := range records {
-		if canonicalCrewWorkspaceRoot(binding.CrewRoot) == canonicalCrewWorkspaceRoot(crewWorkspace) {
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(crewWorkspace) {
+			continue
+		}
+		if selected == nil || binding.ID < selected.ID || (binding.ID == selected.ID && binding.Root < selected.Root) {
 			b := binding
-			return &b
+			selected = &b
 		}
 	}
-	return nil
+	return selected
 }
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
