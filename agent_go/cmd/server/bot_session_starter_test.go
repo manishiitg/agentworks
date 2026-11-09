@@ -246,6 +246,7 @@ func TestNormalizeSlackChannelRoutingDefaultsNewRoutesToRun(t *testing.T) {
 func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("TRACING_PROVIDER", "noop")
+	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"work":{"provider":"muse-cli","model":"muse-spark-1.3"}}`)
 	const sessionID = "bot-steer-query-p0"
 	const userID = "owner"
 	store := internalevents.NewEventStore(20)
@@ -283,6 +284,7 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 		t.Fatal(admitErr)
 	}
 	api.launchedAgentProfileKeyBySession = map[string]string{sessionID: agentProfileSessionKey(profile)}
+	api.lastQueryRequests = map[string]QueryRequest{sessionID: query}
 	request := map[string]interface{}{
 		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
 		"agent_profile_conversation_key": "team", "selected_folder": externalCommandCrewRoot, "provider": "muse-cli",
