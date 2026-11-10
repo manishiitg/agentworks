@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -317,6 +318,11 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		// The person's own AgentWorks project is never shared: its Access page is one line, no tabs.
 		if agentWorksPrivateProject(r.Context(), out.ProjectID) {
 			out.AccessView, out.AccessSummary, out.AccessTabs, out.AccessMac, out.AccessPublish, out.AccessLaptop = "summary", agentWorksPrivateLine, nil, nil, nil, false
+			// Its menu keeps the agents and the dashboards it makes, without the Team line or who can open them.
+			out.AccessTree = slices.DeleteFunc(out.AccessTree, func(line crewAccessLine) bool { return line.Kind != "agents" && line.Kind != "dashboard" })
+			for i := range out.AccessTree {
+				out.AccessTree[i].Tag, out.AccessTree[i].Target = "", ""
+			}
 		}
 	}
 	externalJSON(w, out)
