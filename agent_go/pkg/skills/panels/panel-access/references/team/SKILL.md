@@ -35,7 +35,10 @@ rather than copying action names or old workflow-team policy fields:
   builder's clash procedure before `resolve`; save the requested version or
   merge, never silently discard either person's work. Team history is private
   server state, separate from the Crew database: use these tools rather than
-  trying to read or edit it through project files or database tools.
+  trying to read or edit it through project files or database tools. Recent history
+  keeps at least 30 days or 500 changes, plus current-file bases and both sides
+  of open clashes. If an older copy needs to catch up, refresh Team sync first;
+  old arbitrary versions can be unavailable even while a clash's saved sides remain.
 
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent

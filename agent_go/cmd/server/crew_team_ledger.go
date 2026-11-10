@@ -193,10 +193,18 @@ func saveCrewTeamFileState(project string, state crewTeamFileState) error {
 		return err
 	}
 	defer tx.Rollback()
+	before := len(state.Events)
+	removed, removedBytes := state.retainHistory(time.Now().UTC())
 	if err = l.saveTx(tx, state); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if removed > 0 {
+		log.Printf("[CREW_TEAM_LEDGER] project=%s event=prune events_before=%d events_after=%d payload_bytes_removed=%d history_floor=%d", project, before, len(state.Events), removedBytes, state.HistoryFloor)
+	}
+	return nil
 }
 
 func teamLedgerFile(hash sql.NullString, size int64, executable bool) *crewsync.File {
@@ -231,7 +239,7 @@ func (l *crewTeamLedger) loadState(history bool) (crewTeamFileState, error) {
 		return state, err
 	}
 	defer tx.Rollback()
-	if err = tx.QueryRow(`SELECT revision FROM folders WHERE folder=?`, l.folder).Scan(&state.Revision); err != nil {
+	if err = tx.QueryRow(`SELECT revision,history_floor FROM folders WHERE folder=?`, l.folder).Scan(&state.Revision, &state.HistoryFloor); err != nil {
 		return state, err
 	}
 	// Every query closes before the next one: one connection, one coherent snapshot.
@@ -362,7 +370,7 @@ func (l *crewTeamLedger) saveTx(tx *sql.Tx, s crewTeamFileState) error {
 		}
 		return stmt.Exec(args...)
 	}
-	if _, err := exec(`UPDATE folders SET revision=? WHERE folder=? AND revision<>?`, s.Revision, l.folder, s.Revision); err != nil {
+	if _, err := exec(`UPDATE folders SET revision=?,history_floor=? WHERE folder=? AND (revision<>? OR history_floor<>?)`, s.Revision, s.HistoryFloor, l.folder, s.Revision, s.HistoryFloor); err != nil {
 		return err
 	}
 	for path, v := range s.Versions {
@@ -386,6 +394,10 @@ func (l *crewTeamLedger) saveTx(tx *sql.Tx, s crewTeamFileState) error {
 		if err != nil {
 			return err
 		}
+	}
+	// Retention compacts ordinal order but never changes public revision identities.
+	if _, err := exec(`DELETE FROM events WHERE folder=? AND ordinal>=?`, l.folder, len(s.Events)); err != nil {
+		return err
 	}
 	for i, c := range s.Clashes {
 		_, err := exec(`INSERT INTO clashes(folder,ordinal,source,path,winning_revision,losing_revision,winning_author,losing_author,resolved,merged,hunks) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(folder,ordinal) DO UPDATE SET source=excluded.source,path=excluded.path,winning_revision=excluded.winning_revision,losing_revision=excluded.losing_revision,winning_author=excluded.winning_author,losing_author=excluded.losing_author,resolved=excluded.resolved,merged=excluded.merged,hunks=excluded.hunks WHERE (source,path,winning_revision,losing_revision,winning_author,losing_author,resolved,merged,hunks) IS NOT (excluded.source,excluded.path,excluded.winning_revision,excluded.losing_revision,excluded.winning_author,excluded.losing_author,excluded.resolved,excluded.merged,excluded.hunks)`, l.folder, i, c.Source, c.Path, c.WinningRevision, c.LosingRevision, c.WinningAuthor, c.LosingAuthor, c.Resolved, c.Merged, c.Hunks)

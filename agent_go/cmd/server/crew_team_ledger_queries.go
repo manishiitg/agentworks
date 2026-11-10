@@ -92,11 +92,14 @@ func readCrewTeamLedgerChanges(project string, since uint64, limit int) (crewTea
 		return state, nil, 0, err
 	}
 	defer tx.Rollback()
-	if err = tx.QueryRow(`SELECT revision FROM folders WHERE folder=?`, l.folder).Scan(&state.Revision); err != nil {
+	if err = tx.QueryRow(`SELECT revision,history_floor FROM folders WHERE folder=?`, l.folder).Scan(&state.Revision, &state.HistoryFloor); err != nil {
 		return state, nil, 0, err
 	}
 	if since > state.Revision {
 		since = 0
+	}
+	if since < state.HistoryFloor {
+		return state, nil, 0, tx.Commit()
 	}
 	rows, err := tx.Query(`SELECT path,revision FROM events WHERE folder=? AND revision>? ORDER BY revision,ordinal`, l.folder, since)
 	if err != nil {
