@@ -39,7 +39,8 @@ describe('buildCleanConversationItems', () => {
       event('other', 'coding_agent_native_activity', { record: { ...record, native_session_id: 'parent-two', state: 'started' } }),
       event('finish', 'coding_agent_native_activity', { record: { ...record, id: 'sdk:1', origin: 'sdk_helper', name: 'Review parser', state: 'finished' } }),
       event('late-start', 'coding_agent_native_activity', { record: { ...record, name: 'Agent', state: 'started' } }),
-      event('transcript-finish', 'coding_agent_native_activity', { record: { ...record, name: 'Agent', state: 'finished' } }),
+      event('transcript-finish', 'coding_agent_native_activity', { record: { ...record, id: 'journal:1', name: 'Agent', state: 'finished' } }),
+      event('late-sdk-start', 'coding_agent_native_activity', { record: { ...record, id: 'sdk:1', origin: 'sdk_helper', name: 'Review parser', state: 'started' } }),
     ])
     expect(items.map(item => item.content)).toEqual(['Review parser · Completed', 'Also check errors', 'Helper agent · Running'])
     expect(items[0].id).toBe('start')
