@@ -114,7 +114,7 @@ func (api *StreamingAPI) handleClientChatTelemetry(w http.ResponseWriter, r *htt
 			"elapsed_ms":         event.ElapsedMS,
 			"delivery_status":    boundedTelemetryField(event.DeliveryStatus, 48),
 			"provider":           boundedTelemetryField(event.Provider, 80),
-			"delivery_source":    boundedTelemetryField(event.DeliverySource, 80),
+			"delivery_source":    boundedTelemetryField(event.DeliverySource, 400),
 			"server_received_at": boundedTelemetryField(event.ServerReceivedAt, 40),
 			"cli_accepted_at":    boundedTelemetryField(event.CLIAcceptedAt, 40),
 			"server_to_cli_ms":   event.ServerToCLIMs,
