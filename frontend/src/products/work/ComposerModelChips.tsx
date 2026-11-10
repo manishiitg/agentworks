@@ -1,3 +1,5 @@
+import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
+import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { ComposerActionItems, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import ChatStatusBar from './ChatStatusBar'
 import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
@@ -141,10 +143,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const currentEffort = effortForModel(currentModel, meta?.agentProfileReasoningEffort)
   const effortLabel = levels.find(level => level.id === currentEffort)?.label
   const modelLabel = models.find(model => model.id === currentModel)?.label || label
-  // Provider choices are the same scoped, usable accounts the Models page receives.
-  const providerChoices = sources.options.filter(option => workProviderIds.includes(option.provider || option.id)).flatMap(option =>
-    (sources.accounts || []).filter(account => account.provider === option.provider && account.usable !== false && account.configured !== false)
-      .map(account => ({ option, account })))
   const currentAccountId = connectionId || meta?.agentProfileChatConnectionID || ownDefaultConnectionId(sources.accounts, selectedOption.provider) || `global:${selectedOption.provider}`
   const groups = [{ option: selectedOption, current: true, models }]
 
@@ -184,6 +182,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
     switchTo(pending.option, pending.modelId, pending.connectionId)
   }
+  const selectProvider = (config: PresetLLMConfig) => {
+    const option = sources.options.find(candidate => candidate.provider === config.provider)
+    if (!option) return
+    setMenuOpen(false)
+    pickModel(option, undefined, config.connection_id || switchAccountFor(option) || `global:${option.provider}`)
+  }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
   // Optional setup and defaults on the Models page and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
@@ -200,7 +204,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
   </Menu.SubTrigger>
 
-  if (providerChoices.length < 2 && groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
+  if (workProviderIds.length < 2 && groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
@@ -219,21 +223,29 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       </button>
       <button type="button" onClick={() => void finishSwitch(false)} className="block w-full rounded-md border border-border px-2 py-1.5 text-left hover:bg-muted">Switch and keep the whole chat</button>
     </div>}
-    {providerChoices.length > 0 && <Menu.Sub>
+    <Menu.Sub>
       {subRow('Provider', selectedOption.label || selectedOption.provider || selectedOption.id)}
-      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
-        {providerChoices.map(({ option, account }) => {
-          const current = option.id === selectedOption.id && account.id === currentAccountId
-          return <Menu.Item key={`${option.id}:${account.id}`} className={rowClass} disabled={saving} onSelect={() => pickModel(option, undefined, account.id)}>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{option.label || option.provider}</span>
-              <span className="block truncate text-[11px] text-muted-foreground">{account.display_name}</span>
-            </span>
-            {current && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          </Menu.Item>
-        })}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={`${contentClass} w-[min(420px,calc(100vw-24px))]`}>
+        <fieldset disabled={saving} className="min-w-0 border-0 p-1" onKeyDown={event => {
+          // Native controls in the reused selector keep typing, Tab and arrow
+          // navigation; Escape still dismisses the menu normally.
+          if (event.key !== 'Escape') event.stopPropagation()
+        }}>
+          <WorkflowLLMConfigurationPanel
+            workspacePath={workspacePath}
+            llmConfig={{ schema_version: 2, mode: 'provider_profile', provider: selectedOption.provider as LLMProvider, connection_id: currentAccountId }}
+            onChange={selectProvider}
+            scopeNoun="chat"
+            canWriteOverride
+            allowedProviderIds={workProviderIds}
+            splitPiProviders={false}
+            showModelsPerRole={false}
+            configurationSource="agent_profile"
+            product={profileId}
+          />
+        </fieldset>
       </Menu.SubContent></Menu.Portal>
-    </Menu.Sub>}
+    </Menu.Sub>
     <Menu.Sub>
       {subRow('Model', modelLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
