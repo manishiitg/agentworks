@@ -114,9 +114,11 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 	crewMacSockets.byDevice[key] = sock
 	crewMacSockets.Unlock()
 	if old != nil && old.close != nil {
+		// Two computers with one saved connection share its device ID and knock each other off; name both.
+		log.Printf("[CREW_RELAY] replace owner=%s device=%s old_mac=%q new_mac=%q", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, old.name, sock.name)
 		old.close()
 	}
-	log.Printf("[CREW_RELAY] connect owner=%s device=%s crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, len(sock.twins))
+	log.Printf("[CREW_RELAY] connect owner=%s device=%s mac=%q crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, sock.name, len(sock.twins))
 	sock.mu.Lock()
 	for project := range sock.twins {
 		publishCrewPanelChanged(project)
