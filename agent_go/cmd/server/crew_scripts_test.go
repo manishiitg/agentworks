@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -101,7 +102,15 @@ sys.exit(1)
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		provided, _ := base64.StdEncoding.DecodeString(params.ExtraEnv["VAR_AUTOMATION_CHECK_FILES"])
+		pieces := ""
+		for i := 0; ; i++ {
+			piece, found := params.ExtraEnv[fmt.Sprintf("VAR_AUTOMATION_CHECK_FILES_%d", i)]
+			if !found {
+				break
+			}
+			pieces += piece
+		}
+		provided, _ := base64.StdEncoding.DecodeString(pieces)
 		if strings.Contains(string(provided), `"outside.py"`) {
 			t.Error("source inspection followed a link into another Crew")
 			c.JSON(400, gin.H{"error": "source link refused"})
