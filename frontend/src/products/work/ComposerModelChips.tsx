@@ -11,7 +11,7 @@ import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsa
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
-import ChatContextItems, { menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import ChatContextItems, { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
 const rowClass = menuRowClass
@@ -76,6 +76,21 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId) || ''
   const [saving, setSaving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  // This chat's switch note, read when the menu opens, and a model picked in a long chat waiting for the choice.
+  const [switchNote, setSwitchNote] = useState('')
+  const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string } | null>(null)
+  useEffect(() => {
+    if (!menuOpen || !sessionId) return
+    let active = true
+    agentApi.getChatContext(sessionId).then(view => { if (active) setSwitchNote(view?.switch_note || '') }).catch(() => undefined)
+    return () => { active = false }
+  }, [menuOpen, sessionId])
+  // Closing the menu without choosing drops the waiting model (the menu reopens at once after a pick, so not then).
+  useEffect(() => {
+    if (menuOpen) return
+    const timer = setTimeout(() => setPendingSwitch(null), 200)
+    return () => clearTimeout(timer)
+  }, [menuOpen])
   useOpenFromStatusBar(sessionId, () => setMenuOpen(true))
   const profileId = meta?.agentProfileId || ''
   const projectId = meta?.agentProfileProjectId || ''
@@ -128,11 +143,27 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       useChatStore.getState().addToast(`Could not change the model${reason ? `: ${reason}` : ''}. This chat keeps its current model.`, 'error')
     } finally { setSaving(false) }
   }
-  const pickModel = (option: AgentProfileProviderOption, modelId?: string) => {
+  const switchTo = (option: AgentProfileProviderOption, modelId?: string) => {
     if (option.id === selectedOption.id) return void save(option, modelId || currentModel, effortForPick(modelId || currentModel, currentEffort))
     const defaults = defaultForOption(option)
     const model = modelId || defaults.modelId
     void save(option, model, effortForPick(model, defaults.reasoningEffort, option))
+  }
+  // A long chat: another model re-reads all of it once, so the menu first offers to compact (owner, 10 Nov, approved
+  // mockup "Model Switch Choice"). The server says when (switch_note); a short chat switches at once.
+  const pickModel = (option: AgentProfileProviderOption, modelId?: string) => {
+    const changes = option.id !== selectedOption.id || (modelId !== undefined && modelId !== currentModel)
+    if (!changes || !switchNote) return switchTo(option, modelId)
+    setPendingSwitch({ option, modelId })
+    setTimeout(() => setMenuOpen(true), 0)
+  }
+  const finishSwitch = async (compactFirst: boolean) => {
+    const pending = pendingSwitch
+    if (!pending) return
+    setPendingSwitch(null)
+    setMenuOpen(false)
+    if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
+    switchTo(pending.option, pending.modelId)
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
   // Quick ways out of the menu: the Models page (program and account) and this project's usage.
@@ -159,6 +190,13 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate" title={sourceText}>{sourceText}</span>
+    </div>}
+    {pendingSwitch && <div className="mx-1 mb-1.5 mt-0.5 rounded-lg border border-primary/40 bg-primary/10 p-2 text-xs">
+      <p className="mb-1.5">{switchNote}</p>
+      <button type="button" onClick={() => void finishSwitch(true)} className="mb-1 block w-full rounded-md border border-primary/40 bg-background/60 px-2 py-1.5 text-left hover:bg-background">
+        Compact, then switch<span className="block text-[11px] text-muted-foreground">Continues from a short summary · uses much less of your limit</span>
+      </button>
+      <button type="button" onClick={() => void finishSwitch(false)} className="block w-full rounded-md border border-border px-2 py-1.5 text-left hover:bg-muted">Switch and keep the whole chat</button>
     </div>}
     <Menu.Sub>
       {subRow('Model', modelLabel)}
