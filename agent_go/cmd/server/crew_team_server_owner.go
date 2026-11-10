@@ -47,7 +47,7 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 		// The Crew folder is where people on the website work, so a new owner copy takes the store as it is now as its
 		// base and applies nothing from it (review 5 Nov #6): its first round sends what differs in the Crew folder
 		// (each file read once), and nothing the team removed comes back.
-		state, stateErr := readCrewTeamFileState(t.ProjectID)
+		state, stateErr := readCrewTeamCurrentState(t.ProjectID)
 		if stateErr != nil {
 			log.Printf("[CREW_TEAM_SERVER] project=%s event=owner_copy_failed reason=%q", t.ProjectID, stateErr)
 			return

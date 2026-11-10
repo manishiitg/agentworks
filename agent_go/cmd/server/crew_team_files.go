@@ -553,7 +553,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 	}
 	dir, _ := crewTeamContentDir(project)
 	if r.Method == http.MethodGet && mux.Vars(r)["op"] == "files" {
-		s, e := readCrewTeamFileState(project)
+		s, e := readCrewTeamCurrentState(project)
 		if e != nil {
 			externalError(w, 409, "team_folder_unavailable", e.Error())
 			return
@@ -573,7 +573,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	// A file a member chose to sync on purpose is an ordinary shared file here too.
-	known, _ := readCrewTeamFileState(project)
+	known, _ := readCrewTeamCurrentState(project)
 	op := known.onPurpose()
 	if !crewTeamAllowed(rel, op) || !t.Folder.holds(rel) {
 		externalError(w, 403, "team_path_forbidden", "Choose a file inside the shared folder; private state and credentials stay private.")

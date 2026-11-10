@@ -91,13 +91,13 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 	done := func(status int, files, chunks int) {
 		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=%s files=%d chunks=%d status=%d ms=%d", project, logUsernameForUserID(claims.UserID), op, files, chunks, status, time.Since(start).Milliseconds())
 	}
-	state, e := readCrewTeamFileState(project)
-	if e != nil {
-		externalError(w, 409, "transfer_failed", e.Error())
-		return
-	}
 	switch op {
 	case "plan":
+		state, e := readCrewTeamCurrentState(project)
+		if e != nil {
+			externalError(w, 409, "transfer_failed", e.Error())
+			return
+		}
 		team, _ := readCrewTeam(project)
 		store, e := crewTeamChunkStore(project)
 		if e != nil {
@@ -147,12 +147,12 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		done(200, len(in.Changes), 0)
 		externalJSON(w, receipt)
 	case "changes":
-		since := in.Since
-		if since > state.Revision {
-			since = 0 // a copy from another generation starts over
+		state, paths, through, e := readCrewTeamLedgerChanges(project, in.Since, crewTeamCommitBatch)
+		if e != nil {
+			externalError(w, 409, "transfer_failed", e.Error())
+			return
 		}
 		out := crewTeamChangesReply{Revision: state.Revision, Through: state.Revision, Files: []crewTeamRemoteFile{}, OnPurpose: sortedOnPurpose(state.onPurpose())}
-		paths, through := crewTeamChangedSince(state, since, crewTeamCommitBatch)
 		if through < state.Revision {
 			out.Through, out.More = through, true
 		}
@@ -235,7 +235,7 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 	// Only chunks of a file the caller may read now: a current version, inside what the team shares, not private, and
 	// within their connection's file guard (not any old chunk by its hash).
 	sent, size, ok := serveChunks(w, r, store, func() (map[string]bool, error) {
-		state, e := readCrewTeamFileState(project)
+		state, e := readCrewTeamCurrentState(project)
 		if e != nil {
 			return nil, e
 		}
