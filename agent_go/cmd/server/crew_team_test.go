@@ -103,6 +103,11 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", AgentBridgePublic: true}}); err != nil {
 		t.Fatal(err)
 	}
+	private := mustReadCrewTeam(t, "team-test")
+	private.Agents = crewTeamAgentFixtures("team-test", map[string]map[string]bool{"owner": {"solo01": false}})
+	if err := writeCrewTeamAgentFixture(private); err != nil {
+		t.Fatal(err)
+	}
 	if w = call("member", "GET", base+"/agents", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"Reviewer"`) || strings.Contains(w.Body.String(), `"Solo"`) {
 		t.Fatalf("member team agents: %d %s", w.Code, w.Body.String())
 	}
