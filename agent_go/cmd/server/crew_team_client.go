@@ -613,23 +613,23 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 			return out, err
 		}
 	}
-	var ignored map[string]bool
-	var err error
-	if full {
-		ignored, out.rules, err = crewTeamIgnored(ctx, b.Root)
-	} else {
-		out.rules = rules
-		ignored = map[string]bool{}
-		if rules {
-			paths := make([]string, 0, len(files))
-			for _, f := range files {
-				paths = append(paths, f.rel)
-			}
-			ignored, err = crewTeamCheckIgnore(ctx, b.Root, paths)
+	// The share's .gitignore files apply to the files this listing read: one walk, full or watched. A full scan
+	// learns whether the folder has rules from the names it listed; a watched round also notices a .gitignore that
+	// arrived inside a new folder. Git reads the rules from disk itself, so checking only these paths changes nothing.
+	out.rules = rules && !full
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.rel)
+		if path.Base(f.rel) == ".gitignore" {
+			out.rules = true
 		}
 	}
-	if err != nil {
-		return out, err
+	ignored := map[string]bool{}
+	if out.rules {
+		var err error
+		if ignored, err = crewTeamCheckIgnore(ctx, b.Root, paths); err != nil {
+			return out, err
+		}
 	}
 	// covered: a file of the copy this scan read the folder of, so its absence means it is gone.
 	covered := func(rel string) bool {
