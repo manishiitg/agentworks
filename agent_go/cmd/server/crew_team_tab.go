@@ -37,6 +37,7 @@ type crewTeamTabPresence struct {
 }
 
 type crewTeamTabAgent struct {
+	ID string `json:"id,omitempty"`
 	// Key is the agent's chat key: In team / Only me sends it (agent-visibility).
 	Key  string `json:"key"`
 	Name string `json:"name"`
@@ -370,7 +371,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 					detail = append(detail, kept)
 				}
 			}
-			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
+			row := crewTeamTabAgent{ID: a.ID, Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
