@@ -86,7 +86,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const [menuOpen, setMenuOpen] = useState(false)
   // This chat's switch note, read when the menu opens, and a model picked in a long chat waiting for the choice.
   const [switchNote, setSwitchNote] = useState('')
-  const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string } | null>(null)
+  const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string; connectionId?: string } | null>(null)
   useEffect(() => {
     if (!menuOpen || !sessionId) return
     let active = true
@@ -110,7 +110,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const connectionId = meta?.agentProfileConnectionID || undefined
   // A company account from a connected server counts on that server: its limits come from there.
   const companyServer = sources.accounts?.find(account => account.id === (connectionId || meta?.agentProfileChatConnectionID))?.via_connection
-  const { selectableModels, modelsForOption, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
+  const { workProviderIds, selectableModels, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
     workspacePath, accountProduct: profileId,
@@ -141,20 +141,20 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const currentEffort = effortForModel(currentModel, meta?.agentProfileReasoningEffort)
   const effortLabel = levels.find(level => level.id === currentEffort)?.label
   const modelLabel = models.find(model => model.id === currentModel)?.label || label
-  // Every coding agent this person can run here, the chat's own first; Cursor and key accounts list
-  // their models per account, so another one of those is one row that switches to its default model.
-  // Only the chat's own program: switching program or account is done on the Models page (owner).
-  const groups = [selectedOption]
-    .map(option => ({ option, current: option.id === selectedOption.id, models: option.id === selectedOption.id ? models : modelsForOption(option).map(model => ({ id: model.model_id, label: model.model_name || model.model_id })) }))
-    .filter(group => group.current || group.models.length > 0 || group.option.provider === 'cursor-cli' || group.option.provider === 'pi-cli')
+  // Provider choices are the same scoped, usable accounts the Models page receives.
+  const providerChoices = sources.options.filter(option => workProviderIds.includes(option.provider || option.id)).flatMap(option =>
+    (sources.accounts || []).filter(account => account.provider === option.provider && account.usable !== false && account.configured !== false)
+      .map(account => ({ option, account })))
+  const currentAccountId = connectionId || meta?.agentProfileChatConnectionID || ownDefaultConnectionId(sources.accounts, selectedOption.provider) || `global:${selectedOption.provider}`
+  const groups = [{ option: selectedOption, current: true, models }]
 
-  const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined) => {
+  const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined, targetConnectionId?: string) => {
     const current = option.id === selectedOption.id
-    if (saving || (current && modelId === currentModel && reasoningEffort === currentEffort)) return
+    if (saving || (current && modelId === currentModel && reasoningEffort === currentEffort && (!targetConnectionId || targetConnectionId === currentAccountId))) return
     setSaving(true)
     try {
       await agentApi.setAgentProfileChatModel(profileId, projectId, {
-        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: current ? connectionId : switchAccountFor(option),
+        conversation_key: conversationKey, engine: option.id, model_id: modelId, reasoning_effort: reasoningEffort, connection_id: targetConnectionId || (current ? connectionId : switchAccountFor(option)),
       })
       await queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(profileId, projectId) })
     } catch (cause) {
@@ -162,18 +162,18 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       useChatStore.getState().addToast(`Could not change the model${reason ? `: ${reason}` : ''}. This chat keeps its current model.`, 'error')
     } finally { setSaving(false) }
   }
-  const switchTo = (option: AgentProfileProviderOption, modelId?: string) => {
-    if (option.id === selectedOption.id) return void save(option, modelId || currentModel, effortForPick(modelId || currentModel, currentEffort))
-    const defaults = defaultForOption(option)
+  const switchTo = (option: AgentProfileProviderOption, modelId?: string, targetConnectionId?: string) => {
+    if (option.id === selectedOption.id && (!targetConnectionId || targetConnectionId === currentAccountId)) return void save(option, modelId || currentModel, effortForPick(modelId || currentModel, currentEffort))
+    const defaults = defaultForOption(option, targetConnectionId || switchAccountFor(option))
     const model = modelId || defaults.modelId
-    void save(option, model, effortForPick(model, defaults.reasoningEffort, option))
+    void save(option, model, effortForPick(model, defaults.reasoningEffort, option), targetConnectionId)
   }
   // A long chat: another model re-reads all of it once, so the menu first offers to compact (owner, 10 Nov, approved
   // mockup "Model Switch Choice"). The server says when (switch_note); a short chat switches at once.
-  const pickModel = (option: AgentProfileProviderOption, modelId?: string) => {
-    const changes = option.id !== selectedOption.id || (modelId !== undefined && modelId !== currentModel)
-    if (!changes || !switchNote) return switchTo(option, modelId)
-    setPendingSwitch({ option, modelId })
+  const pickModel = (option: AgentProfileProviderOption, modelId?: string, targetConnectionId?: string) => {
+    const changes = option.id !== selectedOption.id || (modelId !== undefined && modelId !== currentModel) || Boolean(targetConnectionId && targetConnectionId !== currentAccountId)
+    if (!changes || !switchNote) return switchTo(option, modelId, targetConnectionId)
+    setPendingSwitch({ option, modelId, connectionId: targetConnectionId })
     setTimeout(() => setMenuOpen(true), 0)
   }
   const finishSwitch = async (compactFirst: boolean) => {
@@ -182,10 +182,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     setPendingSwitch(null)
     setMenuOpen(false)
     if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
-    switchTo(pending.option, pending.modelId)
+    switchTo(pending.option, pending.modelId, pending.connectionId)
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
-  // Quick ways out of the menu: the Models page (program and account) and this project's usage.
+  // Optional setup and defaults on the Models page and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
   // Cursor lists every variant of a model as its own entry; show them the way the Models page does:
@@ -200,7 +200,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
   </Menu.SubTrigger>
 
-  if (groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
+  if (providerChoices.length < 2 && groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
@@ -219,6 +219,21 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       </button>
       <button type="button" onClick={() => void finishSwitch(false)} className="block w-full rounded-md border border-border px-2 py-1.5 text-left hover:bg-muted">Switch and keep the whole chat</button>
     </div>}
+    {providerChoices.length > 0 && <Menu.Sub>
+      {subRow('Provider', selectedOption.label || selectedOption.provider || selectedOption.id)}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+        {providerChoices.map(({ option, account }) => {
+          const current = option.id === selectedOption.id && account.id === currentAccountId
+          return <Menu.Item key={`${option.id}:${account.id}`} className={rowClass} disabled={saving} onSelect={() => pickModel(option, undefined, account.id)}>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{option.label || option.provider}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">{account.display_name}</span>
+            </span>
+            {current && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          </Menu.Item>
+        })}
+      </Menu.SubContent></Menu.Portal>
+    </Menu.Sub>}
     <Menu.Sub>
       {subRow('Model', modelLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
