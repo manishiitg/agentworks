@@ -1267,6 +1267,13 @@
   },
   {
     "family": "sessions",
+    "name": "fork",
+    "member": "fork_project_chat",
+    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work; no turn starts.",
+    "external_members": "sessions_fork_crew"
+  },
+  {
+    "family": "sessions",
     "name": "open",
     "member": "open_project_chat",
     "description": "Use the current project\u2019s open session operation with existing person and tab access.",
@@ -1331,6 +1338,14 @@
     "description": "Use the existing sessions new operation with its current access.",
     "source": "manage_crew_chats",
     "source_action": "new"
+  },
+  {
+    "family": "sessions",
+    "name": "fork",
+    "member": "sessions_fork_crew",
+    "description": "Fork one of your own Crew chats using the existing fork operation.",
+    "source": "manage_crew_chats",
+    "source_action": "fork"
   },
   {
     "family": "sessions",

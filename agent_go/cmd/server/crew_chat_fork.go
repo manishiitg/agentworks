@@ -26,12 +26,22 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	}
 	var input struct {
 		ConversationKey string `json:"conversation_key"`
+		Name            string `json:"name"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil || strings.TrimSpace(input.ConversationKey) == "" {
 		externalError(w, 400, "invalid_request", "Choose a chat to fork.")
 		return
+	}
+	requestedName := strings.TrimSpace(input.Name)
+	if requestedName != "" {
+		var err error
+		requestedName, err = normalizeChatHistoryTitle(requestedName)
+		if err != nil {
+			externalError(w, 400, "invalid_name", err.Error())
+			return
+		}
 	}
 	user, slot, ok := api.agentProfileConversationSlot(w, r, input.ConversationKey)
 	if !ok {
@@ -86,7 +96,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	if len(baseName) > productAgentNameMaxRunes-7 {
 		baseName = baseName[:productAgentNameMaxRunes-7]
 	}
-	name := string(baseName) + " (fork)"
+	name := firstNonEmptyTrimmed(requestedName, string(baseName)+" (fork)")
 	request := r.Clone(r.Context())
 	request.Header = r.Header.Clone()
 	request.Header.Del("X-Session-ID")
@@ -143,7 +153,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
-	writeAgentProfileJSON(w, 200, map[string]any{"conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "next": note})
+	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "next": note})
 }
 
 func (api *StreamingAPI) forkCrewNativeRuntime(r *http.Request, source, destination ProductConversationRecord) (*ChatHistoryAgentRuntime, error) {
