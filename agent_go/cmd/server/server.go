@@ -656,6 +656,8 @@ type StreamingAPI struct {
 	sessionInputLanesMu sync.Mutex
 	// Durable turns waiting behind that shared lane. Every producer reaches the
 	// same dispatcher; tmux remains an execution transport, never a queue.
+	pendingChatUploadsMu          sync.Mutex
+	pendingChatUploads            map[pendingChatUploadKey]*pendingChatUpload
 	conversationTurnQueueMu       sync.Mutex
 	conversationTurnQueueOwners   map[string]map[string]bool
 	conversationTurnQueueDraining map[string]bool
@@ -786,6 +788,7 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
+	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
 	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
@@ -3841,6 +3844,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := api.validatePendingChatAttachments(currentUserID, sessionID, req); err != nil {
+		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
@@ -4012,7 +4019,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if idleRun == nil && !req.IsAutoNotification && !isScheduledSessionIdentity(sessionID, req.TriggeredBy) {
 		var finishSubmission func()
 		var accepted bool
-		w, r, finishSubmission, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
+		w, r, finishSubmission, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, pendingAttachmentSubmissionQuery(req))
 		if !accepted {
 			return
 		}
@@ -4023,6 +4030,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			rejectUnavailableQueuedSteer(w)
 			return
 		}
+	}
+	// Admit pending-file messages to the existing durable lane immediately.
+	// Its drainer waits for file commit; later messages cannot overtake it.
+	if len(req.PendingAttachments) > 0 && !conversationTurnQueueExecution(r.Context()) {
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+		return
 	}
 	if req.RestartCodingCLI {
 		// The product chat's runtime changed while a turn was running (PLAT-676): this message waits
@@ -4046,6 +4059,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	preferRetainedDelivery := shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
+		return
+	}
+
+	if err := api.resolvePendingChatAttachments(r.Context(), currentUserID, sessionID, &req); err != nil {
+		log.Printf("[CHAT_ATTACHMENTS] caller=%q session=%q outcome=rejected reason=%q", currentUserID, sessionID, err.Error())
+		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

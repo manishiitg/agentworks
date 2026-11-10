@@ -1,6 +1,7 @@
 import type { FileContextItem } from '../stores/types'
 
 export interface ChatSubmissionOptions {
+  pendingAttachments?: { hash: string; name: string }[]
   fileContext?: FileContextItem[]
   fileContextConsumed?: boolean
   deliveryMode?: 'steer' | 'queue'
