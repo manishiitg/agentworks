@@ -238,6 +238,9 @@ func (api *StreamingAPI) handleDesktopConnections(w http.ResponseWriter, r *http
 	}
 	for i := range records {
 		records[i].Token = ""
+		// Every screen names a server the same way, as the Servers page does (owner, 10 Nov: the menu showed two
+		// servers as "Agentworkshq" from their web address).
+		records[i].Name = friendlyServerName(records[i].Name, records[i].Server)
 	}
 	desktopJSON(w, map[string]any{"connections": records})
 }
