@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -77,6 +78,11 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 		raw, e := json.Marshal(doc)
 		if e != nil {
 			t.Fatal(e)
+		}
+		// A real source may explicitly encode an empty optional selection. Do
+		// not let import turn [] into a missing field through omitempty tags.
+		if user == "owner" {
+			raw = []byte(strings.ReplaceAll(string(raw), `"selected_skills":["skill-a"]`, `"selected_skills":[]`))
 		}
 		namespace := productConversationRegistryPath(user)
 		files[namespace] = string(raw)
