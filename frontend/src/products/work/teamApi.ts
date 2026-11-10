@@ -320,9 +320,12 @@ export function useTeamInvites() {
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const connections = useConnectedWorkStore(s => s.connections)
   const [invites, setInvites] = useState<TeamInvite[]>([])
+  // The connections list is rebuilt (new objects) on every refresh of the connected servers; only its ids matter here.
+  const connectionKey = connections.map(connection => connection.id).join(',')
+  // A different person or workspace starts from nothing; a refresh of the same ones never empties the list.
+  useEffect(() => { setInvites([]) }, [user, workspace])
   useEffect(() => {
     let active = true
-    setInvites([])
     const load = async () => {
       const found: TeamInvite[] = []
       const sources = hasDesktopConnections() && getRawActiveWorkspaceId() === 'local' ? connections.filter(c => c.id !== 'local').map(c => c.id) : [undefined]
@@ -337,13 +340,14 @@ export function useTeamInvites() {
           for (const invite of data.invites || []) found.push({ ...invite, connection })
         } catch { /* An offline network keeps its copies on the computer. */ }
       }))
-      if (active) setInvites(found)
+      // The same invites keep the same list, so the card is not re-rendered by every poll.
+      if (active) setInvites(current => JSON.stringify(current) === JSON.stringify(found) ? current : found)
     }
     void load()
     const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
-  }, [user, workspace, connections])
+  }, [user, workspace, connectionKey]) // eslint-disable-line react-hooks/exhaustive-deps -- connections is read through its ids
   return invites
 }
 
