@@ -26,7 +26,7 @@ import (
 // PLAT-746-820: idle sync rounds rewrote the full file baseline every five seconds.
 func TestCrewTeamLocalSkipsUnchangedRoundsAndRefreshesHeartbeat(t *testing.T) {
 	dir := t.TempDir()
-	b := crewTeamLocal{Status: "up_to_date", LastSynced: time.Now().UTC().Format(time.RFC3339Nano), Files: map[string]crewTeamLocalFile{}}
+	b := crewTeamLocal{Root: t.TempDir(), Status: "up_to_date", LastSynced: time.Now().UTC().Format(time.RFC3339Nano), Files: map[string]crewTeamLocalFile{}}
 	if err := saveCrewTeamLocal(dir, b); err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +36,10 @@ func TestCrewTeamLocalSkipsUnchangedRoundsAndRefreshesHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.LastSynced = time.Now().Add(time.Second).UTC().Format(time.RFC3339Nano)
+	if _, err := crewTeamScan(t.Context(), &b, crewTeamFolder{ID: "f1", Whole: true}); err != nil {
+		t.Fatal(err)
+	}
+	b.FolderOnPurpose = []string{}
 	if err := saveCrewTeamLocal(dir, b); err != nil {
 		t.Fatal(err)
 	}
