@@ -249,7 +249,8 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 
 // scheduleOwnChatRows lists the person's message schedules that run in their own chat (owner, 9 Nov: "Its own chat",
 // kept across runs and shown with the Crew's chats), once the schedule has run. The chat is named after the schedule.
-// Only the schedule's owner has it; function, webhook and new-chat-each-run conversations are never listed.
+// Only the schedule's owner has it; these history rows are not editable agent
+// tabs. Function, webhook and new-chat-each-run conversations are never listed.
 func scheduleOwnChatRows(ctx context.Context, userID, profileID, projectID, workspace string, mine map[string]ProductAgentIdentity) []AgentProfileSideChat {
 	chats, err := defaultProductConversationRegistryStore().scheduleOwnChats(ctx, userID, profileID, projectID)
 	if err != nil || len(chats) == 0 {
@@ -272,7 +273,7 @@ func scheduleOwnChatRows(ctx context.Context, userID, profileID, projectID, work
 		identity := mine[key]
 		rows = append(rows, AgentProfileSideChat{ConversationKey: key, ConversationID: record.ConversationID, SessionID: record.SessionID,
 			Name: firstNonEmptyTrimmed(schedule.Name, "Schedule"), Position: identity.Position, Pinned: !identity.Unpinned,
-			TabOwnerID: userID, CanWrite: true, Purpose: "This schedule's own chat; each run continues it."})
+			TabOwnerID: userID, CanWrite: false, Purpose: "This schedule's conversation; open it to see its messages. Change the schedule from Schedules."})
 	}
 	return rows
 }
