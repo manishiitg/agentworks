@@ -860,8 +860,16 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 		resp.Body.Close()
+		var refusal struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(b, &refusal) == nil && refusal.Error.Code == "team_history_catch_up" {
+			return nil, errCrewTeamHistoryCatchUp
+		}
 		return nil, fmt.Errorf("%s", laptopActionErrorText(string(b)))
 	}
 	return resp, nil

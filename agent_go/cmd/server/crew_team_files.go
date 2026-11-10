@@ -36,11 +36,12 @@ type crewTeamVersion struct {
 	ModifiedAt string          `json:"modified_at"`
 }
 type crewTeamFileState struct {
-	Revision uint64                     `json:"revision"`
-	Versions map[string]crewTeamVersion `json:"versions"`
-	Events   []crewTeamEvent            `json:"events"`
-	Clashes  []crewTeamClash            `json:"clashes"`
-	Receipts map[string]crewTeamReceipt `json:"receipts"`
+	HistoryFloor uint64                     `json:"-"`
+	Revision     uint64                     `json:"revision"`
+	Versions     map[string]crewTeamVersion `json:"versions"`
+	Events       []crewTeamEvent            `json:"events"`
+	Clashes      []crewTeamClash            `json:"clashes"`
+	Receipts     map[string]crewTeamReceipt `json:"receipts"`
 	// OnPurpose: files that look like they hold passwords or keys which a member chose to sync anyway (owner, 5 Nov),
 	// by path, with who chose it. Everyone then syncs them like any shared file.
 	OnPurpose map[string]string `json:"on_purpose,omitempty"`
@@ -252,6 +253,10 @@ type crewTeamChange struct {
 // the canonical bytes, events and a receipt (a retry with the same transfer returns it). The caller holds the team
 // lock and has rechecked current membership. declared are the paths the sender chose to sync on purpose.
 func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, changes []crewTeamChange, declared ...string) (crewTeamReceipt, error) {
+	return commitCrewTeamChangesAtRevision(ctx, project, actor, transfer, digest, nil, changes, declared...)
+}
+
+func commitCrewTeamChangesAtRevision(ctx context.Context, project, actor, transfer, digest string, cursor *uint64, changes []crewTeamChange, declared ...string) (crewTeamReceipt, error) {
 	dir, e := crewTeamContentDir(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
@@ -266,6 +271,9 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			return old, fmt.Errorf("this transfer ID was already used for different changes")
 		}
 		return old, nil
+	}
+	if cursor != nil && (*cursor < state.HistoryFloor || *cursor > state.Revision) {
+		return crewTeamReceipt{}, errCrewTeamHistoryCatchUp
 	}
 	if transfer == "" || len(transfer) > 257 || !validCrewTeamHash(digest) || len(changes) > crewTeamCommitBatch {
 		return crewTeamReceipt{}, fmt.Errorf("use a stable transfer identity and at most %d files", crewTeamCommitBatch)
