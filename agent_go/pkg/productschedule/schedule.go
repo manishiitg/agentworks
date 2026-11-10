@@ -35,6 +35,9 @@ type Schedule struct {
 	// never-run cron schedule would recompute "next" from every scheduler tick
 	// and could therefore never become due.
 	CreatedAt string `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	// CreatedBy and UpdatedBy say who made and who last changed it (see projectactions.Actor).
+	CreatedBy *projectactions.Actor `json:"created_by,omitempty" yaml:"created_by,omitempty"`
+	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty" yaml:"updated_by,omitempty"`
 
 	// CronExpression is a standard five-field cron line, evaluated in Timezone
 	// (local time when empty).

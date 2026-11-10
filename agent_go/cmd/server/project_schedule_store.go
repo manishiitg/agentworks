@@ -251,6 +251,7 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		}
 		s := productschedule.Schedule{ID: record.ID, Name: record.Name, Enabled: record.Enabled,
 			CronExpression: record.When.Cron, Timezone: record.When.Timezone, CreatedAt: record.When.Anchor,
+			CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy,
 			Messages: input.Messages, Condition: input.Condition, ChatKey: record.Action.Tab,
 			Isolated: record.Action.Conversation == runDestinationIsolated || record.Action.Conversation == runDestinationNew,
 			New:      record.Action.Conversation == runDestinationNew, When: &record.When}
@@ -290,7 +291,7 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 		if err != nil {
 			return err
 		}
-		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: owner,
+		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: owner, CreatedBy: s.CreatedBy, UpdatedBy: s.UpdatedBy,
 			Project: projectactions.Project{Kind: "crew", ID: manifest.ID}, Input: raw,
 			Action: projectactions.Action{Type: "message", Tab: s.ChatKey},
 			When:   projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone), Anchor: s.CreatedAt}}
