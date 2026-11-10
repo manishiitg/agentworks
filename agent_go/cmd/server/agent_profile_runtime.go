@@ -58,7 +58,8 @@ type resolvedAgentProfile struct {
 	// ProjectInstructions is the Code or Crew project's own PROJECT_INSTRUCTIONS.md, rendered as the last
 	// instruction section (PLAT-692). It is separate from Prompt because Crew re-renders Prompt for its mode.
 	// Its hash feeds the session fingerprint: a retained CLI relaunches, resuming the conversation, when it changes.
-	ProjectInstructions string
+	ProjectInstructions          string
+	ProjectInstructionSourcesKey string
 	// Changing the optional laptop binding refreshes retained tools between turns.
 	LaptopConnection       *laptopConnectionTarget
 	LaptopConnectionPolicy string
@@ -138,7 +139,7 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		LaptopConnectionPolicy string                  `json:"laptop_connection_policy,omitempty"`
 		Instructions           string                  `json:"project_instructions,omitempty"`
 	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions), LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
+		Instructions: projectinstructions.Key(profile.ProjectInstructions) + ":" + profile.ProjectInstructionSourcesKey, LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -728,7 +729,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 
 	if publication != nil {
-		for _, name := range []string{projectinstructions.FileName, "AGENTS.md", "CLAUDE.md"} {
+		for _, name := range []string{projectinstructions.FileName} {
 			if publication.AgentID == "" && name == projectinstructions.FileName {
 				continue
 			}
@@ -836,10 +837,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	publishedAgentContext := ""
+	instructionFilesFolder := workspacePath
 	if isProjectProfileID(profile.ID) {
 		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
 			return nil, e
 		} else if scoped != workspacePath {
+			instructionFilesFolder = scoped
 			// Keep the canonical Crew path for admission and private chat persistence.
 			// The native runtime's project link points at this agent's scoped files.
 			resources := strings.TrimSuffix(strings.TrimSuffix(scoped, "/files"), "/resources") + "/resources"
@@ -854,7 +857,17 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 		}
 	}
-	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	rootInstructionKey := ""
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		rootGuidance, err := resolveRootProjectInstructions(ctx, userID, instructionFilesFolder, publication, req.Provider, req.ModelID)
+		if err != nil {
+			return nil, err
+		}
+		rootInstructionKey = rootGuidance.Key
+		// Shared Crew rules stay last, after imported root guidance.
+		projectInstructions = strings.TrimSpace(rootGuidance.Section + "\n\n" + projectInstructions)
+	}
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 
