@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -235,7 +234,7 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 		diverged++
 		// The Mac kept its own version. The server's stays in this chat's earlier conversations; the chat itself starts
 		// from the Mac's next copy, so a later import is not checked against a version the Mac does not have.
-		if err := rotateCrewHandbackRecord(ctx, owner, binding.PairID, s.record); err != nil {
+		if err := defaultProductConversationRegistryStore().keepHandback(ctx, owner, binding.PairID, s.record); err != nil {
 			log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_rotate_failed", id, tab)
 		}
 		if session, ok := row.Sessions[s.macKey]; ok {
@@ -262,31 +261,6 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 		dropCrewStandbyTab(id, owner, tab, reason)
 	}
 	return out, nil
-}
-
-// rotateCrewHandbackRecord starts the server's chat afresh after a hand back that kept both versions: the server's
-// version moves to the chat's earlier conversations (its history stays on disk).
-func rotateCrewHandbackRecord(ctx context.Context, owner, pair string, record ProductConversationRecord) error {
-	store := defaultProductConversationRegistryStore()
-	path := productConversationRegistryPath(owner)
-	lock := productConversationRegistryMutex(path)
-	lock.Lock()
-	defer lock.Unlock()
-	doc, err := store.loadDocument(ctx, path)
-	if err != nil {
-		return err
-	}
-	entry := productConversationRegistryEntryKey(crewProfileID, record.ConversationKey)
-	current, ok := doc.Entries[entry]
-	if !ok || current.SessionID != record.SessionID {
-		return nil
-	}
-	rememberPreviousConversation(&doc, entry, current)
-	now := time.Now().UTC()
-	current.SessionID = "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/handback-kept/"+record.ConversationKey+"/"+now.Format(time.RFC3339Nano))).String()
-	current.UpdatedAt = now.Format(time.RFC3339Nano)
-	doc.Entries[entry] = current
-	return store.writeDocument(ctx, path, doc)
 }
 
 func crewHandbackAgentName(project, person, tab string) string {
