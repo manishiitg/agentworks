@@ -200,6 +200,10 @@ func readCrewTeam(project string) (crewTeam, error) {
 	return t, err
 }
 func writeCrewTeam(t crewTeam) error {
+	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
+	if (t.On || len(t.People) > 0) && agentWorksPrivateProject(context.Background(), t.ProjectID) {
+		return errors.New(agentWorksPrivateLine)
+	}
 	dir, err := crewTeamDir(t.ProjectID)
 	if err != nil {
 		return err
@@ -415,6 +419,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	owner := ownerOfCrewProjectID(project)
+	if r.Method != http.MethodGet && agentWorksPrivateProject(r.Context(), project) {
+		externalError(w, 403, "agentworks_private", agentWorksPrivateLine)
+		return
+	}
 	if r.Method == http.MethodGet {
 		t, e := readCrewTeam(project)
 		if os.IsNotExist(e) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
