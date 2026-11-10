@@ -318,10 +318,12 @@ func env() []string {
 
 // driverOverrides blanks every filter and diff driver command the repo's
 // config defines, including drivers in files it includes (git status and diff
-// follow include.path/includeIf). Reading config runs nothing. ok is false when
-// the config cannot be read or includes a file outside root.
+// follow include.path/includeIf) and config.worktree. No scope flag: --local
+// would skip config.worktree; env() already turns off system and global
+// config. Reading config runs nothing. ok is false when the config cannot be
+// read or includes a file outside root.
 func driverOverrides(ctx context.Context, root, dir, gitDir string) ([]string, bool) {
-	cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+dir, "--git-dir", gitDir, "config", "--local", "--includes", "--show-origin", "--name-only", "--null", "--list")
+	cmd := exec.CommandContext(ctx, "git", "-c", "safe.directory="+dir, "--git-dir", gitDir, "config", "--includes", "--show-origin", "--name-only", "--null", "--list")
 	cmd.Dir = dir
 	cmd.Env = env()
 	out, err := cmd.Output()
