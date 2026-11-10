@@ -103,8 +103,9 @@ Action through its function API (`functions action=call`) instead; its result co
 An ordinary native chat can ask through a supported question card. An asynchronous
 card can remain unanswered after the agent's turn ends; answering continues that
 same chat. Each card keeps its own answers; another unanswered card does not stop new activity. Do not invent an answer or describe a pending card as a workflow wait.
-Unanswered cards expire after 24 hours. A backend restart currently interrupts
-pending-card availability; a browser reload does not. Shared-agent relays do not
+Unanswered cards expire after 24 hours. A backend restart closes
+pending cards without answering them; ask again if the answer is still needed.
+A browser reload keeps pending cards available. Shared-agent relays do not
 support native asynchronous cards. Another person's reply never becomes an owner
 approval. For workflow inputs, read `python-workflows` and collect answers before
 starting the run.
