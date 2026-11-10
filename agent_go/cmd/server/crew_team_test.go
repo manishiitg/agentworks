@@ -125,6 +125,11 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatal("retired native Team address bypassed ID resolution")
 		}
 		endpoint := agentMessageEndpoint{ID: "team-test", UserID: "owner", TeamAgentID: directory.People[0].Agents[0].ID, ChatKey: "stale-key"}
+		endpoint.Kind, endpoint.Profile, endpoint.Session = triggerCallerCrew, crewProfileID, "old-session"
+		currentCaller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "team-test", ProfileID: crewProfileID}, Chat: &codeChat{Key: macSharedAgentChatKey("team-test", "team01"), SessionID: "new-session"}}
+		if !messageEndpointMatches(endpoint, "owner", currentCaller) || messageEndpointMatches(endpoint, "member", currentCaller) {
+			t.Fatal("Team reply must keep agent identity across session replacement without changing owner")
+		}
 		resolved, route, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member")
 		if err != nil || route != "owner_mac" || resolved.ChatKey != macSharedAgentChatKey("team-test", "team01") {
 			t.Fatalf("shared ID did not resolve to its owner's Mac: %+v %s %v", resolved, route, err)
@@ -145,6 +150,9 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		}
 		if _, _, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member"); err == nil {
 			t.Fatal("saved Team ID bypassed Only me")
+		}
+		if messageEndpointMatches(endpoint, "owner", currentCaller) {
+			t.Fatal("Only me agent retained Team reply authority")
 		}
 		if err := writeCrewTeamAgentFixture(teamBefore); err != nil {
 			t.Fatal(err)

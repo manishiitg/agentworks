@@ -109,32 +109,7 @@ func crewTeamMessagePairAdmitted(project, user, pair string) bool {
 	return ok && recorded == pair
 }
 
-// crewTeamOwnerAgent is the Crew owner when key is one of the owner's agents that are In team, read from the same rows the
-// Team tab lists (teamAgentsByPerson), else "". caller is the one asking: others' Only me agents are never in the rows.
-func crewTeamOwnerAgent(ctx context.Context, project, key, caller string) string {
-	t, err := readCrewTeam(project)
-	if err != nil || !t.On || t.OwnerID == "" || ownerOfCrewProjectID(project) != t.OwnerID {
-		return ""
-	}
-	short := strings.TrimPrefix(strings.TrimSpace(key), project+codeChatSideMarker)
-	seen := []string{}
-	for _, person := range teamAgentsByPerson(ctx, t, caller) {
-		if !person.Owner {
-			continue
-		}
-		for _, agent := range person.Agents {
-			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || key == project && agent.Tab == macMainTab) {
-				return t.OwnerID
-			}
-			seen = append(seen, fmt.Sprintf("%s:%s:in_team=%t", agent.Tab, strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker), agent.InTeam))
-		}
-	}
-	// A refusal names what was asked for and what the owner's agents are, so a mismatch shows in the log.
-	log.Printf("[CREW_TEAM] project=%s event=owner_agent_not_found key=%q owner_agents=%q", project, short, strings.Join(seen, ", "))
-	return ""
-}
-
-// sendTeamMessageFromMac is send_message on the Mac for a target "team:<local Crew>:<member's chat key>" (list_agents
+// sendTeamMessageFromMac is send_message on the Mac for a target "team:<local Crew>:<agent ID>" (list_agents
 // names it): the message goes to the Crew's online copy through this Mac's pair.
 func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner string, caller triggerLinkCaller, raw, message, submission string) (map[string]any, error) {
 	rest := strings.TrimPrefix(strings.TrimSpace(raw), "team:")
@@ -183,7 +158,7 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 }
 
 // crewTeamAddressOnMac is this Mac's send_message target for a Team agent addressed the server's way
-// (workspace:work:<online copy>/agent/<chat key>): "team:<the Crew here paired with that copy>:<chat key>", or "".
+// (workspace:work:<online copy>/agent/<agent ID>): "team:<the Crew here paired with that copy>:<agent ID>", or "".
 func crewTeamAddressOnMac(raw string) string {
 	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), "workspace:"+crewProfileID+":")
 	if !ok {
@@ -201,7 +176,7 @@ func crewTeamAddressOnMac(raw string) string {
 
 // teamMemberAgentRows lists, on the Mac, each Team member's own agents of this person's Mac Crews, read from the
 // Crew's online copy through the Mac's sign-in (the server decides what the owner may see). Their id is the
-// send_message target "team:<Crew>:<their chat>".
+// send_message target "team:<Crew>:<agent ID>".
 func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]interface{}) []map[string]interface{} {
 	rows := []map[string]interface{}{}
 	for _, crew := range crews {
