@@ -91,11 +91,11 @@ func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	// A legacy plain token (older catalog path) and a plain DCR client file.
 	legacy := filepath.Join(mcpagentTokensRoot(), "default", "Notion.json")
 	client := expandPath(getUserClientFilePath(platformMCPTokenUserID, "Notion"))
-	githubAccount := githubRecordPath("alice")
+	githubAccount := githubConnectionPath("alice", "0123456789abcdef0123456789abcdef")
 	for path, body := range map[string]string{
 		legacy:                     `{"access_token":"legacy-secret","token_type":"Bearer"}`,
 		client:                     `{"client_id":"cid","client_secret":"dcr-secret","redirect_uri":"https://x/cb"}`,
-		githubAccount:              `{"login":"example-user","source":"gh","vault_id":"v-example","secret_name":"VLT_example__GITHUB_TOKEN"}`,
+		githubAccount:              `{"id":"0123456789abcdef0123456789abcdef","login":"example-user","source":"gh","vault_id":"v-example","secret_name":"VLT_example__GITHUB_TOKEN"}`,
 		registrationFailuresPath(): `{"https://example.com/register https://example.com/callback":{"reason":"Needs setup","at":"2026-10-31T00:00:00Z"}}`,
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -119,11 +119,11 @@ func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	}
 	// PLAT-746-260: startup also seals GitHub account records; their reader must
 	// open them rather than forgetting the connection on every restart.
-	account := readGitHubRecord("alice")
+	account := readGitHubConnection("alice", "0123456789abcdef0123456789abcdef")
 	if account == nil || account.Login != "example-user" || account.Source != "gh" || account.SecretName != "VLT_example__GITHUB_TOKEN" {
 		t.Fatal("GitHub account was lost after startup sealing")
 	}
-	if readGitHubRecord("bob") != nil {
+	if readGitHubConnection("bob", "0123456789abcdef0123456789abcdef") != nil {
 		t.Fatal("another person inherited the GitHub connection")
 	}
 	account.Scopes = "repo"
@@ -134,13 +134,16 @@ func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	if err != nil || strings.HasPrefix(strings.TrimSpace(string(rawAccount)), "{") || strings.Contains(string(rawAccount), "example-user") {
 		t.Fatal("GitHub account update must stay sealed")
 	}
-	if account = readGitHubRecord("alice"); account == nil || account.Scopes != "repo" {
+	if account = readGitHubConnection("alice", "0123456789abcdef0123456789abcdef"); account == nil || account.Scopes != "repo" {
 		t.Fatal("updated GitHub account could not be read")
 	}
-	if err := os.WriteFile(githubRecordPath("bob"), rawAccount, 0o600); err != nil {
+	if err := os.MkdirAll(filepath.Dir(githubConnectionPath("bob", "0123456789abcdef0123456789abcdef")), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if readGitHubRecord("bob") != nil {
+	if err := os.WriteFile(githubConnectionPath("bob", "0123456789abcdef0123456789abcdef"), rawAccount, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if readGitHubConnection("bob", "0123456789abcdef0123456789abcdef") != nil {
 		t.Fatal("copied GitHub connection bypassed person-bound sealing")
 	}
 	if !registrationFailed("https://example.com/register", "https://example.com/callback") {

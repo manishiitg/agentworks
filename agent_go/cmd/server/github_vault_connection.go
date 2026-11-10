@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"log"
 	"os"
 	"os/exec"
@@ -94,17 +95,22 @@ func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, s
 	if expectedLogin != "" && !strings.EqualFold(login, expectedLogin) {
 		return nil, errors.New("GitHub returned a different account. Choose your account again.")
 	}
+	id := strings.ReplaceAll(uuid.NewString(), "-", "")
+	ctx = context.WithValue(ctx, githubConnectionSecretKey{}, "GITHUB_"+strings.ToUpper(id))
 	vaultID, secretName, err := githubStoreToken(ctx, api, person, token)
 	if err != nil {
 		log.Printf("[GITHUB_VAULT] saving the account failed person=%s", person)
 		return nil, errors.New("Your GitHub account could not be saved. Try again.")
 	}
-	rec := githubAccountRecord{Login: login, Source: source, Scopes: scopes, VaultID: vaultID, SecretName: secretName, ConnectedAt: time.Now().UTC().Format(time.RFC3339)}
+	rec := githubAccountRecord{ID: id, Login: login, Source: source, Scopes: scopes, VaultID: vaultID, SecretName: secretName, ConnectedAt: time.Now().UTC().Format(time.RFC3339)}
 	// Organisation access is informational, never a condition of connecting.
 	rec.Orgs, rec.NeedsApproval = githubOrgAccess(ctx, token)
 	rec.OrgsCheckedAt = rec.ConnectedAt
 	if err := writeGitHubRecord(person, rec); err != nil {
 		return nil, errors.New("Your GitHub connection details could not be saved. Try again.")
+	}
+	if err := selectProjectGitHubConnection(ctx, person, rec.ID); err != nil {
+		return nil, err
 	}
 	log.Printf("[GITHUB_VAULT] connected person=%s github_login=%s source=%s", person, login, source)
 	publishCrewPanelForPerson(person)
@@ -118,7 +124,7 @@ func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, metho
 	expectedLogin := ""
 	switch method {
 	case "oauth":
-		link, err := startGitHubConnect(person, redirect)
+		link, err := startGitHubConnect(person, redirect, githubProjectRoot(ctx))
 		return map[string]any{"auth_url": link}, err
 	case "gh":
 		if !localGitHubCLIAllowed(person) {

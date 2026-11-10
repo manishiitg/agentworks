@@ -11,8 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -22,10 +20,8 @@ import (
 
 // A person's own GitHub account through the deployment's GitHub OAuth App (PLAT-746-158 B8; the decisions log, 2026-10-28).
 // An admin stores the app once (sign-in app "github"); a person connects their own GitHub account in the browser.
-// The token becomes the person's own Vault secret GITHUB_TOKEN in their "My accounts" vault: the same object the
-// paste path stores, so status, removal and delivery have one store. A Crew gets it the way secrets reach work
-// (githubVaultSecretFor adds it to the owner's Crews that use all their Vault apps), and its shells see it as
-// SECRET_GITHUB_TOKEN plus GH_TOKEN and git's env-only credential helper (workspace/gitcred).
+// Connections are reusable personal Vault items. Each Crew explicitly selects
+// one connection; no person-wide default is injected into other Crews.
 //
 // The browser comes back from GitHub without our sign-in (it is a header, not a cookie), so the callback only keeps
 // GitHub's one-time code; the signed-in app then completes, and only for the person who started the connection.
@@ -53,10 +49,14 @@ var (
 		if err != nil {
 			return "", "", err
 		}
-		if err := api.setVaultSecret(ctx, person, vaultID, githubSecretName, token, true); err != nil {
+		secretName, _ := ctx.Value(githubConnectionSecretKey{}).(string)
+		if secretName == "" {
+			return "", "", errors.New("Choose a GitHub connection before saving it.")
+		}
+		if err := api.setVaultSecret(ctx, person, vaultID, secretName, token, true); err != nil {
 			return "", "", err
 		}
-		full, err := vaultSecretName(vaultID, githubSecretName)
+		full, err := vaultSecretName(vaultID, secretName)
 		return vaultID, full, err
 	}
 	// githubTokenValue reads the stored token, to revoke it at GitHub.
@@ -76,6 +76,7 @@ var (
 
 type githubPendingConnect struct {
 	person, redirect, code, providerError string
+	workspace                             string
 	created                               time.Time
 }
 
@@ -86,6 +87,7 @@ var githubPending = struct {
 
 // githubAccountRecord is what status shows; it never holds the token.
 type githubAccountRecord struct {
+	ID          string `json:"id"`
 	Login       string `json:"login"`
 	Source      string `json:"source,omitempty"`
 	Scopes      string `json:"scopes"`
@@ -222,28 +224,16 @@ func githubAccessSummary(rec *githubAccountRecord) string {
 	return strings.Join(parts, " · ")
 }
 
-func githubRecordPath(person string) string {
-	return filepath.Join(mcpagentTokensRoot(), platformMCPTokenUserID, "github-accounts", sanitizeUserIDForPath(person)+".json")
-}
-
-func readGitHubRecord(person string) *githubAccountRecord {
-	data, err := oauth.ReadTokenFile(githubRecordPath(person))
-	if err != nil {
-		return nil
-	}
-	var rec githubAccountRecord
-	if json.Unmarshal(data, &rec) != nil || rec.SecretName == "" {
-		return nil
-	}
-	return &rec
-}
-
 func writeGitHubRecord(person string, rec githubAccountRecord) error {
+	path := githubConnectionPath(person, rec.ID)
+	if path == "" {
+		return errors.New("Invalid GitHub connection.")
+	}
 	data, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
-	return oauth.WriteTokenFile(githubRecordPath(person), data)
+	return oauth.WriteTokenFile(path, data)
 }
 
 func githubApp() (clientID, clientSecret string, ok bool) {
@@ -257,7 +247,7 @@ func githubApp() (clientID, clientSecret string, ok bool) {
 const githubNoAppMessage = "Browser sign-in is not configured. Use an existing gh login on your local installation, or add a personal access token. OAuth setup is optional."
 
 // startGitHubConnect returns the GitHub page where the person approves the connection.
-func startGitHubConnect(person, redirect string) (string, error) {
+func startGitHubConnect(person, redirect string, workspace ...string) (string, error) {
 	if !personVaultActive(person) {
 		return "", errors.New("Your account cannot keep its own Vault items.")
 	}
@@ -279,7 +269,15 @@ func startGitHubConnect(person, redirect string) (string, error) {
 			delete(githubPending.m, key)
 		}
 	}
-	githubPending.m[state] = &githubPendingConnect{person: person, redirect: redirect, created: time.Now()}
+	root := ""
+	if len(workspace) > 0 {
+		root = workspace[0]
+	}
+	if root == "" {
+		githubPending.Unlock()
+		return "", errors.New("Choose a Crew for this GitHub connection.")
+	}
+	githubPending.m[state] = &githubPendingConnect{person: person, redirect: redirect, workspace: root, created: time.Now()}
 	githubPending.Unlock()
 	query := url.Values{"client_id": {clientID}, "redirect_uri": {redirect}, "scope": {githubOAuthScopes}, "state": {state}, "allow_signup": {"false"}}
 	log.Printf("[GITHUB_VAULT] connect started person=%s", person)
@@ -349,6 +347,10 @@ func (api *StreamingAPI) completeGitHubConnect(ctx context.Context, person, stat
 	clientID, clientSecret, ok := githubApp()
 	if !ok {
 		return nil, errors.New(githubNoAppMessage)
+	}
+	ctx, scopeErr := githubProjectContext(ctx, person, pending.workspace, true)
+	if scopeErr != nil {
+		return nil, scopeErr
 	}
 	token, scopes, err := exchangeGitHubCode(ctx, clientID, clientSecret, pending.code, pending.redirect)
 	if err != nil {
@@ -435,7 +437,7 @@ func gitHubStatus(ctx context.Context, person string) map[string]any {
 			out["gh_accounts_note"] = err.Error()
 		}
 	}
-	if rec := readGitHubRecord(person); rec != nil {
+	if rec, _ := projectGitHubConnection(ctx, person, githubProjectRoot(ctx)); rec != nil {
 		if checked, err := time.Parse(time.RFC3339, rec.OrgsCheckedAt); err != nil || time.Since(checked) > githubOrgRefresh {
 			if token := githubTokenValue(rec); token != "" {
 				rec.Orgs, rec.NeedsApproval = githubOrgAccess(ctx, token)
@@ -450,58 +452,26 @@ func gitHubStatus(ctx context.Context, person string) map[string]any {
 			out["approval_page"] = "https://github.com/settings/connections/applications/" + url.PathEscape(clientID)
 		}
 	}
+	connections := []map[string]string{}
+	for _, rec := range gitHubConnections(person) {
+		connections = append(connections, map[string]string{"id": rec.ID, "login": rec.Login, "source": rec.Source})
+	}
+	out["connections"] = connections
+	if rec, err := projectGitHubConnection(ctx, person, githubProjectRoot(ctx)); err != nil {
+		out["selection_error"] = err.Error()
+	} else if rec != nil {
+		out["connection_id"] = rec.ID
+	}
 	if !ready {
 		out["next"] = githubNoAppMessage
 	}
 	return out
 }
 
-// disconnectGitHub revokes the token at GitHub first, then removes it from your Vault even when the revoke fails, and
-// reports whether GitHub confirmed the revoke.
+// Disconnecting a project unselects its account; it never revokes a reusable
+// connection or removes credentials that another project may still use.
 func (api *StreamingAPI) disconnectGitHub(ctx context.Context, person string) (bool, error) {
-	rec := readGitHubRecord(person)
-	if rec == nil {
-		return false, errors.New("No GitHub account is connected.")
-	}
-	revoked := false
-	clientID, clientSecret, ok := githubApp()
-	if token := githubTokenValue(rec); ok && token != "" && rec.Source != "pat" && rec.Source != "gh" {
-		body, _ := json.Marshal(map[string]string{"access_token": token})
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, githubAPIURL+"/applications/"+url.PathEscape(clientID)+"/token", strings.NewReader(string(body)))
-		if err == nil {
-			req.SetBasicAuth(clientID, clientSecret)
-			req.Header.Set("Accept", "application/vnd.github+json")
-			if resp, err := githubHTTPClient.Do(req); err == nil {
-				revoked = resp.StatusCode == http.StatusNoContent
-				if !revoked {
-					log.Printf("[GITHUB_VAULT] revoke not confirmed person=%s status=%d", person, resp.StatusCode)
-				}
-				resp.Body.Close()
-			}
-		}
-	}
-	if err := githubRemoveToken(ctx, api, person, rec.VaultID); err != nil {
-		return revoked, errors.New("Your GitHub account could not be removed. Try again.")
-	}
-	if err := os.Remove(githubRecordPath(person)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return revoked, err
-	}
-	publishCrewPanelForPerson(person)
-	log.Printf("[GITHUB_VAULT] disconnected person=%s revoked_at_github=%t", person, revoked)
-	return revoked, nil
-}
-
-// githubVaultSecretFor is the owner's connected GitHub secret for a Crew that uses all of its owner's Vault apps,
-// so connecting GitHub works in the owner's Crews without another selection step. A shared Crew resolves secrets as
-// its owner, so it uses the owner's account, as with every lent Vault app.
-func githubVaultSecretFor(owner string, chosenAppsOnly bool) string {
-	if chosenAppsOnly || owner == "" {
-		return ""
-	}
-	if rec := readGitHubRecord(owner); rec != nil {
-		return rec.SecretName
-	}
-	return ""
+	return false, selectProjectGitHubConnection(ctx, person, "")
 }
 
 // HTTP: GET status, POST connect, POST complete, DELETE disconnect, for the signed-in person.
@@ -512,6 +482,14 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	person := claims.UserID
+	if !strings.HasSuffix(r.URL.Path, "/complete") {
+		ctx, err := githubProjectContext(r.Context(), person, r.URL.Query().Get("workspace_path"), r.Method != http.MethodGet)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusForbidden, err.Error())
+			return
+		}
+		r = r.WithContext(ctx)
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	switch {
 	case r.Method == http.MethodGet:
@@ -519,7 +497,7 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 			// The menu shows the saved connection. Account choices and fresh
 			// organization checks belong to the full connection settings page.
 			out := map[string]any{"connected": false}
-			if rec := readGitHubRecord(person); rec != nil {
+			if rec, _ := projectGitHubConnection(r.Context(), person, githubProjectRoot(r.Context())); rec != nil {
 				out["connected"], out["login"] = true, rec.Login
 			}
 			writeAgentProfileJSON(w, http.StatusOK, out)
@@ -527,25 +505,29 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 		}
 		writeAgentProfileJSON(w, http.StatusOK, gitHubStatus(r.Context(), person))
 	case r.Method == http.MethodDelete:
-		rec := readGitHubRecord(person)
-		source := ""
-		if rec != nil {
-			source = rec.Source
-		}
 		revoked, err := api.disconnectGitHub(r.Context(), person)
 		if err != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"removed": true, "revoked_at_github": revoked, "message": githubDisconnectNote(source, revoked)})
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"removed": true, "revoked_at_github": revoked, "message": "Disconnected from this project. Saved connections and other projects are unchanged."})
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/connect"):
 		var body struct {
-			Method string `json:"method"`
-			Login  string `json:"login"`
-			Token  string `json:"token"`
+			Method       string `json:"method"`
+			Login        string `json:"login"`
+			Token        string `json:"token"`
+			ConnectionID string `json:"connection_id"`
 		}
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body) != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, "Choose a GitHub connection method.")
+			return
+		}
+		if body.Method == "saved" {
+			if err := selectProjectGitHubConnection(r.Context(), person, body.ConnectionID); err != nil {
+				writeAgentProfileError(w, 400, err.Error())
+				return
+			}
+			writeAgentProfileJSON(w, 200, gitHubStatus(r.Context(), person))
 			return
 		}
 		result, err := api.connectGitHubAccount(r.Context(), person, body.Method, body.Token, body.Login, deriveOAuthRedirectURI(r))
@@ -576,26 +558,33 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 // githubVaultOperation is the same for chat and MCP (vault action=github_status, github_connect, github_disconnect).
 func (api *StreamingAPI) githubVaultOperation(ctx context.Context, person, operation string, args map[string]interface{}) (string, error) {
 	var out any
+	var err error
+	ctx, err = githubProjectContext(ctx, person, argString(args, "workspace_path"), operation != "github_status")
+	if err != nil {
+		return "", err
+	}
 	switch operation {
 	case "github_status":
 		out = gitHubStatus(ctx, person)
 	case "github_connect":
+		if argString(args, "method") == "saved" {
+			if err := selectProjectGitHubConnection(ctx, person, argString(args, "connection_id")); err != nil {
+				return "", err
+			}
+			out = gitHubStatus(ctx, person)
+			break
+		}
 		var err error
 		out, err = api.connectGitHubAccount(ctx, person, argString(args, "method"), argString(args, "token"), argString(args, "login"), api.mcpToolOAuthRedirect(ctx, person))
 		if err != nil {
 			return "", err
 		}
 	case "github_disconnect":
-		rec := readGitHubRecord(person)
-		source := ""
-		if rec != nil {
-			source = rec.Source
-		}
 		revoked, err := api.disconnectGitHub(ctx, person)
 		if err != nil {
 			return "", err
 		}
-		out = map[string]any{"removed": true, "revoked_at_github": revoked, "next": githubDisconnectNote(source, revoked)}
+		out = map[string]any{"removed": true, "revoked_at_github": revoked, "next": "Disconnected from this project. Saved connections and other projects are unchanged."}
 	default:
 		return "", fmt.Errorf("unknown GitHub operation")
 	}

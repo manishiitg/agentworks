@@ -45,8 +45,8 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
       <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
 
     </>}
-    {section === 'github' && github && <GitHubVaultCard changeConnectionOpen />}
-    {section === 'secrets' && github && <GitHubVaultCard />}
+    {section === 'github' && github && <GitHubVaultCard workspacePath={workspacePath} changeConnectionOpen />}
+    {section === 'secrets' && github && <GitHubVaultCard workspacePath={workspacePath} />}
     {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
     {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow'} tabId={tabId}/></>}

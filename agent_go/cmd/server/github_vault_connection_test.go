@@ -23,6 +23,7 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "1")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator","products":["mcp-gateway","work"]},{"id":"bob","username":"bob","role":"creator","products":["mcp-gateway","work"]}]}`)
+	githubProjectFixture(t)
 	const pat, cliToken = "github_pat_fixture", "gho_fixture"
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
@@ -76,14 +77,14 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	})
 	api := &StreamingAPI{}
 	call := func(method, body string) *httptest.ResponseRecorder {
-		return personalRoute(api, (*StreamingAPI).handleGitHubVault, method, "/api/vault/github/connect", body, "alice", nil)
+		return personalRoute(api, (*StreamingAPI).handleGitHubVault, method, "/api/vault/github/connect?workspace_path=Crew/github-alice", body, "alice", nil)
 	}
 	// A missing OAuth app cannot block a PAT. It is not stored for a colleague.
 	result := call(http.MethodPost, `{"method":"pat","token":"`+pat+`"}`)
-	if result.Code != 200 || stored["alice"] != pat || readGitHubRecord("bob") != nil {
+	if result.Code != 200 || stored["alice"] != pat || githubTestRecord(t, "bob") != nil {
 		t.Fatalf("PAT connection failed: %d %s", result.Code, result.Body.String())
 	}
-	if rec := readGitHubRecord("alice"); rec == nil || rec.Source != "pat" || rec.Login != "alice-pat" || githubVaultSecretFor("alice", true) != "" {
+	if rec := githubTestRecord(t, "alice"); rec == nil || rec.Source != "pat" || rec.Login != "alice-pat" {
 		t.Fatal("PAT did not use the existing owner record/grant model")
 	}
 	for _, settings := range []struct{ mode, multi, local, owner string }{{"server", "false", "true", "alice"}, {"local", "true", "true", "alice"}, {"local", "false", "true", "bob"}} {
@@ -104,7 +105,7 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 		if denied := call(http.MethodPost, body); denied.Code == 200 {
 			t.Fatal("imported an unchosen, absent, or mismatched account")
 		}
-		if rec := readGitHubRecord("alice"); rec == nil || rec.Login != "alice-pat" {
+		if rec := githubTestRecord(t, "alice"); rec == nil || rec.Login != "alice-pat" {
 			t.Fatal("failed choice replaced the saved account")
 		}
 	}
@@ -113,14 +114,14 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	if result.Code != 200 || cliReads != 1 || selectedLogin != "alice-cli" || stored["alice"] != cliToken {
 		t.Fatalf("local gh import failed: %d %s", result.Code, result.Body.String())
 	}
-	if rec := readGitHubRecord("alice"); rec == nil || rec.Source != "gh" || rec.Login != "alice-cli" {
+	if rec := githubTestRecord(t, "alice"); rec == nil || rec.Source != "gh" || rec.Login != "alice-cli" {
 		t.Fatal("CLI identity did not replace the selected record")
 	}
 	// PLAT-856-542: the sidebar must not run gh auth/network discovery just
 	// to show the existing connection, or read another person's connection.
 	beforeAccounts, beforeTokens := accountReads, cliReads
-	summary := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=summary", "", "alice", nil)
-	otherSummary := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=summary", "", "bob", nil)
+	summary := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=summary&workspace_path=Crew/github-alice", "", "alice", nil)
+	otherSummary := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=summary&workspace_path=Crew/github-bob", "", "bob", nil)
 	if summary.Code != 200 || !strings.Contains(summary.Body.String(), `"login":"alice-cli"`) || strings.Contains(summary.Body.String(), "gh_accounts") || accountReads != beforeAccounts || cliReads != beforeTokens {
 		t.Fatalf("summary performed connection discovery: %d %s", summary.Code, summary.Body.String())
 	}
@@ -128,7 +129,7 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 		t.Fatal("summary crossed saved account ownership")
 	}
 	gone := call(http.MethodDelete, "")
-	if gone.Code != 200 || readGitHubRecord("alice") != nil || len(stored) != 0 || !strings.Contains(gone.Body.String(), "gh login is unchanged") {
+	if gone.Code != 200 || githubTestRecord(t, "alice") != nil || len(stored) == 0 || !strings.Contains(gone.Body.String(), "other projects are unchanged") {
 		t.Fatalf("disconnect changed native identity: %d %s", gone.Code, gone.Body.String())
 	}
 	githubReadCLIToken = func(context.Context, string) (string, error) { return "", errors.New(cliToken) }

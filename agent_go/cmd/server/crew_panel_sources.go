@@ -195,7 +195,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				Connected bool
 				Login     string
 			}
-			err := read(ctx, api.handleGitHubVault, "/api/vault/github", url.Values{"view": {"summary"}}, &data)
+			err := read(ctx, api.handleGitHubVault, "/api/vault/github", url.Values{"view": {"summary"}, "workspace_path": {workspace}}, &data)
 			label := "Not connected"
 			if data.Connected {
 				label = "Connected"
