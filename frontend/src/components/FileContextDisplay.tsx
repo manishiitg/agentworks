@@ -1,4 +1,4 @@
-import { FileText, Folder, X } from 'lucide-react'
+import { Check, FileText, Folder, X } from 'lucide-react'
 import { WorkspaceImage } from './ui/WorkspaceImage'
 
 interface FileContextItem {
@@ -22,7 +22,9 @@ export default function FileContextDisplay({ attachmentMode = false, files, onRe
   }
 
   if (attachmentMode) {
-    return <div aria-label="Attachments" className="flex gap-2 overflow-x-auto px-2 pt-2 pb-1">
+    return <div className="px-2 pt-2 pb-1">
+      <p role="status" className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Check aria-hidden="true" className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />Attached to your next message</p>
+      <div aria-label="Attachments" className="flex gap-2 overflow-x-auto">
       {files.map(file => {
         const name = file.name || file.path.split('/').filter(Boolean).pop() || 'File'
         const image = file.type === 'file' && /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(file.path)
@@ -36,6 +38,7 @@ export default function FileContextDisplay({ attachmentMode = false, files, onRe
           </button>
         </div>
       })}
+      </div>
     </div>
   }
 
