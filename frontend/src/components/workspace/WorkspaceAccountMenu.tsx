@@ -1,3 +1,4 @@
+import AppearanceControl from './AppearanceControl'
 import { GetApp } from './GetApp'
 import { RotateCcw } from 'lucide-react'
 import { openLocalSetup } from '../../utils/homeNavigation'
@@ -32,6 +33,7 @@ export function WorkspaceAccountMenu() {
       <ProvidersControl />
       <UsersControl />
       <NotificationsControl />
+      <AppearanceControl />
     </AccountControl>
   </ProductSettingsMenu>
 }

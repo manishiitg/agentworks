@@ -37,7 +37,7 @@ export function ProductSettingsMenu({ children, activity, accountTrigger, aboveT
     window.addEventListener('open-product-settings', show)
     return () => window.removeEventListener('open-product-settings', show)
   }, [target, sidebarTarget, accountMenu])
-  const focusFirst = () => requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"]')?.focus())
+  const focusFirst = () => requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]')?.focus())
   // Close before the action changes page/toolbar and reparents this portal.
   // Goals keeps its picker state above the portal, unlike Crew/Code selectors.
   const closePickerBeforeAction = (event: ReactMouseEvent) => {
@@ -71,7 +71,7 @@ export function ProductSettingsMenu({ children, activity, accountTrigger, aboveT
         onKeyDown={event => {
           if (!event.currentTarget.contains(event.target as Node) || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
           event.preventDefault()
-          const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)'))
+          const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled), [role="menuitemradio"]:not(:disabled)'))
           const current = items.indexOf(document.activeElement as HTMLButtonElement)
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length
           items[next]?.focus()
