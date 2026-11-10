@@ -124,10 +124,28 @@ func (api *StreamingAPI) crewNetworkMessageFromMac(ctx context.Context, owner st
 		return nil, fmt.Errorf("update the network server to enable Crew agent messaging")
 	}
 	out := reply.NetworkMessage
-	if inbox, _ := out["inbox_id"].(string); inbox != "" {
-		out["inbox_id"] = "network:" + project + ":" + inbox
-	}
+	qualifyCrewNetworkReplyAddresses(out, project)
 	return out, nil
+}
+
+// Keep every callable address on the same verified network route. Conversation
+// IDs and message text remain server data, not local mailbox addresses.
+func qualifyCrewNetworkReplyAddresses(out map[string]any, project string) {
+	qualify := func(row map[string]any) {
+		for _, key := range []string{"inbox_id", "reply_address"} {
+			if address, _ := row[key].(string); strings.HasPrefix(address, "inbox-") {
+				row[key] = "network:" + project + ":" + address
+			}
+		}
+	}
+	qualify(out)
+	// NetworkMessage has just been decoded from the paired server's JSON.
+	messages, _ := out["messages"].([]any)
+	for _, item := range messages {
+		if row, ok := item.(map[string]any); ok {
+			qualify(row)
+		}
+	}
 }
 
 // The saved pair authenticates the owner; the Mac's actual tab list authenticates
