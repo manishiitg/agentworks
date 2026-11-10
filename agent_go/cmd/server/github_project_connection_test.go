@@ -133,3 +133,25 @@ func TestGitHubProjectSelectionDoesNotChangeOtherProject(t *testing.T) {
 		t.Fatal("missing selected credential silently fell back")
 	}
 }
+
+// PR1938 review: a Team builder has project edit access but cannot select an
+// ID from their own registry into a project whose runtime uses the main owner.
+func TestGitHubProjectSelectionUsesMainOwnersRegistry(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	root := crewOwnerTabsFixture(t, env, "other")
+	joined := internalBotRequestContext(t.Context(), "other")
+	request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(joined)
+	if _, err := personalConnectionItemScope(request, root, true, "GitHub", "GitHub"); err != nil {
+		t.Fatalf("fixture is not an admitted Team builder: %v", err)
+	}
+	if _, err := githubProjectContext(joined, "other", root, true); err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatal("Team builder admitted a personal identity that runtime would resolve under another owner", err)
+	}
+	if err := selectProjectGitHubConnection(context.WithValue(joined, githubProjectRootKey{}, root), "other", ""); err == nil {
+		t.Fatal("selection writer allowed another registry's principal")
+	}
+	owner := internalBotRequestContext(t.Context(), "owner")
+	if _, err := githubProjectContext(owner, "owner", root, true); err != nil {
+		t.Fatal("main owner cannot select their account", err)
+	}
+}
