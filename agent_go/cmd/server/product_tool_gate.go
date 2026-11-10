@@ -124,12 +124,6 @@ func newAgentWorksChatToolGate(mode string) *productToolGate {
 	return gate
 }
 
-func newWorkflowConversationToolGate(sessionID string, req QueryRequest, readOnly bool) *productToolGate {
-
-	policy := resolveWorkflowChatPolicy(sessionID, req, nil, readOnly)
-	return newAgentWorksChatToolGate(policy.Mode)
-}
-
 // enforcing reports whether the gate filters. False means observe mode.
 func (g *productToolGate) enforcing() bool { return g != nil && g.allowed != nil }
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
@@ -21,7 +20,7 @@ import (
 )
 
 // Wiring of provider-account rules into the query, retained-CLI, live-input,
-// delegation, scheduled-run and cost paths.
+// scheduled-run and cost paths.
 
 // setWorkflowW rewrites W's manifest: Bob is an editor and W's Builder model
 // runs on connectionID.
@@ -102,26 +101,11 @@ func TestProviderAccountsSharedAccountAndCrewTurnsAreFull(t *testing.T) {
 	}
 }
 
-func TestProviderAccountsDelegationAndScheduledScopes(t *testing.T) {
+func TestProviderAccountsScheduledScopes(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	env.setWorkflowW(t, account.ID)
-	ctx := context.WithValue(context.Background(), common.UserIDKey, "bob")
-	parent := QueryRequest{SelectedFolder: "Workflow/w", userID: "someone-else"}
-	principal := delegationPrincipal(ctx, parent)
-	scope := delegationProviderAccountScope(principal, parent)
-	if principal != "bob" || scope.Principal != "bob" || scope.WorkspacePath != "Workflow/w" {
-		t.Fatalf("delegation scope: %+v", scope)
-	}
-	keys := env.api.withConnectionResolver(nil, scope)
-	if _, err := keys.ResolveConnection(ctx, "claude-code", account.ID); err != nil {
-		t.Fatalf("bob's sub-agent in W: %v", err)
-	}
-	outside := env.api.withConnectionResolver(nil, delegationProviderAccountScope("bob", QueryRequest{SelectedFolder: "Workflow/v"}))
-	if _, err := outside.ResolveConnection(ctx, "claude-code", account.ID); err == nil {
-		t.Fatal("bob's sub-agent outside W used the account")
-	}
 
 	var capabilities WorkflowCapabilities
 	capabilities.LLMConfig = &workflowtypes.PresetLLMConfig{SchemaVersion: 2, Mode: workflowtypes.LLMConfigModeExplicit, BuilderLLM: &workflowtypes.AgentLLMConfig{Provider: "claude-code", ModelID: "sonnet", ConnectionID: account.ID}}

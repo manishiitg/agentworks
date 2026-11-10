@@ -1,4 +1,4 @@
-import type { AgentLLMConfig, DelegationTierConfig, LLMProvider, PresetLLMConfig } from '../services/api-types'
+import type { AgentLLMConfig, LLMProvider, PresetLLMConfig } from '../services/api-types'
 import type {
   ProviderDefaultTierModels,
   ProviderManifestEntry,
@@ -68,31 +68,6 @@ function resolveManifestDefaults(defaults?: ProviderDefaultTierModels) {
     low: defaults.low,
     maintenance: defaults.high,
     pulse: defaults.high,
-  }
-}
-
-/** Resolve the live AgentWorks root-chat model from simple or advanced setup. */
-export function resolveDelegationMainModel(
-  config: DelegationTierConfig | null | undefined,
-  providerManifest: ProviderManifestEntry[] = [],
-): AgentLLMConfig | null {
-  if (!config) return null
-
-  if (config.mode === 'provider_profile' && config.provider) {
-    const defaults = resolveManifestDefaults(findManifestDefaults(config.provider, providerManifest))
-    if (!defaults) return null
-    return {
-      provider: defaults.builder.provider as LLMProvider,
-      model_id: defaults.builder.model_id,
-      ...(hasOptions(defaults.builder.options) ? { options: defaults.builder.options } : {}),
-    }
-  }
-
-  if (!config.main?.provider || !config.main.model_id) return null
-  return {
-    provider: config.main.provider as LLMProvider,
-    model_id: config.main.model_id,
-    ...(hasOptions(config.main.options) ? { options: config.main.options } : {}),
   }
 }
 

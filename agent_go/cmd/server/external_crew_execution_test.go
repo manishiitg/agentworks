@@ -245,19 +245,15 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.api.activeSessions = map[string]*ActiveSessionInfo{record.SessionID: {UserID: "owner"}}
-	f.api.bgAgentRegistry.Register("another-person-session", &BackgroundAgent{ID: "private-agent", SessionID: "another-person-session", Name: "private background task", Status: BGAgentRunning})
 	server := serveExternalMCP(t, f.api, crewWriter("owner"))
 	cli := dialExternalMCP(t, ctx, server.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
 	// Session tools are grouped by family (ui, sessions); the family takes the old tool's name as its action.
-	for _, tc := range []struct{ name, tool, action string }{{"capabilities", "ui", "capabilities"}, {"state", "ui", "get"}, {"background list", "sessions", "background_list"}} {
+	for _, tc := range []struct{ name, tool, action string }{{"capabilities", "ui", "capabilities"}, {"state", "ui", "get"}} {
 		name := tc.name
 		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": "main", "action": "chat_tool", "tool_name": tc.tool, "arguments": map[string]any{"action": tc.action}}})
 		requireRemoteSuccess(t, result, name)
 		raw, _ := json.Marshal(result)
-		if strings.Contains(string(raw), "private background task") {
-			t.Fatal("another session's background agent was exposed")
-		}
 		if name == "state" && !strings.Contains(string(raw), "browser_disconnected") {
 			t.Fatalf("unattached browser result: %s", raw)
 		}
@@ -273,22 +269,19 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 			t.Fatalf("status %d want %d: %s", rec.Code, want, rec.Body)
 		}
 	}
-	f.api.bgAgentRegistry.Register(record.SessionID, &BackgroundAgent{ID: "own-agent", SessionID: record.SessionID, Name: "own task", Status: BGAgentRunning})
 	owner := crewWriter("owner")
-	owner.AccessToken.Scopes = append(owner.AccessToken.Scopes, "crews:run")
-	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "sessions", "arguments": map[string]any{"action": "background_status", "agent_id": "own-agent"}}, 200)
-	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "sessions", "arguments": map[string]any{"action": "background_stop", "agent_id": "own-agent"}}, 200)
+	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "capabilities"}}, 200)
+	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "get"}}, 200)
 	audit, err := openCrewExecutionAudit()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer audit.Close()
 	var count int
-	if err = audit.db.QueryRow(`SELECT COUNT(*) FROM external_crew_execution_audit WHERE crew_id='team' AND tool_group='crew_session' AND action IN ('sessions.background_status','sessions.background_stop') AND status='completed'`).Scan(&count); err != nil || count != 2 {
+	if err = audit.db.QueryRow(`SELECT COUNT(*) FROM external_crew_execution_audit WHERE crew_id='team' AND tool_group='crew_session' AND action IN ('ui.capabilities','ui.get') AND status='completed'`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("session actions not audited: %d, %v", count, err)
 	}
-	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "list_background_agents"}, 404)
-	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "sessions", "arguments": map[string]any{"action": "background_start", "name": "task", "instruction": "do work"}}, 400)
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "ui", "arguments": map[string]any{"action": "capabilities"}}, 404)
 	call(crewWriter("other"), map[string]any{"action": "tools", "chat_id": "own-session"}, 404)
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "get", "session_id": "another-person-session"}}, 400)
 }
