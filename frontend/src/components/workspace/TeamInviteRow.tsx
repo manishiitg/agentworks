@@ -35,9 +35,9 @@ function TeamInviteRow({ invite }: { invite: TeamInvite }) {
   }
   return <div role="group" aria-label={`Team invite: ${invite.name}`} className="rounded-lg border border-border px-3 py-2 text-[13px]">
     <p className="leading-5"><b className="font-medium">{invite.owner_name}</b> invited you to the {invite.name} team.</p>
-    <p className="text-[11px] leading-4 text-muted-foreground">{invite.connection ? 'Add it to this Mac: its shared folder syncs here and you can chat with its shared agents.' : 'Open it here, or add it in your Mac app later.'}</p>
+    <p className="text-[11px] leading-4 text-muted-foreground">{invite.connection ? 'Add it to this Mac: its shared folder syncs here and you can chat with its shared agents.' : 'Join to open this team here. You can also add its shared folder to your Mac later.'}</p>
     <div className="mt-1.5 flex flex-wrap gap-1.5">
-      {!folder && <button type="button" disabled={busy} onClick={() => void (invite.connection ? chooseFolder() : answer(true))} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs shadow-sm hover:bg-muted">{invite.connection ? 'Add to my Mac' : 'Open on the web'}</button>}
+      {!folder && <button type="button" disabled={busy} onClick={() => void (invite.connection ? chooseFolder() : answer(true))} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs shadow-sm hover:bg-muted">{invite.connection ? 'Add to my Mac' : 'Join'}</button>}
       {!folder && <button type="button" disabled={busy} onClick={() => void answer(false)} className="rounded-full px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-muted">Decline</button>}
     </div>
     {folder && <div className="mt-1.5 space-y-1.5 text-[11px] text-muted-foreground">
