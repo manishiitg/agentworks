@@ -508,7 +508,7 @@ func (api *StreamingAPI) startClarificationFollowUp(r *http.Request, sessionID, 
 // Caller holds codingAgentClarificationsMu. Blocking tools have one waiter per
 // chat; independent native async cards are keyed by their stable prompt ID.
 func (api *StreamingAPI) codingAgentClarificationLocked(sessionID, promptID string) *pendingCodingAgentClarification {
-	if p := api.codingAgentClarifications[sessionID]; p != nil && p.promptID == promptID {
+	if p := api.codingAgentClarifications[sessionID]; p != nil && p.sessionID == sessionID && p.promptID == promptID {
 		return p
 	}
 	if p := api.codingAgentClarifications[promptID]; p != nil && p.nativeAsync && p.sessionID == sessionID {
