@@ -29,19 +29,11 @@ import { useChatStore } from '../../stores/useChatStore'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
-/** Crews first, then a flat shared-dashboard list. Each row names its owner once.
- * The personal AgentWorks agent is rendered by its network group. */
+/** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
+ * 10 Nov). The personal AgentWorks agent is rendered by its network group. */
 function ProjectList<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
-  const rest = projects.filter(project => !project.personal_agent)
-  const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
-  const dashboards = rest.filter(project => project.owned_by_caller === false && project.mode === 'run')
-  return <>{mine.map(render)}
-    {rest.filter(project => project.owned_by_caller === undefined).map(render)}
-    {dashboards.length > 0 && <section aria-label="Dashboards shared with me" className="mb-3 space-y-1">
-      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Shared</h2>
-      {dashboards.map(render)}
-    </section>}
-    </>
+  const rest = projects.filter(project => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run'))
+  return <>{rest.map(render)}</>
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
@@ -65,16 +57,18 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
     {hasDesktopConnections() ? <ConnectedServers projects={crews}>{children}</ConnectedServers> : <StandaloneWork projects={crews}>{children}</StandaloneWork>}
   </>
 }
-function useAllProjectsExpanded() {
+// All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
+// closed. The person's own open or close is kept either way.
+function useAllProjectsExpanded(hasPins: boolean) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  return useSidebarExpansionStore(state => state.expanded[key] ?? false)
+  return useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
 }
-function AllProjects({ children }: { children: ReactNode }) {
+function AllProjects({ children, hasPins }: { children: ReactNode; hasPins: boolean }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  const expanded = useAllProjectsExpanded()
+  const expanded = useAllProjectsExpanded(hasPins)
   const toggle = useSidebarExpansionStore(state => state.toggle)
   return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
-    <button type="button" aria-expanded={expanded} onClick={() => toggle(key)} className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <button type="button" aria-expanded={expanded} onClick={() => toggle(key, !hasPins)} className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="min-w-0 flex-1">All projects</span>
       <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
     </button>
@@ -82,8 +76,8 @@ function AllProjects({ children }: { children: ReactNode }) {
   </section>
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
-  const allProjectsExpanded = useAllProjectsExpanded()
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
+  const allProjectsExpanded = useAllProjectsExpanded(Boolean(pinned?.length))
   // The full directory stays put when a project is visited. Pins retain their explicit order.
   const orderedProjects = [...projects].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
@@ -112,7 +106,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
   return <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
     {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>{pinnedProjects.map(renderProject)}</section>}
-    <AllProjects>
+    <AllProjects hasPins={Boolean(pinned?.length)}>
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
@@ -130,13 +124,13 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
 }
 
 function ConnectedServers({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
-  const allProjectsExpanded = useAllProjectsExpanded()
   const active = getRawActiveWorkspaceId()
   const state = useConnectedWorkStore()
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, refreshActivity, error: directoryError } = state
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
+  const allProjectsExpanded = useAllProjectsExpanded(Boolean(pinned?.length))
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   useEffect(() => {
     if (!state.loaded || !isChatIdentityCurrent(state.identity) || !connections.length) return
@@ -195,26 +189,28 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       : <Fragment key={key}>{row()}</Fragment>
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
+  const showingAll = connections.length > 1 && locations.length === connections.length
   const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)))
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <AllProjects>
+      <AllProjects hasPins={Boolean(pinned?.length)}>
       {connections.length > 1 && <div role="group" aria-label="Show Crews from" className="mb-2 flex items-center gap-1 overflow-x-auto px-1 py-2">
         {connections.map(connection => {
           const selected = selectedLocations.includes(connection.id)
           const name = connection.id === 'local' ? 'Mac' : connection.name
-          return <button key={connection.id} type="button" aria-pressed={selected} title={connection.id === 'local' ? 'On your Mac' : connection.name}
-            onClick={() => setSelectedLocations(previous => previous.includes(connection.id)
-              ? previous.length > 1 ? previous.filter(id => id !== connection.id) : previous
-              : [...previous, connection.id])}
-            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+          // One network at a time, or All at the end (owner, 10 Nov).
+          return <button key={connection.id} type="button" aria-pressed={selected && !showingAll} title={connection.id === 'local' ? 'On your Mac' : connection.name}
+            onClick={() => setSelectedLocations([connection.id])}
+            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected && !showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
             {connection.id === 'local' ? <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ServerIdentityIcon connectionId={connection.id} hidden className="h-3.5 w-3.5 shrink-0" />}
             <span className="max-w-28 truncate">{name}</span>
           </button>
         })}
+        <button type="button" aria-pressed={showingAll} title="Crews from every network" onClick={() => setSelectedLocations(connections.map(connection => connection.id))}
+          className={`flex h-9 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>All</button>
       </div>}
       {unpinnedRows.filter(project => project.personal_agent).map(project => renderProject(project))}
       <div className="space-y-1"><ProjectList projects={unpinnedRows} render={project => renderProject(project)} /></div>

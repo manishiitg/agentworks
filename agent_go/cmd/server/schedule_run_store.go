@@ -49,6 +49,24 @@ func scheduleHistoryScope(workspace string) (string, error) {
 	return schedulehistory.PhysicalPath(filepath.Dir(file))
 }
 
+func scheduleHistoryRemovalScope(workspace string) (string, error) {
+	docs, err := schedulehistory.PhysicalPath(fsutil.WorkspaceDocsRoot())
+	if err != nil {
+		return "", err
+	}
+	file, err := fsutil.WorkspacePath(docs, scheduleRunsPath(workspace))
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Dir(file)
+	if info, e := os.Lstat(dir); e == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", nil
+	} else if e != nil && !os.IsNotExist(e) {
+		return "", e
+	}
+	return schedulehistory.PhysicalPath(dir)
+}
+
 func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistory, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return nil, errors.New("choose a project to open its run history")
@@ -181,6 +199,14 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 		return err
 	}
 	if errors.Is(err, sql.ErrNoRows) {
+		// The first source read belongs inside the same SQLite writer boundary
+		// as deletion. A folder purge waits for this import (all descendants share
+		// this DB), or wins first and the importer sees no old file afterward.
+		tx, e := h.db.BeginTx(ctx, nil)
+		if e != nil {
+			return e
+		}
+		defer tx.Rollback()
 		info, e := os.Lstat(h.legacy)
 		if e != nil && !os.IsNotExist(e) {
 			return e
@@ -203,11 +229,6 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 				pending = 2
 			}
 		}
-		tx, e := h.db.BeginTx(ctx, nil)
-		if e != nil {
-			return e
-		}
-		defer tx.Rollback()
 		// Preserve the original array order and duplicate/empty legacy IDs; the
 		// private serial key makes lookups update only the same first matching row.
 		for i := len(runs) - 1; i >= 0; i-- {
@@ -549,4 +570,11 @@ func findScheduleHistoryDetail(ctx context.Context, workspace, predicate string,
 		return nil, err
 	}
 	return &run, nil
+}
+
+func purgeRemovedScheduleHistory(ctx context.Context, physical string) error {
+	if physical == "" {
+		return nil
+	} // removing only a symlink left the project intact
+	return schedulehistory.PurgeTree(ctx, fsutil.WorkspaceDocsRoot(), physical)
 }

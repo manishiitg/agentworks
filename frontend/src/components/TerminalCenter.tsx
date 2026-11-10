@@ -569,23 +569,21 @@ export const RAW_XTERM_FONT_SIZE = 12
 const RAW_XTERM_SCROLLBAR_WIDTH = 7
 const RAW_XTERM_CSS_LINE_HEIGHT = 'normal'
 
-// Decoded from the exported macOS Tahoe Clear Dark profile (NSRGB rounded to 8-bit).
-// https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
-// Native Liquid Glass/ColorSync rendering is not reproduced by the web terminal.
+// Default retains the original raw-terminal palette. Apple font choice is independent.
 export const DARK_XTERM_THEME: ITheme = {
-  background: '#191d27', foreground: '#e0e0e0', cursor: '#e0e0e0',
-  selectionBackground: '#273d4c', overviewRulerBorder: '#00000000',
-  black: '#35424c', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
-  blue: '#6d96b4', magenta: '#bd7bcd', cyan: '#7ccbcd', white: '#dee5eb',
-  brightBlack: '#465c6d', brightRed: '#df6c5a', brightGreen: '#79be7e', brightYellow: '#e5c872',
-  brightBlue: '#67b5ed', brightMagenta: '#d389e5', brightCyan: '#84dde0', brightWhite: '#e5eff5',
-  scrollbarSliderBackground: '#465c6d66', scrollbarSliderHoverBackground: '#465c6d99',
+  background: '#0b0e14',
+  overviewRulerBorder: '#00000000',
+  scrollbarSliderBackground: '#94a3b838',
+  scrollbarSliderHoverBackground: '#94a3b866',
+  scrollbarSliderActiveBackground: '#94a3b88c',
 }
 
-// Same Tahoe export, Clear Light.terminal; native material/ColorSync caveats above apply.
+// Light ANSI colors from the exported Tahoe Clear Light profile; neutral app base.
+// https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
+// Native Liquid Glass/ColorSync rendering is not reproduced.
 export const LIGHT_XTERM_THEME: ITheme = {
-  background: '#ffffff', foreground: '#2d3840', cursor: '#7f7f7f',
-  selectionBackground: '#dfe8ee', overviewRulerBorder: '#00000000',
+  background: '#fcfcfc', foreground: '#262626', cursor: '#666666',
+  selectionBackground: '#dbeafe', overviewRulerBorder: '#00000000',
   black: '#2d3840', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
   blue: '#5685a8', magenta: '#ad64be', cyan: '#69c6c9', white: '#c1c8cc',
   brightBlack: '#506573', brightRed: '#df6c5a', brightGreen: '#79be7e', brightYellow: '#e5c872',
