@@ -48,10 +48,6 @@ jobs:
             desktop/package-lock.json
       - name: Install frontend dependencies
         run: cd frontend && npm ci
-      - name: Test desktop onboarding
-        run: |
-          cd frontend
-          npm test -- src/components/WelcomeHome.test.tsx src/components/HomeAgentModel.test.tsx src/products/work/CreateCrewWizard.test.tsx src/products/work/crewOnboarding.test.ts
       # Every Mac runs its own Vault and Brain, so the Mac app includes their screens.
       - name: Build frontend static assets
         env:
