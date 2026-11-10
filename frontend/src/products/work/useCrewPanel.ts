@@ -53,10 +53,12 @@ export function useCrewPanel(scope: string, project: string, workspace: string) 
     return () => { controller.abort(); clearTimeout(retryTimer); refreshRef.current = () => {} }
   }, [key, project])
   const data = state?.key === key ? state.data : lastKnown.get(key)
+  // At most one read per 3s: every running chat sends 'sessions' notices, and at 0.5s several running chats kept
+  // one panel read always in flight (85 reads a minute, 0.6-1s each), slowing every other request (PLAT-746-840).
   useLiveRefetch(() => refreshRef.current(), {
     kinds: ['crew_panel', 'sessions', 'schedules', 'report', 'plan', 'browser'],
     project, workflow: workspace, scopeKey: scope, enabled: !!project,
-    refreshOnFocus: true, fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 500,
+    refreshOnFocus: true, fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 3_000,
   })
   return { data, error: state?.key === key ? state.error : undefined, refresh: () => refreshRef.current() }
 }
