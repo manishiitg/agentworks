@@ -402,6 +402,15 @@ func saveNativeCodingState(s *nativeCodingRecordState) error {
 	return os.Rename(tmp, s.filename)
 }
 
+func (api *StreamingAPI) saveNativeCodingActivity(sessionID string, record llmtypes.NativeRecord) error {
+	id := nativeCodingEventID(sessionID, record)
+	activity := agentevents.NewCodingAgentNativeActivity(record)
+	activity.EventID = id
+	wrapped := agentevents.NewAgentEvent(activity)
+	wrapped.SessionID = sessionID
+	return api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: time.Now(), SessionID: sessionID, ExecutionKind: "main_agent", Data: wrapped})
+}
+
 func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.NativeRecord) error {
 	if record.Provider == "codex-cli" && record.Kind == "question" && record.Name == "request_user_input_async" {
 		if err := o.api.observeNativeAsyncQuestion(o.snapshot.SessionID, record); err != nil {
@@ -410,12 +419,7 @@ func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.Native
 	}
 	id := nativeCodingEventID(o.snapshot.SessionID, record)
 	observedAt := time.Now()
-	activity := agentevents.NewCodingAgentNativeActivity(record)
-	activity.EventID = id
-	wrapped := agentevents.NewAgentEvent(activity)
-	wrapped.SessionID = o.snapshot.SessionID
-	event := storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: observedAt, SessionID: o.snapshot.SessionID, ExecutionKind: "main_agent", Data: wrapped}
-	if err := o.api.eventStore.AddEventChecked(o.snapshot.SessionID, event); err != nil {
+	if err := o.api.saveNativeCodingActivity(o.snapshot.SessionID, record); err != nil {
 		return err
 	}
 	log.Printf("[NATIVE_RECORD] accepted session=%s provider=%s native=%s turn=%s item=%s kind=%s state=%s followup=%s event=%s", o.snapshot.SessionID, record.Provider, record.SessionID, record.TurnID, record.ID, record.Kind, record.State, record.FollowupID, id)

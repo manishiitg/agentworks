@@ -532,7 +532,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             const currentPrimaryConfig = modeConfig.primaryConfig
 
             const profileBuilder = preset.llmConfig.mode === 'provider_profile' && preset.llmConfig.provider
-              ? llmState.providerManifest.find(provider => provider.id === preset.llmConfig?.provider)?.default_tier_models?.builder
+              ? llmState.providerManifest.find(provider => provider.id === preset.llmConfig?.provider)?.default_tier_models?.main
               : undefined
             const selectedBuilder = preset.llmConfig.builder_llm || profileBuilder
             const updatedConfig = {

@@ -150,7 +150,7 @@ func NormalizePresetLLMConfig(config *PresetLLMConfig) bool {
 			case config.Provider != "" && config.LegacyModelID != "":
 				config.BuilderLLM = &AgentLLMConfig{Provider: config.Provider, ModelID: config.LegacyModelID}
 			case providerDefaults != nil:
-				config.BuilderLLM = agentLLMConfigFromCodingAgentRef(providerDefaults.Builder)
+				config.BuilderLLM = agentLLMConfigFromCodingAgentRef(providerDefaults.Main)
 			}
 			if config.BuilderLLM != nil {
 				changed = true
@@ -180,7 +180,7 @@ func NormalizePresetLLMConfig(config *PresetLLMConfig) bool {
 			if config.LegacyAutoImproveLLM != nil {
 				config.BackgroundLLM = config.LegacyAutoImproveLLM
 			} else if providerDefaults != nil {
-				config.BackgroundLLM = agentLLMConfigFromCodingAgentRef(providerDefaults.Pulse)
+				config.BackgroundLLM = agentLLMConfigFromCodingAgentRef(providerDefaults.High)
 			} else {
 				config.BackgroundLLM = defaultPulse
 			}
@@ -235,7 +235,7 @@ func ResolveProviderProfileConfig(config *PresetLLMConfig) (*AgentLLMConfig, *Ti
 		return nil, nil, false
 	}
 
-	builder := agentLLMConfigFromCodingAgentRef(defaults.Builder)
+	builder := agentLLMConfigFromCodingAgentRef(defaults.Main)
 	tiered := &TieredLLMConfig{
 		Tier1: agentLLMConfigFromCodingAgentRef(defaults.High),
 		Tier2: agentLLMConfigFromCodingAgentRef(defaults.Medium),
@@ -262,10 +262,7 @@ func ResolveProviderProfileBackgroundConfig(config *PresetLLMConfig) (*AgentLLMC
 	if !ok {
 		return nil, false
 	}
-	pulse := agentLLMConfigFromCodingAgentRef(defaults.Pulse)
-	if pulse == nil {
-		pulse = agentLLMConfigFromCodingAgentRef(defaults.High)
-	}
+	pulse := agentLLMConfigFromCodingAgentRef(defaults.High)
 	if pulse == nil {
 		return nil, false
 	}
