@@ -168,6 +168,10 @@ func (api *StreamingAPI) runDesktopCrewRelay(ctx context.Context, connectionID s
 	}
 }
 
+// desktopRelayLive holds the saved connections with an open relay socket now: while it is open that server tells this
+// Mac of its Teams' changes (crew_team_push.go), so their timed check can be slow.
+var desktopRelayLive sync.Map // connection id -> true
+
 func fmt0(err error) string {
 	if err == nil {
 		return "closed"
@@ -245,6 +249,8 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		return err
 	}
 	log.Printf("[CREW_RELAY] desktop connect connection=%s crews=%d", connectionID, len(crews))
+	desktopRelayLive.Store(connectionID, true)
+	defer desktopRelayLive.Delete(connectionID)
 	var pairsMu sync.Mutex
 	followers := &desktopRelayFollowers{api: api, send: send, active: map[string]*desktopRelayFollower{}}
 	go func() {
@@ -368,6 +374,9 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairsMu.Unlock()
 				log.Printf("[CREW_RELAY] project=%s not reached from this computer: another of your computers serves it", msg.Project)
 			}
+		case "team.changed":
+			// Someone's change to a Team's shared files landed on the server: sync now (crew_team_push.go).
+			crewTeamWakeSoon()
 		case "resume":
 			if local != "" && msg.Conversation != "" {
 				followers.watch(session, msg.Project, local, pair, msg.Conversation, msg.Since)
