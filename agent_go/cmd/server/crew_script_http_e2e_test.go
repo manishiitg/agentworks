@@ -371,8 +371,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			if expectedSourceCall == "" {
 				t.Fatal("nested step has no overview identity")
 			}
-			// Large code remains runnable: outline returns its normal graph
-			// envelope with a readable limit message, not a failed page request.
+			// A big file main.py never imports does not stop the outline: only main.py and what it reaches are read.
 			padding := filepath.Join(sourceRoot, "padding.py")
 			write(padding, "#"+strings.Repeat("x", automationOutlineLimit))
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, req.URL.String(), nil)
@@ -386,8 +385,8 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			if err := os.Remove(padding); err != nil {
 				t.Fatal(err)
 			}
-			if oversized.StatusCode != 200 || !strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), "400 KiB") {
-				t.Fatalf("large outline broke the page request: HTTP%d %s", oversized.StatusCode, large)
+			if oversized.StatusCode != 200 || strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), `"nodes"`) {
+				t.Fatalf("an unreferenced large file broke the outline: HTTP%d %s", oversized.StatusCode, large)
 			}
 		}
 	}
