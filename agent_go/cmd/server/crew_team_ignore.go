@@ -5,53 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
-// crewTeamIgnored is what the shared folder's own .gitignore files leave out, nothing else (review 5 Nov): never this
-// machine's global excludes, a parent folder's .gitignore or a repository's .git/info/exclude, which differ from one
-// copy to another. Git's own matcher reads the rules through a private empty repository with no user or system
+// crewTeamCheckIgnore applies only the shared folder's own .gitignore files (review 5 Nov): never this machine's
+// global excludes, a parent folder's .gitignore or a repository's .git/info/exclude, which differ from one copy to
+// another. Git's own matcher reads the rules through a private empty repository with no user or system
 // configuration, so every copy of the same folder ignores the same files.
-// rules reports whether the folder has any .gitignore (a watched round then checks only the files it read).
-func crewTeamIgnored(ctx context.Context, root string) (ignored map[string]bool, rules bool, err error) {
-	var paths []string
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if p == root {
-			return nil
-		}
-		rel, _ := filepath.Rel(root, p)
-		rel = filepath.ToSlash(rel)
-		if d.IsDir() {
-			if !crewsync.Allowed(crewTeamKey(rel), true) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.Name() == ".gitignore" {
-			rules = true
-		}
-		paths = append(paths, rel)
-		return nil
-	})
-	if err != nil || !rules {
-		return map[string]bool{}, rules, err
-	}
-	ignored, err = crewTeamCheckIgnore(ctx, root, paths)
-	return ignored, rules, err
-}
-
 // crewTeamCheckIgnore is which of paths (files of the folder at root) its .gitignore files leave out.
 func crewTeamCheckIgnore(ctx context.Context, root string, paths []string) (map[string]bool, error) {
 	out := map[string]bool{}

@@ -504,6 +504,15 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	_ = os.Remove(filepath.Join(b1.Root, ".gitignore"))
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
+	// A folder that arrives with its own .gitignore, in a share that had none: full and watched rounds read the
+	// rules from the files they listed (one walk), so the ignored file is never sent and its neighbour is.
+	_ = os.MkdirAll(filepath.Join(b1.Root, "plans"), 0700)
+	_ = os.WriteFile(filepath.Join(b1.Root, "plans", ".gitignore"), []byte("draft.md\n"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "plans", "draft.md"), []byte("not shared"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "plans", "final.md"), []byte("shared plan"), 0600)
+	sync(c1, d1, b1)
+	teamHas("plans/final.md", "shared plan")
+	teamHas("plans/draft.md", "")
 	fmt.Println("[CREW_TEAM_PROOF] two chunked HTTP clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
 	// PR932: directory/file replacements must not strand the next sync after deleting children.
 	if err := os.MkdirAll(filepath.Join(b1.Root, "reports"), 0700); err != nil {
