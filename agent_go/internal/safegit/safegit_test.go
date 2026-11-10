@@ -2,6 +2,7 @@ package safegit
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +71,38 @@ func TestRepoConfiguredCommandsDoNotRun(t *testing.T) {
 	}
 	if n := fired(); n != 0 {
 		t.Fatalf("%d repo-configured commands ran through the hardened helper", n)
+	}
+
+	// The config cache now holds this repo's config. A driver added later in
+	// config.worktree or in an included file must be read and blanked too.
+	later := map[string]func(clean string){
+		"worktree": func(clean string) {
+			git("config", "core.repositoryformatversion", "1")
+			git("config", "extensions.worktreeConfig", "true")
+			git("config", "--worktree", "filter.worktree.clean", clean)
+		},
+		"include": func(clean string) {
+			included := filepath.Join(dir, ".git", "later.cfg")
+			os.WriteFile(included, []byte("[filter \"include\"]\n\tclean = "+clean+"\n"), 0o600)
+			git("config", "include.path", included)
+		},
+	}
+	for i, name := range []string{"worktree", "include"} {
+		marker := filepath.Join(t.TempDir(), name)
+		markers[name] = marker
+		later[name](script(name, marker))
+		os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("*.txt filter="+name+"\n"), 0o600)
+		os.WriteFile(filepath.Join(dir, "a.txt"), []byte(fmt.Sprintf("one\nlater %d\n", i)), 0o600)
+		clear()
+		run(exec.Command("git", "-C", dir, "status", "--porcelain"))
+		if _, err := os.Stat(marker); err != nil {
+			t.Fatalf("control: unhardened git did not run the %s driver; the case proves nothing", name)
+		}
+		clear()
+		Command(ctx, dir, nil, "status", "--porcelain=v2", "-z").Run()
+		if n := fired(); n != 0 {
+			t.Fatalf("%s: %d repo-configured commands ran after the config changed", name, n)
+		}
 	}
 }
 
