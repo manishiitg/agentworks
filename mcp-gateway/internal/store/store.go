@@ -802,12 +802,20 @@ func (s *MemoryStore) disableMissingToolsLocked(connectorID string, present map[
 // Readers see either the old catalog or the committed new catalog; failed
 // persistence restores the old snapshot and keeps the existing denial latch.
 func (s *MemoryStore) ReconcileToolSnapshots(connectorID string, tools []ToolSnapshot) ([]ToolSnapshot, error) {
+	started := time.Now()
+	var lockWait, commitTime time.Duration
+	changed, missing, commitAttempted, success := 0, false, false, false
+	defer func() {
+		log.Printf("gateway: discovery batch connector=%s tools=%d changed=%d missing_changed=%t commit_attempted=%t commit_ms=%d lock_wait_ms=%d elapsed_ms=%d ok=%t", connectorID, len(tools), changed, missing, commitAttempted, commitTime.Milliseconds(), lockWait.Milliseconds(), time.Since(started).Milliseconds(), success)
+	}()
 	for _, tool := range tools {
 		if tool.ConnectorID != connectorID {
 			return nil, errors.New("discovered tool belongs to a different connection")
 		}
 	}
+	lockStarted := time.Now()
 	s.mu.Lock()
+	lockWait = time.Since(lockStarted)
 	if s.persistence != nil && s.persistence.err != nil {
 		err := s.persistence.err
 		s.mu.Unlock()
@@ -815,22 +823,27 @@ func (s *MemoryStore) ReconcileToolSnapshots(connectorID string, tools []ToolSna
 	}
 	seen := make(map[string]bool, len(tools))
 	result := make([]ToolSnapshot, 0, len(tools))
-	changed := false
 	for _, tool := range tools {
 		snapshot, updated := s.upsertToolSnapshotLocked(tool)
 		result = append(result, snapshot)
 		seen[snapshot.PublicName] = true
-		changed = changed || updated
+		if updated {
+			changed++
+		}
 	}
-	missing := s.disableMissingToolsLocked(connectorID, seen)
-	if changed || missing {
+	missing = s.disableMissingToolsLocked(connectorID, seen)
+	if changed > 0 || missing {
+		commitAttempted = s.persistence != nil
+		commitStarted := time.Now()
 		s.persistUnlock()
+		commitTime = time.Since(commitStarted)
 	} else {
 		s.mu.Unlock()
 	}
 	if err := s.PersistenceError(); err != nil {
 		return nil, err
 	}
+	success = true
 	return result, nil
 }
 

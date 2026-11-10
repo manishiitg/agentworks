@@ -202,7 +202,7 @@ func saveCrewTeamFileState(project string, state crewTeamFileState) error {
 		return err
 	}
 	if removed > 0 {
-		log.Printf("[CREW_TEAM_LEDGER] project=%s event=prune events_before=%d events_after=%d payload_bytes_removed=%d history_floor=%d", project, before, len(state.Events), removedBytes, state.HistoryFloor)
+		log.Printf("[CREW_TEAM_LEDGER] project=%s event=prune events_before=%d events_after=%d events_removed=%d payload_bytes_removed=%d history_floor=%d", project, before, len(state.Events), removed, removedBytes, state.HistoryFloor)
 	}
 	return nil
 }
