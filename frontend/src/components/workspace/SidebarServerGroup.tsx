@@ -31,11 +31,12 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
     {agentsExpanded !== true && showLocation && location && <span role="img" aria-label={remote ? `Network: ${location}` : location} title={location} className="inline-flex shrink-0 items-center pr-1 text-muted-foreground">
       {remote ? <Network className="h-3.5 w-3.5" aria-hidden="true" /> : <Laptop className="h-3.5 w-3.5" aria-hidden="true" />}
     </span>}
-    {agentsExpanded !== true && onTogglePin && <button type="button" aria-label={`${pinned ? 'Unpin' : 'Pin'} ${name}${location ? ` · ${location}` : ''}`} aria-pressed={Boolean(pinned)} title={pinned ? 'Unpin from Pinned' : 'Pin to top'} onClick={onTogglePin}
-      className={`mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${pinned ? '' : 'md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100'}`}>
+    {/* Row actions show on hover, open Crew included (owner, 10 Nov). */}
+    {onTogglePin && <button type="button" aria-label={`${pinned ? 'Unpin' : 'Pin'} ${name}${location ? ` · ${location}` : ''}`} aria-pressed={Boolean(pinned)} title={pinned ? 'Unpin from Pinned' : 'Pin to top'} onClick={onTogglePin}
+      className={`mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100`}>
       <Pin className="h-3.5 w-3.5" fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
     </button>}
-    {agentsExpanded !== true && groupsMenu}
+    {groupsMenu}
     {(onMoveUp || onMoveDown) && <PinnedCrewOrderMenu name={name} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />}
     {onToggleAgents && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
       className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
