@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
 	"log"
 	"os"
 	"path/filepath"
@@ -26,6 +27,10 @@ func removeFolderAtomicallyWithContext(ctx context.Context, docsDir, folderPath 
 	}
 	if target == root {
 		return false, fmt.Errorf("cannot delete the workspace documents root")
+	}
+	historyRoot, err := schedulehistory.PhysicalPath(target)
+	if err != nil {
+		return false, err
 	}
 	releases, isRelay, err := relayDeletionReleases(root, target)
 	if err != nil {
@@ -59,6 +64,9 @@ func removeFolderAtomicallyWithContext(ctx context.Context, docsDir, folderPath 
 		}
 		_ = os.Remove(staging)
 		return false, fmt.Errorf("move folder for deletion: %w", err)
+	}
+	if err := schedulehistory.PurgeTree(ctx, docsDir, historyRoot); err != nil {
+		return true, err
 	}
 	if isRelay {
 		log.Printf("[RELAY_DELETE] Draft and published namespace staged: draft=%s releases=%s staging=%s", target, releases, staging)

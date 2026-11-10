@@ -14,9 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
 )
 
 // setCORS sets permissive CORS headers shared across workflow/manifest/config route handlers.
@@ -536,11 +538,21 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	}
 	markPhase("list_chats")
 
+	historyRoot, err := scheduleHistoryScope(workspacePath)
+	if err != nil {
+		http.Error(w, "Could not resolve run history before deletion: "+err.Error(), 500)
+		return
+	}
 	cleanupPending, err := deleteWorkspaceFolderWithCleanup(r.Context(), workspacePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete workflow folder: %v", err), http.StatusInternalServerError)
 		return
 	}
+	if err := schedulehistory.PurgeTree(r.Context(), fsutil.WorkspaceDocsRoot(), historyRoot); err != nil {
+		http.Error(w, "Folder removed; run history cleanup failed: "+err.Error(), 500)
+		return
+	}
+	noteScheduleSummaryChange()
 	markPhase("remove_folder")
 
 	deleteWorkflowRuntime(manifest.ID)

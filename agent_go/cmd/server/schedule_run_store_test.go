@@ -4,24 +4,52 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/spf13/viper"
 )
 
 func scheduleHistoryFixture(t *testing.T) string {
 	t.Helper()
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("MULTI_USER_MODE", "")
+	state := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	scheduleHistoryTestCleanup(t, state)
 	return docs
 }
+func scheduleHistoryTestCleanup(t *testing.T, state string) {
+	t.Helper()
+	physical, err := schedulehistory.PhysicalPath(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		scheduleHistoryConnections.Lock()
+		defer scheduleHistoryConnections.Unlock()
+		for file, db := range scheduleHistoryConnections.byFile {
+			if strings.HasPrefix(file, physical+string(filepath.Separator)) {
+				db.Close()
+				delete(scheduleHistoryConnections.byFile, file)
+			}
+		}
+	})
+}
+
 func writeLegacyScheduleHistory(t *testing.T, workspace string, runs []ScheduleRunEntry) string {
 	t.Helper()
 	file, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), scheduleRunsPath(workspace))
@@ -68,7 +96,6 @@ func TestScheduleHistoryImportPreservesRecordsAndPhysicalScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.db.Close()
 	if backup, err := os.ReadFile(h.backup); err != nil || string(backup) != string(raw) {
 		t.Fatalf("private backup changed: %v", err)
 	}
@@ -117,12 +144,12 @@ func TestScheduleHistoryImportPreservesRecordsAndPhysicalScope(t *testing.T) {
 	}
 }
 
-// PLAT-871-44: malformed input cannot retire the only copy. A post-commit
-// cleanup failure must resume the rename without importing rows twice.
-func TestScheduleHistoryFailedImportAndCleanupRetry(t *testing.T) {
+// PLAT-871-44: unreadable history is kept privately but cannot block new
+// runs. Post-commit retirement can retry without replaying rows or failing APIs.
+func TestScheduleHistoryUnreadableImportAndCleanupRetry(t *testing.T) {
 	docs := scheduleHistoryFixture(t)
 	ctx := context.Background()
-	workspace := "Workflow/example"
+	workspace := "Workflow/unreadable"
 	source := filepath.Join(docs, workspace, "schedule-runs.json")
 	if err := os.MkdirAll(filepath.Dir(source), 0700); err != nil {
 		t.Fatal(err)
@@ -131,18 +158,25 @@ func TestScheduleHistoryFailedImportAndCleanupRetry(t *testing.T) {
 	if err := os.WriteFile(source, []byte(broken), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadScheduleRuns(ctx, workspace); err == nil {
-		t.Fatal("malformed history was accepted")
+	runs, err := ReadScheduleRuns(ctx, workspace)
+	if err != nil || len(runs) != 0 {
+		t.Fatalf("bad history blocked opening: %+v %v", runs, err)
 	}
-	if raw, err := os.ReadFile(source); err != nil || string(raw) != broken {
-		t.Fatal("failed import changed the source")
-	}
-	// Initialize only the schema in another scope, then obstruct backup publish.
-	h, err := openScheduleHistory(ctx, "Workflow/schema-only")
+	h, err := openScheduleHistory(ctx, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	physical, err := filepath.EvalSymlinks(filepath.Dir(source))
+	if raw, err := os.ReadFile(filepath.Join(h.importDir, "schedule-runs.json.unreadable")); err != nil || string(raw) != broken {
+		t.Fatal("unreadable source bytes were lost")
+	}
+	if err = AppendScheduleRun(ctx, workspace, &ScheduleRunEntry{ID: "fresh", Status: "running"}); err != nil {
+		t.Fatal("unreadable import blocked future run")
+	}
+	// Obstruct publishing another scope's backup after its rows commit.
+	workspace = "Workflow/retry"
+	original := []ScheduleRunEntry{{ID: "only", Status: "running", StartedAt: time.Now().UTC()}}
+	source = writeLegacyScheduleHistory(t, workspace, original)
+	physical, err := schedulehistory.PhysicalPath(filepath.Dir(source))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,25 +184,22 @@ func TestScheduleHistoryFailedImportAndCleanupRetry(t *testing.T) {
 	if err = os.MkdirAll(backup, 0700); err != nil {
 		t.Fatal(err)
 	}
-	original := []ScheduleRunEntry{{ID: "only", Status: "running", StartedAt: time.Now().UTC()}}
-	writeLegacyScheduleHistory(t, workspace, original)
-	if _, err = ReadScheduleRuns(ctx, workspace); err == nil {
-		t.Fatal("backup failure was hidden")
+	runs, err = ReadScheduleRuns(ctx, workspace)
+	if err != nil || !reflect.DeepEqual(runs, original) {
+		t.Fatalf("retirement failure blocked SQL history: %+v %v", runs, err)
 	}
-	var count int
-	if err = h.db.QueryRowContext(ctx, `SELECT count(*) FROM history_entries WHERE scope=?`, physical).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("rows were not committed before cleanup: %d %v", count, err)
-	}
-	h.db.Close()
 	if _, err = os.Stat(source); err != nil {
-		t.Fatal("failed cleanup removed source")
+		t.Fatal("failed retirement removed source")
 	}
 	if err = os.Remove(backup); err != nil {
 		t.Fatal(err)
 	}
-	after, err := ReadScheduleRuns(ctx, workspace)
-	if err != nil || !reflect.DeepEqual(after, original) {
-		t.Fatalf("cleanup retry replayed/lost history: %+v %v", after, err)
+	runs, err = ReadScheduleRuns(ctx, workspace)
+	if err != nil || !reflect.DeepEqual(runs, original) {
+		t.Fatalf("cleanup retry replayed rows: %+v %v", runs, err)
+	}
+	if _, err = os.Stat(source); !os.IsNotExist(err) {
+		t.Fatal("retry did not retire source")
 	}
 }
 
@@ -288,5 +319,133 @@ func TestScheduleHistoryDurationSummaryMatchesRunSemantics(t *testing.T) {
 	actual, err := readScheduleDurationAverages(ctx, "Workflow/example", 10)
 	if err != nil || !reflect.DeepEqual(actual, recentSuccessfulRunAverages(runs, 10)) {
 		t.Fatalf("duration summary changed: %+v %v", actual, err)
+	}
+}
+
+// PR2013 P2: deletion followed by same-name creation must not resurrect another
+// project's responses, nested histories or backups. Exercise both workspace
+// HTTP deletion routes, while a similarly named sibling and Watcher survive.
+func TestScheduleHistoryFolderDeletionPreventsResurrection(t *testing.T) {
+	for _, route := range []string{"folder", "document"} {
+		t.Run(route, func(t *testing.T) {
+			docs := scheduleHistoryFixture(t)
+			ctx := context.Background()
+			oldDocs := viper.Get("docs-dir")
+			viper.Set("docs-dir", docs)
+			t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
+			for _, scope := range []string{"Workflow/example", "Workflow/example/nested", "Workflow/example-other", "_users/owner/watchers/profile/clock"} {
+				writeLegacyScheduleHistory(t, scope, []ScheduleRunEntry{{ID: "old", ScheduleID: "clock", Status: "success", FinalResponse: scope}})
+				if _, err := ReadScheduleRuns(ctx, scope); err != nil {
+					t.Fatal(err)
+				}
+			}
+			deleted, err := openScheduleHistory(ctx, "Workflow/example")
+			if err != nil {
+				t.Fatal(err)
+			}
+			child, err := openScheduleHistory(ctx, "Workflow/example/nested")
+			if err != nil {
+				t.Fatal(err)
+			}
+			router := gin.New()
+			router.DELETE("/api/folders/*folderpath", wh.DeleteFolder)
+			router.DELETE("/api/documents/*filepath", wh.DeleteDocument)
+			endpoint := "/api/folders/Workflow/example?confirm=true"
+			if route == "document" {
+				endpoint = "/api/documents/Workflow/example?confirm=true"
+			}
+			refused := httptest.NewRecorder()
+			router.ServeHTTP(refused, httptest.NewRequest(http.MethodDelete, strings.Replace(endpoint, "confirm=true", "confirm=false", 1), nil))
+			if refused.Code != http.StatusBadRequest {
+				t.Fatalf("unconfirmed deletion was not refused: %d %s", refused.Code, refused.Body.String())
+			}
+			if found, err := FindScheduleRun(ctx, "Workflow/example", "old"); err != nil || found.FinalResponse != "Workflow/example" {
+				t.Fatal("refused deletion removed history", err)
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, endpoint, nil))
+			if response.Code != 200 {
+				t.Fatalf("delete route failed: %d %s", response.Code, response.Body.String())
+			}
+			for _, dir := range []string{deleted.importDir, child.importDir} {
+				if _, err := os.Stat(dir); !os.IsNotExist(err) {
+					t.Fatal("deleted project's private backup remains")
+				}
+			}
+			for _, scope := range []string{"Workflow/example", "Workflow/example/nested"} {
+				if err = os.MkdirAll(filepath.Join(docs, scope), 0700); err != nil {
+					t.Fatal(err)
+				}
+				page, total, err := ListScheduleRuns(ctx, scope, "clock", 10, 0)
+				if err != nil || total != 0 || len(page) != 0 {
+					t.Fatalf("old response resurrected in %s: %+v %d %v", scope, page, total, err)
+				}
+			}
+			for _, scope := range []string{"Workflow/example-other", "_users/owner/watchers/profile/clock"} {
+				found, err := FindScheduleRun(ctx, scope, "old")
+				if err != nil || found.FinalResponse != scope {
+					t.Fatalf("unrelated history removed: %s %v", scope, err)
+				}
+			}
+		})
+	}
+}
+
+// PLAT-871-44: private history cannot live in docs, including a state path
+// reached through a symlink whose final child does not exist yet.
+func TestScheduleHistoryRejectsPrivateStateInsideDocs(t *testing.T) {
+	docs := scheduleHistoryFixture(t)
+	outside := t.TempDir()
+	paths := []string{filepath.Join(docs, "state")}
+	link := filepath.Join(outside, "linked")
+	if err := os.Symlink(docs, link); err == nil {
+		paths = append(paths, filepath.Join(link, "new-state"))
+	}
+	for _, state := range paths {
+		t.Setenv("AGENTWORKS_STATE_ROOT", state)
+		if _, err := ReadScheduleRuns(context.Background(), "Workflow/example"); err == nil || !strings.Contains(err.Error(), "outside the workspace documents") {
+			t.Fatalf("private history admitted workspace state: %v", err)
+		}
+	}
+}
+
+// Reviewer follow-up: a source changed after the committed import must not
+// block SQL history, replace it, or keep reading a mismatched backup on polls.
+func TestScheduleHistoryBackupConflictKeepsCommittedOutcome(t *testing.T) {
+	scheduleHistoryFixture(t)
+	ctx := context.Background()
+	workspace := "Workflow/example"
+	source := writeLegacyScheduleHistory(t, workspace, []ScheduleRunEntry{{ID: "run", Status: "running"}})
+	h, err := openScheduleHistory(ctx, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(h.backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = UpdateScheduleRunResult(ctx, workspace, "run", ScheduleRunCompletion{Status: "success", FinalResponse: "SQL outcome"}); err != nil {
+		t.Fatal(err)
+	}
+	const changed = `[{"id":"run","status":"error","final_response":"stale file"}]`
+	if err = os.WriteFile(source, []byte(changed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = h.db.ExecContext(ctx, `UPDATE history_imports SET cleanup_pending=1 WHERE scope=?`, h.scope); err != nil {
+		t.Fatal(err)
+	}
+	run, err := FindScheduleRun(ctx, workspace, "run")
+	if err != nil || run.Status != "success" || run.FinalResponse != "SQL outcome" {
+		t.Fatal("backup conflict blocked or replaced SQL outcome", err)
+	}
+	if raw, err := os.ReadFile(source); err != nil || string(raw) != changed {
+		t.Fatal("conflicting source changed")
+	}
+	if raw, err := os.ReadFile(h.backup); err != nil || string(raw) != string(original) {
+		t.Fatal("committed backup changed")
+	}
+	var pending int
+	if err = h.db.QueryRowContext(ctx, `SELECT cleanup_pending FROM history_imports WHERE scope=?`, h.scope).Scan(&pending); err != nil || pending != 0 {
+		t.Fatal("conflict would retry file reads on every poll", err)
 	}
 }

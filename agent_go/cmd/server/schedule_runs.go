@@ -118,7 +118,6 @@ func ReadScheduleRuns(ctx context.Context, workspacePath string) ([]ScheduleRunE
 	if err != nil {
 		return nil, err
 	}
-	defer h.db.Close()
 	rows, err := h.db.QueryContext(ctx, `SELECT payload FROM history_entries WHERE scope=? ORDER BY serial DESC`, h.scope)
 	if err != nil {
 		return nil, err
@@ -202,7 +201,6 @@ func FindScheduleRun(ctx context.Context, workspacePath, runID string) (*Schedul
 	if err != nil {
 		return nil, err
 	}
-	defer h.db.Close()
 	var payload string
 	if err = h.db.QueryRowContext(ctx, `SELECT payload FROM history_entries WHERE scope=? AND run_id=? ORDER BY serial DESC LIMIT 1`, h.scope, runID).Scan(&payload); err != nil {
 		if err == sql.ErrNoRows {
@@ -322,7 +320,6 @@ func ListScheduleRuns(ctx context.Context, workspacePath, scheduleID string, lim
 	if err != nil {
 		return nil, 0, err
 	}
-	defer h.db.Close()
 	// Count and page share one read snapshot.
 	tx, err := h.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
