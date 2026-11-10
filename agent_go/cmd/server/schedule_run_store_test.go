@@ -449,3 +449,125 @@ func TestScheduleHistoryBackupConflictKeepsCommittedOutcome(t *testing.T) {
 		t.Fatal("conflict would retry file reads on every poll", err)
 	}
 }
+
+// PR2018 P2 / PLAT-871-45: deleting an allowed directory link removes only
+// that link. The surviving target must retain its private responses/backups.
+func TestScheduleHistoryDirectoryLinkDeletionPreservesTarget(t *testing.T) {
+	for _, route := range []string{"folder", "document"} {
+		t.Run(route, func(t *testing.T) {
+			docs := scheduleHistoryFixture(t)
+			ctx := context.Background()
+			oldDocs := viper.Get("docs-dir")
+			viper.Set("docs-dir", docs)
+			t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
+			target := "Workflow/target"
+			writeLegacyScheduleHistory(t, target, []ScheduleRunEntry{{ID: "saved", Status: "success", FinalResponse: "keep target answer"}})
+			h, err := openScheduleHistory(ctx, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			link := filepath.Join(docs, "Workflow", "link")
+			if err = os.Symlink(filepath.Join(docs, target), link); err != nil {
+				t.Skipf("directory symlinks unavailable: %v", err)
+			}
+			captured, err := scheduleHistoryRemovalScope("Workflow/link")
+			if err != nil || captured != "" {
+				t.Fatalf("app deletion would purge a link target: %q %v", captured, err)
+			}
+			router := gin.New()
+			router.DELETE("/api/folders/*folderpath", wh.DeleteFolder)
+			router.DELETE("/api/documents/*filepath", wh.DeleteDocument)
+			endpoint := "/api/folders/Workflow/link?confirm=true"
+			if route == "document" {
+				endpoint = "/api/documents/Workflow/link?confirm=true"
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, endpoint, nil))
+			if response.Code != 200 {
+				t.Fatalf("link deletion: %d %s", response.Code, response.Body.String())
+			}
+			if _, err = os.Lstat(link); !os.IsNotExist(err) {
+				t.Fatal("link remains after successful removal")
+			}
+			if err = purgeRemovedScheduleHistory(ctx, captured); err != nil {
+				t.Fatal(err)
+			}
+			run, err := FindScheduleRun(ctx, target, "saved")
+			if err != nil || run.FinalResponse != "keep target answer" {
+				t.Fatal("link deletion erased target history", err)
+			}
+			if _, err = os.Stat(h.backup); err != nil {
+				t.Fatal("link deletion erased target backup")
+			}
+		})
+	}
+}
+
+// PR2018 P2 / PLAT-871-45: reproduce deletion overlapping first import. Hold
+// the empty history's deletion writer transaction, wait until the importer is
+// blocked acquiring its own writer, then remove the old folder and commit.
+// Before the fix the importer had already read the old JSON and reinserted it;
+// now its first source read occurs after the writer boundary and finds no file.
+func TestScheduleHistoryImportCannotResurrectAfterDeletionWriter(t *testing.T) {
+	docs := scheduleHistoryFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	workspace := "Workflow/deleted"
+	writeLegacyScheduleHistory(t, workspace, []ScheduleRunEntry{{ID: "old", Status: "success", FinalResponse: "deleted answer"}})
+	h, err := openScheduleHistory(ctx, "Workflow/schema-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletion, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deletion.Rollback()
+	type result struct {
+		runs []ScheduleRunEntry
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() { runs, e := ReadScheduleRuns(ctx, workspace); done <- result{runs, e} }()
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	waiting := false
+	stable := 0
+	for !waiting {
+		select {
+		case early := <-done:
+			t.Fatalf("import did not wait for deletion writer: %+v %v", early.runs, early.err)
+		case <-deadline.C:
+			t.Fatal("import never reached the writer boundary")
+		case <-tick.C:
+			if h.db.Stats().InUse >= 2 {
+				stable++
+			} else {
+				stable = 0
+			}
+			waiting = stable >= 5
+		}
+	}
+	if err = os.RemoveAll(filepath.Join(docs, workspace)); err != nil {
+		t.Fatal(err)
+	}
+	if err = deletion.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case after := <-done:
+		if after.err != nil || len(after.runs) != 0 {
+			t.Fatalf("deleted responses resurrected: %+v %v", after.runs, after.err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if err = os.MkdirAll(filepath.Join(docs, workspace), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if after, err := ReadScheduleRuns(ctx, workspace); err != nil || len(after) != 0 {
+		t.Fatal("recreated project inherited history", err)
+	}
+}

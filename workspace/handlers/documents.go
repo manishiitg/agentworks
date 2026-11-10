@@ -1119,7 +1119,14 @@ func DeleteDocument(c *gin.Context) {
 
 	// Use RemoveAll for directories so non-empty dirs are deleted cleanly,
 	// and plain Remove for files (faster, no risk of accidentally nuking a tree).
-	if info.IsDir() {
+	finalInfo, lstatErr := os.Lstat(filePath)
+	if lstatErr != nil {
+		c.JSON(500, gin.H{"error": lstatErr.Error()})
+		return
+	}
+	if finalInfo.Mode()&os.ModeSymlink != 0 {
+		err = os.Remove(filePath) // only the link, not its directory target
+	} else if info.IsDir() {
 		physical, resolveErr := schedulehistory.PhysicalPath(filePath)
 		if resolveErr != nil {
 			err = resolveErr
