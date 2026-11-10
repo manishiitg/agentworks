@@ -8,6 +8,7 @@ import type { AgentProfileSideChat } from '../../services/api-types'
 import { openAppProduct } from '../../utils/appNavigation'
 import { productRoutePath } from '../../utils/productRoutes'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { useTeamTab } from '../../products/work/teamApi'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
@@ -273,7 +274,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
       const session = sessions.find(item => item.session_id === chat.session_id)
       return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
-    })}</div>)}</>
+    })}</div>)}{expanded && connectionId === getRawActiveWorkspaceId() && <TeammatesWorking projectId={projectId} />}</>
 }
 
 /** Inactive project rows use the same marks as the open Crew, including unread completions. */
@@ -282,4 +283,19 @@ function ProjectAgentMark({ projectId, sessionId, session, local }: { projectId:
   const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, undefined, local ? { sessionId } : undefined)
   const remoteState = runtimeNeedsUserInput(session) ? 'waiting' : session && hasActiveSessionWork(session) ? 'running' : null
   return <AgentMark state={local ? state : remoteState} />
+}
+
+/** Under an open project: each teammate agent working or waiting there now, as the Team tab reads it (owner, 10 Nov:
+ * someone working on the project should show in the menu, not only in the header's person chips). */
+function TeammatesWorking({ projectId }: { projectId: string }) {
+  const team = useTeamTab(projectId)
+  const busy = (team.view?.agents || []).filter(agent => !agent.mine && (agent.activity === 'running' || agent.activity === 'waiting'))
+  if (!busy.length) return null
+  return <div role="list" aria-label="Teammates working" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
+    {busy.map(agent => <div key={agent.key} role="listitem" title={agent.status_label || undefined} className="flex min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-[13px] text-muted-foreground">
+      <span className="min-w-0 flex-1 truncate">{agent.owner_name}'s {agent.name}</span>
+      <span className="shrink-0 text-[11px]">{agent.activity === 'running' ? 'Working' : 'Waiting'}</span>
+      <AgentMark state={agent.activity === 'running' ? 'running' : 'waiting'} />
+    </div>)}
+  </div>
 }
