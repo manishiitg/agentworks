@@ -332,6 +332,19 @@ sys.exit(1)
 	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" || string(resolved.Files["requirements.txt"]) != requirements {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
 	}
+	// A joined Team member may start the Crew's saved workflow (it resolves as the owner); someone off the Team may not.
+	if _, err := (&crewWorkflowResources{userID: "runner"}).ResolveCrewScript(context.Background(), parent.Root, "script:qualify"); err == nil || !strings.Contains(err.Error(), "Team") {
+		t.Fatalf("a person off the Team started the Crew's workflow: %v", err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "runner"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if member, err := (&crewWorkflowResources{userID: "runner"}).ResolveCrewScript(context.Background(), parent.Root, "script:qualify"); err != nil || member.Definition.ID != "qualify" {
+		t.Fatalf("a Team member could not start the Crew's workflow: %+v %v", member, err)
+	}
+	if dir, err := crewTeamDir("crew-lab"); err == nil { // the rest of this test runs without a Team
+		_ = os.RemoveAll(dir)
+	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {
 		t.Fatal("cross-Crew source reference accepted", err)
 	}
