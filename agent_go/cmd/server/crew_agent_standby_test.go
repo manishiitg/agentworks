@@ -895,13 +895,13 @@ func TestCrewRelayedEventsSayWhetherAMacAgentIsWorking(t *testing.T) {
 	crewRelayStreams.streams[key] = &crewRelayStream{running: true, since: time.Now()}
 	crewRelayStreams.Unlock()
 	t.Cleanup(func() { crewRelayStreams.Lock(); delete(crewRelayStreams.streams, key); crewRelayStreams.Unlock() })
-	if !crewMacConversationRunning("owner", "team", "conversation-x") {
+	if crewMacConversationActivity("owner", "team", "conversation-x") != "running" {
 		t.Fatal("a turn that started now must read as working")
 	}
 	crewRelayStreams.Lock()
 	crewRelayStreams.streams[key].since = time.Now().Add(-2 * crewActivityStale)
 	crewRelayStreams.Unlock()
-	if crewMacConversationRunning("owner", "team", "conversation-x") {
+	if crewMacConversationActivity("owner", "team", "conversation-x") == "running" {
 		t.Fatal("a turn whose end never came must stop counting as working")
 	}
 }
