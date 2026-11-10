@@ -292,7 +292,7 @@ export function teamFolderChange(target: TeamTarget, whole: boolean): Promise<Te
 }
 
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
- * does not write, as real tabs of this Crew. Their chats are read from the server through this Mac's sign-in
+ * does not write, as real tabs of this Crew (agents only: a read-only schedule chat of the viewer's own has a :schedule: key and stays out). Their chats are read from the server through this Mac's sign-in
  * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */
 export async function teamSideChats(profileId: string, projectId: string): Promise<AgentProfileSideChat[]> {
   const binding = await macBinding(projectId)
@@ -300,7 +300,7 @@ export async function teamSideChats(profileId: string, projectId: string): Promi
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
   if (!response.ok) return []
   const rows = await response.json() as AgentProfileSideChat[]
-  return (rows || []).filter(row => row.can_write === false && !row.on_your_mac && row.tab_owner_id && row.session_id && !row.is_main).map(row => {
+  return (rows || []).filter(row => row.can_write === false && !row.on_your_mac && row.tab_owner_id && row.session_id && !row.is_main && row.conversation_key.includes(':chat:')).map(row => {
     registerRemoteSession(row.session_id, binding.connection)
     return { ...row, conversation_key: `${projectId}:team:${row.conversation_key}`, chat_location: undefined, agent_id: undefined }
   })
