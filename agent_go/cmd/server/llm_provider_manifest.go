@@ -338,6 +338,7 @@ func claudeCodeCapabilityModels() []string {
 		// months after they stopped being offered).
 		return []string{
 			"claude-code",
+			"claude-fable-5-2",
 			"claude-fable-5-1",
 			"claude-opus-5-5",
 			"claude-sonnet-5-5",
