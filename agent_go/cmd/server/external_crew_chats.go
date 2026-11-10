@@ -164,7 +164,7 @@ func crewChatActionScope(action, tool string, inputs ...map[string]any) string {
 			args = inputs[0]
 		}
 		identity := crewSessionToolIdentity(tool, args)
-		for _, read := range []string{"list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents"} {
+		for _, read := range []string{"list_ui_capabilities", "get_ui_state"} {
 			if identity == platformtools.Identity(read) {
 				scope = "crews:read"
 			}

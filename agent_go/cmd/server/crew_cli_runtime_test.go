@@ -97,7 +97,7 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	if !slices.Contains(buildReq.SelectedSkills, "crew-builder") {
 		t.Fatalf("Builder lost feature skills: %v", buildReq.SelectedSkills)
 	}
-	for _, name := range []string{"background-work", "crew-builder"} {
+	for _, name := range []string{"crew-builder"} {
 		if slices.Contains(runReq.SelectedSkills, name) {
 			t.Fatalf("Run kept authoring skill %s", name)
 		}

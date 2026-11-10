@@ -504,7 +504,7 @@ func startLocalMCPBridgeForPiWorkflowE2E(t *testing.T) {
 		normalized := strings.ReplaceAll(server, "-", "_")
 		switch normalized {
 		case "workspace", "workspace_tools", "workspace_browser", "workspace_advanced", "workspace_image", "workspace_image_gen", "workspace_image_edit",
-			"human_tools", "delegation_tools", "workflow", "workflow_creator", "knowledgebase_tools", "llm_config_tools", "secret_tools", "skill_tools",
+			"human_tools", "workflow", "workflow_creator", "knowledgebase_tools", "llm_config_tools", "secret_tools", "skill_tools",
 			"mcp_server_tools", "activity_status", "auto_improvement":
 			handlers.HandlePerToolCustomRequest(w, r, tool)
 		case "memory":

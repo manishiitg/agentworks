@@ -3015,8 +3015,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           ? currentTab.config.llmConfig
           : llmStore.primaryConfig
       // Chat has one primary model. Product profiles may replace it with their
-      // server-owned runtime; delegation tiers no longer participate in normal
-      // chat model selection because chat no longer creates sub-agents.
+      // server-owned runtime.
       const effectiveLLMConfig: ExtendedLLMConfiguration = baseLLMConfig
 
       const llmConfigWithApiKeys = buildLLMConfigWithApiKeys(effectiveLLMConfig)

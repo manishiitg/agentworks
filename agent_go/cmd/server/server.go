@@ -107,7 +107,6 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 	"workspace_image_gen":  true,
 	"workspace_image_edit": true,
 	"human_tools":          true,
-	"delegation_tools":     true,
 	"workflow":             true,
 	"workflow_creator":     true,
 	"knowledgebase_tools":  true,
@@ -886,8 +885,6 @@ type QueryRequest struct {
 	BotUserID    string `json:"bot_user_id,omitempty"`
 	BotUserName  string `json:"bot_user_name,omitempty"`
 	BotUserEmail string `json:"bot_user_email,omitempty"`
-	// Delegation tier configuration: Maps reasoning levels (high/medium/low) to specific provider/model pairs
-	DelegationTierConfig *virtualtools.DelegationTierConfig `json:"delegation_tier_config,omitempty"`
 	// Selected global secret names to include (if nil/absent, no global secrets are included)
 	SelectedGlobalSecrets *[]string `json:"selected_global_secrets,omitempty"`
 	// Workspace paths of workflows to inject context for (via # selector in chat)
@@ -2448,7 +2445,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/llm-config/models/metadata", api.handleGetModelMetadata).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/azure/deployments", api.handleGetAzureDeployedModels).Methods("POST")
 	apiRouter.HandleFunc("/llm-config/validate-key", api.handleValidateAPIKey).Methods("POST")
-	apiRouter.HandleFunc("/llm-config/delegation-tiers", api.handleGetDelegationTierDefaults).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers", api.handleGetProviderManifest).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers/{provider}/models", api.handleGetProviderModels).Methods("GET")
 	apiRouter.HandleFunc("/provider-connections", api.handleProviderConnections).Methods("GET", "POST", "OPTIONS")
@@ -2637,11 +2633,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Published LLMs (workspace-backed JSON storage)
 	apiRouter.HandleFunc("/published-llms", api.handleSavePublishedLLMs).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/published-llms", api.handleLoadPublishedLLMs).Methods("GET", "OPTIONS")
-
-	// Legacy bot-connector model profile. Direct chat and product chat use their
-	// selected/profile model directly and do not load delegation tiers.
-	apiRouter.HandleFunc("/delegation-tier-config", api.handleSaveDelegationTierConfig).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/delegation-tier-config", api.handleLoadDelegationTierConfig).Methods("GET", "OPTIONS")
 
 	// OAuth API routes (from oauth_routes.go)
 	apiRouter.HandleFunc("/oauth/start", api.handleOAuthStart).Methods("POST", "OPTIONS")
@@ -5252,9 +5243,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		//
 		// This branch is deliberately narrower than "any chat with SelectedFolder
 		// set": an ordinary multi-agent chat that merely references a workflow
-		// folder must not inherit that workflow's credential (see delegation.go's
-		// workflowOwnedDelegation check, which enforces the same rule for
-		// sub-agents).
+		// folder must not inherit that workflow's credential.
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
@@ -6516,16 +6505,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register workflow runtime: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile workflow runtime: %v", err), true)
 				return
-			}
-			// Crew Run mode: readers get foreground-only turns (background
-			// delegates would need their own guard inheritance proof) and
-			// no dashboard authoring.
-			if !crewReadOnly {
-				if err := api.registerWorkBackgroundTools(llmAgent, resolvedProfile, req, sessionID, currentUserID); err != nil {
-					logfWithContext(queryLogCtx, "[WORK BACKGROUND] Failed to register tools: %v", err)
-					sendError(fmt.Sprintf("Failed to register Work background tools: %v", err), true)
-					return
-				}
 			}
 			if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder, crewReadOnly || currentUserIsReadOnly); err != nil {
 				logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
@@ -9658,136 +9637,6 @@ func (e *sessionEventEmitter) EmitProductInteraction(kind string, payload map[st
 			Data:      data,
 		},
 	})
-}
-
-func sanitizeTierModel(model *virtualtools.TierModel) *virtualtools.TierModel {
-	if model == nil || model.Provider == "" || model.ModelID == "" {
-		return nil
-	}
-	sanitized := &virtualtools.TierModel{
-		Provider:     strings.TrimSpace(model.Provider),
-		ModelID:      strings.TrimSpace(model.ModelID),
-		Options:      model.Options,
-		ConnectionID: model.ConnectionID,
-	}
-
-	return sanitized
-}
-
-func queryRequestHasExplicitLLMSelection(req QueryRequest) bool {
-	if req.LLMConfig != nil {
-		if strings.TrimSpace(req.LLMConfig.Primary.Provider) != "" || strings.TrimSpace(req.LLMConfig.Primary.ModelID) != "" {
-			return true
-		}
-	}
-	return strings.TrimSpace(req.Provider) != "" || strings.TrimSpace(req.ModelID) != ""
-}
-
-func applyTopLevelDelegationModel(ctx context.Context, req QueryRequest, finalProvider, finalModelID string) (string, string, bool) {
-	// A provider profile is itself the user's explicit selection. It must win
-	// over stale tab-level provider/model fields sent by an older frontend state.
-	providerProfileSelected := req.DelegationTierConfig != nil &&
-		strings.EqualFold(strings.TrimSpace(req.DelegationTierConfig.Mode), "provider_profile") &&
-		strings.TrimSpace(req.DelegationTierConfig.Provider) != ""
-	if queryRequestHasExplicitLLMSelection(req) && !providerProfileSelected {
-		return finalProvider, finalModelID, false
-	}
-	tierConfig := LoadAndResolveTierConfig(ctx, req.DelegationTierConfig)
-	if tierConfig == nil {
-		return finalProvider, finalModelID, false
-	}
-	if tierConfig.Main != nil && tierConfig.Main.Provider != "" && tierConfig.Main.ModelID != "" {
-		return tierConfig.Main.Provider, tierConfig.Main.ModelID, true
-	}
-	if tierConfig.High != nil && tierConfig.High.Provider != "" && tierConfig.High.ModelID != "" {
-		return tierConfig.High.Provider, tierConfig.High.ModelID, true
-	}
-	return finalProvider, finalModelID, false
-}
-
-// resolveDelegationTierConfig builds a DelegationTierConfig by merging:
-// 1. Frontend config (from QueryRequest) - highest priority
-// 2. Environment variables (DELEGATION_TIER_*) - fallback
-// Returns nil if no tier config is available at all
-func resolveDelegationTierConfig(frontendConfig *virtualtools.DelegationTierConfig) *virtualtools.DelegationTierConfig {
-	if frontendConfig != nil && frontendConfig.Mode == "provider_profile" && strings.TrimSpace(frontendConfig.Provider) != "" {
-		defaults, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(strings.TrimSpace(frontendConfig.Provider)))
-		if ok {
-			toTierModel := func(ref llmproviders.CodingAgentTierModelRef) *virtualtools.TierModel {
-				if strings.TrimSpace(ref.Provider) == "" || strings.TrimSpace(ref.ModelID) == "" {
-					return nil
-				}
-				return &virtualtools.TierModel{Provider: ref.Provider, ModelID: ref.ModelID, Options: ref.Options}
-			}
-			return &virtualtools.DelegationTierConfig{
-				SchemaVersion: delegationTierConfigSchemaVersion,
-				Mode:          "provider_profile",
-				Provider:      strings.TrimSpace(frontendConfig.Provider),
-				Main:          toTierModel(defaults.Main),
-				High:          toTierModel(defaults.High),
-				Medium:        toTierModel(defaults.Medium),
-				Low:           toTierModel(defaults.Low),
-			}
-		}
-	}
-
-	result := &virtualtools.DelegationTierConfig{SchemaVersion: delegationTierConfigSchemaVersion, Mode: "explicit"}
-	hasAny := false
-
-	// Start with env var defaults
-	if p, m := os.Getenv("DELEGATION_TIER_HIGH_PROVIDER"), os.Getenv("DELEGATION_TIER_HIGH_MODEL"); p != "" && m != "" {
-		result.High = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-	if p, m := os.Getenv("DELEGATION_TIER_MEDIUM_PROVIDER"), os.Getenv("DELEGATION_TIER_MEDIUM_MODEL"); p != "" && m != "" {
-		result.Medium = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-	if p, m := os.Getenv("DELEGATION_TIER_LOW_PROVIDER"), os.Getenv("DELEGATION_TIER_LOW_MODEL"); p != "" && m != "" {
-		result.Low = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-
-	// Override with frontend config (higher priority)
-	if frontendConfig != nil {
-		if main := sanitizeTierModel(frontendConfig.Main); main != nil {
-			result.Main = main
-			hasAny = true
-		}
-		if high := sanitizeTierModel(frontendConfig.High); high != nil {
-			result.High = high
-			hasAny = true
-		}
-		if medium := sanitizeTierModel(frontendConfig.Medium); medium != nil {
-			result.Medium = medium
-			hasAny = true
-		}
-		if low := sanitizeTierModel(frontendConfig.Low); low != nil {
-			result.Low = low
-			hasAny = true
-		}
-		// Pass through custom tiers from frontend (no env var equivalent)
-		if len(frontendConfig.Custom) > 0 {
-			result.Custom = frontendConfig.Custom
-			hasAny = true
-		}
-	}
-
-	if !hasAny {
-		return nil
-	}
-	return result
-}
-
-// handleGetDelegationTierDefaults returns the env var default values for delegation tier config
-func (api *StreamingAPI) handleGetDelegationTierDefaults(w http.ResponseWriter, r *http.Request) {
-	tierConfig := resolveDelegationTierConfig(nil) // env vars only
-	if tierConfig == nil {
-		tierConfig = &virtualtools.DelegationTierConfig{}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tierConfig)
 }
 
 // getActiveSession retrieves an active session by ID
@@ -13077,8 +12926,7 @@ func workshopConvertTieredLLMConfigFor(ctx context.Context, config *workflowtype
 
 // generateTextWorkflowTiers converts the current workflow manifest's model
 // roles into the compact config consumed by generate_text_llm. Provider-profile
-// workflows (including Cursor managing the full workflow) are expanded first,
-// so this path never consults the unrelated global delegation-tier settings.
+// workflows (including Cursor managing the full workflow) are expanded first.
 func generateTextWorkflowTiers(config *workflowtypes.PresetLLMConfig) *virtualtools.WorkflowLLMTierConfig {
 	if config == nil {
 		return nil

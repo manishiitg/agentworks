@@ -1286,30 +1286,6 @@
   },
   {
     "family": "sessions",
-    "name": "background_start",
-    "member": "run_in_background",
-    "description": "Use the current project\u2019s background start session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
-    "name": "background_status",
-    "member": "query_agent",
-    "description": "Use the current project\u2019s background status session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
-    "name": "background_list",
-    "member": "list_background_agents",
-    "description": "Use the current project\u2019s background list session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
-    "name": "background_stop",
-    "member": "terminate_agent",
-    "description": "Use the current project\u2019s background stop session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
     "name": "list",
     "member": "sessions_list_crew",
     "description": "Use the existing sessions list operation with its current access.",
