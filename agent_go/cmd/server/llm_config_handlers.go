@@ -154,7 +154,7 @@ func isAllowedDefaultLLM(provider, modelID string) bool {
 		// (see lockedPresetLLMConfig), so those models are published too.
 		if publishedLLMProviderListed(provider, defaults.PrimaryConfig) {
 			if tiers, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(provider)); ok {
-				for _, ref := range []llmproviders.CodingAgentTierModelRef{tiers.Builder, tiers.High, tiers.Medium, tiers.Low, tiers.Pulse} {
+				for _, ref := range []llmproviders.CodingAgentTierModelRef{tiers.Main, tiers.High, tiers.Medium, tiers.Low} {
 					if strings.EqualFold(strings.TrimSpace(ref.ModelID), modelID) {
 						return true
 					}

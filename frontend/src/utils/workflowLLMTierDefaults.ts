@@ -240,7 +240,7 @@ export function getWorkflowLLMOptions(
         displayName: entry.display_name,
         usable: entry.usable,
         hasDefaultTierModels: Boolean(entry.default_tier_models),
-        builder: entry.default_tier_models?.builder,
+        builder: entry.default_tier_models?.main,
       })),
   })
 

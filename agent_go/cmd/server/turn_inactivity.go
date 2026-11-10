@@ -98,6 +98,10 @@ func (state *turnInactivityState) observe(event events.Event, now time.Time) boo
 			progress = !known || old.open || tool.Status != "running"
 			state.waiting = false
 		}
+		if activity, ok := event.Data.Data.(*unifiedevents.CodingAgentNativeActivityEvent); ok && activity != nil && activity.Record.Kind == "helper" {
+			progress = true
+		}
+
 		if chunk, ok := event.Data.Data.(*unifiedevents.StreamingChunkEvent); ok && chunk != nil {
 			progress = chunk.Source != "terminal" && strings.TrimSpace(chunk.Content) != "" && chunk.Metadata["kind"] != "terminal"
 		}

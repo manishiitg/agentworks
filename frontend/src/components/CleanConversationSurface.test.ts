@@ -31,6 +31,19 @@ describe('buildCleanConversationItems', () => {
     expect(items.map(item => item.role)).toEqual(['background', 'assistant'])
     expect(items[1].content).toBe('The helper result is ready.')
   })
+  it('updates one helper row from SDK and transcript bookends without mixing native parents (PLAT-872)', () => {
+    const record = { kind: 'helper', provider: 'claude-code', native_session_id: 'parent-one', task_id: 'task', tool_id: 'tool' }
+    const items = buildCleanConversationItems([
+      event('start', 'coding_agent_native_activity', { record: { ...record, id: 'sdk:1', origin: 'sdk_helper', name: 'Review parser', state: 'started' } }),
+      event('user', 'user_message', { content: 'Also check errors' }),
+      event('other', 'coding_agent_native_activity', { record: { ...record, native_session_id: 'parent-two', state: 'started' } }),
+      event('finish', 'coding_agent_native_activity', { record: { ...record, id: 'sdk:1', origin: 'sdk_helper', name: 'Review parser', state: 'finished' } }),
+      event('late-start', 'coding_agent_native_activity', { record: { ...record, name: 'Agent', state: 'started' } }),
+      event('transcript-finish', 'coding_agent_native_activity', { record: { ...record, name: 'Agent', state: 'finished' } }),
+    ])
+    expect(items.map(item => item.content)).toEqual(['Review parser · Completed', 'Also check errors', 'Helper agent · Running'])
+    expect(items[0].id).toBe('start')
+  })
   it('keeps both native answers after two quick sends and deduplicates only their own replay', () => {
     const items = buildCleanConversationItems([
       event('user-1', 'user_message', { content: 'First prompt' }),
