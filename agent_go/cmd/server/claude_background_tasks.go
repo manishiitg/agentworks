@@ -3,7 +3,11 @@ package server
 import (
 	"log"
 	"strings"
+	"time"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
@@ -36,6 +40,25 @@ var releaseAnsweredCodingTurn = func(sessionID string) bool {
 // runtime state and tells open screens to read it again.
 func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 	claudecode.SetSDKAnswerListener(recordNativeTurnAnswer)
+	claudecode.SetSDKHelperListener(func(update claudecode.SDKHelperUpdate) {
+		if api.eventStore == nil || update.Owner == "" || !api.eventStore.IsDurableChatSession(update.Owner) {
+			return
+		}
+		task := update.Task
+		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: "helper", State: task.State, Origin: "sdk_helper", Name: task.Description, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: time.Now()}
+		activity := agentevents.NewAgentEvent(agentevents.NewCodingAgentNativeActivity(record))
+		activity.SessionID = update.Owner
+		api.observeTurnInactivity(update.Owner, storeevents.Event{Type: string(agentevents.CodingAgentNativeActivity), SessionID: update.Owner, Timestamp: time.Now(), ExecutionKind: "main_agent", Data: activity})
+		if task.State == "progress" {
+			return
+		} // actual native progress, not another transcript row
+
+		if err := api.saveNativeCodingActivity(update.Owner, record); err != nil {
+			log.Printf("[SDK_HELPER] event failed session=%s task=%s state=%s: %v", update.Owner, task.TaskID, task.State, err)
+			return
+		}
+		log.Printf("[SDK_HELPER] event saved session=%s task=%s state=%s", update.Owner, task.TaskID, task.State)
+	})
 	claudecode.SetSDKBackgroundListener(func(update claudecode.SDKBackgroundUpdate) {
 		sessionID := strings.TrimSpace(update.Owner)
 		if sessionID == "" {

@@ -2,6 +2,7 @@ import { codingAgentQuestionCards, type CodingAgentQuestionPrompt } from './codi
 export type { CodingAgentQuestionPrompt } from './codingAgentQuestions'
 import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
 import { nativeActivityText } from './nativeActivityText'
+import { coalesceNativeHelperActivity } from './nativeHelperActivity'
 import type { PollingEvent } from '../services/api-types'
 import { askAIDisplayText } from './askAIMessage'
 import { appendStreamingText } from './streamingStatus'
@@ -157,7 +158,7 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
 		items.push(item)
 	}
 
-  for (const event of normalizeTranscriptChunkEvents(events)) {
+  for (const event of coalesceNativeHelperActivity(normalizeTranscriptChunkEvents(events))) {
     const payload = eventPayload(event)
 
     if (event.type === 'user_message') {

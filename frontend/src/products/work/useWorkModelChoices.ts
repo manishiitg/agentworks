@@ -152,7 +152,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
   ), [accounts])
   const defaultForOption = useCallback((option: AgentProfileProviderOption | undefined, connectionId?: string) => {
     if (!option) return { modelId: '', reasoningEffort: undefined as string | undefined }
-    const defaults = providerManifest.find(provider => provider.id === option.provider)?.default_tier_models?.builder
+    const defaults = providerManifest.find(provider => provider.id === option.provider)?.default_tier_models?.main
     const profileEffort = typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined
     const manifestEffort = typeof defaults?.options?.reasoning_effort === 'string' ? defaults.options.reasoning_effort : undefined
     return {
