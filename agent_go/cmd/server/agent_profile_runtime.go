@@ -861,7 +861,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if !isGlobalScope && isProjectProfileID(profile.ID) {
 		rootGuidance, err := resolveRootProjectInstructions(ctx, userID, instructionFilesFolder, publication, req.Provider, req.ModelID)
 		if err != nil {
-			return nil, err
+			// Imported AGENTS.md/CLAUDE.md are optional guidance: an unreadable file (an offline laptop folder, a
+			// permission blip) must not stop every chat in the Crew. Log it once per turn, no content, and go on.
+			log.Printf("[PROJECT_INSTRUCTIONS] workspace=%q provider=%q root guidance skipped: %v", instructionFilesFolder, req.Provider, err)
+			rootGuidance = projectinstructions.RootResult{}
 		}
 		rootInstructionKey = rootGuidance.Key
 		// Shared Crew rules stay last, after imported root guidance.
