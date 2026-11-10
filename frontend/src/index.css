@@ -1987,6 +1987,12 @@ html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-sco
   background: hsl(var(--background));
 }
 
+/* Inline paths/names are code labels, not blue emphasis. Keep real link colors. */
+html.dark[data-appearance="dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: #d4d4d4 !important;
+  background-color: rgb(255 255 255 / 0.07) !important;
+}
+
 /* Default keeps the renderer's original chat colors and native text selection. */
 html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
   color: hsl(var(--foreground));
