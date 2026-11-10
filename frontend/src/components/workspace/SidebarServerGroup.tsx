@@ -38,7 +38,8 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
     </button>}
     {groupsMenu}
     {(onMoveUp || onMoveDown) && <PinnedCrewOrderMenu name={name} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />}
-    {onToggleAgents && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
+    {/* The caret only closes an open project's agents; opening the project opens them (owner, 10 Nov). */}
+    {onToggleAgents && agentsExpanded && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
       className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <ChevronRight className={`h-3.5 w-3.5 transition-transform ${agentsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
     </button>}
