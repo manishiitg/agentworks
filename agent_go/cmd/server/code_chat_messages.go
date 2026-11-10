@@ -264,7 +264,13 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 	describe := func(project codeChatProject) []map[string]interface{} {
 		out := make([]map[string]interface{}, 0, len(project.Chats))
 		for _, chat := range project.Chats {
-			item := map[string]interface{}{"id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": crewOwnerDisplayName(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			// Names as the header shows them (owner, 10 Nov: a person's chip said "admin" while this list said their
+			// email, and a person's Main said its saved title "<email> · Builder", so "ask admin" found no one).
+			name := chat.Name
+			if chat.IsMain {
+				name = "Main"
+			}
+			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}
