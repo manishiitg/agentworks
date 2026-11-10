@@ -391,3 +391,26 @@ func TestQueuedAgentMessageKeepsServerDisplayAttribution(t *testing.T) {
 		t.Fatal("ordinary input acquired sender attribution")
 	}
 }
+
+// PLAT-746-819: queued rows must show the admitted sender before execution starts.
+func TestQueuedRowDisplayAttributionRequiresSamePersonAndChat(t *testing.T) {
+	turn := queuedConversationTurn{UserID: "owner", SessionID: "chat", Principal: queuedConversationPrincipal{
+		DeliveredMessageUser: "owner", DeliveredMessageSession: "chat",
+		DeliveredMessage: map[string]interface{}{"source": "agent_message", "sender_label": "Reviewer", "display_content": "Actual message"},
+	}}
+	got := queuedTurnDisplayAttribution("chat", turn)
+	if got["display_content"] != "Actual message" {
+		t.Fatal("queued row lost admitted body")
+	}
+	got["display_content"] = "changed"
+	if turn.Principal.DeliveredMessage["display_content"] != "Actual message" {
+		t.Fatal("display aliases saved principal")
+	}
+	if queuedTurnDisplayAttribution("other", turn) != nil {
+		t.Fatal("stamp crossed chats")
+	}
+	turn.UserID = "other"
+	if queuedTurnDisplayAttribution("chat", turn) != nil {
+		t.Fatal("stamp crossed people")
+	}
+}
