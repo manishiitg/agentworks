@@ -189,3 +189,36 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 		}
 	}
 }
+
+// Owner, 2026-11-11: only a same-person reply to what a chat asked may enter its running turn; another person's
+// agent, a guest or Run chat, and the asker's own follow-up keep their own turn and admission.
+func TestOnlySamePersonRepliesSteerIntoTheAskingTurn(t *testing.T) {
+	asker := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "crew", Session: "product-asker", Mode: "builder"}
+	replier := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerUser, ID: "reviewer", External: true}
+	conv := func(a, r agentMessageEndpoint) agentConversation {
+		return agentConversation{ID: "inbox-1", Endpoints: [2]agentMessageEndpoint{a, r}}
+	}
+	other := replier
+	other.UserID = "colleague"
+	runAsker := asker
+	runAsker.Mode = "run"
+	guestAsker := asker
+	guestAsker.Guest = "colleague"
+	for _, tc := range []struct {
+		name string
+		c    agentConversation
+		m    agentMessage
+		want bool
+	}{
+		{"reply from own agent", conv(asker, replier), agentMessage{From: 1}, true},
+		{"asker follow-up", conv(asker, replier), agentMessage{From: 0}, false},
+		{"another person's agent", conv(asker, other), agentMessage{From: 1}, false},
+		{"Run chat asker", conv(runAsker, replier), agentMessage{From: 1}, false},
+		{"guest asker", conv(guestAsker, replier), agentMessage{From: 1}, false},
+		{"person ping", conv(asker, replier), agentMessage{From: 1, Kind: "ping"}, false},
+	} {
+		if got := agentMessageSteerableReply(tc.c, tc.m); got != tc.want {
+			t.Errorf("%s: steerable=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

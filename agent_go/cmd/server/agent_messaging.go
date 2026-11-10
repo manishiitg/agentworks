@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -847,10 +848,15 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			laneValue, _ := agentMessageLanes.LoadOrStore(laneKey, &sync.Mutex{})
 			lane := laneValue.(*sync.Mutex)
 			lane.Lock()
+			steer := false
 			if dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
-				lane.Unlock()
-				time.Sleep(time.Second)
-				continue
+				// A reply to what this chat asked, from the same person's agent, goes straight into the running turn
+				// (owner, 2026-11-11); anything else waits for the turn to end.
+				if steer = agentMessageSteerableReply(conv, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
+					lane.Unlock()
+					time.Sleep(time.Second)
+					continue
+				}
 			}
 			// A started delivery is not replayed after a process crash. Its durable
 			// message remains available and restart records uncertain delivery.
@@ -881,7 +887,23 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				continue
 			}
 			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), 30*time.Minute)
-			session, deliveryErr := api.deliverAgentMessage(deliveryCtx, conv, msg)
+			var session string
+			var deliveryErr error
+			if steer {
+				var steered bool
+				if steered, deliveryErr = api.steerAgentMessageReply(deliveryCtx, conv, msg); !steered && deliveryErr == nil {
+					// The turn ended or cannot take input right now: put the message back and let it wait as before.
+					cancel()
+					log.Printf("[AGENT-MESSAGE] steer of reply %s in %s reopened: %s cannot take it now; it waits for its own turn", msg.ID, id, dest.Session)
+					api.reopenAgentMessage(ctx, id, msg.ID)
+					lane.Unlock()
+					time.Sleep(time.Second)
+					continue
+				}
+				session = dest.Session
+			} else {
+				session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
+			}
 			cancel()
 			var held conditiontrigger.HoldError
 			hold := errors.Is(deliveryErr, conditiontrigger.ErrPaused) || errors.As(deliveryErr, &held)
@@ -926,6 +948,86 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			}
 		}
 	}()
+}
+
+// agentMessageSteerableReply is a reply from the agent this chat asked (the conversation's second side; the
+// asker is Endpoints[0]) when both sides act for the same person: it may enter the asker's running turn, under
+// that turn's own access. New tasks, follow-ups from the asker, other people's agents, guests, shares, network
+// pairs and function calls keep their own turn and its own admission.
+func agentMessageSteerableReply(c agentConversation, m agentMessage) bool {
+	if m.From != 1 || m.Kind != "" || m.File != nil {
+		return false
+	}
+	asker, replier := c.Endpoints[0], c.Endpoints[1]
+	return asker.UserID != "" && asker.UserID == replier.UserID && asker.Session != "" && !asker.External &&
+		asker.Guest == "" && asker.Mode != "run" && asker.ShareID == "" && replier.ShareID == "" &&
+		asker.NetworkPairID == "" && asker.FunctionCallID == "" && asker.ConditionJob == "" &&
+		crossPersonOwner(replier, asker.UserID) == ""
+}
+
+// steerAgentMessageReply hands an admitted reply to the asking chat's running turn. It reports false with no
+// error when the turn can no longer take input, so the caller lets the message wait for its own turn.
+func (api *StreamingAPI) steerAgentMessageReply(ctx context.Context, c agentConversation, m agentMessage) (bool, error) {
+	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
+	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
+		return false, err
+	}
+	if err := validateMessageDestination(ctx, dest); err != nil {
+		return false, err
+	}
+	if crewMessageRunMode(api.agentMessageCallerRole(dest), source, firstNonEmptyTrimmed(dest.Guest, source.UserID)) {
+		return false, nil
+	}
+	api.runningAgentsMux.RLock()
+	runningAgent := api.runningAgents[dest.Session]
+	api.runningAgentsMux.RUnlock()
+	if runningAgent == nil || !api.canSteerSession(dest.Session) || api.isSyntheticTurn(dest.Session) {
+		return false, nil
+	}
+	text := agentMessageText(c, m)
+	inputCtx, cancel := context.WithTimeout(ctx, liveCodingAgentInputTimeout)
+	defer cancel()
+	messageID := newSteerMessageID()
+	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
+		SessionID: dest.Session, Message: text, Intent: mcpagent.UserMessageDeliveryIntentLiveInput, MessageID: messageID,
+	})
+	if err != nil || delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusSentToCLI {
+		log.Printf("[AGENT-MESSAGE] steer %s into %s not confirmed (status=%s err=%v); it waits for its own turn", m.ID, dest.Session, delivery.DeliveryStatus, err)
+		return false, nil
+	}
+	provider := string(delivery.Provider)
+	if provider == "" {
+		provider = string(mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider)
+	}
+	label, senderAgent, senderChannel := agentMessageSender(ctx, source, dest.UserID)
+	api.recordAttributedCodingAgentUserMessage(dest.Session, text, provider, messageID, string(delivery.DeliveryStatus), "", map[string]interface{}{
+		"source": "agent_message", "sender_label": label, "sender_agent": senderAgent, "sender_channel": senderChannel,
+		"sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID, "agent_message_inbox": c.ID,
+		"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
+	})
+	log.Printf("[AGENT-MESSAGE] steered reply %s from %s into running turn of %s", m.ID, c.ID, dest.Session)
+	return true, nil
+}
+
+// reopenAgentMessage returns a claimed message to pending after a steer that did not happen.
+func (api *StreamingAPI) reopenAgentMessage(ctx context.Context, inboxID, messageID string) {
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	s, err := readAgentMessageStore(ctx)
+	if err != nil {
+		return
+	}
+	for i := range s.Conversations {
+		if s.Conversations[i].ID != inboxID {
+			continue
+		}
+		for j := range s.Conversations[i].Messages {
+			if m := &s.Conversations[i].Messages[j]; m.ID == messageID && m.Delivery == "dispatching" {
+				m.Delivery = "pending"
+			}
+		}
+	}
+	_ = saveAgentMessageStore(ctx, s)
 }
 
 var agentMessageTurn func(*StreamingAPI, context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
