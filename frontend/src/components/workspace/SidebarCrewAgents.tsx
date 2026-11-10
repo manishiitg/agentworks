@@ -24,7 +24,9 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const team = useTeamTab(projectId).view
   const me = useAuthStore(state => state.user?.id)
   const tabs = useChatStore(state => state.chatTabs)
-  const teamPeople = (team?.team.on ? team.people : []).filter(person => person.user_id !== me && person.note !== 'invited')
+  // The server marks the viewer (note 'you'): on the Mac the local account id differs from the server's, so the id alone
+  // listed the owner twice (owner, 10 Nov).
+  const teamPeople = (team?.team.on ? team.people : []).filter(person => person.user_id !== me && person.note !== 'you' && person.note !== 'invited')
   if (crew.projectId !== projectId || !crew.agents.length) return null
   // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
   const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)

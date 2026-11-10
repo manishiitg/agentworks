@@ -1894,3 +1894,11 @@
   .reply-file-toolbar > div:first-child { gap: 0.25rem; }
   .reply-toolbar-checkout-summary { display: inline-flex; }
 }
+
+/* AgentBridge cards are denser than the main answer; the normal chat scale still applies. */
+.agent-inbox-prose .conversation-markdown p,
+.agent-inbox-prose .conversation-markdown li {
+  font-size: calc(13px * var(--chat-scale, 1));
+  line-height: calc(20px * var(--chat-scale, 1));
+}
+.agent-inbox-prose .conversation-markdown p { margin-bottom: 0.5rem; }

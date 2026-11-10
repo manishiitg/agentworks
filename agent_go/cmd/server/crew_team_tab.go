@@ -240,7 +240,11 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		if who == "" {
 			who = "the owner"
 		}
-		text := "You are on " + who + "'s team."
+		text := "You are on " + who + "'s team"
+		if len(others) > 0 {
+			text += ", with " + strings.Join(others, ", ")
+		}
+		text += ". A team is the people the owner shares this Crew with; you can use only what they share."
 		if len(usable) > 0 {
 			text += " You can chat with: " + strings.Join(usable, ", ") + "."
 		}

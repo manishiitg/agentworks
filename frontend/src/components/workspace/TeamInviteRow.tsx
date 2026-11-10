@@ -55,10 +55,11 @@ function TeamInviteRow({ invite }: { invite: TeamInvite }) {
     </div>
     {folder && <div className="mt-1.5 space-y-1.5 text-[11px] text-muted-foreground">
       <p className="break-all">The shared folder goes to <span className="text-foreground">{folder}</span></p>
+      {!invite.folder?.whole && !!invite.folder?.folders?.length && <p>A folder that already has files is fine: they stay on this Mac, and only {invite.folder.folders.map(name => `${name}/`).join(', ')} syncs with the team.</p>}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" disabled={busy} onClick={() => void addToMac()} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-foreground shadow-sm hover:bg-muted">OK</button>
         {window.electronAPI?.pickWorkflowFolder && <button type="button" disabled={busy} onClick={async () => { const picked = await window.electronAPI?.pickWorkflowFolder?.(); if (picked) setFolder(picked) }} className="rounded-full px-2.5 py-0.5 text-xs hover:bg-muted">Choose another folder</button>}
-        <button type="button" disabled={busy} onClick={() => setFolder('')} className="rounded-full px-2.5 py-0.5 text-xs hover:bg-muted">Back</button>
+        <button type="button" disabled={busy} onClick={() => void answer(false)} className="rounded-full px-2.5 py-0.5 text-xs hover:bg-muted">Decline</button>
       </div>
     </div>}
     {error && <p role="alert" className="mt-1 text-[11px] text-destructive">{error}</p>}

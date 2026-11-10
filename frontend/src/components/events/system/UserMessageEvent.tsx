@@ -37,8 +37,6 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
     ? event.metadata.step_name.trim()
     : ''
 
-  // Use the same server-attributed card in standard chat and terminal/native
-  // transcripts. Never infer an agent identity from someone typing an envelope.
   const incomingAgentMessage = agentInboxMessage(event.metadata as Record<string, unknown> | undefined)
   if (incomingAgentMessage) return <AgentInboxMessage message={incomingAgentMessage} timestamp={typeof event.timestamp === 'string' ? event.timestamp : ''} />
 

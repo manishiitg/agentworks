@@ -4,7 +4,7 @@ import { ArrowUp, Clock, Loader2, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { clientMessageEventId, isProvisionalUserMessage, userMessageMetadata } from '../../utils/clientMessageIdentity'
+import { clientMessageEventId, isProvisionalUserMessage, pendingQueuedProvisionals, userMessageMetadata } from '../../utils/clientMessageIdentity'
 import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import { askAIDisplayText } from '../../utils/askAIMessage'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
@@ -51,6 +51,11 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   })
   useEffect(() => {
     if (!query.data || !owns()) return
+    // Server deliveries have no sending browser to create their pending card.
+    // Project the authoritative queue through the same identity-based echo path.
+    const store = useChatStore.getState()
+    const pending = pendingQueuedProvisionals(query.data, store.getTabEvents(sessionId), sessionId)
+    if (pending.length) store.addTabEvents(sessionId, pending)
     const currentIds = new Set(query.data.map(message => message.client_message_id))
     const removedIds = new Set(previous.current.filter(message => !message.steering && !currentIds.has(message.client_message_id))
       .map(message => clientMessageEventId(message.client_message_id)))

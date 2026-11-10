@@ -259,12 +259,12 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
   if (step) return <PublishCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
-  // Show the Crew's actual pairing, rather than a server merely selected for publishing.
   const pairedConnection = connections.find(item => item.id === binding?.connection_id)
   const pairedServer = binding?.peer_server || pairedConnection?.server
   let pairedHost = ''
-  try { pairedHost = pairedServer ? new URL(pairedServer).host : '' } catch { /* no usable network address */ }
+  try { pairedHost = pairedServer ? new URL(pairedServer).host : '' } catch { /* Invalid saved address has no display host. */ }
   const pairedName = pairedConnection?.name || pairedHost
+
   const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
   const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
   // A tab the server does not list for this person falls back to its first one. Dashboards have their own tab (owner,

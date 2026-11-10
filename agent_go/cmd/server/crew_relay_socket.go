@@ -114,9 +114,18 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 	crewMacSockets.byDevice[key] = sock
 	crewMacSockets.Unlock()
 	if old != nil && old.close != nil {
+		// Two computers with one saved connection share its device ID and knock each other off; name both.
+		log.Printf("[CREW_RELAY] replace owner=%s device=%s old_mac=%q new_mac=%q", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, old.name, sock.name)
+		old.mu.Lock()
+		for project := range old.twins {
+			if crewRelayStreams.clearRunning(old.owner, project) {
+				go publishCrewPanelChanged(project)
+			}
+		}
+		old.mu.Unlock()
 		old.close()
 	}
-	log.Printf("[CREW_RELAY] connect owner=%s device=%s crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, len(sock.twins))
+	log.Printf("[CREW_RELAY] connect owner=%s device=%s mac=%q crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, sock.name, len(sock.twins))
 	sock.mu.Lock()
 	for project := range sock.twins {
 		publishCrewPanelChanged(project)
@@ -161,13 +170,18 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 func (sock *crewMacSocket) unregister() {
 	key := sock.owner + "/" + sock.device
 	crewMacSockets.Lock()
-	if crewMacSockets.byDevice[key] == sock {
+	current := crewMacSockets.byDevice[key] == sock
+	if current {
 		delete(crewMacSockets.byDevice, key)
 	}
 	crewMacSockets.Unlock()
 	sock.mu.Lock()
 	for project := range sock.twins {
 		crewMacLastHeard.Store(project, sock.lastSeen)
+		// A replaced socket's chats were cleared when its replacement arrived, which reports them afresh.
+		if current {
+			crewRelayStreams.clearRunning(sock.owner, project)
+		}
 		publishCrewPanelChanged(project)
 	}
 	for id, result := range sock.pending {
@@ -258,6 +272,11 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		return
 	}
 	switch msg.Type {
+	case "running":
+		// The Mac's own report that a turn started or ended in one of its chats (desktop_crew_relay_socket.go).
+		if msg.Conversation != "" && (msg.State == "running" || msg.State == "idle") {
+			crewRelayStreams.setRunning(sock.owner, msg.Project, msg.Conversation, msg.State == "running")
+		}
 	case "event":
 		if msg.Conversation != "" && json.Valid(msg.Event) {
 			crewRelayStreams.append(sock.owner, msg.Project, msg.Conversation, crewRelayBatch{Kind: "event", Seq: msg.Seq, Body: msg.Event})
@@ -423,6 +442,34 @@ func (s *crewRelayStreamSet) get(key string) *crewRelayStream {
 		s.streams[key] = stream
 	}
 	return stream
+}
+
+// setRunning records a Mac's own word that a turn started or ended in one of its chats, so teammates see the agent
+// working without anyone having it open (a chat's events reach the server only while someone watches it).
+func (s *crewRelayStreamSet) setRunning(owner, project, conversation string, running bool) {
+	s.Lock()
+	defer s.Unlock()
+	stream := s.get(owner + "/" + project + "/" + conversation)
+	stream.last = time.Now()
+	if stream.running != running {
+		stream.running, stream.since = running, time.Now()
+		log.Printf("[CREW_RELAY] turn owner=%s project=%s conversation=%s running=%t", sanitizeUserIDForPath(owner), project, conversation, running)
+		go publishCrewPanelChanged(project)
+	}
+}
+
+// clearRunning: the Mac that reported these chats is gone, so none of them is working any more (a turn it never
+// reported the end of would otherwise show a teammate's agent working forever).
+func (s *crewRelayStreamSet) clearRunning(owner, project string) bool {
+	s.Lock()
+	defer s.Unlock()
+	prefix, cleared := owner+"/"+project+"/", false
+	for key, stream := range s.streams {
+		if stream.running && strings.HasPrefix(key, prefix) {
+			stream.running, stream.since, cleared = false, time.Now(), true
+		}
+	}
+	return cleared
 }
 
 func (s *crewRelayStreamSet) append(owner, project, conversation string, batch crewRelayBatch) {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -21,9 +22,12 @@ import (
 // outline stops at 400 KiB of code (about 530 KiB encoded).
 const automationOutlineLimit = 400 * 1024
 
-func automationSourceEnvironment(raw []byte) map[string]string {
+func automationSourceEnvironment(raw []byte, typeCheck bool) map[string]string {
 	encoded := base64.StdEncoding.EncodeToString(raw)
-	environment := map[string]string{"VAR_AUTOMATION_TYPE_CHECK": "1"}
+	environment := map[string]string{}
+	if typeCheck {
+		environment["VAR_AUTOMATION_TYPE_CHECK"] = "1"
+	}
 	const piece = 96 * 1024
 	count := 0
 	for start := 0; start < len(encoded); start += piece {
@@ -35,15 +39,79 @@ func automationSourceEnvironment(raw []byte) map[string]string {
 	return environment
 }
 
+var pythonImportLine = regexp.MustCompile(`(?m)^[ \t]*(?:from[ \t]+(\.*)([\w.]*)[ \t]+import[ \t]+\(?([^\n#]+)|import[ \t]+([^\n#]+))`)
+
+// automationReachableFiles is main.py and the files it imports, following imports from file to file. A big Crew's
+// other scripts (each its own step, never imported) are left out, so its outline still fits the limit.
+func automationReachableFiles(files map[string]string) map[string]string {
+	if _, ok := files["main.py"]; !ok {
+		return files
+	}
+	reached := map[string]string{}
+	queue := []string{"main.py"}
+	add := func(name string) {
+		if source, ok := files[name]; ok {
+			if _, done := reached[name]; !done {
+				reached[name] = source
+				queue = append(queue, name)
+			}
+		}
+	}
+	module := func(base, dotted string) {
+		location := path.Join(append([]string{base}, strings.Split(strings.Trim(dotted, "."), ".")...)...)
+		add(location + ".py")
+		add(location + "/__init__.py")
+		for parent := path.Dir(location); parent != "." && parent != "/"; parent = path.Dir(parent) {
+			add(parent + "/__init__.py")
+		}
+	}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, match := range pythonImportLine.FindAllStringSubmatch(reached[current], -1) {
+			if match[4] != "" { // import a, b.c as d
+				for _, item := range strings.Split(match[4], ",") {
+					if name := strings.Fields(item); len(name) > 0 {
+						module(".", name[0])
+					}
+				}
+				continue
+			}
+			base := "."
+			if dots := len(match[1]); dots > 0 { // from .x import y: relative to this file
+				base = path.Dir(current)
+				for i := 1; i < dots; i++ {
+					base = path.Dir(base)
+				}
+			}
+			module(base, match[2])
+			for _, item := range strings.Split(strings.NewReplacer("(", "", ")", "").Replace(match[3]), ",") {
+				if name := strings.Fields(item); len(name) > 0 && match[2] != "" {
+					module(base, match[2]+"."+name[0])
+				} else if len(name) > 0 {
+					module(base, name[0])
+				}
+			}
+		}
+	}
+	return reached
+}
+
 func inspectPythonAutomationSource(ctx context.Context, workspacePath string, files map[string]string) (json.RawMessage, error) {
 	raw, err := json.Marshal(files)
 	if err != nil {
 		return nil, fmt.Errorf("read automation source: %w", err)
 	}
+	typeCheck := true
 	if len(raw) > automationOutlineLimit {
-		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (400 KiB limit). You can still open and run it."]}`), nil
+		// Too big as a whole: outline what main.py reaches; type notes are only for a whole-source read.
+		reached := automationReachableFiles(files)
+		if raw, err = json.Marshal(reached); err != nil || len(raw) > automationOutlineLimit {
+			return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (400 KiB limit). You can still open and run it."]}`), nil
+		}
+		typeCheck = false
 	}
-	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), automationSourceEnvironment(raw))
+	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), automationSourceEnvironment(raw, typeCheck))
 	if err == nil {
 		rememberCrewStepCount(workspacePath, files, graph)
 	}

@@ -519,7 +519,12 @@ api.interceptors.request.use((config) => {
   config.baseURL = getApiBaseUrl()
   config.headers = config.headers || {}
   // A Team member's chat shown in the Mac app reads from its server (utils/remoteSessions.ts).
-  if (config.url) config.url = remoteSessionPath(config.url)
+  // Those go through the Mac app's own address (getDesktopApiBaseUrl), which carries the app proof the connection proxy
+  // requires; the local base refused them (owner, 10 Nov: a teammate's chat said "Could not load this conversation").
+  if (config.url) {
+    const remotePath = remoteSessionPath(config.url)
+    if (remotePath !== config.url) { config.url = remotePath; config.baseURL = getDesktopApiBaseUrl() }
+  }
 
   // Only add session ID if not already provided
   if (!config.skipSessionContext && config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
