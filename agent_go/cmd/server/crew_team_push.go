@@ -89,6 +89,12 @@ func pushCrewTeamBusy(project string) {
 		}
 	}
 	crewMacSockets.Unlock()
+	// A person whose agents work on the server is online whether or not a Mac of theirs is connected.
+	for person := range people {
+		if !crewTeamAgentOnMac(t, person) {
+			online[person] = true
+		}
+	}
 	for _, sock := range targets {
 		state, line := crewTeamBusyLine(busy, sock.owner, label)
 		everyone, _ := json.Marshal(crewTeamPeopleFor(people, busy, online, sock.owner, label))
