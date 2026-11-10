@@ -41,6 +41,11 @@ func githubProjectContext(ctx context.Context, person, workspace string, write b
 	if err != nil || scope.UserID != person || !isProjectWorkspacePath(scope.Workspace) {
 		return ctx, errors.New("Open a Crew you build to choose its GitHub account.")
 	}
+	// Runtime resolves the main Crew owner's personal registry, not a joined
+	// builder's. Never persist an ID that runtime would look up as someone else.
+	if !crewProjectOwnedByCallerStrict(person, scope.Workspace) {
+		return ctx, errors.New("Only this Crew's owner can choose its GitHub account.")
+	}
 	return context.WithValue(ctx, githubProjectRootKey{}, scope.Workspace), nil
 }
 
@@ -116,6 +121,9 @@ func selectProjectGitHubConnection(ctx context.Context, owner, id string) error 
 	root := githubProjectRoot(ctx)
 	if root == "" {
 		return errors.New("Choose a Crew for this GitHub connection.")
+	}
+	if !crewProjectOwnedByCallerStrict(owner, root) {
+		return errors.New("Only this Crew's owner can choose its GitHub account.")
 	}
 	if id != "" && readGitHubConnection(owner, id) == nil {
 		return errors.New("Choose one of your saved GitHub connections.")
