@@ -252,11 +252,47 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		defer ping.Stop()
 		states := time.NewTicker(10 * time.Second)
 		defer states.Stop()
+		turns := time.NewTicker(3 * time.Second)
+		defer turns.Stop()
 		reported := map[string]string{}
+		running := map[string]bool{} // project/conversation the server was last told is working
+		chats := map[string]*desktopCrewChatList{}
 		for {
 			select {
 			case <-session.Done():
 				return
+			case <-turns.C:
+				// Teammates see an agent working without opening it: say when a turn starts or ends in each chat.
+				pairsMu.Lock()
+				current := map[string]string{}
+				for project, pair := range pairs {
+					current[project] = pair
+				}
+				pairsMu.Unlock()
+				now := map[string]bool{}
+				for project, pair := range current {
+					if chats[project] == nil {
+						chats[project] = &desktopCrewChatList{}
+					}
+					for _, conversation := range api.desktopCrewRunningChats(session, localCrewForPeer(project, pair), pair, chats[project]) {
+						now[project+"/"+conversation] = true
+					}
+				}
+				for key := range now {
+					if !running[key] {
+						project, conversation, _ := strings.Cut(key, "/")
+						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=running", project, conversation)
+						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: "running"})
+					}
+				}
+				for key := range running {
+					if !now[key] {
+						project, conversation, _ := strings.Cut(key, "/")
+						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=idle", project, conversation)
+						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: "idle"})
+					}
+				}
+				running = now
 			case <-ping.C:
 				if send(crewRelayMessage{Type: "ping"}) != nil {
 					_ = conn.Close()
@@ -406,7 +442,11 @@ func (api *StreamingAPI) desktopCrewRelayState(ctx context.Context, local, pair 
 	if local == "" {
 		return ""
 	}
-	result := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "state", Operation: "status"})
+	return desktopCrewChatState(api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "state", Operation: "status"}))
+}
+
+// desktopCrewChatState words one chat's status reply: working, waiting or idle ("" when unreadable).
+func desktopCrewChatState(result crewChatResult) string {
 	if result.Status == http.StatusNotFound {
 		return "idle"
 	}
@@ -424,6 +464,50 @@ func (api *StreamingAPI) desktopCrewRelayState(ctx context.Context, local, pair 
 		return "working"
 	}
 	return "idle"
+}
+
+// desktopCrewChatList is one local Crew's chats (Main and its tabs), reread every 30 seconds.
+type desktopCrewChatList struct {
+	at  time.Time
+	ids []string
+}
+
+// desktopCrewRunningChats is the chats of one local Crew with a turn going now.
+func (api *StreamingAPI) desktopCrewRunningChats(ctx context.Context, local, pair string, list *desktopCrewChatList) []string {
+	if local == "" {
+		return nil
+	}
+	if time.Since(list.at) > 30*time.Second {
+		ids := []string{}
+		if main := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns-main", Operation: "resolve"}); main.Status == http.StatusOK {
+			var out struct {
+				ConversationID string `json:"conversation_id"`
+			}
+			if json.Unmarshal(main.Body, &out) == nil && out.ConversationID != "" {
+				ids = append(ids, out.ConversationID)
+			}
+		}
+		if tabs := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns-tabs", Operation: "tabs"}); tabs.Status == http.StatusOK {
+			var rows []struct {
+				ConversationID string `json:"conversation_id"`
+			}
+			if json.Unmarshal(tabs.Body, &rows) == nil {
+				for _, row := range rows {
+					if row.ConversationID != "" {
+						ids = append(ids, row.ConversationID)
+					}
+				}
+			}
+		}
+		list.at, list.ids = time.Now(), ids
+	}
+	out := []string{}
+	for _, conversation := range list.ids {
+		if desktopCrewChatState(api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns", Operation: "status", ConversationID: conversation})) == "working" {
+			out = append(out, conversation)
+		}
+	}
+	return out
 }
 
 // desktopCrewLastLine is the last line of the main chat's latest reply (or the

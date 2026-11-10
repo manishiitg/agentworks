@@ -260,6 +260,11 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		return
 	}
 	switch msg.Type {
+	case "running":
+		// The Mac's own report that a turn started or ended in one of its chats (desktop_crew_relay_socket.go).
+		if msg.Conversation != "" && (msg.State == "running" || msg.State == "idle") {
+			crewRelayStreams.setRunning(sock.owner, msg.Project, msg.Conversation, msg.State == "running")
+		}
 	case "event":
 		if msg.Conversation != "" && json.Valid(msg.Event) {
 			crewRelayStreams.append(sock.owner, msg.Project, msg.Conversation, crewRelayBatch{Kind: "event", Seq: msg.Seq, Body: msg.Event})
@@ -425,6 +430,20 @@ func (s *crewRelayStreamSet) get(key string) *crewRelayStream {
 		s.streams[key] = stream
 	}
 	return stream
+}
+
+// setRunning records a Mac's own word that a turn started or ended in one of its chats, so teammates see the agent
+// working without anyone having it open (a chat's events reach the server only while someone watches it).
+func (s *crewRelayStreamSet) setRunning(owner, project, conversation string, running bool) {
+	s.Lock()
+	defer s.Unlock()
+	stream := s.get(owner + "/" + project + "/" + conversation)
+	stream.last = time.Now()
+	if stream.running != running {
+		stream.running, stream.since = running, time.Now()
+		log.Printf("[CREW_RELAY] turn owner=%s project=%s conversation=%s running=%t", sanitizeUserIDForPath(owner), project, conversation, running)
+		go publishCrewPanelChanged(project)
+	}
 }
 
 func (s *crewRelayStreamSet) append(owner, project, conversation string, batch crewRelayBatch) {
