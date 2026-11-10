@@ -1937,6 +1937,11 @@ html.dark[data-appearance="clear-dark"] {
   --success: 124.054 34.395% 60.877%;
   --warning: 44.870 68.862% 67.255%;
   --destructive: 8.201 67.876% 61.441%;
+  --appearance-bold: #ededed;
+  --appearance-link: #67b5ed;
+  --appearance-code: #6d96b4;
+  --appearance-code-background: #35424c66;
+  --appearance-selection: #273d4c;
   --popover: var(--background);
   --popover-foreground: var(--foreground);
   --primary-foreground: var(--background);
@@ -1954,53 +1959,106 @@ html.dark[data-appearance="clear-dark"] {
   --chart-4: 288.261 63.889% 71.765%;
   --chart-5: var(--destructive);
 }
+/* Clear Light: exported white/blue-grey Terminal palette; darker UI accent
+   variants keep small labels readable on white. Terminal ANSI values stay exact. */
+html.light[data-appearance="clear-light"] {
+  --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --background: 0 0% 100%;
+  --foreground: 205 17.453% 21.236%;
+  --card: 205 20% 98%;
+  --card-foreground: var(--foreground);
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+  --muted: 205 31.391% 94%;
+  --muted-foreground: 204 17.949% 38.235%;
+  --border: 205 20% 82%;
+  --input: 205 20% 96%;
+  --primary: 205 45% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: 205 31.391% 90.309%;
+  --accent-foreground: var(--foreground);
+  --ring: var(--primary);
+  --success: 124 35% 32%;
+  --warning: 45 60% 32%;
+  --destructive: 7.723 42.986% 49.312%;
+  --destructive-foreground: 0 0% 100%;
+  --info: var(--primary);
+  --diff-add: var(--success);
+  --diff-del: var(--destructive);
+  --chart-1: var(--primary);
+  --chart-2: var(--success);
+  --chart-3: var(--warning);
+  --chart-4: 288.667 40.909% 46%;
+  --chart-5: var(--destructive);
+  --appearance-bold: #252e34;
+  --appearance-link: #326583;
+  --appearance-code: #326583;
+  --appearance-code-background: #dfe8ee;
+  --appearance-selection: #dfe8ee;
+}
 /* Only conversation content switches to monospace; app controls retain system sans. */
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
   font-family: var(--runloop-mono);
   font-size: calc(12px * var(--chat-scale, 1));
   background: hsl(var(--background));
   color: hsl(var(--foreground));
 }
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown,
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li, code, pre),
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="transcript-user-bubble"],
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-chat-composer] {
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown,
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li, code, pre),
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="transcript-user-bubble"],
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-chat-composer] {
   font-family: var(--runloop-mono) !important;
   font-size: calc(12px * var(--chat-scale, 1)) !important;
   line-height: calc(20px * var(--chat-scale, 1)) !important;
   font-weight: 400;
 }
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="terminal-clear-view"] {
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="terminal-clear-view"] {
   background: hsl(var(--background));
 }
 
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
-  color: #e0e0e0;
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
+  color: hsl(var(--foreground));
 }
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown strong {
-  color: #ededed;
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown strong {
+  color: var(--appearance-bold);
 }
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown a {
-  color: #67b5ed;
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown a {
+  color: var(--appearance-link);
 }
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
-  color: #6d96b4 !important;
-  background-color: #35424c66 !important;
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: var(--appearance-code) !important;
+  background-color: var(--appearance-code-background) !important;
 }
-html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) ::selection {
-  background-color: #273d4c;
-  color: #e0e0e0;
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) ::selection {
+  background-color: var(--appearance-selection);
+  color: hsl(var(--foreground));
 }
 
 /* Code in app settings and file panels follows the profile too. Authored
    report themes/iframes keep their own typography and colors. */
-html[data-appearance="clear-dark"] :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) {
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) {
   font-family: var(--runloop-mono);
 }
 
 /* These two established surfaces have fixed dark utility colors in Default. */
-html[data-appearance="clear-dark"] [data-workspace-context-card],
-html[data-appearance="clear-dark"] [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-workspace-context-card],
+html:is([data-appearance="clear-dark"], [data-appearance="clear-light"]) [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
   background-color: hsl(var(--card));
   border-color: hsl(var(--border));
 }
+
+/* Native transcript status/tool rows used fixed dark neutral colors. Keep
+   explicit dark dashboard boundaries independent of the app's light profile. */
+html.light[data-appearance="clear-light"] :is(.text-neutral-100, .text-neutral-200, .text-neutral-300, .text-neutral-400, .text-stone-300):not(:where(.dark *, [data-report-theme] *)) {
+  color: hsl(var(--foreground));
+}
+html.light[data-appearance="clear-light"] :is(.bg-neutral-900\/45, .bg-neutral-900\/60, .bg-black\/40):not(:where(.dark *, [data-report-theme] *)) {
+  background-color: hsl(var(--muted));
+}
+
+html.light[data-appearance="clear-light"] :is(.text-cyan-400, .text-sky-300):not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--primary)); }
+html.light[data-appearance="clear-light"] .text-emerald-300:not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--success)); }
+html.light[data-appearance="clear-light"] .text-amber-200:not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--warning)); }
+html.light[data-appearance="clear-light"] :is(.border-neutral-800, .border-neutral-800\/80, .border-neutral-700):not(:where(.dark *, [data-report-theme] *)) { border-color: hsl(var(--border)); }

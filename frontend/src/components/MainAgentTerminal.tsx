@@ -7,7 +7,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
-import { LiveAttachXtermPane, CLEAR_DARK_XTERM_THEME, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
+import { LiveAttachXtermPane, CLEAR_LIGHT_XTERM_THEME, CLEAR_DARK_XTERM_THEME, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
 
 type MainAgentTerminalProps = {
   sessionId: string
@@ -45,7 +45,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
   useEffect(() => { onUnavailableRef.current = onUnavailable }, [onUnavailable])
   const { theme } = useTheme()
   const appearance = useAppearanceStore(state => state.profile)
-  const terminalTheme = appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[theme]
+  const terminalTheme = appearance === 'clear-light' ? CLEAR_LIGHT_XTERM_THEME : appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[theme]
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, sessionId, readOnly])

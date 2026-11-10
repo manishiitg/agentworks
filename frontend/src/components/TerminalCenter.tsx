@@ -1,4 +1,4 @@
-import { CLEAR_DARK_FONT, useAppearanceStore } from '../stores/useAppearanceStore'
+import { CLEAR_MONO_FONT, useAppearanceStore } from '../stores/useAppearanceStore'
 import { dropFilesOnTerminal } from '../utils/terminalFileDrop'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { transcriptReadingKey } from './useTranscriptScroll'
@@ -601,9 +601,20 @@ export const CLEAR_DARK_XTERM_THEME: ITheme = {
   scrollbarSliderBackground: '#465c6d66', scrollbarSliderHoverBackground: '#465c6d99',
 }
 
+// Same Tahoe export, Clear Light.terminal; native material/ColorSync caveats above apply.
+export const CLEAR_LIGHT_XTERM_THEME: ITheme = {
+  background: '#ffffff', foreground: '#2d3840', cursor: '#7f7f7f',
+  selectionBackground: '#dfe8ee', overviewRulerBorder: '#00000000',
+  black: '#2d3840', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
+  blue: '#5685a8', magenta: '#ad64be', cyan: '#69c6c9', white: '#c1c8cc',
+  brightBlack: '#506573', brightRed: '#df6c5a', brightGreen: '#79be7e', brightYellow: '#e5c872',
+  brightBlue: '#49a2e1', brightMagenta: '#d389e5', brightCyan: '#77e1e5', brightWhite: '#d8e1e7',
+  scrollbarSliderBackground: '#50657338', scrollbarSliderHoverBackground: '#50657366',
+}
+
 function rawXtermFont() {
-  return useAppearanceStore.getState().profile === 'clear-dark'
-    ? { fontFamily: CLEAR_DARK_FONT, fontSize: 12 }
+  return useAppearanceStore.getState().profile !== 'default'
+    ? { fontFamily: CLEAR_MONO_FONT, fontSize: 12 }
     : { fontFamily: RAW_XTERM_FONT_FAMILY, fontSize: RAW_XTERM_FONT_SIZE }
 }
 
@@ -3219,7 +3230,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
   const lastSizeHintSentRef = useRef<{ cols: number; rows: number } | null>(null)
   const terminalTheme = TERMINAL_THEMES[terminalColorScheme]
   const appearance = useAppearanceStore(state => state.profile)
-  const rawXtermTheme = appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[appTheme]
+  const rawXtermTheme = appearance === 'clear-light' ? CLEAR_LIGHT_XTERM_THEME : appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[appTheme]
 
   // PLAT-106 repair 3: the session-change reset below is a useEffect, so it runs
   // AFTER the first render for the new session — that render still paints the
