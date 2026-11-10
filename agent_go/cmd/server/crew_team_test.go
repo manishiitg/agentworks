@@ -237,6 +237,8 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// Owner, 6 Nov: no "Share all my agents" ("*" names none of anyone's agents), and each person keeps at least one
 	// agent shared: turning off their last shared one (here the member's Main) is refused and nothing is saved.
 	// The guard applies to an actual discovered agent, not an invented Main alias.
+	workspaceServer, _ := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
 	memberMain := crewOwnerDefaultChatKey("team-test", "member")
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
 		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"},
