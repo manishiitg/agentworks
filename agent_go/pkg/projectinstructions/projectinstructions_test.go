@@ -67,3 +67,38 @@ func TestPublishedSourceKeepsFilenameInHeadingAndTruncation(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-746-818: native declarations suppress only same-root injection; unrelated
+// provider files must never cross into a different provider's system prompt.
+func TestImportedRootUsesNativeOnlyAtActualWorkingRoot(t *testing.T) {
+	files := map[string]string{"AGENTS.md": "shared rules", "CLAUDE.md": "Claude rules", "GEMINI.md": "Gemini rules", "nested/AGENTS.md": "nested rules"}
+	read := func(name string) (string, bool, error) { v, ok := files[name]; return v, ok, nil }
+	for _, tc := range []struct {
+		name       string
+		native     []string
+		sameRoot   bool
+		wantShared bool
+		wantClaude bool
+	}{
+		{"Claude local", []string{"CLAUDE.md"}, true, true, false},
+		{"Codex local", []string{"AGENTS.md"}, true, false, false},
+		{"linked Claude", []string{"CLAUDE.md"}, false, true, true},
+		{"unknown", nil, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Root(tc.native, tc.sameRoot, read)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(got.Section, "shared rules") != tc.wantShared || strings.Contains(got.Section, "Claude rules") != tc.wantClaude || strings.Contains(got.Section, "Gemini rules") || strings.Contains(got.Section, "nested rules") {
+				t.Fatal("instruction scope or injection route changed")
+			}
+		})
+	}
+	before, _ := Root([]string{"AGENTS.md"}, true, read)
+	files["AGENTS.md"] = "updated native rules"
+	after, _ := Root([]string{"AGENTS.md"}, true, read)
+	if before.Key == after.Key || after.Section != "" {
+		t.Fatal("native changes must refresh identity without duplicate injection")
+	}
+}

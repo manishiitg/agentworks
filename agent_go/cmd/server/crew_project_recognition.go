@@ -396,6 +396,17 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		writeAgentProfileJSON(w, 200, map[string]bool{"can_import_local_chats": cliPersonalMac()})
 		return
 	}
+	if r.URL.Query().Get("instruction_status") == "true" {
+		// The existing own-project read gate above also covers this preview.
+		// It reports intended routing, never a receipt from a running CLI.
+		guidance, err := resolveRootProjectInstructions(r.Context(), roots.Owner, crew.Binding.WorkspacePath, nil, r.URL.Query().Get("provider"), r.URL.Query().Get("model"))
+		if err != nil {
+			externalError(w, 503, "instructions_unavailable", "The project instructions could not be read. Check that the folder is available.")
+			return
+		}
+		writeAgentProfileJSON(w, 200, map[string]interface{}{"files": guidance.Files, "native_read_confirmed": false})
+		return
+	}
 	if r.URL.Query().Get("native_id") != "" {
 		api.previewLocalProjectSession(w, r, crew, roots.Files, roots.Owner)
 		return
