@@ -804,7 +804,7 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 		logTurnQueue("turn %s failed: %v", turn.ID, err)
 	}
 	if err == nil {
-		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
+		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	if err != nil {
@@ -856,9 +856,9 @@ func (api *StreamingAPI) failConversationTurn(ctx context.Context, turn queuedCo
 }
 
 func (api *StreamingAPI) recordFailedQueuedConversationUserMessage(turn queuedConversationTurn) {
-	api.recordLiveCodingAgentUserMessage(turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", sanitizeClientMessageID(turn.SubmissionID))
+	api.recordAttributedCodingAgentUserMessage(turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", queuedTurnDisplayID(turn), queuedTurnDisplayAttribution(turn.SessionID, turn))
 	// The content must precede its receipt for live and restored consumers.
-	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, "failed", "conversation_turn_failed", turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
+	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, "failed", "conversation_turn_failed", turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 }
 
 func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTurn, reqMap map[string]interface{}) (context.Context, error) {

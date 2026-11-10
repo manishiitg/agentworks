@@ -1,3 +1,4 @@
+import { markFeatureUsed } from '../../utils/featureUsage'
 import { workChatTabShortcut } from '../../products/work/workTabs'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useAppViewport } from '../../hooks/useAppViewport'
@@ -24,6 +25,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor,.xterm')) return
       event.preventDefault()
       event.stopImmediatePropagation()
+      markFeatureUsed('chat-history-keys')
       window.history.go(action.direction)
     }
     window.addEventListener('keydown', navigate, true)

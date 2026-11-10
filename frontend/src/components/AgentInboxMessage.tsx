@@ -30,11 +30,11 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
     <article data-testid="agent-inbox-message" className="mb-3 mt-3 w-[min(100%,52rem)] overflow-hidden rounded-xl border border-border bg-muted/20 text-left">
       <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
         <Bot aria-hidden="true" className="h-4 w-4 shrink-0" />
-        <span className="font-medium text-foreground">{message.sender}</span>
+        <span className="min-w-0 break-words font-medium text-foreground">{message.sender}</span>
         {message.kind && <span>{message.kind}</span>}
         {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
       </header>
-      <div data-testid="agent-inbox-body" className="agent-inbox-prose max-w-full break-words px-4 py-3 text-left text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
+      <div data-testid="agent-inbox-body" className="agent-inbox-prose min-w-0 max-w-full break-words [overflow-wrap:anywhere] px-4 py-3 text-left text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
         <ConversationMarkdownRenderer content={shown} framed={false} maxHeight="none" copyableCode />
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}

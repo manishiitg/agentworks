@@ -125,6 +125,9 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	}
 	if nativeErr != nil {
 		log.Printf("[CHAT_FORK] source=%s session=%s native=false reason=%q", source.Record.SessionID, destination.SessionID, nativeErr.Error())
+		if strings.Contains(nativeErr.Error(), "This chat is too large to copy") || strings.Contains(nativeErr.Error(), "not enough free space") {
+			note += " Native history was not copied because the chat is too large or available storage is low. The copied conversation is still available."
+		}
 	}
 	if runtime != nil {
 		applyCrewNativeToolPolicy(&slot.profile, true, slot.binding.ProjectNativeAgentTools)
@@ -190,6 +193,21 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 	if err != nil {
 		return nil, err
 	}
+	// Reserve room for all copies before the exporter touches any journal.
+	free, err := localChatFreeBytes(roots.Private)
+	if err != nil || free <= 256<<20 {
+		return nil, fmt.Errorf("not enough free space to copy this chat; continued from copied conversation")
+	}
+	limit := int64(64 << 20)
+	if ceiling := sessiontransfer.MaxBytes(); ceiling < limit {
+		limit = ceiling
+	}
+	if available := (free - (256 << 20)) / 3; available < uint64(limit) {
+		limit = int64(available)
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("not enough free space to copy this chat")
+	}
 	staging, err := os.MkdirTemp(roots.Private, "chat-fork-")
 	if err != nil {
 		return nil, err
@@ -207,7 +225,11 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 		if cwd == "" {
 			continue
 		}
-		bundle, err = exportCrewNativeProgram(r.Context(), claims.UserID, runtimeDir, store, cwd, handle.NativeSessionID, handle.Provider, handle.Transport, filepath.Join(staging, "source"), false)
+		if slot, ok := crewNativeSlot(claims.UserID, runtimeDir, handle.Provider); ok {
+			bundle, err = crewSlotNativeTransferBudget(r.Context(), claims.UserID, slot, runtimeDir, handle.NativeSessionID, handle.Transport, nil, filepath.Join(staging, "source"), limit)
+		} else {
+			bundle, err = exportCrewForkProgram(store, cwd, handle.NativeSessionID, handle.Provider, handle.Transport, filepath.Join(staging, "source"), limit)
+		}
 		if err == nil && bundle != nil {
 			break
 		}
@@ -239,4 +261,22 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 		return nil, err
 	}
 	return api.importCrewNativeInto(r.Context(), claims, roots, destination, destination.SessionID, fork, cwd)
+}
+
+// Avoid exporting formats ForkJSONL cannot fork, and pass the bound before export.
+func exportCrewForkProgram(store, cwd, id, provider, transport, out string, maxBytes int64) (*sessiontransfer.Bundle, error) {
+	switch provider {
+	case "claude-code", "codex-cli":
+		return sessiontransfer.ExportJSONLWithBudget(provider, transport, store, cwd, id, out, maxBytes)
+	case "pi-cli":
+		piStore, err := crewPiStore(store, id, false)
+		if err != nil {
+			return nil, err
+		}
+		return sessiontransfer.ExportJSONLWithBudget(provider, transport, piStore, cwd, id, out, maxBytes)
+	case "agy-cli":
+		return sessiontransfer.ExportAgyWithBudget(transport, store, cwd, id, out, maxBytes)
+	default:
+		return nil, fmt.Errorf("this native format cannot be forked; continued from copied conversation")
+	}
 }

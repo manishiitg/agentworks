@@ -2,7 +2,7 @@
 // for a feature they use is never shown (owner, 2026-10-07: rare, intelligent).
 const KEY = 'agentworks.features-used'
 
-export type UsedFeature = 'quick-switcher' | 'panel-switcher' | 'toolbar-hide' | 'chat-tab-keys' | 'chat-tab-new'
+export type UsedFeature = 'quick-switcher' | 'panel-switcher' | 'toolbar-hide' | 'chat-tab-keys' | 'chat-tab-new' | 'chat-history-keys'
 
 function read(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') as Record<string, number> } catch { return {} }
