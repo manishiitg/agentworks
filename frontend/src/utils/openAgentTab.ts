@@ -12,6 +12,15 @@ export function openAgentTab(tabId: string) {
   const projectId = tab?.metadata?.agentProfileProjectId
   const key = tab?.metadata?.agentProfileConversationKey
   if (!tab || tab.metadata?.agentProfileId !== 'work' || !projectId || !key) return activateTab(tabId)
+  // Another person's agent (owner, 10 Nov: clicking it opened nothing). Its key has the same shape as yours (their
+  // Main is keyed like your Main), so an ?agent= route would make the Crew screen switch back to your own tab. Open it
+  // with the project route and no agent.
+  const here = currentProductRoute()
+  if (tab.metadata?.agentProfileTabCanWrite === false && here?.surface === 'work' && here.id === projectId) {
+    const path = productRoutePath({ ...here, agent: undefined })
+    if (path !== window.location.pathname + window.location.search) window.history.pushState({}, '', path)
+    return activateTab(tabId)
+  }
   const agent = key === projectId ? 'main' : key.startsWith(`${projectId}:chat:`) ? key.slice(`${projectId}:chat:`.length) : undefined
   if (!agent) return activateTab(tabId)
   const current = currentProductRoute()
