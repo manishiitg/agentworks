@@ -170,9 +170,15 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 	}
 	go func() {
 		busyChecked := map[string]time.Time{}
+		copyChecked := map[string]time.Time{}
+		woken := true
+		var cleaned time.Time
 		clearFalseCrewTeamClashes(ctx)
 		for ctx.Err() == nil {
-			api.removeStaleCrewTeamServerCopies(ctx)
+			if woken || time.Since(cleaned) >= crewTeamCheckAfter(true) {
+				api.removeStaleCrewTeamServerCopies(ctx)
+				cleaned = time.Now()
+			}
 			for _, t := range crewTeamsOnServer() {
 				// Who is working, server chats included: re-read every 15 s at most (a Mac turn's start or end pushes at
 				// once) and sent to the Team's Macs only when it changed (crew_team_push.go).
@@ -180,6 +186,12 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 					busyChecked[t.ProjectID] = time.Now()
 					pushCrewTeamBusy(t.ProjectID)
 				}
+				// File and roster changes, plus the existing folder watcher, wake this
+				// loop. An idle server uses the same catch-up interval as a connected Mac.
+				if !woken && time.Since(copyChecked[t.ProjectID]) < crewTeamCheckAfter(true) {
+					continue
+				}
+				copyChecked[t.ProjectID] = time.Now()
 				// A Crew on the server: its own folder is the Team store's copy for members on their Mac.
 				round, done := context.WithTimeout(ctx, 2*time.Minute)
 				api.syncServerCrewTeamStore(round, t)
@@ -208,7 +220,9 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
-			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go)
+				woken = false
+			case <-crewTeamWake: // a watched copy, Team record or shared store changed
+				woken = true
 			}
 		}
 	}()
