@@ -200,7 +200,9 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		}
 		local = id
 	}
-	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) { s.MemberOf, s.SharedBy = project, team.OwnerName }); err != nil {
+	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) {
+		s.MemberOf, s.SharedBy = project, strings.SplitN(team.OwnerName, "@", 2)[0]
+	}); err != nil {
 		return "", err
 	}
 	if err := crewroot.WriteSync(local, crewroot.SyncBinding{Mode: "relay", PairID: where.Pair, Side: "local", Editing: "local", ConnectionID: c.ID,
