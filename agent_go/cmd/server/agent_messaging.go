@@ -46,6 +46,7 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	TeamAgentID string `json:"team_agent_id,omitempty"`
 	// Set only by an admitted originating Mac pair; replies return to that exact chat.
 	NetworkTab            string `json:"network_tab,omitempty"`
 	NetworkPairID         string `json:"network_pair_id,omitempty"`
@@ -241,6 +242,7 @@ func pruneAgentConversations(s *agentMessageStore, now time.Time, userID string)
 func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpoint {
 	e := agentMessageEndpoint{UserID: userID, Kind: c.Stamp.Type, ID: c.Stamp.ID, Profile: normalizeInternalProfileID(c.Stamp.ProfileID), Path: agentProfileRuntimeWorkspace(userID, c.Path), Label: c.Label, External: c.Stamp.Type == triggerCallerUser}
 	e.NamedAgentID = c.NamedAgentID
+	e.TeamAgentID = c.TeamAgentID
 	e.ConditionJob = c.ConditionJob
 	if c.ConditionJob != "" {
 		e.External = true
@@ -259,7 +261,7 @@ func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint 
 		}
 		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: userID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
 	}
-	e := agentMessageEndpoint{UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
+	e := agentMessageEndpoint{TeamAgentID: t.TeamAgentID, UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
 	if t.Kind == triggerCallerCrew {
 		e.UserID = t.ownerOr(userID)
 	}
@@ -312,6 +314,16 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 // sendAgentMessage creates an address for a contact, or sends in a previously
 // authorized conversation. Only the two exact endpoints can use that address.
 func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (map[string]interface{}, error) {
+	if inboxID == "" && target.TeamAgentID != "" {
+		if caller.Stamp.Type != triggerCallerCrew || caller.Stamp.ID != target.CrewID || caller.Chat == nil {
+			return nil, fmt.Errorf("Send to a Team agent from an agent of the same Crew")
+		}
+		agent, err := crewTeamSendingAgent(ctx, target.CrewID, userID, caller.Chat.Key)
+		if err != nil {
+			return nil, err
+		}
+		caller.TeamAgentID = agent.ID
+	}
 	if inboxID == "" {
 		var err error
 		target, err = api.resolveAgentChatTarget(ctx, target, "")
@@ -1046,6 +1058,23 @@ func acquireAgentMessageAuthority(ctx context.Context, session string) (func(), 
 func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConversation, m agentMessage) (string, error) {
 	dest := c.Endpoints[1-m.From]
 	source := c.Endpoints[m.From]
+	var teamRoute string
+	if dest.TeamAgentID != "" {
+		var err error
+		dest, teamRoute, err = resolveTeamMessageEndpoint(ctx, dest, source.UserID)
+		if err != nil {
+			return dest.Session, err
+		}
+		c.Endpoints[1-m.From] = dest
+	}
+	if source.TeamAgentID != "" {
+		var err error
+		source, _, err = resolveTeamMessageEndpoint(ctx, source, dest.UserID)
+		if err != nil {
+			return dest.Session, err
+		}
+		c.Endpoints[m.From] = source
+	}
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
 	}
@@ -1106,11 +1135,17 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		// An agent shared from a Crew on its owner's Mac runs there; its answer comes back to this inbox (PLAT-856-509).
 		// A Team member's own server agent in a Mac Crew runs here like any server chat (review 5 Nov: it was sent to
 		// the owner's Mac and refused as "not shared").
-		if !IsLocalMode() && crewRelayTwin(dest.ID) && crewTeamMemberTab(ctx, dest.ID, dest.ChatKey) == "" {
+		if teamRoute == "owner_mac" {
+			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
+		}
+		if teamRoute == "member_mac" {
+			return session, api.deliverToMemberMacAgent(ctx, c, m, source, dest)
+		}
+		if dest.TeamAgentID == "" && !IsLocalMode() && crewRelayTwin(dest.ID) && crewTeamMemberTab(ctx, dest.ID, dest.ChatKey) == "" {
 			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
 		}
 		// A Team member's agent on their Mac, in a Crew on the server (crew_team_mac_watch.go).
-		if _, _, onMac := crewMemberMacTarget(dest.ID, dest.ChatKey); !IsLocalMode() && onMac {
+		if _, _, onMac := crewMemberMacTarget(dest.ID, dest.ChatKey); dest.TeamAgentID == "" && !IsLocalMode() && onMac {
 			return session, api.deliverToMemberMacAgent(ctx, c, m, source, dest)
 		}
 		profile, err := api.agentProfiles.Resolve("work", 0, dest.UserID)

@@ -32,6 +32,7 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
+	TeamAgentID  string // Server-issued Team identity; native chat keys are transport details.
 	NamedAgentID string // Message-only address; never used for structured functions.
 	// A named agent shared by another account: the grant that allows sending to it.
 	ShareOwnerUserID string
@@ -66,6 +67,7 @@ func (t triggerTarget) describe() map[string]interface{} {
 
 // triggerLinkCaller identifies the calling Crew or workflow.
 type triggerLinkCaller struct {
+	TeamAgentID string
 	// ConditionJob is stamped only by the deterministic caller service.
 	ConditionJob string
 	NamedAgentID string // Selected from an authorized account registration, never a display label.
