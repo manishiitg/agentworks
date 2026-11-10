@@ -621,16 +621,27 @@ func ValidateManifest(m *WorkflowManifest) error {
 			dependencies[sched.ID] = dependencyIDs
 		}
 	}
+	return validateScheduleDependencyGraph(dependencies, nil)
+}
+
+// Both workflow manifests and Crew timer edits validate the complete graph
+// before saving; individually valid timers can still depend on each other.
+func validateScheduleDependencyGraph(dependencies map[string][]string, names map[string]string) error {
 	visitState := make(map[string]uint8, len(dependencies))
+	var path []string
 	var visit func(string) error
 	visit = func(scheduleID string) error {
 		switch visitState[scheduleID] {
 		case 1:
-			return fmt.Errorf("schedule dependency cycle includes %q", scheduleID)
+			from := firstNonEmptyTrimmed(names[path[len(path)-1]], path[len(path)-1])
+			to := firstNonEmptyTrimmed(names[scheduleID], scheduleID)
+			return fmt.Errorf("schedule dependency cycle: %q waits for %q. Remove %q from %q's prerequisite schedules, then save again", from, to, to, from)
 		case 2:
 			return nil
 		}
 		visitState[scheduleID] = 1
+		path = append(path, scheduleID)
+		defer func() { path = path[:len(path)-1] }()
 		for _, dependencyID := range dependencies[scheduleID] {
 			if err := visit(dependencyID); err != nil {
 				return err

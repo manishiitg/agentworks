@@ -804,6 +804,9 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
 		return productScheduleJob{}, err
 	}
+	if err := validateCrewScheduleDependencies(manifest.Schedules); err != nil {
+		return productScheduleJob{}, err
+	}
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
 		return productScheduleJob{}, err
 	}
@@ -841,6 +844,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 		return job, fmt.Errorf("schedule not found")
 	}
 	if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
+		return job, err
+	}
+	if err := validateCrewScheduleDependencies(manifest.Schedules); err != nil {
 		return job, err
 	}
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {

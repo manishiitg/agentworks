@@ -63,3 +63,15 @@ func normalizeCrewScheduleDependencies(schedule *productschedule.Schedule, profi
 	when.After, schedule.When = &after, &when
 	return nil
 }
+
+func validateCrewScheduleDependencies(schedules []productschedule.Schedule) error {
+	dependencies := make(map[string][]string, len(schedules))
+	names := make(map[string]string, len(schedules))
+	for _, schedule := range schedules {
+		names[schedule.ID] = schedule.Name
+		if schedule.When != nil && schedule.When.After != nil {
+			dependencies[schedule.ID] = schedule.When.After.Schedules
+		}
+	}
+	return validateScheduleDependencyGraph(dependencies, names)
+}
