@@ -233,7 +233,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const before = position > 0 ? ownedListed[position - 1].conversation_key : undefined
     const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
     return {
-      fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => { void forkChatTab(tab.tabId) } : undefined,
+      fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,

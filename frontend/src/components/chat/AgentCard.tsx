@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -70,7 +70,7 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** One Crew's agents as its tab strip knows them, for the agent list in the app's left menu. */
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
-  fork?: () => void
+  fork?: () => void | Promise<void>
   /** The saved order's key, for dragging rows. */
   orderKey?: string
   renameDraft?: string
@@ -216,6 +216,7 @@ function confirmRemoveAgent(name: string, remove: () => void) {
  * list (owner, 4 Nov: Close = Hide). Used by the left menu's "…" and the agent card in the collapsed rail. */
 export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: string; actions: CrewAgentActions; pinned?: boolean; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
+  const [forking, setForking] = useState(false)
   const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const run = (action: () => void) => { action(); onDone() }
   if (draft !== null) return <input autoFocus aria-label={`New name for ${name}`} value={draft} onChange={event => setDraft(event.target.value)}
@@ -225,7 +226,12 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}
     onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
-    {actions.fork && <button type="button" role="menuitem" className={item} onClick={() => run(actions.fork!)}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Fork chat</button>}
+    {actions.fork && <button type="button" role="menuitem" disabled={forking} aria-busy={forking} className={`${item} disabled:cursor-wait disabled:opacity-70`} onClick={async () => {
+      if (forking) return
+      setForking(true)
+      try { await actions.fork!() } finally { setForking(false); onDone() }
+    }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
+    {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}
