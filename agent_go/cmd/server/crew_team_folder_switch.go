@@ -193,7 +193,7 @@ func crewTeamFolderChangePreview(ctx context.Context, t crewTeam, whole bool, ke
 		}
 		// What each person has already is what the Team's store holds of today's share.
 		var shared int64
-		if s, err := readCrewTeamFileState(t.ProjectID); err == nil {
+		if s, err := readCrewTeamCurrentState(t.ProjectID); err == nil {
 			for _, v := range s.held(t.Folder) {
 				shared += v.File.Size
 			}

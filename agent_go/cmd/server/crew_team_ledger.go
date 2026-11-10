@@ -79,13 +79,7 @@ func openCrewTeamLedger(project string, writerLocked bool) (*crewTeamLedger, err
 	}
 	db.SetMaxOpenConns(1)
 	ledger := &crewTeamLedger{db: db, folder: filepath.Base(content)}
-	for _, ddl := range crewTeamLedgerSchema {
-		if _, err = db.Exec(ddl); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	if _, err = db.Exec(`INSERT OR IGNORE INTO folders(folder,revision) VALUES (?,0)`, ledger.folder); err == nil {
+	if err = ledger.initialize(name); err == nil {
 		err = ledger.importJSON(project, content, writerLocked)
 	}
 	if err != nil {
@@ -136,7 +130,7 @@ func (l *crewTeamLedger) importJSON(project, content string, writerLocked bool) 
 		return errors.New("Team history import must be an ordinary file")
 	}
 	if _, err = os.Lstat(name + ".imported"); err == nil {
-		return errors.New("Team history backup already exists; check the import before continuing")
+		return errors.New("Team history has both an original and an imported backup. Ask the server administrator to compare them and remove the extra files.json copy before reopening the Team. Keep files.json.imported.")
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -218,7 +212,19 @@ func teamLedgerFileColumns(file *crewsync.File) (any, int64, bool) {
 	return file.Hash, file.Size, file.Executable
 }
 
-func (l *crewTeamLedger) load() (crewTeamFileState, error) {
+func (l *crewTeamLedger) load() (crewTeamFileState, error) { return l.loadState(true) }
+
+// Current file readers need neither history, clashes nor retry receipts.
+func readCrewTeamCurrentState(project string) (crewTeamFileState, error) {
+	l, err := openCrewTeamLedger(project, false)
+	if err != nil {
+		return crewTeamFileState{}, err
+	}
+	defer l.db.Close()
+	return l.loadState(false)
+}
+
+func (l *crewTeamLedger) loadState(history bool) (crewTeamFileState, error) {
 	state := crewTeamFileState{Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{}, OnPurpose: map[string]string{}}
 	tx, err := l.db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -261,61 +267,63 @@ func (l *crewTeamLedger) load() (crewTeamFileState, error) {
 	if err != nil {
 		return state, err
 	}
-	err = read(`SELECT source,path,kind,revision,actor,author,at,hash,size,executable,chunks FROM events WHERE folder=? ORDER BY ordinal`, func(rows *sql.Rows) error {
-		var e crewTeamEvent
-		var hash sql.NullString
-		var size int64
-		var executable bool
-		var chunks string
-		if err := rows.Scan(&e.Source, &e.Path, &e.Kind, &e.Revision, &e.Actor, &e.Author, &e.At, &hash, &size, &executable, &chunks); err != nil {
-			return err
+	if history {
+		err = read(`SELECT source,path,kind,revision,actor,author,at,hash,size,executable,chunks FROM events WHERE folder=? ORDER BY ordinal`, func(rows *sql.Rows) error {
+			var e crewTeamEvent
+			var hash sql.NullString
+			var size int64
+			var executable bool
+			var chunks string
+			if err := rows.Scan(&e.Source, &e.Path, &e.Kind, &e.Revision, &e.Actor, &e.Author, &e.At, &hash, &size, &executable, &chunks); err != nil {
+				return err
+			}
+			e.File = teamLedgerFile(hash, size, executable)
+			if err := json.Unmarshal([]byte(chunks), &e.Chunks); err != nil {
+				return err
+			}
+			state.Events = append(state.Events, e)
+			return nil
+		})
+		if err != nil {
+			return state, err
 		}
-		e.File = teamLedgerFile(hash, size, executable)
-		if err := json.Unmarshal([]byte(chunks), &e.Chunks); err != nil {
-			return err
+		err = read(`SELECT source,path,winning_revision,losing_revision,winning_author,losing_author,resolved,merged,hunks FROM clashes WHERE folder=? ORDER BY ordinal`, func(rows *sql.Rows) error {
+			var c crewTeamClash
+			if err := rows.Scan(&c.Source, &c.Path, &c.WinningRevision, &c.LosingRevision, &c.WinningAuthor, &c.LosingAuthor, &c.Resolved, &c.Merged, &c.Hunks); err != nil {
+				return err
+			}
+			state.Clashes = append(state.Clashes, c)
+			return nil
+		})
+		if err != nil {
+			return state, err
 		}
-		state.Events = append(state.Events, e)
-		return nil
-	})
-	if err != nil {
-		return state, err
-	}
-	err = read(`SELECT source,path,winning_revision,losing_revision,winning_author,losing_author,resolved,merged,hunks FROM clashes WHERE folder=? ORDER BY ordinal`, func(rows *sql.Rows) error {
-		var c crewTeamClash
-		if err := rows.Scan(&c.Source, &c.Path, &c.WinningRevision, &c.LosingRevision, &c.WinningAuthor, &c.LosingAuthor, &c.Resolved, &c.Merged, &c.Hunks); err != nil {
-			return err
+		err = read(`SELECT receipt_key,transfer_id,digest,revision FROM receipts WHERE folder=?`, func(rows *sql.Rows) error {
+			var key string
+			var r crewTeamReceipt
+			if err := rows.Scan(&key, &r.TransferID, &r.Digest, &r.Revision); err != nil {
+				return err
+			}
+			r.Conflicts = []string{}
+			state.Receipts[key] = r
+			return nil
+		})
+		if err != nil {
+			return state, err
 		}
-		state.Clashes = append(state.Clashes, c)
-		return nil
-	})
-	if err != nil {
-		return state, err
-	}
-	err = read(`SELECT receipt_key,transfer_id,digest,revision FROM receipts WHERE folder=?`, func(rows *sql.Rows) error {
-		var key string
-		var r crewTeamReceipt
-		if err := rows.Scan(&key, &r.TransferID, &r.Digest, &r.Revision); err != nil {
-			return err
+		err = read(`SELECT receipt_key,path FROM receipt_conflicts WHERE folder=? ORDER BY receipt_key,ordinal`, func(rows *sql.Rows) error {
+			var key, path string
+			if err := rows.Scan(&key, &path); err != nil {
+				return err
+			}
+			r := state.Receipts[key]
+			r.Conflicts = append(r.Conflicts, path)
+			state.Receipts[key] = r
+			return nil
+		})
+		if err != nil {
+			return state, err
 		}
-		r.Conflicts = []string{}
-		state.Receipts[key] = r
-		return nil
-	})
-	if err != nil {
-		return state, err
-	}
-	err = read(`SELECT receipt_key,path FROM receipt_conflicts WHERE folder=? ORDER BY receipt_key,ordinal`, func(rows *sql.Rows) error {
-		var key, path string
-		if err := rows.Scan(&key, &path); err != nil {
-			return err
-		}
-		r := state.Receipts[key]
-		r.Conflicts = append(r.Conflicts, path)
-		state.Receipts[key] = r
-		return nil
-	})
-	if err != nil {
-		return state, err
 	}
 	err = read(`SELECT path,actor FROM on_purpose WHERE folder=?`, func(rows *sql.Rows) error {
 		var path, actor string

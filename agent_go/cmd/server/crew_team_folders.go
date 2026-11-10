@@ -136,7 +136,7 @@ func (api *StreamingAPI) handleCrewTeamFolders(w http.ResponseWriter, r *http.Re
 // keeps it, and the line that says why.
 func crewTeamStoreListing(t crewTeam, rel string, whole bool) map[string]any {
 	var count, bytes int64
-	if s, err := readCrewTeamFileState(t.ProjectID); err == nil && (rel != "" || whole) {
+	if s, err := readCrewTeamCurrentState(t.ProjectID); err == nil && (rel != "" || whole) {
 		share := crewTeamFolder{Whole: true}
 		if rel != "" {
 			share = crewTeamFolder{Folders: []string{rel}}

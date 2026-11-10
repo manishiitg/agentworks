@@ -299,11 +299,9 @@ func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 	t.FolderAccess = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
-		if s, e := loadCrewTeamFileState(t.ProjectID, writerLocked); e == nil {
+		if summary, e := readCrewTeamLedgerSummary(t.ProjectID, t.Folder, writerLocked); e == nil {
 			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.display(), TeamProjectID: t.ProjectID}
-			for _, v := range s.held(t.Folder) {
-				d.SizeBytes += v.File.Size
-			}
+			d.SizeBytes = summary.bytes
 			t.ServerData = d
 		}
 	}

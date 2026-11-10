@@ -34,6 +34,7 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	}, Events: []crewTeamEvent{
 		{Source: "copy", Path: "deleted.txt", Kind: "write", Revision: 8, Actor: "owner", Author: "owner", At: "2026-11-10T00:00:00Z", File: file, Chunks: chunks},
 		{Source: "copy", Path: "deleted.txt", Kind: "delete", Revision: 9, Actor: "member", At: "2026-11-10T00:00:01Z"},
+		{Source: "copy", Path: ".npmrc", Kind: "shared", Revision: 9, Actor: "owner", At: "2026-11-10T00:00:02Z", File: file, Chunks: chunks},
 	}, Clashes: []crewTeamClash{{Source: "copy", Path: "deleted.txt", WinningRevision: 9, LosingRevision: 8, WinningAuthor: "member", LosingAuthor: "owner", Hunks: 1}},
 		Receipts: map[string]crewTeamReceipt{"receipt": {TransferID: "copy/round", Digest: crewTransferDigest("changes"), Revision: 9, Conflicts: []string{"deleted.txt"}}}, OnPurpose: map[string]string{".npmrc": "owner"}}
 	raw, err := json.Marshal(before)
@@ -57,6 +58,20 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, after) {
 		t.Fatalf("import lost state: before=%+v after=%+v", before, after)
+	}
+	// The delta includes a complete revision even beyond the page's path
+	// limit, and reshares a file whose own version predates the cursor.
+	delta, paths, through, err := readCrewTeamLedgerChanges("import-test", 8, 1)
+	if err != nil || through != 9 || len(paths) != 2 || delta.Versions[".npmrc"].Revision != 8 || delta.Versions["deleted.txt"].File != nil || delta.OnPurpose[".npmrc"] != "owner" {
+		t.Fatalf("query lost reshare, deletion or whole-revision paging: %+v %v %d %v", delta, paths, through, err)
+	}
+	current, err := readCrewTeamCurrentState("import-test")
+	if err != nil || len(current.Events) != 0 || len(current.Receipts) != 0 || !reflect.DeepEqual(current.Versions, before.Versions) {
+		t.Fatal("current-state query lost files or loaded history")
+	}
+	summary, err := readCrewTeamLedgerSummary("import-test", crewTeamFolder{Whole: true}, false)
+	if err != nil || summary.files != 1 || summary.bytes != 7 || summary.last.Path != ".npmrc" || len(summary.clashes) != 1 {
+		t.Fatalf("summary differs from saved Team: %+v %v", summary, err)
 	}
 	if _, err = os.Stat(source); !os.IsNotExist(err) {
 		t.Fatal("normal JSON source still exists")
@@ -92,7 +107,7 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if final.Revision != 10 || final.OnPurpose[".npmrc"] != "" || !final.Clashes[0].Resolved || len(final.Events) != 2 {
+	if final.Revision != 10 || final.OnPurpose[".npmrc"] != "" || !final.Clashes[0].Resolved || len(final.Events) != 3 {
 		t.Fatal("committed history was replayed or a removed grant returned")
 	}
 	// Failed imports never masquerade as an empty Team or leave an import marker.

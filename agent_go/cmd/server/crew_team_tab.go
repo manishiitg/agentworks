@@ -548,17 +548,17 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	if !t.On || !t.edits(viewer) {
 		return nil
 	}
-	s, _ := readCrewTeamFileState(t.ProjectID)
-	files := len(s.held(t.Folder))
+	s, _ := readCrewTeamLedgerSummary(t.ProjectID, t.Folder, false)
+	files := s.files
 	// An open clash stays on the line, by file, until someone sorts it out (owner, 5 Nov).
-	open := crewTeamOpenClashPaths(s.Clashes)
+	open := s.clashes
 	clashLine := "no clashes"
 	if len(open) > 0 {
 		clashLine = crewTeamClashLine(open)
 	}
 	out := &crewTeamTabSync{} // open clashes are on the line, not a failure
-	if n := len(s.Events); n > 0 {
-		e := s.Events[n-1]
+	if s.last.Path != "" {
+		e := s.last
 		if at, err := time.Parse(time.RFC3339Nano, e.At); err == nil {
 			out.Last = fmt.Sprintf("Last change %s by %s: %s", crewAccessAgo(at), crewPersonShortName(firstNonEmptyTrimmed(e.Author, e.Actor)), e.Path)
 		}
