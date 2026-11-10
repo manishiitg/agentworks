@@ -9,7 +9,7 @@ import { teamRequest, type TeamTarget } from './teamApi'
  * a message is there only when both agents' chats are shared Live with the viewer. */
 type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string }
 type ActivityMessage = { id: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityView = { now: { person: string; agent: string; you?: boolean; state: 'running' | ''; line: string }[]; messages: ActivityMessage[]; other: { kind: string; line: string }[]; foot: string }
+type ActivityView = { now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting' | ''; line: string }[]; messages: ActivityMessage[]; other: { kind: string; line: string }[]; foot: string }
 
 const pill: Record<ActivityMessage['status'], string> = {
   answered: 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300',
@@ -50,9 +50,9 @@ export function TeamActivity({ target, projectId }: { target: TeamTarget; projec
     <p className={heading}>Now</p>
     <div className="flex flex-wrap gap-2">
       {view.now.map((agent, i) => <span key={i} className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1 text-[13px]">
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${agent.state === 'running' ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${agent.state === 'running' ? 'animate-pulse bg-emerald-500' : agent.state === 'waiting' ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} />
         <span className="font-medium">{agent.you ? 'You' : agent.person} · {agent.agent}</span>
-        <span className={agent.state === 'running' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>{agent.line}</span>
+        <span className={agent.state === 'running' ? 'text-emerald-600 dark:text-emerald-400' : agent.state === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>{agent.line}</span>
       </span>)}
     </div>
     <p className={heading}>Agent messages</p>

@@ -23,7 +23,7 @@ type crewTeamActivityNow struct {
 	Person string `json:"person"`
 	Agent  string `json:"agent"`
 	You    bool   `json:"you,omitempty"`
-	State  string `json:"state"` // "running" or ""
+	State  string `json:"state"` // "running", "waiting" or ""
 	Line   string `json:"line"`
 }
 
@@ -80,8 +80,11 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 	for _, p := range teamAgentsByPerson(ctx, t, caller) {
 		for _, a := range p.Agents {
 			state, line := "", firstNonEmptyTrimmed(a.StatusLabel, "Idle")
-			if a.Activity == "running" {
+			switch a.Activity {
+			case "running":
 				state, line = "running", "Working"
+			case "waiting":
+				state = "waiting" // its row already says "Waiting for <name>"
 			}
 			out.Now = append(out.Now, crewTeamActivityNow{Person: p.Name, Agent: a.Name, You: p.You, State: state, Line: line})
 			label := p.Name + "'s " + a.Name
