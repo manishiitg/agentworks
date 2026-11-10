@@ -82,8 +82,13 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 				section.Detail = fmt.Sprintf("%d+ files", count)
 			}
 			if data.More {
-				// The repository limit stopped the search: say so, not a silent short list.
-				section.Detail += fmt.Sprintf(" · first %d repositories", workspaceGitMaxRepos)
+				// The repository limit or the time limit stopped the check: say so
+				// instead of a short list, or a hidden row when nothing changed was
+				// found in the part that was checked.
+				if len(section.Rows) == 0 {
+					section.Rows = append(section.Rows, crewPanelRow{ID: "more", Label: "Not every repository was checked", Detail: "Open to check them all", Destination: "files"})
+				}
+				section.Detail += " · not every repository checked"
 			}
 			return section, err
 		}},

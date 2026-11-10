@@ -533,15 +533,30 @@ func workspaceGitCrewOwner(r *http.Request) string {
 func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspaceGitRepo, more bool) {
 	ctx = context.WithValue(ctx, workspaceGitRootKey{}, realBase)
 	dirs, more := workspaceGitFindRepos(realBase) // Existing depth, scan and repo caps.
+	// Stop a second before the caller's deadline and return what finished,
+	// marked as more, instead of nothing (the Changes row has 6 s for up to
+	// workspaceGitMaxRepos checkouts).
+	soft := ctx
+	if deadline, ok := ctx.Deadline(); ok {
+		var cancel context.CancelFunc
+		soft, cancel = context.WithDeadline(ctx, deadline.Add(-time.Second))
+		defer cancel()
+	}
 	type result struct {
 		repo workspaceGitRepo
 		ok   bool
+		cut  bool
 	}
 	results := make([]result, len(dirs))
 	jobs := make(chan struct{}, 4)
 	var wg sync.WaitGroup
 	for i, dir := range dirs {
-		jobs <- struct{}{}
+		select {
+		case jobs <- struct{}{}:
+		case <-soft.Done():
+			results[i].cut = true
+			continue
+		}
 		wg.Add(1)
 		go func(i int, dir string) {
 			defer wg.Done()
@@ -550,8 +565,9 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 			if !ok {
 				return
 			}
-			repo, err := workspaceGitStatus(ctx, real)
+			repo, err := workspaceGitStatus(soft, real)
 			if err != nil {
+				results[i].cut = soft.Err() != nil
 				return
 			}
 			rel, _ := filepath.Rel(realBase, real)
@@ -569,6 +585,9 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 		}(i, dir)
 	}
 	wg.Wait()
+	for _, r := range results {
+		more = more || r.cut
+	}
 	repos := []workspaceGitRepo{}
 	for _, r := range results {
 		if r.ok {
