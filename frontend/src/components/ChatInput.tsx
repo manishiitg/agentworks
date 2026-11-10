@@ -1,7 +1,4 @@
 import { UploadingAttachments } from './chat/UploadingAttachments'
-import { nextComposerHint, recordComposerShortcut } from '../utils/composerHints'
-import { chatTabSwitchKeys } from '../products/work/workTabs'
-import { useAuthStore } from '../stores/useAuthStore'
 import { resolveSlashCommandInput } from '../commands/commandPrompt'
 import { presetDraftChange, type AppliedPreset } from './presetDraft'
 import { TERMINAL_FILE_DROP_EVENT, type TerminalFileDrop } from '../utils/terminalFileDrop'
@@ -2113,7 +2110,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (['/', '@', '#'].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) recordComposerShortcut(useAuthStore.getState().user?.id || '', e.key)
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
     if (showCommandDialog || showFileDialog) {
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Tab'].includes(e.key)) return
@@ -2156,7 +2152,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && isTurnInFlight) {
       e.preventDefault()
       if (micStateRef.current === 'recording') { micRef.current?.stopDictation(); return }
-      recordComposerShortcut(useAuthStore.getState().user?.id || '', 'queue')
       if (!executeSlashCommandFromQuery(queryToSubmit.trim())) void routeSubmit(queryToSubmit, 'queue')
       return
     }
@@ -2182,7 +2177,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
     // Handle CTRL+Enter (Windows/Linux) or CMD+Enter (Mac) to add new line
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      recordComposerShortcut(useAuthStore.getState().user?.id || '', 'newline')
       e.preventDefault()
       const textarea = e.target as HTMLTextAreaElement
       const start = textarea.selectionStart
@@ -2772,45 +2766,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || (isUploadingFiles && !uploadingFiles?.canSend && !pendingUploadBatchRef.current?.submitted)
   const sendButtonLabel = isStreaming || transcriptTurnActive ? 'Steer' : 'Send'
 
-  const showComposerHints = isProductSurface || activeTab?.metadata?.agentProfileId === 'work'
-  const hintOwner = useAuthStore(state => state.user?.id || '')
-  const [occasionalHint, setOccasionalHint] = useState<string | null>(null)
-  useEffect(() => { setOccasionalHint(null) }, [activeTabId, hintOwner])
-  const showOccasionalHint = () => {
-    if (!showComposerHints) return
-    const mac = /Mac|iPhone|iPad/.test(navigator.platform)
-    const command = mac ? '⌘' : 'Ctrl+'
-    const tabs = chatTabSwitchKeys()
-    setOccasionalHint(nextComposerHint(hintOwner, [
-      { id: '/', text: '/ opens commands.' },
-      { id: '@', text: '@ attaches files.' },
-      { id: '#', text: '# adds Crew references.' },
-      { id: 'queue', text: `While working, Enter steers and ${command}Enter queues your message next.` },
-      { id: 'newline', text: 'Shift+Enter adds a new line.' },
-      { id: 'history', text: `${command}← / ${command}→ goes back / forward across agents and projects.`, feature: 'chat-history-keys' },
-      { id: 'tabs', text: `${mac ? tabs.mac : tabs.other} switches agents in this project.`, feature: 'chat-tab-keys' },
-      { id: 'search', text: `${command}K opens search.`, feature: 'quick-switcher' },
-      { id: 'new', text: `${mac ? '⌥⇧T' : 'Alt+Shift+T'} opens a new agent.`, feature: 'chat-tab-new' },
-    ]))
-  }
-
-
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
-    if (showComposerHints) return occasionalHint || placeholderOverride || 'Ask anything…'
     if (placeholderOverride) return placeholderOverride
-    if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
+    if (isProductSurface || activeTab?.metadata?.agentProfileId === 'work') return 'Ask anything…'
+    if (agentProfileWorkspace) return 'Describe the video you want to make…'
     if (isWorkflowPhaseChat) {
-      return 'Chat with the automation builder... (@ files, / commands, # references)'
+      return 'Chat with the automation builder…'
     }
-    const baseHints = "@ files, / commands, # references, ! skills, $ servers"
-    if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
-    if (isMultiAgentMode) return `Ask anything... (${baseHints})`
-    return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, showComposerHints, occasionalHint, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+    return 'Ask anything…'
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -3051,8 +3019,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               ref={textareaRef}
               value={inputText}
               onChange={handleTextChange}
-              onFocus={() => { setOccasionalHint(null); void ensureMultiAgentTabReady() }}
-              onBlur={showOccasionalHint}
+              onFocus={() => { void ensureMultiAgentTabReady() }}
               onKeyDown={handleKeyDown}
               onSelect={event => updateComposerPicker(event.currentTarget)}
               onCompositionStart={() => { composingRef.current = true; closeComposerPickers() }}
