@@ -32,11 +32,21 @@ type menuGroup struct {
 
 type menuGroups struct {
 	Groups []menuGroup `json:"groups"`
+	// The menu's last choices, kept with the groups so they survive a restart and match on every screen (owner,
+	// 10 Nov): Filter is all, mine, shared or group:<id>; Network is a connection id or all.
+	Filter  string `json:"filter,omitempty"`
+	Network string `json:"network,omitempty"`
 }
 
 // normalized trims names, drops empty or repeated names and projects, gives new groups an id and keeps the limits.
 func (m menuGroups) normalized() menuGroups {
-	out := menuGroups{Groups: []menuGroup{}}
+	out := menuGroups{Groups: []menuGroup{}, Filter: strings.TrimSpace(m.Filter), Network: strings.TrimSpace(m.Network)}
+	if len(out.Filter) > 80 {
+		out.Filter = ""
+	}
+	if len(out.Network) > 80 {
+		out.Network = ""
+	}
 	names := map[string]bool{}
 	for _, g := range m.Groups {
 		name := menuGroupName(g.Name)

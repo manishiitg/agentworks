@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
 import { Check, FolderPlus, ListFilter, Pencil, Plus, X } from 'lucide-react'
 import { llmConfigService, type MenuGroups } from '../../services/llm-config-api'
 
@@ -11,45 +10,47 @@ import { llmConfigService, type MenuGroups } from '../../services/llm-config-api
 type Group = MenuGroups['groups'][number]
 export type MenuFilter = 'all' | 'mine' | 'shared' | `group:${string}`
 
-const useMenuGroupsStore = create<{ groups: Group[]; loaded: boolean; error: string; set: (groups: Group[]) => void; fail: (error: string) => void }>()(set => ({
-  groups: [], loaded: false, error: '',
-  set: groups => set({ groups, loaded: true, error: '' }),
+// The groups and the menu's last filter and network, all kept on the server for the person (menu_groups.go), so they
+// survive a restart and are the same on every screen (owner, 10 Nov: the filter was not remembered).
+type Saved = { groups: Group[]; filter: MenuFilter; network: string }
+const useMenuGroupsStore = create<Saved & { loaded: boolean; error: string; set: (saved: Partial<Saved>) => void; fail: (error: string) => void }>()(set => ({
+  groups: [], filter: 'all', network: '', loaded: false, error: '',
+  set: saved => set({ ...saved, loaded: true, error: '' }),
   fail: error => set({ error }),
 }))
 
-// The picked filter is a per-viewer convenience, kept in this browser only.
-const useMenuFilterStore = create<{ filter: MenuFilter; pick: (filter: MenuFilter) => void }>()(persist(set => ({
-  filter: 'all',
-  pick: filter => set({ filter }),
-}), {
-  name: 'menu-filter-v1',
-  storage: createJSONStorage(() => ({
-    getItem: key => { try { return window.localStorage.getItem(key) } catch { return null } },
-    setItem: (key, value) => { try { window.localStorage.setItem(key, value) } catch { /* Keep the in-memory choice. */ } },
-    removeItem: key => { try { window.localStorage.removeItem(key) } catch { /* Storage is optional. */ } },
-  })),
-}))
+const fromServer = (result: MenuGroups): Saved => ({ groups: result.groups || [], filter: (result.filter || 'all') as MenuFilter, network: result.network || '' })
 
 let loading: Promise<void> | null = null
 function loadGroups() {
   loading ??= llmConfigService.getMenuGroups()
-    .then(result => useMenuGroupsStore.getState().set(result.groups || []))
+    .then(result => useMenuGroupsStore.getState().set(fromServer(result)))
     .catch(() => useMenuGroupsStore.getState().fail('Could not load your groups.'))
     .finally(() => { loading = null })
   return loading
 }
-async function saveGroups(groups: Group[]) {
+/** Saves a change: the screen shows it at once and then what the server kept. */
+async function saveMenu(change: Partial<Saved>) {
+  const store = useMenuGroupsStore.getState()
+  const next = { groups: store.groups, filter: store.filter, network: store.network, ...change }
+  store.set(next)
   try {
-    const result = await llmConfigService.setMenuGroups({ groups })
-    useMenuGroupsStore.getState().set(result.groups || [])
+    useMenuGroupsStore.getState().set(fromServer(await llmConfigService.setMenuGroups(next)))
   } catch {
-    useMenuGroupsStore.getState().fail('Could not save your groups. Try again.')
+    useMenuGroupsStore.getState().fail('Could not save your menu choices. Try again.')
   }
+}
+const saveGroups = (groups: Group[]) => saveMenu({ groups })
+
+/** The network the menu last showed ("all", a connection id, or "" before any choice). */
+export function useMenuNetwork() {
+  const network = useMenuGroupsStore(state => state.network)
+  const loaded = useMenuGroupsStore(state => state.loaded)
+  return { network, loaded, pickNetwork: (id: string) => void saveMenu({ network: id }) }
 }
 
 export function useMenuGroups() {
   const state = useMenuGroupsStore()
-  const { filter, pick } = useMenuFilterStore()
   useEffect(() => { if (!state.loaded) void loadGroups() }, [state.loaded])
   // Groups can change from chat or MCP too (the menu_groups tool); read them again when the window comes back.
   useEffect(() => {
@@ -58,8 +59,9 @@ export function useMenuGroups() {
     return () => window.removeEventListener('focus', reload)
   }, [])
   // A group that was deleted (here or elsewhere) falls back to All.
+  const filter = state.filter
   const current: MenuFilter = filter.startsWith('group:') && state.loaded && !state.groups.some(group => `group:${group.id}` === filter) ? 'all' : filter
-  return { groups: state.groups, error: state.error, filter: current, pick }
+  return { groups: state.groups, error: state.error, filter: current, pick: (next: MenuFilter) => void saveMenu({ filter: next }) }
 }
 
 /** A project shared with the person: a Team copy on this Mac, or someone else's Crew on a server. */
