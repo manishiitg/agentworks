@@ -82,10 +82,6 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 	}
 	if member == "" {
 		member = crewTeamOwnerAgent(r.Context(), project, chatKey, claims.UserID)
-		// The owner's Mac Main, named by its tab key, is addressed as the Crew's Main.
-		if member != "" && strings.TrimPrefix(chatKey, project+codeChatSideMarker) == "mac-main" {
-			chatKey = project
-		}
 	}
 	if member == "" || member == claims.UserID {
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
@@ -128,15 +124,13 @@ func crewTeamOwnerAgent(ctx context.Context, project, key, caller string) string
 		return ""
 	}
 	short := strings.TrimPrefix(strings.TrimSpace(key), project+codeChatSideMarker)
-	// The Crew's tab list names the owner's Mac Main "mac-main" (crewMacTabRow), the Team's agents list the Crew's key.
-	main := key == project || short == "mac-main"
 	seen := []string{}
 	for _, person := range teamAgentsByPerson(ctx, t, caller) {
 		if !person.Owner {
 			continue
 		}
 		for _, agent := range person.Agents {
-			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || main && agent.Tab == macMainTab) {
+			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || key == project && agent.Tab == macMainTab) {
 				return t.OwnerID
 			}
 			seen = append(seen, fmt.Sprintf("%s:%s:in_team=%t", agent.Tab, strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker), agent.InTeam))
@@ -224,21 +218,31 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 		if err != nil {
 			continue
 		}
-		var tabs []AgentProfileSideChat
+		// The Team's own agents list (crew_team_agents.go): the same agents, addresses and in-team choices the chips, the
+		// left menu and the server's message check use, so an agent here gets one address per Team agent (owner, 10 Nov:
+		// the Crew's tab list named the owner's Mac Main differently and messages to it were refused).
+		var team struct {
+			People []crewTeamAgentsPerson `json:"people"`
+		}
 		read, done := context.WithTimeout(ctx, 6*time.Second)
-		err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/agent-profiles/"+crewProfileID+"/side-chats?project_id="+url.QueryEscape(b.PeerProjectID), nil, &tabs)
+		err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/agents", nil, &team)
 		done()
 		if err != nil {
 			continue
 		}
-		for _, tab := range tabs {
-			if tab.CanWrite || tab.TabOwnerID == "" || tab.TabOwnerID == owner || tab.ConversationKey == "" {
+		for _, p := range team.People {
+			if p.You {
 				continue
 			}
-			person := strings.SplitN(firstNonEmptyTrimmed(tab.TabOwnerName, "Teammate"), "@", 2)[0]
-			rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + tab.ConversationKey,
-				"name": person + "'s " + firstNonEmptyTrimmed(tab.Name, "Main"), "owner": person, "crew_name": name, "purpose": tab.Purpose, "presence": "Runs when messaged",
-				"reach": "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
+			for _, agent := range p.Agents {
+				if !agent.InTeam || agent.ChatKey == "" {
+					continue
+				}
+				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + agent.ChatKey,
+					"name": p.Name + "'s " + firstNonEmptyTrimmed(agent.Name, "Main"), "owner": p.Name, "crew_name": name, "purpose": agent.Purpose,
+					"presence": firstNonEmptyTrimmed(agent.PlaceLabel, agent.StatusLabel, "Runs when messaged"),
+					"reach":    "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
+			}
 		}
 	}
 	return rows
