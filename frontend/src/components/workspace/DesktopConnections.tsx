@@ -264,10 +264,28 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, activityTitle, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
-      const session = sessions.find(item => item.session_id === chat.session_id)
-      return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
-    })}</div>)}</>
+  const chatRow = (chat: AgentProfileSideChat) => {
+    const session = sessions.find(item => item.session_id === chat.session_id)
+    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
+  }
+  // Grouped by person like the open Crew's list (owner, 10 Nov: another network's Crew listed everyone's agents in one
+  // list, two "Main"s and no names): yours under You, each teammate under their name with their online dot.
+  const shown = chats.filter(chat => chat.pinned !== false)
+  const people = [...new Set(shown.filter(chat => chat.can_write === false && chat.tab_owner_id).map(chat => chat.tab_owner_id!))]
+  const personName = (id: string) => (shown.find(chat => chat.tab_owner_id === id)?.tab_owner_name || 'Teammate').split('@')[0]
+  const presence = (name: string) => teamBusy?.people?.find(person => person.name === name)
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, activityTitle, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : people.length === 0 ? shown.map(chatRow) : <>
+      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">You</p>
+      {shown.filter(chat => !(chat.can_write === false && chat.tab_owner_id)).map(chatRow)}
+      {people.map(id => {
+        const name = personName(id)
+        const state = presence(name)
+        return <div key={id} role="group" aria-label={`${name}'s agents`}>
+          <p title={state?.line} className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{state && <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${state.state === 'offline' ? 'bg-muted-foreground/50' : 'bg-emerald-500'}`} />}{name}</p>
+          {shown.filter(chat => chat.can_write === false && chat.tab_owner_id === id).map(chatRow)}
+        </div>
+      })}
+    </>}</div>)}</>
 }
 
 /** Inactive project rows use the same marks as the open Crew, including unread completions. */
