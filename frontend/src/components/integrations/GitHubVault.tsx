@@ -12,7 +12,7 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 const sourceName = (source?: string) => source === 'gh' ? 'GitHub CLI' : source === 'pat' ? 'Personal access token' : 'Browser sign-in'
 
-/** Every method saves the same owner-scoped GITHUB_TOKEN used by Git work and PR status. */
+/** Connections are reusable; selecting one changes only this project. */
 export function GitHubVaultCard({ workspacePath, changeConnectionOpen = false }: { workspacePath: string; changeConnectionOpen?: boolean }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)

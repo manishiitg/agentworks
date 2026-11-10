@@ -16,6 +16,19 @@ import (
 type githubProjectRootKey struct{}
 type githubConnectionSecretKey struct{}
 
+type githubProjectSelectionError string
+
+func (e githubProjectSelectionError) Error() string { return string(e) }
+
+func githubProjectID(ctx context.Context, root string) (string, error) {
+	raw, found, err := readFileFromWorkspace(ctx, root+"/product.json")
+	var manifest productProjectManifest
+	if err != nil || !found || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != crewProfileID || manifest.ID == "" {
+		return "", errors.New("This Crew is unavailable. Reopen it and try again.")
+	}
+	return manifest.ID, nil
+}
+
 func githubProjectRoot(ctx context.Context) string {
 	root, _ := ctx.Value(githubProjectRootKey{}).(string)
 	return root
@@ -91,7 +104,10 @@ func projectGitHubConnection(ctx context.Context, owner, workspace string) (*git
 	}
 	rec := readGitHubConnection(owner, id)
 	if rec == nil {
-		return nil, errors.New("This project's GitHub connection is unavailable. Choose or reconnect its account in GitHub settings.")
+		return nil, githubProjectSelectionError("This project's GitHub connection is unavailable. Choose or reconnect its account in GitHub settings.")
+	}
+	if githubTokenValue(rec) == "" {
+		return nil, githubProjectSelectionError("This project's GitHub credentials are unavailable. Reconnect the selected account in GitHub settings.")
 	}
 	return rec, nil
 }

@@ -76,19 +76,18 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	oldAuthorize, oldToken, oldAPI := githubAuthorizeURL, githubTokenURL, githubAPIURL
 	githubAuthorizeURL, githubTokenURL, githubAPIURL = github.URL+"/login/oauth/authorize", github.URL+"/login/oauth/access_token", github.URL
 	stored := map[string]string{}
-	oldStore, oldRemove, oldValue := githubStoreToken, githubRemoveToken, githubTokenValue
+	oldStore, oldValue := githubStoreToken, githubTokenValue
 	githubStoreToken = func(_ context.Context, _ *StreamingAPI, person, value string) (string, string, error) {
 		stored[person] = value
 		return "v-1", "VLT_1234__GITHUB_TOKEN", nil
 	}
-	githubRemoveToken = func(_ context.Context, _ *StreamingAPI, person, _ string) error { delete(stored, person); return nil }
 	githubTokenValue = func(*githubAccountRecord) string { return stored["alice"] }
 	oldBudget := githubOrgCheckBudget
 	githubOrgCheckBudget = 500 * time.Millisecond
 	t.Cleanup(func() {
 		githubOrgCheckBudget = oldBudget
 		githubAuthorizeURL, githubTokenURL, githubAPIURL = oldAuthorize, oldToken, oldAPI
-		githubStoreToken, githubRemoveToken, githubTokenValue = oldStore, oldRemove, oldValue
+		githubStoreToken, githubTokenValue = oldStore, oldValue
 	})
 	if err := writeMCPApp(githubAppKey, mcpApp{ClientID: "Iv1.example", ClientSecret: appSecret}); err != nil {
 		t.Fatal(err)

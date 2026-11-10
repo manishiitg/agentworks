@@ -46,14 +46,13 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 		}
 	}))
 	t.Cleanup(github.Close)
-	oldAPI, oldStore, oldRemove, oldValue, oldCLI, oldAccounts := githubAPIURL, githubStoreToken, githubRemoveToken, githubTokenValue, githubReadCLIToken, githubReadCLIAccounts
+	oldAPI, oldStore, oldValue, oldCLI, oldAccounts := githubAPIURL, githubStoreToken, githubTokenValue, githubReadCLIToken, githubReadCLIAccounts
 	githubAPIURL = github.URL
 	stored := map[string]string{}
 	githubStoreToken = func(_ context.Context, _ *StreamingAPI, person, value string) (string, string, error) {
 		stored[person] = value
 		return "v-1", "VLT_1234__GITHUB_TOKEN", nil
 	}
-	githubRemoveToken = func(_ context.Context, _ *StreamingAPI, person, _ string) error { delete(stored, person); return nil }
 	githubTokenValue = func(*githubAccountRecord) string { return stored["alice"] }
 	cliReads := 0
 	accountReads := 0
@@ -70,7 +69,6 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	t.Cleanup(func() {
 		githubAPIURL = oldAPI
 		githubStoreToken = oldStore
-		githubRemoveToken = oldRemove
 		githubTokenValue = oldValue
 		githubReadCLIToken = oldCLI
 		githubReadCLIAccounts = oldAccounts
