@@ -119,9 +119,14 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 	if err != nil || parent == nil {
 		return result, fmt.Errorf("this workflow has no owning Crew")
 	}
+	// The run executes as the Crew's owner (decisions log: "a script acts as its Crew"); the person who starts it is only
+	// rechecked for the right to start it: the owner, or a joined member of the Crew's Team.
 	owner, ok := crewProjectOwnerID(parent.CrewRoot)
-	if !ok || owner != r.userID {
+	if !ok || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
 		return result, fmt.Errorf("this Crew's execution owner is unavailable")
+	}
+	if r.userID != owner && !crewTeamMember(parent.CrewID, r.userID) {
+		return result, fmt.Errorf("this workflow belongs to a Crew you are not on the Team of; ask its owner to add you")
 	}
 	bindings, err := readCrewExecutables()
 	if err != nil {
@@ -146,11 +151,11 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 		// Match the existing account executor's scope, including its established
 		// shared default. Tool admission must neither narrow nor widen its grants.
 		if google := services.GetGmailService(); google != nil {
-			if connection, err := google.ConnectionForScope("", services.GmailUseScope{Workspace: binding.Root, UserID: r.userID}); err == nil && connection.Enabled {
+			if connection, err := google.ConnectionForScope("", services.GmailUseScope{Workspace: binding.Root, UserID: owner}); err == nil && connection.Enabled {
 				result.ToolSelections = []string{"human_tools:integrations.google"}
 			}
 		}
-		log.Printf("[SCRIPT_APP_SCOPE] script=%s workspace=%s owner=%s google_available=%t", binding.ID, binding.Root, r.userID, len(result.ToolSelections) > 0)
+		log.Printf("[SCRIPT_APP_SCOPE] script=%s workspace=%s owner=%s initiator=%s google_available=%t", binding.ID, binding.Root, owner, r.userID, len(result.ToolSelections) > 0)
 
 		return result, nil
 	}
