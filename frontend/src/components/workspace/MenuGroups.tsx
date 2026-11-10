@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { Check, ChevronDown, FolderPlus, Pencil, Plus, X } from 'lucide-react'
+import { Check, FolderPlus, ListFilter, Pencil, Plus, X } from 'lucide-react'
 import { llmConfigService, type MenuGroups } from '../../services/llm-config-api'
 
 // Left menu groups and filter (owner, 10 Nov, approved mockup "Menu Filters Groups"). The server keeps the groups
@@ -117,9 +117,9 @@ export function ProjectFilterMenu({ counts }: { counts: (filter: MenuFilter) => 
     <span className="min-w-0 flex-1 truncate">{name}</span><span className="text-muted-foreground">{counts(value)}</span>
   </button>
   return <>
-    <button ref={popover.trigger} type="button" aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
+    <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
       className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="truncate">{label}</span><ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="truncate">{label}</span><ListFilter className={`h-3.5 w-3.5 shrink-0 ${filter === 'all' ? '' : 'text-foreground'}`} aria-hidden="true" />
     </button>
     {popover.render('Show projects', 'w-56', <>
       {option('all', 'All projects')}
