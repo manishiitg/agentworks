@@ -407,6 +407,12 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	if _, err := api.submitCodingAgentClarificationOutcome("different-session", "codex-cli", other.promptID, true, nil); err == nil {
 		t.Fatal("another chat could answer a native async card")
 	}
+	// The shared map has session and prompt keys. An admitted chat named like
+	// another card's prompt must not take that card through the session lookup.
+	api.lastQueryRequests[other.promptID] = QueryRequest{}
+	if _, err := api.submitCodingAgentClarificationOutcome(other.promptID, "codex-cli", other.promptID, true, nil); err == nil {
+		t.Fatal("a colliding chat key could settle another chat's card")
+	}
 	if _, err := api.submitCodingAgentClarificationOutcome("session", "codex-cli", other.promptID, true, nil); err != nil {
 		t.Fatal(err)
 	}
