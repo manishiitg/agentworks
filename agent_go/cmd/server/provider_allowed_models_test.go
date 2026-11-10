@@ -16,7 +16,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
@@ -132,18 +131,10 @@ func TestAllowedModelsServerAccountAdminOnlyAndEnforced(t *testing.T) {
 		t.Fatalf("product default not constrained: %+v %v", defaults, err)
 	}
 
-	// Workflow roles and delegation tiers: a saved disallowed model is replaced.
+	// Workflow roles: a saved disallowed model is replaced.
 	cfg := workshopConvertAgentLLMConfig(&workflowtypes.AgentLLMConfig{Provider: "codex-cli", ModelID: "gpt-5.5", PublishedLLMID: "pub-1"})
 	if cfg.ModelID != "gpt-5.3-codex" || cfg.PublishedLLMID != "" {
 		t.Fatalf("workflow role: %+v", cfg)
-	}
-	tiers := constrainDelegationTierConfig(ctx, &virtualtools.DelegationTierConfig{
-		High:   &virtualtools.TierModel{Provider: "codex-cli", ModelID: "gpt-5.5"},
-		Medium: &virtualtools.TierModel{Provider: "claude-code", ModelID: "sonnet"},
-		Custom: map[string]*virtualtools.CustomTierModel{"x": {Provider: "codex-cli", ModelID: "gpt-5.4"}},
-	})
-	if tiers.High.ModelID != "gpt-5.3-codex" || tiers.Medium.ModelID != "sonnet" || tiers.Custom["x"].ModelID != "gpt-5.3-codex" {
-		t.Fatalf("tiers: %+v", tiers)
 	}
 
 	// Clearing the list restores every model.

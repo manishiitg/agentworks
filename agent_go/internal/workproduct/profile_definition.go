@@ -44,7 +44,6 @@ var registeredFeatureSkills = map[string]bool{}
 
 var productSkills = []agentprofiles.SkillFileBinding{
 	{Name: "work-ui-control", Path: "skills/work-ui-control/SKILL.md"},
-	{Name: "background-work", Path: "skills/background-work/SKILL.md"},
 }
 
 var customCommandSlugPattern = regexp.MustCompile(`[^a-z0-9_-]+`)

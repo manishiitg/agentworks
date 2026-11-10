@@ -154,7 +154,6 @@ this is the complete map.
 - [Agent Memory System](multiagent/agent_memory_system.md)
 - [Multi-Tab Chat Architecture](multiagent/multi_tab_chat_architecture.md)
 - [Slash Commands System](multiagent/slash_commands.md)
-- [Sub-Agent Delegation System](multiagent/sub_agent_delegation.md)
 
 ### Refactor ([index](refactor/README.md))
 

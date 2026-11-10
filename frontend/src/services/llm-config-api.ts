@@ -4,7 +4,6 @@ import type {
   LLMDefaultsResponse,
   APIKeyValidationRequest,
   APIKeyValidationResponse,
-  DelegationTierConfig,
   SavedLLM,
   LLMDiscoveryResponse,
   ProductDefault,
@@ -476,12 +475,6 @@ export const llmConfigService = {
     const token = getAuthToken()
     if (token) url.searchParams.set('token', token)
     return url.toString()
-  },
-
-  // Get delegation tier defaults from environment variables
-  getDelegationTierDefaults: async (): Promise<DelegationTierConfig> => {
-    const response = await llmConfigApi.get('/api/llm-config/delegation-tiers')
-    return response.data
   },
 
   // Load published LLMs from the workspace config folder

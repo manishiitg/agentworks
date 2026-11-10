@@ -54,7 +54,6 @@ profile:
     - dashboard
     - memory
     - costs
-    - background-work
     - workspace-ui
   # project scope, not global: global scope (1) makes provider_options
   # non-authoritative and (2) skips this
@@ -89,8 +88,8 @@ profile:
         kind: identity_updated
         render: product.refresh
     - id: work.custom-commands
-  # Crew reuses the platform coding and background-agent surfaces (shell,
-  # guarded file patching, browser, secrets, web research, run_in_background).
+  # Crew reuses the platform coding surfaces (shell, guarded file patching,
+  # browser, secrets, web research).
   # Its only product-specific wrappers are folder grants and message-only
   # project schedules; its saved Python workflow uses the direct start tool.
   tool_policy:

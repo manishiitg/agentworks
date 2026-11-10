@@ -3,10 +3,8 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -46,35 +44,6 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 			return
 		}
 	}
-	api.lastQueryMu.RLock()
-	parent, initialized := api.lastQueryRequests[chat.SessionID]
-	api.lastQueryMu.RUnlock()
-	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
-	initialized = initialized && registerWorkUIAllowed(parent) && canonicalChatHistoryWorkspacePath(claims.UserID, parent.SelectedFolder) == canonicalChatHistoryWorkspacePath(claims.UserID, root)
-	if agentprofiles.HasFeature(profile, "background-work") && api.bgAgentRegistry != nil {
-		api.sessionAgentsMux.RLock()
-		wrapper := api.sessionAgents[chat.SessionID]
-		api.sessionAgentsMux.RUnlock()
-		if wrapper != nil {
-			err = api.registerWorkBackgroundToolSet(reg, parent, chat.SessionID, claims.UserID, wrapper.AttachedSkills())
-		} else {
-			err = api.registerWorkBackgroundToolSet(reg, parent, chat.SessionID, claims.UserID, nil)
-		}
-		if err != nil {
-			externalFailure(w, err)
-			return
-		}
-	}
-	canStart := crew.OwnedByCaller && initialized
-	if token := claims.AccessToken; token != nil {
-		canStart = canStart && token.Allows("crews:write")
-	}
-	if status, _ := externalCrewAuthorGate(claims); status != 0 {
-		canStart = false
-	}
-	if !canStart {
-		delete(reg, "run_in_background")
-	}
 	definitions := []mcpagent.ToolDefinition{}
 	for name, tool := range reg {
 		definitions = append(definitions, mcpagent.ToolDefinition{Name: name, Description: tool.description, InputSchema: tool.schema, Execute: tool.execute})
@@ -93,7 +62,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 		for name, tool := range reg {
 			inventory = append(inventory, map[string]any{"name": name, "description": tool.description, "input_schema": tool.schema})
 		}
-		externalJSON(w, map[string]any{"crew_id": id, "chat_id": chat.ChatID, "tools": inventory, "background_initialized": initialized, "next": "Background starts require current editable ownership, crews:write and an initialized manual chat. Results use the same native chat notifications. Browser actions require an attached browser and return its receipt; unavailable is not success."})
+		externalJSON(w, map[string]any{"crew_id": id, "chat_id": chat.ChatID, "tools": inventory, "next": "Browser actions require an attached browser and return its receipt; unavailable is not success."})
 		return
 	}
 	name := externalArg(args, "tool_name")
@@ -114,38 +83,6 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	if err = validator.Validate(params); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
-	}
-	if crewSessionToolIdentity(name, params) == platformtools.Identity("run_in_background") {
-		// Never inherit a retained website chat's broader filesystem grants.
-		// Every non-root grant must still be approved AND covered by this token.
-		cfg := common.GetSessionShellConfig(chat.SessionID)
-		if cfg == nil || cfg.CrewReader || cfg.ReadOnlyAccess || cfg.WorkflowReadOnly {
-			externalError(w, 409, "chat_uninitialized", "Open this own Crew chat first to initialize its native sandbox.")
-			return
-		}
-		folderReads, folderWrites, _, _ := workFolderGuardInputs(r.Context())
-		check := func(paths, folders []string, write bool) bool {
-			for _, p := range paths {
-				p = strings.TrimSuffix(p, "/")
-				if p == root || strings.HasPrefix(p, root+"/") {
-					continue
-				}
-				approved := false
-				if claims.AccessToken == nil || claims.AccessToken.AllCrews {
-					for _, f := range folders {
-						approved = approved || p == strings.TrimSuffix(f, "/") || strings.HasPrefix(p, strings.TrimSuffix(f, "/")+"/")
-					}
-				}
-				if !approved && !api.externalCrewReferenceAllowed(r.Context(), claims, p, write) {
-					return false
-				}
-			}
-			return true
-		}
-		if !check(cfg.ReadPaths, folderReads, false) || !check(cfg.WritePaths, folderWrites, true) {
-			externalError(w, 403, "insufficient_scope", "This chat has attached grants outside this connection's consent. Use a connection covering those grants.")
-			return
-		}
 	}
 	connection := "interactive"
 	if claims.AccessToken != nil {

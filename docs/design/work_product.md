@@ -280,7 +280,7 @@ same feature.
 The initial shared feature catalog includes `files`, `browser`, `secrets`,
 `mcp`, `skills`, `attached-folders`, `workflow-references`, `terminal`,
 `models`, `schedules`, `bots`, `database`, `dashboard`, `costs`,
-`background-work`, `live-chat`, `voice`, and the base `coding` bundle. A feature
+`live-chat`, `voice`, and the base `coding` bundle. A feature
 may depend on another feature; for example, Dashboard resolves Database and
 Files before adding its viewer, tools, skill, and instructions. Explicitly
 disabling a required dependency is a manifest error rather than a partially

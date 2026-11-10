@@ -127,7 +127,6 @@ defaults must not be assumed to override routed workflow configuration.
 | Servers, skills, tools, code-execution mode | User's `_users/<id>/multiagent-config.json` |
 | Selected global secrets, browser settings, notification reference | Saved chat capabilities when present |
 | Saved primary LLM configuration | Saved chat capabilities when present |
-| Delegation tiers | Workspace `config/delegation-tier-config.json` |
 | Provider API keys | Encrypted workspace provider-key storage via `LoadProviderKeys` |
 | User secrets | Server-side loader for the resolved workspace user |
 | Workflow and conversation metadata | Route preparation and active conversation |

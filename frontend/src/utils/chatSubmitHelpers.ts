@@ -169,7 +169,6 @@ export function buildQueryRequestPayload(params: {
     cdp_port: isChatWithExtras && effectiveBrowserMode === 'cdp'
       ? (currentTab?.config?.cdpPort || 9222)
       : undefined,
-    delegation_tier_config: undefined,
     selected_skills: isChatWithExtras && currentTab?.config?.selectedSkills?.length
       ? currentTab.config.selectedSkills
       : undefined,
