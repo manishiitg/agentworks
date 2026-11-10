@@ -42,7 +42,7 @@ function useProjectFilter<T extends SidebarProject>(projects: T[], keyOf: (proje
   const { groups, filter } = useMenuGroups()
   const listed = projects.filter(menuListed)
   const counts = (choice: MenuFilter) => listed.filter(project => matchesMenuFilter(choice, groups, keyOf(project), project)).length
-  return { counts, shown: (project: T) => matchesMenuFilter(filter, groups, keyOf(project), project) }
+  return { counts, active: filter !== 'all', shown: (project: T) => matchesMenuFilter(filter, groups, keyOf(project), project) }
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
@@ -71,6 +71,11 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
 function useAllProjectsExpanded(hasPins: boolean) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
   return useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
+}
+/** Whether All projects is open, for the sidebar around the menu (its footer shows only then). */
+export function useAllProjectsOpen() {
+  const hasPins = useProjectMenuHistoryStore(state => Boolean(state.pinned[connectedWorkHistoryScope()]?.length))
+  return useAllProjectsExpanded(hasPins)
 }
 function AllProjects({ children, hasPins, counts }: { children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
@@ -238,7 +243,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
         return null
       })}
-      {visible.length > 0 && !unpinnedRows.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">Nothing here for this filter.</p>}
+      {filtered.active && visible.length > 0 && !unpinnedRows.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">Nothing here for this filter.</p>}
       {!visible.length && locations.length > 0 && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
       </AllProjects>
     </div>

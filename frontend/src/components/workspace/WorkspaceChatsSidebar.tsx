@@ -11,17 +11,14 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { followAppLink } from '../../utils/appNavigation'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
-import { DesktopConnections } from './DesktopConnections'
+import { DesktopConnections, useAllProjectsOpen } from './DesktopConnections'
 import { NewProjectMenu } from './NewProjectMenu'
-import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
-import { connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 
 type Crew = Awaited<ReturnType<typeof agentApi.listWorkspaceNavigation>>['workspaces'][number]
 
 /** The sidebar chooses a project; its chats belong to the header tabs. */
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
-  const allProjectsKey = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  const allProjectsExpanded = useSidebarExpansionStore(state => state.expanded[allProjectsKey] ?? false)
+  const allProjectsExpanded = useAllProjectsOpen()
   const user = useAuthStore(state => state.user)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${workspace}:${user?.id || ''}`
