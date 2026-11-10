@@ -3,10 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +22,70 @@ import (
 
 func personContext(person string) context.Context {
 	return context.WithValue(context.Background(), common.UserIDKey, person)
+}
+
+// PLAT-746-810: a blocked Vault must not block Team cards, and cached names
+// must never authorize an execution inventory request after access is removed.
+func TestTeamVaultDisplayDoesNotWaitOrReplaceLiveAccess(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	blocked, entered := make(chan struct{}), make(chan struct{}, 1)
+	var deny atomic.Bool
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-CapLayer-Actor") != "alice" {
+			t.Error("display inventory used another person's identity")
+		}
+		if deny.Load() {
+			http.Error(w, "removed", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/api/admin/runtime/servers" {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-blocked
+			io.WriteString(w, `{"servers":[{"id":"c1","label":"My calendar","tools":[{"name":"read","input_schema":{"type":"object"}}]}]}`)
+			return
+		}
+		io.WriteString(w, `{"vaults":[{"role":"owner","connections":[{"id":"c1"}]}]}`)
+	}))
+	defer up.Close()
+	var release sync.Once
+	defer release.Do(func() { close(blocked) })
+	t.Setenv("CAPLAYER_SERVICE_URL", up.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	invalidateCrewTeamVaultDisplays()
+	defer invalidateCrewTeamVaultDisplays()
+	returned := make(chan *crewTeamVaultDisplay, 1)
+	go func() { returned <- crewTeamVaultDisplayFor("alice") }()
+	select {
+	case value := <-returned:
+		if value != nil {
+			t.Fatal("cold inventory claimed it was complete")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Team display waited for a blocked Vault")
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("background inventory was not requested")
+	}
+	release.Do(func() { close(blocked) })
+	deadline := time.Now().Add(2 * time.Second)
+	var value *crewTeamVaultDisplay
+	for value == nil && time.Now().Before(deadline) {
+		value = crewTeamVaultDisplayFor("alice")
+		time.Sleep(time.Millisecond)
+	}
+	if value == nil || len(value.servers) != 1 || len(value.servers[0].Tools) != 0 || !value.personal["c1"] {
+		t.Fatal("names-only inventory lost the personal marker or retained schemas")
+	}
+	deny.Store(true)
+	if _, err := vaultServersFor(personContext("alice"), "alice"); err == nil {
+		t.Fatal("display cache bypassed live Vault refusal")
+	}
 }
 func TestVaultDelegationCannotChangeActorOrConnector(t *testing.T) {
 	secret := strings.Repeat("s", 32)

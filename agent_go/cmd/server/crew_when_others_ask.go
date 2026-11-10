@@ -298,24 +298,18 @@ func crewTeamUses(ctx context.Context, t crewTeam) []crewTeamAgentUse {
 	if IsLocalMode() || root == "" {
 		return out
 	}
-	personal := map[string]bool{}
-	if own, err := personalVaults(ctx, t.OwnerID); err == nil {
-		for _, v := range own.Vaults {
-			if v.Role == "owner" {
-				for _, s := range v.Connections {
-					personal[s.ID] = true
-				}
-			}
-		}
+	catalog := crewTeamVaultDisplayFor(t.OwnerID)
+	if catalog == nil {
+		return out // never mislabel personal accounts when their inventory is unavailable
 	}
 	seen := map[string]bool{}
-	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
+	{
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
-		for _, server := range servers {
+		for _, server := range catalog.servers {
 			name := firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID))
 			if projectVaultAppInUse(selected, chosenOnly, server.ID) && !seen["app:"+name] {
 				seen["app:"+name] = true
-				out = append(out, crewTeamAgentUse{Name: name, Kind: "app", Personal: personal[server.ID]})
+				out = append(out, crewTeamAgentUse{Name: name, Kind: "app", Personal: catalog.personal[server.ID]})
 			}
 		}
 	}
