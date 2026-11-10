@@ -20,7 +20,7 @@ export function coalesceNativeHelperActivity(events: PollingEvent[]): PollingEve
     const merged = { ...record }
     if (previous) {
       // A delayed start cannot undo a completed run. A new SDK run may restart it.
-      if (record.state === 'started' && previous.record.state !== 'started' && (record.origin !== 'sdk_helper' || record.id === previous.sdkID)) continue
+      if (record.state === 'started' && ['finished', 'completed', 'failed', 'stopped', 'interrupted'].includes(text(previous.record.state)) && (record.origin !== 'sdk_helper' || record.id === previous.sdkID)) continue
       if (!text(record.name) || ['Agent', 'Task', 'Helper agent'].includes(text(record.name))) merged.name = previous.record.name
       previous.record = merged
       if (record.origin === 'sdk_helper') previous.sdkID = text(record.id)

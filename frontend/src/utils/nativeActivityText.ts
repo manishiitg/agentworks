@@ -8,7 +8,7 @@ export function nativeActivityText(record: Record<string, unknown> | undefined):
   const state = typeof record?.state === 'string' ? record.state : ''
   if (kind === 'helper') {
     const name = typeof record?.name === 'string' && !['Agent', 'Task', 'Helper agent'].includes(record.name) ? record.name : 'Helper agent'
-    const status: Record<string, string> = { started: 'Running', finished: 'Completed', completed: 'Completed', failed: 'Failed', stopped: 'Interrupted', interrupted: 'Interrupted' }
+    const status: Record<string, string> = { proposed: 'Queued', scheduled: 'Queued', queued: 'Queued', started: 'Running', finished: 'Completed', completed: 'Completed', failed: 'Failed', stopped: 'Interrupted', interrupted: 'Interrupted' }
     return `${name} · ${status[state] || 'Updated'}`
   }
   return `${labels[kind]} · ${states[state] || 'updated'}`
