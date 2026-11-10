@@ -123,8 +123,6 @@ export interface AgentQueryRequest {
   // Specialized multi-profile CDP testing. Each port uses a distinct Chrome profile.
   // Selected skills to include in the chat context
   selected_skills?: string[] // Array of skill folder names
-  // Delegation tier configuration: Maps reasoning levels to specific provider/model pairs
-  delegation_tier_config?: DelegationTierConfig
   // Selected global secret names to include (if omitted, no global secrets are included)
   selected_global_secrets?: string[]
   // Workspace paths of workflows to inject context for (via # selector in chat)
@@ -153,30 +151,6 @@ export interface AgentQueryRequest {
   // True after the user converts an observed schedule/bot run into an
   // interactive chat. Keeps the same session/native conversation identity.
   user_interactive_continuation?: boolean
-}
-
-// Delegation tier configuration for multi-LLM support
-export interface DelegationTierConfig {
-  schema_version: 2
-  mode: 'provider_profile' | 'explicit'
-  provider?: string
-  main?: TierModel    // orchestrator/main agent model
-  high?: TierModel
-  medium?: TierModel
-  low?: TierModel
-  custom?: Record<string, CustomTierModel>  // slug → custom tier
-}
-
-export interface TierModel {
-  provider: string
-  model_id: string
-  options?: Record<string, unknown>
-}
-
-export interface CustomTierModel {
-  description: string // LLM guidance, e.g. "low cost model for code reviews"
-  provider: string
-  model_id: string
 }
 
 export interface AgentQueryResponse {
@@ -1262,7 +1236,6 @@ export interface ChatSessionConfig {
   }>;
   workflow_metadata?: WorkflowMetadata; // Workflow-specific metadata (for background workflows)
   selected_skills?: string[]; // Selected skill folder names
-  delegation_tier_config?: DelegationTierConfig; // Delegation tier model config
 }
 
 // Chat History API types

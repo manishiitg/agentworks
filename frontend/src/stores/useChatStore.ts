@@ -3,7 +3,7 @@ import { captureChatIdentity, isChatIdentityCurrent, assertChatIdentityCurrent, 
 import { sessionStreamingState } from '../utils/sessionStreamingState'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, DelegationTierConfig, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
+import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
 import { SSEConnection } from '../services/sse'
 import { reportClientEvent } from '../services/clientEvents'
 import type { SSEMessageState } from '../../shared/session/sse'
@@ -383,7 +383,6 @@ export interface ChatTabConfig {
   enableBrowserAccess?: boolean  // Enable/disable browser automation tool (auto-enables workspace when true)
   useCdp?: boolean  // Whether CDP mode is enabled (connect to local Chrome)
   cdpPort?: number  // CDP port (default 9222)
-  delegationTierConfig?: DelegationTierConfig  // Per-tab delegation tier config (multi-agent mode)
   workflowContext: Array<{
     presetId: string
     label: string
@@ -568,7 +567,6 @@ const getDefaultTabConfig = (mode: 'workflow' | 'multi-agent' = 'multi-agent'): 
     browserMode: appStore?.lastBrowserMode,
     enableBrowserAccess: appStore?.lastBrowserMode === undefined ? undefined : appStore.lastBrowserMode !== 'none',
     selectedSkills: appStore?.lastSelectedSkills ?? [],
-    delegationTierConfig: undefined,
     queuedMessages: [],
     pastedAttachments: [],
     autoRun: false,

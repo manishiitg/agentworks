@@ -29,44 +29,6 @@ func TestNormalizeReportHumanInputSourceMergesLegacyAdvisorIdentity(t *testing.T
 	}
 }
 
-func TestBackgroundWorkflowChildCanCreateOnlyOwnHumanInputRequest(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	tools, executors, _ := createReportHumanInputTools()
-	var createFound bool
-	for _, tool := range tools {
-		if tool.Function != nil && tool.Function.Name == "create_human_input_request" {
-			createFound = true
-		}
-	}
-	if !createFound {
-		t.Fatal("create_human_input_request is not defined")
-	}
-	create, ok := executors["create_human_input_request"].(func(context.Context, map[string]interface{}) (string, error))
-	if !ok {
-		t.Fatal("create_human_input_request executor has the wrong type")
-	}
-
-	childCreate := scopeDelegatedHumanInputExecutor("Workflow/owned", create)
-	if _, err := childCreate(context.Background(), map[string]interface{}{
-		"workspace_path": "Workflow/owned",
-		"input_id":       "strategy-proposal-own-scope",
-		"source":         "strategy_auditor",
-		"question":       "Approve the scoped proposal?",
-	}); err != nil {
-		t.Fatalf("background child could not create its own decision: %v", err)
-	}
-	inputs, err := listReportHumanInputs(context.Background(), "Workflow/owned", "pending", "")
-	if err != nil || len(inputs) != 1 {
-		t.Fatalf("own workflow decision = %d inputs, err=%v; want one", len(inputs), err)
-	}
-	if _, err := childCreate(context.Background(), map[string]interface{}{
-		"workspace_path": "Workflow/other",
-		"question":       "This must not escape the child workflow.",
-	}); err == nil || !strings.Contains(err.Error(), "only for Workflow/owned") {
-		t.Fatalf("cross-workflow decision error = %v, want scope rejection", err)
-	}
-}
-
 func TestReportHumanInputsUseWorkflowLocalDB(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

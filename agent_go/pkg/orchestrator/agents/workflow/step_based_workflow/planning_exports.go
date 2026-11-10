@@ -1197,7 +1197,7 @@ func workflowProgressStepID(eventData interface{}) string {
 }
 
 // workflowProgressDisplayName used to prefix the name with "Step -> " so the
-// legacy isWorkflowStepTrackingExecution name-sniffer in cmd/server/delegation.go
+// legacy isWorkflowStepTrackingExecution name-sniffer in cmd/server/workshop_execution_notifier.go
 // would classify it correctly. That prefix is no longer needed now that the
 // OnExecutionStart calls below declare their ExecutionKind explicitly, and it
 // actively broke the frontend title: getBackgroundExecutionDisplayName only

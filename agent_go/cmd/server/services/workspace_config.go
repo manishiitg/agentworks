@@ -164,20 +164,6 @@ func writeWorkspaceFile(ctx context.Context, workspaceURL, filePath, content str
 	return nil
 }
 
-// LoadDelegationTierConfig reads delegation tier config (plain JSON) from the workspace.
-// Returns (nil, false, nil) if the file doesn't exist.
-func LoadDelegationTierConfig(ctx context.Context, workspaceURL string) (map[string]interface{}, bool, error) {
-	content, exists, err := readWorkspaceFile(ctx, workspaceURL, "config/delegation-tier-config.json")
-	if err != nil || !exists {
-		return nil, exists, err
-	}
-	var cfg map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &cfg); err != nil {
-		return nil, false, fmt.Errorf("failed to parse tier config: %w", err)
-	}
-	return cfg, true, nil
-}
-
 // MultiAgentChatCapabilities is the typed view of the `capabilities` block in
 // _users/<userID>/multiagent-config.json. JSON tags mirror the server-side
 // WorkflowCapabilities so the same file round-trips; the services package keeps
