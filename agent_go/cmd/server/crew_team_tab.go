@@ -433,7 +433,11 @@ func crewTeamPersonPresence(t crewTeam, p crewTeamAgentsPerson, viewer string) *
 		return nil
 	}
 	if p.MacOn || (p.Owner && IsLocalMode()) {
-		return &crewTeamTabPresence{Online: true, Line: p.Name + "'s Mac is on", Tone: "on"}
+		line := p.Name + "'s Mac is on"
+		if p.AppVersion != "" {
+			line += " · AgentWorks " + p.AppVersion // which app each teammate runs (owner, 10 Nov)
+		}
+		return &crewTeamTabPresence{Online: true, Line: line, Tone: "on"}
 	}
 	for _, a := range p.Agents {
 		if a.Place == "server" || a.PlaceServer {

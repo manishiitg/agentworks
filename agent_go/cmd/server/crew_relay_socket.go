@@ -33,6 +33,7 @@ type crewRelayMessage struct {
 	Type         string          `json:"type"`
 	DeviceID     string          `json:"device_id,omitempty"`
 	MacName      string          `json:"mac_name,omitempty"`
+	AppVersion   string          `json:"app_version,omitempty"` // the Mac app's version, in hello
 	Crews        []crewRelayCrew `json:"crews,omitempty"`
 	Project      string          `json:"project,omitempty"`
 	Conversation string          `json:"conversation,omitempty"`
@@ -47,6 +48,7 @@ type crewRelayMessage struct {
 }
 
 type crewMacSocket struct {
+	version             string // the Mac app version it said in hello ("" from older apps)
 	owner, device, name string
 	claims              *UserClaims
 	send                func(crewRelayMessage) error
@@ -106,7 +108,7 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 	if hello.Type != "hello" || hello.DeviceID == "" || len(hello.DeviceID) > 128 {
 		return nil, fmt.Errorf("invalid hello")
 	}
-	sock := &crewMacSocket{owner: claims.UserID, device: hello.DeviceID, name: hello.MacName, claims: claims, send: send, close: closeConn, twins: map[string]string{}, pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}, lastSeen: time.Now()}
+	sock := &crewMacSocket{owner: claims.UserID, device: hello.DeviceID, name: hello.MacName, version: crewMacAppVersion(hello.AppVersion), claims: claims, send: send, close: closeConn, twins: map[string]string{}, pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}, lastSeen: time.Now()}
 	api.crewRelayOffer(ctx, sock, hello.Crews)
 	key := claims.UserID + "/" + hello.DeviceID
 	crewMacSockets.Lock()
@@ -201,8 +203,15 @@ func (sock *crewMacSocket) unregister() {
 	sock.mu.Unlock()
 }
 
-// crewMacSocketFor routes a twin's commands only to a connection of its owner
-// that offered this pair.
+// crewMacAppVersion keeps a plausible version string only ("1.25.148"), never anything else a Mac might send.
+func crewMacAppVersion(v string) string {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if len(v) == 0 || len(v) > 32 || strings.Trim(v, "0123456789.") != "" {
+		return ""
+	}
+	return v
+}
+
 // crewMacSocketServing is the name of another live connection of this Mac's owner, from a different computer, that
 // already serves this Crew pair ("" when none).
 func crewMacSocketServing(sock *crewMacSocket, project, pair string) string {
@@ -222,6 +231,8 @@ func crewMacSocketServing(sock *crewMacSocket, project, pair string) string {
 	return ""
 }
 
+// crewMacSocketFor routes a twin's commands only to a connection of its owner
+// that offered this pair.
 func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
 	crewMacSockets.Lock()
 	defer crewMacSockets.Unlock()
