@@ -60,6 +60,9 @@ func conditionView(s productschedule.Schedule) map[string]interface{} {
 	out := map[string]interface{}{}
 	_ = json.Unmarshal(b, &out)
 	out["id"], out["name"], out["enabled"], out["cron_expression"], out["timezone"] = s.ID, s.Name, s.Enabled, s.CronExpression, s.Timezone
+	if line := automationChangedByLine(s.CreatedBy, s.UpdatedBy); line != "" {
+		out["changed_by"] = line
+	}
 	revision, _ := json.Marshal(s)
 	out["revision"] = conditiontrigger.Hash(string(revision))
 	return out
@@ -67,6 +70,7 @@ func conditionView(s productschedule.Schedule) map[string]interface{} {
 
 func (c *conditionService) manage(ctx context.Context, owner, profile, project string, args map[string]interface{}) (interface{}, error) {
 	actor := owner
+	ctx = withAutomationActor(ctx, actor) // the Watcher's record names the person, though it is saved as the Crew owner
 	if isProjectProfileID(profile) {
 		if projectOwner, err := c.s.projectBuilderOwner(ctx, owner, profile, project); err == nil {
 			// Owners manage one Crew configuration, including its saved Watchers.
