@@ -1,19 +1,16 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
@@ -31,14 +28,12 @@ type scheduleHistory struct {
 	scope, legacy, backup, importDir string
 }
 
-var errScheduleHistoryBackupDiffers = errors.New("imported source differs from its private backup; keeping SQL history authoritative and both files unchanged")
-
 const scheduleHistoryTerminal = `status IN ('success','error','stopped','partial','failed','interrupted')`
 
-func scheduleHistoryHash(value string) string { return schedulehistory.Hash(value) }
+func scheduleHistoryHash(value string) string { return sqliteopen.PathHash(value) }
 
 func scheduleHistoryScope(workspace string) (string, error) {
-	docs, err := schedulehistory.PhysicalPath(fsutil.WorkspaceDocsRoot())
+	docs, err := sqliteopen.CanonicalPath(fsutil.WorkspaceDocsRoot())
 	if err != nil {
 		return "", err
 	}
@@ -46,11 +41,11 @@ func scheduleHistoryScope(workspace string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return schedulehistory.PhysicalPath(filepath.Dir(file))
+	return sqliteopen.CanonicalPath(filepath.Dir(file))
 }
 
 func scheduleHistoryRemovalScope(workspace string) (string, error) {
-	docs, err := schedulehistory.PhysicalPath(fsutil.WorkspaceDocsRoot())
+	docs, err := sqliteopen.CanonicalPath(fsutil.WorkspaceDocsRoot())
 	if err != nil {
 		return "", err
 	}
@@ -64,7 +59,7 @@ func scheduleHistoryRemovalScope(workspace string) (string, error) {
 	} else if e != nil && !os.IsNotExist(e) {
 		return "", e
 	}
-	return schedulehistory.PhysicalPath(dir)
+	return sqliteopen.CanonicalPath(dir)
 }
 
 func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistory, error) {
@@ -106,7 +101,7 @@ func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistor
 }
 
 func scheduleHistoryPhysicalPath(value string) (string, error) {
-	return schedulehistory.PhysicalPath(value)
+	return sqliteopen.CanonicalPath(value)
 }
 
 // Connections and schema initialization are process resources, not a cache of
@@ -260,12 +255,12 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 		if mode == 2 {
 			backup = filepath.Join(h.importDir, "schedule-runs.json.unreadable")
 		}
-		if err = h.retireSource(backup); err != nil {
+		if err = sqliteopen.RetireImportedJSON(h.legacy, backup); err != nil {
 			// SQL is authoritative after commit. Report cleanup failure once, and
 			// retry retirement later without blocking reads or new schedule runs.
-			if pending > 0 || errors.Is(err, errScheduleHistoryBackupDiffers) {
+			if pending > 0 || errors.Is(err, sqliteopen.ErrImportSourceChanged) {
 				next := -mode
-				if errors.Is(err, errScheduleHistoryBackupDiffers) {
+				if errors.Is(err, sqliteopen.ErrImportSourceChanged) {
 					next = 0
 				}
 				if _, markErr := h.db.ExecContext(ctx, `UPDATE history_imports SET cleanup_pending=? WHERE scope=?`, next, h.scope); markErr != nil {
@@ -282,58 +277,6 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// Commit precedes rename. Across volumes publish a complete private backup
-// before removing the source; a committed marker resumes cleanup, never import.
-func (h *scheduleHistory) retireSource(backupPath string) error {
-	if _, err := os.Lstat(h.legacy); os.IsNotExist(err) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	if backup, err := os.ReadFile(backupPath); err == nil {
-		source, e := os.ReadFile(h.legacy)
-		if e != nil {
-			return e
-		}
-		if !bytes.Equal(backup, source) {
-			return errScheduleHistoryBackupDiffers
-		}
-		return os.Remove(h.legacy)
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if err := os.Rename(h.legacy, backupPath); err == nil {
-		return os.Chmod(backupPath, 0600)
-	} else if !errors.Is(err, syscall.EXDEV) {
-		return err
-	}
-	source, err := os.Open(h.legacy)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-	temp, err := os.CreateTemp(h.importDir, "history-backup-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temp.Name())
-	_, err = io.Copy(temp, source)
-	if err == nil {
-		err = temp.Sync()
-	}
-	closeErr := temp.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(temp.Name(), backupPath); err != nil {
-		return err
-	}
-	return os.Remove(h.legacy)
 }
 
 func (h *scheduleHistory) insert(ctx context.Context, tx *sql.Tx, run ScheduleRunEntry) error {

@@ -18,7 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
-	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	"github.com/spf13/viper"
 )
 
@@ -34,7 +34,7 @@ func scheduleHistoryFixture(t *testing.T) string {
 }
 func scheduleHistoryTestCleanup(t *testing.T, state string) {
 	t.Helper()
-	physical, err := schedulehistory.PhysicalPath(state)
+	physical, err := sqliteopen.CanonicalPath(state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestScheduleHistoryUnreadableImportAndCleanupRetry(t *testing.T) {
 	workspace = "Workflow/retry"
 	original := []ScheduleRunEntry{{ID: "only", Status: "running", StartedAt: time.Now().UTC()}}
 	source = writeLegacyScheduleHistory(t, workspace, original)
-	physical, err := schedulehistory.PhysicalPath(filepath.Dir(source))
+	physical, err := sqliteopen.CanonicalPath(filepath.Dir(source))
 	if err != nil {
 		t.Fatal(err)
 	}
