@@ -36,7 +36,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const folder = workspacePath.split('/').filter(Boolean).pop() || 'Project'
   const repoName = (root: string) => root || folder
   // Server-provided grouping: a worktree names the repository it belongs to.
-  const repoLabel = (item: GitRepo) => `${repoName(item.root)} · ${item.branch}${item.worktree && item.repository ? ` · worktree of ${item.repository}` : ''}`
+  const checkoutLabel = (item: GitRepo) => `${repoName(item.root)} · ${item.branch}${item.worktree && item.repository ? ` · worktree of ${item.repository}` : ''}`
   const recentRepo = recentRepos.map(root => repos.find(item => item.root === root)).find(item => item !== undefined)
   const repo = repos.find(item => item.root === repoRoot) ?? recentRepo ?? repos[0]
 
@@ -105,12 +105,12 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
       {scopeSwitch}
       {scope === 'uncommitted' && repos.length > 1 && <label className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">Worktree
         <select aria-label="Worktree" className={select} value={repoRoot === null ? '*' : `repo:${repoRoot}`} onChange={event => { setRepoRoot(event.target.value === '*' ? null : event.target.value.slice(5)); setBase(''); setSelected(null) }}>
-          <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{repoLabel(item)}</option>)}
+          <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{checkoutLabel(item)}</option>)}
         </select></label>}
       {scope === 'branch' && <>
         <label className="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">Worktree
-          <select aria-label="Worktree" title={repoLabel(repo)} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
-            {repos.map(item => <option key={item.root} value={item.root}>{repoLabel(item)}</option>)}
+          <select aria-label="Worktree" title={checkoutLabel(repo)} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
+            {repos.map(item => <option key={item.root} value={item.root}>{checkoutLabel(item)}</option>)}
           </select>
         </label>
         <span className="flex-1" />
