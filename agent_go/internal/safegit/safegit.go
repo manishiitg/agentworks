@@ -172,7 +172,7 @@ func CommandIn(ctx context.Context, root, dir string, extraConfig []string, args
 		// Explicit git dir and work tree: the repo's own config (core.worktree)
 		// or a .git file cannot redirect Git outside the folder.
 		full = append(full, "--git-dir", gitDir, "--work-tree", dir)
-		overrides, ok := driverOverrides(ctx, root, dir, gitDir)
+		overrides, ok := cachedDriverOverrides(ctx, root, dir, gitDir)
 		if !ok {
 			return refused(ctx) // fail closed: unknown drivers could run
 		}
@@ -247,24 +247,61 @@ func PrivateStore(ctx context.Context, root, gitDir, workTree, indexFile string,
 	return cmd
 }
 
-// privateConfigs caches a private store's driver overrides by its config
-// contents, so each call does not start a second git process.
-var privateConfigs sync.Map
+// configCache remembers each Git dir's driver overrides with the config files
+// they came from, so a call does not start a second git process while those
+// files are unchanged. Reply capture runs about seven Git commands per
+// checkout; reading config before each one doubled the processes started.
+var configCache sync.Map // gitDir -> cachedConfig
 
-func privateDriverOverrides(ctx context.Context, gitDir string) ([]string, bool) {
-	raw, err := os.ReadFile(filepath.Join(gitDir, "config"))
-	key := gitDir + "\x00" + string(raw)
-	if err == nil {
-		if cached, ok := privateConfigs.Load(key); ok {
-			return cached.([]string), true
+type cachedConfig struct {
+	key       string
+	overrides []string
+}
+
+// cachedDriverOverrides is driverOverrides, reused while every config file Git
+// reads for gitDir (the common config and config.worktree) has the same
+// contents. The files are read before Git runs, so an edit in between only
+// causes a fresh read next time. Configs with includes are never cached: an
+// included file can change while these stay the same.
+func cachedDriverOverrides(ctx context.Context, root, dir, gitDir string) ([]string, bool) {
+	key, cacheable := configKey(root, dir, gitDir)
+	if cacheable {
+		if cached, ok := configCache.Load(gitDir); ok && cached.(cachedConfig).key == key {
+			return cached.(cachedConfig).overrides, true
 		}
 	}
-	// The private store's config lives in gitDir, so includes must stay there.
-	overrides, ok := driverOverrides(ctx, gitDir, gitDir, gitDir)
-	if ok && err == nil && !strings.Contains(strings.ToLower(string(raw)), "include") {
-		privateConfigs.Store(key, overrides)
+	overrides, ok := driverOverrides(ctx, root, dir, gitDir)
+	if ok && cacheable {
+		configCache.Store(gitDir, cachedConfig{key: key, overrides: overrides})
 	}
 	return overrides, ok
+}
+
+func configKey(root, dir, gitDir string) (string, bool) {
+	common := gitDir
+	if raw, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		common = strings.TrimSpace(string(raw))
+		if !filepath.IsAbs(common) {
+			common = filepath.Join(gitDir, common)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", false
+	}
+	var key strings.Builder
+	key.WriteString(root + "\x00" + dir + "\x00")
+	for _, file := range []string{filepath.Join(common, "config"), filepath.Join(gitDir, "config.worktree")} {
+		raw, err := os.ReadFile(file)
+		if err != nil && !os.IsNotExist(err) || strings.Contains(strings.ToLower(string(raw)), "include") {
+			return "", false
+		}
+		key.WriteString(file + "\x00" + string(raw) + "\x00")
+	}
+	return key.String(), true
+}
+
+func privateDriverOverrides(ctx context.Context, gitDir string) ([]string, bool) {
+	// The private store's config lives in gitDir, so includes must stay there.
+	return cachedDriverOverrides(ctx, gitDir, gitDir, gitDir)
 }
 
 func env() []string {
