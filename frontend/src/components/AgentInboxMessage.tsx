@@ -34,7 +34,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
         {message.kind && <span>{message.kind}</span>}
         {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
       </header>
-      <div data-testid="agent-inbox-body" className="max-w-full break-words px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
+      <div data-testid="agent-inbox-body" className="agent-inbox-prose max-w-full break-words px-4 py-3 text-left text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
         <ConversationMarkdownRenderer content={shown} framed={false} maxHeight="none" copyableCode />
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}

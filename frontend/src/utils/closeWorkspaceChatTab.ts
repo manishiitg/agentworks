@@ -3,6 +3,8 @@ import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { belongsToWorkProject, isWorkSideChatTab } from '../products/work/workTabs'
 import { activateTab } from './activateTab'
+import { currentProductRoute, productRoutePath } from './productRoutes'
+import { workConversationAgent, workConversationKey } from './workConversationKey'
 import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 
 /** Preserve the permanent chat and the product's existing close rules. */
@@ -82,6 +84,14 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
     fallback &&
     isChatIdentityCurrent(identity) &&
     useProductSurfaceStore.getState().productSurface === surface
-  )
+  ) {
+    const route = currentProductRoute()
+    const fallbackKey = useChatStore.getState().chatTabs[fallback]?.metadata?.agentProfileConversationKey
+    if (route?.surface === 'work' && route.id === projectId && fallbackKey &&
+      workConversationKey(projectId!, route.agent) === meta?.agentProfileConversationKey) {
+      // Close is not a new history visit to the soon-to-be-removed chat.
+      window.history.replaceState({}, '', productRoutePath({ ...route, agent: workConversationAgent(fallbackKey) || 'main' }))
+    }
     activateTab(fallback)
+  }
 }

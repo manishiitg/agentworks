@@ -9,7 +9,7 @@ import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
-import { currentProductRoute, routeView } from '../../utils/productRoutes'
+import { currentProductRoute, productRoutePath, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
@@ -404,6 +404,13 @@ export function useWorkChatTab(
   legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
   useWorkChatModels(product.profileId, projectId, session?.llmConfig, canonicalTabId)
+  const [routeRevision, setRouteRevision] = useState(0)
+  useEffect(() => {
+    const onRoute = () => setRouteRevision(value => value + 1)
+    window.addEventListener('popstate', onRoute)
+    return () => window.removeEventListener('popstate', onRoute)
+  }, [])
+
 
   useEffect(() => {
     const target = sessionRef.current
@@ -548,7 +555,7 @@ export function useWorkChatTab(
       if (requestedAgent !== 'main') return
     }
     if (canonicalTabId && !activeProjectTabId && !globalPageOpen && !showProviders) activateTab(canonicalTabId)
-  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders, product.profileId, projectId])
+  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders, product.profileId, projectId, routeRevision])
   const destination = currentProductRoute()
   const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
   const activeConversation = activeProjectTabId ? useChatStore.getState().chatTabs[activeProjectTabId]?.metadata?.agentProfileConversationKey : undefined
@@ -786,11 +793,17 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // still mounted. Only consume an agent deep link for this Crew.
         const route = currentProductRoute()
         const requestedAgent = route?.surface === profileId && route.id === projectId ? new URLSearchParams(window.location.search).get('agent') : null
-        if (requestedAgent && requestedAgent !== 'main') {
+        if (requestedAgent) {
           const wanted = workConversationKey(projectId, requestedAgent)
-          const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === wanted)
-          if (tab) {
+          const tab = Object.values(useChatStore.getState().chatTabs).find(item => belongsToWorkProject(item, projectId) && !item.metadata?.isViewOnly && item.metadata?.agentProfileConversationKey === wanted)
+          const available = requestedAgent === 'main' || listed.some(chat => chat.conversation_key === wanted)
+          if (tab && available) {
             if (useChatStore.getState().activeTabId !== tab.tabId) activateTab(tab.tabId)
+          } else if (!available) {
+            // The fresh server list no longer contains the requested chat.
+            // Replace its stale route; do not wait forever for a removed tab.
+            window.history.replaceState({}, '', productRoutePath({ ...route!, agent: 'main' }))
+            activateTab(canonicalTabId)
           }
         }
 
