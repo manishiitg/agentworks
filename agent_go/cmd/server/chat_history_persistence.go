@@ -1999,7 +1999,7 @@ func listWorkflowBuilderHistoryFromDisk(userID, workflowPath string, readBudget 
 	// Cheap pass: stat only, dedupe to the latest file per display key (parsed
 	// from the filename — no file read). Normal chats keep one row per session.
 	// Schedule chats keep one row per schedule because repeated runs already
-	// have detailed history in schedule-runs.json and may resume the same CLI
+	// have detailed history in the schedule history database and may resume the same CLI
 	// thread underneath.
 	latest := make(map[string]localChatHistoryFile)
 	for _, convPath := range matches {
@@ -2241,8 +2241,8 @@ func removeLocalChatHistoryIndexEntries(indexWorkspacePath, indexLocalPath, sess
 }
 
 func workflowScheduleIDBySessionID(workflowPath string) map[string]string {
-	runs, ok, err := readLocalScheduleRuns(workflowPath)
-	if err != nil || !ok {
+	runs, err := readScheduleRunStates(context.Background(), workflowPath, "", false)
+	if err != nil {
 		return nil
 	}
 	return scheduleIDBySessionIDFromRuns(runs)

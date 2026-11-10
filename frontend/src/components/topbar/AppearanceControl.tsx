@@ -12,7 +12,7 @@ export default function AppearanceControl() {
     <SelectContent align="end">
       <SelectItem value="default">Default</SelectItem>
       <SelectItem value="clear-dark">Clear Dark</SelectItem>
-      <p className="max-w-56 px-2 py-1.5 text-xs text-muted-foreground">macOS Clear Dark palette · SF Mono Terminal, 12 px. Menlo fallback on other systems.</p>
+      <p className="max-w-56 px-2 py-1.5 text-xs text-muted-foreground">App-wide Clear Dark colors. SF Mono Terminal, 12 px, for chat and terminals; system font for menus.</p>
     </SelectContent>
   </Select>
 }

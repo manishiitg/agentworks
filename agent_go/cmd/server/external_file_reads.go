@@ -54,6 +54,11 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if externalPathPrivate(crewRoot, p) {
 		return wf.Result{}, &externalUpstreamError{403, "private path"}
 	}
+	// State has a dedicated permission-checked Runs API. Do not return a stale
+	// file, an empty synthetic file, or an imported backup through file tools.
+	if req.Operation == "read" && p == "schedule-runs.json" {
+		return wf.Result{}, &externalUpstreamError{400, "Run history is available under Automations → Runs, or use the runs tool to list executions."}
+	}
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}

@@ -296,41 +296,31 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		s.reportManualRunOutcome(workspacePath, runFolder, status, sessionID)
 	}
 
-	// Reconcile the legacy/UI schedule-runs.json projection from the durable
-	// scheduler ledger. A final workspace write can fail after the canonical
-	// terminal transition succeeds; restart is not evidence that such a run was
-	// interrupted (PLAT-017).
+	// Restore display outcomes from the durable scheduler ledger. Update each
+	// still-running row conditionally so a concurrent completion is preserved.
 	for _, wf := range workflows {
-		runs, err := ReadScheduleRuns(ctx, wf.WorkspacePath)
+		runs, err := readScheduleRunStates(ctx, wf.WorkspacePath, "", true)
 		if err != nil {
+			scheduleLogf("[SCHEDULER] Cannot read run history for %s: %v", wf.WorkspacePath, err)
 			continue
 		}
 		fixed := 0
-		for i := range runs {
-			if runs[i].Status == "running" {
-				status, errMsg, completedAt, ok := s.durableScheduleRunProjection(ctx, runs[i].ID)
-				if !ok {
-					status = "interrupted"
-					errMsg = "interrupted: server restarted without durable terminal evidence"
-					now := time.Now().UTC()
-					completedAt = &now
-				}
-				runs[i].Status = status
-				runs[i].Error = errMsg
-				runs[i].CompletedAt = completedAt
-				if completedAt != nil {
-					duration := completedAt.Sub(runs[i].StartedAt).Milliseconds()
-					if duration < 0 {
-						duration = 0
-					}
-					runs[i].DurationMs = &duration
-				}
-				fixed++
+		for _, run := range runs {
+			status, message, completedAt, ok := s.durableScheduleRunProjection(ctx, run.ID)
+			if !ok {
+				status = "interrupted"
+				message = "interrupted: server restarted without durable terminal evidence"
+				now := time.Now().UTC()
+				completedAt = &now
 			}
+			if err := finalizeRunningScheduleRun(ctx, wf.WorkspacePath, run.ID, status, message, completedAt); err != nil {
+				scheduleLogf("[SCHEDULER] Cannot restore run %s: %v", run.ID, err)
+				continue
+			}
+			fixed++
 		}
 		if fixed > 0 {
-			_ = WriteScheduleRuns(ctx, wf.WorkspacePath, runs)
-			scheduleLogf("[SCHEDULER] Marked %d stale running run(s) as error in %s", fixed, wf.WorkspacePath)
+			scheduleLogf("[SCHEDULER] Reconciled %d running run(s) in %s", fixed, wf.WorkspacePath)
 		}
 	}
 
@@ -916,8 +906,11 @@ func (s *SchedulerService) GetRuntimeStateForWorkflow(workspacePath, scheduleID 
 	ownsActiveRun := merged.ActiveRunID != "" && s.runCancels[merged.ActiveRunID] != nil
 	s.runCancelsMu.Unlock()
 	_ = s.reconcileWorkflowScheduleRuns(context.Background(), workspacePath, scheduleID)
-	runs, err := ReadScheduleRuns(context.Background(), workspacePath)
+	runs, count, err := readScheduleRuntimeProjection(context.Background(), workspacePath, scheduleID)
 	if err == nil {
+		if merged.RunCount < count {
+			merged.RunCount = count
+		}
 		durableRunID := ""
 		if !ownsActiveRun {
 			latest := -1
@@ -1019,45 +1012,25 @@ func (s *SchedulerService) reconcileWorkflowScheduleRuns(ctx context.Context, wo
 		return nil
 	}
 
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
+	runs, err := readScheduleRunStates(ctx, workspacePath, scheduleID, true)
 	if err != nil {
 		return err
 	}
-
 	now := time.Now().UTC()
-	changed := false
 	for i := range runs {
-		if runs[i].Status != "running" {
+		status, message, finalize := s.reconciledScheduleRunStatus(&runs[i], now)
+		if !finalize {
 			continue
 		}
-		if scheduleID != "" && runs[i].ScheduleID != scheduleID {
-			continue
-		}
-
-		status, errMsg, shouldFinalize := s.reconciledScheduleRunStatus(&runs[i], now)
-		if !shouldFinalize {
-			continue
-		}
-
-		runs[i].Status = status
-		runs[i].Error = errMsg
 		completedAt := now
 		if _, _, terminalAt, ok := s.durableScheduleRunProjection(ctx, runs[i].ID); ok && terminalAt != nil {
 			completedAt = *terminalAt
 		}
-		durationMs := completedAt.Sub(runs[i].StartedAt).Milliseconds()
-		if durationMs < 0 {
-			durationMs = 0
+		if err := finalizeRunningScheduleRun(ctx, workspacePath, runs[i].ID, status, message, &completedAt); err != nil {
+			return err
 		}
-		runs[i].DurationMs = &durationMs
-		runs[i].CompletedAt = &completedAt
-		changed = true
 	}
-
-	if !changed {
-		return nil
-	}
-	return WriteScheduleRuns(ctx, workspacePath, runs)
+	return nil
 }
 
 func (s *SchedulerService) reconciledScheduleRunStatus(run *ScheduleRunEntry, now time.Time) (string, string, bool) {
@@ -2514,25 +2487,6 @@ func (s *SchedulerService) scheduledWorkflowExecutionProducedEvidence(sessionID 
 		}
 	}
 	return false
-}
-
-func readLocalScheduleRuns(workspacePath string) ([]ScheduleRunEntry, bool, error) {
-	localPath, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), scheduleRunsPath(workspacePath))
-	if err != nil {
-		return nil, true, err
-	}
-	data, err := os.ReadFile(localPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, false, nil
-		}
-		return nil, true, err
-	}
-	var runs []ScheduleRunEntry
-	if err := json.Unmarshal(data, &runs); err != nil {
-		return nil, true, err
-	}
-	return runs, true, nil
 }
 
 // scheduleSessionTrigger preserves the webhook origin in active session metadata.

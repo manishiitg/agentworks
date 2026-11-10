@@ -50,9 +50,6 @@ func noteWorkspaceMutation(filePath string, folder bool) {
 		}
 	case path.Base(clean) == "workflow.json" || path.Base(clean) == "script.json":
 		manifestDirtyFolders.Store(path.Dir(clean), struct{}{})
-	case path.Base(clean) == "schedule-runs.json":
-		noteScheduleSummaryChange()
-		return
 	default:
 		return
 	}
