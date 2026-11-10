@@ -249,10 +249,16 @@ func workspaceGitIsRepo(root, dir string) bool {
 	return ok
 }
 
+// Coding agents keep worktrees inside the repository in these hidden folders
+// (Claude Code: .claude/worktrees). The search skips dot folders and does not
+// enter a found repository, so each found repository's folders are listed
+// directly.
+var workspaceGitNestedWorktreeDirs = []string{".claude/worktrees", ".worktrees"}
+
 // workspaceGitFindRepos lists repo folders under base: base itself when it is
 // one, plus the repos and worktrees found up to workspaceGitSearchDepth folders
 // down (dependency and dot folders skipped, a repo found below base is not
-// searched further, bounded scan).
+// searched further except for its agent worktree folders, bounded scan).
 func workspaceGitFindRepos(base string) []string {
 	type level struct {
 		dir   string
@@ -289,6 +295,21 @@ func workspaceGitFindRepos(base string) []string {
 			}
 			if current.depth+1 < workspaceGitSearchDepth {
 				queue = append(queue, level{dir, current.depth + 1})
+			}
+		}
+	}
+	found := len(repos)
+	for i := 0; i < found && len(repos) < workspaceGitMaxRepos; i++ {
+		for _, rel := range workspaceGitNestedWorktreeDirs {
+			entries, err := os.ReadDir(filepath.Join(repos[i], filepath.FromSlash(rel)))
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				dir := filepath.Join(repos[i], filepath.FromSlash(rel), entry.Name())
+				if entry.IsDir() && len(repos) < workspaceGitMaxRepos && workspaceGitIsRepo(base, dir) {
+					repos = append(repos, dir)
+				}
 			}
 		}
 	}
@@ -552,6 +573,31 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGi
 		if r.ok {
 			repos = append(repos, r.repo)
 		}
+	}
+	// A checkout inside another listed checkout has its own entry; Git also
+	// reports its folder as one untracked entry of the outer checkout.
+	for i := range repos {
+		nested := map[string]bool{}
+		for _, other := range repos {
+			if other.Root == repos[i].Root {
+				continue
+			}
+			if repos[i].Root == "" {
+				nested[other.Root+"/"] = true
+			} else if rel, ok := strings.CutPrefix(other.Root, repos[i].Root+"/"); ok {
+				nested[rel+"/"] = true
+			}
+		}
+		if len(nested) == 0 {
+			continue
+		}
+		kept := repos[i].Files[:0]
+		for _, file := range repos[i].Files {
+			if !(file.Status == "untracked" && nested[file.Path]) {
+				kept = append(kept, file)
+			}
+		}
+		repos[i].Files = kept
 	}
 	// Each repository's main checkout first, then its worktrees.
 	sort.SliceStable(repos, func(i, j int) bool {
