@@ -374,7 +374,10 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
 		t.Fatal(err)
 	}
-	p := api.codingAgentClarifications["session"]
+	var p *pendingCodingAgentClarification
+	for _, pending := range api.codingAgentClarifications {
+		p = pending
+	}
 	if p == nil || p.ctx.Err() != nil {
 		t.Fatal("question was not retained independently of the turn")
 	}
@@ -383,6 +386,30 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	}
 	if len(api.eventStore.GetAllEventsRaw("session")) != 1 {
 		t.Fatal("native replay duplicated question")
+	}
+	// PLAT-746-764: another async call must not stop native transcript progress.
+	second := record
+	second.ID = "second-call"
+	if err := api.observeNativeAsyncQuestion("session", second); err != nil {
+		t.Fatalf("second async question blocked ingestion: %v", err)
+	}
+	var other *pendingCodingAgentClarification
+	for _, pending := range api.codingAgentClarifications {
+		if pending != p {
+			other = pending
+		}
+	}
+	if other == nil || len(api.eventStore.GetAllEventsRaw("session")) != 2 {
+		t.Fatal("second question did not retain an independent durable card")
+	}
+	if _, err := api.submitCodingAgentClarificationOutcome("different-session", "codex-cli", other.promptID, true, nil); err == nil {
+		t.Fatal("another chat could answer a native async card")
+	}
+	if _, err := api.submitCodingAgentClarificationOutcome("session", "codex-cli", other.promptID, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if api.codingAgentClarificationLocked("session", p.promptID) != p {
+		t.Fatal("answering the second card removed the first")
 	}
 	if err := api.submitSharedAgentQuestion("session", "codex-cli", p.promptID, true, nil); err == nil {
 		t.Fatal("shared answer could resume owner's native async question")
@@ -400,7 +427,7 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
 		t.Fatal(err)
 	}
-	if api.codingAgentClarifications["session"] != nil {
+	if api.codingAgentClarificationLocked("session", p.promptID) != nil {
 		t.Fatal("replay resurrected answered question")
 	}
 }

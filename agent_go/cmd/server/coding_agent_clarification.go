@@ -158,7 +158,12 @@ func (api *StreamingAPI) pendingCodingAgentQuestion(sessionID string) (time.Time
 	}
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()
-	p := api.codingAgentClarifications[sessionID]
+	var p *pendingCodingAgentClarification
+	for _, candidate := range api.codingAgentClarifications {
+		if candidate != nil && candidate.sessionID == sessionID && candidate.ask == nil && (p == nil || candidate.askedAt.Before(p.askedAt) || candidate.askedAt.Equal(p.askedAt) && candidate.promptID < p.promptID) {
+			p = candidate
+		}
+	}
 	if p == nil || p.ask != nil {
 		return time.Time{}, "", false
 	}
@@ -362,7 +367,7 @@ func (api *StreamingAPI) submitCodingAgentClarification(sessionID, provider, pro
 func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provider, promptID string, auto bool, input []codingAgentQuestionAnswerInput) (clarificationOutcome, error) {
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()
-	p := api.codingAgentClarifications[sessionID]
+	p := api.codingAgentClarificationLocked(sessionID, promptID)
 	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil {
 		return clarificationOutcome{}, fmt.Errorf("clarification is no longer pending")
 	}
@@ -497,6 +502,18 @@ func (api *StreamingAPI) startClarificationFollowUp(r *http.Request, sessionID, 
 	}()
 }
 
+// Caller holds codingAgentClarificationsMu. Blocking tools have one waiter per
+// chat; independent native async cards are keyed by their stable prompt ID.
+func (api *StreamingAPI) codingAgentClarificationLocked(sessionID, promptID string) *pendingCodingAgentClarification {
+	if p := api.codingAgentClarifications[sessionID]; p != nil && p.promptID == promptID {
+		return p
+	}
+	if p := api.codingAgentClarifications[promptID]; p != nil && p.nativeAsync && p.sessionID == sessionID {
+		return p
+	}
+	return nil
+}
+
 // Caller holds codingAgentClarificationsMu. Choice validation and consuming the
 // waiter are shared by native UI cards and scoped external Ask answers.
 func (api *StreamingAPI) settleCodingAgentClarificationLocked(p *pendingCodingAgentClarification, auto bool, input []codingAgentQuestionAnswerInput) error {
@@ -507,7 +524,11 @@ func (api *StreamingAPI) settleCodingAgentClarificationLocked(p *pendingCodingAg
 	if err := api.emitCodingAgentClarification(p, "settled", "answered", answers); err != nil {
 		return err
 	}
-	delete(api.codingAgentClarifications, p.sessionID)
+	if p.nativeAsync {
+		delete(api.codingAgentClarifications, p.promptID)
+	} else {
+		delete(api.codingAgentClarifications, p.sessionID)
+	}
 	p.answers <- answers
 	return nil
 }

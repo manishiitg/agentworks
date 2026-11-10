@@ -42,11 +42,10 @@ func (api *StreamingAPI) observeNativeAsyncQuestion(sessionID string, record llm
 	promptID := clarificationPromptPrefix + fmt.Sprintf("async-%x", identity[:16])
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()
-	if p := api.codingAgentClarifications[sessionID]; p != nil {
-		if p.promptID == promptID {
-			return nil
-		}
-		return fmt.Errorf("another clarification is pending")
+	// Async calls already returned to Codex. Each keeps its own card and
+	// answer identity; an earlier unanswered card cannot block transcript reads.
+	if api.codingAgentClarifications[promptID] != nil {
+		return nil
 	}
 	// Replay must not resurrect an answered/expired card. This is only done on
 	// question records, never on routine activity/status polls.
@@ -70,20 +69,20 @@ func (api *StreamingAPI) observeNativeAsyncQuestion(sessionID string, record llm
 	if err := api.emitCodingAgentClarification(p, "requested", "", nil); err != nil {
 		return err
 	}
-	api.codingAgentClarifications[sessionID] = p
+	api.codingAgentClarifications[promptID] = p
 	log.Printf("[HUMAN_INPUT] session=%s prompt=%s native_call=%s status=pending transport=native_async", sessionID, promptID, record.ID)
 	// Expiry is explicitly unanswered, never permission or an assumed choice.
 	time.AfterFunc(max(time.Until(when.Add(24*time.Hour)), 0), func() {
 		api.codingAgentClarificationsMu.Lock()
 		defer api.codingAgentClarificationsMu.Unlock()
-		if api.codingAgentClarifications[sessionID] != p {
+		if api.codingAgentClarifications[promptID] != p {
 			return
 		}
 		if err := api.emitCodingAgentClarification(p, "settled", clarificationOutcomeUnanswered, nil); err != nil {
 			log.Printf("[HUMAN_INPUT] session=%s prompt=%s status=expiry_failed", sessionID, promptID)
 			return
 		}
-		delete(api.codingAgentClarifications, sessionID)
+		delete(api.codingAgentClarifications, promptID)
 	})
 	return nil
 }
