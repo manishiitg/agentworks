@@ -28,11 +28,6 @@ export type WorkRuntimeSelection = {
   reasoningEffort?: string
 }
 
-export type ProductEngineSelectionDetail = Partial<WorkRuntimeSelection> & {
-  profileId?: string
-  tabId?: string
-}
-
 export type WorkChatOrder = {
   isMainChat?: boolean
   position?: number
@@ -74,12 +69,6 @@ export const WORK_SIDE_CHAT_LIMIT = 20
 
 export function workSideChatKey(projectId: string, id: string): string {
   return `${projectId}:chat:${id}`
-}
-
-/** The owner's "as a user" chat: the server runs it in Run mode because its id starts with `asuser-` (crew_access.go). */
-export const USER_VIEW_CHAT_PREFIX = 'asuser-'
-export function workUserViewChatKey(projectId: string, id: string): string {
-  return workSideChatKey(projectId, `${USER_VIEW_CHAT_PREFIX}${id}`)
 }
 
 export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string): boolean {
@@ -170,26 +159,4 @@ export function setWorkProjectRuntimeSelection(
       agentProfileRuntimeDirty: Boolean(tab.sessionId),
     })
   }
-}
-
-/** Apply a model choice emitted by Crew's scoped composer to its project. */
-export function applyWorkProjectRuntimeSelection(
-  projectId: string,
-  fallbackTabId: string | null,
-  detail: ProductEngineSelectionDetail | undefined,
-): boolean {
-  if (!isProjectProductId(detail?.profileId) || !detail.engine || !detail.modelId) return false
-  const sourceTabId = detail.tabId || fallbackTabId
-  if (!sourceTabId) return false
-  const sourceTab = useChatStore.getState().chatTabs[sourceTabId]
-  if (!sourceTab || !belongsToWorkProject(sourceTab, projectId)) return false
-
-  setWorkProjectRuntimeSelection(projectId, sourceTabId, {
-    engine: detail.engine,
-    provider: detail.provider,
-    connectionId: detail.connectionId,
-    modelId: detail.modelId,
-    reasoningEffort: detail.reasoningEffort,
-  })
-  return true
 }
