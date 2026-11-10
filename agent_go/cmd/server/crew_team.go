@@ -658,6 +658,10 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	if IsLocalMode() || !t.On || root == "" {
 		return nil
 	}
+	catalog := crewTeamVaultDisplayFor(t.OwnerID)
+	if catalog == nil {
+		return nil // unavailable is not "Nothing shared yet"
+	}
 	out := &crewTeamLent{Items: []crewTeamLentItem{}, Groups: []crewTeamLentGroup{}, Yours: viewer == t.OwnerID}
 	if out.Yours {
 		out.Title, out.Line = "Accounts and keys your teammates' agents use", "Their agents in this Crew use these as you. Nobody sees passwords or keys."
@@ -667,9 +671,9 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 		out.Title, out.Line = "Accounts and keys your agents use", "Agents in this Crew use these as "+owner+". Nobody sees passwords or keys."
 	}
 	apps, secrets := []string{}, []string{}
-	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
+	{
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
-		for _, server := range servers {
+		for _, server := range catalog.servers {
 			if projectVaultAppInUse(selected, chosenOnly, server.ID) {
 				apps = append(apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
 			}
