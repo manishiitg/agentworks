@@ -670,6 +670,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// coding-agent environment, lent by the project's owner.
 		selectedGlobals, globalSecretErr := productSelectedGlobalSecrets(ctx, profile.ID, workspacePath)
 		if globalSecretErr != nil {
+			if _, selectedAccountUnavailable := globalSecretErr.(githubProjectSelectionError); selectedAccountUnavailable {
+				return nil, globalSecretErr
+			}
 			log.Printf("[SECRETS] Failed to read product secret selection for %s (%s): %v", userID, workspacePath, globalSecretErr)
 			noGlobalSecrets := []string{}
 			req.SelectedGlobalSecrets = &noGlobalSecrets
