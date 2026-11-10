@@ -13,6 +13,8 @@ import (
 // review compares these reads with the existing JSON store using isolated
 // snapshots; no live constructor, import, fallback or reader switch exists.
 // Its namespace is the resolved per-user registry file, not a session ID.
+var errAmbiguousConversationRegistry = errors.New("this chat has multiple saved run bindings; ask the owner to repair its chat bindings")
+
 type conversationRegistryRows struct {
 	db        *sql.DB
 	namespace string
@@ -23,29 +25,66 @@ type conversationRegistryRow struct {
 	record ProductConversationRecord
 }
 
-func (r conversationRegistryRows) importSnapshot(ctx context.Context, raw string) error {
+func decodeConversationRegistrySnapshot(raw string) (productConversationRegistryDocument, error) {
 	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}
 	if strings.TrimSpace(raw) != "" {
 		if err := json.Unmarshal([]byte(raw), &document); err != nil {
-			return fmt.Errorf("decode conversation registry snapshot: %w", err)
+			return document, fmt.Errorf("decode conversation registry snapshot: %w", err)
 		}
 	}
+	return document, nil
+}
+
+func initializeConversationRegistryRows(ctx context.Context, db *sql.DB) error {
 	for _, ddl := range []string{
+		`CREATE TABLE IF NOT EXISTS registry_imports(namespace TEXT PRIMARY KEY,cleanup_pending INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS registry_versions(namespace TEXT PRIMARY KEY,version INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS registry_entries(namespace TEXT NOT NULL,entry_key TEXT NOT NULL,profile_id TEXT NOT NULL,session_id TEXT NOT NULL,workspace TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(namespace,entry_key))`,
 		`CREATE INDEX IF NOT EXISTS registry_session ON registry_entries(namespace,profile_id,session_id,workspace)`,
 		`CREATE TABLE IF NOT EXISTS registry_previous(namespace TEXT NOT NULL,entry_key TEXT NOT NULL,ordinal INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(namespace,entry_key,ordinal))`,
 		`CREATE TABLE IF NOT EXISTS registry_agents(namespace TEXT NOT NULL,entry_key TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(namespace,entry_key))`,
 	} {
-		if _, err := r.db.ExecContext(ctx, ddl); err != nil {
+		if _, err := db.ExecContext(ctx, ddl); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (r conversationRegistryRows) importSnapshot(ctx context.Context, raw string) error {
+	document, err := decodeConversationRegistrySnapshot(raw)
+	if err != nil {
+		return err
+	}
+	if err = initializeConversationRegistryRows(ctx, r.db); err != nil {
+		return err
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err = r.writeSnapshot(ctx, tx, document, raw); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r conversationRegistryRows) writeSnapshot(ctx context.Context, tx *sql.Tx, document productConversationRegistryDocument, raw string) error {
+	// Preserve per-row source JSON, including explicit empty optional arrays
+	// and unknown fields. Re-marshalling typed records here would omit [] and
+	// make a first read differ from the existing registry before any edit.
+	var encoded struct {
+		Entries  map[string]json.RawMessage   `json:"entries"`
+		Previous map[string][]json.RawMessage `json:"previous"`
+		Agents   map[string]json.RawMessage   `json:"agents"`
+	}
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &encoded); err != nil {
+			return err
+		}
+	}
+	var err error
 	for _, table := range []string{"registry_entries", "registry_previous", "registry_agents"} {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE namespace=?`, r.namespace); err != nil {
 			return err
@@ -55,35 +94,35 @@ func (r conversationRegistryRows) importSnapshot(ctx context.Context, raw string
 		return err
 	}
 	for key, record := range document.Entries {
-		payload, e := json.Marshal(record)
-		if e != nil {
-			return e
+		payload, ok := encoded.Entries[key]
+		if !ok {
+			return errors.New("registry snapshot entry is unavailable")
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO registry_entries(namespace,entry_key,profile_id,session_id,workspace,payload) VALUES (?,?,?,?,?,?)`, r.namespace, key, record.ProfileID, record.SessionID, record.WorkspacePath, string(payload)); err != nil {
 			return err
 		}
 	}
 	for key, records := range document.Previous {
-		for ordinal, record := range records {
-			payload, e := json.Marshal(record)
-			if e != nil {
-				return e
-			}
+		if len(records) != len(encoded.Previous[key]) {
+			return errors.New("registry snapshot history is unavailable")
+		}
+		for ordinal := range records {
+			payload := encoded.Previous[key][ordinal]
 			if _, err = tx.ExecContext(ctx, `INSERT INTO registry_previous(namespace,entry_key,ordinal,payload) VALUES (?,?,?,?)`, r.namespace, key, ordinal, string(payload)); err != nil {
 				return err
 			}
 		}
 	}
-	for key, identity := range document.Agents {
-		payload, e := json.Marshal(identity)
-		if e != nil {
-			return e
+	for key := range document.Agents {
+		payload, ok := encoded.Agents[key]
+		if !ok {
+			return errors.New("registry snapshot identity is unavailable")
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO registry_agents(namespace,entry_key,payload) VALUES (?,?,?)`, r.namespace, key, string(payload)); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r conversationRegistryRows) entries(ctx context.Context, predicate string, args ...any) ([]conversationRegistryRow, error) {
@@ -284,6 +323,9 @@ func (r conversationRegistryRows) workflowStepRun(ctx context.Context, session, 
 	}
 	if len(selected) == 0 {
 		return "", errors.New("this chat is unavailable; reopen the Crew chat before running its steps")
+	}
+	if len(selected) > 1 {
+		return "", errAmbiguousConversationRegistry
 	}
 	record := selected[0].record
 	if record.CurrentWorkflowRun != nil && record.CurrentWorkflowRun.WorkflowID == workflow {
