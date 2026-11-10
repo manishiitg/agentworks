@@ -75,7 +75,14 @@ local binary directory; version discovery does not sign in to an account.
 
 The report contains provider versions found on the probe's PATH, owned runtime
 counts, observed event kinds, parse/identity gaps and continuation roots without
-saved reply evidence. It reads a bounded log tail. It does not copy transcripts,
+saved reply evidence. Event kind/state/follow-up checks use selected metadata
+fields from the last 10,000 canonical chat events in the read-only structured
+journal; batch log lines are not per-event evidence. The bounded log tail supplies
+gap/cost diagnostics and saved-reply receipts, supplemented by committed native
+foreground claims. These windows differ: a missing reply in retained evidence
+requires investigation, not a claim it was never saved. An unavailable journal
+is reported as unavailable, never as an empty passing event check.
+It does not copy transcripts,
 tool arguments, replies, reasoning, account limits or secrets. Unreachable is
 **UNVERIFIED**. Installed, signed in, replay-tested and live-tested are distinct.
 No recent native records is not a pass. This is a manual command, not a service.
