@@ -179,12 +179,21 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 		return cancel
 	}
 	go func() {
+		// Each network is paced on its own (owner, 10 Nov: one network without a live relay socket kept every Team of
+		// every network on the quick check, about once every 7 s each): one that can tell this Mac of a change is
+		// checked once a minute, one that cannot every few seconds, and a wake (a push or a local change) checks all.
+		checked := map[string]time.Time{}
+		woken := true
 		for ctx.Err() == nil {
 			owner := GetDefaultUserID()
 			connections, e := readDesktopConnections(owner)
 			pushed := true // every server with a Team here has a live relay socket to tell this Mac of changes
 			if e == nil {
 				for _, c := range connections {
+					if _, live := desktopRelayLive.Load(c.ID); live && !woken && time.Since(checked[c.ID]) < crewTeamCheckAfter(true) {
+						continue
+					}
+					checked[c.ID] = time.Now()
 					check, stop := context.WithTimeout(ctx, 15*time.Second)
 					var out struct {
 						Teams []crewTeam `json:"teams"`
@@ -238,11 +247,13 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 					}
 				}
 			}
+			woken = false
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(crewTeamCheckAfter(pushed)):
 			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go), or the server said a teammate's did
+				woken = true
 			}
 		}
 	}()
