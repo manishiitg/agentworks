@@ -62,13 +62,9 @@ owner), personal access token on local or hosted, then optional OAuth browser
 sign-in. Use mine_github_connect with method=gh, method=pat and token, or
 method=oauth. A missing OAuth app never blocks PAT. A PAT's repository
 permissions decide what works; do not require broad scopes just to connect.
-Each connection is saved separately in your personal Vault. Choose an existing
-connection with mine_github_connect method=saved and connection_id from
-mine_github_status.connections, or connect a new gh/PAT/OAuth identity.
-workspace_path is the project to update (defaults to this chat's project).
-Only this project's selection changes; other projects and native gh's active
-login stay unchanged. An unavailable selected connection must be reconnected,
-never replaced silently by another account. The selected connection reaches
-this project's commands as SECRET_GITHUB_TOKEN and GH_TOKEN. Disconnecting
-unselects this project only; saved connections and their credentials remain.
-Never repeat tokens.
+Every method saves the same personal GITHUB_TOKEN secret and selected login.
+Using gh explicitly copies its current token; later gh logout/account changes
+do not change that saved connection. Never silently fall back to another
+identity. Keep the existing Crew secret selection and owner lending rules.
+mine_github_disconnect removes the saved connection: native gh and the PAT
+itself stay unchanged; OAuth is revoked when possible. Never repeat tokens.

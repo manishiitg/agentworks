@@ -17,7 +17,7 @@ import (
 
 // PLAT-746-191: every method saves exactly the caller's selected identity;
 // tokens never reach a response/log, and hosted gh cannot read the operator.
-func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
+func TestGitHubVaultPATAndCLISelectOnlyThisProject(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "1")
