@@ -362,6 +362,10 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				api.repairDesktopCrewTwin(session, local, pair, connectionID)
 			}
 			if msg.State == "other_mac" {
+				// Forget it as offered: the next ping offers it again, so this computer takes over once the other is gone.
+				pairsMu.Lock()
+				delete(pairs, msg.Project)
+				pairsMu.Unlock()
 				log.Printf("[CREW_RELAY] project=%s not reached from this computer: another of your computers serves it", msg.Project)
 			}
 		case "resume":
