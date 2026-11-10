@@ -1,4 +1,4 @@
-import { CLEAR_MONO_FONT, useAppearanceStore } from '../stores/useAppearanceStore'
+import { APPLE_MONO_FONT, useAppearanceStore } from '../stores/useAppearanceStore'
 import { dropFilesOnTerminal } from '../utils/terminalFileDrop'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { transcriptReadingKey } from './useTranscriptScroll'
@@ -26,7 +26,6 @@ import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { TERMINAL_REFRESH_REQUEST_EVENT } from '../utils/terminalRefresh'
 import { GEOMETRY_RECONNECT_AFTER_CLOSE, LIVE_ATTACH_INBAND_RESEED_DEBOUNCE_MS, LIVE_ATTACH_INBAND_RESEED_TIMEOUT_MS, LiveAttachReseedTracker, planGeometryChange, planLiveAttachClose, routeLiveAttachFrame, terminalGridChange, terminalReconnectDelayMs, terminalSnapshotCanReconnect, type GeometryChangeStep } from '../utils/terminalReconnect'
 import { terminalPayloadHasVisibleContent } from '../utils/terminalVisibleContent'
-import { useTheme } from '../hooks/useTheme'
 import { useSessionExecutionTree } from '../hooks/useSessionExecutionTree'
 import type { Theme } from '../contexts/ThemeContext'
 import { normalizeAnsiForEmbeddedXterm } from '../utils/ansiSanitize'
@@ -565,33 +564,15 @@ const TERMINAL_THEMES = {
 
 type TerminalTheme = (typeof TERMINAL_THEMES)[TerminalColorScheme]
 
-export const RAW_XTERM_FONT_FAMILY = '"JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, "Cascadia Mono", "Fira Code", Consolas, "Liberation Mono", monospace'
-export const RAW_XTERM_FONT_SIZE = 13
+export const RAW_XTERM_FONT_FAMILY = APPLE_MONO_FONT
+export const RAW_XTERM_FONT_SIZE = 12
 const RAW_XTERM_SCROLLBAR_WIDTH = 7
 const RAW_XTERM_CSS_LINE_HEIGHT = 'normal'
-export const RAW_XTERM_THEMES: Record<Theme, ITheme> = {
-  dark: {
-    background: '#0b0e14',
-    // xterm always draws the ruler's left edge, independently of the top and
-    // bottom border options. Its default is white even in a dark theme.
-    overviewRulerBorder: '#00000000',
-    scrollbarSliderBackground: '#94a3b838',
-    scrollbarSliderHoverBackground: '#94a3b866',
-    scrollbarSliderActiveBackground: '#94a3b88c',
-  },
-  light: {
-    background: '#ffffff',
-    overviewRulerBorder: '#00000000',
-    scrollbarSliderBackground: '#64748b38',
-    scrollbarSliderHoverBackground: '#64748b66',
-    scrollbarSliderActiveBackground: '#64748b8c',
-  },
-}
 
 // Decoded from the exported macOS Tahoe Clear Dark profile (NSRGB rounded to 8-bit).
 // https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
 // Native Liquid Glass/ColorSync rendering is not reproduced by the web terminal.
-export const CLEAR_DARK_XTERM_THEME: ITheme = {
+export const DARK_XTERM_THEME: ITheme = {
   background: '#191d27', foreground: '#e0e0e0', cursor: '#e0e0e0',
   selectionBackground: '#273d4c', overviewRulerBorder: '#00000000',
   black: '#35424c', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
@@ -602,7 +583,7 @@ export const CLEAR_DARK_XTERM_THEME: ITheme = {
 }
 
 // Same Tahoe export, Clear Light.terminal; native material/ColorSync caveats above apply.
-export const CLEAR_LIGHT_XTERM_THEME: ITheme = {
+export const LIGHT_XTERM_THEME: ITheme = {
   background: '#ffffff', foreground: '#2d3840', cursor: '#7f7f7f',
   selectionBackground: '#dfe8ee', overviewRulerBorder: '#00000000',
   black: '#2d3840', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
@@ -612,10 +593,10 @@ export const CLEAR_LIGHT_XTERM_THEME: ITheme = {
   scrollbarSliderBackground: '#50657338', scrollbarSliderHoverBackground: '#50657366',
 }
 
+export const RAW_XTERM_THEMES: Record<Theme, ITheme> = { dark: DARK_XTERM_THEME, light: LIGHT_XTERM_THEME }
+
 function rawXtermFont() {
-  return useAppearanceStore.getState().profile !== 'default'
-    ? { fontFamily: CLEAR_MONO_FONT, fontSize: 12 }
-    : { fontFamily: RAW_XTERM_FONT_FAMILY, fontSize: RAW_XTERM_FONT_SIZE }
+  return { fontFamily: RAW_XTERM_FONT_FAMILY, fontSize: RAW_XTERM_FONT_SIZE }
 }
 
 function applyRawXtermTheme(term: XTerm, theme: ITheme) {
@@ -2976,7 +2957,6 @@ function writeDismissedTerminalErrorIDs(sessionId: string | undefined, ids: Set<
 }
 
 const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, compact, hasPendingTerminalActivity = false }) => {
-  const { theme: appTheme } = useTheme()
   // terminalCenterOpen was the legacy toggle gate (separate sidekick
   // panel); kept here for any callers that still pass the flag but no
   // longer affects rendering — Debug-mode mount is the only gate.
@@ -3230,7 +3210,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
   const lastSizeHintSentRef = useRef<{ cols: number; rows: number } | null>(null)
   const terminalTheme = TERMINAL_THEMES[terminalColorScheme]
   const appearance = useAppearanceStore(state => state.profile)
-  const rawXtermTheme = appearance === 'clear-light' ? CLEAR_LIGHT_XTERM_THEME : appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[appTheme]
+  const rawXtermTheme = RAW_XTERM_THEMES[appearance]
 
   // PLAT-106 repair 3: the session-change reset below is a useEffect, so it runs
   // AFTER the first render for the new session — that render still paints the

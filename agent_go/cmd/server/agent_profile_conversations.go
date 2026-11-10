@@ -14,8 +14,10 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
 )
 
 // A product's earlier conversations. The registry remembers every
@@ -406,6 +408,11 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	publicationRoot := agentProfileRuntimeWorkspace(actingFor, binding.WorkspacePath)
 	defer lockPublication("target:" + canonicalCrewWorkspaceRoot(publicationRoot))()
 	deleteCtx := context.WithValue(r.Context(), publicationLifecycleKey{}, publicationRoot)
+	historyRoot, err := scheduleHistoryScope(publicationRoot)
+	if err != nil {
+		writeAgentProfileError(w, 500, "Could not resolve run history before deletion: "+err.Error())
+		return
+	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
 	var deleteErr error
 	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
@@ -419,6 +426,11 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
 	}
+	if err := schedulehistory.PurgeTree(r.Context(), fsutil.WorkspaceDocsRoot(), historyRoot); err != nil {
+		writeAgentProfileError(w, 500, "Folder removed; run history cleanup failed: "+err.Error())
+		return
+	}
+	noteScheduleSummaryChange()
 	if profile.Product == "work" {
 		if err := removeCrewExecutableBindings(projectID); err != nil {
 			log.Printf("[CREW_DELETE] project=%s executable cleanup failed: %v", projectID, err)

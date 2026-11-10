@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/parsers"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
 	"github.com/gin-gonic/gin"
@@ -1119,7 +1120,15 @@ func DeleteDocument(c *gin.Context) {
 	// Use RemoveAll for directories so non-empty dirs are deleted cleanly,
 	// and plain Remove for files (faster, no risk of accidentally nuking a tree).
 	if info.IsDir() {
-		err = os.RemoveAll(filePath)
+		physical, resolveErr := schedulehistory.PhysicalPath(filePath)
+		if resolveErr != nil {
+			err = resolveErr
+		} else {
+			err = os.RemoveAll(filePath)
+			if err == nil {
+				err = schedulehistory.PurgeTree(c.Request.Context(), docsDir, physical)
+			}
+		}
 	} else if chatlog.IsConversationPath(filePath) {
 		err = chatlog.Remove(filePath)
 	} else {

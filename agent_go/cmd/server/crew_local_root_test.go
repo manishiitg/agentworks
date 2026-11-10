@@ -38,6 +38,7 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	project, _ = filepath.EvalSymlinks(project)
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	scheduleHistoryTestCleanup(t, state)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "")
 	oldDocs := viper.Get("docs-dir")
@@ -221,9 +222,20 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	if _, err := validateNewLocalCrewRoot(project); err == nil {
 		t.Fatal("existing Crew adopted twice")
 	}
+	if err := AppendScheduleRun(ctx, logical, &ScheduleRunEntry{ID: "deleted-history", ScheduleID: "clock", Status: "success", FinalResponse: "private old answer"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := removeLocalCrew(logical); err != nil {
 		t.Fatal(err)
 	}
+	privateRelative, err := filepath.Rel(docs, roots.Private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := ReadScheduleRuns(ctx, filepath.ToSlash(privateRelative)); err != nil || len(rows) != 0 {
+		t.Fatalf("deleted local Crew history remains: %+v %v", rows, err)
+	}
+
 	for name, want := range originals {
 		raw, err := os.ReadFile(filepath.Join(project, name))
 		if err != nil || string(raw) != want {
