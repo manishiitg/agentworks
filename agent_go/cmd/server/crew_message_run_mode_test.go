@@ -71,3 +71,27 @@ func TestExternalOwnerAuthorityNeedsAnUnrestrictedOwnConnection(t *testing.T) {
 		t.Error("a token naming this Crew qualifies")
 	}
 }
+
+// PLAT-746-804: a network reply from an own agent must not inherit another
+// person's answer-only policy; labels and Run senders never prove ownership.
+func TestNetworkReplyOwnAgentNeedsAdmittedSameOwnerAndNonRunEndpoints(t *testing.T) {
+	dest := agentMessageEndpoint{UserID: "owner", Mode: "builder"}
+	for _, tc := range []struct {
+		name         string
+		source, dest agentMessageEndpoint
+		want         bool
+	}{
+		{"own agent", agentMessageEndpoint{UserID: "owner", Mode: "builder"}, dest, true},
+		{"other agent with owner-like label", agentMessageEndpoint{UserID: "other", Label: "owner", OwnerAuthority: true}, dest, false},
+		{"unknown sender", agentMessageEndpoint{}, dest, false},
+		{"Run sender", agentMessageEndpoint{UserID: "owner", Mode: "run"}, dest, false},
+		{"guest-driven sender", agentMessageEndpoint{UserID: "owner", Guest: "other"}, dest, false},
+		{"Run recipient", agentMessageEndpoint{UserID: "owner"}, agentMessageEndpoint{UserID: "owner", Mode: "run"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := crewNetworkReplyOwnAgent(tc.dest, tc.source); got != tc.want {
+				t.Fatalf("own agent = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

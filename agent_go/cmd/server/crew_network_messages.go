@@ -210,12 +210,24 @@ func (api *StreamingAPI) crewNetworkMessageOnServer(w http.ResponseWriter, r *ht
 	externalJSON(w, crewSyncReply{NetworkMessage: out})
 }
 
+// Own-agent classification uses admitted endpoint identities, never a label or
+// message body. Reuse the existing owner-turn rule without promoting Run chats.
+func crewNetworkReplyOwnAgent(dest, source agentMessageEndpoint) bool {
+	return source.UserID != "" && source.UserID == dest.UserID && source.Mode != "run" && source.Guest == "" && dest.Mode != "run" && dest.Guest == "" && !crewMessageRunMode(dest, source, "")
+}
+
 func (api *StreamingAPI) deliverCrewNetworkReply(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
 	if !crewTeamMessagePairAdmitted(dest.ID, dest.UserID, dest.NetworkPairID) {
 		return fmt.Errorf("the sending Mac is no longer paired with this Crew")
 	}
 	tab := dest.NetworkTab
-	args, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": source.Label, "sender_channel": "AgentBridge", "network_inbox": c.ID})
+	ownAgent := crewNetworkReplyOwnAgent(dest, source)
+	policy := withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": source.Label, "sender_channel": "AgentBridge", "network_inbox": c.ID}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab))
+	// Set only here, after endpoint and pair admission. Typed message content
+	// and caller-provided display labels cannot set this transport stamp.
+	policy["own_agent_message"] = ownAgent
+	args, _ := json.Marshal(policy)
+	log.Printf("[CREW_NETWORK] event=reply_policy project=%s message=%s own_agent=%t source_mode=%q dest_mode=%q", dest.ID, m.ID, ownAgent, source.Mode, dest.Mode)
 	result := callCrewMacFor(ctx, dest.UserID, dest.ID, crewChatCall{Operation: "network_reply", Tab: tab, ConversationID: dest.NetworkConversationID, Message: m.Text, Caller: source.Label, SubmissionID: m.ID, Args: args}, 30*time.Second)
 	if result.Status != http.StatusOK {
 		return fmt.Errorf("the originating Mac chat could not receive this reply")

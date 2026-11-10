@@ -254,7 +254,7 @@ func crewAskModeLine(canChange bool) string {
 	if canChange {
 		return "[Your owner now lets you make changes for this person: you may change files, run commands and use your tools for them. This replaces any earlier answer-only note in this thread.]"
 	}
-	return "[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can choose Make changes for this agent in the Team tab.]"
+	return "[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can change this agent's access if they want it to make changes. Do not infer that Team is enabled or ask the person to enable Team.]"
 }
 
 // whenOthersAskNote is the turn's note for another person's ask: the fixed line, then the owner's rule if set.
