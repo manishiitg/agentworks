@@ -236,6 +236,14 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	// Owner, 6 Nov: no "Share all my agents" ("*" names none of anyone's agents), and each person keeps at least one
 	// agent shared: turning off their last shared one (here the member's Main) is refused and nothing is saved.
+	// The guard applies to an actual discovered agent, not an invented Main alias.
+	memberMain := crewOwnerDefaultChatKey("team-test", "member")
+	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
+		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"},
+	}}
+	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
+		t.Fatal(err)
+	}
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code < 400 {
 		t.Fatalf("member's all-agents choice was accepted: %d %s", w.Code, w.Body.String())
 	}
@@ -806,7 +814,8 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 		return crewTeam{ProjectID: project, OwnerID: owner, On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
 	}
 	for _, t0 := range []crewTeam{team("gone-copy", "owner"), team("live-copy", "owner"), team("someone-else", "other")} {
-		if err := writeCrewTeam(t0); err != nil {
+		t0.Agents = crewTeamAgentFixtures(t0.ProjectID, map[string]map[string]bool{"owner": {"helper": false}})
+		if err := writeCrewTeamAgentFixture(t0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -815,6 +824,7 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 	if _, err := readCrewTeam("new-copy"); err == nil {
 		t.Fatal("a Team moved from a live copy or from another owner's")
 	}
+	before := mustReadCrewTeam(t, "gone-copy")
 	moveCrewTeamToTwin("owner", "gone-copy", "new-copy")
 	moved, err := readCrewTeam("new-copy")
 	if err != nil || moved.On || len(moved.People) != 1 || moved.People[0].Invited || moved.Folder.ID != "f1" {
@@ -822,6 +832,12 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 	}
 	if _, err := readCrewTeam("gone-copy"); err == nil {
 		t.Fatal("the old Team record stayed behind")
+	}
+	for id := range before.Agents {
+		a, ok := moved.Agents[id]
+		if !ok || a.ChatKey != "new-copy:chat:helper" || a.InTeam {
+			t.Fatalf("move lost agent identity, binding or privacy: %+v", moved.Agents)
+		}
 	}
 }
 
