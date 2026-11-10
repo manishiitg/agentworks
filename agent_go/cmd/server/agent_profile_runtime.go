@@ -733,7 +733,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				continue
 			}
 			if content, found, err := readFileFromWorkspace(ctx, publication.sourceRoot()+"/"+name); err == nil && found && strings.TrimSpace(content) != "" {
-				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.Section(content)
+				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.SourceSection(name, content)
 			}
 		}
 	}
