@@ -414,3 +414,41 @@ func TestQueuedRowDisplayAttributionRequiresSamePersonAndChat(t *testing.T) {
 		t.Fatal("stamp crossed people")
 	}
 }
+
+// PLAT-746-819: pending AgentBridge cards and their started echo share one ID,
+// but two identical sends remain distinct. No sender is inferred from text.
+func TestQueuedAgentMessageProjectionMatchesStartedIdentity(t *testing.T) {
+	turn := queuedConversationTurn{ID: "send-one", UserID: GetDefaultUserID(), SessionID: "chat",
+		Principal: queuedPrincipalFromContext(internalBotRequestContext(context.Background(), GetDefaultUserID(), nil)),
+		Request:   QueryRequest{Query: "same message"},
+	}
+	turn.Principal.DeliveredMessageUser = turn.UserID
+	turn.Principal.DeliveredMessageSession = turn.SessionID
+	turn.Principal.DeliveredMessage = map[string]interface{}{"source": "agent_message", "sender_label": "Reviewer", "display_content": "same message"}
+	rows := pendingQueuedMessagesFromTurns([]queuedConversationTurn{turn}, turn.UserID, turn.SessionID)
+	if len(rows) != 1 || rows[0].DisplayMetadata["sender_label"] != "Reviewer" {
+		t.Fatal("missing attributed pending card")
+	}
+	ctx, err := (&StreamingAPI{}).queuedConversationTurnContext(turn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := clientMessageIDFromContext(ctx)
+	stamp, _ := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
+	if id == "" || rows[0].ClientMessageID != id || stamp["client_message_id"] != id {
+		t.Fatal("queued and started identities differ")
+	}
+	other := turn
+	other.ID = "send-two"
+	if queuedTurnDisplayID(other) == id {
+		t.Fatal("identical repeated sends collapsed")
+	}
+	other.UserID = "different"
+	if queuedTurnDisplayID(other) != "" {
+		t.Fatal("delivery stamp crossed people")
+	}
+	turn.Principal.DeliveredMessage = nil
+	if queuedTurnDisplayID(turn) != "" {
+		t.Fatal("plain text acquired delivery identity")
+	}
+}

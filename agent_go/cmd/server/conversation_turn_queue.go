@@ -895,13 +895,17 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	if turn.Principal.FeedbackOperationID != "" {
 		ctx = virtualtools.WithFeedbackOperation(ctx, turn.Principal.FeedbackOperationID)
 	}
-	if turn.SubmissionID != "" {
+	if displayID := queuedTurnDisplayID(turn); displayID != "" {
 		ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{
-			ID: turn.SubmissionID, Owner: turn.UserID, Session: turn.SessionID, Message: turn.Request.Query,
+			ID: displayID, Owner: turn.UserID, Session: turn.SessionID, Message: turn.Request.Query,
 		})
 	}
 	if len(turn.Principal.DeliveredMessage) > 0 && turn.Principal.DeliveredMessageUser == turn.UserID && turn.Principal.DeliveredMessageSession == turn.SessionID {
-		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, maps.Clone(turn.Principal.DeliveredMessage))
+		stamp := maps.Clone(turn.Principal.DeliveredMessage)
+		if displayID := queuedTurnDisplayID(turn); displayID != "" {
+			stamp["client_message_id"] = displayID
+		}
+		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, stamp)
 	}
 	ctx = costobserver.ContextWithAttribution(ctx, turn.Principal.CostAttribution)
 	return ctx, nil
@@ -917,12 +921,24 @@ func queuedTurnDisplayAttribution(sessionID string, turn queuedConversationTurn)
 	return maps.Clone(p.DeliveredMessage)
 }
 
+// Server deliveries have no browser submission. Give their queue projection and
+// started echo one display identity, without changing queue admission/idempotency.
+func queuedTurnDisplayID(turn queuedConversationTurn) string {
+	if id := sanitizeClientMessageID(turn.SubmissionID); id != "" {
+		return id
+	}
+	if queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message" && turn.ID != "" {
+		return sanitizeClientMessageID("queue:" + turn.ID)
+	}
+	return ""
+}
+
 func (api *StreamingAPI) recordQueuedConversationUserMessage(sessionID string, turn queuedConversationTurn) {
 	// A keyed submission already shows as a provisional queued bubble in the
 	// submitting browser. Its durable row is the turn's own user_message, which
 	// the event store stamps with the same client id when the turn starts, so it
 	// lands after the answer it waited behind instead of above it.
-	if sanitizeClientMessageID(turn.SubmissionID) != "" {
+	if queuedTurnDisplayID(turn) != "" {
 		return
 	}
 	api.recordAttributedCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "", queuedTurnDisplayAttribution(sessionID, turn))
@@ -1022,13 +1038,14 @@ func logTurnQueue(format string, args ...interface{}) {
 
 // PendingQueuedMessage is a keyed message waiting in the durable turn queue.
 type PendingQueuedMessage struct {
-	MessageID       string    `json:"message_id"`
-	Steering        bool      `json:"steering,omitempty"`
-	DeliveryError   string    `json:"delivery_error,omitempty"`
-	ClientMessageID string    `json:"client_message_id"`
-	Content         string    `json:"content"`
-	QueuedAt        time.Time `json:"queued_at"`
-	QueuePosition   int       `json:"queue_position"`
+	MessageID       string                 `json:"message_id"`
+	Steering        bool                   `json:"steering,omitempty"`
+	DeliveryError   string                 `json:"delivery_error,omitempty"`
+	ClientMessageID string                 `json:"client_message_id"`
+	DisplayMetadata map[string]interface{} `json:"display_metadata,omitempty"`
+	Content         string                 `json:"content"`
+	QueuedAt        time.Time              `json:"queued_at"`
+	QueuePosition   int                    `json:"queue_position"`
 	// Refreshing: the chat is being updated (new definition, model or settings) before this message can go in, so the person
 	// sees that, and Steer now does not apply: steering into the outdated process is what the update replaces. Remove stays, so a long
 	// update can still be withdrawn.
@@ -1079,7 +1096,7 @@ func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sess
 		if turn.UserID != userID || turn.SessionID != sessionID {
 			continue
 		}
-		clientMessageID := sanitizeClientMessageID(turn.SubmissionID)
+		clientMessageID := queuedTurnDisplayID(turn)
 		if clientMessageID == "" {
 			continue
 		}
@@ -1088,6 +1105,7 @@ func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sess
 			Steering:        turn.Steering,
 			DeliveryError:   turn.DeliveryError,
 			ClientMessageID: clientMessageID,
+			DisplayMetadata: queuedTurnDisplayAttribution(sessionID, turn),
 			Content:         turn.Request.Query,
 			QueuedAt:        turn.CreatedAt,
 			Started:         turn.StartedAt != nil && !turn.Steering,
