@@ -1,3 +1,4 @@
+import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { ReplyFileChanges } from './chat/ReplyFileChanges'
 import { replyFileChangesByMessage } from '../utils/replyFileChanges'
 import { TranscriptFind } from './chat/TranscriptFind'
@@ -82,7 +83,7 @@ function isWorkingStep(item: TranscriptItem): item is WorkingStep {
 
 // groupWorkingSteps folds every run of two or more steps into one Working row. The row keeps the
 // key of its first step, so a run that grows while the agent works keeps its open/closed state.
-function groupWorkingSteps(items: TranscriptItem[]): TranscriptRenderItem[] {
+function groupWorkingSteps(items: TranscriptItem[], showThinking?: boolean): TranscriptRenderItem[] {
   const out: TranscriptRenderItem[] = []
   let run: WorkingStep[] = []
   const flush = () => {
@@ -91,6 +92,12 @@ function groupWorkingSteps(items: TranscriptItem[]): TranscriptRenderItem[] {
     run = []
   }
   for (const item of items) {
+    // Main chat separates optional provider summaries from tools. Execution
+    // inspectors keep their existing complete recorded-event view.
+    if (showThinking !== undefined && item.kind === 'thinking' && !item.assistantUpdate) {
+      if (showThinking) { flush(); out.push(item) }
+      continue
+    }
     if (isWorkingStep(item)) { run.push(item); continue }
     flush()
     out.push(item)
@@ -1185,6 +1192,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   readingState,
   readingKey,
 }) => {
+  const showThinking = useChatDisplayStore(state => state.showThinking)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [searchMatch, setSearchMatch] = useState<{ key: string; query: string } | null>(null)
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
@@ -1213,8 +1221,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const items = useMemo<TranscriptRenderItem[]>(
-    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
-    [scoped, questions],
+    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined),
+    [scoped, questions, searchable, showThinking],
   )
   const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : []))), [events, items])
   // Retry belongs to the latest human turn, never an older failed message

@@ -1,3 +1,4 @@
+import { ThinkingDisplayMenuItem } from '../chat/ThinkingDisplayMenuItem'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import * as Menu from '@radix-ui/react-dropdown-menu'
@@ -143,6 +144,7 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
 
   // This tab's Context group (PLAT-872-71), then the way to the full Models page, as in Crew's menu.
   const contextItems = sessionId ? <>
+    <ThinkingDisplayMenuItem className={menuRowClass} />
     <ChatContextItems sessionId={sessionId} modelLabel={modelLabel} />
     <Menu.Separator className="my-1 h-px bg-border first:hidden" />
     <Menu.Item className={menuRowClass} onSelect={() => useWorkflowStore.getState().openWorkspaceView('identity', 'llm')}>
