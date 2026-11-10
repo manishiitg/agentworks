@@ -106,6 +106,41 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("member", "GET", base+"/agents", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"Reviewer"`) || strings.Contains(w.Body.String(), `"Solo"`) {
 		t.Fatalf("member team agents: %d %s", w.Code, w.Body.String())
 	}
+	{
+		// PLAT-746-820: queued Team delivery uses the current ID, not a saved
+		// physical key or the member's right to edit the Crew.
+		var directory struct {
+			People []crewTeamAgentsPerson `json:"people"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &directory); err != nil || len(directory.People) == 0 || len(directory.People[0].Agents) == 0 {
+			t.Fatalf("Team directory missing agents: %v", err)
+		}
+		endpoint := agentMessageEndpoint{ID: "team-test", UserID: "owner", TeamAgentID: directory.People[0].Agents[0].ID, ChatKey: "stale-key"}
+		resolved, route, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member")
+		if err != nil || route != "owner_mac" || resolved.ChatKey != macSharedAgentChatKey("team-test", "team01") {
+			t.Fatalf("shared ID did not resolve to its owner's Mac: %+v %s %v", resolved, route, err)
+		}
+		if _, _, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "outsider"); err == nil {
+			t.Fatal("Team ID granted an outsider access")
+		}
+		forged := endpoint
+		forged.UserID = "member"
+		if _, _, err := resolveTeamMessageEndpoint(t.Context(), forged, "member"); err == nil {
+			t.Fatal("Team ID accepted a different agent owner")
+		}
+		teamBefore := mustReadCrewTeam(t, "team-test")
+		privateTeam := teamBefore
+		privateTeam.AgentChoices = map[string]map[string]bool{"owner": {"team01": false}}
+		if err := writeCrewTeam(privateTeam); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member"); err == nil {
+			t.Fatal("saved Team ID bypassed Only me")
+		}
+		if err := writeCrewTeam(teamBefore); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if w = call("outsider", "GET", base+"/agents", "", ""); w.Code != 403 {
 		t.Fatalf("outsider saw the team's agents: %d %s", w.Code, w.Body.String())
 	}

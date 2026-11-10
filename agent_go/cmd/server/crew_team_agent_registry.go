@@ -112,12 +112,57 @@ func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target trig
 	if err != nil {
 		return target, err
 	}
-	key := agent.ChatKey
-	if crewRelayTwin(target.CrewID) && owner == ownerOfCrewProjectID(target.CrewID) {
-		key = macSharedAgentChatKey(target.CrewID, agent.Tab)
-	}
+	key := crewTeamNativeChatKey(target.CrewID, owner, agent)
+	target.TeamAgentID = agent.ID
 	target.CrewOwner = owner
 	target.Chat = &codeChat{OwnerID: owner, ID: key, Key: key, Name: agent.Name, Purpose: agent.Purpose, SessionID: agent.sessionID}
 	target.Label += " · " + agent.Name
 	return target, nil
+}
+
+func crewTeamNativeChatKey(project, owner string, agent crewTeamAgent) string {
+	if crewRelayTwin(project) && owner == ownerOfCrewProjectID(project) {
+		return macSharedAgentChatKey(project, agent.Tab)
+	}
+	return agent.ChatKey
+}
+
+func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) (crewTeamAgent, error) {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.On || !t.member(person) || !crewTeamAccountActive(person) || ownerOfCrewProjectID(project) != t.OwnerID {
+		return crewTeamAgent{}, fmt.Errorf("This Crew's Team is not available to you")
+	}
+	for _, p := range teamAgentsByPerson(ctx, t, person) {
+		if p.UserID != person {
+			continue
+		}
+		for _, a := range p.Agents {
+			if a.InTeam && (a.ChatKey == chatKey || crewTeamNativeChatKey(project, person, a) == chatKey || crewTeamMainAgent(t, person, chatKey) && crewTeamMainAgent(t, person, a.ChatKey)) {
+				return a, nil
+			}
+		}
+	}
+	return crewTeamAgent{}, fmt.Errorf("Share one of your agents with this Team first, then message this agent")
+}
+
+// Re-resolve queued messages and replies by ID. The saved chat key cannot route
+// to another person after a move, and an old ID cannot bypass removal/Only me.
+func resolveTeamMessageEndpoint(ctx context.Context, endpoint agentMessageEndpoint, viewer string) (agentMessageEndpoint, string, error) {
+	a, owner, err := crewTeamAgentByID(ctx, endpoint.ID, viewer, endpoint.TeamAgentID)
+	if err != nil {
+		return endpoint, "", err
+	}
+	if owner != endpoint.UserID {
+		return endpoint, "", fmt.Errorf("Team agent owner changed")
+	}
+	endpoint.ChatKey = crewTeamNativeChatKey(endpoint.ID, owner, a)
+	route := "server"
+	if crewRelayTwin(endpoint.ID) && owner == ownerOfCrewProjectID(endpoint.ID) {
+		route = "owner_mac"
+	} else if a.Place == "mac" {
+		route = "member_mac"
+	} else {
+		endpoint.Session = a.sessionID
+	}
+	return endpoint, route, nil
 }
