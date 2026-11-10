@@ -2121,7 +2121,7 @@ export const agentApi = {
       const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
       const plan = await api.post(`${route}/plan`, { file: version, ...binding })
       if (scope && plan.data.pending_attachments !== true) {
-        throw new Error('This server needs an update for chat attachments. Restart the backend, then attach the file again.')
+        throw new Error('This server needs an update to send while files upload. Ask its owner to update it, then attach the file again.')
       }
       const missing = new Set<string>(plan.data.missing)
       const send = pieces.filter(piece => missing.delete(piece.id))
