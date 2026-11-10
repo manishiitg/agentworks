@@ -129,35 +129,73 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 	}
 	key := project + "\x00" + person
 	cached, _ := crewMacTeamTabsCache.Load(key)
-	if v, ok := cached.(crewMacTeamTabsRead); ok && time.Since(v.at) < 15*time.Second {
+	online := crewMacSocketFor(person, project, pair) != nil
+	// A list read before is answered at once; an online Mac is asked again in the background when it is older than
+	// 15 s. Waiting on the Mac here held every Team tab up to 20 s whenever that Mac was busy (owner, 10 Nov).
+	if v, ok := cached.(crewMacTeamTabsRead); ok {
+		if online && time.Since(v.at) >= 15*time.Second {
+			refreshPersonMacTabs(key, person, project, pair, withMain)
+		}
 		return v.tabs, true
 	}
-	if crewMacSocketFor(person, project, pair) == nil {
-		if v, ok := cached.(crewMacTeamTabsRead); ok {
-			return v.tabs, true
+	// After a restart nothing is in memory: the last list read from that Mac, kept on disk, so a message to its
+	// agents still waits for the Mac instead of being refused as not shared.
+	if tabs, ok := readSavedCrewMacTabs(project, person); ok {
+		crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
+		if online {
+			refreshPersonMacTabs(key, person, project, pair, withMain)
 		}
-		// After a restart nothing is in memory: the last list read from that Mac, kept on disk, so a message to its
-		// agents still waits for the Mac instead of being refused as not shared.
-		if tabs, ok := readSavedCrewMacTabs(project, person); ok {
-			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
-			return tabs, true
+		return tabs, true
+	}
+	if !online {
+		return nil, false
+	}
+	// Never read from this Mac: ask it now, briefly.
+	read, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	tabs, ok := readPersonMacTabsNow(read, person, project, pair, withMain)
+	if !ok {
+		return nil, false
+	}
+	crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
+	return tabs, true
+}
+
+var crewMacTabsRefreshing sync.Map // key -> true while one background read of that Mac's list runs
+
+// refreshPersonMacTabs reads a Mac's agent list again in the background, once at a time per Mac; a failed read keeps
+// the list it had (an empty answer from a busy Mac made its agents disappear from the Team tab).
+func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
+	if _, running := crewMacTabsRefreshing.LoadOrStore(key, true); running {
+		return
+	}
+	go func() {
+		defer crewMacTabsRefreshing.Delete(key)
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		if tabs, ok := readPersonMacTabsNow(ctx, person, project, pair, withMain); ok {
+			previous, _ := crewMacTeamTabsCache.Load(key)
+			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
+			// Tell the Team tab only when the list changed; a refresh that found the same agents is silent.
+			if v, ok := previous.(crewMacTeamTabsRead); !ok || !slices.Equal(v.tabs, tabs) {
+				publishCrewPanelChanged(project)
+			}
 		}
+	}()
+}
+
+// readPersonMacTabsNow asks the Mac for its agents (and its Main); ok is false when the Mac did not answer the list.
+func readPersonMacTabsNow(ctx context.Context, person, project, pair string, withMain bool) ([]crewMacTeamTab, bool) {
+	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs"}, 10*time.Second)
+	var rows []AgentProfileSideChat
+	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
 		return nil, false
 	}
 	tabs := []crewMacTeamTab{}
-	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs"}, 10*time.Second)
-	defer func() {
-		if result.Status == http.StatusOK {
-			saveCrewMacTabs(project, person, tabs)
-		}
-	}()
-	var rows []AgentProfileSideChat
-	if result.Status == http.StatusOK && json.Unmarshal(result.Body, &rows) == nil {
-		for _, row := range rows {
-			_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
-			if ok && crewMacTabID(id) && row.ConversationID != "" {
-				tabs = append(tabs, crewMacTeamTab{Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
-			}
+	for _, row := range rows {
+		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
+		if ok && crewMacTabID(id) && row.ConversationID != "" {
+			tabs = append(tabs, crewMacTeamTab{Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
 	if withMain {
@@ -169,7 +207,7 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 			tabs = append(tabs, crewMacTeamTab{Person: person, Tab: macMainTab, ConversationID: out.ConversationID, Name: "Main"})
 		}
 	}
-	crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
+	saveCrewMacTabs(project, person, tabs)
 	return tabs, true
 }
 
