@@ -394,6 +394,33 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
 			}},
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. No model turn starts; use sessions action=ask afterwards.", map[string]interface{}{
+			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
+				"chat": map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
+				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = trusted(ctx)
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				chat, err := project.find(strings.TrimSpace(stringToolArg(args, "chat")))
+				if err != nil {
+					return "", err
+				}
+				if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
+					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) {
+						return "", fmt.Errorf("this connection does not allow forking this Crew chat")
+					}
+				}
+				request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+				status, body := scheduleHandler(request, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", map[string]string{"id": project.ProfileID}, nil, map[string]any{"conversation_key": chat.Key, "name": stringToolArg(args, "name")})
+				if status >= 400 {
+					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
+				}
+				return string(body), nil
+			}},
 		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
 				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
