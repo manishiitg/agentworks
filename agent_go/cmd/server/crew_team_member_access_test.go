@@ -225,6 +225,10 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}}
 		who := who
 		sock.send = func(m crewRelayMessage) error {
+			// Team changes also send notification frames without a command.
+			if m.Call == nil {
+				return nil
+			}
 			sent[who] = append(sent[who], *m.Call)
 			sock.mu.Lock()
 			sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{}`)}
