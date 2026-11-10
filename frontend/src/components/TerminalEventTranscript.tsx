@@ -894,18 +894,17 @@ const ToolCallField: React.FC<{ label: string; value: string }> = ({ label, valu
   )
 }
 
-// Thinking is a collapsible block like a tool batch, closed by default: the person opens the ones they
-// want (owner 2026-10-27, replacing open-by-default from 2026-09-03). While the agent is still reasoning
-// the label animates (Thinking. .. ...) so it reads as live; the toggle is the person's alone.
-const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking' }>; live: boolean }> = ({ item, live }) => {
+// Show thinking reveals the supplied text directly in chat, for every provider.
+// Execution inspectors retain their recorded-event disclosure.
+const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking' }>; live: boolean; showText?: boolean }> = ({ item, live, showText = false }) => {
   const [expanded, toggle] = useDisclosure(`thinking:${item.key}`, false)
   const hasText = Boolean(item.text.trim())
   const [dots, setDots] = React.useState(1)
   React.useEffect(() => {
-    if (!live) return
+    if (!live || showText) return
     const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
     return () => window.clearInterval(timer)
-  }, [live])
+  }, [live, showText])
 
   if (item.assistantUpdate) {
     return (
@@ -913,6 +912,17 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
         <ConversationMarkdownRenderer content={item.text} framed={false} maxHeight="none" copyableCode />
       </div>
     )
+  }
+
+  if (showText) {
+    return hasText ? (
+      <p
+        data-testid="terminal-clear-thinking-batch-content"
+        className="my-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground"
+      >
+        {item.text}
+      </p>
+    ) : null
   }
 
   return (
@@ -1426,7 +1436,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             : item.kind === 'tools'
             ? <ToolBatch item={item} toolLayout={toolLayout} />
             : item.kind === 'thinking'
-              ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} />
+              ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} showText={searchable && showThinking} />
               : (
                 <TranscriptEvent
                   event={item.event}
