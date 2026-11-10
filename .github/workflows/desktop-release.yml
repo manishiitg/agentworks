@@ -199,7 +199,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release create "v$VERSION" --draft --title "AgentWorks $VERSION" --generate-notes
+            gh release create "v$VERSION" --draft --title "AgentWorks $VERSION" --notes "Release notes are added by scripts/desktop-release.sh."
           fi
           gh release upload "v$VERSION" dist/*.dmg dist/*.zip dist/*.sha256 --clobber
           # Old Apple silicon installations use the former product name.
