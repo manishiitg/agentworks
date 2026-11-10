@@ -110,7 +110,10 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if tab := macSharedAgentTab("team", "team"); tab != macMainTab {
 		t.Fatalf("a Main public on AgentBridge lost the Crew's messages to %q", tab)
 	}
-	if err := writeCrewTeam(team); err != nil {
+	// Membership writes preserve agent settings. Restore Main explicitly before
+	// exercising reconnect delivery and membership revocation below.
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: true}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
