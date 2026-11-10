@@ -419,7 +419,8 @@ export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent
     </div>
     <div className="mt-1 flex flex-wrap gap-1.5">
       {uses.map(use => <span key={`${use.kind}:${use.name}`} className="rounded-full border border-border px-2 py-px text-xs">{use.name}{use.personal ? ' · yours' : ''}</span>)}
-      {!uses.length && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
+      {agent.uses_note && <span className="text-xs text-muted-foreground">{agent.uses_note}</span>}
+      {!uses.length && !agent.uses_note && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
     </div>
     <p className={label}>{agent.can_edit_rule ? 'When someone else asks' : 'When you ask it'}</p>
     <p className="rounded-md bg-muted/60 px-2.5 py-2 text-[12.5px] text-muted-foreground">{agent.when_others_line}</p>

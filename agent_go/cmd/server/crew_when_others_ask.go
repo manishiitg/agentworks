@@ -292,18 +292,19 @@ type crewTeamAgentUse struct {
 
 // crewTeamUses lists what the Crew's agents use from its owner, names only (the same selection as crewTeamLentNow),
 // marking the apps from the owner's own Vault (their own sign-ins).
-func crewTeamUses(ctx context.Context, t crewTeam) []crewTeamAgentUse {
+func crewTeamUses(ctx context.Context, t crewTeam) ([]crewTeamAgentUse, string) {
 	root := crewProjectRootByID(t.ProjectID)
 	out := []crewTeamAgentUse{}
 	if IsLocalMode() || root == "" {
-		return out
+		return out, ""
 	}
 	catalog := crewTeamVaultDisplayFor(t.OwnerID)
+	note := ""
 	if catalog == nil {
-		return out // never mislabel personal accounts when their inventory is unavailable
+		note = "Connected app names will appear when Vault responds."
 	}
 	seen := map[string]bool{}
-	{
+	if catalog != nil {
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
 		for _, server := range catalog.servers {
 			name := firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID))
@@ -328,7 +329,7 @@ func crewTeamUses(ctx context.Context, t crewTeam) []crewTeamAgentUse {
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	return out
+	return out, note
 }
 
 // crewTeamRowUses is what one agent row shows: the owner's own sign-ins only to the owner, on their own agents.

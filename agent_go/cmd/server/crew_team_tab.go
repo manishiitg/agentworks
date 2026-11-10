@@ -76,6 +76,7 @@ type crewTeamTabAgent struct {
 	// only to the owner, marked personal), its person's rule, Answer only / Make changes (an agent on a Mac only; nil
 	// elsewhere), whether the viewer may edit them (the agent's own person), and the line the screen shows.
 	Uses           []crewTeamAgentUse `json:"uses"`
+	UsesNote       string             `json:"uses_note,omitempty"`
 	WhenOthersAsk  string             `json:"when_others_ask"`
 	HasRule        bool               `json:"has_rule"`
 	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
@@ -335,7 +336,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		person(p.UserID, note, true)
 	}
-	uses := crewTeamUses(ctx, t)
+	uses, usesNote := crewTeamUses(ctx, t)
 	for _, p := range byPerson {
 		mine := p.UserID == viewer
 		onMac := crewTeamAgentOnMac(t, p.UserID)
@@ -382,6 +383,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 			rule := t.agentRule(p.UserID, crewTeamRuleKey(ctx, t, p.UserID, a.ChatKey))
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
+			row.UsesNote = usesNote
 			row.WhenOthersAsk, row.HasRule, row.CanEditRule = rule.WhenOthersAsk, rule.WhenOthersAsk != "", mine
 			// Answer only / Make changes for every agent, Mac or server alike (one row for every own agent, owner 6 Nov).
 			changes := rule.CanMakeChanges
