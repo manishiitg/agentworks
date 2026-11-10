@@ -588,10 +588,17 @@ export const RAW_XTERM_THEMES: Record<Theme, ITheme> = {
   },
 }
 
+// Decoded from the exported macOS Tahoe Clear Dark profile (NSRGB rounded to 8-bit).
+// https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
+// Native Liquid Glass/ColorSync rendering is not reproduced by the web terminal.
 export const CLEAR_DARK_XTERM_THEME: ITheme = {
-  background: '#1a1a1a', foreground: '#e3e1db', cursor: '#e3e1db',
-  selectionBackground: '#585650', overviewRulerBorder: '#00000000',
-  scrollbarSliderBackground: '#a9a69e38', scrollbarSliderHoverBackground: '#a9a69e66',
+  background: '#191d27', foreground: '#e0e0e0', cursor: '#e0e0e0',
+  selectionBackground: '#273d4c', overviewRulerBorder: '#00000000',
+  black: '#35424c', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
+  blue: '#6d96b4', magenta: '#bd7bcd', cyan: '#7ccbcd', white: '#dee5eb',
+  brightBlack: '#465c6d', brightRed: '#df6c5a', brightGreen: '#79be7e', brightYellow: '#e5c872',
+  brightBlue: '#67b5ed', brightMagenta: '#d389e5', brightCyan: '#84dde0', brightWhite: '#e5eff5',
+  scrollbarSliderBackground: '#465c6d66', scrollbarSliderHoverBackground: '#465c6d99',
 }
 
 function rawXtermFont() {
