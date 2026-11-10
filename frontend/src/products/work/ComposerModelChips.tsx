@@ -1,5 +1,4 @@
-import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
-import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
+import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, NO_LONGER_AVAILABLE } from '../../components/providers/ProviderAccounts'
 import { ComposerActionItems, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import ChatStatusBar from './ChatStatusBar'
 import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
@@ -145,6 +144,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const modelLabel = models.find(model => model.id === currentModel)?.label || label
   const currentAccountId = connectionId || meta?.agentProfileChatConnectionID || ownDefaultConnectionId(sources.accounts, selectedOption.provider) || `global:${selectedOption.provider}`
   const groups = [{ option: selectedOption, current: true, models }]
+  const cliGroups = sources.options.filter(option => option.id === selectedOption.id || workProviderIds.includes(option.provider || option.id)).map(option => ({
+    option,
+    accounts: (sources.accounts || []).filter(account => account.provider === option.provider &&
+      ((accountUsable(account) && accountConfigured(account)) || (option.id === selectedOption.id && account.id === currentAccountId))),
+  })).filter(group => group.accounts.length > 0 || group.option.id === selectedOption.id)
+  const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
 
   const save = async (option: AgentProfileProviderOption, modelId: string, reasoningEffort: string | undefined, targetConnectionId?: string) => {
     const current = option.id === selectedOption.id
@@ -182,12 +187,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
     switchTo(pending.option, pending.modelId, pending.connectionId)
   }
-  const selectProvider = (config: PresetLLMConfig) => {
-    const option = sources.options.find(candidate => candidate.provider === config.provider)
-    if (!option) return
-    setMenuOpen(false)
-    pickModel(option, undefined, config.connection_id || switchAccountFor(option) || `global:${option.provider}`)
-  }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
   // Optional setup and defaults on the Models page and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
@@ -224,26 +223,27 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       <button type="button" onClick={() => void finishSwitch(false)} className="block w-full rounded-md border border-border px-2 py-1.5 text-left hover:bg-muted">Switch and keep the whole chat</button>
     </div>}
     <Menu.Sub>
-      {subRow('Provider', selectedOption.label || selectedOption.provider || selectedOption.id)}
-      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={`${contentClass} w-[min(420px,calc(100vw-24px))]`}>
-        <fieldset disabled={saving} className="min-w-0 border-0 p-1" onKeyDown={event => {
-          // Native controls in the reused selector keep typing, Tab and arrow
-          // navigation; Escape still dismisses the menu normally.
-          if (event.key !== 'Escape') event.stopPropagation()
-        }}>
-          <WorkflowLLMConfigurationPanel
-            workspacePath={workspacePath}
-            llmConfig={{ schema_version: 2, mode: 'provider_profile', provider: selectedOption.provider as LLMProvider, connection_id: currentAccountId }}
-            onChange={selectProvider}
-            scopeNoun="chat"
-            canWriteOverride
-            allowedProviderIds={workProviderIds}
-            splitPiProviders={false}
-            showModelsPerRole={false}
-            configurationSource="agent_profile"
-            product={profileId}
-          />
-        </fieldset>
+      {subRow('CLI', selectedOption.label || selectedOption.provider || selectedOption.id)}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+        {cliGroups.map(({ option, accounts }) => <Menu.Sub key={option.id}>
+          <Menu.SubTrigger className={rowClass}>
+            <span className="min-w-0 flex-1 truncate">{option.label || option.provider || option.id}</span>
+            {option.id === selectedOption.id && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </Menu.SubTrigger>
+          <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+            <Menu.Label className={labelClass}>Account</Menu.Label>
+            {accounts.map(account => {
+              const available = accountUsable(account) && accountConfigured(account)
+              const current = option.id === selectedOption.id && account.id === currentAccountId
+              return <Menu.Item key={account.id} className={rowClass} disabled={saving || !available} onSelect={() => pickModel(option, undefined, account.id)}>
+                <span className="min-w-0 flex-1 truncate">{account.via_connection ? account.display_name : onThisMac && accountRelation(account) === 'server' ? 'This Mac' : accountOptionLabel(account)}{!available ? ` · ${NO_LONGER_AVAILABLE}` : ''}</span>
+                {current && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+              </Menu.Item>
+            })}
+            {accounts.length === 0 && <Menu.Item disabled className={rowClass}>{sources.accounts === null ? 'Loading accounts…' : NO_LONGER_AVAILABLE}</Menu.Item>}
+          </Menu.SubContent></Menu.Portal>
+        </Menu.Sub>)}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
     <Menu.Sub>
