@@ -138,7 +138,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
-				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "purpose": tab.Identity.Purpose, "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
+				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
 			row["chats"] = chats
 		} else {
@@ -335,4 +335,13 @@ func agentDirectoryHowToCall(rows any) string {
 		parts = append(parts, "Connected agent: messages action=send target=agent:<name>")
 	}
 	return strings.Join(parts, ". ") + "."
+}
+
+// crewDirectoryChatName is a chat's name as the header shows it: a person's Main is "Main", never its saved title
+// "<person> · Builder".
+func crewDirectoryChatName(tab crewOwnerChat) string {
+	if tab.Record.IsMainChat {
+		return "Main"
+	}
+	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")
 }
