@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
+import { useLLMStore } from '../../stores/useLLMStore'
+import { codingProviderName } from '../../utils/codingProviderName'
 import { AGENT_KEY } from './AgentIcon'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import type { TeamTabSetup } from '../../products/work/teamApi'
@@ -41,6 +43,20 @@ function AgentNowRow({ tabId, activity, presence }: { tabId: string; activity?: 
   return <div className="border-t border-border py-1.5">
     <div className="flex justify-between gap-3"><span>Now</span><span className={state === 'running' ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}>{state ? AGENT_STATE_WORD[state] : 'Idle'}</span></div>
     {presence && <p className="mt-0.5 text-muted-foreground">{presence}</p>}
+  </div>
+}
+
+/** Display the chat's server-resolved runtime, not the Crew-wide default. */
+function AgentRuntimeRows({ tabId }: { tabId: string }) {
+  const meta = useChatStore(state => state.chatTabs[tabId]?.metadata)
+  const providers = useLLMStore(state => state.providerManifest)
+  const provider = meta?.agentProfileChatProvider || meta?.agentProfileEngine
+  const manifest = providers.find(item => item.id === provider)
+  const program = manifest ? codingProviderName(manifest) : provider
+  const model = meta?.agentProfileModelID
+  return <div className="space-y-1 border-t border-border py-1.5">
+    <div className="flex justify-between gap-3"><span>Coding agent</span><span className="min-w-0 break-words text-right text-muted-foreground">{program || 'Not available yet'}</span></div>
+    <div className="flex justify-between gap-3"><span>Model</span><span className="min-w-0 break-words text-right text-muted-foreground">{model || 'Not available yet'}</span></div>
   </div>
 }
 
@@ -146,6 +162,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         : 'fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <p className={`mb-2 mt-1 ${info.purpose ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>{info.purpose || (info.owner ? 'No purpose yet.' : 'No purpose yet. Others see it when you share this agent.')}</p>
+      {info.tabId && <AgentRuntimeRows tabId={info.tabId} />}
       {info.tabId && <AgentNowRow tabId={info.tabId} activity={info.activity} presence={info.presence} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
