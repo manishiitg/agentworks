@@ -26,7 +26,7 @@ import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useS
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
-import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, type MenuFilter, type MenuNetwork } from './MenuGroups'
+import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, useMenuNetwork, type MenuFilter, type MenuNetwork } from './MenuGroups'
 
 
 type SidebarProject = { id: string; name: string; shared_line?: string; team_busy?: { state: 'running' | 'waiting' | ''; line: string; people?: { name: string; state: 'working' | 'waiting' | 'online' | 'offline'; line?: string }[] }; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
@@ -111,6 +111,15 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
   const allProjectsExpanded = useAllProjectsExpanded(Boolean(pinned?.length))
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
+  // The network last picked is kept with the menu's other choices on the server (useMenuNetwork), once they load.
+  const { network: savedNetwork, loaded: menuLoaded, pickNetwork } = useMenuNetwork()
+  const [networkRestored, setNetworkRestored] = useState(false)
+  useEffect(() => {
+    if (!desktop || networkRestored || !menuLoaded || !state.loaded || !connections.length) return
+    setNetworkRestored(true)
+    if (savedNetwork === 'all') setSelectedLocations(connections.map(connection => connection.id))
+    else if (savedNetwork && connections.some(connection => connection.id === savedNetwork)) setSelectedLocations([savedNetwork])
+  }, [desktop, networkRestored, menuLoaded, state.loaded, connections, savedNetwork])
   useEffect(() => {
     if (!desktop || !state.loaded || !isChatIdentityCurrent(state.identity) || !connections.length) return
     setSelectedLocations(previous => {
@@ -175,7 +184,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}
         networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
         network={showingAll ? 'all' : selectedLocations[0]}
-        onNetwork={id => setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id])}>
+        onNetwork={id => { setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id]); pickNetwork(id) }}>
       {/* Your own Crews that live on a Mac and are reached through this server, under that Mac. */}
       {macs.map(({ mac, rows: macRows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
         <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
