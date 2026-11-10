@@ -266,6 +266,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
+  // While you look at a teammate's agent, the top line keeps your own (the last one you had open, else Main) and takes
+  // you back to it; the teammate's chip shows what is open (owner, 10 Nov: "my main thread is gone").
+  const lastOwnTab = useRef('')
+  const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
+  if (openTab && !watchingOther) lastOwnTab.current = openTab.tabId
+  const headerTab = watchingOther ? (tabs.some(tab => tab.tabId === lastOwnTab.current) ? lastOwnTab.current : canonicalTabId) : openTab?.tabId
   const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
@@ -540,7 +546,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode} onOpenIdentity={onOpenIdentity} />}
+      {surface === 'work' && <AgentHeaderLine tabId={headerTab} crewName={projectName} showName={menuMode} onOpenIdentity={onOpenIdentity} onReturn={watchingOther && headerTab ? () => selectTab(headerTab) : undefined} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
