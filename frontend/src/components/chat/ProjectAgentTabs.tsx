@@ -24,6 +24,7 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { fillAgentPurposeDraft, fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 
 
@@ -124,7 +125,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const shownTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's, by account,
   // under the server's display name.
-  const tabOwnerId = (tab: ChatTab) => canControl(tab) ? '' : listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+  // A read-only row that is the viewer's own (a schedule's own chat) sits with their own tabs, not under a person.
+  const me = useAuthStore(state => state.user?.id)
+  const tabOwnerId = (tab: ChatTab) => {
+    if (canControl(tab)) return ''
+    const owner = listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+    return owner === me ? '' : owner
+  }
   const personName = (id: string) => team?.people.find(person => person.user_id === id)?.name
     || ownerShortName(tabs.map(tab => tabOwnerId(tab) === id ? listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '' : '').find(Boolean) || '') || 'Someone'
   // Whether a teammate's Mac is on, the server's words (crew_team_tab.go).
