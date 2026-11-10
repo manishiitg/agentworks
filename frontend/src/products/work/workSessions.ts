@@ -1,8 +1,7 @@
-import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity,  updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
+import { createProductProject, loadProductProjects, updateProductProjectIdentity,  updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
-import { slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { llmConfigService } from '../../services/llm-config-api'
 import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
@@ -36,14 +35,6 @@ export function workLLMSelectionFromConfig(config?: PresetLLMConfig): WorkLLMSel
     ? builder.options.reasoning_effort
     : undefined
   return { connectionId: builder.connection_id, provider: builder.provider, modelId: builder.model_id, reasoningEffort }
-}
-
-export function sessionSlug(title: string): string {
-  return slugifyTitle(title, 'workspace')
-}
-
-export function parseSessionManifest(content: string, workspacePath: string, lastModified?: string, product: ProjectProductConfig = CREW_PRODUCT): WorkSession | null {
-  return parseProductProjectManifest(content, workspacePath, product.profileId, lastModified)
 }
 
 export async function loadWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
