@@ -3877,9 +3877,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       {/* Someone else's agent (a teammate's, or another owner's tab): you watch it live; your own agent asks it
           (owner, 5 Nov, "A Team is a shared room"). No chat box here. */}
       {observingOwnerTab && <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        <TeamAgentWatchingStatus projectId={activeTab?.metadata?.agentProfileProjectId}
-          chatKey={activeTab?.metadata?.agentProfileConversationKey}
-          ownerName={activeTab?.metadata?.agentProfileTabOwnerName || 'another person'} agentName={activeTab?.name || 'agent'} />
+        {activeTab?.metadata?.agentProfileConversationKey?.includes(':schedule:')
+          ? <span>This is this schedule's conversation. To change it, open Schedules.</span>
+          : <TeamAgentWatchingStatus projectId={activeTab?.metadata?.agentProfileProjectId}
+            chatKey={activeTab?.metadata?.agentProfileConversationKey}
+            ownerName={activeTab?.metadata?.agentProfileTabOwnerName || 'another person'} agentName={activeTab?.name || 'agent'} />}
       </div>}
 
       {/* Scheduled runs show a compact stop action beside the terminal toggle.
