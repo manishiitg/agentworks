@@ -81,10 +81,17 @@ type chatContextView struct {
 	CanCompact     bool               `json:"can_compact"`
 	CanFresh       bool               `json:"can_fresh"`
 	Hint           string             `json:"idle_compaction_hint,omitempty"`
-	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. Off by default.
+	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. On by default.
 	CompactEarly     *chatContextSwitch `json:"compact_early,omitempty"`
 	CompactEarlyHint string             `json:"compact_early_hint,omitempty"`
+	// SwitchNote is shown when the person picks another model in a long chat (owner, 10 Nov, approved mockup "Model
+	// Switch Choice"): each model keeps its own saved copy of a chat, so the new one re-reads all of it once. ""
+	// for a short chat or one that cannot be compacted now: the model then switches at once.
+	SwitchNote string `json:"switch_note,omitempty"`
 }
+
+// switchNoteTokens is the chat size from which picking another model offers to compact first.
+const switchNoteTokens = 100_000
 
 // idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
 func idleCompactHint() string {
@@ -432,7 +439,7 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 		pref := loadCompactionPreferences(context.Background(), owner)
 		view.IdleCompaction = &chatContextSwitch{On: !pref.IdleOff}
 		view.Hint = idleCompactHint()
-		view.CompactEarly = &chatContextSwitch{On: pref.CompactEarly}
+		view.CompactEarly = &chatContextSwitch{On: pref.compactEarly()}
 		view.CompactEarlyHint = compactEarlyHint()
 	}
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
@@ -441,6 +448,9 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
 	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
+	if view.CanCompact && view.UsedTokens >= switchNoteTokens {
+		view.SwitchNote = fmt.Sprintf("This chat is long (%dk). A new model re-reads all of it once before it answers.", view.UsedTokens/1000)
+	}
 	return view
 }
 
@@ -543,7 +553,7 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
 	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
-	if !found || !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !found || !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return
 	}
 	followed := func() (provider string, lastPerson time.Time) {
@@ -787,7 +797,7 @@ func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, se
 		return
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
-	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return
 	}
 	if cfg.CodingAgentSecretEnvironment == nil {
@@ -817,7 +827,7 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 		return false
 	}
 	owner := api.idleCompactOwner(sessionID, chat.personUser)
-	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return false
 	}
 	if api.sessionAwaitsBackgroundResults(sessionID) || len(claudeBackgroundTasks(sessionID)) > 0 {
