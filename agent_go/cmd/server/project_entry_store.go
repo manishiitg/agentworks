@@ -59,6 +59,9 @@ type projectWebhookDefinition struct {
 	RunAs        string                     `json:"run_as"`
 	Auth         projectWebhookAuth         `json:"auth"`
 	InputMapping projectWebhookInputMapping `json:"input_mapping,omitempty"`
+	// CreatedBy and UpdatedBy: who made and who last changed it (a Team member may change a Crew's automations).
+	CreatedBy *projectactions.Actor `json:"created_by,omitempty"`
+	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty"`
 }
 
 type projectWebhooksDocument struct {
@@ -248,7 +251,7 @@ func crewWebhookDefinition(project projectactions.Project, caller string, trigge
 	if trigger.ownConversation() {
 		action.Conversation = trigger.shownRunDestination()
 	}
-	return projectWebhookDefinition{ID: trigger.ID, Name: trigger.Name, Project: project, Enabled: trigger.Enabled, Path: "/api/hooks/" + trigger.ID, Action: action, Input: input, RunAs: caller, Auth: projectWebhookAuth{Mode: trigger.Webhook.AuthMode, EncryptedSecret: trigger.Webhook.EncryptedSecret}}, nil
+	return projectWebhookDefinition{ID: trigger.ID, Name: trigger.Name, Project: project, Enabled: trigger.Enabled, Path: "/api/hooks/" + trigger.ID, Action: action, Input: input, RunAs: caller, Auth: projectWebhookAuth{Mode: trigger.Webhook.AuthMode, EncryptedSecret: trigger.Webhook.EncryptedSecret}, CreatedBy: trigger.CreatedBy, UpdatedBy: trigger.UpdatedBy}, nil
 }
 
 func crewWebhookExecutionView(record projectWebhookDefinition) (productWebhookTrigger, error) {
@@ -256,7 +259,7 @@ func crewWebhookExecutionView(record projectWebhookDefinition) (productWebhookTr
 	if err := json.Unmarshal(record.Input, &input); err != nil {
 		return productWebhookTrigger{}, err
 	}
-	return productWebhookTrigger{ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestinationFromConversation(record.Action.Conversation), Webhook: webhookExecutionConfig(record)}, nil
+	return productWebhookTrigger{ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestinationFromConversation(record.Action.Conversation), Webhook: webhookExecutionConfig(record), CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy}, nil
 }
 
 func internalFunctionName(id string) string { return "binding_" + strings.ReplaceAll(id, "-", "_") }

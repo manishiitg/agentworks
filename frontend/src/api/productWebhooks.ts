@@ -15,6 +15,8 @@ export interface ProductAPITrigger {
   caller?: { type: string; id: string; profile_id?: string }
   /** One plain line from the server: what this webhook starts ("Sends a message to Main"). */
   starts?: string
+  /** The server's "Changed by <name>, <date>": who last changed this webhook, else who made it. */
+  changed_by?: string
 }
 
 /** One place a trigger's messages can run, from the server's shared list of choices. */

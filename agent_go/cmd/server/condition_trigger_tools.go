@@ -354,7 +354,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		var source string
 		if cfg.GitHubPR != nil {
 			if actor != owner {
-				return nil, errors.New("the Crew owner must create this PR watcher with their GitHub account and chat")
+				return nil, fmt.Errorf("Ask %s to create this PR watcher with their GitHub account.", crewPersonShortName(owner))
 			}
 			prior := job.Schedule.Condition
 			if action == "create" {

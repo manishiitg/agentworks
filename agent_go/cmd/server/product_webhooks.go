@@ -23,6 +23,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
@@ -40,6 +41,9 @@ type productWebhookTrigger struct {
 	Webhook           *WorkflowWebhookConfig `json:"webhook,omitempty"`
 	Kind              string                 `json:"kind,omitempty"`
 	Caller            *triggerCaller         `json:"caller,omitempty"`
+	// CreatedBy and UpdatedBy: who made and who last changed it (see projectactions.Actor).
+	CreatedBy *projectactions.Actor `json:"created_by,omitempty"`
+	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty"`
 }
 
 // IsInternal reports whether the trigger is invokable only through internal dispatch.
@@ -100,6 +104,8 @@ type productWebhookResponse struct {
 	Caller         *triggerCaller `json:"caller,omitempty"`
 	// Starts is the one plain line the Webhooks page prints: a Crew webhook always sends its message to the Crew's Main agent.
 	Starts string `json:"starts,omitempty"`
+	// ChangedBy is "Changed by <name>, <date>": who last changed this webhook, else who made it.
+	ChangedBy string `json:"changed_by,omitempty"`
 }
 
 func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
@@ -119,6 +125,7 @@ func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
 		Kind:           normalizeTriggerKind(trigger.Kind),
 		Caller:         trigger.Caller,
 		Starts:         automationStartsMessageLine("Main"),
+		ChangedBy:      automationChangedByLine(trigger.CreatedBy, trigger.UpdatedBy),
 	}
 }
 
@@ -370,6 +377,13 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 		if strings.TrimSpace(req.RunDestination) == "" {
 			trigger.RunDestination = firstNonEmptyTrimmed(manifest.Triggers[index].RunDestination, runDestinationChat)
 		}
+	}
+	// Who made it and who changed it now; the run still happens as the Crew's owner.
+	trigger.UpdatedBy = automationActor(ctx)
+	if index >= 0 {
+		trigger.CreatedBy = manifest.Triggers[index].CreatedBy
+	} else {
+		trigger.CreatedBy = trigger.UpdatedBy
 	}
 	if strings.TrimSpace(req.Kind) != "" || index < 0 {
 		trigger.Kind = normalizeTriggerKind(req.Kind)
