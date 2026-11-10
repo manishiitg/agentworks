@@ -123,6 +123,7 @@ chat:
       - manage_project
       - browser_connections
       - chat_preferences
+      - menu_groups
       - manage_messaging
       - add_mcp_server
       - agent_browser
@@ -371,6 +372,7 @@ chat:
       - get_secret_sources
       - browser_connections
       - chat_preferences
+      - menu_groups
       - manage_laptop_access
       - manage_my_vaults
       - execute_local_shell_command

@@ -1449,5 +1449,91 @@
     "description": "Use the Crew automation edit operation.",
     "source": "crew_workflows",
     "source_action": "edit"
+  },
+  {
+    "family": "menu_groups",
+    "name": "list",
+    "member": "menu_groups__list",
+    "description": "Show your groups and the Crews in each.",
+    "source": "menu_groups",
+    "source_action": "list",
+    "fields": []
+  },
+  {
+    "family": "menu_groups",
+    "name": "create",
+    "member": "menu_groups__create",
+    "description": "Make a group from a name and, if you like, the Crews to put in it.",
+    "source": "menu_groups",
+    "source_action": "create",
+    "fields": [
+      "name",
+      "projects"
+    ],
+    "required": [
+      "name"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "rename",
+    "member": "menu_groups__rename",
+    "description": "Give a group a new name.",
+    "source": "menu_groups",
+    "source_action": "rename",
+    "fields": [
+      "group",
+      "name"
+    ],
+    "required": [
+      "group",
+      "name"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "delete",
+    "member": "menu_groups__delete",
+    "description": "Delete a group; its Crews stay in the left menu.",
+    "source": "menu_groups",
+    "source_action": "delete",
+    "fields": [
+      "group"
+    ],
+    "required": [
+      "group"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "add",
+    "member": "menu_groups__add",
+    "description": "Put a Crew in a group.",
+    "source": "menu_groups",
+    "source_action": "add",
+    "fields": [
+      "group",
+      "project"
+    ],
+    "required": [
+      "group",
+      "project"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "remove",
+    "member": "menu_groups__remove",
+    "description": "Take a Crew out of a group.",
+    "source": "menu_groups",
+    "source_action": "remove",
+    "fields": [
+      "group",
+      "project"
+    ],
+    "required": [
+      "group",
+      "project"
+    ]
   }
 ]
