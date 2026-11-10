@@ -18,9 +18,11 @@ import (
 // only, less often than the old every-round walk.
 
 const (
-	crewTeamFullScanEvery   = 5 * time.Minute
-	crewTeamUnwatchedEvery  = 30 * time.Second // full scans of a copy with no watcher
-	crewTeamWokeAfter       = time.Minute      // a gap this long between rounds: the computer slept, events may be lost
+	crewTeamFullScanEvery  = 5 * time.Minute
+	crewTeamUnwatchedEvery = 30 * time.Second // full scans of a copy with no watcher
+	// A gap this long between rounds: the computer slept, events may be lost. Above the once-a-minute check of a network
+	// with a live relay (crewTeamCheckAfter): at one minute every paced round read as a wake and scanned everything.
+	crewTeamWokeAfter       = 3 * time.Minute
 	crewTeamWakeDelay       = time.Second      // a burst of writes starts one round
 	crewTeamForgetWatchIdle = 10 * time.Minute // a copy no round asked for: its watcher closes
 	// crewTeamWatchNames bounds the names in watched folders: a Mac's watcher holds one open file per name.
