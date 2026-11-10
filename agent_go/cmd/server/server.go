@@ -6177,9 +6177,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						guardBlocked = append(guardBlocked, foreignCrewDBWriteBlockedPaths(profileRoot, workflowReadOnlyFolders)...)
 						// Scheduled callers change only through typed schedule tools,
 						// including in owner Builder shells and attached Crew folders.
-						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json")
+						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json", profileRoot+"/schedule-runs.json")
 						for _, root := range crewRefWrite {
-							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json")
+							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json", strings.TrimSuffix(root, "/")+"/schedule-runs.json")
 						}
 					}
 					if len(guardBlocked) > 0 {

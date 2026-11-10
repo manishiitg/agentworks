@@ -343,8 +343,11 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 	}
 	onMac := crewTeamMemberOnMac(project, caller)
 	out := slices.DeleteFunc(rows, func(row AgentProfileSideChat) bool {
-		// The owner's agents live on the Mac; a member on their Mac has no server agents here.
-		return row.TabOwnerID == owner || onMac && (row.TabOwnerID == caller || row.TabOwnerID == "")
+		// The owner's agents live on the Mac; a member on their Mac has no server agents here. The same for another
+		// member on their Mac: a chat of theirs here is the Always on standby copy of a Mac agent listed below from
+		// their Mac, so listing it too showed that agent twice (owner, 10 Nov: two "Main" under one teammate).
+		return row.TabOwnerID == owner || onMac && (row.TabOwnerID == caller || row.TabOwnerID == "") ||
+			row.TabOwnerID != "" && row.TabOwnerID != caller && crewTeamMemberOnMac(project, row.TabOwnerID)
 	})
 	seen := map[string]bool{}
 	for _, row := range out {
