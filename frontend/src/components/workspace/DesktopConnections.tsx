@@ -57,16 +57,18 @@ export function DesktopConnections({ children, projects = [] }: { children?: Rea
     {hasDesktopConnections() ? <ConnectedServers projects={crews}>{children}</ConnectedServers> : <StandaloneWork projects={crews}>{children}</StandaloneWork>}
   </>
 }
-function useAllProjectsExpanded() {
+// All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
+// closed. The person's own open or close is kept either way.
+function useAllProjectsExpanded(hasPins: boolean) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  return useSidebarExpansionStore(state => state.expanded[key] ?? false)
+  return useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
 }
-function AllProjects({ children }: { children: ReactNode }) {
+function AllProjects({ children, hasPins }: { children: ReactNode; hasPins: boolean }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
-  const expanded = useAllProjectsExpanded()
+  const expanded = useAllProjectsExpanded(hasPins)
   const toggle = useSidebarExpansionStore(state => state.toggle)
   return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
-    <button type="button" aria-expanded={expanded} onClick={() => toggle(key)} className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <button type="button" aria-expanded={expanded} onClick={() => toggle(key, !hasPins)} className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="min-w-0 flex-1">All projects</span>
       <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
     </button>
@@ -74,8 +76,8 @@ function AllProjects({ children }: { children: ReactNode }) {
   </section>
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
-  const allProjectsExpanded = useAllProjectsExpanded()
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
+  const allProjectsExpanded = useAllProjectsExpanded(Boolean(pinned?.length))
   // The full directory stays put when a project is visited. Pins retain their explicit order.
   const orderedProjects = [...projects].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
@@ -104,7 +106,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
   const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
   return <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
     {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>{pinnedProjects.map(renderProject)}</section>}
-    <AllProjects>
+    <AllProjects hasPins={Boolean(pinned?.length)}>
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
@@ -122,13 +124,13 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
 }
 
 function ConnectedServers({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
-  const allProjectsExpanded = useAllProjectsExpanded()
   const active = getRawActiveWorkspaceId()
   const state = useConnectedWorkStore()
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, refreshActivity, error: directoryError } = state
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
+  const allProjectsExpanded = useAllProjectsExpanded(Boolean(pinned?.length))
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   useEffect(() => {
     if (!state.loaded || !isChatIdentityCurrent(state.identity) || !connections.length) return
@@ -194,7 +196,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <AllProjects>
+      <AllProjects hasPins={Boolean(pinned?.length)}>
       {connections.length > 1 && <div role="group" aria-label="Show Crews from" className="mb-2 flex items-center gap-1 overflow-x-auto px-1 py-2">
         {connections.map(connection => {
           const selected = selectedLocations.includes(connection.id)
