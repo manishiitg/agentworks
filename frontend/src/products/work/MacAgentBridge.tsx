@@ -6,6 +6,9 @@ import { Switch } from '../../components/ui/Switch'
 import { teamError, teamRequest, useTeamTab } from './teamApi'
 import { AskButton, Saving, teamCard } from './TeamTab'
 import { askAgentPurpose } from './AgentSharingRow'
+import { ProjectAgentBridgePanel } from '../../components/workspace/ProjectAgentBridgePanel'
+import { fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
+import { useChatStore } from '../../stores/useChatStore'
 
 /** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
  * Team tab reply (crew_team_tab.go agentbridge), the same on the Mac app and the website. Only the switch is
@@ -29,10 +32,10 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
       window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     } catch (cause) { setError(teamError(cause)) } finally { setBusy('') }
   }
-  return <section aria-label="AgentBridge" className={teamCard}>
+  return <><section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
-    <p className="text-[12.5px] text-muted-foreground">AgentBridge lets AI agents message each other. Go online to share an agent on your network, then copy its connection instructions.</p>
-    <p className="text-[12.5px] text-muted-foreground">Go online to make an agent public: other people's agents on this server can find it by its purpose and ask it things. It answers as you, following your rules for when others ask.</p>
+    <p className="text-[12.5px] text-muted-foreground">Your connected coding agents can stay private on this network. Publishing lets other people find an agent.</p>
+    <p className="text-[12.5px] text-muted-foreground">Publish an agent only when you want other people’s agents to find and contact it. It answers as you, following your rules for when others ask.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
@@ -43,12 +46,12 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
             <p className="flex min-w-0 items-center gap-1.5 text-[13px]"><b className="truncate">{agent.name}</b>
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
             {bridge.needs_purpose
-              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button> first to go online.</p>
+              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button> before publishing.</p>
               : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}
           </div>
           {bridge.public && <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />}
           <label className="flex shrink-0 items-center gap-2 text-[12.5px]">
-            <span>{bridge.public ? 'On network' : 'Go online'}</span>
+            <span>{bridge.public ? 'Published' : 'Publish'}</span>
             <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: public on AgentBridge`} aria-describedby={bridge.needs_purpose ? `agentbridge-purpose-${agent.tab}` : undefined} checked={bridge.public} disabled={bridge.needs_purpose || !bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>
           </label>
         </div>
@@ -56,6 +59,22 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
     </div>
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </section>
+  {state.target && <section aria-label="Agents on your network" className={teamCard}>
+    <h3 className="font-semibold">Agents on your network</h3>
+    <p className="text-[12.5px] text-muted-foreground">Connected agents you can reach. Your own agents can stay private; publishing is only for letting others find them.</p>
+    <ProjectAgentBridgePanel target={`workspace:work:${projectId}`} view="network" onAsk={message => {
+      if (!fillMainDraft(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'info')
+    }} onSend={message => {
+      const store = useChatStore.getState()
+      const owned = (tab: (typeof store.chatTabs)[string] | undefined) => tab?.metadata?.agentProfileProjectId === projectId && !tab.metadata.isViewOnly && tab.metadata.agentProfileTabCanWrite !== false
+      const active = store.chatTabs[store.activeTabId || '']
+      const source = owned(active) ? active : Object.values(store.chatTabs).find(tab => owned(tab) && tab.metadata?.agentProfileIsMainChat)
+      if (!source) throw new Error('Open your own agent chat in this Crew, then try again.')
+      if (source.config?.inputText?.trim() || source.config?.fileContext?.length) throw new Error('Your chat has an unfinished draft. Send or clear it first, then try again. Your message here is kept.')
+      if (!sendToTab(source.tabId, message)) throw new Error('Could not open your agent chat. Your message here is kept.')
+    }} />
+  </section>}
+  </>
 }
 
 /** One agent's line for the owner's coding app (Claude Code, Codex, Cursor), as the server words it. */
