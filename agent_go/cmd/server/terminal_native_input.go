@@ -272,8 +272,11 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		o.initialSubmissions = tmuxinput.Default.InteractiveSubmissionCount(o.snapshot.TmuxSession)
 		o.path, o.users, o.previous, o.lastRead = path, users, messages, now
 		o.nativeCounts = map[string]int{}
-		for _, text := range users {
-			o.nativeCounts[text]++
+		for _, message := range messages {
+			if message.Role == "human" || message.Role == "user" {
+				text := strings.TrimSpace(nativeTranscriptMessageText(path, o.provider, message))
+				o.nativeCounts[text]++
+			}
 		}
 		o.coveredCounts = map[string]int{}
 		for text, count := range o.nativeCounts {
@@ -301,7 +304,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		attempts := int(tmuxinput.Default.InteractiveSubmissionCount(o.snapshot.TmuxSession) - o.initialSubmissions)
 		if len(newUsers) > attempts {
 			for _, message := range newUsers[:len(newUsers)-attempts] {
-				text := strings.TrimSpace(builderConversationMessageText(message))
+				text := strings.TrimSpace(nativeTranscriptMessageText(path, o.provider, message))
 				o.nativeCounts[text]++
 				if o.coveredCounts[text] < o.nativeCounts[text] {
 					o.coveredCounts[text] = o.nativeCounts[text]
@@ -311,7 +314,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		}
 	}
 	for _, message := range newUsers {
-		text := strings.TrimSpace(builderConversationMessageText(message))
+		text := strings.TrimSpace(nativeTranscriptMessageText(path, o.provider, message))
 		o.nativeCounts[text]++
 		if o.nativeCounts[text] <= o.coveredCounts[text] {
 			continue
@@ -324,7 +327,7 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		}
 		o.coveredCounts[text]++
 		acceptedAt := nativeTerminalPromptTime(path, o.provider, text, o.lastRead)
-		o.accept(strings.TrimSpace(nativeTerminalInputText(path, o.provider, message)), acceptedAt, message.NativeID)
+		o.accept(text, acceptedAt, message.NativeID)
 	}
 	if o.hasNativeInputs() {
 		o.mu.Lock()
@@ -332,12 +335,26 @@ func (o *nativeTerminalObserver) consume(messages []builderConversationMessage, 
 		o.mu.Unlock()
 		_, warm := mcpagent.LookupSession(o.snapshot.SessionID)
 		if !ownsCompletion || !warm {
-			o.api.publishNativeTranscriptRecoveredAssistantMessages(o.snapshot.SessionID, o.previous, messages, nil)
+			// Only new replies cross the persistence boundary. Keep previous and
+			// the shared history cache as bounded display windows.
+			recovered := append([]builderConversationMessage(nil), messages...)
+			known := make(map[string]bool, len(o.previous))
+			for _, message := range o.previous {
+				if message.NativeID != "" {
+					known[message.NativeID] = true
+				}
+			}
+			for i, message := range recovered {
+				if builderConversationRoleIsAssistant(message.Role) && !known[message.NativeID] {
+					recovered[i].Parts = []builderConversationPart{{Text: nativeTranscriptMessageText(path, o.provider, message)}}
+				}
+			}
+			o.api.publishNativeTranscriptRecoveredAssistantMessages(o.snapshot.SessionID, o.previous, recovered, nil)
 		}
 		o.mu.Lock()
 		for i := len(messages) - 1; i >= 0; i-- {
 			if builderConversationRoleIsAssistant(messages[i].Role) {
-				o.lastAssistant = builderConversationMessageText(messages[i])
+				o.lastAssistant = nativeTranscriptMessageText(path, o.provider, messages[i])
 				break
 			}
 			if messages[i].Role == "human" {

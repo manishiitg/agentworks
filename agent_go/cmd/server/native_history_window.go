@@ -207,7 +207,7 @@ func recentNativePromptTime(path, provider, text string, fallback time.Time) tim
 	defer cache.mu.Unlock()
 	for i := len(cache.rows) - 1; i >= 0; i-- {
 		row := cache.rows[i]
-		if row.message.Role == "human" && strings.Join(strings.Fields(builderConversationMessageText(row.message)), " ") == strings.Join(strings.Fields(text), " ") {
+		if row.message.Role == "human" && strings.Join(strings.Fields(nativeTranscriptMessageText(path, provider, row.message)), " ") == strings.Join(strings.Fields(text), " ") {
 			return row.stamp
 		}
 	}
@@ -226,9 +226,9 @@ func nativeHistoryCanProveAbsence(provider, path string) bool {
 	return cache.complete && cache.info != nil && cache.offset == cache.info.Size()
 }
 
-// Only accepted terminal inputs need their full text. Re-read one bounded row
-// at its stable source offset rather than retaining large prompts in the UI cache.
-func nativeTerminalInputText(path, provider string, message builderConversationMessage) string {
+// Dedupe and durable messages need full text, not a display excerpt. Re-read
+// one hash-verified bounded source row without enlarging the UI history cache.
+func nativeTranscriptMessageText(path, provider string, message builderConversationMessage) string {
 	excerpt := builderConversationMessageText(message)
 	if message.nativeTextBytes <= nativeHistoryMessageBytes {
 		return excerpt
@@ -264,7 +264,7 @@ func nativeTerminalInputText(path, provider string, message builderConversationM
 	} else {
 		full, _, ok = parseClaudeTranscriptLine(raw)
 	}
-	if !ok || (full.Role != "human" && full.Role != "user") {
+	if !ok || full.Role != message.Role {
 		return unavailable
 	}
 	return builderConversationMessageText(full)
