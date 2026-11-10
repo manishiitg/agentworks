@@ -187,7 +187,7 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		if bound {
 			api.planPendingChatUpload(key)
 		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"missing": missingChunks(store, []chunkedFile{*in.File})})
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"missing": missingChunks(store, []chunkedFile{*in.File}), "pending_attachments": bound})
 		return
 	}
 	if bound {
