@@ -82,6 +82,10 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 	}
 	if member == "" {
 		member = crewTeamOwnerAgent(r.Context(), project, chatKey, claims.UserID)
+		// The owner's Mac Main, named by its tab key, is addressed as the Crew's Main.
+		if member != "" && strings.TrimPrefix(chatKey, project+codeChatSideMarker) == "mac-main" {
+			chatKey = project
+		}
 	}
 	if member == "" || member == claims.UserID {
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
@@ -124,16 +128,22 @@ func crewTeamOwnerAgent(ctx context.Context, project, key, caller string) string
 		return ""
 	}
 	short := strings.TrimPrefix(strings.TrimSpace(key), project+codeChatSideMarker)
+	// The Crew's tab list names the owner's Mac Main "mac-main" (crewMacTabRow), the Team's agents list the Crew's key.
+	main := key == project || short == "mac-main"
+	seen := []string{}
 	for _, person := range teamAgentsByPerson(ctx, t, caller) {
 		if !person.Owner {
 			continue
 		}
 		for _, agent := range person.Agents {
-			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || key == project && agent.Tab == macMainTab) {
+			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || main && agent.Tab == macMainTab) {
 				return t.OwnerID
 			}
+			seen = append(seen, fmt.Sprintf("%s:%s:in_team=%t", agent.Tab, strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker), agent.InTeam))
 		}
 	}
+	// A refusal names what was asked for and what the owner's agents are, so a mismatch shows in the log.
+	log.Printf("[CREW_TEAM] project=%s event=owner_agent_not_found key=%q owner_agents=%q", project, short, strings.Join(seen, ", "))
 	return ""
 }
 
