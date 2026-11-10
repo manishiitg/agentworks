@@ -16,6 +16,14 @@ type Project struct {
 	ID   string `json:"id"`
 }
 
+// Actor is who made a change to an automation, with the name they had then (owner, 10 Nov: a Team member may change
+// a Crew's automations; the record says who). The run still happens as the Crew's owner.
+type Actor struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	At   string `json:"at"`
+}
+
 // Action separates the two things a caller can do, without selecting a second
 // execution mode. Conversation is only the Crew's existing isolated destination.
 type Action struct {
@@ -88,6 +96,9 @@ type Schedule struct {
 	Input   json.RawMessage `json:"input"`
 	RunAs   string          `json:"run_as"`
 	Enabled bool            `json:"enabled"`
+	// CreatedBy and UpdatedBy: who made and who last changed it.
+	CreatedBy *Actor `json:"created_by,omitempty"`
+	UpdatedBy *Actor `json:"updated_by,omitempty"`
 }
 
 type Schedules struct {

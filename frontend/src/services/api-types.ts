@@ -2535,6 +2535,8 @@ export interface ScheduledJob {
   last_result?: string
   /** One plain line from the server: what this schedule starts ("Runs the workflow · <saved setting>" or "Sends a message to <agent>"). */
   starts?: string
+  /** The server's "Changed by <name>, <date>" for a Crew automation: who last changed it, else who made it. */
+  changed_by?: string
   // Pulse schedules synthesize their run-specific messages from current
   // evidence; they intentionally do not persist ordinary messages[].
 

@@ -797,6 +797,8 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if strings.TrimSpace(schedule.CreatedAt) == "" {
 		schedule.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	schedule.CreatedBy = automationActor(ctx)
+	schedule.UpdatedBy = schedule.CreatedBy
 	if err := normalizeCrewScheduleDependencies(&schedule, profileID, projectID); err != nil {
 		return productScheduleJob{}, err
 	}
@@ -827,7 +829,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 	found := false
 	for i := range manifest.Schedules {
 		if manifest.Schedules[i].ID == job.Schedule.ID {
+			createdBy := manifest.Schedules[i].CreatedBy
 			update(&manifest.Schedules[i])
+			manifest.Schedules[i].CreatedBy, manifest.Schedules[i].UpdatedBy = createdBy, automationActor(ctx)
 			if err := normalizeCrewScheduleDependencies(&manifest.Schedules[i], job.Profile.ID, job.ProjectID); err != nil {
 				return job, err
 			}
@@ -1753,6 +1757,7 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
 		Starts:              productScheduleStartsLine(job),
+		ChangedBy:           automationChangedByLine(job.Schedule.CreatedBy, job.Schedule.UpdatedBy),
 	}
 	if when := sched.When; when != nil && when.After != nil {
 		after := when.After

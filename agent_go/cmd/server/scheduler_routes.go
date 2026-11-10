@@ -103,6 +103,8 @@ type ScheduledJobResponse struct {
 	// Starts is the one plain line the Automations pages print for what this schedule starts ("Runs the workflow ·
 	// <saved setting>" or "Sends a message to <agent>"; see automation_starts_line.go).
 	Starts string `json:"starts,omitempty"`
+	// ChangedBy is "Changed by <name>, <date>" for a Crew automation: the person who last changed it, else who made it.
+	ChangedBy string `json:"changed_by,omitempty"`
 
 	CreatedAt      string `json:"created_at,omitempty"`
 	UpdatedAt      string `json:"updated_at,omitempty"`

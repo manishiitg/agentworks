@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"strings"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 )
 
 // What a schedule or webhook starts, as the one plain line the Automations pages print (the server decides it, the
@@ -99,4 +102,31 @@ func projectScheduleAgentName(job productScheduleJob, chatKey string) string {
 		}
 	}
 	return firstNonEmptyTrimmed(job.AgentName, "Chat "+id)
+}
+
+// automationActor is the person making this change, with the name they have now, for the automation's record. Nil
+// when the change has no signed-in person (the server's own bookkeeping), so nothing is attributed to nobody.
+func automationActor(ctx context.Context) *projectactions.Actor {
+	id := strings.TrimSpace(GetUserIDFromContext(ctx))
+	if id == "" {
+		return nil
+	}
+	return &projectactions.Actor{ID: id, Name: firstNonEmptyTrimmed(crewPersonShortName(id), id), At: time.Now().UTC().Format(time.RFC3339)}
+}
+
+// automationChangedByLine is the "Changed by <name>" line an automation's detail shows: who last changed it, else who
+// made it ("" when the record has no one, as before this was recorded).
+func automationChangedByLine(created, updated *projectactions.Actor) string {
+	who := updated
+	if who == nil {
+		who = created
+	}
+	if who == nil || who.Name == "" {
+		return ""
+	}
+	line := "Changed by " + who.Name
+	if at, err := time.Parse(time.RFC3339, who.At); err == nil {
+		line += ", " + at.UTC().Format("2 Jan 2006")
+	}
+	return line
 }

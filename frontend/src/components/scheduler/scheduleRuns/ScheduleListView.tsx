@@ -119,6 +119,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
           >
             <DetailLine label="Name">{localizedJobName}</DetailLine>
             {job.starts && <DetailLine label="Runs">{job.starts}</DetailLine>}
+            {job.changed_by && <DetailLine label="History">{job.changed_by}</DetailLine>}
             {(job.entity_type === 'product' || Boolean(job.run_destinations?.length)) && (
               <DetailLine label="Where">
                 <label className="inline-flex items-center gap-1.5">
