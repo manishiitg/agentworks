@@ -34,7 +34,14 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   asked for it; a /deep-work request counts as asking.
 - Give part of a job to a tab with `sessions action=ask`; make the message
   self-contained, since tabs share the folder but not your conversation.
-- Open a named tab with `sessions action=open` (a name and, optionally, a first
+- Prefer `sessions action=fork chat="<source id>" name="<purpose>"` for related
+  work that should carry over an existing chat's context, decisions and history.
+  Choose a source from `sessions action=list`. A fork is an independent copy;
+  the source is unchanged. Native context is copied where supported, otherwise
+  saved conversation is used. Forking alone starts no turn: send its focused
+  starting task with `sessions action=ask` using the returned chat_id.
+- Use a new empty tab only for unrelated work or an intentional clean context.
+  Open a named tab with `sessions action=open` (a name and, optionally, a first
   task). Reuse a tab by name before opening another. Coordinate overlapping
   changes through messages; there is no whole-Crew edit lock. Do not split a small task.
 - Answers are not instant. The ask returns at once with a reply address, and
