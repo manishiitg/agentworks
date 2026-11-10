@@ -29,9 +29,11 @@ type crewPanelRow struct {
 	Connected   bool      `json:"connected,omitempty"`
 	Attention   bool      `json:"attention,omitempty"`
 	Path        string    `json:"path,omitempty"`
-	UsedInChat  bool      `json:"used_in_chat,omitempty"`
-	Motion      bool      `json:"motion,omitempty"`
-	Artifact    bool      `json:"artifact,omitempty"`
+	// Changes rows: the repository heading a row sits under, and its file count.
+	Group    string `json:"group,omitempty"`
+	Count    string `json:"count,omitempty"`
+	Motion   bool   `json:"motion,omitempty"`
+	Artifact bool   `json:"artifact,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string           `json:"id"`
@@ -92,7 +94,7 @@ func (e crewPanelReadError) Error() string { return "Panel section unavailable" 
 const crewPanelTimeout = 2 * time.Second
 const crewPanelCacheTTL = 30 * time.Second
 
-type crewPanelCacheKey struct{ caller, project, section, chat, authority string }
+type crewPanelCacheKey struct{ caller, project, section, authority string }
 type crewPanelCached struct {
 	at      time.Time
 	section crewPanelSection
@@ -321,31 +323,13 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	workspace := binding.Binding.WorkspacePath
-	chat := strings.TrimSpace(r.URL.Query().Get("session_id"))
-	// Private chat navigation hints have their own permission, independent of files.
-	if chat != "" {
-		if api.eventStore == nil {
-			chat = ""
-		} else if status, _ := api.authorizeDurableChatRead(r, chat, workspace); status != 0 {
-			chat = ""
-		}
-	}
-	sources := api.crewPanelSources(r, project, workspace, chat, binding)
-	key := crewPanelCacheKey{caller: GetUserIDFromContext(r.Context()), project: project, chat: chat, authority: authority}
+	sources := api.crewPanelSources(r, project, workspace, binding)
+	key := crewPanelCacheKey{caller: GetUserIDFromContext(r.Context()), project: project, authority: authority}
 	sections := api.crewPanels.collect(r.Context(), key, sources, crewPanelTimeout)
 	_, _, current, allowed := api.crewPanelScope(r, project)
 	if !allowed || current != authority {
 		externalError(w, 409, "panel_changed", "Crew access changed. Refresh this Crew.")
 		return
-	}
-	if chat != "" {
-		if status, _ := api.authorizeDurableChatRead(r, chat, workspace); status != 0 {
-			for i := range sections {
-				for j := range sections[i].Rows {
-					sections[i].Rows[j].UsedInChat = false
-				}
-			}
-		}
 	}
 	out := crewPanelReply{Project: project, Workspace: workspace, Sections: sections, Details: map[string]string{}}
 	applyCrewPanelRefresh(&out, r.URL.Query().Get("refresh_attempt"))
