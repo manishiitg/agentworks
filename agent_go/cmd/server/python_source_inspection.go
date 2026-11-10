@@ -15,15 +15,33 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
+// automationOutlineLimit is the most code the outline reads. The code travels in environment variables, which the
+// operating system limits to about 128 KiB each, so it is sent in pieces (automationSourceEnvironment).
+const automationOutlineLimit = 768 * 1024
+
+func automationSourceEnvironment(raw []byte) map[string]string {
+	encoded := base64.StdEncoding.EncodeToString(raw)
+	environment := map[string]string{"VAR_AUTOMATION_TYPE_CHECK": "1"}
+	const piece = 96 * 1024
+	count := 0
+	for start := 0; start < len(encoded); start += piece {
+		end := min(start+piece, len(encoded))
+		environment[fmt.Sprintf("VAR_AUTOMATION_CHECK_FILES_%d", count)] = encoded[start:end]
+		count++
+	}
+	environment["VAR_AUTOMATION_CHECK_FILES_COUNT"] = fmt.Sprint(count)
+	return environment
+}
+
 func inspectPythonAutomationSource(ctx context.Context, workspacePath string, files map[string]string) (json.RawMessage, error) {
 	raw, err := json.Marshal(files)
 	if err != nil {
 		return nil, fmt.Errorf("read automation source: %w", err)
 	}
-	if len(raw) > 64*1024 {
-		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (64 KiB limit). You can still open and run it."]}`), nil
+	if len(raw) > automationOutlineLimit {
+		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (768 KiB limit). You can still open and run it."]}`), nil
 	}
-	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), map[string]string{"VAR_AUTOMATION_CHECK_FILES": base64.StdEncoding.EncodeToString(raw), "VAR_AUTOMATION_TYPE_CHECK": "1"})
+	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), automationSourceEnvironment(raw))
 	if err == nil {
 		rememberCrewStepCount(workspacePath, files, graph)
 	}

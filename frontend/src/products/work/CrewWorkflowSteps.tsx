@@ -1,4 +1,5 @@
 import { stepChecks } from './workflowStepChecks'
+import { WorkflowFlow } from './CrewWorkflowFlow'
 import { useEffect, useState } from 'react'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import type { RelayResolvedAgent, RelaySourceGraph as SourceGraph, RelaySourceNode } from '../../components/workflow/relayGraphAnnotations'
@@ -75,6 +76,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   onAsk: (task: string) => void | Promise<void>
 }) {
   const [state, setState] = useState<{ workspacePath: string; graph?: SourceGraph } | null>(null)
+  const [view, setView] = useState<'flow' | 'list'>('flow')
   const [open, setOpen] = useState<Set<string>>(new Set())
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next })
   useEffect(() => {
@@ -92,6 +94,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   const nameOf = (name: string) => name.trim().toLowerCase()
   const byName = new Map(latestSteps.filter(step => latestSteps.filter(other => nameOf(other.name) === nameOf(step.name)).length === 1 && nodes.filter(node => !node.role && nameOf(node.label) === nameOf(step.name)).length === 1).map(step => [nameOf(step.name), step]))
   const byCall = new Map(latestSteps.filter(step => step.source_call && latestSteps.filter(other => other.source_call === step.source_call).length === 1 && nodes.filter(node => !node.role && node.step_call === step.source_call).length === 1).map(step => [step.source_call!, step]))
+  const stepOfNode = (node: RelaySourceNode) => node.step_call ? byCall.get(node.step_call) : node.type === 'script' ? byName.get(node.label.trim().toLowerCase()) : undefined
   const typeNotes = state.graph?.type_notes ?? []
   // Saved-key guidance already has its own line, and detailed type notes have one expandable summary.
   const advisoryNotes = (state.graph?.notes ?? []).filter(note =>
@@ -109,7 +112,12 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
         <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${modelText(defaultAgent, false)} today. I want: `)} /></span>}
     </>} onAsk={() => onAsk('Help me change this workflow.')}
     testId="crew-workflow-steps">
-    {nodes.length
+    {nodes.length > 0 && <div className="flex justify-end px-4 pt-3"><span role="group" aria-label="View" className="inline-flex overflow-hidden rounded-lg border border-border text-xs">
+      {(['flow', 'list'] as const).map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{option === 'flow' ? 'Flow' : 'List'}</button>)}
+    </span></div>}
+    {nodes.length && view === 'flow'
+      ? <WorkflowFlow nodes={nodes} statusOf={node => stepOfNode(node)?.status} detailOf={node => node.type === 'agent' && node.agent ? modelText(node.agent, false) : stepOfNode(node)?.detail || ''} />
+      : nodes.length
       ? <OutlineRows nodes={nodes} byName={byName} byCall={byCall} checkLines={checkLines} numbered open={open} toggle={toggle} onAsk={onAsk} workflow={title} />
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
       : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail, checkLines.get(step.id)]} />)}

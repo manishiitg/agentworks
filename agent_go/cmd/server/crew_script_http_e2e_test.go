@@ -374,7 +374,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			// Large code remains runnable: outline returns its normal graph
 			// envelope with a readable limit message, not a failed page request.
 			padding := filepath.Join(sourceRoot, "padding.py")
-			write(padding, "#"+strings.Repeat("x", 65536))
+			write(padding, "#"+strings.Repeat("x", automationOutlineLimit))
 			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, req.URL.String(), nil)
 			request.Header.Set("Authorization", "Bearer "+token)
 			oversized, err := http.DefaultClient.Do(request)
@@ -386,7 +386,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			if err := os.Remove(padding); err != nil {
 				t.Fatal(err)
 			}
-			if oversized.StatusCode != 200 || !strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), "64 KiB") {
+			if oversized.StatusCode != 200 || !strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), "768 KiB") {
 				t.Fatalf("large outline broke the page request: HTTP%d %s", oversized.StatusCode, large)
 			}
 		}
