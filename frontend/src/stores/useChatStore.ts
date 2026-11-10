@@ -41,7 +41,7 @@ import { createBufferedPersistStorage } from '../utils/bufferedPersistStorage'
 import { retainEventInSessionWorkingSet } from '../utils/sessionEventWorkingSet'
 import { autoNotificationDedupKey } from '../utils/internalChatEvents'
 import { durableStreamStartCursor } from '../utils/forwardCursor'
-import { markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
+import { markViewSwitchStart, noteViewSwitchActivation } from '../utils/chatDeliveryTelemetry'
 import { reconcileDurableUserEchoes } from '../utils/clientMessageIdentity'
 import { intermediateUpdateFromTranscriptChunk, isTranscriptChunkUpdate, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
 
@@ -2606,6 +2606,7 @@ export const useChatStore = create<ChatState>()(
       },
       
       switchTab: (tabId: string) => {
+        if (get().activeTabId !== tabId) noteViewSwitchActivation(get().chatTabs[tabId]?.metadata?.agentProfileConversationKey)
         // Use single atomic set() to avoid race conditions with stale state
         set((state) => {
           if (!state.chatTabs[tabId]) {

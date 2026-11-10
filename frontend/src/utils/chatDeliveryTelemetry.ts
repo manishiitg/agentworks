@@ -198,6 +198,7 @@ export function recordTabMarkTelemetry(sessionId: string, tabId: string, status:
 let viewSwitchStartedAt = 0
 let viewSwitchWanted = ''
 let viewSwitchAdmittedAt = 0
+let viewSwitchActivatedBy = ''
 /** A click that is not painted within this long is dropped, not timed against an unrelated later switch. */
 const VIEW_SWITCH_EXPIRES_MS = 15_000
 /** The moment a person selects an agent or switches chat/terminal view; the paint after it is timed against this.
@@ -206,31 +207,44 @@ export function markViewSwitchStart(wantedConversation = ''): void {
   viewSwitchStartedAt = typeof performance !== 'undefined' ? performance.now() : 0
   viewSwitchWanted = wantedConversation
   viewSwitchAdmittedAt = 0
+  viewSwitchActivatedBy = ''
+}
+/** Code that selects a chat while a click is pending: the first such caller is named in the log (function names only),
+ * so a chat shown before the one asked for can be traced to what selected it (PLAT-746-840). */
+export function noteViewSwitchActivation(conversation = ''): void {
+  if (!viewSwitchStartedAt || viewSwitchActivatedBy || typeof performance === 'undefined') return
+  if (performance.now() - viewSwitchStartedAt > VIEW_SWITCH_EXPIRES_MS) return
+  const callers = (new Error().stack || '').split('\n').slice(1)
+    .map(line => /at (?:async )?([\w$.]+) /.exec(line)?.[1] || '')
+    .filter(name => name && !/^(noteViewSwitchActivation|switchTab|activateTab|set|setState|Object\.\w+)$/.test(name))
+  const ms = Math.round(performance.now() - viewSwitchStartedAt)
+  viewSwitchActivatedBy = `${conversation === viewSwitchWanted ? 'asked' : 'other'}@${ms}:${callers.slice(0, 3).join('<')}`.slice(0, 80)
 }
 /** The route for the pending click passed the server's access check and was activated. */
 export function markViewSwitchAdmitted(): void {
   if (viewSwitchStartedAt && !viewSwitchAdmittedAt && typeof performance !== 'undefined') viewSwitchAdmittedAt = performance.now()
 }
 /** The pending click, unchanged: startedAt is 0 when none was asked for or it is too old to still mean this paint. */
-export function readViewSwitch(): { startedAt: number; wanted: string; admittedAt: number } {
+export function readViewSwitch(): { startedAt: number; wanted: string; admittedAt: number; activatedBy: string } {
   const expired = typeof performance !== 'undefined' && performance.now() - viewSwitchStartedAt > VIEW_SWITCH_EXPIRES_MS
-  return { startedAt: expired ? 0 : viewSwitchStartedAt, wanted: viewSwitchWanted, admittedAt: viewSwitchAdmittedAt }
+  return { startedAt: expired ? 0 : viewSwitchStartedAt, wanted: viewSwitchWanted, admittedAt: viewSwitchAdmittedAt, activatedBy: viewSwitchActivatedBy }
 }
 /** The click has been timed against the chat it asked for. */
 export function clearViewSwitch(): void {
   viewSwitchStartedAt = 0
   viewSwitchWanted = ''
   viewSwitchAdmittedAt = 0
+  viewSwitchActivatedBy = ''
 }
 
 /** Content-free timings of agent and chat/terminal switches, so a slow switch shows up in the server log with its numbers.
  * view_switch: the click to the first paint of the new view (what = chat or terminal). When the click asked for one agent the
  * status says as_asked or other_first (another chat painted before it) and, after a link was opened, admitNNN (ms to its access check); terminal_ready: one of the terminal's own
  * loads (metadata, metadata_cached, history or first rendered stream_seed). */
-export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number, status?: string) {
+export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number, status?: string, source?: string) {
   if (typeof window === 'undefined' || !sessionId) return
   if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
-  queue.push({ sequence: ++sequence, phase, session_id: sessionId, tab_id: tabId, transport: what, elapsed_ms: Math.round(elapsedMs), ...(status ? { delivery_status: status } : {}),
+  queue.push({ sequence: ++sequence, phase, session_id: sessionId, tab_id: tabId, transport: what, elapsed_ms: Math.round(elapsedMs), ...(status ? { delivery_status: status } : {}), ...(source ? { delivery_source: source } : {}),
     client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
   if (timer === undefined) timer = window.setTimeout(flush, 100)
 }
