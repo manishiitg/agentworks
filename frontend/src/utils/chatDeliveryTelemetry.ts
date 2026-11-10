@@ -212,13 +212,16 @@ export function markViewSwitchStart(wantedConversation = ''): void {
 /** Code that selects a chat while a click is pending: the first such caller is named in the log (function names only),
  * so a chat shown before the one asked for can be traced to what selected it (PLAT-746-840). */
 export function noteViewSwitchActivation(conversation = ''): void {
-  if (!viewSwitchStartedAt || viewSwitchActivatedBy || typeof performance === 'undefined') return
+  if (!viewSwitchStartedAt || typeof performance === 'undefined') return
   if (performance.now() - viewSwitchStartedAt > VIEW_SWITCH_EXPIRES_MS) return
+  // Every selection while the click is pending, in order: the first one alone showed the asked chat, hiding what
+  // replaced it with Main afterwards (PLAT-746-840). Anonymous frames show as "?" so a listener is still visible.
   const callers = (new Error().stack || '').split('\n').slice(1)
-    .map(line => /at (?:async )?([\w$.]+) /.exec(line)?.[1] || '')
+    .map(line => line.includes(' at ') ? (/at (?:async )?([\w$.]+) \(/.exec(line)?.[1] || '?') : '')
     .filter(name => name && !/^(noteViewSwitchActivation|switchTab|activateTab|set|setState|Object\.\w+)$/.test(name))
   const ms = Math.round(performance.now() - viewSwitchStartedAt)
-  viewSwitchActivatedBy = `${conversation === viewSwitchWanted ? 'asked' : 'other'}@${ms}:${callers.slice(0, 3).join('<')}`.slice(0, 80)
+  const entry = `${conversation === viewSwitchWanted ? 'asked' : 'other'}@${ms}:${callers.slice(0, 5).join('<')}`
+  viewSwitchActivatedBy = (viewSwitchActivatedBy ? `${viewSwitchActivatedBy} | ${entry}` : entry).slice(0, 400)
 }
 /** The route for the pending click passed the server's access check and was activated. */
 export function markViewSwitchAdmitted(): void {
