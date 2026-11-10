@@ -261,6 +261,31 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Recover the active token prefix after durable backfill. Token deltas have
+	// no durable cursor, so the journal alone cannot restore a mid-word rejoin.
+	// The ordinary authorization above also covers this same-session read.
+	var replayedStreaming map[string]bool
+	if durableChat {
+		prefix, covered := api.eventStore.StreamingPrefix(sessionID)
+		replayedStreaming = covered
+		if len(prefix) > 0 {
+			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
+			msg := sseEventMessage{
+				Events: prefix, SessionStatus: sessionStatus,
+				DisplayStatus: runtimeStatus.Status, LastProcessedIndex: -2,
+				HasRunningBackgroundAgents: runtimeStatus.HasRunningBackgroundAgents,
+				IsSyntheticTurn:            api.isSyntheticTurn(sessionID), CanSteer: runtimeStatus.CanSteer,
+				RuntimeState: &runtimeState,
+			}
+			if err := writeSSEEvent(w, "event", -1, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
+				return
+			}
+			flusher.Flush()
+			log.Printf("[CHAT_STREAM_REPLAY] session=%s result=restored chunks=%d bytes=%d", sessionID, len(prefix)-1, events.StreamingPrefixBytes(prefix))
+		}
+	}
+
 	// 5. Event loop
 	statusTicker := time.NewTicker(2 * time.Second)
 	defer statusTicker.Stop()
@@ -287,6 +312,11 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			if !ok {
 				// Channel closed (unsubscribed)
 				return
+			}
+			// A subscribe-before-snapshot race may queue packets the prefix already
+			// includes. Skip only those exact transport IDs, never durable chat rows.
+			if durableChat && !events.IsDurableChatEvent(event) && replayedStreaming[event.ID] {
+				continue
 			}
 			if durableChat && !events.IsDurableChatEvent(event) {
 				// Live-only updates still drive the streaming UI, but never become
