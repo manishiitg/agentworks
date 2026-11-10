@@ -61,14 +61,14 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const baseSha = compare?.base_sha, headSha = compare?.head_sha
 
   const refresh = () => { setError(''); onRefresh(); setRevision(value => value + 1) }
-  const repoLabel = (root: string) => root || 'the Crew folder'
+  const rootLabel = (root: string) => root || 'the Crew folder'
   // Changes for the selected file, and how a clicked line is named in the
   // message to this chat (repo, file, side, line and which comparison).
   const sourceFor = (current: Row) => !current.path.endsWith('/') ? {
     load: () => scope === 'branch' && baseSha && headSha
       ? workspaceGitApi.branchDiff(workspacePath, current.repo, current.path, baseSha, headSha)
       : workspaceGitApi.diff(workspacePath, current.repo, current.path),
-    lineContext: ({ side, line }: { side: string; line: number }) => `In ${repoLabel(current.repo)}, file ${current.path}, ${side} line ${line} (${scope === 'branch' && baseSha && headSha
+    lineContext: ({ side, line }: { side: string; line: number }) => `In ${rootLabel(current.repo)}, file ${current.path}, ${side} line ${line} (${scope === 'branch' && baseSha && headSha
       ? `branch ${compare?.branch || 'this version'} compared with ${compare?.base}, ${baseSha.slice(0, 7)}..${headSha.slice(0, 7)}`
       : 'changes not committed yet, compared with the latest commit'}):`,
   } : undefined
