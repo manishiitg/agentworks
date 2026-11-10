@@ -140,8 +140,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const treeLines = accessTree.map((line, index) => {
     const Icon = lineIcon[line.kind] || Globe
-    // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line, then
-    // "Manage dashboards" for the Dashboards tab. With none, the server's one line and its Ask, as before.
+    // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line (no
+    // "Manage dashboards" link, owner 10 Nov). With none, the server's one line and its Ask, as before.
     if (line.kind === 'dashboard' && line.dashboards?.length) {
       const dashboard = byId.get('dashboard')
       return <div key={`${line.kind}:${index}`} role="listitem">
@@ -157,7 +157,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
             <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
             <span aria-hidden="true" className="shrink-0 text-muted-foreground opacity-0 group-hover/dash:opacity-100">Open</span>
           </button>)}
-          <button type="button" onClick={() => openLine(line)} className={`${lineButton} text-muted-foreground hover:text-foreground`}>Manage dashboards ›</button>
         </div>}
       </div>
     }
