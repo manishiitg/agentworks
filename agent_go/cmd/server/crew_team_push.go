@@ -105,6 +105,7 @@ func pushCrewTeamBusy(project string) {
 		}
 		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line, Event: everyone}) == nil {
 			crewTeamBusySent.Store(key, sent)
+			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s state=%q people=%s", project, logUsernameForUserID(sock.owner), state, everyone)
 		}
 	}
 }
@@ -181,6 +182,7 @@ func noteCrewTeamBusy(project, state, line string, everyone json.RawMessage) {
 	}
 	note := crewTeamBusyNote{State: state, Line: line, at: time.Now()}
 	_ = json.Unmarshal(everyone, &note.People)
+	log.Printf("[CREW_TEAM] project=%s local=%s event=presence_received state=%q people=%d", project, local, state, len(note.People))
 	if state == "" && len(note.People) == 0 {
 		crewTeamBusyNotes.Delete(local)
 	} else {

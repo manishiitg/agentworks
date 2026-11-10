@@ -153,6 +153,7 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
+		log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=no_team_pairing", project)
 		return nil, fmt.Errorf("turn on the Team for this Crew first")
 	}
 	connection, err := desktopConnectionFor(owner, b.ConnectionID)
@@ -160,6 +161,7 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 		return nil, err
 	}
 	if caller.Chat == nil || caller.Stamp.ID != project {
+		log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=other_crew from_crew=%s", project, caller.Stamp.ID)
 		return nil, fmt.Errorf("send to a Team member's agent from an agent of the same Crew")
 	}
 	tab := macMainTab
@@ -182,8 +184,10 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 	reply, err := desktopCrewSyncCall(ctx, owner, &connection, b.PeerProjectID, crewSyncRequest{Action: "team_message", PairID: b.PairID,
 		TeamMessage: &crewTeamMessageRequest{FromTab: tab, ConversationID: conversation, Agent: caller.Chat.Name, ChatKey: chatKey, Message: message, SubmissionID: submission}})
 	if err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=team_message_send_failed from=%s to=%q reason=%q", project, tab, strings.TrimPrefix(chatKey, b.PeerProjectID+codeChatSideMarker), err)
 		return nil, err
 	}
+	log.Printf("[CREW_TEAM] project=%s event=team_message_sent from=%s to=%q inbox=%s", project, tab, strings.TrimPrefix(chatKey, b.PeerProjectID+codeChatSideMarker), reply.InboxID)
 	return map[string]any{"sent": true, "to": chatKey, "inbox_id": reply.InboxID, "note": "Their reply comes back to this chat."}, nil
 }
 
