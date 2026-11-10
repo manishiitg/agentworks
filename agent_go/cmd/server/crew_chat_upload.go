@@ -196,6 +196,12 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	committed := false
+	defer func() {
+		if bound && !committed {
+			api.failPendingChatUpload(key)
+		}
+	}()
 	started := time.Now()
 	rel := in.Path
 	if rel == "" {
@@ -233,6 +239,7 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 	}
 	if bound {
 		api.finishPendingChatUpload(key, workspace+"/"+rel)
+		committed = true
 	}
 	pruneChunks(store, nil, crewNativeChunkKeep)
 	logChunkTransfer("upload", project, "up", 1, distinctChunks([]chunkedFile{*in.File}), 0, in.File.Size, started)

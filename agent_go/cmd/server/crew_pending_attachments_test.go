@@ -62,3 +62,29 @@ func TestUnfinishedAttachmentCancellationNeverSendsTextAlone(t *testing.T) {
 		t.Fatal("submission identity ignored different attachments")
 	}
 }
+
+// Reviewer follow-up: a failed write refuses promptly, and a new plan can retry.
+func TestFailedPendingAttachmentRefusesImmediatelyAndCanBePlannedAgain(t *testing.T) {
+	api := &StreamingAPI{}
+	req := QueryRequest{AgentProfileID: crewProfileID, AgentProfileConversationKey: "project-example:chat:side", Query: "Read image", PendingAttachments: []pendingChatAttachment{{Hash: strings.Repeat("a", 64)}}}
+	key := pendingAttachmentKey("person", "session", req, req.PendingAttachments[0].Hash)
+	api.planPendingChatUpload(key)
+	entry, err := api.pendingChatUpload(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.failPendingChatUpload(key)
+	select {
+	case <-entry.Ready:
+	default:
+		t.Fatal("failed file did not wake its waiting message")
+	}
+	if err := api.validatePendingChatAttachments("person", "session", req); err == nil {
+		t.Fatal("failed upload accepted")
+	}
+	api.planPendingChatUpload(key)
+	api.finishPendingChatUpload(key, "Crew/example/uploads/retry.png")
+	if err := api.resolvePendingChatAttachments(context.Background(), "person", "session", &req); err != nil {
+		t.Fatal(err)
+	}
+}

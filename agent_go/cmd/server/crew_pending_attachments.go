@@ -20,6 +20,7 @@ type pendingChatUploadKey struct{ User, Project, Conversation, Session, Hash str
 type pendingChatUpload struct {
 	Ready   chan struct{}
 	Path    string
+	Error   string
 	Expires time.Time
 }
 
@@ -38,7 +39,7 @@ func (api *StreamingAPI) planPendingChatUpload(key pendingChatUploadKey) {
 			delete(api.pendingChatUploads, k)
 		}
 	}
-	if item := api.pendingChatUploads[key]; item != nil {
+	if item := api.pendingChatUploads[key]; item != nil && item.Error == "" {
 		return
 	}
 	api.pendingChatUploads[key] = &pendingChatUpload{Ready: make(chan struct{}), Expires: now.Add(pendingChatUploadTTL)}
@@ -50,13 +51,26 @@ func (api *StreamingAPI) pendingChatUpload(key pendingChatUploadKey) (*pendingCh
 	if item == nil || time.Now().After(item.Expires) {
 		return nil, errors.New("The attachment is unavailable. Attach it again, then send your message.")
 	}
+	if item.Error != "" {
+		return nil, errors.New(item.Error)
+	}
 	return item, nil
 }
 func (api *StreamingAPI) finishPendingChatUpload(key pendingChatUploadKey, path string) {
 	api.pendingChatUploadsMu.Lock()
 	defer api.pendingChatUploadsMu.Unlock()
-	if item := api.pendingChatUploads[key]; item != nil && item.Path == "" {
+	if item := api.pendingChatUploads[key]; item != nil && item.Path == "" && item.Error == "" {
 		item.Path = path
+		close(item.Ready)
+	}
+}
+
+// A rejected finish wakes an already-admitted message instead of timing out.
+func (api *StreamingAPI) failPendingChatUpload(key pendingChatUploadKey) {
+	api.pendingChatUploadsMu.Lock()
+	defer api.pendingChatUploadsMu.Unlock()
+	if item := api.pendingChatUploads[key]; item != nil && item.Path == "" && item.Error == "" {
+		item.Error = "The file could not be saved. Attach it again."
 		close(item.Ready)
 	}
 }
@@ -130,6 +144,9 @@ func (api *StreamingAPI) resolvePendingChatAttachments(ctx context.Context, user
 		case <-ctx.Done():
 			return errors.New("The file did not finish uploading. Send again.")
 		case <-item.Ready:
+			if item.Error != "" {
+				return errors.New(item.Error)
+			}
 			// The writer supplied this path after a successful authorized commit.
 			paths = append(paths, item.Path)
 		}
