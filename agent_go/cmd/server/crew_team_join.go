@@ -103,6 +103,14 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 		externalError(w, 400, "invalid_request", "Choose where the team's folder goes on this Mac.")
 		return
 	}
+	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
+	// on the same card instead of having joined with no folder.
+	if input.Folder != "" {
+		if _, err := crewTeamJoinFolderOK(input.Folder); err != nil {
+			externalError(w, 400, "invalid_folder", strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".")
+			return
+		}
+	}
 	c, err := desktopConnectionFor(claims.UserID, connectionID)
 	if err != nil {
 		externalError(w, 409, "team_connection_required", err.Error())
