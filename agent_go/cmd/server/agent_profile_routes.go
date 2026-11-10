@@ -664,6 +664,13 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 
 func initializeProductConversationWorkspace(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) error {
 	countConversationInit()
+	// Every relayed chat call opens its Crew's chat first, and the Mac's 3 s "who is working" check made that about 5
+	// set-ups a second (owner, 10 Nov, PLAT-746). The set-up only adds what is missing, so once per project every
+	// productConversationInitEvery is enough.
+	initKey := userID + "\x00" + profile.ID + "\x00" + binding.WorkspacePath
+	if at, ok := productConversationInitAt.Load(initKey); ok && time.Since(at.(time.Time)) < productConversationInitEvery {
+		return nil
+	}
 	if profile.ID == caplayerproduct.ProfileID {
 		if err := ensureVaultChatWorkspace(ctx, userID); err != nil {
 			return err
@@ -690,6 +697,7 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 			return fmt.Errorf("initialize product database: %w", err)
 		}
 	}
+	productConversationInitAt.Store(initKey, time.Now())
 	return nil
 }
 
