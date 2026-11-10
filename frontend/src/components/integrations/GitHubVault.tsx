@@ -4,7 +4,8 @@ import { Button } from '../ui/Button'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { CompanySignInSetup } from './CompanySignInSetup'
 
-interface GitHubStatus { connection_id?: string; selection_error?: string; connections?: { id: string; login: string; source: string }[]; app_ready: boolean; connected: boolean; gh_available: boolean; gh_accounts?: string[]; gh_accounts_note?: string; source?: string; login?: string; summary?: string; approval_page?: string }
+interface GitHubStatus { orgs?: string[]; needs_approval?: { org: string; why: string }[]; connection_id?: string; selection_error?: string; connections?: { id: string; login: string; source: string }[]; app_ready: boolean; connected: boolean; gh_available: boolean; gh_accounts?: string[]; gh_accounts_note?: string; source?: string; login?: string; summary?: string; approval_page?: string }
+type ConnectBody = { method: 'saved' | 'gh' | 'pat' | 'oauth'; connection_id?: string; login?: string; token?: string }
 
 const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
@@ -12,36 +13,38 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 const sourceName = (source?: string) => source === 'gh' ? 'GitHub CLI' : source === 'pat' ? 'Personal access token' : 'Browser sign-in'
 
-/** Connections are reusable; selecting one changes only this project. */
+/** Token first: most people paste a GitHub token. Other accounts stay one fold away; a choice changes only this project. */
 export function GitHubVaultCard({ workspacePath, changeConnectionOpen = false }: { workspacePath: string; changeConnectionOpen?: boolean }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
-  const [ghLogin, setGhLogin] = useState('')
-  const [savedConnection, setSavedConnection] = useState('')
+  const [other, setOther] = useState('')
   const endpoint = `/api/vault/github?workspace_path=${encodeURIComponent(workspacePath)}`
   const tokenId = useId()
   const [message, setMessage] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const load = useCallback(async () => {
     try {
-      const next = (await api.get<GitHubStatus>(endpoint)).data
-      setStatus(next)
-      setSavedConnection(next.connection_id ?? '')
-      const accounts = next.gh_accounts ?? []
-      setGhLogin(current => accounts.includes(current) ? current : next.login && accounts.includes(next.login) ? next.login : accounts.length === 1 ? accounts[0] : '')
+      setStatus((await api.get<GitHubStatus>(endpoint)).data)
+      setOther('')
     } catch (cause) { setMessage(errorText(cause, 'Could not read your GitHub connection.')) }
   }, [endpoint])
   useEffect(() => { void load() }, [load])
-  const connect = async (method: 'saved' | 'gh' | 'pat' | 'oauth') => {
+  const connect = async (body: ConnectBody) => {
     setBusy(true); setMessage(null)
     try {
-      const result = (await api.post<{ auth_url?: string; login?: string }>(`/api/vault/github/connect?workspace_path=${encodeURIComponent(workspacePath)}`, { method, ...(method === 'saved' ? { connection_id: savedConnection } : {}), ...(method === 'pat' ? { token } : method === 'gh' ? { login: ghLogin } : {}) })).data
+      const result = (await api.post<{ auth_url?: string; login?: string }>(`/api/vault/github/connect?workspace_path=${encodeURIComponent(workspacePath)}`, body)).data
       if (result.auth_url) { window.location.assign(result.auth_url); return }
       setFailed(false); setMessage(`Connected as ${result.login}.`)
       await load()
       window.dispatchEvent(new Event(githubConnectionChanged))
     } catch (cause) { setFailed(true); setMessage(errorText(cause, 'Could not connect GitHub.')) } finally { setToken(''); setBusy(false) }
+  }
+  const chooseOther = () => {
+    const split = other.indexOf(':')
+    const kind = other.slice(0, split), value = other.slice(split + 1)
+    if (kind === 'saved') void connect({ method: 'saved', connection_id: value })
+    if (kind === 'gh') void connect({ method: 'gh', login: value })
   }
   const disconnect = async () => {
     setBusy(true); setMessage(null)
@@ -53,61 +56,54 @@ export function GitHubVaultCard({ workspacePath, changeConnectionOpen = false }:
     } catch (cause) { setMessage(errorText(cause, 'Could not disconnect GitHub.')) } finally { setBusy(false) }
   }
   if (!status) return message ? <p role="alert" className="text-xs text-destructive">{message}</p> : null
-  const methods = <div className="space-y-3 pt-2">
-    {!!status.connections?.length && <div className="flex flex-wrap gap-2">
-      <label className="sr-only" htmlFor={`${tokenId}-saved`}>Saved GitHub connection</label>
-      <select id={`${tokenId}-saved`} value={savedConnection} disabled={busy} onChange={event => setSavedConnection(event.target.value)} className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm">
-        <option value="">Choose a saved connection</option>
-        {status.connections.map(connection => <option key={connection.id} value={connection.id}>{connection.login} · {sourceName(connection.source)}</option>)}
-      </select>
-      <Button type="button" size="sm" variant="outline" disabled={busy || !savedConnection} onClick={() => void connect('saved')}>Use for this project</Button>
-    </div>}
+  const saved = (status.connections ?? []).filter(connection => connection.id !== status.connection_id)
+  const onComputer = status.gh_available ? status.gh_accounts ?? [] : []
+  const otherCount = saved.length + onComputer.length
+  const reach = status.orgs?.length ? `Reaches ${status.orgs.join(', ')}` : 'Reaches your own repositories'
+  return <section aria-label="GitHub" className="space-y-3 rounded-lg border border-border p-3">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="text-sm font-medium">GitHub</h3>
+        <p className="text-sm">{status.connected ? `Connected as ${status.login}` : 'Not connected'}</p>
+        <p className="text-xs text-muted-foreground">{status.connected ? reach : 'Connect an account so this project can push code and open pull requests.'}</p>
+        {status.connected && !!status.needs_approval?.length && <p className="mt-1 text-xs text-muted-foreground">{status.summary}</p>}
+        {status.connected && status.approval_page && <a className="text-xs underline" href={status.approval_page} target="_blank" rel="noreferrer">Open the approval page on GitHub</a>}
+      </div>
+      {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
+    </div>
     {status.selection_error && <p role="alert" className="text-xs text-destructive">{status.selection_error}</p>}
-    {status.gh_available && <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border p-3">
-      <div className="min-w-0 flex-1">
-        <h4 className="text-sm font-medium">Use your GitHub CLI login</h4>
-        <p className="mt-1 text-xs text-muted-foreground">Choose an account saved on this computer. Your terminal’s active account stays unchanged.</p>
-      </div>
-      <div className="flex w-full flex-wrap items-center gap-2">
-        <label className="sr-only" htmlFor={`${tokenId}-gh`}>GitHub account</label>
-        <select id={`${tokenId}-gh`} value={ghLogin} disabled={busy || !status.gh_accounts?.length} onChange={event => setGhLogin(event.target.value)} className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm">
-          <option value="">Choose an account</option>
-          {status.gh_accounts?.map(login => <option key={login} value={login}>{login}{status.login === login ? ' · Connected' : ''}</option>)}
-        </select>
-        <Button type="button" size="sm" variant="outline" disabled={busy || !ghLogin} onClick={() => void connect('gh')}>Use account</Button>
-      </div>
-      {status.gh_accounts_note && <p className="text-xs text-muted-foreground">{status.gh_accounts_note}</p>}
-    </div>}
-    <form className="space-y-2 rounded-md border border-border p-3" onSubmit={event => { event.preventDefault(); void connect('pat') }}>
-      <label htmlFor={tokenId} className="block text-sm font-medium">Personal access token</label>
-      <p className="text-xs text-muted-foreground">Works on your computer or a server. Choose the repositories and permissions you need when creating the token.</p>
+    <form className="space-y-2 rounded-md border border-border p-3" onSubmit={event => { event.preventDefault(); void connect({ method: 'pat', token }) }}>
+      <h4 className="text-sm font-medium">{status.connected ? 'Add another token' : 'Connect with a GitHub token'}</h4>
+      <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+        <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer" className="underline">Create a token on GitHub</a>.</li>
+        <li>Pick the repositories this project works on, and allow Contents and Pull requests to read and write.</li>
+        <li>Paste the token here.</li>
+      </ol>
       <div className="flex flex-wrap gap-2">
+        <label htmlFor={tokenId} className="sr-only">GitHub token</label>
         <input id={tokenId} type="password" autoComplete="off" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} placeholder="Paste a GitHub token" className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm" disabled={busy}/>
         <Button type="submit" size="sm" disabled={busy || !token.trim()}>Connect token</Button>
       </div>
-      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer" className="text-xs underline">Create a token on GitHub</a>
-      <p className="text-xs text-muted-foreground">Stored encrypted. Saved tokens are never shown here.</p>
+      <p className="text-xs text-muted-foreground">Stored encrypted and never shown again.</p>
     </form>
-    <details className="rounded-md border border-border p-3">
-      <summary className="cursor-pointer text-sm font-medium">Browser sign-in · optional</summary>
+    {(otherCount > 0 || status.app_ready) && <details open={changeConnectionOpen && otherCount > 0 ? true : undefined} className="rounded-md border border-border p-3">
+      <summary className="cursor-pointer text-sm font-medium">Use another account{otherCount ? ` (${otherCount})` : ''}</summary>
       <div className="mt-2 space-y-2">
-        <p className="text-xs text-muted-foreground">{status.app_ready ? 'Approve access to your account on GitHub.' : 'Requires an OAuth app. You can use a personal access token without setting this up.'}</p>
-        {status.app_ready && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void connect('oauth')}>Sign in with GitHub</Button>}
-        <CompanySignInSetup provider="GitHub" />
+        {otherCount > 0 && <div className="flex flex-wrap gap-2">
+          <label className="sr-only" htmlFor={`${tokenId}-other`}>GitHub account</label>
+          <select id={`${tokenId}-other`} value={other} disabled={busy} onChange={event => setOther(event.target.value)} className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm">
+            <option value="">Choose an account</option>
+            {saved.length > 0 && <optgroup label="Saved">{saved.map(connection => <option key={connection.id} value={`saved:${connection.id}`}>{connection.login} · {sourceName(connection.source)}</option>)}</optgroup>}
+            {onComputer.length > 0 && <optgroup label="On this computer">{onComputer.map(login => <option key={login} value={`gh:${login}`}>{login}</option>)}</optgroup>}
+          </select>
+          <Button type="button" size="sm" variant="outline" disabled={busy || !other} onClick={chooseOther}>Use</Button>
+        </div>}
+        {status.gh_accounts_note && <p className="text-xs text-muted-foreground">{status.gh_accounts_note}</p>}
+        {status.app_ready && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void connect({ method: 'oauth' })}>Sign in with GitHub in the browser</Button>}
+        <p className="text-xs text-muted-foreground">Git and pull requests in this project act as the chosen account. Other projects are unchanged.</p>
       </div>
-    </details>
-  </div>
-  return <section aria-label="GitHub" className="space-y-2 rounded-lg border border-border p-3">
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h3 className="text-sm font-medium">GitHub{status.connected ? ` · ${status.login}` : ''}</h3>
-        <p className="text-xs text-muted-foreground">{status.connected ? `${sourceName(status.source)}. Git and pull requests in this project use this account. Other projects are unchanged.` : 'Choose a GitHub account for this project.'}</p>
-        {status.connected && <p className="mt-1 text-xs text-muted-foreground">{status.summary}</p>}
-        {status.connected && status.approval_page && <a className="text-xs underline" href={status.approval_page} target="_blank" rel="noreferrer">Open the approval page on GitHub</a>}
-      </div>
-      {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect from project</Button>}
-    </div>
-    {status.connected ? <details open={changeConnectionOpen || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Change connection</summary>{methods}</details> : methods}
+    </details>}
+    <CompanySignInSetup provider="GitHub" />
     {message && <p role={failed ? 'alert' : 'status'} className={`text-xs ${failed ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
   </section>
 }
