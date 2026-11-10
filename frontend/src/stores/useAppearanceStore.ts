@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 
-export type AppearanceProfile = 'default' | 'clear-dark' | 'clear-light'
+export type AppearanceProfile = 'dark' | 'light'
 const KEY = 'agentworks-appearance'
 const readProfile = (): AppearanceProfile => {
-  try { const saved = localStorage.getItem(KEY); return saved === 'clear-dark' || saved === 'clear-light' ? saved : 'default' } catch { return 'default' }
+  try { const saved = localStorage.getItem(KEY); return saved === 'light' ? 'light' : 'dark' } catch { return 'dark' }
 }
 
 /** Device appearance only: never changes a coding program, model or conversation. */
@@ -15,4 +15,4 @@ export const useAppearanceStore = create<{ profile: AppearanceProfile; setProfil
   },
 }))
 
-export const CLEAR_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
+export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
