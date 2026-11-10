@@ -32,10 +32,12 @@ func cachedCrewTeamFileState(path string) (crewTeamFileState, error) {
 		return state, err
 	}
 	crewTeamFileStates.Lock()
-	defer crewTeamFileStates.Unlock()
-	if cached, ok := crewTeamFileStates.entries[path]; ok && os.SameFile(cached.info, info) && cached.info.Size() == info.Size() && cached.info.ModTime().Equal(info.ModTime()) {
+	cached, ok := crewTeamFileStates.entries[path]
+	crewTeamFileStates.Unlock()
+	if ok && os.SameFile(cached.info, info) && cached.info.Size() == info.Size() && cached.info.ModTime().Equal(info.ModTime()) {
 		return cached.state, nil
 	}
+	// A large history must not block cache hits or loads for other Teams.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return state, err
@@ -49,6 +51,8 @@ func cachedCrewTeamFileState(path string) (crewTeamFileState, error) {
 	if state.Receipts == nil {
 		state.Receipts = map[string]crewTeamReceipt{}
 	}
+	crewTeamFileStates.Lock()
+	defer crewTeamFileStates.Unlock()
 	if _, exists := crewTeamFileStates.entries[path]; !exists && len(crewTeamFileStates.entries) >= 16 {
 		for old := range crewTeamFileStates.entries {
 			delete(crewTeamFileStates.entries, old)
