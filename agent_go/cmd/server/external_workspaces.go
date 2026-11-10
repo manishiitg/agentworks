@@ -309,6 +309,12 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
 			}
 			item["location"] = "server"
+			// A Team member's working copy on this Mac says whose Crew it is (owner, 10 Nov).
+			if IsLocalMode() {
+				if line := readCrewTeamState(doc.ID).sharedLine(); line != "" {
+					item["shared_line"] = line
+				}
+			}
 			// The person's own AgentWorks agent: the left menu pins it apart from the server's Crews.
 			if binding.OwnerID == claims.UserID && doc.ID == agentWorksCrewID(claims.UserID) {
 				item["personal_agent"] = true

@@ -35,6 +35,19 @@ type crewTeamLocalState struct {
 	// MemberOf: this Mac Crew is a Team member's working copy of someone else's Crew (crew_team_where.go), paired to
 	// that Crew's online copy as the member. It is never repaired into an online copy of its own.
 	MemberOf string `json:"member_of,omitempty"`
+	// SharedBy is that Crew's owner's name, kept when joining, for the left menu's "Shared by <name>".
+	SharedBy string `json:"shared_by,omitempty"`
+}
+
+// sharedLine is the left menu's second line for a Team member's working copy ("" for the person's own Crew).
+func (s crewTeamLocalState) sharedLine() string {
+	switch {
+	case s.MemberOf == "":
+		return ""
+	case s.SharedBy != "":
+		return "Shared by " + s.SharedBy
+	}
+	return "Shared with you"
 }
 
 func readCrewTeamState(project string) crewTeamLocalState {
