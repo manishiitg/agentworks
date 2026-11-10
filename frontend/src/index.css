@@ -1903,17 +1903,39 @@
 }
 .agent-inbox-prose .conversation-markdown p { margin-bottom: 0.5rem; }
 
+/* Font and palette source: macOS Tahoe Clear Dark.terminal, exported at
+   https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
+   Resolve local macOS fonts only: no Apple font files are shipped/downloaded. */
+@font-face {
+  font-family: "AgentWorks SF Mono Terminal";
+  src: local("SFMonoTerminal-Regular"), local("SF Mono Terminal Regular"), local("SFMono-Regular"), local("SF Mono Regular");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AgentWorks SF Mono Terminal";
+  src: local("SFMonoTerminal-Bold"), local("SF Mono Terminal Bold"), local("SFMono-Bold"), local("SF Mono Bold");
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
 /* Clear Dark is a chat/terminal presentation, not a change to the sidebar or reports. */
 html[data-appearance="clear-dark"] [data-chat-find-scope] {
-  --runloop-mono: "SF Mono Terminal", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --background: 0 0% 10%;
-  --foreground: 40 10% 88%;
-  --muted: 0 0% 16%;
-  --muted-foreground: 40 4% 65%;
-  --card: 0 0% 12%;
-  --card-foreground: 40 10% 88%;
-  --border: 0 0% 23%;
-  --input: 0 0% 14%;
+  --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --background: 222.857 21.600% 12.550%;
+  --foreground: 0 0% 87.761%;
+  --muted: 205.432 17.431% 25.218%;
+  --muted-foreground: 205.432 25.540% 89.548%;
+  --card: 222.857 21.600% 12.550%;
+  --card-foreground: 0 0% 87.761%;
+  --border: 205.432 21.317% 35.120%;
+  --input: 222.857 21.600% 12.550%;
+  --primary: 205.075 78.824% 66.667%;
+  --ring: 205.075 78.824% 66.667%;
+  --success: 124.054 34.395% 60.877%;
+  --warning: 44.870 68.862% 67.255%;
+  --destructive: 8.201 67.876% 61.441%;
   font-family: var(--runloop-mono);
   font-size: calc(12px * var(--chat-scale, 1));
   background: hsl(var(--background));
@@ -1930,4 +1952,22 @@ html[data-appearance="clear-dark"] [data-chat-find-scope] [data-chat-composer] {
 }
 html[data-appearance="clear-dark"] [data-chat-find-scope] [data-testid="terminal-clear-view"] {
   background: hsl(var(--background));
+}
+
+html[data-appearance="clear-dark"] [data-chat-find-scope] .conversation-markdown :is(p, li) {
+  color: #e0e0e0;
+}
+html[data-appearance="clear-dark"] [data-chat-find-scope] .conversation-markdown strong {
+  color: #ededed;
+}
+html[data-appearance="clear-dark"] [data-chat-find-scope] .conversation-markdown a {
+  color: #67b5ed;
+}
+html[data-appearance="clear-dark"] [data-chat-find-scope] .conversation-markdown :not(pre) > code {
+  color: #6d96b4 !important;
+  background-color: #35424c66 !important;
+}
+html[data-appearance="clear-dark"] [data-chat-find-scope] ::selection {
+  background-color: #273d4c;
+  color: #e0e0e0;
 }

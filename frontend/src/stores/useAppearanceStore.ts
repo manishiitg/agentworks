@@ -15,4 +15,4 @@ export const useAppearanceStore = create<{ profile: AppearanceProfile; setProfil
   },
 }))
 
-export const CLEAR_DARK_FONT = '"SF Mono Terminal", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
+export const CLEAR_DARK_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
