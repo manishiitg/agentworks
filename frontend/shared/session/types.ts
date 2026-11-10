@@ -86,6 +86,8 @@ export interface GetEventsResponse {
 }
 
 export interface PendingQueuedMessage {
+  attachment_paths?: string[]
+  attachment_pending?: boolean
   display_metadata?: Record<string, unknown>
   message_id?: string
   steering?: boolean

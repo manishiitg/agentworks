@@ -897,7 +897,7 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	}
 	if displayID := queuedTurnDisplayID(turn); displayID != "" {
 		ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{
-			ID: displayID, Owner: turn.UserID, Session: turn.SessionID, Message: turn.Request.Query,
+			ID: displayID, Owner: turn.UserID, Session: turn.SessionID, Message: pendingAttachmentSubmissionQuery(turn.Request),
 		})
 	}
 	if len(turn.Principal.DeliveredMessage) > 0 && turn.Principal.DeliveredMessageUser == turn.UserID && turn.Principal.DeliveredMessageSession == turn.SessionID {
@@ -1038,14 +1038,16 @@ func logTurnQueue(format string, args ...interface{}) {
 
 // PendingQueuedMessage is a keyed message waiting in the durable turn queue.
 type PendingQueuedMessage struct {
-	MessageID       string                 `json:"message_id"`
-	Steering        bool                   `json:"steering,omitempty"`
-	DeliveryError   string                 `json:"delivery_error,omitempty"`
-	ClientMessageID string                 `json:"client_message_id"`
-	DisplayMetadata map[string]interface{} `json:"display_metadata,omitempty"`
-	Content         string                 `json:"content"`
-	QueuedAt        time.Time              `json:"queued_at"`
-	QueuePosition   int                    `json:"queue_position"`
+	AttachmentPaths   []string               `json:"attachment_paths,omitempty"`
+	AttachmentPending bool                   `json:"attachment_pending,omitempty"`
+	MessageID         string                 `json:"message_id"`
+	Steering          bool                   `json:"steering,omitempty"`
+	DeliveryError     string                 `json:"delivery_error,omitempty"`
+	ClientMessageID   string                 `json:"client_message_id"`
+	DisplayMetadata   map[string]interface{} `json:"display_metadata,omitempty"`
+	Content           string                 `json:"content"`
+	QueuedAt          time.Time              `json:"queued_at"`
+	QueuePosition     int                    `json:"queue_position"`
 	// Refreshing: the chat is being updated (new definition, model or settings) before this message can go in, so the person
 	// sees that, and Steer now does not apply: steering into the outdated process is what the update replaces. Remove stays, so a long
 	// update can still be withdrawn.
@@ -1086,6 +1088,7 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
 	api.projectQueuedMessageDelivery(sessionID, turns, messages)
+	api.projectPendingChatAttachments(userID, sessionID, turns, messages)
 	return messages
 }
 

@@ -29,7 +29,7 @@ function markDelivering(sessionId: string, ids: Set<string>) {
 /** This is the server queue, never a second browser dispatch worker. */
 export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   sessionId: string; tabId: string; busy: boolean
-  canEdit?: boolean; onEdit?: (content: string) => void
+  canEdit?: boolean; onEdit?: (content: string, attachments?: string[]) => void
 }>(function DurableChatQueue({ sessionId, tabId, busy, canEdit = true, onEdit }, ref) {
   const [identity] = useState(captureChatIdentity)
   const [action, setAction] = useState<string | null>(null)
@@ -72,7 +72,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   }, [query.data, sessionId, owns])
 
   const change = async (message: PendingQueuedMessage, steer: boolean, retry = false, edit = false) => {
-    if (!message.message_id || action || !owns()) return
+    if (!message.message_id || action || !owns() || (edit && message.attachment_pending)) return
     setAction(message.message_id)
     setError('')
     try {
@@ -88,7 +88,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
         const id = clientMessageEventId(message.client_message_id)
         store.setTabEvents(sessionId, store.getTabEvents(sessionId).filter(event => event.id !== id || !isProvisionalUserMessage(event)))
       }
-      if (edit) onEdit?.(message.content)
+      if (edit) onEdit?.(message.content, message.attachment_paths)
       await client.invalidateQueries({ queryKey: key })
     } catch {
       if (owns()) {
@@ -103,7 +103,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   const messages = (query.data ?? []).filter(message => !message.started)
   useImperativeHandle(ref, () => ({ recallLatest: () => {
     if (!canEdit || !onEdit || !owns()) return false
-    const message = [...messages].reverse().find(message => message.message_id && !message.steering && !message.delivery_error)
+    const message = [...messages].reverse().find(message => message.message_id && !message.steering && !message.delivery_error && !message.attachment_pending)
     if (!message) return false
     if (!action) void change(message, false, false, true)
     return true
@@ -130,7 +130,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
           </details>
           {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
-            {onEdit && !message.delivery_error && !message.steering && <button type="button" aria-label="Edit queued message" title={canEdit ? 'Move back to the composer to edit · ↑' : 'Clear the composer to edit this queued message'} disabled={!canEdit || pending || Boolean(action)} onClick={() => void change(message, false, false, true)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" /></button>}
+            {onEdit && !message.delivery_error && !message.steering && <button type="button" aria-label="Edit queued message" title={message.attachment_pending ? 'Attachments are still uploading' : canEdit ? 'Move back to the composer to edit · ↑' : 'Clear the composer to edit this queued message'} disabled={!canEdit || pending || Boolean(action) || message.attachment_pending} onClick={() => void change(message, false, false, true)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" /></button>}
             {message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false, true)} className="text-primary hover:underline disabled:opacity-40">Retry</button>}
             {message.can_steer === true && !message.delivery_error && !refreshing && !message.steering && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
             <button type="button" aria-label="Remove queued message" title="Remove queued message" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
