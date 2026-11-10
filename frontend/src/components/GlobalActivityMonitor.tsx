@@ -28,7 +28,7 @@ import { WorkflowIcon } from './workflow/WorkflowIcon'
 import type { CustomPreset } from '../types/preset'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { activityTypeLabels, botPlatformLabel, crewActivityTitle, sessionOriginLabel, titleWithoutOrigin, type ActivityType } from '../utils/globalActivityPresentation'
-import { connectedLocations, connectedActivity, hasDesktopConnections, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
+import { connectedLocations, connectedActivity, hasDesktopConnections, useConnectedWorkPolling, useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { openConnectedActivity, restoreConnectedActivity } from '../utils/connectedActivityNavigation'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
@@ -207,15 +207,8 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   const [locationFilter, setLocationFilter] = useState('all')
   useEffect(() => { if (locationFilter !== 'all' && !connections.some(connection => connection.id === locationFilter)) setLocationFilter('all') }, [connections, locationFilter])
   const locationName = connections.find(connection => connection.id === activeLocation)?.name || (activeLocation === 'local' ? 'Local' : 'Server')
-  useEffect(() => {
-    if (!desktop) return
-    void restoreConnectedActivity()
-    const refresh = () => { if (!document.hidden) void useConnectedWorkStore.getState().refreshActivity() }
-    refresh()
-    const timer = window.setInterval(refresh, GLOBAL_ACTIVITY_REFRESH_MS)
-    window.addEventListener('focus', refresh)
-    return () => { clearInterval(timer); window.removeEventListener('focus', refresh) }
-  }, [desktop, activeLocation])
+  useEffect(() => { if (desktop) void restoreConnectedActivity() }, [desktop, activeLocation])
+  useConnectedWorkPolling(desktop)
   const sidebar = useProductNavigationSidebar()
   const panelRef = useRef<HTMLDivElement>(null)
   const [panelPosition, setPanelPosition] = useState<{ left: number; top: number; maxHeight?: number }>({ left: 0, top: 0 })
