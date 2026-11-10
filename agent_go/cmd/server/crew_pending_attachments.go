@@ -163,3 +163,47 @@ func pendingAttachmentSubmissionQuery(req QueryRequest) string {
 	data, _ := json.Marshal(req.PendingAttachments)
 	return req.Query + "\n[pending attachment identity]" + string(data)
 }
+
+// A claimed steer already owns this queued message. Sending it back through
+// queue admission would reject it forever instead of waiting for its files.
+func shouldQueuePendingAttachments(ctx context.Context, req QueryRequest) bool {
+	return len(req.PendingAttachments) > 0 && !conversationTurnQueueExecution(ctx) && !isQueuedMessageSteer(ctx)
+}
+
+// Recall/edit receives only writer-committed paths from this caller's exact
+// queued request. Until all files are ready, the server marks recall unavailable.
+func (api *StreamingAPI) projectPendingChatAttachments(user, session string, turns []queuedConversationTurn, messages []PendingQueuedMessage) {
+	requests := make(map[string]QueryRequest)
+	for _, turn := range turns {
+		if turn.UserID == user && turn.SessionID == session {
+			requests[turn.ID] = turn.Request
+		}
+	}
+	for i := range messages {
+		req := requests[messages[i].MessageID]
+		if len(req.PendingAttachments) == 0 {
+			continue
+		}
+		messages[i].AttachmentPending = true
+		var paths []string
+		for _, file := range req.PendingAttachments {
+			entry, err := api.pendingChatUpload(pendingAttachmentKey(user, session, req, file.Hash))
+			if err != nil {
+				break
+			}
+			select {
+			case <-entry.Ready:
+				if entry.Error == "" && entry.Path != "" {
+					paths = append(paths, entry.Path)
+				}
+			default:
+			}
+		}
+		if len(paths) == len(req.PendingAttachments) {
+			messages[i].AttachmentPaths = paths
+			messages[i].AttachmentPending = false
+		} else {
+			messages[i].QueueDetail = "Waiting for attachments"
+		}
+	}
+}

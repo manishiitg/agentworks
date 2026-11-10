@@ -4033,7 +4033,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	// Admit pending-file messages to the existing durable lane immediately.
 	// Its drainer waits for file commit; later messages cannot overtake it.
-	if len(req.PendingAttachments) > 0 && !conversationTurnQueueExecution(r.Context()) {
+	if shouldQueuePendingAttachments(r.Context(), req) {
 		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		return
 	}

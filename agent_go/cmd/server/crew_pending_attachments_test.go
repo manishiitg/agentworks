@@ -88,3 +88,50 @@ func TestFailedPendingAttachmentRefusesImmediatelyAndCanBePlannedAgain(t *testin
 		t.Fatal(err)
 	}
 }
+
+// PR2048 review: queue replay must retain the accepted optimistic/submission ID.
+func TestPendingAttachmentReplayRetainsSubmissionFingerprintAndAllowsClaimedSteer(t *testing.T) {
+	user := GetDefaultUserID()
+	req := QueryRequest{AgentProfileID: crewProfileID, AgentProfileConversationKey: "project-example:chat:side", Query: "Read image", PendingAttachments: []pendingChatAttachment{{Hash: strings.Repeat("a", 64)}}}
+	turn := queuedConversationTurn{ID: "turn", SubmissionID: "submission", UserID: user, SessionID: "chat", Request: req, Principal: queuedPrincipalFromContext(internalBotRequestContext(context.Background(), user, nil))}
+	ctx, err := (&StreamingAPI{}).queuedConversationTurnContext(turn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitted := ctx.Value(chatSubmissionContextKey{}).(chatSubmissionContext)
+	if submitted.Message != pendingAttachmentSubmissionQuery(req) || submitted.ID != queuedTurnDisplayID(turn) {
+		t.Fatal("queue replay no longer matches the admitted submission")
+	}
+	if !shouldQueuePendingAttachments(context.Background(), req) {
+		t.Fatal("new upload message bypasses durable admission")
+	}
+	if shouldQueuePendingAttachments(withConversationTurnQueueExecution(ctx), req) || shouldQueuePendingAttachments(context.WithValue(ctx, queuedMessageSteerKey{}, true), req) {
+		t.Fatal("claimed delivery would be sent back into queue admission")
+	}
+}
+
+// PR2048 review: recalling a completed queued upload must restore its image,
+// not only its text. Incomplete uploads cannot be removed for editing yet.
+func TestPendingAttachmentRecallProjectsOnlyReadyPathsForSameConversation(t *testing.T) {
+	api := &StreamingAPI{}
+	req := QueryRequest{AgentProfileID: crewProfileID, AgentProfileConversationKey: "project-example:chat:side", Query: "Read image", PendingAttachments: []pendingChatAttachment{{Hash: strings.Repeat("a", 64)}}}
+	turn := queuedConversationTurn{ID: "turn", UserID: "person", SessionID: "chat", Request: req}
+	key := pendingAttachmentKey(turn.UserID, turn.SessionID, req, req.PendingAttachments[0].Hash)
+	api.planPendingChatUpload(key)
+	rows := []PendingQueuedMessage{{MessageID: turn.ID, Content: req.Query}}
+	api.projectPendingChatAttachments(turn.UserID, turn.SessionID, []queuedConversationTurn{turn}, rows)
+	if !rows[0].AttachmentPending || len(rows[0].AttachmentPaths) != 0 {
+		t.Fatal("incomplete attachment can be recalled without its file")
+	}
+	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png")
+	rows = []PendingQueuedMessage{{MessageID: turn.ID, Content: req.Query}}
+	api.projectPendingChatAttachments(turn.UserID, turn.SessionID, []queuedConversationTurn{turn}, rows)
+	if rows[0].AttachmentPending || len(rows[0].AttachmentPaths) != 1 || rows[0].AttachmentPaths[0] != "Crew/example/uploads/image.png" {
+		t.Fatal("completed queued image was lost on recall")
+	}
+	rows = []PendingQueuedMessage{{MessageID: turn.ID}}
+	api.projectPendingChatAttachments("other", turn.SessionID, []queuedConversationTurn{turn}, rows)
+	if len(rows[0].AttachmentPaths) != 0 {
+		t.Fatal("queued attachment path crossed people")
+	}
+}

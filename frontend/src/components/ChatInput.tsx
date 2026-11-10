@@ -1375,7 +1375,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const durableQueueRef = useRef<DurableChatQueueHandle>(null)
-  const restoreQueuedDraft = useCallback((content: string) => {
+  const restoreQueuedDraft = useCallback((content: string, attachments: string[] = []) => {
     if (!activeTabId || !isChatIdentityCurrent(composerIdentityRef.current)) return
     const store = useChatStore.getState()
     const tab = store.getTab(activeTabId)
@@ -1386,7 +1386,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const draft = visible ? latestInputTextRef.current : tab.config.inputText || ''
     const text = draft.trim() ? `${content}\n\n${draft}` : content
     if (syncToStoreTimeoutRef.current) clearTimeout(syncToStoreTimeoutRef.current)
-    store.setTabConfig(activeTabId, { inputText: text, sendDeliveryMode: 'queue' })
+    const fileContext = [...(tab.config.fileContext || [])]
+    for (const path of attachments) {
+      if (!fileContext.some(file => file.path === path)) fileContext.push({ path, name: path.split('/').pop() || 'File', type: 'file' })
+    }
+    store.setTabConfig(activeTabId, { inputText: text, fileContext, sendDeliveryMode: 'queue' })
     if (visible) {
       latestInputTextRef.current = text
       setLocalInputText(text)
