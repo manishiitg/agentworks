@@ -147,6 +147,14 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 			}
 			continue
 		}
+		// One Mac serves a Crew: a second computer with a copied setup offers the same pair, and would get its messages.
+		if other := crewMacSocketServing(sock, crew.Project, crew.Pair); other != "" {
+			log.Printf("[CREW_RELAY] refused owner=%s device=%s mac=%q project=%s reason=%q serving_mac=%q", sock.owner, sock.device, sock.name, crew.Project, "served by another Mac", other)
+			if sock.send != nil {
+				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: "other_mac"})
+			}
+			continue
+		}
 		twins[crew.Project] = crew.Pair
 		// A pair made before Macs were named learns its Mac from the Mac that offers it, so lists group it there.
 		if b, e := crewroot.ReadSync(crew.Project); e == nil && b != nil && b.MacID == "" && sock.device != "" && ownerOfCrewProjectID(crew.Project) == sock.owner {
@@ -195,6 +203,25 @@ func (sock *crewMacSocket) unregister() {
 
 // crewMacSocketFor routes a twin's commands only to a connection of its owner
 // that offered this pair.
+// crewMacSocketServing is the name of another live connection of this Mac's owner, from a different computer, that
+// already serves this Crew pair ("" when none).
+func crewMacSocketServing(sock *crewMacSocket, project, pair string) string {
+	crewMacSockets.Lock()
+	defer crewMacSockets.Unlock()
+	for _, other := range crewMacSockets.byDevice {
+		if other == sock || other.owner != sock.owner || other.device == sock.device {
+			continue
+		}
+		other.mu.Lock()
+		offered, seen := other.twins[project], other.lastSeen
+		other.mu.Unlock()
+		if offered == pair && time.Since(seen) <= crewRelayDropAfter {
+			return firstNonEmptyTrimmed(other.name, other.device)
+		}
+	}
+	return ""
+}
+
 func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
 	crewMacSockets.Lock()
 	defer crewMacSockets.Unlock()

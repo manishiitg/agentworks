@@ -241,7 +241,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		return crews, pairs
 	}
 	crews, pairs := offered()
-	if err = send(crewRelayMessage{Type: "hello", DeviceID: connection.ID, MacName: desktopMacDisplayName(), Crews: crews}); err != nil {
+	if err = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), Crews: crews}); err != nil {
 		return err
 	}
 	log.Printf("[CREW_RELAY] desktop connect connection=%s crews=%d", connectionID, len(crews))
@@ -308,7 +308,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairs = nextPairs
 				pairsMu.Unlock()
 				if changed {
-					_ = send(crewRelayMessage{Type: "hello", DeviceID: connection.ID, MacName: desktopMacDisplayName(), Crews: next})
+					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), Crews: next})
 				}
 			case <-states.C:
 				pairsMu.Lock()
@@ -360,6 +360,9 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		case "refused":
 			if local != "" && msg.State == "not_owner" {
 				api.repairDesktopCrewTwin(session, local, pair, connectionID)
+			}
+			if msg.State == "other_mac" {
+				log.Printf("[CREW_RELAY] project=%s not reached from this computer: another of your computers serves it", msg.Project)
 			}
 		case "resume":
 			if local != "" && msg.Conversation != "" {
