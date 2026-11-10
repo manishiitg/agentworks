@@ -7,6 +7,7 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { clientMessageEventId, isProvisionalUserMessage, pendingQueuedProvisionals, userMessageMetadata } from '../../utils/clientMessageIdentity'
 import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import { askAIDisplayText } from '../../utils/askAIMessage'
+import { agentInboxMessage } from '../AgentInboxMessage'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
 
 export interface DurableChatQueueHandle { recallLatest: () => boolean }
@@ -117,7 +118,9 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
       const refreshing = Boolean(message.refreshing && !message.delivery_error)
       const pending = Boolean(message.steering || action === message.message_id)
       const Icon = pending || refreshing ? Loader2 : Clock
-      const text = askAIDisplayText(getDisplaySafeUserMessageContent(message.content))
+      // Another agent's message carries its sender and text in server metadata; its content is the full delivery prompt.
+      const inbox = agentInboxMessage(message.display_metadata)
+      const text = inbox ? `${inbox.sender}: ${inbox.body}` : askAIDisplayText(getDisplaySafeUserMessageContent(message.content))
       const reason = message.queue_reason
       const description = message.delivery_error || message.queue_detail || (refreshing ? 'This Crew changed (for example a new function), so the chat restarts with it after the current reply, then your message goes in' : message.steering ? 'Delivering to the current task' : reason === 'starting' ? 'The agent is starting or resuming. Your message will send automatically.' : reason === 'running' ? 'Sends automatically when the current turn finishes' : 'Waiting to send automatically')
       return <div key={message.message_id || message.client_message_id} className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1">
