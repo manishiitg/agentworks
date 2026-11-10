@@ -379,7 +379,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			crewTeamWakeSoon()
 		case "team.busy":
 			// Who else is working in a Team now (crew_team_push.go), for the left menu's row of that project.
-			noteCrewTeamBusy(msg.Project, msg.State, msg.LastLine)
+			noteCrewTeamBusy(msg.Project, msg.State, msg.LastLine, msg.Event)
 		case "resume":
 			if local != "" && msg.Conversation != "" {
 				followers.watch(session, msg.Project, local, pair, msg.Conversation, msg.Since)

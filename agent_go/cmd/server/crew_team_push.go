@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"slices"
 	"strings"
@@ -80,23 +81,54 @@ func pushCrewTeamBusy(project string) {
 	}
 	label := shareOwnerLabeler()
 	crewMacSockets.Lock()
-	targets := []*crewMacSocket{}
+	targets, online := []*crewMacSocket{}, map[string]bool{}
 	for _, sock := range crewMacSockets.byDevice {
 		if people[sock.owner] && sock.send != nil {
 			targets = append(targets, sock)
+			online[sock.owner] = true
 		}
 	}
 	crewMacSockets.Unlock()
 	for _, sock := range targets {
 		state, line := crewTeamBusyLine(busy, sock.owner, label)
+		everyone, _ := json.Marshal(crewTeamPeopleFor(people, busy, online, sock.owner, label))
 		key := project + "/" + sock.owner
-		if previous, ok := crewTeamBusySent.Load(key); ok && previous.(string) == state+"|"+line {
+		sent := state + "|" + line + "|" + string(everyone)
+		if previous, ok := crewTeamBusySent.Load(key); ok && previous.(string) == sent {
 			continue
 		}
-		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line}) == nil {
-			crewTeamBusySent.Store(key, state+"|"+line)
+		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line, Event: everyone}) == nil {
+			crewTeamBusySent.Store(key, sent)
 		}
 	}
+}
+
+// crewTeamPresence is one other person of a Team as a Mac shows them (owner, 10 Nov: who is online, per person):
+// "working", "waiting" (their agent waits for them), "online" (their Mac is connected) or "offline".
+type crewTeamPresence struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
+func crewTeamPeopleFor(people map[string]bool, busy map[string]string, online map[string]bool, viewer string, label func(string) string) []crewTeamPresence {
+	out := []crewTeamPresence{}
+	for person := range people {
+		if person == viewer {
+			continue
+		}
+		state := "offline"
+		switch {
+		case busy[person] == "running":
+			state = "working"
+		case busy[person] == "waiting":
+			state = "waiting"
+		case online[person]:
+			state = "online"
+		}
+		out = append(out, crewTeamPresence{Name: strings.SplitN(label(person), "@", 2)[0], State: state})
+	}
+	slices.SortFunc(out, func(a, b crewTeamPresence) int { return strings.Compare(a.Name, b.Name) })
+	return out
 }
 
 // crewTeamBusyLine is what one person's Mac is told: the others working ("A is working", "A and B are working"), else
@@ -128,22 +160,25 @@ func crewTeamBusyLine(busy map[string]string, viewer string, label func(string) 
 
 // On the Mac: the last "who else is working" note per Crew on this Mac (the owner's Mac Crew or a member's copy).
 type crewTeamBusyNote struct {
-	State string `json:"state"`
-	Line  string `json:"line"`
-	at    time.Time
+	State  string             `json:"state"`
+	Line   string             `json:"line"`
+	People []crewTeamPresence `json:"people,omitempty"`
+	at     time.Time
 }
 
 var crewTeamBusyNotes sync.Map // local project -> crewTeamBusyNote
 
-func noteCrewTeamBusy(project, state, line string) {
+func noteCrewTeamBusy(project, state, line string, everyone json.RawMessage) {
 	local := crewLocalCopyOf(project)
 	if local == "" {
 		return
 	}
-	if state == "" {
+	note := crewTeamBusyNote{State: state, Line: line, at: time.Now()}
+	_ = json.Unmarshal(everyone, &note.People)
+	if state == "" && len(note.People) == 0 {
 		crewTeamBusyNotes.Delete(local)
 	} else {
-		crewTeamBusyNotes.Store(local, crewTeamBusyNote{State: state, Line: line, at: time.Now()})
+		crewTeamBusyNotes.Store(local, note)
 	}
 	// The left menu re-reads its list on a sessions notice.
 	livefeed.Default.Publish(livefeed.Sessions, "")
@@ -156,9 +191,17 @@ func crewTeamBusyFor(local string) *crewTeamBusyNote {
 		return nil
 	}
 	note := value.(crewTeamBusyNote)
+	// A turn never reported ended stops counting; who is online stays until the server says otherwise.
 	if time.Since(note.at) > crewActivityStale {
-		crewTeamBusyNotes.Delete(local)
-		return nil
+		note.State, note.Line = "", ""
+		people := make([]crewTeamPresence, len(note.People))
+		for i, person := range note.People {
+			if person.State == "working" || person.State == "waiting" {
+				person.State = "online"
+			}
+			people[i] = person
+		}
+		note.People = people
 	}
 	return &note
 }
