@@ -1,4 +1,3 @@
-import AppearanceControl from '../topbar/AppearanceControl'
 import { type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
@@ -12,7 +11,7 @@ export function ProductTopBar({ children }: { children: ReactNode }) {
   const target = useProductNavigationToolbarStore(state => state.target)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const controls = <nav aria-label="Product navigation" data-product-navigation="topbar" data-terminal-focus-chrome="header" data-tour-products={visibleProductSurfaceIDs(allowedProducts).join(' ')}
-    className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">{children}<AppearanceControl /></nav>
+    className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">{children}</nav>
   return <ProductNavigationContext.Provider value={false}>
     <CompactProductNavigationContext.Provider value={true}>
       {target ? createPortal(controls, target) : <div data-terminal-focus-chrome="header" className="absolute right-3 top-2 z-40 max-w-[calc(100%-24px)] rounded-lg bg-background/95">{controls}</div>}
