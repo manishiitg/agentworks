@@ -12,6 +12,24 @@ with their purposes, marks which tab is you and which is the main chat.
 person hid are left out, and removed ones are gone. Include hidden tabs only
 when the person asks for them (`include_hidden`).
 
+## Crew tabs versus a CLI's own subagents
+
+In this skill, **Crew agents means chat tabs**, not the coding CLI's internal
+subagents. Use Crew tabs for ongoing ownership, named specialists and work the
+person wants to revisit or continue independently. Each tab keeps its own
+conversation; shared project files are not shared live conversation context.
+
+A CLI subagent is a helper created inside one provider session for a bounded
+piece of work, with its result normally returned to that parent session. Its
+context, tools and lifetime depend on the provider. Spawning one does not
+create a Crew tab, register an AgentBridge identity or grant Crew access.
+
+When the person asks for another Crew agent, use the tab tools below; do not
+substitute the CLI's spawn, list or messaging tools for them. Use CLI helpers
+only when that kind of delegation is requested or allowed by the current
+instructions. Forking a Crew tab and spawning a CLI helper are different
+operations; do not describe one as the other.
+
 ## Who leads
 
 Chat IDs stay fixed. `main` is the calling owner’s default chat address (external channels retain the project’s main chat); use a listed ID to keep addressing the same agent after the main chat changes.
