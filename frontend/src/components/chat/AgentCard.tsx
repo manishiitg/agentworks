@@ -189,7 +189,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
 
 /** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ". ⓘ opens the agent's card
  * (purpose, sharing, ✎). Purpose text is not shown inline. */
-export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdentity }: { tabId?: string | null; crewName: string; showName?: boolean; onOpenIdentity?: () => void }) {
+export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdentity, onReturn }: { tabId?: string | null; crewName: string; showName?: boolean; onOpenIdentity?: () => void; onReturn?: () => void }) {
   const open = useOpenAgentStore()
   const row = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId) : undefined))
   const info = open.tabId && open.tabId === tabId ? open.info : null
@@ -200,9 +200,12 @@ export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdenti
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
     {name && showName && <>
       <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
-      <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
+      {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
+      {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
+        className="block min-w-0 max-w-48 truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
+      : <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
         <button type="button" aria-label={`About ${name}`} className="block min-w-0 max-w-48 truncate rounded-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
-      </AgentHoverCard>
+      </AgentHoverCard>}
     </>}
   </div>
 }
