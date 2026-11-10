@@ -37,7 +37,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
-  const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath, reviewSessionId)
+  const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
@@ -115,7 +115,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       })}
     </WorkspaceContextCard>
   }
-  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} onOpen={(repoRoot) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onOpen={(repoRoot) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
   const theirs = access?.role === 'member' || access?.role === 'shared'
   const macElsewhere = data?.mac_elsewhere === true
   const accessDetail = section('access')?.detail || section('sharing')?.detail

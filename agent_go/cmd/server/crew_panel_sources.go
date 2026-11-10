@@ -11,7 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, chat string, binding crewProjectBinding) []crewPanelSource {
+func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace string, binding crewProjectBinding) []crewPanelSource {
 	claims := GetUserFromContext(r.Context())
 	owner := binding.OwnedByCaller
 	_, connectionErr := personalConnectionItemScope(r, workspace, true, "Vault", "Vault")
@@ -33,32 +33,52 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				Repos       []workspaceGitRepo `json:"repos"`
 				Unavailable bool               `json:"git_unavailable"`
 			}
-			err := read(ctx, requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit), "/api/workspace-git", url.Values{"workspace_path": {workspace}, "session_id": {chat}, "op": {"status"}}, &data)
+			err := read(ctx, requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit), "/api/workspace-git", url.Values{"workspace_path": {workspace}, "op": {"status"}}, &data)
 			section := crewPanelSection{}
+			if data.Unavailable {
+				return section, err
+			}
+			// Only checkouts with uncommitted files are listed (none: the row is
+			// hidden). A repository with several changed checkouts is a group:
+			// its main checkout first, then its worktrees.
+			dirty := map[string]int{}
+			for _, repo := range data.Repos {
+				if len(repo.Files) > 0 {
+					dirty[repo.Repository]++
+				}
+			}
 			count := 0
 			truncated := false
 			for _, repo := range data.Repos {
+				if len(repo.Files) == 0 {
+					continue
+				}
 				count += len(repo.Files)
 				truncated = truncated || repo.Truncated
-				detail := "Clean"
-				if len(repo.Files) > 0 {
-					detail = fmt.Sprintf("%d changed", len(repo.Files))
-					if repo.Truncated {
-						detail = fmt.Sprintf("%d+ changed", len(repo.Files))
-					}
+				changed := fmt.Sprintf("%d changed", len(repo.Files))
+				if repo.Truncated {
+					changed = fmt.Sprintf("%d+ changed", len(repo.Files))
 				}
 				branch := repo.Branch
 				if branch == "" {
 					branch = "No commits yet"
 				}
-				section.Rows = append(section.Rows, crewPanelRow{ID: repo.Root, Label: crewPanelName(repo.Root, workspace), Detail: branch + " · " + detail, Destination: "files", Path: repo.Root, UsedInChat: repo.UsedInChat})
+				folder := crewPanelName(repo.Root, workspace)
+				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: changed, Destination: "files", Path: repo.Root}
+				switch {
+				case repo.Repository != "" && dirty[repo.Repository] > 1:
+					row.Group, row.Label, row.Detail = repo.Repository, branch, "main checkout"
+					if repo.Worktree {
+						row.Detail = "worktree · " + folder
+					}
+				case repo.Worktree && repo.Repository != "":
+					row.Detail = branch + " · worktree of " + repo.Repository
+				}
+				section.Rows = append(section.Rows, row)
 			}
 			section.Detail = crewPanelCount(count, "file")
 			if truncated {
 				section.Detail = fmt.Sprintf("%d+ files", count)
-			}
-			if data.Unavailable {
-				section.Detail = "Git unavailable"
 			}
 			return section, err
 		}},

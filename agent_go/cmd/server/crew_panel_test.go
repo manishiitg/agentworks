@@ -18,10 +18,10 @@ import (
 )
 
 // PLAT-856-542: a slow section cannot hold the other sections hostage; cached
-// data is isolated by caller/chat and an explicit denial removes it.
+// data is isolated by caller and access, and an explicit denial removes it.
 func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	cache := crewPanelCache{}
-	key := crewPanelCacheKey{caller: "owner", project: "crew", chat: "private-chat", authority: "current"}
+	key := crewPanelCacheKey{caller: "owner", project: "crew", authority: "current"}
 	quick := crewPanelSource{id: "changes", title: "Changes", allowed: true, read: func(context.Context) (crewPanelSection, error) {
 		return crewPanelSection{Rows: []crewPanelRow{{ID: "repo", Label: "Project"}}}, nil
 	}}
@@ -51,7 +51,7 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	if time.Since(start) > time.Second || !out[0].Stale || len(out[0].Rows) != 1 || out[1].Error != "" {
 		t.Fatalf("fanout: %+v", out)
 	}
-	for _, changed := range []crewPanelCacheKey{{caller: "another", project: key.project, chat: key.chat, authority: key.authority}, {caller: key.caller, project: key.project, chat: "another-chat", authority: key.authority}, {caller: key.caller, project: key.project, chat: key.chat, authority: "revoked"}} {
+	for _, changed := range []crewPanelCacheKey{{caller: "another", project: key.project, authority: key.authority}, {caller: key.caller, project: key.project, authority: "revoked"}} {
 		got := cache.collect(t.Context(), changed, []crewPanelSource{slow}, time.Millisecond)
 		if len(got[0].Rows) != 0 {
 			t.Fatal("cached private data crossed scope")
