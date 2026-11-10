@@ -23,6 +23,71 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
+// PLAT-746-820: idle sync rounds rewrote the full file baseline every five seconds.
+func TestCrewTeamLocalSkipsUnchangedRoundsAndRefreshesHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	b := crewTeamLocal{Status: "up_to_date", LastSynced: time.Now().UTC().Format(time.RFC3339Nano), Files: map[string]crewTeamLocalFile{}}
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(dir, "binding.json")
+	before, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.LastSynced = time.Now().Add(time.Second).UTC().Format(time.RFC3339Nano)
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(filename)
+	if err != nil || !os.SameFile(before, after) {
+		t.Fatalf("idle round replaced binding: %v", err)
+	}
+	b.Revision++
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := readCrewTeamLocal(dir)
+	if err != nil || saved.Revision != b.Revision {
+		t.Fatalf("changed revision was not saved: %+v %v", saved, err)
+	}
+	// Seed an old heartbeat while leaving every other field unchanged.
+	b.LastSynced = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filename, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	b.LastSynced = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = readCrewTeamLocal(dir)
+	if err != nil || saved.LastSynced != b.LastSynced {
+		t.Fatalf("old heartbeat was not refreshed: %+v %v", saved, err)
+	}
+	b.Status = "pending"
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = readCrewTeamLocal(dir)
+	if err != nil || saved.Status != b.Status {
+		t.Fatalf("changed status was not saved: %+v %v", saved, err)
+	}
+	if err := os.WriteFile(filename, []byte("invalid JSON"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = readCrewTeamLocal(dir)
+	if err != nil || saved.Status != b.Status || saved.Revision != b.Revision {
+		t.Fatalf("corrupt binding was not replaced: %+v %v", saved, err)
+	}
+}
+
 // PLAT-856-509 (Team sync audit, 5 Nov): one file over the 64 MiB per-file limit made every commit fail with
 // "invalid shared file metadata", so the copy stopped syncing both ways; it is now left out and named. A case-only
 // rename (docs -> Docs) is sent as a removal of the old name before the new name, so no batch holds both spellings.

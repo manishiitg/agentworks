@@ -69,29 +69,42 @@ func pushCrewTeamNote(project, kind string, revision uint64, everyone bool) {
 var crewTeamBusySent sync.Map // "<project>/<person>" -> last line sent
 
 func pushCrewTeamBusy(project string) {
+	crewMacSockets.Lock()
+	connected := make([]*crewMacSocket, 0, len(crewMacSockets.byDevice))
+	for _, sock := range crewMacSockets.byDevice {
+		if sock.send != nil {
+			connected = append(connected, sock)
+		}
+	}
+	crewMacSockets.Unlock()
+	if len(connected) == 0 {
+		return
+	}
 	t, err := readCrewTeam(project)
 	if err != nil || !t.On {
 		return
 	}
-	// One source for every screen (owner, 10 Nov): the Team's agents list, which knows each person's place (their Mac
-	// or the server), whether their Mac is on and each agent's activity wherever it runs. Read as the owner, counting
-	// only agents in the Team, so an Only me agent never shows anyone working.
+	members := map[string]bool{t.OwnerID: true}
+	for _, p := range t.People {
+		if !p.Invited && crewTeamAccountActive(p.UserID) {
+			members[p.UserID] = true
+		}
+	}
+	targets := []*crewMacSocket{}
+	for _, sock := range connected {
+		if members[sock.owner] {
+			targets = append(targets, sock)
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+	// Resolve activity only when someone can receive it. Keep the Team's list as
+	// the single presence source, excluding Only me agents from others' activity.
 	ctx, done := context.WithTimeout(context.Background(), 20*time.Second)
 	defer done()
 	people := teamAgentsByPerson(ctx, t, t.OwnerID)
 	label := shareOwnerLabeler()
-	members := map[string]bool{}
-	for _, p := range people {
-		members[p.UserID] = true
-	}
-	crewMacSockets.Lock()
-	targets := []*crewMacSocket{}
-	for _, sock := range crewMacSockets.byDevice {
-		if members[sock.owner] && sock.send != nil {
-			targets = append(targets, sock)
-		}
-	}
-	crewMacSockets.Unlock()
 	for _, sock := range targets {
 		everyone := crewTeamPeopleFor(t, people, sock.owner, label)
 		state, line := crewTeamBusyLine(everyone)

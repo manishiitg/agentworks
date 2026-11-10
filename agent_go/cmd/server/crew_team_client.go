@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -87,6 +88,16 @@ func readCrewTeamLocal(dir string) (crewTeamLocal, error) {
 	return b, e
 }
 func saveCrewTeamLocal(dir string, b crewTeamLocal) error {
+	if saved, err := readCrewTeamLocal(dir); err == nil {
+		last, err := time.Parse(time.RFC3339Nano, saved.LastSynced)
+		age := time.Since(last)
+		// PLAT-746-820: successful idle rounds change only this heartbeat.
+		// Keep it roughly current without rewriting the file baselines every round.
+		saved.LastSynced = b.LastSynced
+		if err == nil && age >= 0 && age < 10*time.Minute && reflect.DeepEqual(saved, b) {
+			return nil
+		}
+	}
 	err := fsutil.WriteJSONAtomic(filepath.Join(dir, "binding.json"), b, 0600)
 	if err == nil {
 		publishCrewPanelChanged(b.LocalProject)
