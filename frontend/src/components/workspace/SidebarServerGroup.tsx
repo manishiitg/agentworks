@@ -1,10 +1,11 @@
+import { SharedPeopleIcon } from './SharedPeopleIcon'
 import type { ReactNode } from 'react'
 import { PinnedCrewOrderMenu } from './PinnedCrewOrderMenu'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin, Users } from 'lucide-react'
+import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
@@ -15,15 +16,12 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
   const subline = stateLine || (personal_agent ? 'Your agent' : undefined)
   // Everyone else in this project's Team and whether they are online or working, as the server sends it (owner, 10 Nov).
   const people = team_busy?.people || []
-  const anyoneOn = people.some(person => person.state !== 'offline')
-  const peopleLines = people.map(person => `${person.name} · ${person.state === 'offline' ? 'offline' : person.state === 'online' ? 'online' : `online · ${person.state}`}`)
-  const sharedTitle = [shared_line, ...peopleLines].filter(Boolean).join('\n')
   const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
   return <div className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
-    <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}${sharedTitle ? `\n${sharedTitle}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
+    <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
       className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {showIcon && <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={personal_agent ? <ProductSurfaceIcon surface="agentworks" className="h-4 w-4" /> : sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>}
-      <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${agentsExpanded || selected ? 'font-medium' : 'font-normal'}`}>{name}{sharedTitle && <span role="img" aria-label={sharedTitle} title={sharedTitle} className="relative ml-1.5 inline-flex align-[-1px] text-muted-foreground"><Users aria-hidden="true" className="h-3 w-3" />{people.length > 0 && <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${anyoneOn ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />}</span>}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
+      <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${agentsExpanded || selected ? 'font-medium' : 'font-normal'}`}>{name}{(shared_line || people.length > 0) && <SharedPeopleIcon sharedLine={shared_line} people={people} />}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
     </button>
     {activityLabel === 'Running' ? <Loader2 role="img" aria-label={activityTitle || 'Working'} className="mr-2 h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]">{activityTitle && <title>{activityTitle}</title>}</Loader2>
       : activityLabel ? <span role="status" title={activityLabel} aria-label={activityLabel} className="mr-2 h-2 w-2 shrink-0 rounded-full bg-amber-400" /> : null}
