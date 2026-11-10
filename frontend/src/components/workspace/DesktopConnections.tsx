@@ -101,6 +101,9 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const active = getRawActiveWorkspaceId()
   const state = useConnectedWorkStore()
   useConnectedWorkPolling(desktop)
+  // A teammate starting or stopping work on another network reaches this Mac as a note, then a sessions notice: read
+  // the networks' lists again then, not only on the minute.
+  useLiveRefetch(() => { void useConnectedWorkStore.getState().refresh() }, { kinds: ['sessions'], fallbackMs: 0, safetyMs: 0, minIntervalMs: 5_000, enabled: desktop })
   const current = desktop && isChatIdentityCurrent(state.identity)
   const connections: DesktopConnection[] = desktop ? connectedLocations(state) : [{ id: active, name: '', server: '' }]
   const inventory = current ? state.inventory : {}
@@ -140,7 +143,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       if (target) movePinned(key, keyFor(target))
     }
     const crew = project.kind === 'crew' && !project.personal_agent
-    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined} activityTitle={activityTitle}
+    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={here && project.selected}

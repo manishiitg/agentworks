@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"slices"
@@ -77,6 +78,21 @@ func pushCrewTeamBusy(project string) {
 	for _, p := range t.People {
 		if !p.Invited {
 			people[p.UserID] = true
+		}
+	}
+	// A person's agents that run on the server count too (owner, 10 Nov: a server agent working showed nowhere on a
+	// teammate's Mac): a chat of theirs in this Crew with a turn going now.
+	for person := range people {
+		if busy[person] == "running" {
+			continue
+		}
+		if records, err := defaultProductConversationRegistryStore().projectChats(context.Background(), person, crewProfileID, project); err == nil {
+			for _, record := range records {
+				if crewServerChatRunning(record.SessionID) {
+					busy[person] = "running"
+					break
+				}
+			}
 		}
 	}
 	label := shareOwnerLabeler()
@@ -176,10 +192,8 @@ type crewTeamBusyNote struct {
 var crewTeamBusyNotes sync.Map // local project -> crewTeamBusyNote
 
 func noteCrewTeamBusy(project, state, line string, everyone json.RawMessage) {
-	local := crewLocalCopyOf(project)
-	if local == "" {
-		return
-	}
+	// A Crew on a server this Mac shows from that server's list (no copy here) is kept by its server id.
+	local := firstNonEmptyTrimmed(crewLocalCopyOf(project), crewTeamRemoteNoteKey(project))
 	note := crewTeamBusyNote{State: state, Line: line, at: time.Now()}
 	_ = json.Unmarshal(everyone, &note.People)
 	log.Printf("[CREW_TEAM] project=%s local=%s event=presence_received state=%q people=%d", project, local, state, len(note.People))
@@ -213,3 +227,6 @@ func crewTeamBusyFor(local string) *crewTeamBusyNote {
 	}
 	return &note
 }
+
+// crewTeamRemoteNoteKey is the note key of a Crew that lives on a server, for that server's list on this Mac.
+func crewTeamRemoteNoteKey(project string) string { return "remote:" + project }
