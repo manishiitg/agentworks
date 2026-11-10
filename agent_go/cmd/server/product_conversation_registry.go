@@ -467,6 +467,52 @@ func rememberPreviousConversation(document *productConversationRegistryDocument,
 	document.Previous[entryKey] = kept
 }
 
+// keepHandback preserves the selected server session before starting its kept
+// copy afresh. The expected-session check and history update are one operation;
+// the caller has already decided whether this hand back is allowed.
+func (store productConversationRegistryStore) keepHandback(ctx context.Context, owner, pair string, record ProductConversationRecord) error {
+	path := productConversationRegistryPath(owner)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	doc, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	entry := productConversationRegistryEntryKey(crewProfileID, record.ConversationKey)
+	current, ok := doc.Entries[entry]
+	if !ok || current.SessionID != record.SessionID {
+		return nil
+	}
+	rememberPreviousConversation(&doc, entry, current)
+	now := time.Now().UTC()
+	current.SessionID = "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/handback-kept/"+record.ConversationKey+"/"+now.Format(time.RFC3339Nano))).String()
+	current.UpdatedAt = now.Format(time.RFC3339Nano)
+	doc.Entries[entry] = current
+	return store.writeDocument(ctx, path, doc)
+}
+
+// crewWorkspaceChats selects the owner's current Crew records in one workspace.
+// It includes isolated agent threads as the standby copy requires; projectChats
+// intentionally excludes those threads and cannot replace this selection.
+func (store productConversationRegistryStore) crewWorkspaceChats(ctx context.Context, owner, workspace string) ([]ProductConversationRecord, error) {
+	path := productConversationRegistryPath(owner)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	doc, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	out := []ProductConversationRecord{}
+	for _, record := range doc.Entries {
+		if record.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(record.WorkspacePath) == workspace && record.SessionID != "" {
+			out = append(out, record)
+		}
+	}
+	return out, nil
+}
+
 func (store productConversationRegistryStore) loadDocument(ctx context.Context, path string) (productConversationRegistryDocument, error) {
 	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}
 	raw, exists, err := store.read(ctx, path)

@@ -145,16 +145,11 @@ func crewStandbyWireKey(project, key string) string {
 
 // crewStandbyRecords are the owner's conversations in this Crew, from this Mac's chat registry.
 func crewStandbyRecords(roots crewroot.Roots) []ProductConversationRecord {
-	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(roots.Owner))
+	out, err := defaultProductConversationRegistryStore().crewWorkspaceChats(context.Background(), roots.Owner, roots.Virtual)
 	if err != nil {
 		return nil
 	}
-	out := []ProductConversationRecord{}
-	for _, record := range doc.Entries {
-		if record.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(record.WorkspacePath) == roots.Virtual && record.SessionID != "" {
-			out = append(out, record)
-		}
-	}
+
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
 	return out
 }
