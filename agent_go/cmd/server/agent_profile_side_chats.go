@@ -54,6 +54,7 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	started := time.Now() // slot below includes the Mac routing check
 	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
 	if mux.Vars(r)["id"] == crewProfileID && (api.routeCrewMemberMacTabs(w, r, projectID) || api.routeCrewMacTabs(w, r, projectID)) {
 		return
@@ -66,16 +67,30 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		writeAgentProfileJSON(w, http.StatusOK, []AgentProfileSideChat{})
 		return
 	}
-	out, err := api.sideChatsFor(r, userID, slot, projectID)
+	timing := &sideChatTiming{slot: time.Since(started)}
+	out, err := api.sideChatsTimed(r, userID, slot, projectID, timing)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if slot.profile.ID == crewProfileID && !IsLocalMode() && !crewRelayTwin(projectID) {
+		macStarted := time.Now()
 		out = withServerCrewMacTabs(r.Context(), projectID, GetUserIDFromContext(r.Context()), out)
+		timing.mac = time.Since(macStarted)
+	}
+	// Opening another project waits on this list (PLAT-746-840): name the slow step instead of guessing.
+	if total := time.Since(started); total >= sideChatSlowAfter {
+		log.Printf("[SIDE_CHATS] slow project=%s total=%s slot=%s records=%s identities=%s rows=%s schedules=%s mac=%s tabs=%d", projectID,
+			total.Round(time.Millisecond), timing.slot.Round(time.Millisecond), timing.records.Round(time.Millisecond), timing.identities.Round(time.Millisecond),
+			timing.rows.Round(time.Millisecond), timing.schedules.Round(time.Millisecond), timing.mac.Round(time.Millisecond), len(out))
 	}
 	writeAgentProfileJSON(w, http.StatusOK, out)
 }
+
+const sideChatSlowAfter = 300 * time.Millisecond
+
+// sideChatTiming is where one list of a project's agents spent its time (log only).
+type sideChatTiming struct{ slot, records, identities, rows, schedules, mac time.Duration }
 
 // handleOrderAgentProfileSideChats saves the order the person dragged their side tabs into: POST
 // /api/agent-profiles/{id}/side-chats/order {"project_id": …, "conversation_keys": [first, …]}. It answers with the
@@ -167,15 +182,25 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 // sideChatsFor lists the caller's open side tabs of one project in the order the person arranged them; tabs they
 // have not placed follow, oldest key first.
 func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profileAndBinding, projectID string) ([]AgentProfileSideChat, error) {
+	return api.sideChatsTimed(r, userID, slot, projectID, nil)
+}
+
+func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot profileAndBinding, projectID string, timing *sideChatTiming) ([]AgentProfileSideChat, error) {
+	if timing == nil {
+		timing = &sideChatTiming{}
+	}
+	step := time.Now()
 	owned, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
 	if err != nil {
 		return nil, err
 	}
+	timing.records, step = time.Since(step), time.Now()
 	// The caller's own pins for tabs other owners control (setSideChatPinned).
 	mine, err := defaultProductConversationRegistryStore().agentIdentities(r.Context(), userID, slot.profile.ID, projectID)
 	if err != nil {
 		return nil, err
 	}
+	timing.identities, step = time.Since(step), time.Now()
 	out := []AgentProfileSideChat{}
 	var main *AgentProfileSideChat
 	// Every person's default chat in a Crew is their Main (owner, 5 Nov); only the Crew's identity (its purpose)
@@ -230,7 +255,9 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		out = append(out, row)
 	}
+	timing.rows, step = time.Since(step), time.Now()
 	out = append(out, scheduleOwnChatRows(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, mine)...)
+	timing.schedules = time.Since(step)
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].Position, out[j].Position
 		if (a > 0) != (b > 0) {
