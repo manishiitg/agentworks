@@ -21,7 +21,8 @@ function TeamInviteRow({ invite }: { invite: TeamInvite }) {
   const [connection, setConnection] = useState(invite.connection)
   const [signIn, setSignIn] = useState<string | null>(null)
   const inMacApp = hasDesktopConnections()
-  const canAdd = invite.can_add_to_mac !== false
+  // The server says whether it can be added; connecting uses the server's own address, never this app's local one.
+  const canAdd = invite.can_add_to_mac === true && (Boolean(connection) || Boolean(invite.server))
   const join = connection ? `/${encodeURIComponent(connection)}/crew-teams/${encodeURIComponent(invite.project_id)}/join` : ''
   const folderFor = async (target: string) => {
     const route = `/${encodeURIComponent(target)}/crew-teams/${encodeURIComponent(invite.project_id)}/join`
@@ -32,7 +33,7 @@ function TeamInviteRow({ invite }: { invite: TeamInvite }) {
     setBusy(true); setError('')
     try {
       if (connection) { await folderFor(connection); return }
-      const started = await desktopRequest<{ state: string; url: string }>('', 'POST', { server: window.location.origin })
+      const started = await desktopRequest<{ state: string; url: string }>('', 'POST', { server: invite.server })
       setSignIn(started.state)
       await window.electronAPI?.openExternal?.(started.url)
     } catch (cause) { setSignIn(null); setError(cause instanceof Error ? cause.message : 'This Mac could not suggest a folder.') } finally { setBusy(false) }
@@ -68,7 +69,7 @@ function TeamInviteRow({ invite }: { invite: TeamInvite }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The invite could not be answered. Try again.') } finally { setBusy(false) }
   }
   const line = !inMacApp ? 'Join to open this team here. You can also add its shared folder to your Mac later.'
-    : !canAdd ? "This team has no shared folder, so it can't be added to this Mac."
+    : !canAdd ? "This team can't be added to this Mac: it has no shared folder, or its server has no public address."
       : signIn ? 'Finish signing in in your browser; this continues by itself.'
         : connection ? 'Add it to this Mac: its shared folder syncs here and you can chat with its shared agents.'
           : 'Add it to this Mac: its shared folder syncs here. This Mac signs in to the server first, in your browser.'
