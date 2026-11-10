@@ -24,6 +24,9 @@ func TestRepoConfiguredCommandsDoNotRun(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o600)
 	git("add", ".")
 	git("commit", "--quiet", "-m", "init")
+	// Read the config once while it has no drivers: the config cache must
+	// notice the drivers added below and blank them too.
+	Command(context.Background(), dir, nil, "status", "--porcelain").Run()
 	markers := map[string]string{"filter": filepath.Join(t.TempDir(), "filter"), "textconv": filepath.Join(t.TempDir(), "textconv"), "fsmonitor": filepath.Join(t.TempDir(), "fsmonitor")}
 	script := func(name, marker string) string {
 		p := filepath.Join(t.TempDir(), name+".sh")
