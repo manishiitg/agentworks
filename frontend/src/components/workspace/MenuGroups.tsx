@@ -51,6 +51,12 @@ export function useMenuGroups() {
   const state = useMenuGroupsStore()
   const { filter, pick } = useMenuFilterStore()
   useEffect(() => { if (!state.loaded) void loadGroups() }, [state.loaded])
+  // Groups can change from chat or MCP too (the menu_groups tool); read them again when the window comes back.
+  useEffect(() => {
+    const reload = () => { if (!document.hidden) void loadGroups() }
+    window.addEventListener('focus', reload)
+    return () => window.removeEventListener('focus', reload)
+  }, [])
   // A group that was deleted (here or elsewhere) falls back to All.
   const current: MenuFilter = filter.startsWith('group:') && state.loaded && !state.groups.some(group => `group:${group.id}` === filter) ? 'all' : filter
   return { groups: state.groups, error: state.error, filter: current, pick }
