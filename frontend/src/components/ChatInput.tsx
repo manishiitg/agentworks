@@ -19,7 +19,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { ArrowUp, Clock, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Square } from 'lucide-react'
+import { ArrowUp, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
@@ -159,7 +159,6 @@ function isDismissedComposerTrigger(trigger: { kind: string; start: number; quer
 }
 
 const AUTO_NOTIFICATION_PREFIX = '[AUTO-NOTIFICATION]'
-const AGENT_NEWLINE_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Enter' : 'Ctrl+Enter'
 const FALLBACK_CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 const FALLBACK_LIVE_INPUT_PROVIDERS = FALLBACK_CODING_AGENT_PROVIDERS
 
@@ -613,7 +612,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // briefly so it does not swap with Send (useHeldTurnInFlight).
   const isTurnShownInFlight = useHeldTurnInFlight(foregroundTurnActive, activeTab?.isCompleted ?? false, activeTabId ?? null)
   const canSteer = activeTab?.canSteer ?? false
-  const deliveryMode = tabConfig?.sendDeliveryMode ?? 'steer'
   const tabSessionId = activeTab?.sessionId ?? null
   const isViewOnly = activeTab?.metadata?.isViewOnly ?? false
   const viewOnlyWriter = activeTab?.metadata?.viewOnlyWriter
@@ -1390,7 +1388,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     for (const path of attachments) {
       if (!fileContext.some(file => file.path === path)) fileContext.push({ path, name: path.split('/').pop() || 'File', type: 'file' })
     }
-    store.setTabConfig(activeTabId, { inputText: text, fileContext, sendDeliveryMode: 'queue' })
+    store.setTabConfig(activeTabId, { inputText: text, fileContext })
     if (visible) {
       latestInputTextRef.current = text
       setLocalInputText(text)
@@ -2059,7 +2057,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             pendingAttachments,
             fileContext: submittedDraft.fileContext,
             fileContextConsumed: true,
-            deliveryMode: deliveryOverride ?? deliveryMode,
+            deliveryMode: deliveryOverride ?? 'steer',
             submissionId,
             onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
           })
@@ -2096,7 +2094,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       let accepted: boolean | void
       let restoreRefusedDraft = true
       try {
-        accepted = await onSubmit(query, { sourceTabId: submittedTabId, fileContext: submittedDraft.fileContext, fileContextConsumed: true, deliveryMode: deliveryOverride ?? deliveryMode, submissionId,
+        accepted = await onSubmit(query, { sourceTabId: submittedTabId, fileContext: submittedDraft.fileContext, fileContextConsumed: true, deliveryMode: deliveryOverride ?? 'steer', submissionId,
           onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
         })
       } catch (error) {
@@ -2112,7 +2110,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (['/', '@', '#'].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) recordComposerShortcut(useAuthStore.getState().user?.id || '', e.key)
@@ -2154,9 +2152,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
 
-    // While work is in flight, Shift+Enter submits once with the server's queue option.
-    // It does not change the person's normal delivery setting.
-    if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && isTurnInFlight) {
+    // While work is in flight, Cmd/Ctrl+Enter queues this message as the next one; plain Enter steers (owner, 10 Nov).
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && isTurnInFlight) {
       e.preventDefault()
       if (micStateRef.current === 'recording') { micRef.current?.stopDictation(); return }
       recordComposerShortcut(useAuthStore.getState().user?.id || '', 'queue')
@@ -2164,7 +2161,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
 
-    // Plain Enter sends; Ctrl/Cmd+Enter inserts a newline. Shift+Enter remains a newline while idle.
+    // Plain Enter sends (steers while work is in flight); Shift+Enter, and Ctrl/Cmd+Enter while idle, insert a newline.
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault()
 
@@ -2773,7 +2770,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
   const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || (isUploadingFiles && !uploadingFiles?.canSend && !pendingUploadBatchRef.current?.submitted)
-  const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
+  const sendButtonLabel = isStreaming || transcriptTurnActive ? 'Steer' : 'Send'
 
   const showComposerHints = isProductSurface || activeTab?.metadata?.agentProfileId === 'work'
   const hintOwner = useAuthStore(state => state.user?.id || '')
@@ -2788,8 +2785,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       { id: '/', text: '/ opens commands.' },
       { id: '@', text: '@ attaches files.' },
       { id: '#', text: '# adds Crew references.' },
-      { id: 'queue', text: 'While working, Shift+Enter queues your message.' },
-      { id: 'newline', text: `${AGENT_NEWLINE_KEY} adds a new line.` },
+      { id: 'queue', text: `While working, Enter steers and ${command}Enter queues your message next.` },
+      { id: 'newline', text: 'Shift+Enter adds a new line.' },
       { id: 'history', text: `${command}← / ${command}→ goes back / forward across agents and projects.`, feature: 'chat-history-keys' },
       { id: 'tabs', text: `${mac ? tabs.mac : tabs.other} switches agents in this project.`, feature: 'chat-tab-keys' },
       { id: 'search', text: `${command}K opens search.`, feature: 'quick-switcher' },
@@ -3095,9 +3092,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   liveViewTitle={mainAgentRuntimeLabel || undefined}
                   onOpenChange={setSendOptionsOpen}
                   sendOptions={{
-                    mode: deliveryMode,
                     busy: isStreaming || transcriptTurnActive,
-                    onModeChange: mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) },
                     onNewChat: showNewChatAction ? onNewChat : undefined,
                     backgroundWork,
                   }}
@@ -3507,16 +3502,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />
                       </Button>}
                       {!nativeTerminalTools && !compactComposerActions && <span className={showStopButton && foregroundTurnActive ? 'max-md:hidden' : 'contents'}>{micEl}</span>}
-                      {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
+                      {/* Chat and task actions share the popup. While the agent works Enter steers and Cmd/Ctrl+Enter queues next. */}
                       {/* Compact chat box: the mic and the send arrow share one corner slot, like ChatGPT. Empty box: the
-                          mic; once there is something to send: the arrow (Steer/Queue while a turn runs). Without a mic
+                          mic; once there is something to send: the arrow (Steer while a turn runs). Without a mic
                           the arrow keeps its place while empty, so typing never moves the row. */}
                       {micInSendSlot ? <span data-send-slot className="contents">{micEl}</span> : <span data-send-slot className={compactComposerActions && !hasValidQuery ? 'invisible' : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
-                        {!compactComposerActions && deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+                        <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>}>
                       <ChatSendModeButton
                         showOptions={!compactComposerActions}
-                        mode={deliveryMode}
                         busy={isStreaming || transcriptTurnActive}
                         disabled={submitButtonDisabled}
                         onSend={handleSendButtonClick}
@@ -3524,7 +3518,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onNewChat={showNewChatAction ? onNewChat : undefined}
                         backgroundWork={backgroundWork}
                         onOpenChange={setSendOptionsOpen}
-                        onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
                       </Suspense></span>}
                     </div>
