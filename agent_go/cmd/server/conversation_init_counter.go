@@ -13,6 +13,11 @@ import (
 // Each chat open sets up its project's code folder and database (initializeProductConversationWorkspace); a Mac was
 // seen doing it about 5 times a second with nobody typing. Once a minute this logs how often, by the code that asked,
 // so a loop shows its source: [CONVERSATION_INIT] per_minute=N by="caller:N, ...".
+// productConversationInitAt: when each project's chat set-up last ran (initializeProductConversationWorkspace).
+var productConversationInitAt sync.Map
+
+const productConversationInitEvery = 10 * time.Minute
+
 var conversationInits = struct {
 	sync.Mutex
 	byCaller map[string]int
