@@ -35,6 +35,7 @@ func pushCrewTeamNote(project, kind string, revision uint64, everyone bool) {
 		return
 	}
 	crewTeamPushed.Store(key, revision)
+	crewTeamWakeSoon() // server working copies follow the same change notice as Macs
 	t, err := readCrewTeam(project)
 	if err != nil || !everyone && !t.On {
 		return
