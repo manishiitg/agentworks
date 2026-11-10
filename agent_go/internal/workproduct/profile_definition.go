@@ -98,7 +98,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 		commandsPath := path.Join(runtime.WorkspacePath, commands.CustomCommandsSubPath)
 		return agentprofiles.ToolSpec{
 			Name: "manage_custom_commands", Category: "custom_commands",
-			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every Crew starts with one card command, \"Check this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
+			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every Crew starts with one card command, \"Simplify this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{

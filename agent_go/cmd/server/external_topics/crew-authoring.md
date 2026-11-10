@@ -94,7 +94,7 @@ operation, timing and outcome, with commands, values and payloads withheld.
   delete takes `name`. Custom commands appear in the Crew's slash menu.
   `show_on_card=true` (default false) also shows the command as a button on
   each reply card; use it for only the few commands the person wants one click
-  away. Every Crew starts with one such command, "Check this change"; it can be
+  away. Every Crew starts with one such command, "Simplify this change"; it can be
   renamed, switched off or deleted and is not added back.
   Product-defined commands remain immutable. Listing needs `crews:read`;
   changes need `crews:write` and current Crew ownership. Accounts without editing access cannot change them, even if they own the Crew.
