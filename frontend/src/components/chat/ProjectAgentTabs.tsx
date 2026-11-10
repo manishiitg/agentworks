@@ -532,6 +532,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         </div>
       )
   const moreBeforePeople = chipPeople.length > 0 && !menuMode
+  const personChipList = chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
+    agents={group.agents} watching={group.watching} onPick={selectTab} help={teamState.view?.help}
+    onAskHelp={placeProject && teamState.view?.help_ask ? () => { fillMainDraft(placeProject, teamState.view?.help_ask || '') } : undefined} />)
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -573,11 +576,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       {moreBeforePeople && moreMenu}
-      {chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
-      {chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
-        agents={group.agents} watching={group.watching} onPick={selectTab} help={teamState.view?.help}
-        onAskHelp={placeProject && teamState.view?.help_ask ? () => { fillMainDraft(placeProject, teamState.view?.help_ask || '') } : undefined} />)}
+      {!menuMode && chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
+      {!menuMode && personChipList}
       </div>
+      {/* With the left menu your own agents are there; the Team stays in the header (owner, 10 Nov). */}
+      {menuMode && chipPeople.length > 0 && <div className="hidden min-w-0 items-center gap-1 md:flex">{personChipList}</div>}
       {!moreBeforePeople && moreMenu}
 
       {newTabForm}
