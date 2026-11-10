@@ -162,9 +162,6 @@ Audit logs should record sign-ins, session lifecycle events, commands, file chan
   terminal switch, persistence, resume, interruption, and approval behavior.
 - Globally installed Claude Code and Codex CLIs with thin launch/control integrations and runtime selection.
 - Streaming conversation with attachments, steering, interruption, approvals, and requests for user input.
-- Background coding tasks reuse AgentWorks' `run_in_background` lifecycle: the
-  child inherits the project guard and attached skills, the chat stays usable,
-  and completion or failure returns through the same automatic-notification path.
 - File explorer, preview/editor, and diff review inside the project folder.
 - A retained native CLI terminal with the same conversation/terminal switch as
   AgentWorks, plus command visibility subject to permissions.
