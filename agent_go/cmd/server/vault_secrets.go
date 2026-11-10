@@ -229,7 +229,12 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	}
 	githubSecrets := map[string]bool{}
 	for _, rec := range gitHubConnections(userID) {
-		githubSecrets[rec.SecretName] = true
+		if wanted[rec.SecretName] {
+			githubSecrets[rec.SecretName] = true
+		}
+	}
+	if len(githubSecrets) > 1 {
+		log.Printf("[SECRETS] multiple GitHub connections selected; none mapped to GITHUB_TOKEN")
 	}
 	taken := map[string]string{} // short name -> the full name that has it
 	for _, s := range rows {
@@ -242,7 +247,7 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		name := vaultSecretShortName(s.Name)
 		// A selected saved GitHub connection has a unique encrypted storage name,
 		// but reaches its project's shell under the standard GitHub variable.
-		if githubSecrets[s.Name] {
+		if len(githubSecrets) == 1 && githubSecrets[s.Name] {
 			name = "GITHUB_TOKEN"
 		}
 		if prior, clash := taken[name]; clash {
