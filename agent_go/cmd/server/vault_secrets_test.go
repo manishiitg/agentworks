@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,7 @@ import (
 )
 
 func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	// PLAT-856-217: hiding the Vault screen must not disable selected runtime secrets.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks")
@@ -44,7 +47,7 @@ func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
 		}
 		rows := []map[string]string{}
 		if allowed && r.Header.Get("X-CapLayer-Actor") == "alice" {
-			rows = append(rows, map[string]string{"name": "KEY"})
+			rows = append(rows, map[string]string{"name": "KEY"}, map[string]string{"name": "OTHER"})
 		}
 		json.NewEncoder(w).Encode(map[string]any{"secrets": rows})
 	}))
@@ -74,6 +77,32 @@ func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
 	}
 	if err := validateVaultSecretSelection(ctx, "bob", &names); err == nil {
 		t.Fatal("run not blocked")
+	}
+	// PLAT-746-803 / PR1938: older workflow selections can contain two saved
+	// GitHub connections. Neither may win the shared GITHUB_TOKEN alias.
+	for id, name := range map[string]string{"0123456789abcdef0123456789abcdef": "KEY", "abcdef0123456789abcdef0123456789": "OTHER"} {
+		if err := writeGitHubRecord("alice", githubAccountRecord{ID: id, Login: "fixture-account", SecretName: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := api.mergeGlobalSecretsFor(ctx, "alice", &names); len(got) != 1 || got[0].Name != "GITHUB_TOKEN" || got[0].Value != "dummy-secret" {
+		t.Fatal("single selected GitHub connection did not get the standard alias")
+	}
+	both := []string{"KEY", "OTHER"}
+	var logOutput bytes.Buffer
+	previousLog := log.Writer()
+	log.SetOutput(&logOutput)
+	got := api.mergeGlobalSecretsFor(ctx, "alice", &both)
+	log.SetOutput(previousLog)
+	values := map[string]string{}
+	for _, value := range got {
+		values[value.Name] = value.Value
+	}
+	if len(values) != 2 || values["KEY"] != "dummy-secret" || values["OTHER"] != "other-dummy" || values["GITHUB_TOKEN"] != "" {
+		t.Fatal("ambiguous GitHub credentials were aliased or lost")
+	}
+	if !strings.Contains(logOutput.String(), "multiple GitHub connections selected; none mapped to GITHUB_TOKEN") || strings.Contains(logOutput.String(), "dummy-secret") || strings.Contains(logOutput.String(), "other-dummy") {
+		t.Fatal("ambiguous account warning absent or exposed a secret")
 	}
 	allowed = false
 	if got := api.mergeGlobalSecretsFor(ctx, "alice", &names); len(got) != 0 {
