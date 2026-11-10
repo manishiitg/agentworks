@@ -362,7 +362,8 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
 	seed := func(conversation string) {
 		t.Helper()
-		if err := writeCrewTeam(team); err != nil {
+		team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+		if err := writeCrewTeamAgentFixture(team); err != nil {
 			t.Fatal(err)
 		}
 		if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
@@ -431,7 +432,9 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 			revoked := team
 			switch revocation {
 			case "only-me":
-				err = writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab}})
+				// Team visibility belongs to the server registry, not relay advertisements.
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: false}})
+				err = writeCrewTeamAgentFixture(revoked)
 			case "removed":
 				revoked.People = nil
 				err = writeCrewTeam(revoked)
