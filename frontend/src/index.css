@@ -1902,3 +1902,32 @@
   line-height: calc(20px * var(--chat-scale, 1));
 }
 .agent-inbox-prose .conversation-markdown p { margin-bottom: 0.5rem; }
+
+/* Clear Dark is a chat/terminal presentation, not a change to the sidebar or reports. */
+html[data-appearance="clear-dark"] [data-chat-find-scope] {
+  --runloop-mono: "SF Mono Terminal", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --background: 0 0% 10%;
+  --foreground: 40 10% 88%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 40 4% 65%;
+  --card: 0 0% 12%;
+  --card-foreground: 40 10% 88%;
+  --border: 0 0% 23%;
+  --input: 0 0% 14%;
+  font-family: var(--runloop-mono);
+  font-size: calc(12px * var(--chat-scale, 1));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+html[data-appearance="clear-dark"] [data-chat-find-scope] .conversation-markdown,
+html[data-appearance="clear-dark"] [data-chat-find-scope] .conversation-markdown :is(p, li, code, pre),
+html[data-appearance="clear-dark"] [data-chat-find-scope] [data-testid="transcript-user-bubble"],
+html[data-appearance="clear-dark"] [data-chat-find-scope] [data-chat-composer] {
+  font-family: var(--runloop-mono) !important;
+  font-size: calc(12px * var(--chat-scale, 1)) !important;
+  line-height: calc(20px * var(--chat-scale, 1)) !important;
+  font-weight: 400;
+}
+html[data-appearance="clear-dark"] [data-chat-find-scope] [data-testid="terminal-clear-view"] {
+  background: hsl(var(--background));
+}

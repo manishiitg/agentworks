@@ -1,3 +1,4 @@
+import AppearanceControl from '../../components/topbar/AppearanceControl'
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
 import NotifyBell from '../../components/topbar/NotifyBell'
 import { crewMenuTarget, crewProjectMenuItems } from './crewProjectMenu'
@@ -96,6 +97,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
   })
 
   return <div data-tour="work-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
+    <AppearanceControl />
     <TooltipProvider delayDuration={150}>
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
       {showActivityMonitor && <NotifyBell />}
