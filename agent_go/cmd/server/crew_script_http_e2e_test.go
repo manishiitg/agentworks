@@ -386,7 +386,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			if err := os.Remove(padding); err != nil {
 				t.Fatal(err)
 			}
-			if oversized.StatusCode != 200 || !strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), "768 KiB") {
+			if oversized.StatusCode != 200 || !strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), "400 KiB") {
 				t.Fatalf("large outline broke the page request: HTTP%d %s", oversized.StatusCode, large)
 			}
 		}
