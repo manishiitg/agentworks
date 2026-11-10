@@ -195,6 +195,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       : <Fragment key={key}>{row()}</Fragment>
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
+  const showingAll = connections.length > 1 && locations.length === connections.length
   const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)))
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
@@ -206,15 +207,16 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         {connections.map(connection => {
           const selected = selectedLocations.includes(connection.id)
           const name = connection.id === 'local' ? 'Mac' : connection.name
-          return <button key={connection.id} type="button" aria-pressed={selected} title={connection.id === 'local' ? 'On your Mac' : connection.name}
-            onClick={() => setSelectedLocations(previous => previous.includes(connection.id)
-              ? previous.length > 1 ? previous.filter(id => id !== connection.id) : previous
-              : [...previous, connection.id])}
-            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+          // One network at a time, or All at the end (owner, 10 Nov).
+          return <button key={connection.id} type="button" aria-pressed={selected && !showingAll} title={connection.id === 'local' ? 'On your Mac' : connection.name}
+            onClick={() => setSelectedLocations([connection.id])}
+            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected && !showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
             {connection.id === 'local' ? <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ServerIdentityIcon connectionId={connection.id} hidden className="h-3.5 w-3.5 shrink-0" />}
             <span className="max-w-28 truncate">{name}</span>
           </button>
         })}
+        <button type="button" aria-pressed={showingAll} title="Crews from every network" onClick={() => setSelectedLocations(connections.map(connection => connection.id))}
+          className={`flex h-9 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>All</button>
       </div>}
       {unpinnedRows.filter(project => project.personal_agent).map(project => renderProject(project))}
       <div className="space-y-1"><ProjectList projects={unpinnedRows} render={project => renderProject(project)} /></div>
