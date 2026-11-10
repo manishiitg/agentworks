@@ -41,18 +41,22 @@ type Commit struct {
 
 // Group is one repository (or the non-Git Crew files) in a reply's changes.
 type Group struct {
-	WorkingTree string       `json:"working_tree,omitempty"`
-	CheckoutID  string       `json:"checkout_id,omitempty"`
-	Kind        string       `json:"kind"` // repo | crew_files
-	Root        string       `json:"root"` // Crew-relative checkout folder; "" for the Crew root
-	Name        string       `json:"name"`
-	Branch      string       `json:"branch,omitempty"`
-	NewCheckout bool         `json:"new_checkout"`
-	GitHubRepo  string       `json:"github_repo,omitempty"` // owner/name when origin is on GitHub
-	Files       []Change     `json:"files"`
-	TotalFiles  int          `json:"total_files"`
-	MoreCount   int          `json:"more_count"`
-	PR          *PullRequest `json:"pr,omitempty"`
+	WorkingTree string `json:"working_tree,omitempty"`
+	CheckoutID  string `json:"checkout_id,omitempty"`
+	Kind        string `json:"kind"` // repo | crew_files
+	Root        string `json:"root"` // Crew-relative checkout folder; "" for the Crew root
+	Name        string `json:"name"`
+	Branch      string `json:"branch,omitempty"`
+	NewCheckout bool   `json:"new_checkout"`
+	GitHubRepo  string `json:"github_repo,omitempty"` // owner/name when origin is on GitHub
+	// Repository is the repository this checkout belongs to (its main
+	// checkout's folder name); Worktree marks a linked worktree of it.
+	Repository string       `json:"repository,omitempty"`
+	Worktree   bool         `json:"worktree,omitempty"`
+	Files      []Change     `json:"files"`
+	TotalFiles int          `json:"total_files"`
+	MoreCount  int          `json:"more_count"`
+	PR         *PullRequest `json:"pr,omitempty"`
 	// NextStep is the one Git step the card offers: share_pr, update_pr,
 	// get_latest or none. Set by the caller with NextStep once PR is known.
 	NextStep string `json:"next_step,omitempty"`
@@ -235,6 +239,10 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	if out, err := gitIn(ctx, root, abs, "config", "--get", "remote.origin.url").Output(); err == nil {
 		g.GitHubRepo = GitHubRepo(string(out))
 	}
+	if gitDir, common, ok := safegit.CheckoutInside(root, abs); ok {
+		g.Worktree = filepath.Clean(gitDir) != filepath.Clean(common)
+		g.Repository = repositoryName(common)
+	}
 	files, ok := workingTreeEdits(ctx, root, abs, dir, allow)
 	g.dirty = ok && len(files) > 0
 	if ok {
@@ -248,6 +256,16 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	// The card lists this reply's own changes, as saved.
 	g.Files = changes
 	return capGroup(g)
+}
+
+// repositoryName is the folder of a repository's main checkout ("app" for
+// app/.git), or a bare repository's name without ".git".
+func repositoryName(common string) string {
+	common = filepath.Clean(common)
+	if filepath.Base(common) == ".git" {
+		return filepath.Base(filepath.Dir(common))
+	}
+	return strings.TrimSuffix(filepath.Base(common), ".git")
 }
 
 // workingTreeEdits lists files differing from HEAD in one checkout.

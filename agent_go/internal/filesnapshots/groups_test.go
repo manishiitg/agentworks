@@ -184,8 +184,15 @@ func TestCardActionsFollowViewerAndPullRequest(t *testing.T) {
 	if actions[3].Label != "Update the pull request" || !strings.HasPrefix(actions[3].Prompt, "Update PR #305 in o/r with this reply's work on branch fix-tts.") {
 		t.Fatalf("next step: %+v", actions[3])
 	}
-	if got := actions[4].Prompt; got != "Look over the files.\nContext: this reply changed these files: app/tts.py in app on branch fix-tts; PR https://github.com/o/r/pull/305" {
+	if got := actions[4].Prompt; got != "Look over the files.\nContext: this reply changed these files.\n- Folder app, branch fix-tts, PR https://github.com/o/r/pull/305: tts.py" {
 		t.Fatalf("card command prompt: %q", got)
+	}
+	// Files used to be listed together under the first checkout's branch; each
+	// changed place now keeps its own folder, repository and branch.
+	worktree := Group{Kind: "repo", Root: "app-fix", Name: "app-fix", Branch: "ui/x", Repository: "app", Worktree: true, Files: []Change{{Path: "app-fix/ui.tsx", Status: "M"}}}
+	loose := Group{Kind: "crew_files", Files: []Change{{Path: "notes.md", Status: "A"}}}
+	if got := cardContext([]Group{group, worktree, loose}); got != "Context: this reply changed files in 3 places.\n- Folder app, branch fix-tts, PR https://github.com/o/r/pull/305: tts.py\n- Folder app-fix (worktree of app), branch ui/x: ui.tsx\n- Files outside Git: notes.md" {
+		t.Fatalf("multi-checkout context: %q", got)
 	}
 	group.PR.Checks, group.PR.FailingChecks = "failing", []string{"build", "lint"}
 	actions = CardActions([]Group{group}, true, nil)
