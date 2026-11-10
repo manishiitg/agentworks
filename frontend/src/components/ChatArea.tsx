@@ -799,7 +799,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // How long a chat/terminal switch takes in this browser, from the click to the first paint of the new view, goes to the server
   // log (view_switch) so a slow switch can be read with its numbers instead of guessed at.
   useEffect(() => {
-    const { startedAt, wanted, admittedAt } = readViewSwitch()
+    const { startedAt, wanted, admittedAt, activatedBy } = readViewSwitch()
     const sessionId = activeTab?.sessionId
     if (!startedAt || !sessionId) return
     const tabId = activeTab?.tabId ?? ''
@@ -809,7 +809,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const asked = !wanted || landed === wanted
     if (asked) clearViewSwitch()
     const status = wanted ? `${asked ? 'as_asked' : 'other_first'}${admittedAt ? `:admit${Math.round(admittedAt - startedAt)}` : ''}` : undefined
-    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt, status)))
+    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt, status, wanted ? activatedBy : undefined)))
     return () => window.cancelAnimationFrame(frame)
   }, [showMainTerminal, activeTab?.sessionId, activeTab?.tabId])
 
