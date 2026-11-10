@@ -171,9 +171,15 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 	for project := range sock.twins {
 		publishCrewPanelChanged(project)
 	}
+	previous := sock.twins
 	sock.twins = twins
 	for project := range twins {
 		publishCrewPanelChanged(project)
+		// A Mac that starts serving a Team's Crew is online for its people, and is told who else is (crew_team_push.go).
+		if _, had := previous[project]; !had {
+			crewTeamBusySent.Delete(project + "/" + sock.owner)
+			go pushCrewTeamBusy(project)
+		}
 	}
 	sock.mu.Unlock()
 }
@@ -190,8 +196,9 @@ func (sock *crewMacSocket) unregister() {
 	for project := range sock.twins {
 		crewMacLastHeard.Store(project, sock.lastSeen)
 		// A replaced socket's chats were cleared when its replacement arrived, which reports them afresh.
-		if current && crewRelayStreams.clearRunning(sock.owner, project) {
-			go pushCrewTeamBusy(project)
+		if current {
+			crewRelayStreams.clearRunning(sock.owner, project)
+			go pushCrewTeamBusy(project) // this person's Mac is offline for the Team now
 		}
 		publishCrewPanelChanged(project)
 	}
