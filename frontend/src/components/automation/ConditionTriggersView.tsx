@@ -89,6 +89,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     {triggers.length > 0 && <Box>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; const body = <>
 
       <p className="break-all text-xs text-muted-foreground">{t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.login}` : t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
+      {t.changed_by && <p className="text-xs text-muted-foreground">{t.changed_by}</p>}
       {t.email_source === 'personal_gmail' && <p className="text-xs text-muted-foreground">Your mailbox stays private. Only the content selected by this Watcher is sent to the Crew.</p>}
       {t.event_path && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Event connection</summary>
         <p className="mt-2">Events wake the saved check. It reads the source to find matches.</p>

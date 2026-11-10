@@ -107,7 +107,10 @@ func projectScheduleAgentName(job productScheduleJob, chatKey string) string {
 // automationActor is the person making this change, with the name they have now, for the automation's record. Nil
 // when the change has no signed-in person (the server's own bookkeeping), so nothing is attributed to nobody.
 func automationActor(ctx context.Context) *projectactions.Actor {
-	id := strings.TrimSpace(GetUserIDFromContext(ctx))
+	id, _ := ctx.Value(automationActorKey{}).(string)
+	if id = strings.TrimSpace(id); id == "" {
+		id = strings.TrimSpace(GetUserIDFromContext(ctx))
+	}
 	if id == "" {
 		return nil
 	}
@@ -129,4 +132,12 @@ func automationChangedByLine(created, updated *projectactions.Actor) string {
 		line += ", " + at.UTC().Format("2 Jan 2006")
 	}
 	return line
+}
+
+type automationActorKey struct{}
+
+// withAutomationActor names the person for a change that is saved under another identity (a Team member's Watcher is
+// saved as the Crew owner), so the record says who did it.
+func withAutomationActor(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, automationActorKey{}, userID)
 }
