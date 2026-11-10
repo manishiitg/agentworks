@@ -702,6 +702,9 @@ function uploadFrames(pieces: { id: string; data: Uint8Array }[]): Uint8Array {
   return frames
 }
 
+// One in-flight chat-context read per chat, shared by everyone asking while it is on its way.
+const chatContextReads = new Map<string, Promise<ChatContextView>>()
+
 export const agentApi = {
   startCrewStorageCheck: async (): Promise<{ operation_id: string }> => {
     const response = await api.post('/api/admin/crew-storage', { action: 'storage_preview' })
@@ -1226,9 +1229,16 @@ export const agentApi = {
   },
 
   /** This chat's context options as the server decides them (PLAT-872-71); only the chat's owner gets them. */
-  getChatContext: async (sessionId: string): Promise<ChatContextView> => {
-    const response = await api.get('/api/chat-context', { params: { session_id: sessionId } })
-    return response.data.context
+  getChatContext: (sessionId: string): Promise<ChatContextView> => {
+    // Several parts of one chat (usage chip, model menu, terminal toggle, context menu) ask at the same moment;
+    // they share the request already on its way instead of sending 5-6 identical ones (PLAT-746-840).
+    const pending = chatContextReads.get(sessionId)
+    if (pending) return pending
+    const read = api.get('/api/chat-context', { params: { session_id: sessionId } })
+      .then(response => response.data.context as ChatContextView)
+      .finally(() => chatContextReads.delete(sessionId))
+    chatContextReads.set(sessionId, read)
+    return read
   },
 
   /** Changes this chat's context switches or runs compact/fresh; answers with the new view and a message to show. */
