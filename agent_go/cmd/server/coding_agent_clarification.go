@@ -23,17 +23,18 @@ import (
 const clarificationPromptPrefix = "clarification:"
 
 type pendingCodingAgentClarification struct {
-	sessionID   string
-	provider    string
-	promptID    string
-	questions   []unifiedevents.CodingAgentQuestionPrompt
-	answers     chan []unifiedevents.CodingAgentQuestionAnswer
-	ctx         context.Context
-	askedAt     time.Time
-	ask         *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
-	turnID      string
-	askedTurn   string // the turn that asked, as clarificationTurnToken saw it
-	nativeAsync bool   // transcript question; answer continues the admitted chat instead of a waiting tool
+	sessionID      string
+	provider       string
+	promptID       string
+	questions      []unifiedevents.CodingAgentQuestionPrompt
+	answers        chan []unifiedevents.CodingAgentQuestionAnswer
+	ctx            context.Context
+	askedAt        time.Time
+	ask            *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
+	turnID         string
+	askedTurn      string // the turn that asked, as clarificationTurnToken saw it
+	nativeAsync    bool   // transcript question; answer continues the admitted chat instead of a waiting tool
+	closureMessage string // Optional server explanation shown when a card closes.
 }
 
 func codingAgentClarificationSchema() map[string]interface{} {
@@ -142,6 +143,8 @@ func (api *StreamingAPI) emitCodingAgentClarification(p *pendingCodingAgentClari
 	}
 	if kind == "requested" {
 		data.Questions = p.questions
+	} else if p.closureMessage != "" {
+		data.Metadata["message"] = p.closureMessage
 	}
 	return api.eventStore.AddEventChecked(p.sessionID, events.Event{
 		ID: p.promptID + ":" + kind, Type: "coding_agent_question", Timestamp: now, SessionID: p.sessionID,
