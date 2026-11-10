@@ -318,7 +318,7 @@ func fallbackProviderModelIDs(provider string) []string {
 	}
 	seen := map[string]bool{}
 	var ids []string
-	for _, ref := range []llm.CodingAgentTierModelRef{defaults.Builder, defaults.High, defaults.Medium, defaults.Low, defaults.Pulse} {
+	for _, ref := range []llm.CodingAgentTierModelRef{defaults.Main, defaults.High, defaults.Medium, defaults.Low} {
 		if id := strings.TrimSpace(ref.ModelID); id != "" && !seen[id] {
 			seen[id] = true
 			ids = append(ids, id)
