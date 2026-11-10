@@ -63,7 +63,7 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // activity: "running" while a turn is going in the agent now, as the server reads it (their Mac's relayed events, or its own queue).
   activity?: 'running' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
-  uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
+  uses: { name: string; kind: string; personal?: boolean }[]; uses_note?: string; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
   // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
   // agent; on someone else's, chat_private_line replaces the chat. watch_key is its
   // tab's key where that differs.
