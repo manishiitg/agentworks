@@ -8,7 +8,7 @@ import { currentProductRoute, productRoutePath } from './productRoutes'
 export function openAgentTab(tabId: string) {
   const state = useChatStore.getState()
   const tab = state.chatTabs[tabId]
-  if (tab && state.activeTabId !== tabId) markViewSwitchStart()
+  if (tab && state.activeTabId !== tabId) markViewSwitchStart(tab.metadata?.agentProfileConversationKey)
   const projectId = tab?.metadata?.agentProfileProjectId
   const key = tab?.metadata?.agentProfileConversationKey
   if (!tab || tab.metadata?.agentProfileId !== 'work' || !projectId || !key) return activateTab(tabId)

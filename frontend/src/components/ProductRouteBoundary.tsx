@@ -1,4 +1,4 @@
-import { markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
+import { markViewSwitchAdmitted, markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 import { workspaceSettingsPage } from '../utils/workspaceSettingsRoutes'
 import { syncWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -15,6 +15,7 @@ import { workspaceStateApi } from '../services/workspaceState'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { installWorkspaceStateFlush, queueWorkspaceState } from '../hooks/useWorkspaceReturn'
 import { restoreWorkspaceChat } from '../utils/restoreWorkspaceChat'
+import { workConversationKey } from '../utils/workConversationKey'
 
 type Status = 'loading' | 'ready' | 'disabled' | 'unavailable' | 'error'
 export function ProductRouteBoundary({ children, account, allowedProducts }: { children: ReactNode; account?: string; allowedProducts?: string[] | null }) {
@@ -35,7 +36,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       setAttempt(value => value + 1)
       const next = window.location.pathname + window.location.search
       const nextRoute = parseProductRoute(next)
-      if (nextRoute?.surface === 'work' && nextRoute.agent) markViewSwitchStart()
+      if (nextRoute?.surface === 'work' && nextRoute.agent && nextRoute.id) markViewSwitchStart(workConversationKey(nextRoute.id, nextRoute.agent))
       const settings = workspaceSettingsPage()
       syncWorkspaceSettings(settings)
       setLocation(next)
@@ -116,6 +117,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         const activate = await resolveProductRoute(destination, controller.signal)
         if (controller.signal.aborted) return
         activate()
+        markViewSwitchAdmitted()
         if (saved && !destination.agent) {
           await restoreWorkspaceChat(saved, controller.signal).catch(() => {
             if (!controller.signal.aborted) useWorkspaceReturnStore.setState({ note: 'Your workspace opened, but its saved chat could not be restored.' })
