@@ -1,11 +1,7 @@
-import { AgentMark } from '../chat/AgentIcon'
-import { workConversationAgent } from '../../utils/workConversationKey'
-import { useAgentMenuState } from '../chat/agentMenuState'
-import type { ActiveSessionInfo } from '../../services/api-types'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
-import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkPolling, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
@@ -14,19 +10,13 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
-import { openAgentTab } from '../../utils/openAgentTab'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
 import { ChevronRight, Laptop } from 'lucide-react'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
-import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
-import type { AgentProfileSideChat } from '../../services/api-types'
-import { openAppProduct } from '../../utils/appNavigation'
-import { productRoutePath } from '../../utils/productRoutes'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
-import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, type MenuFilter } from './MenuGroups'
 
 
@@ -155,7 +145,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
         else open(connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
       }} />
     return crew
-      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
+      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} >{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
@@ -212,71 +202,14 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   </div>
 }
 
-/** Each expanded Crew loads its own admitted chats, including on other connections. */
-function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string) => ReactNode }) {
-  const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'crew', connectionId, projectId)
-  const saved = useSidebarExpansionStore(state => state.expanded[key])
-  const toggle = useSidebarExpansionStore(state => state.toggle)
-  const expanded = saved ?? initialOpen
-  const [loadedChats, setLoadedChats] = useState<{ identity: number; chats: AgentProfileSideChat[] }>({ identity: captureChatIdentity(), chats: [] })
-  const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
+/** A Crew row; the open Crew lists its agents under it (owner, 10 Nov: always, no caret). */
+function ExpandableCrew({ projectId, connectionId, selected, children }: { projectId: string; connectionId: string; selected: boolean; children: (expanded: boolean, onToggle: undefined, activityLabel?: string) => ReactNode }) {
   const liveProjectId = useCrewAgentsStore(state => state.projectId)
-  const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
   // The active-session cache is already refreshed for the current connection, including outside the desktop app.
-  // Keep observing it while collapsed; no need to open/load the project's chat list to know it is working.
   const localSessions = useChatStore(state => state.activeSessionsCache)
   const sessions = (connectionId === getRawActiveWorkspaceId() ? localSessions : activity || [])
     .filter(session => session.crew_project_id === projectId)
-  const running = sessions.some(hasActiveSessionWork)
-  const activityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
-  // This network's chat changes arrive as live notices; another network's list is checked every minute.
-  const here = connectionId === getRawActiveWorkspaceId()
-  const [reload, setReload] = useState(0)
-  useLiveRefetch(() => setReload(value => value + 1), { kinds: ['sessions'], fallbackMs: 60_000, minIntervalMs: 5_000, enabled: expanded && here })
-  useEffect(() => {
-    if (!expanded) return
-    let cancelled = false
-    const identity = captureChatIdentity()
-    const load = async () => {
-      try {
-        const current = connectionId === getRawActiveWorkspaceId()
-        let result: AgentProfileSideChat[]
-        if (current) result = await agentApi.listAgentProfileSideChats('work', projectId, true)
-        else {
-          const base = connectionId === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${connectionId}`
-          const response = await fetch(`${base}/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(projectId)}&with_main=1`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15000) })
-          if (!response.ok) throw new Error('Chats unavailable')
-          result = await response.json()
-        }
-        if (!cancelled && isChatIdentityCurrent(identity)) { setLoadedChats({ identity, chats: Array.isArray(result) ? result : [] }); setError(false) }
-      } catch { if (!cancelled && isChatIdentityCurrent(identity)) setError(true) }
-    }
-    void load()
-    const timer = here ? undefined : window.setInterval(() => { if (!document.hidden) void load() }, 60_000)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [expanded, projectId, connectionId, here, reload])
-  const open = (chat: AgentProfileSideChat) => {
-    const agent = chat.is_main ? undefined : workConversationAgent(chat.conversation_key)
-    const route = { surface: 'work' as const, id: projectId, agent }
-    if (connectionId === getRawActiveWorkspaceId()) {
-      const existing = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === chat.session_id && tab.metadata?.agentProfileProjectId === projectId)
-      if (existing) openAgentTab(existing.tabId)
-      else openAppProduct(route)
-    }
-    else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
-    window.dispatchEvent(new Event('close-app-sidebar'))
-  }
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
-      const session = sessions.find(item => item.session_id === chat.session_id)
-      return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
-    })}</div>)}</>
-}
-
-/** Inactive project rows use the same marks as the open Crew, including unread completions. */
-function ProjectAgentMark({ projectId, sessionId, session, local }: { projectId: string; sessionId: string; session?: ActiveSessionInfo; local: boolean }) {
-  const tabId = useChatStore(state => local ? Object.values(state.chatTabs).find(tab => tab.sessionId === sessionId && tab.metadata?.agentProfileProjectId === projectId)?.tabId : undefined)
-  const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, undefined, local ? { sessionId } : undefined)
-  const remoteState = runtimeNeedsUserInput(session) ? 'waiting' : session && hasActiveSessionWork(session) ? 'running' : null
-  return <AgentMark state={local ? state : remoteState} />
+  const activityLabel = sessions.some(hasActiveSessionWork) ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
+  return <>{children(selected, undefined, activityLabel)}{selected && liveProjectId === projectId && <SidebarCrewAgents projectId={projectId} />}</>
 }
