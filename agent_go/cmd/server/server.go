@@ -9723,7 +9723,7 @@ func resolveDelegationTierConfig(frontendConfig *virtualtools.DelegationTierConf
 				SchemaVersion: delegationTierConfigSchemaVersion,
 				Mode:          "provider_profile",
 				Provider:      strings.TrimSpace(frontendConfig.Provider),
-				Main:          toTierModel(defaults.Builder),
+				Main:          toTierModel(defaults.Main),
 				High:          toTierModel(defaults.High),
 				Medium:        toTierModel(defaults.Medium),
 				Low:           toTierModel(defaults.Low),

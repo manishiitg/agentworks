@@ -121,7 +121,7 @@ func TestResolveProviderProfileConfigUsesBuilderDefaults(t *testing.T) {
 				got  *AgentLLMConfig
 				want llmproviders.CodingAgentTierModelRef
 			}{
-				{builder, expected.Builder}, {tiers.Tier1, expected.High}, {tiers.Tier2, expected.Medium}, {tiers.Tier3, expected.Low},
+				{builder, expected.Main}, {tiers.Tier1, expected.High}, {tiers.Tier2, expected.Medium}, {tiers.Tier3, expected.Low},
 			} {
 				if pair.got == nil || pair.got.Provider != pair.want.Provider || pair.got.ModelID != pair.want.ModelID || !reflect.DeepEqual(pair.got.Options, pair.want.Options) || pair.got.ConnectionID != config.ConnectionID {
 					t.Fatalf("workflow role %+v does not match provider default %+v and selected account", pair.got, pair.want)

@@ -1248,7 +1248,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       // Show the Builder model from workflow manifest (source of truth for backend).
       const builderLLM = manifestLLMConfig?.builder_llm ?? (() => {
         if (manifestLLMConfig?.mode !== 'provider_profile' || !manifestLLMConfig.provider) return null
-        return providerManifest.find(provider => provider.id === manifestLLMConfig.provider)?.default_tier_models?.builder ?? null
+        return providerManifest.find(provider => provider.id === manifestLLMConfig.provider)?.default_tier_models?.main ?? null
       })()
       if (builderLLM?.provider && builderLLM?.model_id) {
         const found = availableLLMs.find(llm =>
@@ -1266,7 +1266,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const preset = workflowPhasePreset
       const presetBuilderLLM = preset?.llmConfig?.builder_llm ?? (() => {
         const profileProvider = preset?.llmConfig?.mode === 'provider_profile' ? preset.llmConfig.provider : undefined
-        return providerManifest.find(provider => provider.id === profileProvider)?.default_tier_models?.builder ?? null
+        return providerManifest.find(provider => provider.id === profileProvider)?.default_tier_models?.main ?? null
       })()
       if (presetBuilderLLM?.provider && presetBuilderLLM?.model_id) {
         const found = availableLLMs.find(llm =>

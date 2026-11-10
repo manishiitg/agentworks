@@ -82,6 +82,7 @@ import { activateTab } from '../utils/activateTab'
 import { TeamAgentWatchingStatus } from './chat/TeamAgentWatchingStatus'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
+import { coalesceNativeHelperActivity } from '../utils/nativeHelperActivity'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, takeViewSwitchStart } from '../utils/chatDeliveryTelemetry'
@@ -921,7 +922,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Durable chat history is deliberately fetched in bounded tail-first pages.
   // Keeping older pages locally avoids polluting the live event working set,
   // while the stable server cursor prevents loading the same page twice.
-  const transcriptEvents = useMemo(() => (
+  const transcriptEvents = useMemo(() => coalesceNativeHelperActivity(
     olderHistory.events.length > 0
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents

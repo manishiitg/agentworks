@@ -26,7 +26,7 @@ func WithPlatformCodingProviders(profile Profile) Profile {
 		}
 		option, overridden := overrides[provider]
 		if !overridden {
-			option = ProviderOption{ID: provider, Provider: provider, Label: contract.DisplayName, ModelID: defaults.Builder.ModelID, Options: defaults.Builder.Options}
+			option = ProviderOption{ID: provider, Provider: provider, Label: contract.DisplayName, ModelID: defaults.Main.ModelID, Options: defaults.Main.Options}
 		}
 		option.Models = nil
 		fallbackEfforts := option.ReasoningEfforts
@@ -45,7 +45,7 @@ func WithPlatformCodingProviders(profile Profile) Profile {
 		}
 		if len(option.ReasoningEfforts) == 0 {
 			option.ReasoningEfforts = fallbackEfforts
-			for _, tier := range []llm.CodingAgentTierModelRef{defaults.Low, defaults.Medium, defaults.High, defaults.Builder, defaults.Pulse} {
+			for _, tier := range []llm.CodingAgentTierModelRef{defaults.Low, defaults.Medium, defaults.High, defaults.Main} {
 				effort, _ := tier.Options["reasoning_effort"].(string)
 				if effort != "" && !seen[effort] {
 					seen[effort] = true
