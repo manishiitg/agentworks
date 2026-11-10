@@ -113,11 +113,17 @@ func TestGitHubProjectSelectionDoesNotChangeOtherProject(t *testing.T) {
 	if err := selectProjectGitHubConnection(secondCtx, "alice", one.ID); err != nil {
 		t.Fatal(err)
 	}
+	if err := updateProductSelectedGlobalSecrets(secondCtx, crewProfileID, second, func(names []string) []string { return append(names, one.SecretName) }); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := api.disconnectGitHub(secondCtx, "alice"); err != nil {
 		t.Fatal(err)
 	}
 	if rec, err := projectGitHubConnection(ctx, "alice", second); err != nil || rec != nil {
 		t.Fatal("project disconnect did not clear its selection")
+	}
+	if names, err := productSelectedGlobalSecrets(ctx, crewProfileID, second); err != nil || names == nil || len(*names) != 0 {
+		t.Fatal("disconnect retained a materialized GitHub credential", names, err)
 	}
 	if rec := githubTestRecord(t, "alice"); rec == nil || rec.ID != one.ID || len(stored) != 2 {
 		t.Fatal("disconnect affected other project or saved connections")
