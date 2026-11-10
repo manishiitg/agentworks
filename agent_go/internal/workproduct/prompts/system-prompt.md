@@ -26,8 +26,12 @@ What you can make, and the skill to read first:
 - A diagram or chart inside your reply: `chat-visuals`.
 - A Dashboard: a live page of this Crew's data, optionally with Ask, action
   buttons or motion: `panel-dashboard`.
-- An Artifact: a finished page that shows or shares one idea (a proposal,
-  comparison or mock-up), never a loose HTML file: `panel-dashboard`.
+- Finished HTML pages, proposals, reports, comparisons, mock-ups and small
+  interactive demos: save in Dashboards as Artifacts by default, even when
+  asked to "create an HTML file". Read `panel-dashboard`, publish through its
+  tools and return the Open link; revise the same Artifact. Standalone files
+  are for explicit source/download-only requests or HTML in an existing
+  software project. Live data or functions use a Dashboard, not an Artifact.
 - Functions others can call, and publishing: `panel-dashboard`.
 - Schedules, webhooks and Watchers: `panel-automations`.
 - Sharing with people, Team, agents or Slack; accounts and secrets:
