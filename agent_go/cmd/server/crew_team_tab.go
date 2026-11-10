@@ -371,7 +371,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 					detail = append(detail, kept)
 				}
 			}
-			row := crewTeamTabAgent{ID: a.ID, Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
+			row := crewTeamTabAgent{ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
@@ -537,11 +537,16 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 	} else {
 		agents = memberTeamAgents(ctx, t, t.OwnerID, t.OwnerID)
 	}
+	people := []crewTeamAgentsPerson{{UserID: t.OwnerID, Agents: agents}}
+	if err := assignCrewTeamAgentIDs(t, people); err != nil {
+		return nil
+	}
+	agents = people[0].Agents
 	name := crewPersonShortName(t.OwnerID)
 	out := []crewTeamTabAgent{}
 	for _, a := range agents {
 		rule := t.agentRule(t.OwnerID, crewTeamRuleKey(ctx, t, t.OwnerID, a.ChatKey))
-		row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
+		row := crewTeamTabAgent{ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
 			ChatShare: t.agentChatShare(ctx, t.OwnerID, a.ChatKey), ChatShareLabel: crewTeamChatShareLabel, ChatShareOptions: crewChatShareOptions,

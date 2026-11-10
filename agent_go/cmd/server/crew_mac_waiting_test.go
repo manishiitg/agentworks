@@ -89,8 +89,8 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	// Main off (owner, 6 Nov): a message to the Crew itself reaches the first shared agent, not an unshared Main. A key
 	// naming Main stays Main, and a Main public on AgentBridge is still shared.
 	mainOff := team
-	mainOff.AgentChoices = map[string]map[string]bool{"owner": {macMainTab: false}}
-	if err := writeCrewTeam(mainOff); err != nil {
+	mainOff.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: false}})
+	if err := writeCrewTeamAgentFixture(mainOff); err != nil {
 		t.Fatal(err)
 	}
 	withHelper := []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}, {Tab: "helper01", Name: "Helper", Audience: "team"}}

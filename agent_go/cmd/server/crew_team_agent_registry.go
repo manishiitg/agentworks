@@ -20,74 +20,137 @@ const crewTeamAgentIDPrefix = "team-agent-"
 // Team identity is independent of the chat binding and of where the agent runs.
 // Native keys remain transport details, never the public Team message address.
 type crewTeamRegisteredAgent struct {
-	ID      string `json:"id"`
-	OwnerID string `json:"owner_id"`
-	Tab     string `json:"tab"`
+	ID      string            `json:"id"`
+	OwnerID string            `json:"owner_id"`
+	Tab     string            `json:"tab"`
+	ChatKey string            `json:"chat_key"`
+	Name    string            `json:"name"`
+	Purpose string            `json:"purpose,omitempty"`
+	Place   string            `json:"place"`
+	InTeam  bool              `json:"in_team"`
+	Rule    crewTeamAgentRule `json:"rule"`
 }
 
 var crewTeamAgentRegistryLocks sync.Map
 
-// assignCrewTeamAgentIDs is server-owned. Only rows already admitted by the
-// Team list receive an identity. A stale saved identity grants no access: every
-// delivery must find it in the current Team list again.
+func crewTeamRecordMutex(dir string) *sync.Mutex {
+	v, _ := crewTeamAgentRegistryLocks.LoadOrStore(dir, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
+// Team people, agent identities and agent settings live in the same record.
+// Native agent discovery fills metadata; only an agent's person changes its rule.
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	dir, err := crewTeamDir(t.ProjectID)
 	if err != nil {
 		return err
 	}
-	v, _ := crewTeamAgentRegistryLocks.LoadOrStore(dir, &sync.Mutex{})
-	mu := v.(*sync.Mutex)
+	mu := crewTeamRecordMutex(dir)
 	mu.Lock()
 	defer mu.Unlock()
-	filename := filepath.Join(dir, "agent-identities.json")
-	identities := map[string]crewTeamRegisteredAgent{}
+	filename := filepath.Join(dir, "team.json")
+	current := t
+	current.RegistryVersion = 1
 	raw, err := os.ReadFile(filename)
 	if err == nil {
-		if err = json.Unmarshal(raw, &identities); err != nil || identities == nil {
-			return fmt.Errorf("Team agent registry is unavailable")
+		current = crewTeam{}
+		if err = json.Unmarshal(raw, &current); err != nil || current.RegistryVersion != 1 || current.ProjectID != t.ProjectID || current.OwnerID != t.OwnerID || t.On && !current.On {
+			return fmt.Errorf("Team registry is unavailable")
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	before, err := json.Marshal(identities)
+	if current.Agents == nil {
+		current.Agents = map[string]crewTeamRegisteredAgent{}
+	}
+	before, err := json.Marshal(current.Agents)
 	if err != nil {
 		return err
 	}
-	seen := map[string]bool{}
-	for key, identity := range identities {
-		if identity.OwnerID == "" || identity.Tab == "" || key != identity.OwnerID+"/"+identity.Tab || seen[identity.ID] {
-			return fmt.Errorf("Team agent registry is inconsistent")
+	bySource := map[string]string{}
+	for id, a := range current.Agents {
+		source := a.OwnerID + "/" + a.Tab
+		if a.OwnerID == "" || a.Tab == "" || id != a.ID || bySource[source] != "" {
+			return fmt.Errorf("Team registry is inconsistent")
 		}
-		if _, err := uuid.Parse(strings.TrimPrefix(identity.ID, crewTeamAgentIDPrefix)); err != nil || !strings.HasPrefix(identity.ID, crewTeamAgentIDPrefix) {
-			return fmt.Errorf("Team agent registry identity is invalid")
+		if _, err := uuid.Parse(strings.TrimPrefix(id, crewTeamAgentIDPrefix)); err != nil || !strings.HasPrefix(id, crewTeamAgentIDPrefix) {
+			return fmt.Errorf("Team agent identity is invalid")
 		}
-		seen[identity.ID] = true
+		bySource[source] = id
 	}
 	for i := range people {
+		if !current.member(people[i].UserID) {
+			people[i].Agents = nil
+			continue
+		}
 		for j := range people[i].Agents {
 			a := &people[i].Agents[j]
 			tab := a.Tab
 			if crewTeamMainAgent(t, people[i].UserID, a.ChatKey) || tab == macMainTab {
 				tab = macMainTab
 			}
-			key := people[i].UserID + "/" + tab
-			identity, ok := identities[key]
+			source := people[i].UserID + "/" + tab
+			id := bySource[source]
+			record, ok := current.Agents[id]
 			if !ok {
-				identity = crewTeamRegisteredAgent{ID: crewTeamAgentIDPrefix + uuid.NewString(), OwnerID: people[i].UserID, Tab: tab}
-				identities[key] = identity
+				id = crewTeamAgentIDPrefix + uuid.NewString()
+				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: true}
+				bySource[source] = id
 			}
-			a.ID = identity.ID
-			a.Address = crewTeamAgentAddress(t.ProjectID, identity.ID)
+			record.ChatKey, record.Name, record.Purpose, record.Place = a.ChatKey, a.Name, a.Purpose, a.Place
+			current.Agents[id] = record
+			a.ID, a.InTeam, a.Address = id, record.InTeam, crewTeamAgentAddress(t.ProjectID, id)
 		}
 	}
-	after, err := json.Marshal(identities)
+	after, err := json.Marshal(current.Agents)
 	if err != nil || bytes.Equal(before, after) {
 		return err
 	}
 	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
 		return err
 	}
-	return fsutil.WriteJSONAtomic(filename, identities, 0600)
+	return fsutil.WriteJSONAtomic(filename, current, 0600)
+}
+
+// Native keys are accepted only inside the transport/discovery adapter. Team
+// controls and addresses use IDs; ownership is checked even for an exact ID.
+func (t crewTeam) registeredAgent(person, key string) (crewTeamRegisteredAgent, bool) {
+	if a, ok := t.Agents[key]; ok {
+		return a, a.OwnerID == person
+	}
+	for _, a := range t.Agents {
+		if a.OwnerID == person && (a.Tab == key || a.ChatKey == key || crewTeamMainAgent(t, person, key) && a.Tab == macMainTab) {
+			return a, true
+		}
+	}
+	return crewTeamRegisteredAgent{}, false
+}
+
+func updateCrewTeamRegisteredAgent(project, person, id string, change func(*crewTeamRegisteredAgent)) error {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return err
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	defer mu.Unlock()
+	t, err := readCrewTeam(project)
+	if err != nil {
+		return err
+	}
+	a, ok := t.Agents[id]
+	if !ok || a.OwnerID != person || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(person) {
+		return errCrewTeamAgentNotYours
+	}
+	change(&a)
+	t.Agents[id] = a
+	t.Revision++
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600); err != nil {
+		return err
+	}
+	publishCrewPanelChanged(project)
+	go pushCrewTeamRecordChanged(t)
+	return nil
 }
 
 // crewTeamAgentByID admits a Team message by actual agent ownership, never by

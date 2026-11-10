@@ -207,7 +207,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	// The Team roster includes other people's agents. Seeing
 	// one must not copy its model/account into the main owner's workflow.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "stranger"}}}); err != nil {
+	if err := writeCrewTeamAgentFixture(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "stranger"}}}); err != nil {
 		t.Fatal(err)
 	}
 	memberBinding, allowed, err := resolveConversationBindingForUser(strangerCtx, "stranger", profile, crew.CrewID)
@@ -240,9 +240,9 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: true,
-		People:       []crewTeamPerson{{UserID: "stranger"}},
-		AgentChoices: map[string]map[string]bool{"owner": {privateChat.ConversationKey: false}},
+	if err := writeCrewTeamAgentFixture(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: true,
+		People: []crewTeamPerson{{UserID: "stranger"}},
+		Agents: crewTeamAgentFixtures(crew.CrewID, map[string]map[string]bool{"owner": {privateChat.ConversationKey: false}}),
 	}); err != nil {
 		t.Fatal(err)
 	}

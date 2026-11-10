@@ -17,7 +17,7 @@ func TestNotifyOtherPeopleOnlyWhenTheyCanWatchTheChat(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"member","username":"member","products":["work"]},{"id":"invitee","username":"invitee","products":["work"]},{"id":"outsider","username":"outsider","products":["work"]}]}`)
 	team := crewTeam{ProjectID: "crew-1", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "invitee", Invited: true}}}
-	if err := writeCrewTeam(team); err != nil {
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
@@ -29,15 +29,15 @@ func TestNotifyOtherPeopleOnlyWhenTheyCanWatchTheChat(t *testing.T) {
 	}
 	onlyMe := chat
 	onlyMe.tab.Record.ConversationKey = "crew-1:chat:private"
-	team.AgentChoices = map[string]map[string]bool{"owner": {"crew-1:chat:private": false}}
-	if err := writeCrewTeam(team); err != nil {
+	team.Agents = crewTeamAgentFixtures("crew-1", map[string]map[string]bool{"owner": {"crew-1:chat:private": false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if api.notifyCanSee(t.Context(), "member", onlyMe, "session-1") {
 		t.Error("a member was notified about a tab set to Only me")
 	}
 	team.On = false
-	if err := writeCrewTeam(team); err != nil {
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if api.notifyCanSee(t.Context(), "member", chat, "session-1") {

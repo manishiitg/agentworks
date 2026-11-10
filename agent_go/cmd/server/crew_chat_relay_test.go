@@ -439,8 +439,12 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				revoked.On = false
 				err = writeCrewTeam(revoked)
 			case "chat-private":
-				revoked.AgentRules = map[string]map[string]crewTeamAgentRule{"owner": {macMainTab: {ChatShare: crewChatShareAgent}}}
-				err = writeCrewTeam(revoked)
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+				for id, a := range revoked.Agents {
+					a.Rule.ChatShare = crewChatShareAgent
+					revoked.Agents[id] = a
+				}
+				err = writeCrewTeamAgentFixture(revoked)
 			}
 			if err != nil {
 				t.Fatal(err)

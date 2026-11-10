@@ -146,22 +146,16 @@ type crewTeamServerData struct {
 	TeamProjectID string `json:"team_project_id"`
 }
 type crewTeam struct {
-	ServerData *crewTeamServerData `json:"server_data,omitempty"`
-	ProjectID  string              `json:"project_id"`
-	Name       string              `json:"name"`
-	OwnerID    string              `json:"owner_id"`
+	RegistryVersion int                 `json:"registry_version"`
+	ServerData      *crewTeamServerData `json:"server_data,omitempty"`
+	ProjectID       string              `json:"project_id"`
+	Name            string              `json:"name"`
+	OwnerID         string              `json:"owner_id"`
 	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
-	On bool `json:"on"`
-	// AgentsOnlyMe is the old Team-wide All agents in team, read only by migrateCrewTeamRecord.
-	AgentsOnlyMe bool `json:"agents_only_me,omitempty"`
-	// AgentChoices is each person's own In team (true) / Only me (false) per agent key (crew_team_in_team.go): the one
-	// place this choice is kept, for every Crew kind. A viewer sees only their own.
-	AgentChoices map[string]map[string]bool `json:"agent_choices,omitempty"`
-	// AgentRules is each person's "When others ask" rule and Answer only / Make changes per agent, by the same key
-	// as AgentChoices (crew_when_others_ask.go). Only the agent's own person sets it.
-	AgentRules map[string]map[string]crewTeamAgentRule `json:"agent_rules,omitempty"`
-	People     []crewTeamPerson                        `json:"people"`
-	Folder     crewTeamFolder                          `json:"folder"`
+	On     bool                               `json:"on"`
+	Agents map[string]crewTeamRegisteredAgent `json:"agents,omitempty"`
+	People []crewTeamPerson                   `json:"people"`
+	Folder crewTeamFolder                     `json:"folder"`
 	// LastFolders are the folders shared before the Whole Crew, for going back to Folders (owner only).
 	LastFolders  []string `json:"last_folders,omitempty"`
 	Revision     uint64   `json:"revision"`
@@ -198,13 +192,13 @@ func readCrewTeam(project string) (crewTeam, error) {
 		return t, err
 	}
 	err = json.Unmarshal(b, &t)
-	if err == nil && (t.ProjectID != project || t.OwnerID == "") {
+	if err == nil && (t.RegistryVersion != 1 || t.ProjectID != project || t.OwnerID == "") {
 		err = fmt.Errorf("team record is unavailable")
 	}
-	migrateCrewTeamRecord(&t)
 	return t, err
 }
 func writeCrewTeam(t crewTeam) error {
+	t.RegistryVersion = 1
 	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
 	if (t.On || len(t.People) > 0) && agentWorksPrivateProject(context.Background(), t.ProjectID) {
 		return errors.New(agentWorksPrivateLine)
@@ -221,7 +215,29 @@ func writeCrewTeam(t crewTeam) error {
 	t.CanManage = false
 	t.FolderAccess = false
 	t.OwnerName = ""
-	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	if raw, readErr := os.ReadFile(filepath.Join(dir, "team.json")); readErr == nil {
+		var latest crewTeam
+		if err = json.Unmarshal(raw, &latest); err == nil {
+			if latest.RegistryVersion != 1 || latest.ProjectID != t.ProjectID || latest.OwnerID != t.OwnerID {
+				err = fmt.Errorf("Team setup needs to be reset for this release")
+			} else {
+				t.Agents = latest.Agents
+			}
+		}
+	} else if !os.IsNotExist(readErr) {
+		err = readErr
+	}
+	if err == nil {
+		for id, a := range t.Agents {
+			if a.OwnerID != t.OwnerID && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == a.OwnerID }) {
+				delete(t.Agents, id)
+			}
+		}
+		err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	}
+	mu.Unlock()
 	if err == nil {
 		publishCrewPanelChanged(t.ProjectID)
 		pruneCrewStandby(t.ProjectID) // Team off or an agent turned Only me drops its standby copy
@@ -315,12 +331,14 @@ func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 			t.ServerData = d
 		}
 	}
-	// Each person's In team / Only me choices are their own.
-	if mine, ok := t.AgentChoices[user]; ok {
-		t.AgentChoices = map[string]map[string]bool{user: mine}
-	} else {
-		t.AgentChoices = nil
+	// Only an agent's person receives its editable settings snapshot.
+	visible := map[string]crewTeamRegisteredAgent{}
+	for id, a := range t.Agents {
+		if a.OwnerID == user {
+			visible[id] = a
+		}
 	}
+	t.Agents = visible
 	// The Mac pair is only the person's own routing fence.
 	t.People = slices.Clone(t.People)
 	for i := range t.People {
@@ -550,23 +568,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(p.UserID), p.Invited)
 		}
 	}
-	// Each person's agent choices are theirs (agent-visibility), never replaced by a save; a person who left takes theirs.
-	input.AgentChoices = map[string]map[string]bool{}
-	for person, choices := range previous.AgentChoices {
-		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
-			input.AgentChoices[person] = choices
-		}
-	}
-	input.AgentRules = map[string]map[string]crewTeamAgentRule{}
-	for person, rules := range previous.AgentRules {
-		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
-			input.AgentRules[person] = rules
-		}
-	}
+	input.Agents = previous.Agents
 	// Team on (owner, 4-5 Nov) starts, with nothing shared yet, with the Crew's team/ folder. The server decides it for
 	// every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there when it applies the record
 	// (crew_team_apply.go).
-	input.AgentsOnlyMe = false
 	if input.On && !previous.On && !input.Folder.shared() {
 		input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
 	}
