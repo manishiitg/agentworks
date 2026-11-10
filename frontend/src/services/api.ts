@@ -2120,6 +2120,9 @@ export const agentApi = {
       const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
       const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
       const plan = await api.post(`${route}/plan`, { file: version, ...binding })
+      if (scope && plan.data.pending_attachments !== true) {
+        throw new Error('This server needs an update for chat attachments. Restart the backend, then attach the file again.')
+      }
       const missing = new Set<string>(plan.data.missing)
       const send = pieces.filter(piece => missing.delete(piece.id))
       return {
