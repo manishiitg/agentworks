@@ -1,3 +1,4 @@
+import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { BarChart3, Check, ChevronDown, ChevronRight, Laptop, Server, Settings2 } from 'lucide-react'
@@ -224,6 +225,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
+    <ThinkingDisplayMenuItem className={rowClass} />
     {companyServer
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
