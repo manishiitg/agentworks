@@ -9,6 +9,7 @@ import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
+import { TeamActivity } from './TeamActivity'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
@@ -99,6 +100,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
+    {team.on && <TeamActivity target={target} projectId={projectId} />}
     <PeopleCard view={view} target={target} projectId={projectId} />
     {team.on && <>
       <CrewWhereRow projectId={projectId} />

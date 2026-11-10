@@ -38,15 +38,24 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 // crewActivityStale: a turn the Mac never reported the end of (it was closed or lost its connection) stops counting.
 const crewActivityStale = 20 * time.Minute
 
-// crewMacConversationRunning: a turn is going in this Mac conversation now, from its relayed events.
-func crewMacConversationRunning(owner, project, conversation string) bool {
+// crewMacConversationActivity is what this Mac conversation is doing now, from its Mac's reports and relayed events:
+// "running", "waiting" (for its person) or "".
+func crewMacConversationActivity(owner, project, conversation string) string {
 	if conversation == "" {
-		return false
+		return ""
 	}
 	crewRelayStreams.Lock()
 	defer crewRelayStreams.Unlock()
 	stream := crewRelayStreams.streams[owner+"/"+project+"/"+conversation]
-	return stream != nil && stream.running && time.Since(stream.since) < crewActivityStale
+	switch {
+	case stream == nil:
+		return ""
+	case stream.waiting:
+		return "waiting" // until it answers or its Mac goes; a person may take a while
+	case stream.running && time.Since(stream.since) < crewActivityStale:
+		return "running"
+	}
+	return ""
 }
 
 // crewServerChatRunning: a turn is going in this server chat now.

@@ -182,6 +182,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 		for ctx.Err() == nil {
 			owner := GetDefaultUserID()
 			connections, e := readDesktopConnections(owner)
+			pushed := true // every server with a Team here has a live relay socket to tell this Mac of changes
 			if e == nil {
 				for _, c := range connections {
 					check, stop := context.WithTimeout(ctx, 15*time.Second)
@@ -192,6 +193,9 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 					stop()
 					if e != nil {
 						continue
+					}
+					if _, live := desktopRelayLive.Load(c.ID); len(out.Teams) > 0 && !live {
+						pushed = false
 					}
 					for _, t := range out.Teams {
 						// The owner's Mac follows its Crew's Team record, changed from anywhere (crew_team_apply.go).
@@ -228,12 +232,22 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(5 * time.Second):
-			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go)
+			case <-time.After(crewTeamCheckAfter(pushed)):
+			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go), or the server said a teammate's did
 			}
 		}
 	}()
 	return cancel
+}
+
+// crewTeamCheckAfter is the timed check for teammates' changes and Team records. When every server with a Team here
+// has this Mac's relay socket open, each tells the Mac of a change at once (crew_team_push.go) and the check only
+// catches a missed note; otherwise it stays quick.
+func crewTeamCheckAfter(pushed bool) time.Duration {
+	if pushed {
+		return 60 * time.Second
+	}
+	return 5 * time.Second
 }
 
 // crewTeamMacRound is one round of a Mac copy with its Crew's setup (crew_team_setup.go): this Crew's setup changes go

@@ -29,10 +29,19 @@ type crewTeamAgent struct {
 	PlaceServer bool   `json:"place_server,omitempty"`
 	// InTeam: everyone in the Team sees it (its maker chose In team); false only on the viewer's own Only me agents.
 	InTeam bool `json:"in_team"`
-	// Activity is "running" while a turn is going in it (crew_team_activity.go), "" otherwise.
+	// Activity is "running" while a turn is going in it, "waiting" while it waits for its person (crew_team_activity.go),
+	// "" otherwise.
 	Activity string `json:"activity,omitempty"`
 	// Address is how another agent messages it (send_message target), written here so no screen builds it.
 	Address string `json:"address,omitempty"`
+}
+
+// crewTeamWaitingLabel is the row's line while an agent waits for its person to answer it.
+func crewTeamWaitingLabel(name string, you bool) string {
+	if you {
+		return "Waiting for you"
+	}
+	return "Waiting for " + firstNonEmptyTrimmed(name, "its owner")
 }
 
 // crewTeamAgentAddress is the send_message target of one of the Team's agents in this Crew's online copy; on a Mac
@@ -108,7 +117,12 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 			}
 		}
 		if place == "mac" {
-			if owner.MacOn && crewMacConversationRunning(t.OwnerID, t.ProjectID, ownerConversations[agent.Tab]) || crewStandbyServedRunning(t.OwnerID, t.ProjectID, agent.Tab) {
+			if activity := crewMacConversationActivity(t.OwnerID, t.ProjectID, ownerConversations[agent.Tab]); owner.MacOn && activity != "" {
+				row.Activity = activity
+				if activity == "waiting" {
+					row.StatusLabel = crewTeamWaitingLabel(owner.Name, owner.You)
+				}
+			} else if crewStandbyServedRunning(t.OwnerID, t.ProjectID, agent.Tab) {
 				row.Activity = "running"
 			}
 		}
@@ -137,8 +151,11 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 				row.PlaceServer = row.PlaceTone == "server"
 				if !person.MacOn && !row.PlaceServer {
 					row.StatusLabel = "Mac off"
-				} else if person.MacOn && crewMacConversationRunning(p.UserID, t.ProjectID, tab.ConversationID) {
-					row.Activity = "running"
+				} else if activity := crewMacConversationActivity(p.UserID, t.ProjectID, tab.ConversationID); person.MacOn && activity != "" {
+					row.Activity = activity
+					if activity == "waiting" {
+						row.StatusLabel = crewTeamWaitingLabel(person.Name, person.You)
+					}
 				}
 				person.Agents = append(person.Agents, row)
 			}

@@ -225,6 +225,7 @@ func writeCrewTeam(t crewTeam) error {
 	if err == nil {
 		publishCrewPanelChanged(t.ProjectID)
 		pruneCrewStandby(t.ProjectID) // Team off or an agent turned Only me drops its standby copy
+		go pushCrewTeamRecordChanged(t)
 	}
 	return err
 }

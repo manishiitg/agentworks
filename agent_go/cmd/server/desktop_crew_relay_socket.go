@@ -168,6 +168,10 @@ func (api *StreamingAPI) runDesktopCrewRelay(ctx context.Context, connectionID s
 	}
 }
 
+// desktopRelayLive holds the saved connections with an open relay socket now: while it is open that server tells this
+// Mac of its Teams' changes (crew_team_push.go), so their timed check can be slow.
+var desktopRelayLive sync.Map // connection id -> true
+
 func fmt0(err error) string {
 	if err == nil {
 		return "closed"
@@ -241,10 +245,12 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		return crews, pairs
 	}
 	crews, pairs := offered()
-	if err = send(crewRelayMessage{Type: "hello", DeviceID: connection.ID, MacName: desktopMacDisplayName(), Crews: crews}); err != nil {
+	if err = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), Crews: crews}); err != nil {
 		return err
 	}
 	log.Printf("[CREW_RELAY] desktop connect connection=%s crews=%d", connectionID, len(crews))
+	desktopRelayLive.Store(connectionID, true)
+	defer desktopRelayLive.Delete(connectionID)
 	var pairsMu sync.Mutex
 	followers := &desktopRelayFollowers{api: api, send: send, active: map[string]*desktopRelayFollower{}}
 	go func() {
@@ -255,38 +261,38 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		turns := time.NewTicker(3 * time.Second)
 		defer turns.Stop()
 		reported := map[string]string{}
-		running := map[string]bool{} // project/conversation the server was last told is working
+		running := map[string]string{} // project/conversation -> running or waiting, as last told to the server
 		chats := map[string]*desktopCrewChatList{}
 		for {
 			select {
 			case <-session.Done():
 				return
 			case <-turns.C:
-				// Teammates see an agent working without opening it: say when a turn starts or ends in each chat.
+				// Teammates see an agent working or waiting for its person without opening it: say when that changes.
 				pairsMu.Lock()
 				current := map[string]string{}
 				for project, pair := range pairs {
 					current[project] = pair
 				}
 				pairsMu.Unlock()
-				now := map[string]bool{}
+				now := map[string]string{}
 				for project, pair := range current {
 					if chats[project] == nil {
 						chats[project] = &desktopCrewChatList{}
 					}
-					for _, conversation := range api.desktopCrewRunningChats(session, localCrewForPeer(project, pair), pair, chats[project]) {
-						now[project+"/"+conversation] = true
+					for conversation, state := range api.desktopCrewBusyChats(session, localCrewForPeer(project, pair), pair, chats[project]) {
+						now[project+"/"+conversation] = state
 					}
 				}
-				for key := range now {
-					if !running[key] {
+				for key, state := range now {
+					if running[key] != state {
 						project, conversation, _ := strings.Cut(key, "/")
-						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=running", project, conversation)
-						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: "running"})
+						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=%s", project, conversation, state)
+						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: state})
 					}
 				}
 				for key := range running {
-					if !now[key] {
+					if now[key] == "" {
 						project, conversation, _ := strings.Cut(key, "/")
 						log.Printf("[CREW_RELAY] turn project=%s conversation=%s state=idle", project, conversation)
 						_ = send(crewRelayMessage{Type: "running", Project: project, Conversation: conversation, State: "idle"})
@@ -308,7 +314,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairs = nextPairs
 				pairsMu.Unlock()
 				if changed {
-					_ = send(crewRelayMessage{Type: "hello", DeviceID: connection.ID, MacName: desktopMacDisplayName(), Crews: next})
+					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), Crews: next})
 				}
 			case <-states.C:
 				pairsMu.Lock()
@@ -361,6 +367,16 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			if local != "" && msg.State == "not_owner" {
 				api.repairDesktopCrewTwin(session, local, pair, connectionID)
 			}
+			if msg.State == "other_mac" {
+				// Forget it as offered: the next ping offers it again, so this computer takes over once the other is gone.
+				pairsMu.Lock()
+				delete(pairs, msg.Project)
+				pairsMu.Unlock()
+				log.Printf("[CREW_RELAY] project=%s not reached from this computer: another of your computers serves it", msg.Project)
+			}
+		case "team.changed":
+			// Someone's change to a Team's shared files landed on the server: sync now (crew_team_push.go).
+			crewTeamWakeSoon()
 		case "resume":
 			if local != "" && msg.Conversation != "" {
 				followers.watch(session, msg.Project, local, pair, msg.Conversation, msg.Since)
@@ -472,8 +488,9 @@ type desktopCrewChatList struct {
 	ids []string
 }
 
-// desktopCrewRunningChats is the chats of one local Crew with a turn going now.
-func (api *StreamingAPI) desktopCrewRunningChats(ctx context.Context, local, pair string, list *desktopCrewChatList) []string {
+// desktopCrewBusyChats is the chats of one local Crew that are working ("running") or waiting for their person
+// ("waiting") now.
+func (api *StreamingAPI) desktopCrewBusyChats(ctx context.Context, local, pair string, list *desktopCrewChatList) map[string]string {
 	if local == "" {
 		return nil
 	}
@@ -501,10 +518,13 @@ func (api *StreamingAPI) desktopCrewRunningChats(ctx context.Context, local, pai
 		}
 		list.at, list.ids = time.Now(), ids
 	}
-	out := []string{}
+	out := map[string]string{}
 	for _, conversation := range list.ids {
-		if desktopCrewChatState(api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns", Operation: "status", ConversationID: conversation})) == "working" {
-			out = append(out, conversation)
+		switch desktopCrewChatState(api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns", Operation: "status", ConversationID: conversation})) {
+		case "working":
+			out[conversation] = "running"
+		case "waiting":
+			out[conversation] = "waiting"
 		}
 	}
 	return out
