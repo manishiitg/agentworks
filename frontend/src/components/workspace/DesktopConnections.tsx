@@ -22,13 +22,12 @@ import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } 
 import { useTeamInviteRows } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
-import { ChevronRight, Laptop } from 'lucide-react'
-import { ServerIdentityIcon } from './ServerIdentityIcon'
+import { ChevronRight } from 'lucide-react'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
-import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, type MenuFilter } from './MenuGroups'
+import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, type MenuFilter, type MenuNetwork } from './MenuGroups'
 
 
 type SidebarProject = { id: string; name: string; shared_line?: string; team_busy?: { state: 'running' | 'waiting'; line: string }; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
@@ -80,14 +79,14 @@ export function useAllProjectsOpen() {
   const hasPins = useProjectMenuHistoryStore(state => Boolean(state.pinned[connectedWorkHistoryScope()]?.length))
   return useAllProjectsExpanded(hasPins)
 }
-function AllProjects({ children, hasPins, counts }: { children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number }) {
+function AllProjects({ children, hasPins, counts, networks, network, onNetwork }: { children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
   const expanded = useAllProjectsExpanded(hasPins)
   const toggle = useSidebarExpansionStore(state => state.toggle)
   return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
     {/* The heading is the filter (owner, 10 Nov): All, Mine, Shared with me or one of the person's groups. */}
     <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1.5">
-      <div className="min-w-0 flex-1"><ProjectFilterMenu counts={counts} /></div>
+      <div className="min-w-0 flex-1"><ProjectFilterMenu counts={counts} networks={networks} network={network} onNetwork={onNetwork} /></div>
       <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, !hasPins)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
@@ -169,22 +168,10 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}>
-      {connections.length > 1 && <div role="group" aria-label="Show Crews from" className="mb-2 flex items-center gap-1 overflow-x-auto px-1 py-2">
-        {connections.map(connection => {
-          const selected = selectedLocations.includes(connection.id)
-          const name = connection.id === 'local' ? 'Mac' : connection.name
-          // One network at a time, or All at the end (owner, 10 Nov).
-          return <button key={connection.id} type="button" aria-pressed={selected && !showingAll} title={connection.id === 'local' ? 'On your Mac' : connection.name}
-            onClick={() => setSelectedLocations([connection.id])}
-            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected && !showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-            {connection.id === 'local' ? <Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ServerIdentityIcon connectionId={connection.id} hidden className="h-3.5 w-3.5 shrink-0" />}
-            <span className="max-w-28 truncate">{name}</span>
-          </button>
-        })}
-        <button type="button" aria-pressed={showingAll} title="Crews from every network" onClick={() => setSelectedLocations(connections.map(connection => connection.id))}
-          className={`flex h-9 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>All</button>
-      </div>}
+      <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}
+        networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
+        network={showingAll ? 'all' : selectedLocations[0]}
+        onNetwork={id => setSelectedLocations(id === 'all' ? connections.map(connection => connection.id) : [id])}>
       {/* Your own Crews that live on a Mac and are reached through this server, under that Mac. */}
       {macs.map(({ mac, rows: macRows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
         <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
