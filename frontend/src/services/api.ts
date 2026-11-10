@@ -1302,7 +1302,7 @@ export const agentApi = {
   },
 
   /** Minimal app navigation from the current canonical project inventory. */
-  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; icon?: string; owned_by_caller: boolean; owner_name?: string; shared_line?: string; team_busy?: { state: 'running' | 'waiting' | ''; line: string; people?: { name: string; state: 'working' | 'waiting' | 'online' | 'offline' }[] }; personal_agent?: boolean; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
+  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; icon?: string; owned_by_caller: boolean; owner_name?: string; shared_line?: string; team_busy?: { state: 'running' | 'waiting' | ''; line: string; people?: { name: string; state: 'working' | 'waiting' | 'online' | 'offline'; line?: string }[] }; personal_agent?: boolean; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
     const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
     const result = response.data
     if (!Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>

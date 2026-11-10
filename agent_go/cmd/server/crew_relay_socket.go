@@ -509,27 +509,6 @@ func (s *crewRelayStreamSet) setTurnState(owner, project, conversation, state st
 	}
 }
 
-// busyPeople is each person with an agent of this project working ("running") or waiting for them ("waiting") now,
-// from their Macs' reports; a turn never reported ended stops counting after crewActivityStale.
-func (s *crewRelayStreamSet) busyPeople(project string) map[string]string {
-	s.Lock()
-	defer s.Unlock()
-	busy := map[string]string{}
-	for key, stream := range s.streams {
-		parts := strings.SplitN(key, "/", 3)
-		if len(parts) != 3 || parts[1] != project {
-			continue
-		}
-		switch {
-		case stream.running && time.Since(stream.since) < crewActivityStale:
-			busy[parts[0]] = "running"
-		case stream.waiting && busy[parts[0]] == "":
-			busy[parts[0]] = "waiting"
-		}
-	}
-	return busy
-}
-
 // clearRunning: the Mac that reported these chats is gone, so none of them is working any more (a turn it never
 // reported the end of would otherwise show a teammate's agent working forever).
 func (s *crewRelayStreamSet) clearRunning(owner, project string) bool {

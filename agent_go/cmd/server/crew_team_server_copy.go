@@ -169,12 +169,17 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		return
 	}
 	go func() {
+		busyChecked := map[string]time.Time{}
 		clearFalseCrewTeamClashes(ctx)
 		for ctx.Err() == nil {
 			api.removeStaleCrewTeamServerCopies(ctx)
 			for _, t := range crewTeamsOnServer() {
-				// Who is working, server chats included: sent to the Team's Macs only when it changed (crew_team_push.go).
-				pushCrewTeamBusy(t.ProjectID)
+				// Who is working, server chats included: re-read every 15 s at most (a Mac turn's start or end pushes at
+				// once) and sent to the Team's Macs only when it changed (crew_team_push.go).
+				if time.Since(busyChecked[t.ProjectID]) >= 15*time.Second {
+					busyChecked[t.ProjectID] = time.Now()
+					pushCrewTeamBusy(t.ProjectID)
+				}
 				// A Crew on the server: its own folder is the Team store's copy for members on their Mac.
 				round, done := context.WithTimeout(ctx, 2*time.Minute)
 				api.syncServerCrewTeamStore(round, t)
