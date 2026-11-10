@@ -66,6 +66,7 @@ activate_checks() {
 
 activate_release() {
   : "${REPO_ROOT:?}" "${RELEASE_DIR:?}" "${RELEASE_ID:?}" "${APP_ROOT:?}" "${DOCS_ROOT:?}" "${UNIT_PREFIX:?}" "${AGENT_PORT:?}" "${WORKSPACE_PORT:?}"
+  local service_log_rotation_available=0
   STATE_ROOT="${STATE_ROOT:-$APP_ROOT/state}"
   MCP_STATE_DIR="${MCP_STATE_DIR:-$STATE_ROOT/mcp}"
   SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-$UNIT_PREFIX}"
@@ -210,7 +211,45 @@ UNIT
     for file in "$RELEASE_DIR"/systemd/*.service "$RELEASE_DIR"/systemd/*.timer; do
       [[ -f "$file" ]] && install -m 0644 "$file" "$unit_dir/$(basename "$file")"
     done
-    [[ ! -f "$RELEASE_DIR/systemd/$UNIT_PREFIX-logrotate.conf" ]] || install -m 0644 "$RELEASE_DIR/systemd/$UNIT_PREFIX-logrotate.conf" "$STATE_ROOT/logrotate.conf"
+  fi
+  if [[ -x /usr/sbin/logrotate ]]; then
+    # PLAT-872: size is checked every ten minutes, not just by the host's daily
+    # logrotate job. This is a threshold plus ten minutes of writes, not a hard cap.
+    # copytruncate keeps systemd's append descriptors and child stderr working.
+    cat > "$STATE_ROOT/logrotate.conf" <<LOGROTATE
+"$APP_ROOT/logs/*.log" {
+    size 100M
+    rotate 3
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}
+LOGROTATE
+    cat > "$unit_dir/$UNIT_PREFIX-logrotate.service" <<UNIT
+[Unit]
+Description=$UNIT_PREFIX rotate service logs above 100 MiB
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate --state $STATE_ROOT/logrotate.status $STATE_ROOT/logrotate.conf
+UNIT
+    cat > "$unit_dir/$UNIT_PREFIX-logrotate.timer" <<UNIT
+[Unit]
+Description=$UNIT_PREFIX check service log sizes every ten minutes
+
+[Timer]
+OnCalendar=*:0/10
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+    service_log_rotation_available=1
+  else
+    echo "WARNING: logrotate is missing; service log size checks were not installed. Install logrotate before the next deploy." >&2
   fi
   for obsolete in "${REMOVE_DEPLOY_DROPINS[@]:-}"; do
     [[ -z "$obsolete" ]] || rm -f "$agent_dropin/$obsolete" "$workspace_dropin/$obsolete"
@@ -269,8 +308,12 @@ except Exception:
   vault_install "$RELEASE_DIR" "$APP_ROOT" "$UNIT_PREFIX"
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT_PREFIX-system-backup.timer"
+  if [[ "$service_log_rotation_available" == 1 ]]; then
+    systemctl --user enable --now "$UNIT_PREFIX-logrotate.timer"
+  fi
   if [[ -d "$RELEASE_DIR/systemd" ]]; then
     for file in "$RELEASE_DIR"/systemd/*.timer; do
+      [[ "$(basename "$file")" == "$UNIT_PREFIX-logrotate.timer" ]] && continue
       [[ -f "$file" ]] && systemctl --user enable --now "$(basename "$file")"
     done
   fi
