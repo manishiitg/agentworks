@@ -1997,3 +1997,10 @@ html[data-appearance="clear-dark"] [data-chat-find-scope]:not(:where(.force-ligh
 html[data-appearance="clear-dark"] :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) {
   font-family: var(--runloop-mono);
 }
+
+/* These two established surfaces have fixed dark utility colors in Default. */
+html[data-appearance="clear-dark"] [data-workspace-context-card],
+html[data-appearance="clear-dark"] [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
