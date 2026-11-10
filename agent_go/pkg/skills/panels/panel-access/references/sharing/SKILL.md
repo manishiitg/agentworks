@@ -60,3 +60,8 @@ attributed request, never an owner approval.
 UI controls open only the Dashboard. Point to **Share** in the Crew menu for
 other screens, and use admitted management tools for authorized changes. Read
 back the saved people, agents, folder or audience before reporting completion.
+
+The person's own AgentWorks project (the front-door agent every account has) is never shared. Every share path
+refuses it with "Your AgentWorks project stays private; share another Crew instead.": Team and people, Run share,
+dashboard links, and the Slack bot. Its Access page shows that one line and no tabs. Say the same and suggest sharing
+another Crew; do not look for another way around it.

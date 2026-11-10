@@ -314,6 +314,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		}
 		crewAccessPage(&out)
 		api.crewAccessAddSlack(r, &out, GetUserIDFromContext(r.Context()))
+		// The person's own AgentWorks project is never shared: its Access page is one line, no tabs.
+		if agentWorksPrivateProject(r.Context(), out.ProjectID) {
+			out.AccessView, out.AccessSummary, out.AccessTabs, out.AccessMac, out.AccessPublish, out.AccessLaptop = "summary", agentWorksPrivateLine, nil, nil, nil, false
+		}
 	}
 	externalJSON(w, out)
 }
