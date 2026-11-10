@@ -159,6 +159,10 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 }
 
 func writeMacSharedAgents(project string, agents []macSharedAgent) (result error) {
+	// The list is what the network directory and messaging read: the AgentWorks project's agents are never in it as In team or Public.
+	if slices.ContainsFunc(agents, func(agent macSharedAgent) bool { return !agent.Off && (agent.Audience != "" || agent.AgentBridgePublic) }) && agentWorksPrivateProject(context.Background(), project) {
+		return errors.New(agentWorksPrivateLine)
+	}
 	defer func() {
 		if result == nil {
 			publishCrewPanelChanged(project)
