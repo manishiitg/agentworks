@@ -164,9 +164,11 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var in struct {
-		Name string       `json:"name"`
-		Path string       `json:"path"`
-		File *chunkedFile `json:"file"`
+		Name            string       `json:"name"`
+		Path            string       `json:"path"`
+		File            *chunkedFile `json:"file"`
+		ConversationKey string       `json:"conversation_key"`
+		SessionID       string       `json:"session_id"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&in) != nil || in.File == nil || !in.File.Valid() {
 		writeAgentProfileError(w, http.StatusBadRequest, "The upload was not understood. Attach the file again.")
@@ -176,9 +178,23 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		writeAgentProfileError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("This file is too large. Choose a file smaller than %d MB and attach it again.", publication.MaxFileBytes>>20))
 		return
 	}
+	bound := in.ConversationKey != "" || in.SessionID != ""
+	key := pendingChatUploadKey{claims.UserID, project, in.ConversationKey, in.SessionID, in.File.Hash}
+	if bound && !api.admitPendingChatUpload(w, r, project, in.ConversationKey, in.SessionID) {
+		return
+	}
 	if step == "plan" {
+		if bound {
+			api.planPendingChatUpload(key)
+		}
 		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"missing": missingChunks(store, []chunkedFile{*in.File})})
 		return
+	}
+	if bound {
+		if _, err := api.pendingChatUpload(key); err != nil {
+			writeAgentProfileError(w, 400, err.Error())
+			return
+		}
 	}
 	started := time.Now()
 	rel := in.Path
@@ -214,6 +230,9 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(buffer.status)
 		_, _ = w.Write(buffer.body.Bytes())
 		return
+	}
+	if bound {
+		api.finishPendingChatUpload(key, workspace+"/"+rel)
 	}
 	pruneChunks(store, nil, crewNativeChunkKeep)
 	logChunkTransfer("upload", project, "up", 1, distinctChunks([]chunkedFile{*in.File}), 0, in.File.Size, started)

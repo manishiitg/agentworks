@@ -3051,6 +3051,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         restoredConversationPath,
       }), currentTab)
 
+      requestPayload.pending_attachments = options?.pendingAttachments
+
       // Validate execution groups for workflow mode
       const executionPhaseId = currentTab?.metadata?.phaseId
       const requiresGroupValidation = executionPhaseId !== 'evaluation-execution' && executionPhaseId !== 'report-execution'

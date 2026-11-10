@@ -896,7 +896,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [cdpChecking, setCdpChecking] = useState(false)
   const [showCdpPopup, setShowCdpPopup] = useState(false)
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
-  const [uploadingFiles, setUploadingFiles] = useState<{ tabId: string | null; files: File[] } | null>(null)
+  const [uploadingFiles, setUploadingFiles] = useState<{ tabId: string | null; files: File[]; canSend: boolean } | null>(null)
+  const pendingUploadBatchRef = useRef<{
+    tabId: string | null; sessionId: string; pending: { hash: string; name: string }[];
+    submitted: boolean; completedFiles: { name: string; path: string; type: 'file' }[]
+  } | null>(null)
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const isCdpDisconnected = browserMode === 'cdp' && (!cdpEnabled || cdpConnected === false)
 
@@ -2007,8 +2011,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       addToast('Choose an option above before sending another message.', 'info')
       return
     }
-    if (isUploadingFiles) {
-      addToast('Wait for the file upload to finish before sending.', 'info')
+    const uploadBatch = pendingUploadBatchRef.current?.tabId === activeTabId ? pendingUploadBatchRef.current : null
+    if (isUploadingFiles && !uploadBatch?.submitted && !uploadBatch?.pending.length) {
+      addToast('Preparing the attachment. Send again in a moment.', 'info')
       return
     }
 
@@ -2038,6 +2043,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         // Live-input acknowledgement can lag while the retained CLI wakes up.
         // The conversation adds an optimistic user row immediately, so release
         // the composer now instead of leaving the submitted text looking stuck.
+        const pendingAttachments = isUploadingFiles && uploadBatch && !uploadBatch.submitted ? [...uploadBatch.pending] : undefined
+        if (pendingAttachments?.length && uploadBatch) { uploadBatch.submitted = true; setUploadingFiles(null) }
         clearInputState(true)
         const clearedDraft = captureChatDraft(submittedTabId)
         let accepted: boolean | void
@@ -2045,6 +2052,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         try {
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
+            pendingAttachments,
             fileContext: submittedDraft.fileContext,
             fileContextConsumed: true,
             deliveryMode: deliveryOverride ?? deliveryMode,
@@ -2056,6 +2064,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           accepted = false
         }
         if (accepted === false) {
+          if (uploadBatch && pendingAttachments?.length) {
+            uploadBatch.submitted = false
+            submittedDraft.fileContext.push(...uploadBatch.completedFiles.filter(file => !submittedDraft.fileContext.some(saved => saved.path === file.path)))
+          }
           // Do not overwrite text the user began typing while delivery was in
           // flight, and do not restore a draft into a tab they navigated away
           // from. Otherwise put the original text/attachments back for retry.
@@ -2454,17 +2466,34 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const stillOwnsUpload = () => isChatIdentityCurrent(uploadIdentity) && Boolean(activeTabId) &&
       useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId
     setIsUploadingFiles(true)
-    setUploadingFiles({ tabId: activeTabId, files })
+    setUploadingFiles({ tabId: activeTabId, files, canSend: false })
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
+    const conversationKey = activeTab?.metadata?.agentProfileConversationKey
+    const batch = agentProfileId === 'work' && agentProfileProjectId && uploadSessionId && conversationKey && !terminalViewSelected
+      ? { tabId: activeTabId, sessionId: uploadSessionId, pending: [] as { hash: string; name: string }[], submitted: false, completedFiles: [] as { name: string; path: string; type: 'file' }[] }
+      : null
+    pendingUploadBatchRef.current = batch
+    let prepared: Awaited<ReturnType<typeof agentApi.prepareCrewChatFile>>[] | undefined
+    if (batch) {
+      try {
+        prepared = await Promise.all(files.map(file => agentApi.prepareCrewChatFile(file, agentProfileProjectId!, { sessionId: batch.sessionId, conversationKey: conversationKey! })))
+        batch.pending = prepared.map(file => file.attachment)
+        if (stillOwnsUpload()) setUploadingFiles({ tabId: activeTabId, files, canSend: true })
+      } catch (error) {
+        setIsUploadingFiles(false); setUploadingFiles(null)
+        addToast(error instanceof Error ? error.message : 'The attachment could not be prepared. Attach it again.', 'error')
+        return
+      }
+    }
     const uploadedPaths: string[] = []
     const uploadedAbsolutePaths = new Map<string, string>()
     const failures: string[] = []
 
-    for (const file of files) {
+    for (const [index, file] of files.entries()) {
       if (!stillOwnsUpload()) break
       try {
         console.info('[CHAT_UPLOAD] uploading file', { name: file.name, size: file.size, type: file.type })
-        const response = agentProfileId === 'work' && agentProfileProjectId
+        const response = prepared ? await prepared[index].upload() : agentProfileId === 'work' && agentProfileProjectId
           ? await agentApi.uploadCrewChatFile(file, agentProfileProjectId)
           : await agentApi.uploadPlannerFile(file, uploadTargetFolder, `Upload ${file.name} from chat input`)
         const uploadedPath =
@@ -2474,6 +2503,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           response?.filepath
         if (uploadedPath && typeof uploadedPath === 'string') {
           uploadedPaths.push(uploadedPath)
+          if (batch) batch.completedFiles.push({ name: file.name, path: uploadedPath, type: 'file' })
           const absolutePath = response?.data?.absolute_path || response?.absolute_path
           if (typeof absolutePath === 'string' && absolutePath.startsWith('/')) uploadedAbsolutePaths.set(uploadedPath, absolutePath)
           console.info('[CHAT_UPLOAD] upload success', { name: file.name, path: uploadedPath })
@@ -2511,7 +2541,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
       }
       if (!stillOwnsUpload()) { setIsUploadingFiles(false); setUploadingFiles(null); return }
-      if (activeTabId && !insertedIntoTerminal) {
+      if (activeTabId && !insertedIntoTerminal && !batch?.submitted) {
         const latestFileContext = useChatStore.getState().getTabConfig(activeTabId)?.fileContext || chatFileContext
         const seenPaths = new Set(latestFileContext.map((item: { path: string }) => item.path))
         const uploadedContextItems = uploadedPaths
@@ -2564,7 +2594,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     setIsUploadingFiles(false)
     setUploadingFiles(null)
-  }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
+    if (batch && !batch.submitted && pendingUploadBatchRef.current === batch) pendingUploadBatchRef.current = null
+  }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, activeTab?.metadata?.agentProfileConversationKey, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
 
   useEffect(() => {
     uploadFilesToChatRef.current = uploadFilesToChat
@@ -2737,7 +2768,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const inputDisabled = pendingNativeChoice || isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
-  const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
+  const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || (isUploadingFiles && !uploadingFiles?.canSend && !pendingUploadBatchRef.current?.submitted)
   const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
 
   const showComposerHints = isProductSurface || activeTab?.metadata?.agentProfileId === 'work'
