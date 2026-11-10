@@ -59,16 +59,15 @@ function findManifestDefaults(provider: string, providerManifest: ProviderManife
 
 function resolveManifestDefaults(defaults?: ProviderDefaultTierModels) {
   if (!defaults) return null
-  const builder = defaults.builder ?? defaults.main ?? defaults.high
-  const maintenance = defaults.maintenance ?? defaults.auto_improve ?? defaults.phase ?? defaults.high
-  if (!builder || !defaults.high || !defaults.medium || !defaults.low || !maintenance) return null
+  const builder = defaults.main
+  if (!builder || !defaults.high || !defaults.medium || !defaults.low) return null
   return {
     builder,
     high: defaults.high,
     medium: defaults.medium,
     low: defaults.low,
-    maintenance,
-    pulse: defaults.pulse ?? defaults.high,
+    maintenance: defaults.high,
+    pulse: defaults.high,
   }
 }
 
@@ -240,7 +239,7 @@ export function getWorkflowLLMOptions(
         displayName: entry.display_name,
         usable: entry.usable,
         hasDefaultTierModels: Boolean(entry.default_tier_models),
-        builder: entry.default_tier_models?.builder,
+        builder: entry.default_tier_models?.main,
       })),
   })
 
