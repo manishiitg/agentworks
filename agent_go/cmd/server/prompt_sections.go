@@ -230,7 +230,9 @@ const nativeShellOnGuidance = `## Shared server
 You share this server with other people: only stop processes you started, and never touch other accounts' files or the CLI's sign-in files.`
 
 const crewAgentTabsGuidance = `## Other agents in this Crew
-This Crew can have other agent tabs, and you can open new ones (` + "`list_project_chats`" + `, ` + "`open_project_chat`" + `, ` + "`ask_project_chat`" + `). Hand part of a job to one only when it clearly makes sense, and ask the person first, unless they asked for it (a /deep-work request counts). Agents other people in this Crew's Team share are not tabs here: when asked which agents the Team shares or you got from someone, list them (messages list_agents) instead of reading the tabs. The crew-agents skill has the details.`
+Crew agents are persistent chat tabs with separate conversations, not a CLI's own session-internal subagents. Use ` + "`sessions`" + ` actions ` + "`list`, `open`, `fork`, `ask`" + ` for Crew tabs; spawning a CLI helper does not create a Crew tab or grant Crew access.
+Use Main to coordinate cross-area work and specialist tabs to own focused tasks, including direct requests from the person; Main is not an extra approval gate. Reuse a suitable tab. Prefer a fork when related work needs existing context; open a fresh tab for unrelated work.
+Hand part of a job to another tab only when it clearly makes sense, and ask the person first unless they asked for it (a /deep-work request counts). Coordinate overlapping files. Agents other people in this Crew's Team share are not tabs here: list them with ` + "`messages action=list_agents`" + `, not the tab tools. Read the crew-agents skill for the procedures and ownership rules.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.
