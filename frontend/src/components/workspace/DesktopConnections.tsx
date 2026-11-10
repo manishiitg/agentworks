@@ -1,4 +1,5 @@
 import { AgentMark } from '../chat/AgentIcon'
+import { workConversationAgent } from '../../utils/workConversationKey'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import type { ActiveSessionInfo } from '../../services/api-types'
 import { openConnectedServers } from './ConnectedServersMenuItem'
@@ -276,7 +277,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [expanded, projectId, connectionId])
   const open = (chat: AgentProfileSideChat) => {
-    const agent = chat.is_main ? undefined : chat.conversation_key.split(':chat:')[1]
+    const agent = chat.is_main ? undefined : workConversationAgent(chat.conversation_key)
     const route = { surface: 'work' as const, id: projectId, agent }
     if (connectionId === getRawActiveWorkspaceId()) {
       const existing = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === chat.session_id && tab.metadata?.agentProfileProjectId === projectId)
