@@ -83,12 +83,9 @@ func (api *StreamingAPI) githubToolToken(ctx context.Context) (string, error) {
 			secrets = api.mergeGlobalSecretsFor(ctx, user, &names)
 		}
 	}
-	wanted := "GITHUB_TOKEN"
-	if rec := readGitHubRecord(user); rec != nil {
-		wanted = vaultSecretShortName(rec.SecretName)
-	}
+
 	for _, secret := range secrets {
-		if (secret.Name == wanted || secret.Name == "GITHUB_TOKEN") && secret.Value != "" {
+		if secret.Name == "GITHUB_TOKEN" && secret.Value != "" {
 			return secret.Value, nil
 		}
 	}

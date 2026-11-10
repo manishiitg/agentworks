@@ -15,7 +15,7 @@ import (
 // GitHub is a deterministic Watcher source. Tokens stay in the existing saved
 // connection; only bounded evidence reaches the original chat's normal queue.
 func githubWatcherToken(owner string, p *conditiontrigger.GitHubPR) (string, error) {
-	rec := readGitHubRecord(owner)
+	rec := readGitHubConnection(owner, p.ConnectionID)
 	if rec == nil || rec.Login != p.Login {
 		return "", errors.New("reconnect the saved GitHub account or create a watcher with your selected account")
 	}
@@ -60,17 +60,21 @@ func (c *conditionService) prepareGitHubPR(ctx context.Context, job productSched
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	rec := readGitHubRecord(job.UserID)
+	rec, err := projectGitHubConnection(ctx, job.UserID, job.WatcherSource.Path)
+	if err != nil {
+		return err
+	}
 	if rec == nil {
 		return errors.New("connect your GitHub account in Integrations → GitHub first")
 	}
-	p.Login = rec.Login
+	p.Login, p.ConnectionID = rec.Login, rec.ID
 	if prior != nil && prior.GitHubPR != nil {
 		old := prior.GitHubPR
 		if p.Repository != old.Repository || p.Number != old.Number || p.Mode != old.Mode || p.Worktree != old.Worktree || cfg.Target.ChatID != prior.Target.ChatID {
 			return errors.New("create a new PR watcher to change its repository, mode, worktree or chat")
 		}
 		p.Login, p.Branch, p.HeadSHA = old.Login, old.Branch, old.HeadSHA
+		p.ConnectionID = old.ConnectionID
 		p.ChatKey, p.SessionID = old.ChatKey, old.SessionID
 		_, err := githubWatcherToken(job.UserID, p)
 		return err

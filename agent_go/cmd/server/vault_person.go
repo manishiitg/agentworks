@@ -63,7 +63,7 @@ const manageMyVaultsDescription = "Your own Vault items: your sign-ins (MCP apps
 	"connect {provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
 	"set_secret {name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {name}; " +
-	"github_status shows your GitHub connection. github_connect {method: gh|pat|oauth, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs. With multiple accounts, ask which login to use and pass login. gh copies only that account into encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect removes the saved connection. " +
+	"github_status shows your GitHub connection. github_connect {workspace_path, method: saved|gh|pat|oauth, connection_id?, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs. With multiple accounts, ask which login to use and pass login. gh copies only that account into encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect unselects GitHub for this project only. Saved connections remain reusable. " +
 	"sync {connection_id}; remove_connection {connection_id}. " +
 	"A person can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal."
 
@@ -83,6 +83,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 			"name":           str("set_secret / remove_secret: the secret's name. connect with url: the custom server's name."),
 			"provider":       str("connect: the catalog server's name."),
 			"method":         str("github_connect: gh (local owner only), pat (personal access token), or oauth (browser sign-in)."),
+			"connection_id":  str("github_connect with method=saved: id from github_status.connections; selects only for this project."),
 			"login":          str("github_connect with method=gh: account name from github_status.gh_accounts; required when multiple accounts are signed in."),
 			"token":          str("github_connect with method=pat: the supplied personal access token. Stored encrypted; never return or repeat it."),
 			"url":            str("Verified custom MCP URL, with name instead of provider."),
@@ -122,7 +123,7 @@ func argString(args map[string]interface{}, key string) string {
 
 func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, args map[string]interface{}) (string, error) {
 	// In a project's own chat the project is the chat's; callers often leave workspace_path out.
-	if op := argString(args, "operation"); (op == "project" || op == "project_select") && argString(args, "workspace_path") == "" {
+	if op := argString(args, "operation"); (op == "project" || op == "project_select" || strings.HasPrefix(op, "github_")) && argString(args, "workspace_path") == "" {
 		if root := api.projectRootForSession(executor.SessionIDFromContext(ctx)); root != "" {
 			args["workspace_path"] = root
 		}
