@@ -1,3 +1,4 @@
+import { chatTabSwitchKeys } from '../../products/work/workTabs'
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowUp, ChevronDown, ChevronRight, RotateCcw, Square, Wand2 } from 'lucide-react'
@@ -51,10 +52,34 @@ export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backg
         </Menu.Portal>
       </Menu.Sub>
     </>}
-    <p className="mt-1.5 border-t border-border px-2.5 pb-1 pt-2 text-[10px] text-muted-foreground">
-      {busy ? SEND_SHORTCUTS_BUSY : SEND_SHORTCUTS_IDLE}
-    </p>
+    <ComposerKeyboardShortcuts />
   </>
+}
+
+/** Fixed reference, not a rotating hint or a usage tracker. */
+function ComposerKeyboardShortcuts() {
+  const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  const command = mac ? '⌘' : 'Ctrl+'
+  const tabs = chatTabSwitchKeys()
+  const shortcuts = [
+    ['Enter', 'Send · steer while working'],
+    [`${command}Enter`, 'Queue next while working'],
+    ['Shift+Enter', 'New line'],
+    ['/', 'Commands'], ['@', 'Files'], ['#', 'Crew references'],
+    [`${command}← / ${command}→`, 'Back / forward · outside text fields'],
+    [mac ? tabs.mac : tabs.other, 'Switch agents in this project'],
+    [`${command}K`, 'Search'],
+    [mac ? '⌥⇧T' : 'Alt+Shift+T', 'New agent'],
+  ]
+  return <section aria-label="Keyboard shortcuts" className="mt-1.5 border-t border-border px-2.5 pb-1 pt-2 text-[10px] text-muted-foreground">
+    <h3 className="mb-1 font-medium">Keyboard shortcuts</h3>
+    <dl className="space-y-1">
+      {shortcuts.map(([keys, label]) => <div key={keys} className="flex items-baseline justify-between gap-3">
+        <dt><kbd className="whitespace-nowrap font-mono">{keys}</kbd></dt>
+        <dd className="text-right">{label}</dd>
+      </div>)}
+    </dl>
+  </section>
 }
 
 /** Selection expresses intent only; the server chooses delivery using live state. */
