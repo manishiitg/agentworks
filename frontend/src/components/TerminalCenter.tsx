@@ -569,21 +569,18 @@ export const RAW_XTERM_FONT_SIZE = 12
 const RAW_XTERM_SCROLLBAR_WIDTH = 7
 const RAW_XTERM_CSS_LINE_HEIGHT = 'normal'
 
-// ANSI colors decoded from the exported macOS Tahoe Clear Dark profile.
-// Neutral base surfaces and blue selections match the app Light/Dark appearances.
-// https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
-// Native Liquid Glass/ColorSync rendering is not reproduced by the web terminal.
+// Default retains the original raw-terminal palette. Apple font choice is independent.
 export const DARK_XTERM_THEME: ITheme = {
-  background: '#0a0a0a', foreground: '#f5f5f5', cursor: '#f5f5f5',
-  selectionBackground: '#1e3a5f', overviewRulerBorder: '#00000000',
-  black: '#35424c', red: '#b45648', green: '#6caa71', yellow: '#c4ac62',
-  blue: '#6d96b4', magenta: '#bd7bcd', cyan: '#7ccbcd', white: '#dee5eb',
-  brightBlack: '#465c6d', brightRed: '#df6c5a', brightGreen: '#79be7e', brightYellow: '#e5c872',
-  brightBlue: '#67b5ed', brightMagenta: '#d389e5', brightCyan: '#84dde0', brightWhite: '#e5eff5',
-  scrollbarSliderBackground: '#465c6d66', scrollbarSliderHoverBackground: '#465c6d99',
+  background: '#0b0e14',
+  overviewRulerBorder: '#00000000',
+  scrollbarSliderBackground: '#94a3b838',
+  scrollbarSliderHoverBackground: '#94a3b866',
+  scrollbarSliderActiveBackground: '#94a3b88c',
 }
 
-// Same Tahoe export, Clear Light.terminal; native material/ColorSync caveats above apply.
+// Light ANSI colors from the exported Tahoe Clear Light profile; neutral app base.
+// https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
+// Native Liquid Glass/ColorSync rendering is not reproduced.
 export const LIGHT_XTERM_THEME: ITheme = {
   background: '#fcfcfc', foreground: '#262626', cursor: '#666666',
   selectionBackground: '#dbeafe', overviewRulerBorder: '#00000000',

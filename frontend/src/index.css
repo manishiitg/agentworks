@@ -1923,42 +1923,15 @@
 }
 /* App-wide colors inherit into navigation and portaled dialogs. Explicit
    report/force-light themes still define their own tokens on their boundary. */
+/* Default uses the original .dark palette above, not an alternate dark theme.
+   Keep only typography and the chat-specific semantic colors here. */
 html.dark[data-appearance="dark"] {
   --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --background: 0 0% 3.922%;
-  --foreground: 0 0% 96.078%;
-  --muted: 0 0% 9.020%;
-  --muted-foreground: 0 0% 64%;
-  --card: 0 0% 6.667%;
-  --card-foreground: var(--foreground);
-  --border: 0 0% 14%;
-  --input: 0 0% 9.020%;
-  --primary: 213 94% 68%;
-  --ring: var(--primary);
-  --success: 124.054 34.395% 60.877%;
-  --warning: 44.870 68.862% 67.255%;
-  --destructive: 8.201 67.876% 61.441%;
-  --appearance-bold: #fafafa;
+  --appearance-bold: hsl(var(--foreground));
   --appearance-link: #60a5fa;
-  --appearance-code: #e5e5e5;
-  --appearance-code-background: #171717;
-  --appearance-selection: #1e3a5f;
-  --popover: var(--card);
-  --popover-foreground: var(--foreground);
-  --primary-foreground: var(--background);
-  --secondary: var(--muted);
-  --secondary-foreground: var(--foreground);
-  --accent: 0 0% 12%;
-  --accent-foreground: var(--foreground);
-  --destructive-foreground: var(--background);
-  --info: var(--primary);
-  --diff-add: var(--success);
-  --diff-del: var(--destructive);
-  --chart-1: var(--primary);
-  --chart-2: var(--success);
-  --chart-3: var(--warning);
-  --chart-4: 288.261 63.889% 71.765%;
-  --chart-5: var(--destructive);
+  --appearance-code: #60a5fa;
+  --appearance-code-background: #1f2937;
+  --appearance-selection: #264f78;
 }
 /* Neutral surfaces separate content from chrome without tinting the whole app.
    Blue is reserved for links/actions/focus; status colors keep their meanings. */
@@ -2043,9 +2016,9 @@ html:is([data-appearance="dark"], [data-appearance="light"]) :is(code, pre, .fon
   font-family: var(--runloop-mono);
 }
 
-/* Context and composer surfaces follow the selected semantic palette. */
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-workspace-context-card],
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
+/* Light needs semantic surfaces; Default keeps the original dark utility colors. */
+html.light[data-appearance="light"] [data-workspace-context-card],
+html.light[data-appearance="light"] [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
   background-color: hsl(var(--card));
   border-color: hsl(var(--border));
 }

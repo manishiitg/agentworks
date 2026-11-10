@@ -10,7 +10,7 @@ export default function AppearanceControl() {
       <Palette aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><SelectValue />
     </SelectTrigger>
     <SelectContent align="end">
-      <SelectItem value="dark">Dark</SelectItem>
+      <SelectItem value="dark">Default</SelectItem>
       <SelectItem value="light">Light</SelectItem>
       <p className="max-w-56 px-2 py-1.5 text-xs text-muted-foreground">System font for replies and menus. SF Mono for code and terminals.</p>
     </SelectContent>
