@@ -91,6 +91,7 @@ export type ExtendedLLMConfiguration = Omit<LLMConfiguration, 'api_keys'> & {
 
 // Agent streaming types
 export interface AgentQueryRequest {
+  pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   connection_id?: string
   query: string

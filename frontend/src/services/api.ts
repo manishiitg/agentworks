@@ -2107,7 +2107,7 @@ export const agentApi = {
 
   // One helper for every chat attachment: the file goes as chunks (plan, the chunks the server lacks, finish), so no
   // single request is big enough to hit the gateway's limit. The server decides what is allowed and where it goes.
-  uploadCrewChatFile: async (file: File, projectId: string) => {
+  prepareCrewChatFile: async (file: File, projectId: string, scope?: { sessionId: string; conversationKey: string }): Promise<{ attachment: { hash: string; name: string }; upload: () => Promise<{ filepath: string }> }> => {
     const route = `/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`
     const hex = (digest: ArrayBuffer) => Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
     try {
@@ -2118,14 +2118,23 @@ export const agentApi = {
         pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
       }
       const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
-      const plan = await api.post(`${route}/plan`, { file: version })
+      const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
+      const plan = await api.post(`${route}/plan`, { file: version, ...binding })
+      if (scope && plan.data.pending_attachments !== true) {
+        throw new Error('This server needs an update to send while files upload. Ask its owner to update it, then attach the file again.')
+      }
       const missing = new Set<string>(plan.data.missing)
       const send = pieces.filter(piece => missing.delete(piece.id))
-      for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
-        await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
+      return {
+        attachment: { hash: version.hash, name: file.name },
+        upload: async () => {
+          for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
+            await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
+          }
+          const response = await api.post(route, { name: file.name, file: version, ...binding })
+          return response.data
+        },
       }
-      const response = await api.post(route, { name: file.name, file: version })
-      return response.data
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const message = error.response?.data?.error?.message || error.response?.data?.error || error.response?.data?.message
@@ -2133,6 +2142,11 @@ export const agentApi = {
       }
       throw error
     }
+  },
+
+  uploadCrewChatFile: async (file: File, projectId: string): Promise<{ filepath: string }> => {
+    const prepared = await agentApi.prepareCrewChatFile(file, projectId)
+    return prepared.upload()
   },
 
   uploadPlannerFile: async (file: File, folderPath: string, commitMessage?: string) => {
