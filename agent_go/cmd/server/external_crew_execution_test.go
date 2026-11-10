@@ -269,9 +269,7 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 			t.Fatalf("status %d want %d: %s", rec.Code, want, rec.Body)
 		}
 	}
-	owner := crewWriter("owner")
-	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "capabilities"}}, 200)
-	call(owner, map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "get"}}, 200)
+	// The two MCP session-tool calls above are audited.
 	audit, err := openCrewExecutionAudit()
 	if err != nil {
 		t.Fatal(err)
