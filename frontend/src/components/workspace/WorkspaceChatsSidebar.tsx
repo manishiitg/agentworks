@@ -30,7 +30,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const [directory, setDirectory] = useState<{ scope: string; crews: Crew[]; error: boolean } | null>(null)
   const [refresh, setRefresh] = useState(0)
   useLiveRefetch(() => setRefresh(value => value + 1), {
-    kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
+    kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 5000,
     enabled: allowed.includes('work'),
   })
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }, [scope, refresh, allowed.join(','), crewId])
   const current = directory?.scope === scope ? directory : null
   const projects = [
-    ...(allowed.includes('work') ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, shared_line: crew.shared_line, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
+    ...(allowed.includes('work') ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, shared_line: crew.shared_line, team_busy: crew.team_busy, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
   ].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
 
   return <aside aria-label="Projects" className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20">

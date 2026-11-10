@@ -2,7 +2,12 @@ package server
 
 import (
 	"log"
+	"slices"
+	"strings"
 	"sync"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 )
 
 // A Team changed: tell its people's Macs at once over the relay connection each already keeps open, so they sync now
@@ -53,4 +58,107 @@ func pushCrewTeamNote(project, kind string, revision uint64, everyone bool) {
 		}
 	}
 	log.Printf("[CREW_TEAM] project=%s event=change_pushed kind=%s revision=%d macs=%d", project, kind, revision, sent)
+}
+
+// A Team's agents started or stopped a turn: tell each of its people's Macs who else is working there now, so the left
+// menu shows it on the project's row even when the project is closed (owner, 10 Nov). The note carries only names and
+// a state, never what anyone typed; the state is "running" when anyone else is working, "waiting" when anyone else's
+// agent waits for them, else "".
+var crewTeamBusySent sync.Map // "<project>/<person>" -> last line sent
+
+func pushCrewTeamBusy(project string) {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.On {
+		return
+	}
+	busy := crewRelayStreams.busyPeople(project)
+	people := map[string]bool{t.OwnerID: true}
+	for _, p := range t.People {
+		if !p.Invited {
+			people[p.UserID] = true
+		}
+	}
+	label := shareOwnerLabeler()
+	crewMacSockets.Lock()
+	targets := []*crewMacSocket{}
+	for _, sock := range crewMacSockets.byDevice {
+		if people[sock.owner] && sock.send != nil {
+			targets = append(targets, sock)
+		}
+	}
+	crewMacSockets.Unlock()
+	for _, sock := range targets {
+		state, line := crewTeamBusyLine(busy, sock.owner, label)
+		key := project + "/" + sock.owner
+		if previous, ok := crewTeamBusySent.Load(key); ok && previous.(string) == state+"|"+line {
+			continue
+		}
+		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line}) == nil {
+			crewTeamBusySent.Store(key, state+"|"+line)
+		}
+	}
+}
+
+// crewTeamBusyLine is what one person's Mac is told: the others working ("A is working", "A and B are working"), else
+// the others waiting for their person.
+func crewTeamBusyLine(busy map[string]string, viewer string, label func(string) string) (string, string) {
+	names := map[string][]string{}
+	for person, state := range busy {
+		if person != viewer {
+			names[state] = append(names[state], strings.SplitN(label(person), "@", 2)[0])
+		}
+	}
+	for _, state := range []string{"running", "waiting"} {
+		list := names[state]
+		if len(list) == 0 {
+			continue
+		}
+		slices.Sort(list)
+		who, verb := list[0], "is"
+		if len(list) > 1 {
+			who, verb = strings.Join(list[:len(list)-1], ", ")+" and "+list[len(list)-1], "are"
+		}
+		if state == "running" {
+			return state, who + " " + verb + " working"
+		}
+		return state, who + " " + verb + " waiting for an answer"
+	}
+	return "", ""
+}
+
+// On the Mac: the last "who else is working" note per Crew on this Mac (the owner's Mac Crew or a member's copy).
+type crewTeamBusyNote struct {
+	State string `json:"state"`
+	Line  string `json:"line"`
+	at    time.Time
+}
+
+var crewTeamBusyNotes sync.Map // local project -> crewTeamBusyNote
+
+func noteCrewTeamBusy(project, state, line string) {
+	local := crewLocalCopyOf(project)
+	if local == "" {
+		return
+	}
+	if state == "" {
+		crewTeamBusyNotes.Delete(local)
+	} else {
+		crewTeamBusyNotes.Store(local, crewTeamBusyNote{State: state, Line: line, at: time.Now()})
+	}
+	// The left menu re-reads its list on a sessions notice.
+	livefeed.Default.Publish(livefeed.Sessions, "")
+}
+
+// crewTeamBusyFor is the note for a Crew on this Mac, while it is fresh (a turn never reported ended stops counting).
+func crewTeamBusyFor(local string) *crewTeamBusyNote {
+	value, ok := crewTeamBusyNotes.Load(local)
+	if !ok {
+		return nil
+	}
+	note := value.(crewTeamBusyNote)
+	if time.Since(note.at) > crewActivityStale {
+		crewTeamBusyNotes.Delete(local)
+		return nil
+	}
+	return &note
 }

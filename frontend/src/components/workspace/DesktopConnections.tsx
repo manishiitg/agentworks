@@ -31,7 +31,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, type MenuFilter } from './MenuGroups'
 
 
-type SidebarProject = { id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
+type SidebarProject = { id: string; name: string; shared_line?: string; team_busy?: { state: 'running' | 'waiting'; line: string }; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
  * 10 Nov). The personal AgentWorks agent is on the Home page only. */
@@ -142,7 +142,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       if (target) movePinned(key, keyFor(target))
     }
     const crew = project.kind === 'crew' && !project.personal_agent
-    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined}
+    const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
       onMoveUp={shortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={shortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={here && project.selected}
@@ -156,7 +156,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
         else open(connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
       }} />
     return crew
-      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
+      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} teamBusy={project.team_busy} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
@@ -214,7 +214,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
 }
 
 /** Each expanded Crew loads its own admitted chats, including on other connections. */
-function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string) => ReactNode }) {
+function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBusy, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; teamBusy?: SidebarProject['team_busy']; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string) => ReactNode }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'crew', connectionId, projectId)
   const saved = useSidebarExpansionStore(state => state.expanded[key])
   const toggle = useSidebarExpansionStore(state => state.toggle)
@@ -233,7 +233,9 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const sessions = (connectionId === getRawActiveWorkspaceId() ? localSessions : activity || [])
     .filter(session => session.crew_project_id === projectId)
   const running = sessions.some(hasActiveSessionWork)
-  const activityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
+  // A teammate working here shows on the row too, from the server's note (owner, 10 Nov), with its line on hover.
+  const activityLabel = running || teamBusy?.state === 'running' ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
+  const activityTitle = !running && teamBusy?.state === 'running' ? teamBusy.line : undefined
   // This network's chat changes arrive as live notices; another network's list is checked every minute.
   const here = connectionId === getRawActiveWorkspaceId()
   const [reload, setReload] = useState(0)
@@ -271,7 +273,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     else void window.electronAPI?.openDesktopConnection?.(connectionId, productRoutePath(route))
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, activityTitle)}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : chats.filter(chat => chat.pinned !== false).map(chat => {
       const session = sessions.find(item => item.session_id === chat.session_id)
       return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
     })}</div>)}{expanded && connectionId === getRawActiveWorkspaceId() && <TeammatesWorking projectId={projectId} />}</>
