@@ -663,6 +663,7 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 }
 
 func initializeProductConversationWorkspace(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) error {
+	countConversationInit()
 	if profile.ID == caplayerproduct.ProfileID {
 		if err := ensureVaultChatWorkspace(ctx, userID); err != nil {
 			return err
