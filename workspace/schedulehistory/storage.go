@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -141,9 +142,17 @@ func PurgeTree(ctx context.Context, docs, physical string) error {
 	if err != nil {
 		return err
 	}
+	var removed int64
 	for _, table := range []string{"history_entries", "history_imports"} {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE `+predicate, physical, prefix); err != nil {
-			return err
+		result, deleteErr := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE `+predicate, physical, prefix)
+		if deleteErr != nil {
+			return deleteErr
+		}
+		if table == "history_entries" {
+			removed, err = result.RowsAffected()
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if err = tx.Commit(); err != nil {
@@ -153,8 +162,10 @@ func PurgeTree(ctx context.Context, docs, physical string) error {
 	// committed row deletion prevents the new project's API reading old data.
 	for _, scope := range scopes {
 		if err = os.RemoveAll(filepath.Join(filepath.Dir(file), "imports", Hash(scope))); err != nil {
+			log.Printf("[SCHEDULE_HISTORY] scope=%s event=scope_deleted rows_removed=%d backup_cleanup=failed", Hash(physical), removed)
 			return fmt.Errorf("history rows removed; private backup cleanup failed: %w", err)
 		}
 	}
+	log.Printf("[SCHEDULE_HISTORY] scope=%s event=scope_deleted rows_removed=%d backup_cleanup=done", Hash(physical), removed)
 	return nil
 }
