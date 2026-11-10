@@ -4,21 +4,21 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin } from 'lucide-react'
+import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin, Users } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
 export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, personal_agent, shared_line, groupsMenu, stateLine, offline, onMac, shared_agents, showLocation, showIcon = true, pinned, onTogglePin, onOpen, activityLabel, agentsExpanded, onToggleAgents, onMoveUp, onMoveDown }: { groupsMenu?: ReactNode; shared_line?: string; onMoveUp?: () => void; onMoveDown?: () => void; agentsExpanded?: boolean; onToggleAgents?: () => void; activityLabel?: string; showLocation?: boolean; showIcon?: boolean; pinned?: boolean; onTogglePin?: () => void; personal_agent?: boolean; where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
   const highlight = selected && agentsExpanded !== true
   const sharedDashboard = kind === 'crew' && mode === 'run'
-  // A Team member's working copy says whose Crew it is, as the server words it (owner, 10 Nov).
-  const subline = stateLine || shared_line || (personal_agent ? 'Your agent' : undefined)
+  // A shared Crew shows a small people icon; whose it is (as the server words it) shows on hover (owner, 10 Nov).
+  const subline = stateLine || (personal_agent ? 'Your agent' : undefined)
   const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
   return <div className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
-    <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
+    <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}${shared_line ? `\n${shared_line}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
       className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {showIcon && <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={personal_agent ? <ProductSurfaceIcon surface="agentworks" className="h-4 w-4" /> : sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>}
-      <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${agentsExpanded || selected ? 'font-medium' : 'font-normal'}`}>{name}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
+      <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${agentsExpanded || selected ? 'font-medium' : 'font-normal'}`}>{name}{shared_line && <Users role="img" aria-label={shared_line} className="ml-1.5 inline h-3 w-3 align-[-1px] text-muted-foreground"><title>{shared_line}</title></Users>}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
     </button>
     {activityLabel === 'Running' ? <Loader2 role="img" aria-label="Working" className="mr-2 h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
       : activityLabel ? <span role="status" title={activityLabel} aria-label={activityLabel} className="mr-2 h-2 w-2 shrink-0 rounded-full bg-amber-400" /> : null}
