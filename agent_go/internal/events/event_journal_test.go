@@ -561,3 +561,54 @@ func TestFailureDisplayMatchesLiveAndReopenedHistory(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-746: restart-time authorization and hydration must not queue behind
+// the journal's occupied single writer connection. Before the fix this times out.
+func TestSQLiteEventJournalColdReadsDoNotWaitForWriter(t *testing.T) {
+	journal, err := OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	if err := journal.RegisterOwner("chat-1", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := journal.Append("chat-1", journalTestEvent("event-1", "one")); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := journal.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	done := make(chan error, 1)
+	go func() {
+		owner, err := journal.Owner("chat-1")
+		if err != nil || owner != "alice" {
+			done <- fmt.Errorf("owner=%q err=%v", owner, err)
+			return
+		}
+		known, sequence, err := journal.KnownSession("chat-1")
+		if err != nil || !known || sequence != 1 {
+			done <- fmt.Errorf("known=%v sequence=%d err=%v", known, sequence, err)
+			return
+		}
+		tail, err := journal.LoadTail("chat-1", 10)
+		if err != nil || len(tail) != 1 || tail[0].ID != "event-1" {
+			done <- fmt.Errorf("tail=%v err=%v", tail, err)
+			return
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		// Release the writer and drain the goroutine before journal cleanup.
+		_ = tx.Rollback()
+		<-done
+		t.Fatal("cold chat reads waited for the occupied writer connection")
+	}
+}
