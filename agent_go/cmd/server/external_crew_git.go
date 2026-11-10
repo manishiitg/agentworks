@@ -118,7 +118,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 	read := r.Clone(r.Context())
 	read.URL = &url.URL{Path: "/api/workspace-git", RawQuery: q.Encode()}
 	recorder := httptest.NewRecorder()
-	serveWorkspaceGitRead(recorder, read, ctx, repoDir, roots.Owner)
+	serveWorkspaceGitRead(recorder, read, context.WithValue(ctx, githubProjectRootKey{}, roots.Virtual), repoDir, roots.Owner)
 	if recorder.Code != http.StatusOK {
 		var refusal struct {
 			Error string `json:"error"`

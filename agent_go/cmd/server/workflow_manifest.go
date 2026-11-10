@@ -197,7 +197,8 @@ type WorkflowManifest struct {
 
 // WorkflowCapabilities stores workflow-wide agent and tool configuration.
 type WorkflowCapabilities struct {
-	SelectedServers []string `json:"selected_servers"`
+	GitHubConnectionID string   `json:"github_connection_id,omitempty"`
+	SelectedServers    []string `json:"selected_servers"`
 	// ChosenVaultAppsOnly is "Use all my apps automatically" switched off: only the Vault apps in SelectedServers
 	// are used. Off (the default) means every Vault app the person may use (owner decision 2026-10-27, PLAT-856-394).
 	ChosenVaultAppsOnly       bool                           `json:"chosen_vault_apps_only,omitempty"`

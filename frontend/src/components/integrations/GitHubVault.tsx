@@ -4,7 +4,7 @@ import { Button } from '../ui/Button'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import { CompanySignInSetup } from './CompanySignInSetup'
 
-interface GitHubStatus { app_ready: boolean; connected: boolean; gh_available: boolean; gh_accounts?: string[]; gh_accounts_note?: string; source?: string; login?: string; summary?: string; approval_page?: string }
+interface GitHubStatus { connection_id?: string; selection_error?: string; connections?: { id: string; login: string; source: string }[]; app_ready: boolean; connected: boolean; gh_available: boolean; gh_accounts?: string[]; gh_accounts_note?: string; source?: string; login?: string; summary?: string; approval_page?: string }
 
 const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
@@ -13,27 +13,30 @@ const errorText = (cause: unknown, fallback: string) => {
 const sourceName = (source?: string) => source === 'gh' ? 'GitHub CLI' : source === 'pat' ? 'Personal access token' : 'Browser sign-in'
 
 /** Every method saves the same owner-scoped GITHUB_TOKEN used by Git work and PR status. */
-export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnectionOpen?: boolean }) {
+export function GitHubVaultCard({ workspacePath, changeConnectionOpen = false }: { workspacePath: string; changeConnectionOpen?: boolean }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
   const [ghLogin, setGhLogin] = useState('')
+  const [savedConnection, setSavedConnection] = useState('')
+  const endpoint = `/api/vault/github?workspace_path=${encodeURIComponent(workspacePath)}`
   const tokenId = useId()
   const [message, setMessage] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const load = useCallback(async () => {
     try {
-      const next = (await api.get<GitHubStatus>('/api/vault/github')).data
+      const next = (await api.get<GitHubStatus>(endpoint)).data
       setStatus(next)
+      setSavedConnection(next.connection_id ?? '')
       const accounts = next.gh_accounts ?? []
       setGhLogin(current => accounts.includes(current) ? current : next.login && accounts.includes(next.login) ? next.login : accounts.length === 1 ? accounts[0] : '')
     } catch (cause) { setMessage(errorText(cause, 'Could not read your GitHub connection.')) }
-  }, [])
+  }, [endpoint])
   useEffect(() => { void load() }, [load])
-  const connect = async (method: 'gh' | 'pat' | 'oauth') => {
+  const connect = async (method: 'saved' | 'gh' | 'pat' | 'oauth') => {
     setBusy(true); setMessage(null)
     try {
-      const result = (await api.post<{ auth_url?: string; login?: string }>('/api/vault/github/connect', { method, ...(method === 'pat' ? { token } : method === 'gh' ? { login: ghLogin } : {}) })).data
+      const result = (await api.post<{ auth_url?: string; login?: string }>(`/api/vault/github/connect?workspace_path=${encodeURIComponent(workspacePath)}`, { method, ...(method === 'saved' ? { connection_id: savedConnection } : {}), ...(method === 'pat' ? { token } : method === 'gh' ? { login: ghLogin } : {}) })).data
       if (result.auth_url) { window.location.assign(result.auth_url); return }
       setFailed(false); setMessage(`Connected as ${result.login}.`)
       await load()
@@ -43,7 +46,7 @@ export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnec
   const disconnect = async () => {
     setBusy(true); setMessage(null)
     try {
-      const result = (await api.delete<{ message: string }>('/api/vault/github')).data
+      const result = (await api.delete<{ message: string }>(endpoint)).data
       setMessage(result.message)
       await load()
       window.dispatchEvent(new Event(githubConnectionChanged))
@@ -51,6 +54,15 @@ export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnec
   }
   if (!status) return message ? <p role="alert" className="text-xs text-destructive">{message}</p> : null
   const methods = <div className="space-y-3 pt-2">
+    {!!status.connections?.length && <div className="flex flex-wrap gap-2">
+      <label className="sr-only" htmlFor={`${tokenId}-saved`}>Saved GitHub connection</label>
+      <select id={`${tokenId}-saved`} value={savedConnection} disabled={busy} onChange={event => setSavedConnection(event.target.value)} className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm">
+        <option value="">Choose a saved connection</option>
+        {status.connections.map(connection => <option key={connection.id} value={connection.id}>{connection.login} · {sourceName(connection.source)}</option>)}
+      </select>
+      <Button type="button" size="sm" variant="outline" disabled={busy || !savedConnection} onClick={() => void connect('saved')}>Use for this project</Button>
+    </div>}
+    {status.selection_error && <p role="alert" className="text-xs text-destructive">{status.selection_error}</p>}
     {status.gh_available && <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border p-3">
       <div className="min-w-0 flex-1">
         <h4 className="text-sm font-medium">Use your GitHub CLI login</h4>
@@ -89,11 +101,11 @@ export function GitHubVaultCard({ changeConnectionOpen = false }: { changeConnec
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <h3 className="text-sm font-medium">GitHub{status.connected ? ` · ${status.login}` : ''}</h3>
-        <p className="text-xs text-muted-foreground">{status.connected ? `${sourceName(status.source)}. Git and pull requests in your Crews use this saved account.` : 'Connect your account for Git work and pull requests in your Crews.'}</p>
+        <p className="text-xs text-muted-foreground">{status.connected ? `${sourceName(status.source)}. Git and pull requests in this project use this account. Other projects are unchanged.` : 'Choose a GitHub account for this project.'}</p>
         {status.connected && <p className="mt-1 text-xs text-muted-foreground">{status.summary}</p>}
         {status.connected && status.approval_page && <a className="text-xs underline" href={status.approval_page} target="_blank" rel="noreferrer">Open the approval page on GitHub</a>}
       </div>
-      {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
+      {status.connected && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void disconnect()}>Disconnect from project</Button>}
     </div>
     {status.connected ? <details open={changeConnectionOpen || undefined}><summary className="cursor-pointer text-xs text-muted-foreground">Change connection</summary>{methods}</details> : methods}
     {message && <p role={failed ? 'alert' : 'status'} className={`text-xs ${failed ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}
@@ -111,7 +123,7 @@ export function GitHubConnectCompletion() {
     const rest = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
     api.post<{ login: string; summary?: string }>('/api/vault/github/complete', { state })
-      .then(result => { setNote(`${result.data.summary || `GitHub connected as ${result.data.login}`}. Your Crews can now use it for Git work.`); window.dispatchEvent(new Event(githubConnectionChanged)) })
+      .then(result => { setNote(`${result.data.summary || `GitHub connected as ${result.data.login}`}. The project where you started sign-in can now use it for Git work.`); window.dispatchEvent(new Event(githubConnectionChanged)) })
       .catch(cause => setNote(errorText(cause, "GitHub could not be connected. Start again from the project's Secrets panel or ask in chat.")))
   }, [])
   if (!note) return null

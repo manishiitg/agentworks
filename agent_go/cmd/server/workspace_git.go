@@ -495,7 +495,7 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 		writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
 		return
 	}
-	serveWorkspaceGitRead(w, r, ctx, repoDir, workspaceGitCrewOwner(r))
+	serveWorkspaceGitRead(w, r, context.WithValue(ctx, githubProjectRootKey{}, canonicalCrewWorkspaceRoot(requestWorkflowWorkspacePath(r))), repoDir, workspaceGitCrewOwner(r))
 }
 
 // workspaceGitCrewOwner is the owner of the Crew holding workspace_path ("" when
