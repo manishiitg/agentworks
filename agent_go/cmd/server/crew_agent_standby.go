@@ -330,7 +330,7 @@ func crewStandbyEligible(project, person, tab string) (bool, string) {
 		return false, "not_owner"
 	}
 	if person == t.OwnerID {
-		if !slices.ContainsFunc(readMacSharedAgents(project), func(a macSharedAgent) bool { return a.Tab == tab && crewTeamInTeam(a) }) {
+		if !slices.ContainsFunc(readMacSharedAgents(project), func(a macSharedAgent) bool { return a.Tab == tab }) {
 			return false, "not_listed"
 		}
 	} else {
