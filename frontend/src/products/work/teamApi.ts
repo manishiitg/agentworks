@@ -224,7 +224,7 @@ export async function switchTeam(target: TeamTarget, on: boolean, ownMac = false
  * ":team:" (teamSideChats). */
 export function teamAgentFor(agents: TeamTabAgent[] | undefined, chatKey?: string) {
   if (!chatKey) return undefined
-  return agents?.find(item => item.key === chatKey || item.watch_key === chatKey || chatKey.endsWith(`:team:${item.key}`))
+  return agents?.find(item => item.key === chatKey || item.watch_key === chatKey || chatKey.endsWith(`:team:${item.key}`) || !!item.watch_key && chatKey.endsWith(`:team:${item.watch_key}`))
 }
 
 /** The Team tab's row for one chat tab here: someone else's by its key; one of the person's own by its key on the

@@ -27,13 +27,14 @@ const (
 )
 
 type codeChat struct {
-	OwnerID   string
-	IsMain    bool
-	Key       string // conversation key: <projectId> or <projectId>:chat:<id>
-	ID        string // "main" or the side chat's id
-	Name      string
-	Purpose   string
-	SessionID string
+	TeamAgentID string // Team identity; Key remains the native conversation binding.
+	OwnerID     string
+	IsMain      bool
+	Key         string // conversation key: <projectId> or <projectId>:chat:<id>
+	ID          string // "main" or the side chat's id
+	Name        string
+	Purpose     string
+	SessionID   string
 	// Hidden: the person took this tab off their strip (Close keeps it as a hidden agent). Lists leave it out.
 	Hidden    bool
 	UpdatedAt string
@@ -116,6 +117,22 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 	if !found {
 		return denied, unavailable
 	}
+	if !IsLocalMode() {
+		if team, err := readCrewTeam(manifest.ID); err == nil && team.On && team.member(userID) {
+			project.Chats = nil
+			for _, person := range teamAgentsByPerson(ctx, team, userID) {
+				for _, agent := range person.Agents {
+					if person.UserID == userID && agent.ChatKey == project.Self.Key {
+						project.Self.TeamAgentID = agent.ID
+					}
+					if !agent.InTeam {
+						continue
+					}
+					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, SessionID: agent.sessionID, IsMain: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
+				}
+			}
+		}
+	}
 	sort.SliceStable(project.Chats, func(i, j int) bool {
 		if project.Chats[i].IsMain != project.Chats[j].IsMain {
 			return project.Chats[i].IsMain
@@ -163,6 +180,7 @@ func (p codeChatProject) find(raw string) (codeChat, error) {
 func codeChatCaller(project codeChatProject, base triggerLinkCaller) triggerLinkCaller {
 	self := project.Self
 	base.Label = self.Name
+	base.TeamAgentID = self.TeamAgentID
 	base.Chat = &self
 	return base
 }
@@ -170,7 +188,7 @@ func codeChatCaller(project codeChatProject, base triggerLinkCaller) triggerLink
 // codeChatTarget is a sibling chat as a call target; codePath is the project's
 // physical folder, the same one its calls are keyed by.
 func codeChatTarget(project codeChatProject, chat codeChat, codePath string) triggerTarget {
-	return triggerTarget{Kind: triggerCallerCrew, Path: codePath, Label: chat.Name,
+	return triggerTarget{TeamAgentID: chat.TeamAgentID, Kind: triggerCallerCrew, Path: codePath, Label: chat.Name,
 		CrewID: project.ProjectID, CrewProfile: project.ProfileID, CrewOwner: firstNonEmptyTrimmed(chat.OwnerID, project.OwnerID), Chat: &chat}
 }
 
