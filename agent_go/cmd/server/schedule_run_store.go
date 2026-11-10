@@ -3,9 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,12 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -32,25 +31,31 @@ type scheduleHistory struct {
 	scope, legacy, backup, importDir string
 }
 
+var errScheduleHistoryBackupDiffers = errors.New("imported source differs from its private backup; keeping SQL history authoritative and both files unchanged")
+
 const scheduleHistoryTerminal = `status IN ('success','error','stopped','partial','failed','interrupted')`
 
-func scheduleHistoryHash(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
+func scheduleHistoryHash(value string) string { return schedulehistory.Hash(value) }
+
+func scheduleHistoryScope(workspace string) (string, error) {
+	docs, err := schedulehistory.PhysicalPath(fsutil.WorkspaceDocsRoot())
+	if err != nil {
+		return "", err
+	}
+	file, err := fsutil.WorkspacePath(docs, scheduleRunsPath(workspace))
+	if err != nil {
+		return "", err
+	}
+	return schedulehistory.PhysicalPath(filepath.Dir(file))
 }
 
 func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistory, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return nil, errors.New("choose a project to open its run history")
 	}
-	docs, err := filepath.Abs(fsutil.WorkspaceDocsRoot())
+	docs, err := scheduleHistoryPhysicalPath(fsutil.WorkspaceDocsRoot())
 	if err != nil {
 		return nil, err
-	}
-	if real, e := filepath.EvalSymlinks(docs); e == nil {
-		docs = real
-	} else if !os.IsNotExist(e) {
-		return nil, e
 	}
 	legacy, err := fsutil.WorkspacePath(docs, scheduleRunsPath(workspace))
 	if err != nil {
@@ -60,25 +65,52 @@ func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistor
 	if err != nil {
 		return nil, err
 	}
-	scope := filepath.Dir(legacy)
-	if real, e := filepath.EvalSymlinks(scope); e == nil {
-		scope = real
-		legacy = filepath.Join(scope, "schedule-runs.json")
-	} else if !os.IsNotExist(e) {
-		return nil, e
-	}
-	state, err := crewroot.StateRoot()
+	scope, err := scheduleHistoryPhysicalPath(filepath.Dir(legacy))
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(state, "schedule-history", scheduleHistoryHash(docs))
-	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
+	legacy = filepath.Join(scope, "schedule-runs.json")
+	file, err := schedulehistory.DatabasePath(docs)
+	if err != nil {
 		return nil, err
 	}
-	if err = os.Chmod(dir, 0700); err != nil {
+	dir := filepath.Dir(file)
+	db, err := openScheduleHistoryDatabase(ctx, dir)
+	if err != nil {
 		return nil, err
 	}
+	h := &scheduleHistory{db: db, scope: scope, legacy: legacy, importDir: filepath.Join(dir, "imports", scheduleHistoryHash(scope))}
+	h.backup = filepath.Join(h.importDir, "schedule-runs.json.imported")
+	if err = h.importOnce(ctx); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+func scheduleHistoryPhysicalPath(value string) (string, error) {
+	return schedulehistory.PhysicalPath(value)
+}
+
+// Connections and schema initialization are process resources, not a cache of
+// workspace documents or rows. Every operation resolves its scope afresh.
+var scheduleHistoryConnections = struct {
+	sync.Mutex
+	byFile map[string]*sql.DB
+}{byFile: map[string]*sql.DB{}}
+
+func openScheduleHistoryDatabase(ctx context.Context, dir string) (*sql.DB, error) {
 	file := filepath.Join(dir, "history.sqlite")
+	scheduleHistoryConnections.Lock()
+	defer scheduleHistoryConnections.Unlock()
+	if db := scheduleHistoryConnections.byFile[file]; db != nil {
+		return db, nil
+	}
+	if err := agentworksclient.EnsurePrivateDirectory(dir); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		return nil, err
+	}
 	if info, e := os.Lstat(file); e == nil && !info.Mode().IsRegular() {
 		return nil, errors.New("run history must be an ordinary private database")
 	} else if e != nil && !os.IsNotExist(e) {
@@ -100,9 +132,7 @@ func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistor
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	h := &scheduleHistory{db: db, scope: scope, legacy: legacy, importDir: filepath.Join(dir, "imports", scheduleHistoryHash(scope))}
-	h.backup = filepath.Join(h.importDir, "schedule-runs.json.imported")
+	db.SetMaxOpenConns(4)
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS history_imports (scope TEXT PRIMARY KEY,cleanup_pending INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS history_entries (serial INTEGER PRIMARY KEY AUTOINCREMENT,scope TEXT NOT NULL,run_id TEXT NOT NULL,schedule_id TEXT NOT NULL,status TEXT NOT NULL,trigger_source TEXT NOT NULL,run_folder TEXT NOT NULL,has_webhook INTEGER NOT NULL,started_ns INTEGER,started_at TEXT NOT NULL,session_id TEXT NOT NULL,error_text TEXT NOT NULL,duration_ms INTEGER,payload TEXT NOT NULL)`,
@@ -117,17 +147,14 @@ func openScheduleHistory(ctx context.Context, workspace string) (*scheduleHistor
 			return nil, err
 		}
 	}
-	if err = h.importOnce(ctx); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return h, nil
+	scheduleHistoryConnections.byFile[file] = db
+	return db, nil
 }
 
 func (h *scheduleHistory) importOnce(ctx context.Context) error {
-	var pending bool
+	var pending int
 	err := h.db.QueryRowContext(ctx, `SELECT cleanup_pending FROM history_imports WHERE scope=?`, h.scope).Scan(&pending)
-	if err == nil && !pending {
+	if err == nil && pending == 0 {
 		return nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -147,7 +174,7 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 	}
 	defer unlock()
 	err = h.db.QueryRowContext(ctx, `SELECT cleanup_pending FROM history_imports WHERE scope=?`, h.scope).Scan(&pending)
-	if err == nil && !pending {
+	if err == nil && pending == 0 {
 		return nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -170,7 +197,10 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 				return e
 			}
 			if e = json.Unmarshal(raw, &runs); e != nil {
-				return fmt.Errorf("run history import failed: %w", e)
+				// Bad history must not block future schedule admission. Keep all bytes
+				// privately after committing an empty history; never use partial rows.
+				runs = nil
+				pending = 2
 			}
 		}
 		tx, e := h.db.BeginTx(ctx, nil)
@@ -185,49 +215,76 @@ func (h *scheduleHistory) importOnce(ctx context.Context) error {
 				return e
 			}
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO history_imports(scope,cleanup_pending) VALUES (?,?)`, h.scope, exists); e != nil {
+		if exists && pending == 0 {
+			pending = 1
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO history_imports(scope,cleanup_pending) VALUES (?,?)`, h.scope, pending); e != nil {
 			return e
 		}
 		if e = tx.Commit(); e != nil {
 			return e
 		}
-		pending = exists
-		log.Printf("[SCHEDULE_HISTORY] scope=%s event=import rows=%d source_bytes=%d cleanup_pending=%t", scheduleHistoryHash(h.scope), len(runs), len(raw), pending)
+		event := "import"
+		if pending == 2 {
+			event = "import_unreadable"
+		}
+		log.Printf("[SCHEDULE_HISTORY] scope=%s event=%s rows=%d source_bytes=%d cleanup_pending=%d", scheduleHistoryHash(h.scope), event, len(runs), len(raw), pending)
 	}
-	if pending {
-		if err = h.retireSource(); err != nil {
-			return err
+	if pending != 0 {
+		mode := pending
+		if mode < 0 {
+			mode = -mode
+		}
+		backup := h.backup
+		if mode == 2 {
+			backup = filepath.Join(h.importDir, "schedule-runs.json.unreadable")
+		}
+		if err = h.retireSource(backup); err != nil {
+			// SQL is authoritative after commit. Report cleanup failure once, and
+			// retry retirement later without blocking reads or new schedule runs.
+			if pending > 0 || errors.Is(err, errScheduleHistoryBackupDiffers) {
+				next := -mode
+				if errors.Is(err, errScheduleHistoryBackupDiffers) {
+					next = 0
+				}
+				if _, markErr := h.db.ExecContext(ctx, `UPDATE history_imports SET cleanup_pending=? WHERE scope=?`, next, h.scope); markErr != nil {
+					return markErr
+				}
+				log.Printf("[SCHEDULE_HISTORY] scope=%s event=source_retirement_failed history=sqlite error=%v", scheduleHistoryHash(h.scope), err)
+			}
+			return nil
 		}
 		if _, err = h.db.ExecContext(ctx, `UPDATE history_imports SET cleanup_pending=0 WHERE scope=?`, h.scope); err != nil {
 			return err
 		}
-		log.Printf("[SCHEDULE_HISTORY] scope=%s event=source_retired", scheduleHistoryHash(h.scope))
+		log.Printf("[SCHEDULE_HISTORY] scope=%s event=source_retired unreadable=%t", scheduleHistoryHash(h.scope), mode == 2)
 	}
+
 	return nil
 }
 
 // Commit precedes rename. Across volumes publish a complete private backup
 // before removing the source; a committed marker resumes cleanup, never import.
-func (h *scheduleHistory) retireSource() error {
+func (h *scheduleHistory) retireSource(backupPath string) error {
 	if _, err := os.Lstat(h.legacy); os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
 		return err
 	}
-	if backup, err := os.ReadFile(h.backup); err == nil {
+	if backup, err := os.ReadFile(backupPath); err == nil {
 		source, e := os.ReadFile(h.legacy)
 		if e != nil {
 			return e
 		}
 		if !bytes.Equal(backup, source) {
-			return errors.New("run history and its imported backup differ; ask an administrator to compare them before retrying")
+			return errScheduleHistoryBackupDiffers
 		}
 		return os.Remove(h.legacy)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err := os.Rename(h.legacy, h.backup); err == nil {
-		return os.Chmod(h.backup, 0600)
+	if err := os.Rename(h.legacy, backupPath); err == nil {
+		return os.Chmod(backupPath, 0600)
 	} else if !errors.Is(err, syscall.EXDEV) {
 		return err
 	}
@@ -252,7 +309,7 @@ func (h *scheduleHistory) retireSource() error {
 	if err != nil {
 		return err
 	}
-	if err = os.Rename(temp.Name(), h.backup); err != nil {
+	if err = os.Rename(temp.Name(), backupPath); err != nil {
 		return err
 	}
 	return os.Remove(h.legacy)
@@ -285,7 +342,6 @@ func withScheduleHistoryWrite(ctx context.Context, workspace string, change func
 	if err != nil {
 		return err
 	}
-	defer h.db.Close()
 	tx, err := h.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -366,7 +422,6 @@ func readScheduleRunStates(ctx context.Context, workspace, scheduleID string, ru
 	if err != nil {
 		return nil, err
 	}
-	defer h.db.Close()
 	query := `SELECT run_id,schedule_id,status,trigger_source,started_at,session_id,error_text,duration_ms FROM history_entries WHERE scope=?`
 	args := []any{h.scope}
 	if scheduleID != "" {
@@ -427,7 +482,6 @@ func readScheduleRuntimeProjection(ctx context.Context, workspace, scheduleID st
 	if err != nil {
 		return nil, 0, err
 	}
-	defer h.db.Close()
 	var run ScheduleRunEntry
 	var started string
 	var duration sql.NullInt64
@@ -458,7 +512,6 @@ func readScheduleDurationAverages(ctx context.Context, workspace string, limit i
 	if err != nil {
 		return nil, err
 	}
-	defer h.db.Close()
 	rows, err := h.db.QueryContext(ctx, `SELECT schedule_id,CAST(avg(duration_ms) AS INTEGER),count(*) FROM (SELECT schedule_id,duration_ms,row_number() OVER(PARTITION BY schedule_id ORDER BY started_ns DESC,serial DESC) AS recent FROM history_entries WHERE scope=? AND status='success' AND trigger_source!='manual' AND duration_ms>0 AND schedule_id!='') WHERE recent<=? GROUP BY schedule_id`, h.scope, limit)
 	if err != nil {
 		return nil, err
@@ -482,7 +535,6 @@ func findScheduleHistoryDetail(ctx context.Context, workspace, predicate string,
 	if err != nil {
 		return nil, err
 	}
-	defer h.db.Close()
 	values := append([]any{h.scope}, args...)
 	var payload string
 	err = h.db.QueryRowContext(ctx, `SELECT payload FROM history_entries WHERE scope=? AND `+predicate+` ORDER BY started_ns DESC,serial DESC LIMIT 1`, values...).Scan(&payload)
