@@ -48,7 +48,7 @@ func (api *StreamingAPI) createDesktopCrewRelayTwin(ctx context.Context, owner s
 	pair := uuid.NewString()
 	macName := desktopMacDisplayName()
 	previous := readCrewTeamState(roots.ID).PreviousProject
-	remote, err := desktopCrewSyncCall(ctx, owner, &connection, "new", crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: name, MacName: macName, MacID: connection.ID, PreviousProjectID: previous})
+	remote, err := desktopCrewSyncCall(ctx, owner, &connection, "new", crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: name, MacName: macName, MacID: desktopRelayDeviceID(connection.ID), PreviousProjectID: previous})
 	if err != nil {
 		return err
 	}
