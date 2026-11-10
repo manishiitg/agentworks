@@ -53,7 +53,7 @@ the same: a team is the people the owner adds in Share, then Team; teammates
 use only the agents the owner shares.
 
 Accepting a Team invite follows where the person is. In the Mac app there is one action, "Add to my Mac": the shared
-folder syncs to that Mac (the Mac signs in to the invite's server in the browser first when it is not connected yet).
-On the website there is one action, "Join", and the team works on the server. Decline is in both. The server says
-whether the Crew can be added to a Mac (`can_add_to_mac`: the Team shares a folder); when it cannot, the Mac app says so
-and offers only Decline.
+folder syncs to that Mac, through the server the invite was listed from (a server the person already added). On the
+website there is one action, "Join", and the team works on the server. Decline is in both. The server says whether
+the Crew can be added to a Mac (`can_add_to_mac`: the Team shares a folder); when it cannot, the Mac app says so and
+offers only Decline.
