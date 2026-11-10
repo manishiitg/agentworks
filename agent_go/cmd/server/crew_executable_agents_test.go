@@ -65,6 +65,14 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}
+	// A script-kind executable needs its saved script (one Python workflow per Crew), so the fixture saves one the way
+	// the other Crew script tests do before its manifest is written.
+	for file, content := range map[string]string{child.Root + "/code/script.json": `{"id":"child","name":"Report steps"}`, child.Root + "/code/main.py": "print('saved')\n"} {
+		files.mu.Lock()
+		files.files[file] = content
+		files.mu.Unlock()
+		materializeWorkspaceFixtureFile(t, files, docs, file)
+	}
 	m := NewWorkflowManifest("Report steps")
 	m.ID = child.ID
 	if err := WriteWorkflowManifest(ctx, child.Root, m); err != nil {
