@@ -1904,7 +1904,7 @@
 }
 .agent-inbox-prose .conversation-markdown p { margin-bottom: 0.5rem; }
 
-/* Font and palette source: macOS Tahoe Clear Dark.terminal, exported at
+/* Local monospace face follows macOS Tahoe Terminal profile metadata, exported at
    https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
    Resolve local macOS fonts only: no Apple font files are shipped/downloaded. */
 @font-face {
@@ -1925,31 +1925,31 @@
    report/force-light themes still define their own tokens on their boundary. */
 html.dark[data-appearance="dark"] {
   --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --background: 222.857 21.600% 12.550%;
-  --foreground: 0 0% 87.761%;
-  --muted: 205.432 17.431% 25.218%;
-  --muted-foreground: 205 12% 68%; /* Secondary app labels stay quieter than terminal text. */
-  --card: 220 20% 15%;
-  --card-foreground: 0 0% 87.761%;
-  --border: 212 14% 27%;
-  --input: 222.857 21.600% 12.550%;
-  --primary: 205.075 78.824% 66.667%;
-  --ring: 205.075 78.824% 66.667%;
+  --background: 0 0% 3.922%;
+  --foreground: 0 0% 96.078%;
+  --muted: 0 0% 9.020%;
+  --muted-foreground: 0 0% 64%;
+  --card: 0 0% 6.667%;
+  --card-foreground: var(--foreground);
+  --border: 0 0% 14%;
+  --input: 0 0% 9.020%;
+  --primary: 213 94% 68%;
+  --ring: var(--primary);
   --success: 124.054 34.395% 60.877%;
   --warning: 44.870 68.862% 67.255%;
   --destructive: 8.201 67.876% 61.441%;
-  --appearance-bold: #ededed;
-  --appearance-link: #67b5ed;
-  --appearance-code: #6d96b4;
-  --appearance-code-background: #35424c66;
-  --appearance-selection: #273d4c;
-  --popover: var(--background);
+  --appearance-bold: #fafafa;
+  --appearance-link: #60a5fa;
+  --appearance-code: #e5e5e5;
+  --appearance-code-background: #171717;
+  --appearance-selection: #1e3a5f;
+  --popover: var(--card);
   --popover-foreground: var(--foreground);
   --primary-foreground: var(--background);
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
-  --accent: var(--primary);
-  --accent-foreground: var(--background);
+  --accent: 0 0% 12%;
+  --accent-foreground: var(--foreground);
   --destructive-foreground: var(--background);
   --info: var(--primary);
   --diff-add: var(--success);
@@ -1960,25 +1960,25 @@ html.dark[data-appearance="dark"] {
   --chart-4: 288.261 63.889% 71.765%;
   --chart-5: var(--destructive);
 }
-/* Clear Light: exported white/blue-grey Terminal palette; darker UI accent
-   variants keep small labels readable on white. Terminal ANSI values stay exact. */
+/* Neutral surfaces separate content from chrome without tinting the whole app.
+   Blue is reserved for links/actions/focus; status colors keep their meanings. */
 html.light[data-appearance="light"] {
   --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --background: 0 0% 100%;
-  --foreground: 205 17.453% 21.236%;
-  --card: 205 20% 98%;
+  --background: 0 0% 98.824%;
+  --foreground: 0 0% 15%;
+  --card: 0 0% 100%;
   --card-foreground: var(--foreground);
-  --popover: var(--background);
+  --popover: var(--card);
   --popover-foreground: var(--foreground);
-  --muted: 205 31.391% 94%;
-  --muted-foreground: 204 17.949% 38.235%;
-  --border: 205 20% 87%;
-  --input: 205 20% 96%;
-  --primary: 205 45% 35%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
+  --border: 0 0% 89%;
+  --input: 0 0% 96%;
+  --primary: 221 83% 53%;
   --primary-foreground: 0 0% 100%;
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
-  --accent: 205 31.391% 90.309%;
+  --accent: 0 0% 94%;
   --accent-foreground: var(--foreground);
   --ring: var(--primary);
   --success: 124 35% 32%;
@@ -1993,11 +1993,11 @@ html.light[data-appearance="light"] {
   --chart-3: var(--warning);
   --chart-4: 288.667 40.909% 46%;
   --chart-5: var(--destructive);
-  --appearance-bold: #252e34;
-  --appearance-link: #326583;
-  --appearance-code: #326583;
-  --appearance-code-background: #dfe8ee;
-  --appearance-selection: #dfe8ee;
+  --appearance-bold: #171717;
+  --appearance-link: #2563eb;
+  --appearance-code: #262626;
+  --appearance-code-background: #f0f0f0;
+  --appearance-selection: #dbeafe;
 }
 /* Normal conversation text uses the native UI face; monospace is for code only. */
 html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
