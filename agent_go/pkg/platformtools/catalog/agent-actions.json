@@ -635,7 +635,7 @@
     "family": "vault",
     "name": "mine_github_connect",
     "member": "manage_my_vaults__github_connect",
-    "description": "Connect your own GitHub account. Choose method=gh on a single-user local installation, method=pat with token on local or server, or optional method=oauth for browser sign-in. gh saves a copy of the current login; later native account changes do not change it. Never return or repeat tokens.",
+    "description": "Select a saved GitHub connection for this project with method=saved and connection_id, or connect a new account. Choose method=gh on a single-user local installation, method=pat with token on local or server, or optional method=oauth for browser sign-in. gh saves a copy of the current login; later native account changes do not change it. Never return or repeat tokens.",
     "source": "manage_my_vaults",
     "source_action": "github_connect",
     "source_key": "operation"

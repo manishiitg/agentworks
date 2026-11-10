@@ -29,7 +29,6 @@ import (
 
 const (
 	githubAppKey       = "github"
-	githubSecretName   = "GITHUB_TOKEN"
 	githubStatePrefix  = "ghv_"
 	githubConnectTTL   = 10 * time.Minute
 	githubCompleteParm = "github_connect"
@@ -68,15 +67,12 @@ var (
 		}
 		return ""
 	}
-	// githubRemoveToken removes the person's GITHUB_TOKEN secret.
-	githubRemoveToken = func(ctx context.Context, api *StreamingAPI, person, vaultID string) error {
-		return api.removeVaultSecret(ctx, person, vaultID, githubSecretName)
-	}
 )
 
 type githubPendingConnect struct {
 	person, redirect, code, providerError string
 	workspace                             string
+	projectID                             string
 	created                               time.Time
 }
 
@@ -247,7 +243,7 @@ func githubApp() (clientID, clientSecret string, ok bool) {
 const githubNoAppMessage = "Browser sign-in is not configured. Use an existing gh login on your local installation, or add a personal access token. OAuth setup is optional."
 
 // startGitHubConnect returns the GitHub page where the person approves the connection.
-func startGitHubConnect(person, redirect string, workspace ...string) (string, error) {
+func startGitHubConnect(person, redirect, root, projectID string) (string, error) {
 	if !personVaultActive(person) {
 		return "", errors.New("Your account cannot keep its own Vault items.")
 	}
@@ -269,15 +265,11 @@ func startGitHubConnect(person, redirect string, workspace ...string) (string, e
 			delete(githubPending.m, key)
 		}
 	}
-	root := ""
-	if len(workspace) > 0 {
-		root = workspace[0]
-	}
 	if root == "" {
 		githubPending.Unlock()
 		return "", errors.New("Choose a Crew for this GitHub connection.")
 	}
-	githubPending.m[state] = &githubPendingConnect{person: person, redirect: redirect, workspace: root, created: time.Now()}
+	githubPending.m[state] = &githubPendingConnect{person: person, redirect: redirect, workspace: root, projectID: projectID, created: time.Now()}
 	githubPending.Unlock()
 	query := url.Values{"client_id": {clientID}, "redirect_uri": {redirect}, "scope": {githubOAuthScopes}, "state": {state}, "allow_signup": {"false"}}
 	log.Printf("[GITHUB_VAULT] connect started person=%s", person)
@@ -351,6 +343,10 @@ func (api *StreamingAPI) completeGitHubConnect(ctx context.Context, person, stat
 	ctx, scopeErr := githubProjectContext(ctx, person, pending.workspace, true)
 	if scopeErr != nil {
 		return nil, scopeErr
+	}
+	currentID, err := githubProjectID(ctx, pending.workspace)
+	if err != nil || currentID != pending.projectID {
+		return nil, errors.New("The project where GitHub sign-in started has changed. Start again from that project.")
 	}
 	token, scopes, err := exchangeGitHubCode(ctx, clientID, clientSecret, pending.code, pending.redirect)
 	if err != nil {
