@@ -112,27 +112,19 @@ func crewTeamFilesRoot(project string) (string, error) {
 	return filepath.Join(d, "files"), nil
 }
 func readCrewTeamFileState(project string) (crewTeamFileState, error) {
-	s := crewTeamFileState{Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{}}
-	d, e := crewTeamContentDir(project)
-	if e != nil {
-		return s, e
+	d, err := crewTeamContentDir(project)
+	if err != nil {
+		return crewTeamFileState{}, err
 	}
-	raw, e := os.ReadFile(filepath.Join(d, "files.json"))
-	if os.IsNotExist(e) {
-		return s, nil
+	state, err := cachedCrewTeamFileState(filepath.Join(d, "files.json"))
+	if err != nil {
+		return state, err
 	}
-	if e != nil {
-		return s, e
-	}
-	e = json.Unmarshal(raw, &s)
-	if s.Versions == nil {
-		s.Versions = map[string]crewTeamVersion{}
-	}
-	if s.Receipts == nil {
-		s.Receipts = map[string]crewTeamReceipt{}
-	}
-	return s, e
+	// Existing callers may edit the returned state before saving. They must
+	// never change a cached snapshot or another request's on-purpose grants.
+	return cloneCrewTeamFileState(state), nil
 }
+
 func (s crewTeamFileState) manifest() crewsync.Manifest {
 	m := crewsync.Manifest{}
 	for rel, v := range s.Versions {
