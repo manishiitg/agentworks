@@ -29,7 +29,7 @@ func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, c
 	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 	if pullRequests {
 		token, connected := "", false
-		if rec := readGitHubRecord(roots.Owner); rec != nil {
+		if rec, _ := projectGitHubConnection(ctx, roots.Owner, roots.Virtual); rec != nil {
 			token = githubTokenValue(rec)
 			connected = token != ""
 		}

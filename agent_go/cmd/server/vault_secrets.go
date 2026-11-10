@@ -227,6 +227,10 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	for _, n := range *selection {
 		wanted[n] = true
 	}
+	githubSecrets := map[string]bool{}
+	for _, rec := range gitHubConnections(userID) {
+		githubSecrets[rec.SecretName] = true
+	}
 	taken := map[string]string{} // short name -> the full name that has it
 	for _, s := range rows {
 		if !wanted[s.Name] {
@@ -236,6 +240,11 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		// $SECRET_VLT_<vault>__GITHUB_TOKEN; owner 2026-10-20). The first secret with a name wins; the picker refuses a
 		// second one with the same name.
 		name := vaultSecretShortName(s.Name)
+		// A selected saved GitHub connection has a unique encrypted storage name,
+		// but reaches its project's shell under the standard GitHub variable.
+		if githubSecrets[s.Name] {
+			name = "GITHUB_TOKEN"
+		}
 		if prior, clash := taken[name]; clash {
 			log.Printf("[SECRETS] Two selected secrets share the name %s; using %s, skipping %s", name, prior, s.Name)
 			continue

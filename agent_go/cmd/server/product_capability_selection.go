@@ -156,14 +156,12 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 		return nil, err
 	}
 	names := []string{}
-	chosenAppsOnly := false
 	if found {
 		var manifest map[string]interface{}
 		if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 			return nil, fmt.Errorf("decode product manifest: %w", err)
 		}
 		capabilities, _ := manifest["capabilities"].(map[string]interface{})
-		chosenAppsOnly, _ = capabilities["chosen_vault_apps_only"].(bool)
 		if value := capabilities["selected_global_secret_names"]; value != nil {
 			items, ok := value.([]interface{})
 			if !ok {
@@ -177,13 +175,28 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 			}
 		}
 	}
-	// The owner's connected GitHub account reaches the owner's Crews that use all their Vault apps without a separate
-	// selection (PLAT-746-158 B8).
+	// GitHub is selected by this project, independently of other Vault apps.
 	if owner, ok := crewProjectOwnerID(workspacePath); ok {
-		if github := githubVaultSecretFor(owner, chosenAppsOnly); github != "" {
-			names = appendUniqueStrings(names, github)
+		rec, err := projectGitHubConnection(ctx, owner, workspacePath)
+		if err != nil {
+			return nil, err
+		}
+		if rec != nil {
+			// Do not let an older explicitly selected token outrank the selected account.
+			githubNames := map[string]bool{}
+			for _, saved := range gitHubConnections(owner) {
+				githubNames[saved.SecretName] = true
+			}
+			filtered := names[:0]
+			for _, name := range names {
+				if !githubNames[name] && vaultSecretShortName(name) != "GITHUB_TOKEN" {
+					filtered = append(filtered, name)
+				}
+			}
+			names = appendUniqueStrings(filtered, rec.SecretName)
 		}
 	}
+
 	sort.Strings(names)
 	return &names, nil
 }

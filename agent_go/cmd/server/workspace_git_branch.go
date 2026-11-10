@@ -118,7 +118,7 @@ func workspaceGitBranchPullRequest(ctx context.Context, dir, branch, githubOwner
 	if !ok || repo == "" {
 		return nil
 	}
-	rec := readGitHubRecord(githubOwner)
+	rec, _ := projectGitHubConnection(ctx, githubOwner, githubProjectRoot(ctx))
 	if rec == nil {
 		return nil
 	}
