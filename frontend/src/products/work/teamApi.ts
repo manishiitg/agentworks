@@ -307,7 +307,7 @@ export async function teamSideChats(profileId: string, projectId: string): Promi
 }
 
 /** A Team invite as the invited person sees it (owner, 5 Nov): accept on the web or on this Mac, or decline. */
-export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean }
+export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean; server?: string }
 
 export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
   await teamRequest<unknown>({ project: invite.project_id, connection: invite.connection }, '/invite', 'POST', { accept })
