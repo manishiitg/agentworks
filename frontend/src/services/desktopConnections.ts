@@ -2,7 +2,7 @@ import { getDesktopApiBaseUrl, getAuthToken } from './api'
 import type { AuthUser } from './api'
 
 export type DesktopConnection = { id: string; name: string; server: string; user?: AuthUser }
-export type DesktopProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; personal_agent?: boolean }
+export type DesktopProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_line?: string; personal_agent?: boolean }
 export type DesktopInventory = { status: 'connected' | 'sign_in' | 'unavailable'; projects: DesktopProject[] }
 
 export async function desktopRequest<T>(path = '', method = 'GET', body?: unknown): Promise<T> {

@@ -463,6 +463,7 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 type desktopProject struct {
 	OwnedByCaller *bool  `json:"owned_by_caller,omitempty"`
 	OwnerName     string `json:"owner_name,omitempty"`
+	SharedLine    string `json:"shared_line,omitempty"`
 	Icon          string `json:"icon,omitempty"`
 	ID            string `json:"id"`
 	Name          string `json:"name"`
@@ -520,6 +521,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 				Workspaces []struct {
 					OwnedByCaller *bool  `json:"owned_by_caller"`
 					OwnerName     string `json:"owner_name"`
+					SharedLine    string `json:"shared_line"`
 					ID            string `json:"id"`
 					Name          string `json:"name"`
 					Mode          string `json:"mode"`
@@ -540,7 +542,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, PersonalAgent: p.PersonalAgent})
+				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {

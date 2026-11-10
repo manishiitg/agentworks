@@ -320,10 +320,14 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				item["personal_agent"] = true
 			}
 			// A Team member's row says where their own agents here work (owner, 5 Nov: one working copy).
+			// Someone else's Crew says whose it is in the same one line as a Team copy on a Mac.
 			if binding.OwnerID != claims.UserID {
+				line := "Shared by " + firstNonEmptyTrimmed(item["owner_name"].(string), "a teammate")
 				if where := crewTeamWhereFor(doc.ID, claims.UserID); where != "" {
 					item["where"] = where
+					line += map[string]string{"mac": " · On your Mac", "web": " · On the web"}[where]
 				}
+				item["shared_line"] = line
 			}
 			// The owner sees how many of this Crew's agents others can message (PLAT-856-509).
 			if n := len(readMacSharedAgents(doc.ID)); n > 0 && binding.OwnerID == claims.UserID {
