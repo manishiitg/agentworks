@@ -118,8 +118,8 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 		t.Fatalf("a refused copy changed the record: %+v %v", rows[tab], err)
 	}
 	// The owner turns the helper off: it is Only me and its copy is dropped; Main stays In team and eligible.
-	team.AgentChoices = map[string]map[string]bool{"owner": {tab: false}}
-	if err := writeCrewTeam(team); err != nil {
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {tab: false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatalf("team update: %v", err)
 	}
 	if rows, err = readCrewStandby("team", "owner"); err != nil || len(rows) != 0 {
@@ -146,7 +146,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 		t.Fatalf("pair fixture: %v", err)
 	}
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}},
-		AgentChoices: map[string]map[string]bool{"owner": {solo: false}}}
+		Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {solo: false}})}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}

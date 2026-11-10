@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -45,29 +46,15 @@ func crewChatPrivateLine(person string) string {
 }
 
 // agentChatShare is what other people in the Team see of this agent's chat. The key is any name of the agent
-// (crewTeamRuleKey); a Main is one agent under all its names, like In team / Only me, and the stricter name wins.
+// (crewTeamRuleKey); there is one rule per registered agent.
 func (t crewTeam) agentChatShare(ctx context.Context, person, key string) string {
-	rules := t.AgentRules[person]
-	if len(rules) == 0 {
-		return crewChatShareLive
-	}
-	stored := crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key))
-	main := crewTeamMainAgent(t, person, stored)
-	for name, rule := range rules {
-		if rule.ChatShare == crewChatShareAgent && (name == stored || main && crewTeamMainAgent(t, person, name)) {
-			return crewChatShareAgent
-		}
-	}
-	return crewChatShareLive
+	return t.agentRule(person, crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key))).ChatShare
 }
 
-// anyChatLimit: someone in this Team limits a chat, so a read needs the fuller look.
 func (t crewTeam) anyChatLimit() bool {
-	for _, rules := range t.AgentRules {
-		for _, rule := range rules {
-			if rule.ChatShare != crewChatShareLive {
-				return true
-			}
+	for _, a := range t.Agents {
+		if a.Rule.ChatShare != crewChatShareLive {
+			return true
 		}
 	}
 	return false
@@ -89,8 +76,11 @@ func (c *crewChatRefusal) refuse(w http.ResponseWriter, viewer string) {
 // person limits its chat. It stands before the relay's reads and the Mac-off reads (crewMacOffRead).
 func (api *StreamingAPI) crewMacChatLimit(r *http.Request, project, conversation string) *crewChatRefusal {
 	t, err := readCrewTeam(project)
-	if err != nil || !t.anyChatLimit() {
+	if os.IsNotExist(err) || err == nil && !t.anyChatLimit() {
 		return nil
+	}
+	if err != nil {
+		return &crewChatRefusal{project: project, person: ownerOfCrewProjectID(project), agent: conversation}
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, conversation)
 	if person == "" || person == GetUserIDFromContext(r.Context()) {
@@ -129,7 +119,13 @@ func (api *StreamingAPI) crewSessionChatLimit(r *http.Request, session string) *
 		}
 		project := crewResourceProjectID(record.ConversationKey)
 		t, err := readCrewTeam(project)
-		if err != nil || !t.anyChatLimit() {
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return &crewChatRefusal{project: project, person: owner, agent: record.ConversationKey}
+		}
+		if !t.anyChatLimit() {
 			continue
 		}
 		key := record.ConversationKey

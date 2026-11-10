@@ -138,9 +138,6 @@ type ProductAgentIdentity struct {
 	// Unpinned takes this side tab off the strip into the Agents menu; every tab starts pinned (owner, 2026-10-20), so
 	// the saved bit is the opposite one and no tab needs a migration.
 	Unpinned bool `json:"unpinned,omitempty"`
-	// OnlyMe is the old place of Only me, read only by migrateCrewTeamAgentChoices; the Team record keeps it now
-	// (crew_team_in_team.go). Delete it with that migration.
-	OnlyMe bool `json:"only_me,omitempty"`
 	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
 	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
 	ConnectionID    string `json:"connection_id,omitempty"`

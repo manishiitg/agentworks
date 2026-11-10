@@ -26,21 +26,22 @@ func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: entries}); err != nil {
 		t.Fatal(err)
 	}
-	previous := crewTeam{ProjectID: "team", OwnerID: "owner", AgentChoices: map[string]map[string]bool{"owner": {"main": false, selected: false, hidden: true}}}
+	previous := crewTeam{ProjectID: "team", OwnerID: "owner", Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"main": false, selected: false, hidden: true}})}
 	if err := writeCrewTeam(previous); err != nil {
 		t.Fatal(err)
 	}
 	if agents := crewWizardAgents(ctx, previous); len(agents) != 3 {
 		t.Fatalf("fixture must expose Main and both side agents: %+v", agents)
 	}
+	selectedAgent, _ := previous.registeredAgent("owner", selected)
 	w := httptest.NewRecorder()
-	f.api.handleCrewTeamSetup(w, adminRequest(http.MethodPost, "/api/crew-teams/team/setup", `{"agents":["`+selected+`"]}`, &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
+	f.api.handleCrewTeamSetup(w, adminRequest(http.MethodPost, "/api/crew-teams/team/setup", `{"agents":["`+selectedAgent.ID+`"]}`, &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
 	if w.Code != http.StatusOK {
 		t.Fatalf("Finish: %d %s", w.Code, w.Body.String())
 	}
 	saved, err := readCrewTeam("team")
 	if err != nil || !saved.On || !saved.agentInTeam("owner", main) || !saved.agentInTeam("owner", selected) || saved.agentInTeam("owner", hidden) {
-		t.Fatalf("Finish did not apply checked and unchecked choices: %+v (%v)", saved.AgentChoices, err)
+		t.Fatalf("Finish did not apply checked and unchecked choices: %+v (%v)", saved.Agents, err)
 	}
 }
 

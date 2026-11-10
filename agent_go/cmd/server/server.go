@@ -3093,7 +3093,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	migrateCrewSyncToRelay()
 	migrateMacSharedAudiences()
-	migrateCrewTeamAgentChoices()
 	migrateCrewTeamMemberCopies()
 	stopTeamSync := api.startCrewTeamSync()
 	defer stopTeamSync()
