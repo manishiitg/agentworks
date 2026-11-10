@@ -4,9 +4,7 @@ package schedulehistory
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -18,71 +16,23 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func Hash(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
-}
-
-// PhysicalPath also resolves ancestors of a missing path. Otherwise a new
-// private-state folder could evade the docs boundary through a parent symlink.
-func PhysicalPath(value string) (string, error) {
-	full, err := filepath.Abs(value)
-	if err != nil {
-		return "", err
-	}
-	parent := full
-	suffix := []string{}
-	for {
-		real, err := filepath.EvalSymlinks(parent)
-		if err == nil {
-			for i := len(suffix) - 1; i >= 0; i-- {
-				real = filepath.Join(real, suffix[i])
-			}
-			return real, nil
-		}
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		if info, e := os.Lstat(parent); e == nil && info.Mode()&os.ModeSymlink != 0 {
-			return "", err
-		}
-		next := filepath.Dir(parent)
-		if next == parent {
-			return "", err
-		}
-		suffix = append(suffix, filepath.Base(parent))
-		parent = next
-	}
-}
-
 func DatabasePath(docs string) (string, error) {
-	docs, err := PhysicalPath(docs)
+	dir, err := sqliteopen.StateDirectory(docs, "schedule-history")
 	if err != nil {
 		return "", err
 	}
-	state, err := crewroot.StateRoot()
-	if err != nil {
-		return "", err
-	}
-	state, err = PhysicalPath(state)
-	if err != nil {
-		return "", err
-	}
-	if crewroot.Within(docs, state) {
-		return "", errors.New("the app's private data folder must be outside the workspace documents")
-	}
-	return filepath.Join(state, "schedule-history", Hash(docs), "history.sqlite"), nil
+	return filepath.Join(dir, "history.sqlite"), nil
 }
 
 // PurgeTree is called only after authorized folder removal, never rename or
 // move. A newly created project at the same path must not inherit old responses.
 // It opens no new database when history has never been initialized.
 func PurgeTree(ctx context.Context, docs, physical string) error {
-	docs, err := PhysicalPath(docs)
+	docs, err := sqliteopen.CanonicalPath(docs)
 	if err != nil {
 		return err
 	}
-	physical, err = PhysicalPath(physical)
+	physical, err = sqliteopen.CanonicalPath(physical)
 	if err != nil {
 		return err
 	}
@@ -161,11 +111,11 @@ func PurgeTree(ctx context.Context, docs, physical string) error {
 	// Backups are never read as history. Even if private cleanup fails, the
 	// committed row deletion prevents the new project's API reading old data.
 	for _, scope := range scopes {
-		if err = os.RemoveAll(filepath.Join(filepath.Dir(file), "imports", Hash(scope))); err != nil {
-			log.Printf("[SCHEDULE_HISTORY] scope=%s event=scope_deleted rows_removed=%d backup_cleanup=failed", Hash(physical), removed)
+		if err = os.RemoveAll(filepath.Join(filepath.Dir(file), "imports", sqliteopen.PathHash(scope))); err != nil {
+			log.Printf("[SCHEDULE_HISTORY] scope=%s event=scope_deleted rows_removed=%d backup_cleanup=failed", sqliteopen.PathHash(physical), removed)
 			return fmt.Errorf("history rows removed; private backup cleanup failed: %w", err)
 		}
 	}
-	log.Printf("[SCHEDULE_HISTORY] scope=%s event=scope_deleted rows_removed=%d backup_cleanup=done", Hash(physical), removed)
+	log.Printf("[SCHEDULE_HISTORY] scope=%s event=scope_deleted rows_removed=%d backup_cleanup=done", sqliteopen.PathHash(physical), removed)
 	return nil
 }

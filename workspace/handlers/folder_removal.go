@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 )
 
 // Move a deleted folder out of the served tree before recursive cleanup. A
@@ -34,7 +35,7 @@ func removeFolderAtomicallyWithContext(ctx context.Context, docsDir, folderPath 
 		return false, err
 	}
 	removeLink := finalInfo.Mode()&os.ModeSymlink != 0
-	historyRoot, err := schedulehistory.PhysicalPath(target)
+	historyRoot, err := sqliteopen.CanonicalPath(target)
 	if err != nil {
 		return false, err
 	}

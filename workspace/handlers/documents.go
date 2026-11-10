@@ -21,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/parsers"
 	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
 	"github.com/gin-gonic/gin"
@@ -1127,7 +1128,7 @@ func DeleteDocument(c *gin.Context) {
 	if finalInfo.Mode()&os.ModeSymlink != 0 {
 		err = os.Remove(filePath) // only the link, not its directory target
 	} else if info.IsDir() {
-		physical, resolveErr := schedulehistory.PhysicalPath(filePath)
+		physical, resolveErr := sqliteopen.CanonicalPath(filePath)
 		if resolveErr != nil {
 			err = resolveErr
 		} else {
