@@ -641,7 +641,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			allJobs = allJobs[offset:end]
 		}
 
-		// One history read per workspace keeps the list useful without making a
+		// One small SQL aggregate per workspace keeps the list useful without making a
 		// separate request for every schedule. Missing history is not a list error.
 		durationByWorkspace := make(map[string]map[string]scheduleRunDurationAverage)
 		for i := range allJobs {
@@ -651,10 +651,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 			averages, ok := durationByWorkspace[job.WorkspacePath]
 			if !ok {
-				runs, err := ReadScheduleRuns(r.Context(), job.WorkspacePath)
-				if err == nil {
-					averages = recentSuccessfulRunAverages(runs, 10)
-				}
+				averages, _ = readScheduleDurationAverages(r.Context(), job.WorkspacePath, 10)
 				durationByWorkspace[job.WorkspacePath] = averages
 			}
 			if average, found := averages[job.ID]; found {
@@ -1308,7 +1305,7 @@ func stopScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		// Update the latest workflow run entry in the same resolved scope.
 		if result.WorkspacePath != "" {
-			runs, err := ReadScheduleRuns(r.Context(), result.WorkspacePath)
+			runs, err := readScheduleRunStates(r.Context(), result.WorkspacePath, id, true)
 			if err == nil && len(runs) > 0 {
 				for i := range runs {
 					if runs[i].ScheduleID == id && runs[i].Status == "running" {

@@ -212,18 +212,9 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if err != nil {
 			return nil, err
 		}
-		runs, err := ReadScheduleRuns(ctx, job.WorkspacePath)
+		checks, _, err := ListScheduleRuns(ctx, job.WorkspacePath, job.ID(), 20, 0)
 		if err != nil {
 			return nil, err
-		}
-		checks := []ScheduleRunEntry{}
-		for _, run := range runs {
-			if run.ScheduleID == job.ID() {
-				checks = append(checks, run)
-			}
-		}
-		if len(checks) > 20 {
-			checks = checks[len(checks)-20:]
 		}
 		pending := conditiontrigger.Pending(l)
 		if l.Rows == nil {

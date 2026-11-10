@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -19,7 +20,7 @@ func generateScheduleID() string {
 }
 
 // ScheduleRunEntry represents a single scheduled job execution record.
-// Stored in <workspace>/schedule-runs.json.
+// Stored in the service-owned schedule history database, scoped to the project.
 type ScheduleRunEntry struct {
 	ID         string `json:"id"`
 	ScheduleID string `json:"schedule_id"`
@@ -97,6 +98,8 @@ func recentSuccessfulRunAverages(runs []ScheduleRunEntry, sampleLimit int) map[s
 	return result
 }
 
+// Other scheduler resources (folder allocation, Slack bindings and webhook
+// delivery receipts) still use this process lock. Run history uses SQLite.
 var scheduleRunFileLocks sync.Map
 
 func scheduleRunFileLock(path string) *sync.Mutex {
@@ -104,96 +107,70 @@ func scheduleRunFileLock(path string) *sync.Mutex {
 	return lock.(*sync.Mutex)
 }
 
-func scheduleRunsPath(workspacePath string) string {
-	return workspacePath + "/schedule-runs.json"
-}
+// scheduleRunsPath identifies the old import source and the panel change topic.
+// New history is never written to this workspace path.
+func scheduleRunsPath(workspacePath string) string { return workspacePath + "/schedule-runs.json" }
 
-// ReadScheduleRuns reads all run entries from <workspace>/schedule-runs.json.
+// ReadScheduleRuns is the explicit complete-history API. Runtime polling uses
+// readScheduleRunStates so it does not decode stored responses or cost receipts.
 func ReadScheduleRuns(ctx context.Context, workspacePath string) ([]ScheduleRunEntry, error) {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-	return readScheduleRunsUnlocked(ctx, workspacePath)
-}
-
-func readScheduleRunsUnlocked(ctx context.Context, workspacePath string) ([]ScheduleRunEntry, error) {
-	content, exists, err := readFileFromWorkspace(ctx, scheduleRunsPath(workspacePath))
+	h, err := openScheduleHistory(ctx, workspacePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read schedule-runs.json: %w", err)
+		return nil, err
 	}
-	if !exists {
-		return []ScheduleRunEntry{}, nil
+	defer h.db.Close()
+	rows, err := h.db.QueryContext(ctx, `SELECT payload FROM history_entries WHERE scope=? ORDER BY serial DESC`, h.scope)
+	if err != nil {
+		return nil, err
 	}
-
-	var runs []ScheduleRunEntry
-	if err := json.Unmarshal([]byte(content), &runs); err != nil {
-		return nil, fmt.Errorf("failed to parse schedule-runs.json: %w", err)
-	}
-	return runs, nil
+	defer rows.Close()
+	return scanScheduleRunPayloads(rows)
 }
 
-// WriteScheduleRuns writes run entries to <workspace>/schedule-runs.json.
+func scanScheduleRunPayloads(rows *sql.Rows) ([]ScheduleRunEntry, error) {
+	out := []ScheduleRunEntry{}
+	for rows.Next() {
+		var payload string
+		var run ScheduleRunEntry
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(payload), &run); err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
+// WriteScheduleRuns atomically replaces a scope. Online reconciliation updates
+// individual rows instead, so another run's completion cannot be overwritten.
 func WriteScheduleRuns(ctx context.Context, workspacePath string, runs []ScheduleRunEntry) error {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-	return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
-}
-
-func writeScheduleRunsUnlocked(ctx context.Context, workspacePath string, runs []ScheduleRunEntry) error {
-	data, err := json.MarshalIndent(runs, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal schedule runs: %w", err)
-	}
-	return writeFileToWorkspace(ctx, scheduleRunsPath(workspacePath), string(data))
-}
-
-// retainedScheduleRuns keeps workflow history for 90 days so the existing
-// paginated readers can reach older runs. Other schedule stores keep their
-// historical 200-entry cap. Active and undated runs are never pruned here.
-func retainedScheduleRuns(workspacePath string, runs []ScheduleRunEntry, now time.Time) []ScheduleRunEntry {
-	if strings.HasPrefix(workspacePath, "Workflow/") {
-		cutoff := now.AddDate(0, 0, -workflowScheduleRunRetentionDays)
-		kept := runs[:0]
-		for _, run := range runs {
-			if run.StartedAt.IsZero() || !isTerminalScheduleRunStatus(run.Status) || !run.StartedAt.Before(cutoff) {
-				kept = append(kept, run)
+	return withScheduleHistoryWrite(ctx, workspacePath, func(h *scheduleHistory, tx *sql.Tx) (bool, error) {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM history_entries WHERE scope=?`, h.scope); err != nil {
+			return false, err
+		}
+		for i := len(runs) - 1; i >= 0; i-- {
+			if err := h.insert(ctx, tx, runs[i]); err != nil {
+				return false, err
 			}
 		}
-		return kept
-	}
-	if len(runs) > maxScheduleRuns {
-		return runs[:maxScheduleRuns]
-	}
-	return runs
+		return true, nil
+	})
 }
 
-// AppendScheduleRun adds a run entry and applies the retention policy.
 func AppendScheduleRun(ctx context.Context, workspacePath string, run *ScheduleRunEntry) error {
 	if run == nil {
 		return fmt.Errorf("schedule run is required")
 	}
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-
-	runs = retainedScheduleRuns(workspacePath, append([]ScheduleRunEntry{*run}, runs...), time.Now().UTC()) // prepend (newest first)
-
-	return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
+	return withScheduleHistoryWrite(ctx, workspacePath, func(h *scheduleHistory, tx *sql.Tx) (bool, error) {
+		err := h.insert(ctx, tx, *run)
+		return err == nil, err
+	})
 }
 
-// ClaimScheduleRun inserts a run entry only when no entry with the same ID
-// exists yet, atomically under the run-file lock. It reports the existing
-// entry when the ID is already claimed, so redeliveries reattach to the live
-// run instead of forking history.
+// ClaimScheduleRun serializes the ID lookup and insertion in a SQLite writer
+// transaction, including across service processes and logical path aliases.
 func ClaimScheduleRun(ctx context.Context, workspacePath string, run *ScheduleRunEntry) (existing *ScheduleRunEntry, claimed bool, err error) {
 	if run == nil {
 		return nil, false, fmt.Errorf("schedule run is required")
@@ -201,80 +178,62 @@ func ClaimScheduleRun(ctx context.Context, workspacePath string, run *ScheduleRu
 	if strings.TrimSpace(run.ID) == "" {
 		return nil, false, fmt.Errorf("schedule run id is required")
 	}
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return nil, false, err
-	}
-	for i := range runs {
-		if runs[i].ID == run.ID {
-			found := runs[i]
-			return &found, false, nil
+	err = withScheduleHistoryWrite(ctx, workspacePath, func(h *scheduleHistory, tx *sql.Tx) (bool, error) {
+		_, found, e := h.find(ctx, tx, run.ID)
+		if e == nil {
+			existing = found
+			return false, nil
 		}
+		if e != sql.ErrNoRows {
+			return false, e
+		}
+		e = h.insert(ctx, tx, *run)
+		claimed = e == nil
+		return claimed, e
+	})
+	if err != nil {
+		claimed = false
 	}
-	runs = retainedScheduleRuns(workspacePath, append([]ScheduleRunEntry{*run}, runs...), time.Now().UTC())
-	if err := writeScheduleRunsUnlocked(ctx, workspacePath, runs); err != nil {
-		return nil, false, err
-	}
-	return nil, true, nil
+	return
 }
 
-// FindScheduleRun returns one run entry by ID.
 func FindScheduleRun(ctx context.Context, workspacePath, runID string) (*ScheduleRunEntry, error) {
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
+	h, err := openScheduleHistory(ctx, workspacePath)
 	if err != nil {
 		return nil, err
 	}
-	for i := range runs {
-		if runs[i].ID == runID {
-			found := runs[i]
-			return &found, nil
+	defer h.db.Close()
+	var payload string
+	if err = h.db.QueryRowContext(ctx, `SELECT payload FROM history_entries WHERE scope=? AND run_id=? ORDER BY serial DESC LIMIT 1`, h.scope, runID).Scan(&payload); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("schedule run %q not found", runID)
 		}
+		return nil, err
 	}
-	return nil, fmt.Errorf("schedule run %q not found in %s", runID, scheduleRunsPath(workspacePath))
+	var run ScheduleRunEntry
+	if err = json.Unmarshal([]byte(payload), &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
 }
 
-// UpdateScheduleRun finds a run by ID and updates its fields.
-func UpdateScheduleRun(ctx context.Context, workspacePath string, runID string, status string, errMsg string, durationMs *int64, runFolder string, sessionID string) error {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-
-	for i := range runs {
-		if runs[i].ID == runID {
-			runs[i].Status = status
-			runs[i].Error = errMsg
-			runs[i].DurationMs = durationMs
-			if runFolder != "" {
-				runs[i].RunFolder = runFolder
-			}
-			if sessionID != "" {
-				runs[i].SessionID = sessionID
-			}
-			if isTerminalScheduleRunStatus(status) {
-				now := time.Now().UTC()
-				runs[i].CompletedAt = &now
-			}
-			return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
+func UpdateScheduleRun(ctx context.Context, workspacePath, runID, status, errMsg string, durationMs *int64, runFolder, sessionID string) error {
+	return updateScheduleHistoryRun(ctx, workspacePath, runID, false, func(run *ScheduleRunEntry) {
+		run.Status, run.Error, run.DurationMs = status, errMsg, durationMs
+		if runFolder != "" {
+			run.RunFolder = runFolder
 		}
-	}
-
-	return fmt.Errorf("schedule run %q not found in %s", runID, path)
+		if sessionID != "" {
+			run.SessionID = sessionID
+		}
+		if isTerminalScheduleRunStatus(status) {
+			now := time.Now().UTC()
+			run.CompletedAt = &now
+		}
+	})
 }
 
-// ScheduleRunCompletion carries everything recorded when an automation run
-// finishes: terminal status, error, duration, session, final response, and
-// token usage.
+// ScheduleRunCompletion records the whole outcome in one row transaction.
 type ScheduleRunCompletion struct {
 	Status        string
 	Error         string
@@ -284,88 +243,31 @@ type ScheduleRunCompletion struct {
 	Usage         *workflowtypes.CrewRunTokenUsage
 }
 
-// UpdateScheduleRunResult records one run's completion in a single
-// read-modify-write cycle. Status, final response, and usage must land
-// together: separate writes let a poller observe terminal success with an
-// empty response and no cost data. Empty response and usage leave any
-// previously stored values untouched.
 func UpdateScheduleRunResult(ctx context.Context, workspacePath, runID string, completion ScheduleRunCompletion) error {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-	for i := range runs {
-		if runs[i].ID == runID {
-			runs[i].Status = completion.Status
-			runs[i].Error = completion.Error
-			runs[i].DurationMs = completion.DurationMs
-			if completion.SessionID != "" {
-				runs[i].SessionID = completion.SessionID
-			}
-			if completion.FinalResponse != "" {
-				runs[i].FinalResponse = completion.FinalResponse
-			}
-			if completion.Usage != nil && !completion.Usage.Empty() {
-				runs[i].Usage = completion.Usage
-			}
-			if isTerminalScheduleRunStatus(completion.Status) {
-				now := time.Now().UTC()
-				runs[i].CompletedAt = &now
-			}
-			return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
+	return updateScheduleHistoryRun(ctx, workspacePath, runID, false, func(run *ScheduleRunEntry) {
+		run.Status, run.Error, run.DurationMs = completion.Status, completion.Error, completion.DurationMs
+		if completion.SessionID != "" {
+			run.SessionID = completion.SessionID
 		}
-	}
-	return fmt.Errorf("schedule run %q not found in %s", runID, path)
+		if completion.FinalResponse != "" {
+			run.FinalResponse = completion.FinalResponse
+		}
+		if completion.Usage != nil && !completion.Usage.Empty() {
+			run.Usage = completion.Usage
+		}
+		if isTerminalScheduleRunStatus(completion.Status) {
+			now := time.Now().UTC()
+			run.CompletedAt = &now
+		}
+	})
 }
 
-// UpdateScheduleRunTokenUsage durably associates one execution's token spend
-// with its history entry. It overwrites any previous value; callers
-// accumulate multi-turn runs before writing.
 func UpdateScheduleRunTokenUsage(ctx context.Context, workspacePath, runID string, usage *workflowtypes.CrewRunTokenUsage) error {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-	for i := range runs {
-		if runs[i].ID == runID {
-			runs[i].Usage = usage
-			return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
-		}
-	}
-	return fmt.Errorf("schedule run %q not found in %s", runID, path)
+	return updateScheduleHistoryRun(ctx, workspacePath, runID, false, func(run *ScheduleRunEntry) { run.Usage = usage })
 }
-
-// UpdateScheduleRunFinalResponse durably associates one execution's exact
-// assistant answer with its history entry.
 func UpdateScheduleRunFinalResponse(ctx context.Context, workspacePath, runID, finalResponse string) error {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-	for i := range runs {
-		if runs[i].ID == runID {
-			runs[i].FinalResponse = strings.TrimSpace(finalResponse)
-			return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
-		}
-	}
-	return fmt.Errorf("schedule run %q not found in %s", runID, path)
+	return updateScheduleHistoryRun(ctx, workspacePath, runID, false, func(run *ScheduleRunEntry) { run.FinalResponse = strings.TrimSpace(finalResponse) })
 }
-
 func isTerminalScheduleRunStatus(status string) bool {
 	switch status {
 	case "success", "error", "stopped", "partial", "failed", "interrupted":
@@ -375,105 +277,74 @@ func isTerminalScheduleRunStatus(status string) bool {
 	}
 }
 
-// DeleteScheduleRunsOlderThan drops terminal run entries started more than
-// olderThanDays ago, restricted to scheduleIDs when non-empty. Running and
-// queued entries are never deleted, and neither are run folders or
-// conversation transcripts — chat-history cleanup owns those. Entries with
-// no start time are kept: unknown age must not read as old. It returns the
-// number of deleted entries.
+// Explicit user cleanup is separate from automatic retention and may remove
+// recent terminal runs. Active and undated records are always preserved.
 func DeleteScheduleRunsOlderThan(ctx context.Context, workspacePath string, scheduleIDs []string, olderThanDays int) (int, error) {
 	if olderThanDays <= 0 {
 		olderThanDays = 30
 	}
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return 0, err
-	}
-	cutoff := time.Now().AddDate(0, 0, -olderThanDays)
-	only := make(map[string]bool, len(scheduleIDs))
-	for _, id := range scheduleIDs {
-		if id = strings.TrimSpace(id); id != "" {
-			only[id] = true
-		}
-	}
-	kept := []ScheduleRunEntry{}
 	deleted := 0
-	for _, run := range runs {
-		if len(only) > 0 && !only[run.ScheduleID] {
-			kept = append(kept, run)
-			continue
+	err := withScheduleHistoryWrite(ctx, workspacePath, func(h *scheduleHistory, tx *sql.Tx) (bool, error) {
+		query := `DELETE FROM history_entries WHERE scope=? AND ` + scheduleHistoryTerminal + ` AND started_ns IS NOT NULL AND started_ns<=?`
+		args := []any{h.scope, time.Now().UTC().AddDate(0, 0, -olderThanDays).UnixNano()}
+		ids := []string{}
+		for _, id := range scheduleIDs {
+			if id = strings.TrimSpace(id); id != "" {
+				ids = append(ids, id)
+			}
 		}
-		if run.StartedAt.IsZero() || !isTerminalScheduleRunStatus(run.Status) || run.StartedAt.After(cutoff) {
-			kept = append(kept, run)
-			continue
+		if len(ids) > 0 {
+			query += ` AND schedule_id IN (` + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + `)`
+			for _, id := range ids {
+				args = append(args, id)
+			}
 		}
-		deleted++
-	}
-	if deleted == 0 {
-		return 0, nil
-	}
-	if err := writeScheduleRunsUnlocked(ctx, workspacePath, kept); err != nil {
+		result, e := tx.ExecContext(ctx, query, args...)
+		if e != nil {
+			return false, e
+		}
+		count, e := result.RowsAffected()
+		deleted = int(count)
+		return deleted > 0, e
+	})
+	if err != nil {
 		return 0, err
 	}
 	return deleted, nil
 }
 
-// ListScheduleRuns returns runs for a specific schedule ID with pagination.
-// Runs are returned newest-first.
-func ListScheduleRuns(ctx context.Context, workspacePath string, scheduleID string, limit, offset int) ([]ScheduleRunEntry, int, error) {
-	allRuns, err := ReadScheduleRuns(ctx, workspacePath)
+// ListScheduleRuns selects only the requested page, newest start time first.
+func ListScheduleRuns(ctx context.Context, workspacePath, scheduleID string, limit, offset int) ([]ScheduleRunEntry, int, error) {
+	if limit < 0 || offset < 0 {
+		return nil, 0, fmt.Errorf("run history limit and offset must not be negative")
+	}
+	h, err := openScheduleHistory(ctx, workspacePath)
 	if err != nil {
 		return nil, 0, err
 	}
-
-	// Filter by schedule ID
-	var filtered []ScheduleRunEntry
-	for _, r := range allRuns {
-		if r.ScheduleID == scheduleID {
-			filtered = append(filtered, r)
-		}
+	defer h.db.Close()
+	// Count and page share one read snapshot.
+	tx, err := h.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
 	}
-
-	// Sort newest first (should already be, but ensure)
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].StartedAt.After(filtered[j].StartedAt)
-	})
-
-	total := len(filtered)
-
-	// Pagination
-	if offset >= total {
-		return []ScheduleRunEntry{}, total, nil
+	defer tx.Rollback()
+	total := 0
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM history_entries WHERE scope=? AND schedule_id=?`, h.scope, scheduleID).Scan(&total); err != nil {
+		return nil, 0, err
 	}
-	end := offset + limit
-	if end > total {
-		end = total
+	rows, err := tx.QueryContext(ctx, `SELECT payload FROM history_entries WHERE scope=? AND schedule_id=? ORDER BY started_ns DESC,serial DESC LIMIT ? OFFSET ?`, h.scope, scheduleID, limit, offset)
+	if err != nil {
+		return nil, 0, err
 	}
-	return filtered[offset:end], total, nil
+	runs, err := scanScheduleRunPayloads(rows)
+	rows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	return runs, total, nil
 }
 
-// SetScheduleRunRanWorkflow records whether an invocation actually ran the
-// workflow. Missing runs are ignored: the history write is best-effort.
 func SetScheduleRunRanWorkflow(ctx context.Context, workspacePath, runID string, ran bool) error {
-	path := scheduleRunsPath(workspacePath)
-	lock := scheduleRunFileLock(path)
-	lock.Lock()
-	defer lock.Unlock()
-	runs, err := readScheduleRunsUnlocked(ctx, workspacePath)
-	if err != nil {
-		return err
-	}
-	for i := range runs {
-		if runs[i].ID == runID {
-			value := ran
-			runs[i].RanWorkflow = &value
-			return writeScheduleRunsUnlocked(ctx, workspacePath, runs)
-		}
-	}
-	return nil
+	return updateScheduleHistoryRun(ctx, workspacePath, runID, true, func(run *ScheduleRunEntry) { value := ran; run.RanWorkflow = &value })
 }
