@@ -29,19 +29,11 @@ import { useChatStore } from '../../stores/useChatStore'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
-/** Crews first, then a flat shared-dashboard list. Each row names its owner once.
- * The personal AgentWorks agent is rendered by its network group. */
+/** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
+ * 10 Nov). The personal AgentWorks agent is rendered by its network group. */
 function ProjectList<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
-  const rest = projects.filter(project => !project.personal_agent)
-  const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
-  const dashboards = rest.filter(project => project.owned_by_caller === false && project.mode === 'run')
-  return <>{mine.map(render)}
-    {rest.filter(project => project.owned_by_caller === undefined).map(render)}
-    {dashboards.length > 0 && <section aria-label="Dashboards shared with me" className="mb-3 space-y-1">
-      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Shared</h2>
-      {dashboards.map(render)}
-    </section>}
-    </>
+  const rest = projects.filter(project => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run'))
+  return <>{rest.map(render)}</>
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
