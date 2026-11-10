@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -46,9 +47,11 @@ func crewTeamDefaultJoinFolder(name string) (string, error) {
 	return filepath.Join(home, "AgentWorks", clean), nil
 }
 
-// crewTeamJoinFolderOK: an absolute folder outside the app's private state that is new or empty, so the team's files
-// never merge into unrelated local work.
-func crewTeamJoinFolderOK(folder string) (string, error) {
+// crewTeamJoinFolderOK: an absolute folder outside the app's private state. It may hold the person's own files when
+// the Team shares named folders (owner, 10 Nov): only those folders, skills/ and the setup file sync, so each must be
+// absent or empty and everything else stays on this Mac, untouched and never uploaded. A Whole Crew Team, or one whose
+// shared folders are not known yet, needs a new or empty folder.
+func crewTeamJoinFolderOK(folder string, shared *crewTeamFolder) (string, error) {
 	if !filepath.IsAbs(folder) {
 		return "", fmt.Errorf("choose a folder on this Mac")
 	}
@@ -71,10 +74,50 @@ func crewTeamJoinFolderOK(folder string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(entries) > 0 {
-		return "", fmt.Errorf("choose an empty folder, so your other files stay out of the team's folder")
+	if len(entries) == 0 {
+		return folder, nil
+	}
+	if shared == nil || shared.Whole || len(shared.Folders) == 0 {
+		return "", fmt.Errorf("this team shares its whole Crew, so choose an empty folder; your other files stay out of the team's folder")
+	}
+	for _, rel := range append(slices.Clone(shared.Folders), "skills", crewTeamSetupFile) {
+		path := filepath.Join(folder, filepath.FromSlash(rel))
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("this folder already has %s, which the team uses; choose another folder", rel)
+		}
+		if inside, err := os.ReadDir(path); err != nil {
+			return "", err
+		} else if len(inside) > 0 {
+			return "", fmt.Errorf("this folder already has files in %s/, which the team shares; choose a folder without %s/ or move those files first", rel, rel)
+		}
 	}
 	return folder, nil
+}
+
+// crewTeamJoinShared is what the Team shares, from the invite (or the Team, when already a member); nil if unknown.
+func crewTeamJoinShared(r *http.Request, user string, c desktopConnection, project string) *crewTeamFolder {
+	var list struct {
+		Invites []crewTeamInvite `json:"invites"`
+	}
+	if crewTeamRemoteJSON(r.Context(), user, c, http.MethodGet, "/api/crew-teams", nil, &list) == nil {
+		for _, invite := range list.Invites {
+			if invite.ProjectID == project && invite.CanAddToMac {
+				return &invite.Folder
+			}
+		}
+	}
+	var team crewTeam
+	if crewTeamRemoteJSON(r.Context(), user, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &team) == nil && team.Folder.shared() {
+		return &team.Folder
+	}
+	return nil
 }
 
 func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *http.Request) {
@@ -103,18 +146,19 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 		externalError(w, 400, "invalid_request", "Choose where the team's folder goes on this Mac.")
 		return
 	}
-	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
-	// on the same card instead of having joined with no folder.
-	if input.Folder != "" {
-		if _, err := crewTeamJoinFolderOK(input.Folder); err != nil {
-			externalError(w, 400, "invalid_folder", strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".")
-			return
-		}
-	}
 	c, err := desktopConnectionFor(claims.UserID, connectionID)
 	if err != nil {
 		externalError(w, 409, "team_connection_required", err.Error())
 		return
+	}
+	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
+	// on the same card instead of having joined with no folder.
+	shared := crewTeamJoinShared(r, claims.UserID, c, project)
+	if input.Folder != "" {
+		if _, err := crewTeamJoinFolderOK(input.Folder, shared); err != nil {
+			externalError(w, 400, "invalid_folder", strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".")
+			return
+		}
 	}
 	key := crewTeamJoinKey(c.ID, project)
 	crewTeamJoining.Store(key, true)
@@ -136,7 +180,7 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 				return
 			}
 		}
-		if folder, err = crewTeamJoinFolderOK(folder); err != nil {
+		if folder, err = crewTeamJoinFolderOK(folder, &team.Folder); err != nil {
 			externalError(w, 400, "invalid_folder", "Joined the team, but "+err.Error()+". Pick another folder in the team's Sync view.")
 			return
 		}
