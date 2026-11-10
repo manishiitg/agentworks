@@ -198,6 +198,14 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						pushed = false
 					}
 					for _, t := range out.Teams {
+						// A member's copy names whose Crew it is; copies joined before the name was kept get it here.
+						if t.OwnerID != c.User.ID {
+							if local := crewTeamMemberCopy(t.ProjectID); local != "" {
+								if name := strings.SplitN(t.OwnerName, "@", 2)[0]; name != "" && readCrewTeamState(local).SharedBy != name {
+									_ = writeCrewTeamState(local, func(s *crewTeamLocalState) { s.SharedBy = name })
+								}
+							}
+						}
 						// The owner's Mac follows its Crew's Team record, changed from anywhere (crew_team_apply.go).
 						if t.OwnerID == c.User.ID {
 							if local := crewLocalProjectForTeam(owner, c, t.ProjectID); local != "" && readCrewTeamState(local).TeamOn != t.On {
