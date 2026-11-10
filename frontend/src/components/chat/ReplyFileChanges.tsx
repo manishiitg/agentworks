@@ -213,9 +213,15 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
   const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} onReview={panel ? undefined : () => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)} />
   const repoGroups = groups.filter(group => group.kind === 'repo')
-  const checkoutSummary = (responsive = false) => <button type="button" aria-label={`${repoGroups.length} worktrees`} title={repoGroups.map(group => `${group.name} · ${group.branch || ''}`).join('\n')}
+  // The server names each changed folder's repository; worktrees of one repository count once.
+  const repositories = [...new Set(repoGroups.map(group => group.repository || group.name))]
+  const checkoutText = repoGroups.length === 1 ? repoGroups[0].name
+    : repositories.length === 1 ? `${repoGroups.length} worktrees of ${repositories[0]}`
+      : repositories.length === repoGroups.length ? `${repoGroups.length} repositories`
+        : `${repoGroups.length} folders in ${repositories.length} repositories`
+  const checkoutSummary = (responsive = false) => <button type="button" aria-label={checkoutText} title={repoGroups.map(group => `${group.name} · ${group.branch || ''}${group.worktree && group.repository ? ` · worktree of ${group.repository}` : ''}`).join('\n')}
     className={`${responsive ? 'reply-toolbar-checkout-summary ' : ''}inline-flex min-w-0 items-center gap-1 rounded px-1 text-muted-foreground hover:bg-muted hover:text-foreground`}
-    onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}><GitBranch className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{repoGroups.length} worktree{repoGroups.length === 1 ? '' : 's'}</span></button>
+    onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}><GitBranch className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{checkoutText}</span></button>
 
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
   if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">

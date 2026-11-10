@@ -67,15 +67,18 @@ type workspaceGitFile struct {
 type workspaceGitRepo struct {
 	// Root is the repo folder relative to the requested workspace_path ("" for
 	// the workspace itself).
-	Root       string             `json:"root"`
-	Branch     string             `json:"branch"`
-	Detached   bool               `json:"detached,omitempty"`
-	Upstream   string             `json:"upstream,omitempty"`
-	Ahead      int                `json:"ahead"`
-	Behind     int                `json:"behind"`
-	Files      []workspaceGitFile `json:"files"`
-	Truncated  bool               `json:"truncated,omitempty"`
-	UsedInChat bool               `json:"used_in_chat,omitempty"`
+	Root      string             `json:"root"`
+	Branch    string             `json:"branch"`
+	Detached  bool               `json:"detached,omitempty"`
+	Upstream  string             `json:"upstream,omitempty"`
+	Ahead     int                `json:"ahead"`
+	Behind    int                `json:"behind"`
+	Files     []workspaceGitFile `json:"files"`
+	Truncated bool               `json:"truncated,omitempty"`
+	// Repository names the repository this checkout belongs to: its main
+	// checkout's folder. Worktree marks a linked worktree of that repository.
+	Repository string `json:"repository,omitempty"`
+	Worktree   bool   `json:"worktree,omitempty"`
 }
 
 type workspaceGitBranch struct {
@@ -246,18 +249,27 @@ func workspaceGitIsRepo(root, dir string) bool {
 	return ok
 }
 
-// workspaceGitFindRepos lists repo folders under base: base itself, else the
-// repos found up to workspaceGitSearchDepth folders down (dependency and dot
-// folders skipped, a found repo's own subfolders not searched, bounded scan).
+// Coding agents keep worktrees inside the repository in these hidden folders
+// (Claude Code: .claude/worktrees). The search skips dot folders and does not
+// enter a found repository, so each found repository's folders are listed
+// directly.
+var workspaceGitNestedWorktreeDirs = []string{".claude/worktrees", ".worktrees"}
+
+// workspaceGitFindRepos lists repo folders under base: base itself when it is
+// one, plus the repos and worktrees found up to workspaceGitSearchDepth folders
+// down (dependency and dot folders skipped, a repo found below base is not
+// searched further except for its agent worktree folders, bounded scan).
 func workspaceGitFindRepos(base string) []string {
-	if workspaceGitIsRepo(base, base) {
-		return []string{base}
-	}
 	type level struct {
 		dir   string
 		depth int
 	}
 	var repos []string
+	// A project that is itself a repository can still hold worktrees or other
+	// repositories in its subfolders; list it first and keep searching.
+	if workspaceGitIsRepo(base, base) {
+		repos = append(repos, base)
+	}
 	queue := []level{{base, 0}}
 	visited := 0
 	for len(queue) > 0 && len(repos) < workspaceGitMaxRepos && visited < workspaceGitMaxScan {
@@ -283,6 +295,21 @@ func workspaceGitFindRepos(base string) []string {
 			}
 			if current.depth+1 < workspaceGitSearchDepth {
 				queue = append(queue, level{dir, current.depth + 1})
+			}
+		}
+	}
+	found := len(repos)
+	for i := 0; i < found && len(repos) < workspaceGitMaxRepos; i++ {
+		for _, rel := range workspaceGitNestedWorktreeDirs {
+			entries, err := os.ReadDir(filepath.Join(repos[i], filepath.FromSlash(rel)))
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				dir := filepath.Join(repos[i], filepath.FromSlash(rel), entry.Name())
+				if entry.IsDir() && len(repos) < workspaceGitMaxRepos && workspaceGitIsRepo(base, dir) {
+					repos = append(repos, dir)
+				}
 			}
 		}
 	}
@@ -466,21 +493,8 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	query := r.URL.Query()
 	op := query.Get("op")
 	if op == "" || op == "status" {
-		sessionID := strings.TrimSpace(query.Get("session_id"))
-		if sessionID != "" {
-			// File access does not grant private-chat history. Optional navigation
-			// hints are absent for both missing and unauthorized chats; the caller
-			// still sees the same current Git state their file access allows.
-			if api.eventStore == nil {
-				sessionID = ""
-			} else if status, _ := api.authorizeDurableChatRead(r, sessionID, requestWorkflowWorkspacePath(r)); status != 0 {
-				sessionID = ""
-			}
-		}
+		// Plain Git state for everyone with file access; no per-chat hints.
 		repos := workspaceGitStatusRepos(ctx, realBase)
-		if sessionID != "" {
-			api.markWorkspaceGitChatUsage(sessionID, realBase, repos)
-		}
 		if ctx.Err() != nil {
 			writeWorkspaceGitJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not load changes. Try again."})
 			return
@@ -544,6 +558,12 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGi
 				rel = ""
 			}
 			repo.Root = filepath.ToSlash(rel)
+			// Checkouts sharing one Git common dir are one repository; the one
+			// whose own Git dir is that common dir is its main checkout.
+			if gitDir, common, ok := safegit.CheckoutInside(realBase, real); ok {
+				repo.Worktree = filepath.Clean(gitDir) != filepath.Clean(common)
+				repo.Repository = workspaceGitRepositoryName(common)
+			}
 			results[i] = result{repo: repo, ok: true}
 		}(i, dir)
 	}
@@ -554,7 +574,52 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGi
 			repos = append(repos, r.repo)
 		}
 	}
+	// A checkout inside another listed checkout has its own entry; Git also
+	// reports its folder as one untracked entry of the outer checkout.
+	for i := range repos {
+		nested := map[string]bool{}
+		for _, other := range repos {
+			if other.Root == repos[i].Root {
+				continue
+			}
+			if repos[i].Root == "" {
+				nested[other.Root+"/"] = true
+			} else if rel, ok := strings.CutPrefix(other.Root, repos[i].Root+"/"); ok {
+				nested[rel+"/"] = true
+			}
+		}
+		if len(nested) == 0 {
+			continue
+		}
+		kept := repos[i].Files[:0]
+		for _, file := range repos[i].Files {
+			if !(file.Status == "untracked" && nested[file.Path]) {
+				kept = append(kept, file)
+			}
+		}
+		repos[i].Files = kept
+	}
+	// Each repository's main checkout first, then its worktrees.
+	sort.SliceStable(repos, func(i, j int) bool {
+		if repos[i].Repository != repos[j].Repository {
+			return repos[i].Repository < repos[j].Repository
+		}
+		if repos[i].Worktree != repos[j].Worktree {
+			return !repos[i].Worktree
+		}
+		return repos[i].Root < repos[j].Root
+	})
 	return repos
+}
+
+// workspaceGitRepositoryName is the folder of the repository's main checkout
+// ("app" for app/.git), or the bare repository's name without ".git".
+func workspaceGitRepositoryName(common string) string {
+	common = filepath.Clean(common)
+	if filepath.Base(common) == ".git" {
+		return filepath.Base(filepath.Dir(common))
+	}
+	return strings.TrimSuffix(filepath.Base(common), ".git")
 }
 
 // Shared read implementation; callers must authorize and select the repository.

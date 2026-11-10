@@ -2,6 +2,7 @@ package filesnapshots
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
@@ -196,29 +197,63 @@ func fileLines(g Group) string {
 }
 
 // cardContext is this reply's context for a card command: it replaces
-// {{context}} in the command's prompt.
+// {{context}} in the command's prompt. Each changed place gets its own line
+// (folder, repository, branch, PR) so files are never credited to another
+// checkout's branch.
 func cardContext(groups []Group) string {
-	var paths []string
-	var repo *Group
-	for i, g := range groups {
+	const perPlace = 20
+	var lines []string
+	for _, g := range groups {
+		if len(g.Files) == 0 {
+			continue
+		}
+		names := make([]string, 0, len(g.Files))
 		for _, file := range g.Files {
-			paths = append(paths, file.Path)
+			name := file.Path
+			if g.Root != "" {
+				name = strings.TrimPrefix(name, g.Root+"/")
+			}
+			names = append(names, name)
 		}
-		if repo == nil && g.Kind == "repo" && g.Branch != "" {
-			repo = &groups[i]
+		more := g.MoreCount
+		if len(names) > perPlace {
+			more += len(names) - perPlace
+			names = names[:perPlace]
 		}
-	}
-	if len(paths) > 20 {
-		paths = paths[:20]
-	}
-	text := "Context: this reply changed these files: " + strings.Join(paths, ", ")
-	if repo != nil {
-		text += " in " + repo.Name + " on branch " + repo.Branch
-		if repo.PR != nil && repo.PR.URL != "" {
-			text += "; PR " + repo.PR.URL
+		where := "Files outside Git"
+		if g.Kind == "repo" {
+			folder := g.Root
+			if folder == "" {
+				folder = "the project folder"
+			}
+			where = "Folder " + folder
+			switch {
+			case g.Worktree && g.Repository != "":
+				where += " (worktree of " + g.Repository + ")"
+			case g.Repository != "" && g.Repository != path.Base(folder):
+				where += " (repository " + g.Repository + ")"
+			}
+			if g.Branch != "" {
+				where += ", branch " + g.Branch
+			}
+			if g.PR != nil && g.PR.URL != "" {
+				where += ", PR " + g.PR.URL
+			}
 		}
+		line := "- " + where + ": " + strings.Join(names, ", ")
+		if more > 0 {
+			line += fmt.Sprintf(" (and %d more)", more)
+		}
+		lines = append(lines, line)
 	}
-	return text
+	if len(lines) == 0 {
+		return ""
+	}
+	head := "Context: this reply changed these files."
+	if len(lines) > 1 {
+		head = fmt.Sprintf("Context: this reply changed files in %d places.", len(lines))
+	}
+	return head + "\n" + strings.Join(lines, "\n")
 }
 
 // commandPrompt fills a command's {{context}}; a command without the
