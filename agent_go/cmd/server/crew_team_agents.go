@@ -80,10 +80,6 @@ type crewTeamAgentsPerson struct {
 	Agents      []crewTeamAgent `json:"agents"`
 }
 
-// crewTeamInTeam: the Mac Crew's agent is on its online copy's list for the Team (the owner's Mac lists every agent
-// while the Team is on). Whether it is In team is the Team record's answer (crewTeam.agentInTeam).
-func crewTeamInTeam(agent macSharedAgent) bool { return !agent.Off && agent.Audience == "team" }
-
 // teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
 // from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
@@ -107,7 +103,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		}
 	}
 	for _, agent := range readMacSharedAgents(t.ProjectID) {
-		if !onMac || !crewTeamInTeam(agent) || !t.seesAgent(caller, t.OwnerID, agent.Tab) {
+		if !onMac || !t.seesAgent(caller, t.OwnerID, agent.Tab) {
 			continue
 		}
 		place := "server"

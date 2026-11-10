@@ -117,9 +117,14 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	// Working on the website says itself (owner, 6 Nov: "if a user opens on web it is working on web"): no line for it.
 	// What is shared with the team, by name (owner, 5 Nov: "Shared with the team" is enough).
 	inTeam := []string{}
-	for _, a := range f.Agents {
-		if crewTeamInTeam(a) {
-			inTeam = append(inTeam, firstNonEmptyTrimmed(a.Name, a.Tab))
+	for _, person := range f.People {
+		if !person.You && person.UserID != f.Viewer {
+			continue
+		}
+		for _, a := range person.Agents {
+			if a.InTeam {
+				inTeam = append(inTeam, firstNonEmptyTrimmed(a.Name, a.Tab))
+			}
 		}
 	}
 	if len(inTeam) > 0 {

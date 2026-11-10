@@ -82,32 +82,19 @@ func callCrewMacPair(ctx context.Context, person, project, pair string, call cre
 // personMacTabs are this person's agents on their Mac that the Team may watch; a member's Only me ones are marked
 // (only they see them: crewMacTabsFor).
 func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab {
-	owner := person == ownerOfCrewProjectID(project)
-	// In team / Only me is the Team record's (crew_team_in_team.go); the owner's Mac lists only its In team agents here.
-	team, _ := readCrewTeam(project)
-	inTeam := map[string]bool{}
-	if owner {
-		for _, agent := range readMacSharedAgents(project) {
-			if crewTeamInTeam(agent) && team.agentInTeam(person, agent.Tab) {
-				inTeam[agent.Tab] = true
-			}
-		}
+	team, err := readCrewTeam(project)
+	if err != nil || !team.member(person) {
+		return nil
 	}
-	keep := func(tabs []crewMacTeamTab) []crewMacTeamTab {
-		if !owner {
-			out := slices.Clone(tabs)
-			for i := range out {
-				out[i].OnlyMe = !team.agentInTeam(person, out[i].Tab)
-			}
-			return out
-		}
-		return slices.DeleteFunc(slices.Clone(tabs), func(t crewMacTeamTab) bool { return !inTeam[t.Tab] })
-	}
-	tabs, ok := readPersonMacTabs(ctx, person, project, !owner || inTeam[macMainTab])
+	tabs, ok := readPersonMacTabs(ctx, person, project, true)
 	if !ok {
 		return nil
 	}
-	return keep(tabs)
+	out := slices.Clone(tabs)
+	for i := range out {
+		out[i].OnlyMe = !team.agentInTeam(person, out[i].Tab)
+	}
+	return out
 }
 
 // ownerMacTabsAll is every agent on the Crew owner's Mac, Main first, whatever the Team chose: with the Team off the

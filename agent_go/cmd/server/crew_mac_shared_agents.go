@@ -160,7 +160,9 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 
 func writeMacSharedAgents(project string, agents []macSharedAgent) (result error) {
 	// The list is what the network directory and messaging read: the AgentWorks project's agents are never in it as In team or Public.
-	if slices.ContainsFunc(agents, func(agent macSharedAgent) bool { return !agent.Off && (agent.Audience != "" || agent.AgentBridgePublic) }) && agentWorksPrivateProject(context.Background(), project) {
+	if slices.ContainsFunc(agents, func(agent macSharedAgent) bool {
+		return !agent.Off && (agent.Audience != "" || agent.AgentBridgePublic)
+	}) && agentWorksPrivateProject(context.Background(), project) {
 		return errors.New(agentWorksPrivateLine)
 	}
 	defer func() {
@@ -245,20 +247,21 @@ func macSharedAgentForAgent(project, tab, caller, owner string) (macSharedAgent,
 }
 
 func macSharedAgentAccess(project, tab, caller, owner string, byAgent bool) (macSharedAgent, string) {
-	agent, reason := macSharedAudience(readMacSharedAgents(project), tab, caller, owner, crewTeamPeople(project), byAgent)
-	if reason != "" {
-		return agent, reason
-	}
-	// Reached as a Team member: the agent must be In team by the Team record (crew_team_in_team.go).
-	if !(byAgent && agent.AgentBridgePublic) {
-		if t, err := liveCrewTeam(project); err != nil || !t.agentInTeam(t.OwnerID, agent.Tab) {
-			return macSharedAgent{}, "not_in_audience"
-		}
-	}
 	if claims := (&UserClaims{UserID: caller}); userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
 		return macSharedAgent{}, "no_access"
 	}
-	return agent, ""
+	agents := readMacSharedAgents(project)
+	// The relay advertises native bindings, never Team permission. Only the
+	// server's Team record decides whether a teammate may use this agent.
+	if t, err := liveCrewTeam(project); err == nil && t.OwnerID == owner && caller != owner && t.member(caller) && t.agentInTeam(owner, tab) {
+		for _, a := range agents {
+			if a.Tab == tab {
+				return a, ""
+			}
+		}
+	}
+	// Public AgentBridge publishing is independent of Team membership.
+	return macSharedAudience(agents, tab, caller, owner, nil, byAgent)
 }
 
 // macSharedAudience: whether the shared list lets this caller message the tab. A Mac agent reaches another person
@@ -308,7 +311,7 @@ func macCrewAddressTab(project string) string {
 	}
 	first := ""
 	for _, agent := range readMacSharedAgents(project) {
-		inTeam := agent.Audience == "team" && t.agentInTeam(t.OwnerID, agent.Tab)
+		inTeam := t.agentInTeam(t.OwnerID, agent.Tab)
 		if agent.Tab == macMainTab && (inTeam || agent.AgentBridgePublic) {
 			return macMainTab
 		}
@@ -417,7 +420,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	}
 	// A Team is a shared room (owner, 5 Nov): members watch an in-team agent but never type into it from the website;
 	// they reach it from their own agent (an agent message, or their own AI app over MCP).
-	if (action == "ask" || action == "reply_input") && crewTeamInTeam(agent) && claims.UserID != project.OwnerID && claims.AccessToken == nil {
+	if (action == "ask" || action == "reply_input") && crewTeamMember(manifest.ID, claims.UserID) && claims.UserID != project.OwnerID && claims.AccessToken == nil {
 		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%q action=%s refused reason=team_watch_only", manifest.ID, logUsernameForUserID(claims.UserID), tab, action)
 		externalError(w, 403, "team_watch_only", "You can watch this agent. To ask it something, ask from your own agent.")
 		return true
@@ -564,7 +567,7 @@ func macSharedAgentRows(caller string, byAgent bool) []map[string]any {
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
 				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
-				"owner_short": ownerShort, "crew_title": title, "available": available, "watch_only": crewTeamInTeam(agent)})
+				"owner_short": ownerShort, "crew_title": title, "available": available, "watch_only": crewTeamMember(project, caller)})
 		}
 	}
 	return rows
