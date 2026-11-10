@@ -31,12 +31,11 @@ type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: 
 
 /** Crews first, then a flat shared-dashboard list. Each row names its owner once.
  * The personal AgentWorks agent is rendered by its network group. */
-function ProjectList<T extends SidebarProject>({ projects, render, invites }: { projects: T[]; render: (project: T) => ReactNode; invites: ReactNode[] }) {
+function ProjectList<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
   const rest = projects.filter(project => !project.personal_agent)
   const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
   const dashboards = rest.filter(project => project.owned_by_caller === false && project.mode === 'run')
-  return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
-    {mine.map(render)}
+  return <>{mine.map(render)}
     {rest.filter(project => project.owned_by_caller === undefined).map(render)}
     {dashboards.length > 0 && <section aria-label="Dashboards shared with me" className="mb-3 space-y-1">
       <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Shared</h2>
@@ -59,7 +58,12 @@ function useWorkHistory(projects: SidebarProject[]) {
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
   const crews = projects.filter(project => project.kind === 'crew')
-  return hasDesktopConnections() ? <ConnectedServers projects={crews}>{children}</ConnectedServers> : <StandaloneWork projects={crews}>{children}</StandaloneWork>
+  // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
+  const invites = useTeamInviteRows()
+  return <>
+    {invites.length > 0 && <div aria-label="Team invites" className="shrink-0 space-y-1 px-2 pb-2">{invites}</div>}
+    {hasDesktopConnections() ? <ConnectedServers projects={crews}>{children}</ConnectedServers> : <StandaloneWork projects={crews}>{children}</StandaloneWork>}
+  </>
 }
 function useAllProjectsExpanded() {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
@@ -101,7 +105,6 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
       ? <ExpandableCrew key={`${project.kind}:${project.id}`} projectId={project.id} connectionId={getRawActiveWorkspaceId()} selected={!!project.selected} initialOpen={!!project.selected || !!pinned?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))}>{row}</ExpandableCrew>
       : <Fragment key={`${project.kind}:${project.id}`}>{row()}</Fragment>
   }
-  const invites = useTeamInviteRows()
   const pinnedProjects = (pinned || []).flatMap(key => {
     const project = orderedProjects.find(item => !item.personal_agent && connectedProjectKey(getRawActiveWorkspaceId(), item.kind, item.id) === key)
     return project ? [project] : []
@@ -119,7 +122,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     </section>)}
     {orderedProjects.filter(project => project.personal_agent).map(renderProject)}
     {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
-    <div className="space-y-1"><ProjectList projects={server} render={renderProject} invites={invites} /></div>
+    <div className="space-y-1"><ProjectList projects={server} render={renderProject} /></div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
     </AllProjects>
@@ -135,7 +138,6 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const { refresh, refreshActivity, error: directoryError } = state
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
-  const invites = useTeamInviteRows()
   useEffect(() => {
     if (!state.loaded || !isChatIdentityCurrent(state.identity) || !connections.length) return
     setSelectedLocations(previous => {
@@ -214,9 +216,8 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
           </button>
         })}
       </div>}
-      {invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
       {unpinnedRows.filter(project => project.personal_agent).map(project => renderProject(project))}
-      <div className="space-y-1"><ProjectList projects={unpinnedRows} render={project => renderProject(project)} invites={[]} /></div>
+      <div className="space-y-1"><ProjectList projects={unpinnedRows} render={project => renderProject(project)} /></div>
       {selectedLocations.includes(active) && children}
         {locations.map(connection => {
         const status = inventory[connection.id]?.status
