@@ -44,6 +44,9 @@ type crewTeamInvite struct {
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
 	OwnerName string `json:"owner_name"`
+	// CanAddToMac: the Team shares a folder, so the Mac app can add this Crew to the person's Mac (Add to my Mac). The
+	// server decides; the Mac app shows that button first when it is true.
+	CanAddToMac bool `json:"can_add_to_mac"`
 }
 
 // crewTeamFolder is what the Team shares (owner, 5 Nov): one or more of the Crew's folders, or the Whole Crew. Files
@@ -816,7 +819,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
-			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID)})
+			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared()})
 		}
 	}
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
