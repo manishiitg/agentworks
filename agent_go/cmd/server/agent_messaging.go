@@ -290,6 +290,17 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	if normalizeInternalProfileID(c.Stamp.ProfileID) != e.Profile {
 		return false
 	}
+	if e.TeamAgentID != "" {
+		if c.Chat == nil {
+			return false
+		}
+		t, err := readCrewTeam(e.ID)
+		if err != nil || !t.On || !t.member(userID) || !crewTeamAccountActive(userID) || ownerOfCrewProjectID(e.ID) != t.OwnerID {
+			return false
+		}
+		a, ok := t.registeredAgent(userID, c.Chat.Key)
+		return ok && a.ID == e.TeamAgentID && a.InTeam
+	}
 	if e.Session != "" {
 		return c.Chat != nil && e.Session == c.Chat.SessionID
 	}
