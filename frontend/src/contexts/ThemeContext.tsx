@@ -5,7 +5,8 @@ import { ThemeContext, type Theme } from './ThemeContext'
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const profile = useAppearanceStore(state => state.profile)
   useEffect(() => { document.documentElement.dataset.appearance = profile }, [profile])
-  const theme: Theme = profile === 'clear-light' ? 'light' : 'dark'
+  const theme: Theme = profile
+  const setTheme = useAppearanceStore(state => state.setProfile)
 
   useEffect(() => {
     // Apply theme to document
@@ -18,11 +19,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('theme', theme)
   }, [theme])
 
-  const toggleTheme = () => undefined
-
-  const setTheme = (_newTheme: Theme) => {
-    void _newTheme
-  }
+  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light')
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>

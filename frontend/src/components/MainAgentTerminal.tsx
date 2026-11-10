@@ -2,12 +2,11 @@ import { useAppearanceStore } from '../stores/useAppearanceStore'
 import { useEffect, useRef, useState } from 'react'
 import { agentApi } from '../services/api'
 import type { TerminalSnapshot } from '../services/api-types'
-import { useTheme } from '../hooks/useTheme'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
-import { LiveAttachXtermPane, CLEAR_LIGHT_XTERM_THEME, CLEAR_DARK_XTERM_THEME, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
+import { LiveAttachXtermPane, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
 
 type MainAgentTerminalProps = {
   sessionId: string
@@ -43,9 +42,8 @@ useWorkspaceConnectionStore.subscribe((next, previous) => {
 export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }: MainAgentTerminalProps) {
   const onUnavailableRef = useRef(onUnavailable)
   useEffect(() => { onUnavailableRef.current = onUnavailable }, [onUnavailable])
-  const { theme } = useTheme()
   const appearance = useAppearanceStore(state => state.profile)
-  const terminalTheme = appearance === 'clear-light' ? CLEAR_LIGHT_XTERM_THEME : appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[theme]
+  const terminalTheme = RAW_XTERM_THEMES[appearance]
   const account = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = JSON.stringify([account, server, sessionId, readOnly])
@@ -186,7 +184,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
 
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden bg-[#0b0e14] text-[#e7e9e5]"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden bg-background text-foreground"
       data-testid="main-agent-terminal-scroll-container"
     >
       <div
@@ -195,18 +193,18 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
         style={{ minWidth: MAIN_AGENT_TERMINAL_MIN_WIDTH_PX }}
       >
         {error ? (
-          <div className="p-4 text-sm text-red-300">{error}</div>
+          <div className="p-4 text-sm text-destructive">{error}</div>
         ) : !snapshot && notStarted ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-neutral-400" data-testid="main-agent-terminal-not-started">
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground" data-testid="main-agent-terminal-not-started">
             <p>The live view appears once the agent starts working.<br />Send a message and it will show up here.</p>
             {onUnavailable && (
-              <button type="button" className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800" onClick={() => onUnavailableRef.current?.()}>
+              <button type="button" className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted" onClick={() => onUnavailableRef.current?.()}>
                 Back to chat
               </button>
             )}
           </div>
         ) : !snapshot ? (
-          <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {/* Users are not told about terminals or tmux: while the live session has
                 not come up yet this simply reads as the agent starting. */}
             {loading ? 'Starting…' : 'Starting…'}
@@ -247,7 +245,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
                 message (the server relaunches the CLI there). Keep the notice at
                 the bottom where the person expects to type, outside the output. */}
             <div
-              className="flex shrink-0 flex-wrap items-center gap-3 border-t border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-300"
+              className="flex shrink-0 flex-wrap items-center gap-3 border-t border-border bg-card px-3 py-2 text-xs text-foreground"
               data-testid="main-agent-terminal-closed-banner"
               role="status"
             >
@@ -255,7 +253,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
                 This terminal has stopped. Send a message below to start it again.
               </span>
               {onUnavailable && (
-                <button type="button" className="rounded-md border border-neutral-600 px-3 py-1 text-neutral-100 hover:bg-neutral-800" onClick={() => onUnavailableRef.current?.()}>
+                <button type="button" className="rounded-md border border-border px-3 py-1 text-foreground hover:bg-muted" onClick={() => onUnavailableRef.current?.()}>
                   Back to chat
                 </button>
               )}
