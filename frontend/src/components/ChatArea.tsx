@@ -85,7 +85,7 @@ import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { coalesceNativeHelperActivity } from '../utils/nativeHelperActivity'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
-import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, takeViewSwitchStart } from '../utils/chatDeliveryTelemetry'
+import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, readViewSwitch, clearViewSwitch } from '../utils/chatDeliveryTelemetry'
 
 // Stable empty array to avoid infinite re-render loops in Zustand selectors
 // (a new [] on every selector call breaks referential equality checks)
@@ -799,12 +799,17 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // How long a chat/terminal switch takes in this browser, from the click to the first paint of the new view, goes to the server
   // log (view_switch) so a slow switch can be read with its numbers instead of guessed at.
   useEffect(() => {
-    const startedAt = takeViewSwitchStart()
+    const { startedAt, wanted, admittedAt } = readViewSwitch()
     const sessionId = activeTab?.sessionId
     if (!startedAt || !sessionId) return
     const tabId = activeTab?.tabId ?? ''
     const to = showMainTerminal ? 'terminal' : 'chat'
-    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt)))
+    // A click that asked for one agent stays pending until that agent paints, so a Main painted first is logged as other_first.
+    const landed = activeTab?.metadata?.agentProfileConversationKey ?? ''
+    const asked = !wanted || landed === wanted
+    if (asked) clearViewSwitch()
+    const status = wanted ? `${asked ? 'as_asked' : 'other_first'}${admittedAt ? `:admit${Math.round(admittedAt - startedAt)}` : ''}` : undefined
+    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt, status)))
     return () => window.cancelAnimationFrame(frame)
   }, [showMainTerminal, activeTab?.sessionId, activeTab?.tabId])
 
