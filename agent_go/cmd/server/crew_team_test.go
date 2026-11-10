@@ -115,6 +115,15 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &directory); err != nil || len(directory.People) == 0 || len(directory.People[0].Agents) == 0 {
 			t.Fatalf("Team directory missing agents: %v", err)
 		}
+		memberCtx := internalBotRequestContext(t.Context(), "member")
+		target := triggerTarget{Kind: triggerCallerCrew, CrewID: "team-test", CrewProfile: crewProfileID, CrewOwner: "owner", Path: crewProjectRootByID("team-test")}
+		resolvedTarget, targetErr := api.resolveAgentChatTarget(memberCtx, target, directory.People[0].Agents[0].ID)
+		if targetErr != nil || resolvedTarget.TeamAgentID != directory.People[0].Agents[0].ID || resolvedTarget.CrewOwner != "owner" {
+			t.Fatalf("Team directory ID did not resolve its actual owner: %+v %v", resolvedTarget, targetErr)
+		}
+		if _, err := api.resolveAgentChatTarget(memberCtx, target, macSharedAgentChatKey("team-test", "team01")); err == nil {
+			t.Fatal("retired native Team address bypassed ID resolution")
+		}
 		endpoint := agentMessageEndpoint{ID: "team-test", UserID: "owner", TeamAgentID: directory.People[0].Agents[0].ID, ChatKey: "stale-key"}
 		resolved, route, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member")
 		if err != nil || route != "owner_mac" || resolved.ChatKey != macSharedAgentChatKey("team-test", "team01") {

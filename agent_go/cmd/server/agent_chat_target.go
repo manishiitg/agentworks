@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -12,32 +13,48 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 	if target.Kind == triggerCallerWorkflow {
 		return target, fmt.Errorf("Workflows run directly. Send your message to a Crew agent instead.")
 	}
-	if target.Chat != nil || target.NamedAgentID != "" {
-		return target, nil
-	}
 	caller := GetUserIDFromContext(ctx)
 	chatID = strings.TrimSpace(chatID)
-	if target.Kind == triggerCallerCrew {
+	if target.Kind == triggerCallerCrew && !IsLocalMode() {
 		if strings.HasPrefix(chatID, crewTeamAgentIDPrefix) {
 			return api.resolveTeamAgentTarget(ctx, target, chatID)
 		}
+		t, err := readCrewTeam(target.CrewID)
+		if err != nil && !os.IsNotExist(err) {
+			return target, err
+		}
+		if err == nil && t.On && t.member(caller) {
+			id := target.TeamAgentID
+			if id == "" && target.Chat != nil {
+				// A verified sibling-chat caller carries its actual owner and binding.
+				for _, p := range teamAgentsByPerson(ctx, t, caller) {
+					for _, a := range p.Agents {
+						if p.UserID == target.Chat.OwnerID && a.ChatKey == target.Chat.Key {
+							id = a.ID
+						}
+					}
+				}
+			}
+			if id == "" && target.Chat == nil && (chatID == "" || chatID == "main") {
+				for _, p := range teamAgentsByPerson(ctx, t, caller) {
+					for _, a := range p.Agents {
+						if p.UserID == caller && crewTeamMainAgent(t, caller, a.ChatKey) {
+							id = a.ID
+						}
+					}
+				}
+			}
+			if id == "" {
+				return target, fmt.Errorf("Choose this Team agent's chat_id from list_agents")
+			}
+			return api.resolveTeamAgentTarget(ctx, target, id)
+		}
+	}
+	if target.Chat != nil || target.NamedAgentID != "" {
+		return target, nil
+	}
+	if target.Kind == triggerCallerCrew {
 		if chatID != "" && chatID != "main" {
-			// A Team member's agent on their Mac (crew_team_mac_watch.go): the server decides who may message it.
-			if person, agent, ok := crewMemberMacAgentFor(ctx, target.CrewID, chatID, caller); ok {
-				key := crewMacTabRow(target.CrewID, agent).ConversationKey
-				target.Chat, target.CrewOwner = &codeChat{OwnerID: person, ID: key, Key: key, Name: agent.Name}, person
-				target.Label += " · " + agent.Name
-				return target, nil
-			}
-			// The Crew owner's agent on their Mac, for a Team member: the Team decides who may message it
-			// (crewTeamOwnerAgent), and the message goes to the owner's Mac or its server copy (deliverToMacSharedAgent).
-			// A Team member counts as a co-owner below, whose lookup knows only the server's own chats (owner, 10 Nov:
-			// every message to a teammate's Mac agent was refused).
-			if chat, ok := crewTeamOwnerMacChat(ctx, target.CrewID, chatID, caller); ok {
-				target.Chat, target.CrewOwner = chat, chat.OwnerID
-				target.Label += " · " + chat.Name
-				return target, nil
-			}
 			if !crewProjectOwnedByCaller(caller, target.Path) {
 				chat, ok := sharedCrewAgentChat(ctx, caller, target.Path, chatID)
 				if !ok {
@@ -110,29 +127,4 @@ func (api *StreamingAPI) authorizeGoalMessageTab(ctx context.Context, peer agent
 	}
 	tab, root, ok := api.goalTabForSession(ctx, peer.Session)
 	return ok && root == peer.Path && tab.ID == peer.ChatKey && tab.OwnerID == peer.UserID
-}
-
-// crewTeamOwnerMacChat is the Crew owner's Mac agent that chatID names, when the Crew lives on the owner's Mac and the
-// caller is another person of its Team who may message it.
-func crewTeamOwnerMacChat(ctx context.Context, project, chatID, caller string) (*codeChat, bool) {
-	if IsLocalMode() || project == "" || !crewRelayTwin(project) {
-		return nil, false
-	}
-	owner := ownerOfCrewProjectID(project)
-	if owner == "" || owner == caller || crewTeamOwnerAgent(ctx, project, chatID, caller) == "" {
-		return nil, false
-	}
-	short := strings.TrimPrefix(chatID, project+codeChatSideMarker)
-	main := chatID == project
-	if t, err := readCrewTeam(project); err == nil && chatID == crewTeamOwnerMainKey(ctx, t) {
-		main = true // the Team's agents list names the owner's Main by its chat there
-	}
-	for _, agent := range readMacSharedAgents(project) {
-		if agent.Tab == macMainTab && !main || agent.Tab != macMainTab && agent.Tab != short && macSharedAgentChatKey(project, agent.Tab) != chatID {
-			continue
-		}
-		key := macSharedAgentChatKey(project, agent.Tab)
-		return &codeChat{OwnerID: owner, ID: key, Key: key, Name: firstNonEmptyTrimmed(agent.Name, "Agent"), Purpose: agent.Purpose}, true
-	}
-	return nil, false
 }

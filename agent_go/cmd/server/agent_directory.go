@@ -91,7 +91,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		id, _ := crew["id"].(string)
 		profileID, _ := crew["profile_id"].(string)
 		crewPath, _ := crew["workspace_path"].(string)
-		if onlyLinked && crewProjectOwnedByCaller(claims.UserID, crewPath) {
+		if onlyLinked && crewProjectOwnedByCallerStrict(claims.UserID, crewPath) {
 			root := canonicalCrewWorkspaceRoot(crewPath)
 			if root != canonicalCrewWorkspaceRoot(here) && !linked[root] {
 				continue
@@ -117,11 +117,13 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		if role, _ := crew["role"].(string); role != "" {
 			row["role"] = role
 		}
-		owned := crewProjectOwnedByCaller(claims.UserID, crewPath)
+		owned := crewProjectOwnedByCallerStrict(claims.UserID, crewPath)
+		team, teamErr := readCrewTeam(id)
+		inTeam := !IsLocalMode() && teamErr == nil && team.On && team.member(claims.UserID) && team.OwnerID == owner && crewTeamAccountActive(claims.UserID)
 		// How this Crew relates to the person (backend decides): the Crew the asking agent works in, one they own, one whose
 		// Team they are in, or one shared with them (owner, 7 Nov).
 		relation := "shared"
-		if t, err := readCrewTeam(id); err == nil && t.On && t.member(claims.UserID) {
+		if inTeam {
 			relation = "team"
 		}
 		if owned {
@@ -131,6 +133,21 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			relation, thisCrew = "this_crew", id
 		}
 		row["relation"] = relation
+		if inTeam {
+			chats := []map[string]interface{}{}
+			for _, person := range teamAgentsByPerson(ctx, team, claims.UserID) {
+				for _, a := range person.Agents {
+					if !a.InTeam {
+						continue
+					}
+					chats = append(chats, map[string]interface{}{"chat_id": a.ID, "name": a.Name, "purpose": a.Purpose, "owner_name": person.Name, "shared_by": person.Name, "yours": person.You, "can_write": person.You, "place": a.Place})
+					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": a.Address, "target": row["id"], "crew_id": id, "chat_id": a.ID, "name": a.Name, "crew_name": name, "relation": relation, "shared_by": person.Name, "purpose": a.Purpose, "presence": firstNonEmptyTrimmed(a.PlaceLabel, a.StatusLabel, "Runs when messaged"), "your_access": "run", "reach": "messages action=send(target=<id>) from a shared agent of this same Crew"})
+				}
+			}
+			row["chats"] = chats
+			agents = append(agents, row)
+			continue
+		}
 		if owned {
 			tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profileID, id, crewPath)
 			if err != nil {
@@ -158,7 +175,13 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	}
 	// Agents shared from Crews on their owners' Macs, for the people in each agent's audience (PLAT-856-509).
 	if !IsLocalMode() {
-		agents = append(agents, macSharedAgentRows(claims.UserID, false)...)
+		for _, row := range macSharedAgentRows(claims.UserID, false) {
+			project, _ := row["crew_id"].(string)
+			if t, err := readCrewTeam(project); err == nil && t.On && t.member(claims.UserID) {
+				continue
+			}
+			agents = append(agents, row)
+		}
 	}
 	// On this Mac: the Team members' own agents of each Crew whose Team is on, from its online copy (owner, 5 Nov).
 	if IsLocalMode() {

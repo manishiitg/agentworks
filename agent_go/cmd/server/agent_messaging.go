@@ -314,6 +314,13 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 // sendAgentMessage creates an address for a contact, or sends in a previously
 // authorized conversation. Only the two exact endpoints can use that address.
 func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (map[string]interface{}, error) {
+	if inboxID == "" {
+		var err error
+		target, err = api.resolveAgentChatTarget(ctx, target, "")
+		if err != nil {
+			return nil, err
+		}
+	}
 	if inboxID == "" && target.TeamAgentID != "" {
 		if caller.Stamp.Type != triggerCallerCrew || caller.Stamp.ID != target.CrewID || caller.Chat == nil {
 			return nil, fmt.Errorf("Send to a Team agent from an agent of the same Crew")
@@ -323,13 +330,6 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, err
 		}
 		caller.TeamAgentID = agent.ID
-	}
-	if inboxID == "" {
-		var err error
-		target, err = api.resolveAgentChatTarget(ctx, target, "")
-		if err != nil {
-			return nil, err
-		}
 	}
 	if inboxID == "" {
 		if err := requireLinkedOwnCrew(ctx, userID, caller, target); err != nil {
