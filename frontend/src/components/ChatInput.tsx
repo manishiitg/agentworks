@@ -2859,6 +2859,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }
 
   const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat
+  const unifiedComposerMenu = agentProfileId === 'work' && Boolean(agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileCanOpenModels && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab?.metadata?.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`))
   const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
   const openAttachmentPicker = () => {
     closeComposerPickers()
@@ -3082,7 +3083,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
 <ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 max-w-full flex-wrap items-center gap-1'}>
-                {compactComposerActions && <ComposerActionsMenu
+                {compactComposerActions && !unifiedComposerMenu && <ComposerActionsMenu
                   key={activeTabId}
                   uploading={isUploadingFiles}
                   onAttach={openAttachmentPicker}
@@ -3479,7 +3480,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{crewModelLabel}</span>
                   // Owners pick the model and reasoning here; everyone else sees the label.
                   return activeTab.metadata.agentProfileCanOpenModels
-                    ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label} /></Suspense>
+                    ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label}
+                      showContext={showContextIndicator} busy={isTurnInFlight}
+                      actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
+                        onOpenCommands: productCommandsAvailable ? openCommandMenu : undefined,
+                        onOpenLiveView: activeTabId && shouldShowLiveTerminalControl(liveTerminalOffered, isProductSurface, isInteractiveWorkflowBuilderChat, showProductTerminalControl) ? () => chooseViewMode(activeTabId, 'terminal') : undefined,
+                        liveViewTitle: mainAgentRuntimeLabel || undefined, onOpenChange: setSendOptionsOpen,
+                        sendOptions: { busy: isStreaming || transcriptTurnActive, onNewChat: showNewChatAction ? onNewChat : undefined, backgroundWork },
+                      }} /></Suspense>
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
@@ -3489,7 +3497,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} sessionId={activeTab?.metadata?.agentProfileCanOpenModels ? tabSessionId || undefined : undefined} />
               </div>
               {/* The person's "Show in chat box" choice: context and plan use beside the model controls, shown whenever the server returns a view (it answers only the tab's owner). */}
-              {showContextIndicator && tabSessionId && !nativeTerminalTools && <div className="flex min-w-0 flex-1 justify-start px-1 [container-type:inline-size]">
+              {showContextIndicator && tabSessionId && !nativeTerminalTools && !unifiedComposerMenu && <div className="flex min-w-0 flex-1 justify-start px-1 [container-type:inline-size]">
                 <Suspense fallback={null}><ChatStatusBar sessionId={tabSessionId} busy={isTurnInFlight} /></Suspense>
               </div>}
               <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">

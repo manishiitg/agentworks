@@ -4,7 +4,7 @@ import { Loader2, Paperclip, Plus, Terminal, Wand2 } from 'lucide-react'
 import { ChatSendOptions, type ChatSendOptionsProps } from './ChatSendModeButton'
 
 /** Presentation only: every action keeps its existing handler and admission. */
-export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, onOpenChange }: {
+export type ComposerActions = {
   uploading: boolean
   onAttach: () => void
   onOpenCommands?: () => void
@@ -12,11 +12,12 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
   liveViewTitle?: string
   sendOptions?: ChatSendOptionsProps
   onOpenChange?: (open: boolean) => void
-}) {
+}
+
+export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, onOpenChange }: ComposerActions) {
   const afterClose = useRef<(() => void) | null>(null)
   const activityId = useId()
   const runningCount = sendOptions?.backgroundWork?.items.length ?? 0
-  const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <Menu.Root modal={false} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" aria-label="Add files and actions" title="Add files and actions" aria-describedby={runningCount ? activityId : undefined}
       className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted">
@@ -31,22 +32,30 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
         if (action) { event.preventDefault(); action() }
       }}
       className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+      <ComposerActionItems uploading={uploading} onAttach={onAttach} onOpenCommands={onOpenCommands} onOpenLiveView={onOpenLiveView} liveViewTitle={liveViewTitle} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
+    </Menu.Content></Menu.Portal>
+  </Menu.Root>
+}
+
+/** Reuse the exact actions inside the chat's model/context menu. */
+export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, deferAction }: ComposerActions & { deferAction: (action: () => void) => void }) {
+  const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
+  return <>
       <Menu.Item disabled={uploading} onSelect={onAttach} data-testid="chat-upload-button" className={rowClass}>
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
       </Menu.Item>
-      {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { afterClose.current = onOpenCommands }} className={rowClass}>
+      {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }} className={rowClass}>
         <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands
       </Menu.Item>}
       {onOpenLiveView && <>
         <Menu.Separator className="my-1 h-px bg-border" />
-        <Menu.Item onSelect={() => { afterClose.current = onOpenLiveView }} title={liveViewTitle} className={rowClass}>
+        <Menu.Item onSelect={() => { deferAction(onOpenLiveView) }} title={liveViewTitle} className={rowClass}>
           <Terminal className="h-4 w-4" aria-hidden="true" />Open live view
         </Menu.Item>
       </>}
       {sendOptions && <>
         <Menu.Separator className="my-1.5 h-px bg-border" />
-        <ChatSendOptions {...sendOptions} deferAction={action => { afterClose.current = action }} />
+        <ChatSendOptions {...sendOptions} deferAction={deferAction} />
       </>}
-    </Menu.Content></Menu.Portal>
-  </Menu.Root>
+  </>
 }

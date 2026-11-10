@@ -1,7 +1,9 @@
+import { ComposerActionItems, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
+import ChatStatusBar from './ChatStatusBar'
 import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight, Laptop, Server, Settings2 } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronRight, Laptop, Loader2, Server, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -33,16 +35,17 @@ export function ChoiceItems({ title, choices, value, onPick }: { title?: string;
   </>
 }
 
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: 'mac' | 'server' }) {
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag, triggerExtra, onCloseAutoFocus }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void }) {
   const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
-    <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={chipClass}>
+    <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={triggerExtra ? chipClass.replace('max-w-40', 'max-w-full') : chipClass}>
       {tag === 'mac' && <Laptop className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       {tag === 'server' && <Server className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
-      <span className="min-w-0 truncate">{label}</span>
+      <span className="min-w-0 max-w-40 truncate">{label}</span>
+      {triggerExtra}
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
-    <Menu.Portal><Menu.Content side="top" align="start" sideOffset={8} collisionPadding={12} className={`${contentClass}${width}`}>{children}</Menu.Content></Menu.Portal>
+    <Menu.Portal><Menu.Content onCloseAutoFocus={onCloseAutoFocus} side="top" align="start" sideOffset={8} collisionPadding={12} className={`${contentClass}${width}`}>{children}</Menu.Content></Menu.Portal>
   </Menu.Root>
 }
 
@@ -66,12 +69,16 @@ export function useOpenFromStatusBar(sessionId: string | undefined, open: () => 
  * offers; the server saves them for this chat and checks them. Only shown when the server lets this person open
  * Models (the project's owner); otherwise `fallback` (the plain label).
  */
-export default function ComposerModelChips({ tabId, workspacePath, label, fallback }: {
+export default function ComposerModelChips({ tabId, workspacePath, label, fallback, actions, showContext, busy = false }: {
   tabId: string
   workspacePath: string
   label: string
   fallback: ReactNode
+  actions?: ComposerActions
+  showContext?: boolean
+  busy?: boolean
 }) {
+  const afterClose = useRef<(() => void) | null>(null)
   const queryClient = useQueryClient()
   const meta = useChatStore(state => state.chatTabs[tabId]?.metadata)
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId) || ''
@@ -109,7 +116,18 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     workspacePath, accountProduct: profileId,
   })
 
-  if (!selectedOption) return <>{fallback}</>
+  const onMenuOpen = (open: boolean) => { setMenuOpen(open); actions?.onOpenChange?.(open) }
+  const onMenuClose = (event: Event) => { const action = afterClose.current; afterClose.current = null; if (action) { event.preventDefault(); action() } }
+  const triggerExtra = <>
+    {showContext && sessionId && <span className="ml-2 flex min-w-0"><ChatStatusBar sessionId={sessionId} busy={busy} inline /></span>}
+    {actions?.uploading && <><Loader2 className="ml-1 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" /><span className="sr-only">Uploading files</span></>}
+    {Boolean(actions?.sendOptions?.backgroundWork?.items.length) && <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" aria-label="Background tasks running" role="status" />}
+  </>
+  // Attach and commands stay available while model choices are loading.
+  const fallbackMenu = actions ? <Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
+    <ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} />
+  </Chip> : fallback
+  if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
   const programAccounts = (sources.accounts || []).filter(account => account.provider === selectedOption.provider)
@@ -182,16 +200,18 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
   </Menu.SubTrigger>
 
-  if (groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallback}</>
+  if (groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
-  return <>{sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={setMenuOpen} columns={Boolean(sessionId)} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
+  return <>{sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
+    triggerExtra={triggerExtra} columns={Boolean(sessionId)} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate" title={sourceText}>{sourceText}</span>
     </div>}
+    {actions && <><ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} /><Menu.Separator className="my-1.5 h-px bg-border" /></>}
     {pendingSwitch && <div className="mx-1 mb-1.5 mt-0.5 rounded-lg border border-primary/40 bg-primary/10 p-2 text-xs">
       <p className="mb-1.5">{switchNote}</p>
       <button type="button" onClick={() => void finishSwitch(true)} className="mb-1 block w-full rounded-md border border-primary/40 bg-background/60 px-2 py-1.5 text-left hover:bg-background">
