@@ -579,11 +579,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {!menuMode && chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
       {!menuMode && personChipList}
       </div>
-      {/* With the left menu your own agents are there; the Team stays in the header (owner, 10 Nov). */}
-      {menuMode && chipPeople.length > 0 && <div className="hidden min-w-0 items-center gap-1 md:flex">{personChipList}</div>}
       {!moreBeforePeople && moreMenu}
 
       {newTabForm}
+      {/* With the left menu your own agents are there; the Team stays in the header after ⌄ and +, past a divider
+          (owner, 10 Nov). */}
+      {menuMode && chipPeople.length > 0 && <div className="hidden min-w-0 items-center gap-1 md:flex"><span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />{personChipList}</div>}
       {addMode && createPortal(
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking) setAddMode(null) }}>
           <div role="dialog" aria-modal="true" aria-label={addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
