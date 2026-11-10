@@ -466,20 +466,23 @@ func TestScheduleHistoryDirectoryLinkDeletionPreservesTarget(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			link := filepath.Join(docs, "Workflow", "link")
+			// Immediate Workflow/<name> links are refused by the existing Relay
+			// deletion policy. A nested link is an allowed directory-link removal.
+			logicalLink := target + "/link"
+			link := filepath.Join(docs, logicalLink)
 			if err = os.Symlink(filepath.Join(docs, target), link); err != nil {
 				t.Skipf("directory symlinks unavailable: %v", err)
 			}
-			captured, err := scheduleHistoryRemovalScope("Workflow/link")
+			captured, err := scheduleHistoryRemovalScope(logicalLink)
 			if err != nil || captured != "" {
 				t.Fatalf("app deletion would purge a link target: %q %v", captured, err)
 			}
 			router := gin.New()
 			router.DELETE("/api/folders/*folderpath", wh.DeleteFolder)
 			router.DELETE("/api/documents/*filepath", wh.DeleteDocument)
-			endpoint := "/api/folders/Workflow/link?confirm=true"
+			endpoint := "/api/folders/" + logicalLink + "?confirm=true"
 			if route == "document" {
-				endpoint = "/api/documents/Workflow/link?confirm=true"
+				endpoint = "/api/documents/" + logicalLink + "?confirm=true"
 			}
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, endpoint, nil))
