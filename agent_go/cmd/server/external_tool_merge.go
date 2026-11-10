@@ -35,6 +35,7 @@ var externalToolMerges = []externalToolMerge{
 	{"needs_you", "Find and answer the questions waiting on you. Current question, decision and product access still applies.", platformMergeActions("needs_you")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
+	{"menu_groups", "Your own left menu groups: names you give to some of your Crews, to show only those in the left menu. Changes only your menu.", platformMergeActions("menu_groups")},
 	{"workflow", "Find workflows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_script_outline"}, {"save_inputs", "save_script_inputs"},
 	}},

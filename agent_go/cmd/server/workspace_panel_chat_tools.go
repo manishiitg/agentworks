@@ -28,7 +28,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		// Browser and model chat tools already exist for Crews.
 		names = []string{"settings", "models", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
 	}
-	names = append(names, "chat_preferences")
+	names = append(names, "chat_preferences", "menu_groups")
 	catalog, err := externalTools()
 	if err != nil {
 		return err
@@ -95,6 +95,17 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
 				}
 				return strings.TrimSpace(recorder.Body.String()), nil
+			}
+			if name == "menu_groups" {
+				if claims == nil || claims.UserID != user {
+					return "", errors.New("Use your own chat to change your menu groups.")
+				}
+				reply, err := api.menuGroupsAction(ctx, args)
+				if err != nil {
+					return "", err
+				}
+				data, _ := json.Marshal(reply)
+				return string(data), nil
 			}
 			if claims == nil || claims.UserID != user || !userAccessForClaims(claims).CanEdit {
 				return "", errors.New("Use your own Builder chat to change this project.")

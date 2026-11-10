@@ -69,6 +69,8 @@ func agentSourceMutates(source, operation string, original bool) bool {
 		return brainAdminWriteActions[operation]
 	case "manage_schedules":
 		return operation != "list" && operation != "runs" && operation != "scheduler_status"
+	case "menu_groups":
+		return operation != "list"
 	case "manage_triggers":
 		return operation != "list" && operation != "runs" && operation != "status"
 	case "manage_condition_triggers":
