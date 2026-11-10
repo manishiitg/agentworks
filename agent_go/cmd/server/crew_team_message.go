@@ -22,7 +22,7 @@ type crewTeamMessageRequest struct {
 	FromTab        string `json:"from_tab"`        // the Mac agent sending: "main" or a side tab id
 	ConversationID string `json:"conversation_id"` // its Mac conversation, for its session here
 	Agent          string `json:"agent,omitempty"` // its name, for the other side's view
-	ChatKey        string `json:"chat_key"`        // the member's tab, as the side-chats list names it
+	AgentID        string `json:"agent_id"`        // server-issued Team agent ID, or a reply inbox
 	Message        string `json:"message"`
 	SubmissionID   string `json:"submission_id,omitempty"`
 }
@@ -41,14 +41,14 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	// A reply names the conversation's inbox; sendAgentMessage admits only that conversation's own agents.
 	inbox := ""
-	if strings.HasPrefix(in.ChatKey, "inbox-") {
-		inbox = in.ChatKey
+	if strings.HasPrefix(in.AgentID, "inbox-") {
+		inbox = in.AgentID
 	}
 	var target triggerTarget
 	member := ""
 	if inbox == "" {
 		var ok bool
-		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.ChatKey, claims); !ok {
+		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.AgentID, claims); !ok {
 			return
 		}
 	}
@@ -67,24 +67,15 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 		externalError(w, 409, "message_failed", err.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s event=agent_message from=%s to_member=%s chat=%q", project, in.FromTab, logUsernameForUserID(member), in.ChatKey)
+	log.Printf("[CREW_TEAM] project=%s event=agent_message from=%s to_member=%s chat=%q", project, in.FromTab, logUsernameForUserID(member), in.AgentID)
 	externalJSON(w, out)
 }
 
 // crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w.
 func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey string, claims *UserClaims) (triggerTarget, string, bool) {
-	member := crewTeamMemberTab(r.Context(), project, chatKey)
-	if member == "" {
-		// A member's agent on their Mac (crew_team_mac_watch.go), not one of their server tabs.
-		if person, _, ok := crewMemberMacAgentFor(r.Context(), project, chatKey, claims.UserID); ok {
-			member = person
-		}
-	}
-	if member == "" {
-		member = crewTeamOwnerAgent(r.Context(), project, chatKey, claims.UserID)
-	}
-	if member == "" || member == claims.UserID {
-		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team key=%q self=%t", project, strings.TrimPrefix(chatKey, project+codeChatSideMarker), member != "")
+	_, member, lookupErr := crewTeamAgentByID(r.Context(), project, claims.UserID, chatKey)
+	if lookupErr != nil || member == claims.UserID {
+		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team agent_id=%q self=%t", project, chatKey, member == claims.UserID)
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return triggerTarget{}, "", false
 	}
@@ -182,7 +173,7 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 		}
 	}
 	reply, err := desktopCrewSyncCall(ctx, owner, &connection, b.PeerProjectID, crewSyncRequest{Action: "team_message", PairID: b.PairID,
-		TeamMessage: &crewTeamMessageRequest{FromTab: tab, ConversationID: conversation, Agent: caller.Chat.Name, ChatKey: chatKey, Message: message, SubmissionID: submission}})
+		TeamMessage: &crewTeamMessageRequest{FromTab: tab, ConversationID: conversation, Agent: caller.Chat.Name, AgentID: chatKey, Message: message, SubmissionID: submission}})
 	if err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=team_message_send_failed from=%s to=%q reason=%q", project, tab, strings.TrimPrefix(chatKey, b.PeerProjectID+codeChatSideMarker), err)
 		return nil, err
@@ -241,10 +232,10 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 				continue
 			}
 			for _, agent := range p.Agents {
-				if !agent.InTeam || agent.ChatKey == "" {
+				if !agent.InTeam || agent.ID == "" {
 					continue
 				}
-				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + agent.ChatKey,
+				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + agent.ID,
 					"name": p.Name + "'s " + firstNonEmptyTrimmed(agent.Name, "Main"), "owner": p.Name, "crew_name": name, "purpose": agent.Purpose,
 					"presence": firstNonEmptyTrimmed(agent.PlaceLabel, agent.StatusLabel, "Runs when messaged"),
 					"reach":    "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})

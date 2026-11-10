@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 
@@ -14,9 +15,11 @@ import (
 // them from their own agents.
 
 type crewTeamAgent struct {
-	Tab     string `json:"tab"`
-	Name    string `json:"name"`
-	Purpose string `json:"purpose,omitempty"`
+	ID        string `json:"id"`
+	sessionID string
+	Tab       string `json:"tab"`
+	Name      string `json:"name"`
+	Purpose   string `json:"purpose,omitempty"`
 	// Place is where it runs: "mac" (its maker's Mac) or "server" (published).
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
@@ -176,10 +179,9 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
 	}
-	for i := range out {
-		for j := range out[i].Agents {
-			out[i].Agents[j].Address = crewTeamAgentAddress(t.ProjectID, out[i].Agents[j].ChatKey)
-		}
+	if err := assignCrewTeamAgentIDs(t, out); err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
+		return nil
 	}
 	return out
 }
@@ -213,7 +215,7 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		if crewServerChatRunning(record.SessionID) {
 			activity = "running"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, PlaceLabel: crewServerAgentPlaceLabel})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
 }

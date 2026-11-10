@@ -1040,7 +1040,7 @@ func TestCrewTeamMessageIsAdmittedFromOwnerOrMemberMacOnly(t *testing.T) {
 	api := &StreamingAPI{}
 	send := func(user, pair string) (int, string) {
 		t.Helper()
-		body := crewSyncRequest{Action: "team_message", PairID: pair, TeamMessage: &crewTeamMessageRequest{FromTab: "", ConversationID: "c1", ChatKey: "x", Message: "hi"}}
+		body := crewSyncRequest{Action: "team_message", PairID: pair, TeamMessage: &crewTeamMessageRequest{FromTab: "", ConversationID: "c1", AgentID: "x", Message: "hi"}}
 		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		w := httptest.NewRecorder()
 		api.crewTeamMessage(w, r, "message-room", body)
