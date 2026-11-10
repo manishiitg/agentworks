@@ -1,9 +1,12 @@
 import React, { useEffect } from 'react'
+import { useAppearanceStore } from '../stores/useAppearanceStore'
 import { ThemeContext, type Theme } from './ThemeContext'
 
 const FORCED_THEME: Theme = 'dark'
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const profile = useAppearanceStore(state => state.profile)
+  useEffect(() => { document.documentElement.dataset.appearance = profile }, [profile])
   const theme = FORCED_THEME
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { CLEAR_DARK_FONT, useAppearanceStore } from '../stores/useAppearanceStore'
 import { dropFilesOnTerminal } from '../utils/terminalFileDrop'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { transcriptReadingKey } from './useTranscriptScroll'
@@ -587,7 +588,22 @@ export const RAW_XTERM_THEMES: Record<Theme, ITheme> = {
   },
 }
 
+export const CLEAR_DARK_XTERM_THEME: ITheme = {
+  background: '#1a1a1a', foreground: '#e3e1db', cursor: '#e3e1db',
+  selectionBackground: '#585650', overviewRulerBorder: '#00000000',
+  scrollbarSliderBackground: '#a9a69e38', scrollbarSliderHoverBackground: '#a9a69e66',
+}
+
+function rawXtermFont() {
+  return useAppearanceStore.getState().profile === 'clear-dark'
+    ? { fontFamily: CLEAR_DARK_FONT, fontSize: 12 }
+    : { fontFamily: RAW_XTERM_FONT_FAMILY, fontSize: RAW_XTERM_FONT_SIZE }
+}
+
 function applyRawXtermTheme(term: XTerm, theme: ITheme) {
+  const font = rawXtermFont()
+  term.options.fontFamily = font.fontFamily
+  term.options.fontSize = font.fontSize
   term.options.theme = theme
   const viewport = term.element?.querySelector('.xterm-viewport') as HTMLElement | null
   if (viewport && theme.background) {
@@ -633,14 +649,14 @@ function measureRawXtermCellMetrics(el: HTMLElement): { charWidth: number; lineH
   ruler.textContent = '0'.repeat(100)
   ruler.setAttribute('aria-hidden', 'true')
   ruler.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;top:0;left:0;pointer-events:none;'
-  ruler.style.fontFamily = RAW_XTERM_FONT_FAMILY
-  ruler.style.fontSize = `${RAW_XTERM_FONT_SIZE}px`
+  ruler.style.fontFamily = rawXtermFont().fontFamily
+  ruler.style.fontSize = `${rawXtermFont().fontSize}px`
   ruler.style.lineHeight = RAW_XTERM_CSS_LINE_HEIGHT
   el.appendChild(ruler)
   const rect = ruler.getBoundingClientRect()
   ruler.remove()
   const charWidth = rect.width / 100
-  const lineHeight = rect.height || RAW_XTERM_FONT_SIZE
+  const lineHeight = rect.height || rawXtermFont().fontSize
   if (!Number.isFinite(charWidth) || !Number.isFinite(lineHeight) || charWidth <= 0 || lineHeight <= 0) return null
   return { charWidth, lineHeight }
 }
@@ -682,7 +698,7 @@ function scrollXtermFromWheel(
     return
   }
   const row = term.element?.querySelector('.xterm-rows > div') as HTMLElement | null
-  const lineHeightPx = row?.getBoundingClientRect().height || RAW_XTERM_FONT_SIZE
+  const lineHeightPx = row?.getBoundingClientRect().height || rawXtermFont().fontSize
   const rawLines = event.deltaMode === 1
     ? event.deltaY
     : event.deltaMode === 2
@@ -1498,6 +1514,7 @@ const LiveAttachXtermPaneInner: React.FC<{
   // Set inside the socket effect so the superseded badge's "Take over" button
   // can re-attach this pane without remounting it.
   const takeOverRef = useRef<(() => void) | null>(null)
+  const appearanceFitRef = useRef<(() => void) | null>(null)
   const mountRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -1547,10 +1564,9 @@ const LiveAttachXtermPaneInner: React.FC<{
       convertEol: false,
       cursorBlink: true,
       disableStdin: true,
-      // Pure passthrough: no density-profile CSS layer. Only fixed xterm metrics
-      // and app light/dark colors are configured; bytes still render as raw tmux.
-      fontFamily: RAW_XTERM_FONT_FAMILY,
-      fontSize: RAW_XTERM_FONT_SIZE,
+      // Pure passthrough: no density-profile CSS layer. Only appearance font metrics
+      // and app colors are configured; bytes still render as raw tmux.
+      ...rawXtermFont(),
       fontWeight: 400,
       fontWeightBold: 600,
       scrollback: 20000,
@@ -2194,6 +2210,7 @@ const LiveAttachXtermPaneInner: React.FC<{
     // terminal pane is flex-sized after mount; connecting immediately can seed
     // tmux/backfill at a stale grid and then receive live cursor-relative updates
     // at the final grid, which shows up as duplicated wrapping/spinner stacking.
+    appearanceFitRef.current = () => scheduleFit(true)
     scheduleFit(true)
     const resizeObserver = new ResizeObserver(() => scheduleFit())
     resizeObserver.observe(contentRef.current || mount)
@@ -2206,6 +2223,7 @@ const LiveAttachXtermPaneInner: React.FC<{
 
     return () => {
       closed = true
+      appearanceFitRef.current = null
       connectionEpoch += 1
       outputQueue.dispose()
       outputQueueRef.current = null
@@ -2244,6 +2262,7 @@ const LiveAttachXtermPaneInner: React.FC<{
     const term = terminalRef.current
     if (!term) return
     applyRawXtermTheme(term, xtermTheme)
+    appearanceFitRef.current?.()
   }, [xtermTheme])
 
   useEffect(() => {
@@ -2354,8 +2373,7 @@ const LiveAttachXtermPaneInner: React.FC<{
         onDrop={event => { if (!interactive || !sessionId || !event.dataTransfer?.files.length) return; event.preventDefault(); dropFilesOnTerminal(sessionId, Array.from(event.dataTransfer.files)) }}
         className="runloop-raw-xterm h-full w-full p-1.5 [&_.xterm]:h-full"
         style={{
-          fontFamily: RAW_XTERM_FONT_FAMILY,
-          fontSize: RAW_XTERM_FONT_SIZE,
+          ...rawXtermFont(),
         }}
       />
     </div>
@@ -2432,8 +2450,7 @@ const StaticXtermPaneInner: React.FC<{
       convertEol: true,
       cursorBlink: true,
       disableStdin: true,
-      fontFamily: RAW_XTERM_FONT_FAMILY,
-      fontSize: RAW_XTERM_FONT_SIZE,
+      ...rawXtermFont(),
       fontWeight: 400,
       fontWeightBold: 600,
       scrollback: 20000,
@@ -2506,6 +2523,7 @@ const StaticXtermPaneInner: React.FC<{
     const term = terminalRef.current
     if (!term) return
     applyRawXtermTheme(term, xtermTheme)
+    try { fitRef.current?.fit() } catch { /* The pane may be hidden. */ }
   }, [xtermTheme])
 
   useEffect(() => {
@@ -2577,8 +2595,7 @@ const StaticXtermPaneInner: React.FC<{
         ref={mountRef}
         className="runloop-raw-xterm h-full w-full p-1.5 [&_.xterm]:h-full"
         style={{
-          fontFamily: RAW_XTERM_FONT_FAMILY,
-          fontSize: RAW_XTERM_FONT_SIZE,
+          ...rawXtermFont(),
         }}
       />
     </div>
@@ -3194,7 +3211,8 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
   const fastPollIntervalRef = useRef<number | null>(null)
   const lastSizeHintSentRef = useRef<{ cols: number; rows: number } | null>(null)
   const terminalTheme = TERMINAL_THEMES[terminalColorScheme]
-  const rawXtermTheme = RAW_XTERM_THEMES[appTheme]
+  const appearance = useAppearanceStore(state => state.profile)
+  const rawXtermTheme = appearance === 'clear-dark' ? CLEAR_DARK_XTERM_THEME : RAW_XTERM_THEMES[appTheme]
 
   // PLAT-106 repair 3: the session-change reset below is a useEffect, so it runs
   // AFTER the first render for the new session — that render still paints the
