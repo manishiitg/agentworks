@@ -292,6 +292,9 @@ llmConfigApi.interceptors.request.use((config) => {
   return config
 })
 
+/** A left menu group: a name the person gives to some projects (keys as pins use). */
+export type MenuGroups = { groups: Array<{ id: string; name: string; projects: string[] }> }
+
 /** The person's own display choices (server-side, per person). */
 export type ChatPreferences = { show_context_indicator: boolean }
 
@@ -303,6 +306,13 @@ export const llmConfigService = {
   // A change names only what it changes; the server keeps the rest.
   setChatPreferences: async (change: Partial<ChatPreferences>): Promise<ChatPreferences> => {
     return (await llmConfigApi.put('/api/chat-preferences', change)).data
+  },
+  // The person's left menu groups (server-side, per person); a save sends the full list.
+  getMenuGroups: async (): Promise<MenuGroups> => {
+    return (await llmConfigApi.get('/api/menu-groups')).data
+  },
+  setMenuGroups: async (groups: MenuGroups): Promise<MenuGroups> => {
+    return (await llmConfigApi.put('/api/menu-groups', groups)).data
   },
   // Get LLM configuration defaults from backend
   getLLMDefaults: async (): Promise<LLMDefaultsResponse> => {

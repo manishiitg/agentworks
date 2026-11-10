@@ -2664,6 +2664,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workspace-access", api.handleWorkspaceAccess).Methods("GET")
 	apiRouter.HandleFunc("/workspace-state", api.handleWorkspaceReturnState).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/chat-preferences", api.handleChatPreferences).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/menu-groups", api.handleMenuGroups).Methods("GET", "PUT")
 	api.registerNotificationRoutes(apiRouter)
 	apiRouter.HandleFunc("/desktop/notify-stream", api.handleDesktopNotifyStream).Methods("GET") // the Mac app's own process: its person's sign-in and start secret
 	apiRouter.HandleFunc("/sessions/{session_id}/events", api.handleGetSessionEvents).Methods("GET")
