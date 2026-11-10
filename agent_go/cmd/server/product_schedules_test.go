@@ -392,6 +392,40 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 	}
 }
 
+func TestCrewScheduleRejectsDependencyCycleWithoutSaving(t *testing.T) {
+	// PLAT-871-43: saving B after A must refuse A -> B -> A and preserve B.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newTriggerLinkEnv(t)
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	makeSchedule := func(id string) productschedule.Schedule {
+		return productschedule.Schedule{ID: id, Name: id, CronExpression: "0 8 * * *", Timezone: "UTC", Messages: []string{"Check the saved report."}}
+	}
+	b, err := env.svc.CreateProjectSchedule(ctx, "owner", "work", "beta", makeSchedule("b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := makeSchedule("a")
+	a.When = &projectactions.When{After: &projectactions.After{Schedules: []string{b.ID()}}}
+	if _, err := env.svc.CreateProjectSchedule(ctx, "owner", "work", "beta", a); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.svc.UpdateProjectSchedule(ctx, "owner", b.ID(), func(schedule *productschedule.Schedule) {
+		schedule.When = &projectactions.When{After: &projectactions.After{Schedules: []string{projectScheduleJobID("work", "beta", "a")}}}
+	}); err == nil || !strings.Contains(err.Error(), "dependency cycle") {
+		t.Fatalf("cyclic edit was not refused: %v", err)
+	}
+	saved, err := env.svc.Job(ctx, "owner", b.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Schedule.When != nil && saved.Schedule.When.After != nil && len(saved.Schedule.When.After.Schedules) != 0 {
+		t.Fatal("refused dependency edit was persisted")
+	}
+	if _, err := env.svc.UpdateProjectSchedule(ctx, "owner", b.ID(), func(schedule *productschedule.Schedule) { schedule.Name = "Updated B" }); err != nil {
+		t.Fatalf("acyclic edit was refused: %v", err)
+	}
+}
+
 // PLAT-746-786: pausing after a real queue admission must not consume the
 // calendar occurrence when the busy conversation releases or admission races.
 // Native binding/workspace/ledger paths run; only the provider turn is replaced.
