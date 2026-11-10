@@ -5,6 +5,7 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
     <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
+        data-workspace-context-card
         className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
       >
         {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
