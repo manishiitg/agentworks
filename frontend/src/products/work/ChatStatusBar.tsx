@@ -12,7 +12,7 @@ import { formatTokens } from '../../utils/formatTokens'
  * owner. It reads again when a turn ends. A click opens the chat's model menu. When the row is narrow the
  * plan use goes first, then the bar, then the numbers truncate (container queries on the parent).
  */
-export default function ChatStatusBar({ sessionId, busy }: { sessionId: string; busy: boolean }) {
+export default function ChatStatusBar({ sessionId, busy, inline = false }: { sessionId: string; busy: boolean; inline?: boolean }) {
   const [view, setView] = useState<ChatContextView | null>(null)
 
   useEffect(() => {
@@ -39,13 +39,18 @@ export default function ChatStatusBar({ sessionId, busy }: { sessionId: string; 
   if (!(used > 0) && !limits) return null
   const full = [used > 0 ? `${formatTokens(used)}${windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} context used` : '', chatLimitsText(view.limits)].filter(Boolean).join(' · ')
 
-  return <button type="button" data-testid="chat-status-chip" title={full} aria-label={`${full}. Open the model menu`}
-    onClick={() => window.dispatchEvent(new CustomEvent(openChatContextMenuEvent, { detail: { sessionId } }))}
-    className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[11px] tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  const content = <>
     {used > 0 && <>
       <span className="min-w-0 truncate">{formatTokens(used)}{windowTokens > 0 ? `/${formatTokens(windowTokens)}` : ' used'}</span>
       {meter && <ContextMeter decorative className="w-8 shrink-0 [@container(max-width:110px)]:hidden" used={used} windowTokens={windowTokens} />}
     </>}
     {limits && <span className={`min-w-0 truncate ${used > 0 ? '[@container(max-width:190px)]:hidden' : ''}`}>{used > 0 && <span aria-hidden="true">· </span>}{limits}</span>}
+  </>
+  if (inline) return <span data-testid="chat-status-chip" title={full} className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">{content}</span>
+
+  return <button type="button" data-testid="chat-status-chip" title={full} aria-label={`${full}. Open the model menu`}
+    onClick={() => window.dispatchEvent(new CustomEvent(openChatContextMenuEvent, { detail: { sessionId } }))}
+    className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[11px] tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    {content}
   </button>
 }
