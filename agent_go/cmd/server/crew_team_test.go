@@ -130,14 +130,14 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		}
 		teamBefore := mustReadCrewTeam(t, "team-test")
 		privateTeam := teamBefore
-		privateTeam.AgentChoices = map[string]map[string]bool{"owner": {"team01": false}}
-		if err := writeCrewTeam(privateTeam); err != nil {
+		privateTeam.Agents = crewTeamAgentFixtures("team-test", map[string]map[string]bool{"owner": {"team01": false}})
+		if err := writeCrewTeamAgentFixture(privateTeam); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member"); err == nil {
 			t.Fatal("saved Team ID bypassed Only me")
 		}
-		if err := writeCrewTeam(teamBefore); err != nil {
+		if err := writeCrewTeamAgentFixture(teamBefore); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -220,8 +220,8 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"main","in_team":false}`, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "at least one agent shared") {
 		t.Fatalf("member's last shared agent went Only me: %d %s", w.Code, w.Body.String())
 	}
-	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macMainTab) || len(saved.AgentChoices["member"]) != 0 {
-		t.Fatalf("refused choices changed the record: %+v", saved.AgentChoices)
+	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macMainTab) {
+		t.Fatalf("refused choices changed the record: %+v", saved.Agents)
 	}
 	if w = call("owner", "POST", base+"/leave", `{}`, ""); w.Code != 403 || !crewTeamMember("team-test", "owner") {
 		t.Fatalf("the owner left their own Team: %d", w.Code)
@@ -1025,8 +1025,8 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	crewMacTeamTabsCache.Store("team-test\x00member", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{
 		{Person: "member", Tab: "shared-tab", ConversationID: "c-shared", Name: "Shared"}, {Person: "member", Tab: "private-tab", ConversationID: "c-private", Name: "Private"}}})
 	team, _ = readCrewTeam("team-test")
-	team.AgentChoices = map[string]map[string]bool{"member": {"private-tab": false}}
-	if err := writeCrewTeam(team); err != nil {
+	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"member": {"private-tab": false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if person, _ := crewMacTeamConversation(t.Context(), "team-test", "c-private"); person != "" || len(crewMacTabsFor(t.Context(), "member", "team-test", "owner")) != 1 {

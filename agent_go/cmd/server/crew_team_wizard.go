@@ -71,7 +71,7 @@ type crewWizardChoice struct {
 func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
 	out := []crewWizardAgent{}
 	for _, a := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}) {
-		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, Main: a.Tab == macMainTab || crewTeamMainAgent(t, t.OwnerID, a.Key)})
+		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, Main: a.Tab == macMainTab || crewTeamMainAgent(t, t.OwnerID, a.WatchKey)})
 	}
 	slices.SortStableFunc(out, func(a, b crewWizardAgent) int {
 		switch {

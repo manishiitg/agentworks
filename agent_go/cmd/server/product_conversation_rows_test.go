@@ -48,7 +48,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			for i, key := range keys {
 				entry := productConversationRegistryEntryKey(crewProfileID, key)
 				doc.Entries[entry] = record(user, key)
-				doc.Agents[entry] = ProductAgentIdentity{Name: user + " " + key, Purpose: "saved purpose", UpdatedBy: user, UpdatedAt: "2026-11-10T00:00:00Z", Position: i, Unpinned: i%2 == 0, OnlyMe: true, ConnectionID: user + "-identity-account", Engine: "example-cli", ModelID: "example-model", ReasoningEffort: "high", ClaudeTerminal: true}
+				doc.Agents[entry] = ProductAgentIdentity{Name: user + " " + key, Purpose: "saved purpose", UpdatedBy: user, UpdatedAt: "2026-11-10T00:00:00Z", Position: i, Unpinned: i%2 == 0, ConnectionID: user + "-identity-account", Engine: "example-cli", ModelID: "example-model", ReasoningEffort: "high", ClaudeTerminal: true}
 			}
 			blank := record(user, project+":chat:blank")
 			blank.SessionID = "  "

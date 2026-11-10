@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -182,6 +183,11 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 	if err := assignCrewTeamAgentIDs(t, out); err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
+	}
+	for i := range out {
+		if out[i].UserID != caller {
+			out[i].Agents = slices.DeleteFunc(out[i].Agents, func(a crewTeamAgent) bool { return !a.InTeam })
+		}
 	}
 	return out
 }

@@ -138,21 +138,12 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 		t.Fatalf("a private chat's agent can no longer be asked: %s", reason)
 	}
 
-	// The earlier saved off, and the removed saved-only choice, read as Hidden.
-	var earlier crewTeamAgentRule
-	if err := json.Unmarshal([]byte(`{"chat_visible":false}`), &earlier); err != nil || earlier.ChatShare != crewChatShareAgent {
-		t.Fatalf("a saved off did not stay private: %+v %v", earlier, err)
-	}
-	if err := json.Unmarshal([]byte(`{"chat_share":"history"}`), &earlier); err != nil || earlier.ChatShare != crewChatShareAgent {
-		t.Fatalf("the removed saved-only choice did not read as Hidden: %+v %v", earlier, err)
-	}
-
 	// Live chat again: the record holds nothing, and the teammate reads.
 	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, nil, &on); err != nil {
 		t.Fatal(err)
 	}
-	if saved, _ := readCrewTeam("team"); len(saved.AgentRules["owner"]) != 0 {
-		t.Fatalf("on must store nothing: %+v", saved.AgentRules["owner"])
+	if saved, _ := readCrewTeam("team"); saved.agentRule("owner", macMainTab) != (crewTeamAgentRule{}) {
+		t.Fatalf("on must store nothing: %+v", saved.Agents)
 	}
 	if w := get("other", macSession, "events"); w.Code != 200 || !strings.Contains(w.Body.String(), "owner-chat-text") {
 		t.Fatalf("on again must be readable: %d %s", w.Code, w.Body.String())

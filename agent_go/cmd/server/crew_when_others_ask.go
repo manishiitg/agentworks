@@ -18,7 +18,7 @@ import (
 // When others ask (owner, 5 Nov): when someone other than an agent's own person asks it, the turn is told, by
 // instruction only, not to use that person's own accounts or share their personal information, followed by the
 // person's own optional rule for the agent. No separate threads, tool or secret changes, or restarts come from it.
-// The rule and the agent's Answer only / Make changes are kept in the server's Team record (crewTeam.AgentRules), the
+// The rule and the agent's Answer only / Make changes are kept in the server's agent registry row, the
 // one place for every Crew kind; a Mac agent gets them with each message (withAgentRuleArgs).
 
 // crewTeamAgentRule is one agent's settings for other people's asks, set only by the agent's own person.
@@ -29,32 +29,15 @@ type crewTeamAgentRule struct {
 	ChatShare string `json:"chat_share,omitempty"`
 }
 
-// UnmarshalJSON reads a Team record saved with the earlier on/off setting (off was Hidden) or the removed saved-only choice.
-func (r *crewTeamAgentRule) UnmarshalJSON(data []byte) error {
-	type stored crewTeamAgentRule
-	var in struct {
-		stored
-		ChatVisible *bool `json:"chat_visible"`
-	}
-	if err := json.Unmarshal(data, &in); err != nil {
-		return err
-	}
-	*r = crewTeamAgentRule(in.stored)
-	if r.ChatShare == "history" { // the saved-only choice was removed (9 Nov): a stored one reads as the more private Hidden
-		r.ChatShare = crewChatShareAgent
-	}
-	if in.ChatVisible != nil && !*in.ChatVisible && r.ChatShare == crewChatShareLive {
-		r.ChatShare = crewChatShareAgent
-	}
-	return nil
-}
-
 // whenOthersAskMaxRunes bounds the rule: it is added to every such turn's instructions.
 const whenOthersAskMaxRunes = 1000
 
-// agentRule is person's rule for one of their agents by its AgentChoices key.
+// agentRule reads the rule from this person's registered agent.
 func (t crewTeam) agentRule(person, key string) crewTeamAgentRule {
-	return t.AgentRules[person][key]
+	if a, ok := t.registeredAgent(person, key); ok {
+		return a.Rule
+	}
+	return crewTeamAgentRule{}
 }
 
 // crewTeamAgentRuleFor reads the rule for one of person's agents from any chat key a turn or a call names; empty when
@@ -120,19 +103,7 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 	if chatShare != nil {
 		rule.ChatShare = *chatShare
 	}
-	if t.AgentRules == nil {
-		t.AgentRules = map[string]map[string]crewTeamAgentRule{}
-	}
-	if t.AgentRules[person] == nil {
-		t.AgentRules[person] = map[string]crewTeamAgentRule{}
-	}
-	if rule == (crewTeamAgentRule{}) {
-		delete(t.AgentRules[person], stored)
-	} else {
-		t.AgentRules[person][stored] = rule
-	}
-	t.Revision++
-	if err = writeCrewTeam(t); err != nil {
+	if err = updateCrewTeamRegisteredAgent(project, person, stored, func(a *crewTeamRegisteredAgent) { a.Rule = rule }); err != nil {
 		return crewTeamAgentRule{}, err
 	}
 	log.Printf("[CREW_TEAM] project=%s event=agent_rule user=%s agent=%s has_rule=%t can_make_changes=%t chat_share=%q revision=%d", project, logUsernameForUserID(person), stored, rule.WhenOthersAsk != "", rule.CanMakeChanges, rule.ChatShare, t.Revision)
