@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"net/http"
@@ -524,3 +526,35 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 	}
 }
 
+// PR1730: two creations must not bypass one-workflow-per-Crew by checking
+// uniqueness before the registry lock. Other Crews can still create theirs.
+func TestCrewWorkflowRegistrationAllowsOnlyOneConcurrentCreate(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	start := make(chan struct{})
+	results := make(chan error, 12)
+	for i := 0; i < cap(results); i++ {
+		binding := crewExecutableBinding{ID: fmt.Sprintf("workflow-%d", i), CrewID: "crew", CrewRoot: "Crew/example", Root: fmt.Sprintf("Workflow/workflow-%d", i), Kind: "script"}
+		go func() {
+			<-start
+			results <- registerCrewExecutable(binding)
+		}()
+	}
+	close(start)
+	created := 0
+	for i := 0; i < cap(results); i++ {
+		err := <-results
+		if err == nil {
+			created++
+		} else if !errors.Is(err, errCrewWorkflowExists) {
+			t.Errorf("create failed for an unrelated reason: %v", err)
+		}
+	}
+	bindings, err := readCrewExecutables()
+	if err != nil || created != 1 || len(bindings) != 1 {
+		t.Fatalf("concurrent workflow creates: created=%d saved=%d error=%v", created, len(bindings), err)
+	}
+	other := crewExecutableBinding{ID: "another-workflow", CrewID: "another-crew", CrewRoot: "Crew/another", Root: "Workflow/another-workflow", Kind: "script"}
+	if err := registerCrewExecutable(other); err != nil {
+		t.Fatalf("another Crew could not create its workflow: %v", err)
+	}
+}

@@ -156,9 +156,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 		{ID: "script-shared-id", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-script", Kind: "script"},
 		{ID: "script-shared-id", CrewID: "other-crew", CrewRoot: "Crew/other", Root: "Workflow/keep-script", Kind: "script"},
 	} {
-		if err := registerCrewExecutable(binding); err != nil {
-			t.Fatal(err)
-		}
+		seedSavedCrewExecutableForTest(t, binding)
 	}
 	call := func(user string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(user))

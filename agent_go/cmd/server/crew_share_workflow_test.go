@@ -38,9 +38,7 @@ func (x *shareWorkflowFixture) call(method, suffix, body string) *httptest.Respo
 func (x *shareWorkflowFixture) seed(t *testing.T, id string, records []projectFunctionDefinition) crewExecutableBinding {
 	t.Helper()
 	binding := crewExecutableBinding{ID: id, CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/" + id, Kind: "script", RuntimeRoot: "workflows/" + id}
-	if err := registerCrewExecutable(binding); err != nil {
-		t.Fatal(err)
-	}
+	seedSavedCrewExecutableForTest(t, binding)
 	if err := initializeCrewScriptSource(x.ctx, binding, "Example Python workflow"); err != nil {
 		t.Fatal(err)
 	}
