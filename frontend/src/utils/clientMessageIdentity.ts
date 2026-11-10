@@ -112,6 +112,7 @@ export function pendingQueuedProvisionals(
             content: message.content,
             timestamp,
             metadata: {
+              ...message.display_metadata,
               client_message_id: message.client_message_id,
               ...(message.message_id ? { queue_message_id: message.message_id } : {}),
               provisional: true,
