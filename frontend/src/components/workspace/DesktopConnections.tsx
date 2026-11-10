@@ -27,7 +27,7 @@ import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 
 
-type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
+type SidebarProject = { id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
  * 10 Nov). The personal AgentWorks agent is rendered by its network group. */
