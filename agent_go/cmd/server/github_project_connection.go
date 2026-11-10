@@ -133,6 +133,23 @@ func selectProjectGitHubConnection(ctx context.Context, owner, id string) error 
 		caps = map[string]any{}
 		manifest["capabilities"] = caps
 	}
+	// Effective selections can have been saved by the general Secrets panel.
+	// Keep connection credentials controlled by this one account selection so
+	// disconnect cannot leave a previously materialized GitHub secret selected.
+	githubNames := map[string]bool{}
+	for _, rec := range gitHubConnections(owner) {
+		githubNames[rec.SecretName] = true
+	}
+	if selected, ok := caps["selected_global_secret_names"].([]any); ok {
+		filtered := []any{}
+		for _, value := range selected {
+			name, isName := value.(string)
+			if !isName || (!githubNames[name] && vaultSecretShortName(name) != "GITHUB_TOKEN") {
+				filtered = append(filtered, value)
+			}
+		}
+		caps["selected_global_secret_names"] = filtered
+	}
 	if id == "" {
 		delete(caps, "github_connection_id")
 	} else {

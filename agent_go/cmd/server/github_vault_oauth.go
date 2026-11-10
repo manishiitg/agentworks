@@ -519,6 +519,10 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if body.Method == "saved" {
+			if body.ConnectionID == "" {
+				writeAgentProfileError(w, 400, "Choose a saved GitHub connection.")
+				return
+			}
 			if err := selectProjectGitHubConnection(r.Context(), person, body.ConnectionID); err != nil {
 				writeAgentProfileError(w, 400, err.Error())
 				return
@@ -564,6 +568,9 @@ func (api *StreamingAPI) githubVaultOperation(ctx context.Context, person, opera
 		out = gitHubStatus(ctx, person)
 	case "github_connect":
 		if argString(args, "method") == "saved" {
+			if argString(args, "connection_id") == "" {
+				return "", errors.New("Choose a saved GitHub connection.")
+			}
 			if err := selectProjectGitHubConnection(ctx, person, argString(args, "connection_id")); err != nil {
 				return "", err
 			}
