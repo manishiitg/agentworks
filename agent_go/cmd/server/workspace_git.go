@@ -38,9 +38,11 @@ const (
 	workspaceGitMaxFiles     = 5000
 	workspaceGitMaxDiffBytes = 1 << 20
 	workspaceGitMaxCommits   = 30
-	workspaceGitMaxRepos     = 20
-	workspaceGitSearchDepth  = 3
-	workspaceGitMaxScan      = 400
+	// A Crew folder can hold dozens of agent worktrees (one project had 45);
+	// checking only the first 20 in name order hid every changed one after them.
+	workspaceGitMaxRepos    = 100
+	workspaceGitSearchDepth = 3
+	workspaceGitMaxScan     = 400
 )
 
 var workspaceGitCommitRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
@@ -257,12 +259,12 @@ var workspaceGitNestedWorktreeDirs = []string{".claude/worktrees", ".worktrees"}
 // one, plus the repos and worktrees found up to workspaceGitSearchDepth folders
 // down (dependency and dot folders skipped, a repo found below base is not
 // searched further except for its agent worktree folders, bounded scan).
-func workspaceGitFindRepos(base string) []string {
+// more is true when the repository limit stopped the search.
+func workspaceGitFindRepos(base string) (repos []string, more bool) {
 	type level struct {
 		dir   string
 		depth int
 	}
-	var repos []string
 	// A project that is itself a repository can still hold worktrees or other
 	// repositories in its subfolders; list it first and keep searching.
 	if workspaceGitIsRepo(base, base) {
@@ -312,7 +314,7 @@ func workspaceGitFindRepos(base string) []string {
 		}
 	}
 	sort.Strings(repos)
-	return repos
+	return repos, len(repos) >= workspaceGitMaxRepos
 }
 
 // parseWorkspaceGitStatus reads `git status --porcelain=v2 --branch -z`.
@@ -492,12 +494,12 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	op := query.Get("op")
 	if op == "" || op == "status" {
 		// Plain Git state for everyone with file access; no per-chat hints.
-		repos := workspaceGitStatusRepos(ctx, realBase)
+		repos, more := workspaceGitStatusRepos(ctx, realBase)
 		if ctx.Err() != nil {
 			writeWorkspaceGitJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not load changes. Try again."})
 			return
 		}
-		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": repos})
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": repos, "more_repos": more})
 		return
 	}
 
@@ -526,10 +528,11 @@ func workspaceGitCrewOwner(r *http.Request) string {
 }
 
 // workspaceGitStatusRepos lists every repository under realBase with its
-// branch and changed files (Root relative to realBase).
-func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGitRepo {
+// branch and changed files (Root relative to realBase); more is true when the
+// repository limit left some out.
+func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspaceGitRepo, more bool) {
 	ctx = context.WithValue(ctx, workspaceGitRootKey{}, realBase)
-	dirs := workspaceGitFindRepos(realBase) // Existing depth, scan and repo caps.
+	dirs, more := workspaceGitFindRepos(realBase) // Existing depth, scan and repo caps.
 	type result struct {
 		repo workspaceGitRepo
 		ok   bool
@@ -607,7 +610,7 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) []workspaceGi
 		}
 		return repos[i].Root < repos[j].Root
 	})
-	return repos
+	return repos, more
 }
 
 // workspaceGitRepositoryName is the folder of the repository's main checkout

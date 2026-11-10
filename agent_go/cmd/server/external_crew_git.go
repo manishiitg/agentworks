@@ -79,7 +79,8 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 	defer cancel()
 	if op == "status" {
 		repos := []workspaceGitRepo{}
-		for _, repo := range workspaceGitStatusRepos(ctx, realBase) {
+		all, more := workspaceGitStatusRepos(ctx, realBase)
+		for _, repo := range all {
 			if !readable(repo.Root) {
 				continue
 			}
@@ -92,7 +93,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 			repo.Files = files
 			repos = append(repos, repo)
 		}
-		externalJSON(w, map[string]any{"repos": repos})
+		externalJSON(w, map[string]any{"repos": repos, "more_repos": more})
 		return
 	}
 	repoRel := strings.Trim(externalArg(args, "repo"), "/")

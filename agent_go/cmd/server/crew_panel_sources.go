@@ -32,6 +32,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			var data struct {
 				Repos       []workspaceGitRepo `json:"repos"`
 				Unavailable bool               `json:"git_unavailable"`
+				More        bool               `json:"more_repos"`
 			}
 			err := read(ctx, requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit), "/api/workspace-git", url.Values{"workspace_path": {workspace}, "op": {"status"}}, &data)
 			section := crewPanelSection{}
@@ -79,6 +80,10 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			section.Detail = crewPanelCount(count, "file")
 			if truncated {
 				section.Detail = fmt.Sprintf("%d+ files", count)
+			}
+			if data.More {
+				// The repository limit stopped the search: say so, not a silent short list.
+				section.Detail += fmt.Sprintf(" · first %d repositories", workspaceGitMaxRepos)
 			}
 			return section, err
 		}},
