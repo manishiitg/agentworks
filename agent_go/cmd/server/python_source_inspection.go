@@ -16,8 +16,10 @@ import (
 )
 
 // automationOutlineLimit is the most code the outline reads. The code travels in environment variables, which the
-// operating system limits to about 128 KiB each, so it is sent in pieces (automationSourceEnvironment).
-const automationOutlineLimit = 768 * 1024
+// operating system limits to about 128 KiB each, so it is sent in pieces (automationSourceEnvironment). The whole
+// environment must also stay under the system's total limit (1 MiB on macOS, where a laptop runs this server), so the
+// outline stops at 400 KiB of code (about 530 KiB encoded).
+const automationOutlineLimit = 400 * 1024
 
 func automationSourceEnvironment(raw []byte) map[string]string {
 	encoded := base64.StdEncoding.EncodeToString(raw)
@@ -39,7 +41,7 @@ func inspectPythonAutomationSource(ctx context.Context, workspacePath string, fi
 		return nil, fmt.Errorf("read automation source: %w", err)
 	}
 	if len(raw) > automationOutlineLimit {
-		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (768 KiB limit). You can still open and run it."]}`), nil
+		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (400 KiB limit). You can still open and run it."]}`), nil
 	}
 	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), automationSourceEnvironment(raw))
 	if err == nil {

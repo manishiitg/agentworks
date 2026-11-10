@@ -600,7 +600,5 @@ if __name__ == "__main__":
     if "VAR_AUTOMATION_CHECK_FILES_COUNT" in os.environ:
         pieces = "".join(os.environ["VAR_AUTOMATION_CHECK_FILES_%d" % number] for number in range(int(os.environ["VAR_AUTOMATION_CHECK_FILES_COUNT"])))
         print(json.dumps(inspect_automation_source(json.loads(base64.b64decode(pieces)))))
-    elif "VAR_AUTOMATION_CHECK_FILES" in os.environ:
-        print(json.dumps(inspect_automation_source(json.loads(base64.b64decode(os.environ["VAR_AUTOMATION_CHECK_FILES"])))))
     else:
         print(json.dumps(inspect_source(base64.b64decode(os.environ["VAR_RELAY_CHECK_SOURCE"]).decode())))

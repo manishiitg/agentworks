@@ -30,7 +30,7 @@ func TestTypeNotesAnalyzeSavedSourceWithInstalledChecker(t *testing.T) {
 	raw, _ := json.Marshal(map[string]string{"main.py": source})
 	cmd := exec.Command("python3", "-I", "-c", SourceInspector)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "PYTHONPATH="+sdk, "VAR_AUTOMATION_TYPE_CHECK=1", "VAR_AUTOMATION_CHECK_FILES="+base64.StdEncoding.EncodeToString(raw))
+	cmd.Env = append(os.Environ(), "PYTHONPATH="+sdk, "VAR_AUTOMATION_TYPE_CHECK=1", "VAR_AUTOMATION_CHECK_FILES_COUNT=1", "VAR_AUTOMATION_CHECK_FILES_0="+base64.StdEncoding.EncodeToString(raw))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("inspector: %s %v", out, err)
@@ -72,7 +72,7 @@ agent()
 `}
 	raw, _ := json.Marshal(files)
 	cmd := exec.Command("python3", "-I", "-c", SourceInspector)
-	cmd.Env = append(os.Environ(), "VAR_AUTOMATION_CHECK_FILES="+base64.StdEncoding.EncodeToString(raw))
+	cmd.Env = append(os.Environ(), "VAR_AUTOMATION_CHECK_FILES_COUNT=1", "VAR_AUTOMATION_CHECK_FILES_0="+base64.StdEncoding.EncodeToString(raw))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("inspector: %s %v", out, err)
@@ -234,7 +234,7 @@ def main():
 `
 	raw, _ := json.Marshal(map[string]string{"main.py": source})
 	cmd := exec.Command("python3", "-I", "-c", SourceInspector)
-	cmd.Env = append(os.Environ(), "VAR_AUTOMATION_CHECK_FILES="+base64.StdEncoding.EncodeToString(raw))
+	cmd.Env = append(os.Environ(), "VAR_AUTOMATION_CHECK_FILES_COUNT=1", "VAR_AUTOMATION_CHECK_FILES_0="+base64.StdEncoding.EncodeToString(raw))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("inspector: %s %v", out, err)
