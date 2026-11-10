@@ -331,7 +331,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           projectIdentity={projectIdentity}
           onUpdateIdentity={onUpdateIdentity}
         />}
-        {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
+        {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} projectId={projectId} provider={projectLLMConfig?.mode === 'explicit' ? projectLLMConfig.builder_llm?.provider : projectLLMConfig?.provider} model={projectLLMConfig?.builder_llm?.model_id} /></div>}
         {activeTab === 'general' && product.hasIdentity && <div className="mt-4">
           <SettingsCard
             icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
