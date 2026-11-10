@@ -121,7 +121,7 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	}
 
 	// Still listed with the server's line, and still askable.
-	saved, err = readCrewTeam("team")
+	saved, err := readCrewTeam("team")
 	if err != nil {
 		t.Fatal(err)
 	}
