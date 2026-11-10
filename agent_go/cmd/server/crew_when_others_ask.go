@@ -29,7 +29,7 @@ type crewTeamAgentRule struct {
 	ChatShare string `json:"chat_share,omitempty"`
 }
 
-// UnmarshalJSON reads a Team record saved with the earlier on/off setting: off was Just the agent.
+// UnmarshalJSON reads a Team record saved with the earlier on/off setting (off was Hidden) or the removed saved-only choice.
 func (r *crewTeamAgentRule) UnmarshalJSON(data []byte) error {
 	type stored crewTeamAgentRule
 	var in struct {
@@ -40,6 +40,9 @@ func (r *crewTeamAgentRule) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*r = crewTeamAgentRule(in.stored)
+	if r.ChatShare == "history" { // the saved-only choice was removed (9 Nov): a stored one reads as the more private Hidden
+		r.ChatShare = crewChatShareAgent
+	}
 	if in.ChatVisible != nil && !*in.ChatVisible && r.ChatShare == crewChatShareLive {
 		r.ChatShare = crewChatShareAgent
 	}
@@ -78,8 +81,8 @@ func withAgentRuleArgs(ctx context.Context, args map[string]any, project, person
 // errWhenOthersAskTooLong refuses a rule over the limit, with what to do instead.
 var errWhenOthersAskTooLong = fmt.Errorf("keep the rule under %d characters", whenOthersAskMaxRunes)
 
-// errCrewChatShareUnknown refuses anything but the three choices.
-var errCrewChatShareUnknown = errors.New("choose Live chat, Chat history or Just the agent")
+// errCrewChatShareUnknown refuses anything but the two choices.
+var errCrewChatShareUnknown = errors.New("choose Live or Hidden")
 
 // setCrewTeamAgentRule saves the person's own rule, Answer only / Make changes and/or Teammates see for one of their
 // agents (nil leaves that part as it is). Only the agent's own person may (crewTeamOwnAgent).
@@ -289,30 +292,25 @@ type crewTeamAgentUse struct {
 
 // crewTeamUses lists what the Crew's agents use from its owner, names only (the same selection as crewTeamLentNow),
 // marking the apps from the owner's own Vault (their own sign-ins).
-func crewTeamUses(ctx context.Context, t crewTeam) []crewTeamAgentUse {
+func crewTeamUses(ctx context.Context, t crewTeam) ([]crewTeamAgentUse, string) {
 	root := crewProjectRootByID(t.ProjectID)
 	out := []crewTeamAgentUse{}
 	if IsLocalMode() || root == "" {
-		return out
+		return out, ""
 	}
-	personal := map[string]bool{}
-	if own, err := personalVaults(ctx, t.OwnerID); err == nil {
-		for _, v := range own.Vaults {
-			if v.Role == "owner" {
-				for _, s := range v.Connections {
-					personal[s.ID] = true
-				}
-			}
-		}
+	catalog := crewTeamVaultDisplayFor(t.OwnerID)
+	note := ""
+	if catalog == nil {
+		note = "Connected app names will appear when Vault responds."
 	}
 	seen := map[string]bool{}
-	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
+	if catalog != nil {
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
-		for _, server := range servers {
+		for _, server := range catalog.servers {
 			name := firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID))
 			if projectVaultAppInUse(selected, chosenOnly, server.ID) && !seen["app:"+name] {
 				seen["app:"+name] = true
-				out = append(out, crewTeamAgentUse{Name: name, Kind: "app", Personal: personal[server.ID]})
+				out = append(out, crewTeamAgentUse{Name: name, Kind: "app", Personal: catalog.personal[server.ID]})
 			}
 		}
 	}
@@ -331,7 +329,7 @@ func crewTeamUses(ctx context.Context, t crewTeam) []crewTeamAgentUse {
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-	return out
+	return out, note
 }
 
 // crewTeamRowUses is what one agent row shows: the owner's own sign-ins only to the owner, on their own agents.

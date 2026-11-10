@@ -437,3 +437,92 @@ func TestPLAT178RealTmuxKilledPaneReleasesLane(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-871-42: a real native completion must settle the accepted input even
+// though an MSP/SDK chat has no terminal snapshot. Other turns and late replies
+// after Stop must not claim that input.
+func TestNativeSessionInputCompletesWithoutTerminalSnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name, received, completionStatus, want string
+		stopped, pending                       bool
+	}{
+		{name: "exact", received: "accepted-turn", completionStatus: "completed", want: trackedExecutionStatusCompleted},
+		{name: "other turn", received: "other-turn", completionStatus: "completed", want: trackedExecutionStatusRunning},
+		{name: "missing identity", completionStatus: "completed", want: trackedExecutionStatusRunning},
+		{name: "late after Stop", received: "accepted-turn", completionStatus: "completed", stopped: true, want: trackedExecutionStatusCanceled},
+		{name: "native failure", received: "accepted-turn", completionStatus: "failed", want: trackedExecutionStatusFailed},
+		{name: "promote pending native input", received: "accepted-turn", completionStatus: "completed", pending: true, want: trackedExecutionStatusCompleted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const sessionID, queryID = "native-no-terminal", "query-native-input"
+			api, _, _ := newPlat178API(t, sessionID, "old-test-pane")
+			api.terminalStore = terminals.NewStore()
+			trackRunning(api, sessionID, queryID)
+			api.retainedMainTurnCanonicalIDs = map[string]retainedTurnIdentity{queryID: {ID: "accepted-turn", Provider: "muse-cli", Transport: "msp", NativeSessionID: "native-session"}}
+			api.markMCPAgentSessionTurnRunning(sessionID, queryID)
+			t.Cleanup(func() {
+				api.retainedMainTurnsMu.Lock()
+				cancel := api.retainedMainTurnWatchCancels[sessionID]
+				api.retainedMainTurnsMu.Unlock()
+				if cancel != nil {
+					cancel()
+				}
+			})
+			if !api.retainedMainTurnTracked(sessionID) || len(api.terminalStore.ListRaw(sessionID)) != 0 {
+				t.Fatal("native input was not tracked independently of terminal storage")
+			}
+			if api.releaseStaleRetainedMainTurn(sessionID, "idle is not terminal evidence") {
+				t.Fatal("native input was completed without native evidence")
+			}
+			if tc.pending {
+				trackRunning(api, sessionID, "query-next")
+				api.retainedMainTurnsMu.Lock()
+				api.retainedMainTurnCanonicalIDs["query-next"] = retainedTurnIdentity{ID: "next-turn", Provider: "muse-cli", Transport: "msp", NativeSessionID: "native-session"}
+				api.retainedMainTurnsMu.Unlock()
+				api.markMCPAgentSessionTurnRunning(sessionID, "query-next")
+			}
+			if tc.stopped {
+				api.cancelTrackedExecutionsForSession(sessionID)
+				api.releaseStoppedSessionTurnMarkers(sessionID)
+			}
+			event := sessionCompletion(sessionID, "completion", time.Now())
+			event.Data.TurnID = tc.received
+			completion := event.Data.Data.(*unifiedevents.UnifiedCompletionEvent)
+			completion.Status = tc.completionStatus
+			completion.Metadata["turn_id"] = tc.received
+			completion.Metadata["native_session_id"] = "native-session"
+			api.eventStore.AddEvent(sessionID, event)
+			if got := trackedStatus(api, queryID); got != tc.want {
+				t.Fatalf("input status=%s, want %s", got, tc.want)
+			}
+			if tc.pending {
+				api.retainedMainTurnsMu.Lock()
+				promoted := api.retainedMainTurnExecutionIDs[sessionID]
+				api.retainedMainTurnsMu.Unlock()
+				if promoted != "query-next" || trackedStatus(api, "query-next") != trackedExecutionStatusRunning {
+					t.Fatal("next accepted native input was not promoted independently")
+				}
+				next := sessionCompletion(sessionID, "next-completion", time.Now())
+				next.Data.TurnID = "next-turn"
+				next.Data.Data.(*unifiedevents.UnifiedCompletionEvent).FinalResult = "next reply"
+				api.eventStore.AddEvent(sessionID, next)
+				if trackedStatus(api, "query-next") != trackedExecutionStatusCompleted || api.finalResponseForExecution(sessionID, "query-next") != "next reply" {
+					t.Fatal("promoted input did not settle from its own completion")
+				}
+			}
+			if tc.want == trackedExecutionStatusCompleted {
+				// A later unrelated reply in the same chat cannot replace this result.
+				other := sessionCompletion(sessionID, "other-completion", time.Now())
+				other.Data.TurnID = "later-turn"
+				other.Data.Data.(*unifiedevents.UnifiedCompletionEvent).FinalResult = "unrelated reply"
+				api.eventStore.AddEvent(sessionID, other)
+				if got := api.finalResponseForExecution(sessionID, queryID); got != "done" {
+					t.Fatalf("accepted input borrowed another turn's reply: %q", got)
+				}
+			}
+			if len(api.terminalStore.ListRaw(sessionID)) != 0 {
+				t.Fatal("native completion created a terminal")
+			}
+		})
+	}
+}

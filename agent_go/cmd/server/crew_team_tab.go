@@ -76,18 +76,18 @@ type crewTeamTabAgent struct {
 	// only to the owner, marked personal), its person's rule, Answer only / Make changes (an agent on a Mac only; nil
 	// elsewhere), whether the viewer may edit them (the agent's own person), and the line the screen shows.
 	Uses           []crewTeamAgentUse `json:"uses"`
+	UsesNote       string             `json:"uses_note,omitempty"`
 	WhenOthersAsk  string             `json:"when_others_ask"`
 	HasRule        bool               `json:"has_rule"`
 	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
 	// Teammates see (crew_team_chat_private.go). ChatShareLabel and ChatShareOptions are the choice, on the viewer's own
-	// agent; on someone else's, ChatPrivateLine replaces the chat of Just the agent and ChatShareNote sits above Chat history.
+	// agent; on someone else's, ChatPrivateLine replaces the chat of a Hidden agent.
 	ChatShare        string                `json:"chat_share"`
 	ChatShareLabel   string                `json:"chat_share_label,omitempty"`
 	ChatShareOptions []crewChatShareOption `json:"chat_share_options,omitempty"`
 	ChatPrivateLine  string                `json:"chat_private_line,omitempty"`
-	ChatShareNote    string                `json:"chat_share_note,omitempty"`
 	// WatchKey is the key of its tab for someone else, where that differs from Key: the Crew owner's Mac Main.
 	WatchKey string `json:"watch_key,omitempty"`
 	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's Main (their own agent).
@@ -165,42 +165,91 @@ type crewTeamTabReply struct {
 }
 
 type crewTeamHelpLine struct {
-	Badge string `json:"badge"`
 	Title string `json:"title"`
 	Text  string `json:"text"`
 }
 
-// crewTeamHelp words the agent menu's help card from the rows the viewer sees, so a state that no agent here is in
-// (such as "On your Mac") is not explained.
+// crewTeamHelp words the agent menu's "How this works" card from this Crew's real agents and people for the viewer
+// (owner, 10 Nov: a new person must learn what an agent and a team are, and see who is on it and what they can use).
 func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
-	var server, mac, inTeam, answersOnly, mine bool
+	owner := r.CanSwitch
+	var mac, mine bool
+	var shared, onlyMe, usable []string
+	ownerName := ""
+	var others []string
+	for _, p := range r.People {
+		if p.Note == "owner" {
+			ownerName = p.Name
+		}
+		if p.Note != "you" && p.Note != "invited" && p.Note != "owner" {
+			others = append(others, p.Name)
+		}
+	}
 	for _, a := range r.Agents {
-		server = server || a.Place == "server"
 		mac = mac || a.Place == "mac"
-		inTeam = inTeam || a.InTeam
-		answersOnly = answersOnly || (a.CanMakeChanges != nil && !*a.CanMakeChanges)
 		mine = mine || a.Mine
+		what := a.Name
+		if a.InTeam && a.CanMakeChanges != nil {
+			what += " (answers only)"
+			if *a.CanMakeChanges {
+				what = a.Name + " (answers and changes)"
+			}
+		}
+		switch {
+		case a.Mine && a.InTeam:
+			shared = append(shared, what)
+		case a.Mine:
+			onlyMe = append(onlyMe, a.Name)
+		case a.InTeam:
+			usable = append(usable, a.OwnerName+"'s "+what)
+		}
 	}
 	lines := []crewTeamHelpLine{}
-	if server {
-		lines = append(lines, crewTeamHelpLine{Badge: "On the server", Title: "Where it runs", Text: "It keeps working when your computer is off."})
-	}
+	agentText := "One chat in this Crew with its own job. An agent on the server works and answers even when your computer is off."
 	if mac {
-		lines = append(lines, crewTeamHelpLine{Badge: "On your Mac", Title: "Where it runs", Text: "It runs on your computer. Shared agents still answer your team from the server while your Mac is off."})
+		agentText += " An agent on your Mac stops when it is off; a shared one still answers your team from the server."
 	}
-	if server || (mac && inTeam) {
-		lines = append(lines, crewTeamHelpLine{Badge: "always on", Title: "Always on", Text: "Answers your team's messages any time, not only when you are here."})
+	lines = append(lines, crewTeamHelpLine{Title: "What is an agent?", Text: agentText})
+	if owner {
+		parts := []string{}
+		if len(shared) > 0 {
+			parts = append(parts, "Shared with your team: "+strings.Join(shared, ", ")+".")
+		}
+		if len(onlyMe) > 0 {
+			parts = append(parts, "Only you: "+strings.Join(onlyMe, ", ")+".")
+		}
+		if len(parts) > 0 {
+			lines = append(lines, crewTeamHelpLine{Title: "Agents here", Text: strings.Join(parts, " ")})
+		}
+		team := "Just you. A team is the people you work with on this Crew. Add people in Share, then Team."
+		title := "Your team"
+		if r.Team.On && len(others) > 0 {
+			title = fmt.Sprintf("Your team (%d people)", len(others)+1)
+			team = "You (owner) and " + strings.Join(others, ", ") + ". A team is the people you work with on this Crew. Add or remove people in Share, then Team."
+		}
+		lines = append(lines, crewTeamHelpLine{Title: title, Text: team})
+		if len(others) > 0 {
+			text := "Teammates chat only with the agents you share, and you pick per agent whether they get answers only or can make changes. Change it in Share."
+			if len(shared) == 0 {
+				text = "No agent is shared yet, so teammates cannot chat with anything. Share one in Share."
+			}
+			lines = append(lines, crewTeamHelpLine{Title: "What your teammates can do", Text: text})
+		}
+	} else {
+		who := ownerName
+		if who == "" {
+			who = "the owner"
+		}
+		text := "You are on " + who + "'s team."
+		if len(usable) > 0 {
+			text += " You can chat with: " + strings.Join(usable, ", ") + "."
+		}
+		lines = append(lines, crewTeamHelpLine{Title: "Your team", Text: text})
 	}
-	if inTeam {
-		lines = append(lines, crewTeamHelpLine{Badge: "Shared", Title: "Shared with my team", Text: "People in this Crew's Team can talk to it. Turn it off to keep an agent only for you."})
-	}
-	if answersOnly {
-		lines = append(lines, crewTeamHelpLine{Badge: "answers only", Title: "For them it answers only", Text: "Teammates can ask questions. They cannot change the Crew or its files through it."})
-	}
-	lines = append(lines, crewTeamHelpLine{Badge: "+", Title: "Add an agent", Text: "Press + next to the names, or ask in chat: \"add an agent for bug triage\"."})
+	lines = append(lines, crewTeamHelpLine{Title: "Add an agent", Text: "Press + next to the names, or ask in chat: \"add an agent for bug triage\"."})
 	ask := ""
 	if mine || r.CanSwitch || r.CanAddFolder {
-		ask = "Explain how the agents in this Crew work: where each one runs, which are shared with my team and which are always on, and what teammates can do through them. Then help me change any of it. Change it only when I say so."
+		ask = "Explain how the agents and the team in this Crew work: which agents are shared with my team and which are only mine, who is on the team and what teammates can do through the agents. Then help me change any of it. Change it only when I say so."
 	}
 	return lines, ask
 }
@@ -287,7 +336,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		person(p.UserID, note, true)
 	}
-	uses := crewTeamUses(ctx, t)
+	uses, usesNote := crewTeamUses(ctx, t)
 	for _, p := range byPerson {
 		mine := p.UserID == viewer
 		onMac := crewTeamAgentOnMac(t, p.UserID)
@@ -334,6 +383,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 			rule := t.agentRule(p.UserID, crewTeamRuleKey(ctx, t, p.UserID, a.ChatKey))
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
+			row.UsesNote = usesNote
 			row.WhenOthersAsk, row.HasRule, row.CanEditRule = rule.WhenOthersAsk, rule.WhenOthersAsk != "", mine
 			// Answer only / Make changes for every agent, Mac or server alike (one row for every own agent, owner 6 Nov).
 			changes := rule.CanMakeChanges
@@ -344,11 +394,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
 				row.ChatShareLabel, row.ChatShareOptions = crewTeamChatShareLabel, crewChatShareOptions
 			} else {
-				switch row.ChatShare {
-				case crewChatShareAgent:
+				if row.ChatShare == crewChatShareAgent {
 					row.ChatPrivateLine = crewChatPrivateLine(p.UserID)
-				case crewChatShareHistory:
-					row.ChatShareNote = crewChatHistoryLine(p.UserID)
 				}
 				if p.Owner && onMac && a.Tab == macMainTab {
 					row.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey
@@ -501,17 +548,17 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	if !t.On || !t.edits(viewer) {
 		return nil
 	}
-	s, _ := readCrewTeamFileState(t.ProjectID)
-	files := len(s.held(t.Folder))
+	s, _ := readCrewTeamLedgerSummary(t.ProjectID, t.Folder, false)
+	files := s.files
 	// An open clash stays on the line, by file, until someone sorts it out (owner, 5 Nov).
-	open := crewTeamOpenClashPaths(s.Clashes)
+	open := s.clashes
 	clashLine := "no clashes"
 	if len(open) > 0 {
 		clashLine = crewTeamClashLine(open)
 	}
 	out := &crewTeamTabSync{} // open clashes are on the line, not a failure
-	if n := len(s.Events); n > 0 {
-		e := s.Events[n-1]
+	if s.last.Path != "" {
+		e := s.last
 		if at, err := time.Parse(time.RFC3339Nano, e.At); err == nil {
 			out.Last = fmt.Sprintf("Last change %s by %s: %s", crewAccessAgo(at), crewPersonShortName(firstNonEmptyTrimmed(e.Author, e.Actor)), e.Path)
 		}

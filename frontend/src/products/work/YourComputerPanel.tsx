@@ -12,7 +12,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { AskButton, teamCard } from './TeamTab'
-import { ShareCrew } from './ShareCrew'
+import { ShareCrew, SlackTab } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
@@ -52,7 +52,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'dashboard' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { name: string; path: string }[]; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents_label?: string; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'dashboard' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { name: string; path: string }[]; count?: number; tag?: string; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents_label?: string; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; chatOnly?: boolean; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
@@ -268,9 +268,8 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
   const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
   const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
   // A tab the server does not list for this person falls back to its first one. Dashboards have their own tab (owner,
-  // 9 Nov); the Slack bot is the Share tab's Slack option, so asking for it opens Share there.
-  const wanted: CrewAccessSection = section === 'slack' ? 'team' : section
-  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === wanted) ? wanted : tabs[0]?.id
+  // 9 Nov) and so does Slack.
+  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
   const needsServer = here && !connections.length && !online
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
@@ -356,7 +355,11 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     {/* Share this Crew (owner, 9 Nov mocks): the server's /share reply decides its options. The Mac app's own Crew turns
         the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <ShareCrew projectId={projectId} workspacePath={workspacePath} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} focus={section === 'slack' ? 'slack' : undefined} />
+      <ShareCrew projectId={projectId} workspacePath={workspacePath} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
+    </section>}
+    {/* Slack (owner, 9 Nov: its own tab next to Share): the Crew's Slack bot and who can talk to it. */}
+    {shown === 'slack' && <section role="tabpanel" id={`crew-access-panel-${projectId}-slack`} aria-labelledby={`crew-access-${projectId}-slack`} className="space-y-3">
+      <SlackTab projectId={projectId} workspacePath={workspacePath} />
     </section>}
     {/* Dashboards (owner, 9 Nov: their own tab next to Share): everything this Crew publishes, or "No dashboard yet" with
         its Ask; a Mac Crew that was never online lists its own. */}

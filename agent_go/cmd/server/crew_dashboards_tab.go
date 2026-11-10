@@ -31,6 +31,20 @@ type crewDashboardsTabFilter struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 	Count int    `json:"count"`
+	// Hint says in one line what this kind is and how it works (owner, 9 Nov); Ask, for the owner with none yet,
+	// is the draft "Ask the Crew" puts in Main.
+	Hint string `json:"hint,omitempty"`
+	Ask  string `json:"ask,omitempty"`
+}
+
+// The three kinds a Crew publishes, always listed (owner, 9 Nov: "show motion dashboards zero"), each with its hint.
+var crewDashboardsTabKinds = []struct{ key, label, hint, ask string }{
+	{"dashboard", "Dashboards", "Live pages built from this Crew's results, with Ask and buttons. They stay up to date as the Crew works.",
+		"Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."},
+	{"artifact", "Artifacts", "A finished page made in a chat to show one idea: a proposal, plan or comparison. No live data.",
+		"Make an artifact: one page that sums up this Crew's latest results. Show me before you publish it."},
+	{"motion", "Motion", "Plays changes over time, or walks through an explanation one step at a time. Same link and sharing as a dashboard.",
+		"Make a motion dashboard that plays this Crew's results over time. Show me before you publish it."},
 }
 
 type crewDashboardsTabEmpty struct {
@@ -159,10 +173,12 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Items = append(tab.Items, item)
 	}
 	tab.Filters = []crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}
-	for _, kind := range []struct{ key, label string }{{"dashboard", "Dashboards"}, {"artifact", "Artifacts"}, {"motion", "Motion"}} {
-		if counts[kind.key] > 0 {
-			tab.Filters = append(tab.Filters, crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key]})
+	for _, kind := range crewDashboardsTabKinds {
+		filter := crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key], Hint: kind.hint}
+		if owner && counts[kind.key] == 0 {
+			filter.Ask = kind.ask
 		}
+		tab.Filters = append(tab.Filters, filter)
 	}
 	switch {
 	case !owner && onMac:

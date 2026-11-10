@@ -8,6 +8,7 @@ export type CodingAgentQuestionPrompt = {
   state: 'pending' | 'answered' | 'interrupted' | 'unanswered'
   questions: Array<{ id: string; header: string; question: string; multiSelect: boolean; allowOther?: boolean; minSelections?: number; maxSelections?: number; options: Array<{ label: string; description: string }> }>
   answers: CodingAgentChoiceAnswer[]
+  statusMessage?: string
 }
 
 export type CodingAgentQuestionAnswerHandler = (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
@@ -51,7 +52,8 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
     } else if (payload.kind === 'settled' || payload.kind === 'user_input_prompt_settled') {
       const prompt = pending.get(key)
       if (!prompt) continue // A history page may contain only the settlement.
-      // 'unanswered': nobody replied in time to a question in a turn another agent's message started (PLAT-746-184).
+      // The server explains closures such as restart; unanswered never means a choice was made.
+      prompt.statusMessage = text(record(payload.metadata).message) || undefined
       prompt.state = payload.outcome === 'answered' ? 'answered' : payload.outcome === 'unanswered' ? 'unanswered' : 'interrupted'
       prompt.answers = (Array.isArray(payload.answers) ? payload.answers : []).map(value => {
         const answer = record(value)

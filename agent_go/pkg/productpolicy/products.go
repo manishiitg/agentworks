@@ -154,7 +154,7 @@ func SkillProduct(name string) string {
 		return "knowledgebase"
 	case "vault-access", "caplayer-access":
 		return "mcp-gateway"
-	case "code-mcp", "code-integrations", "code-workflow-files", "code-skills", "code-schedules-and-bots", "code-dashboard", "code-ui-control", "code-background-work", "make-a-crew":
+	case "code-mcp", "code-integrations", "code-workflow-files", "code-skills", "code-schedules-and-bots", "code-dashboard", "code-ui-control", "make-a-crew":
 		return "work"
 	case "relay-builder":
 		return "relays"

@@ -22,7 +22,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]},{"id":"no-crew","products":["brain"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]},{"id":"no-crew","products":["brain"]}]}`)
 	if err := crewroot.WriteSync("p", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair-test", PeerProjectID: "local-project"}); err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +32,19 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", AgentBridgePublic: true}}
+	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", Address: "public-agent", AgentBridgePublic: true}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
+	}
+	// PLAT-856-563: directory discovery succeeded but owner-prefixed sends failed before Mac address lookup.
+	for _, tc := range []struct {
+		address string
+		allowed bool
+	}{{"public-agent", true}, {"private-agent", false}, {"missing-agent", false}} {
+		target, err := resolveSharedMessageAgent(t.Context(), "owner", "attached-agent", "owner/"+tc.address)
+		if (err == nil) != tc.allowed || tc.allowed && (target.CrewID != "p" || target.Chat.Key != macSharedAgentChatKey("p", "public01")) {
+			t.Fatalf("own Mac address %q: target=%+v error=%v", tc.address, target, err)
+		}
 	}
 	api := &StreamingAPI{}
 	for _, tc := range []struct {
@@ -42,6 +52,12 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		scopes               []string
 		bound, send, allowed bool
 	}{
+		// PLAT-856: same-owner Mac relay messages used the hosted-Crew route and were held forever.
+		{"own published Mac send", "owner", "public01", []string{"messages:send"}, true, true, true},
+		{"own published Mac reply read", "owner", "public01", []string{"messages:read"}, true, false, true},
+		{"own unpublished Mac tab", "owner", "team01", []string{"messages:send"}, true, true, false},
+		{"own private Mac tab", "owner", "private01", []string{"messages:read"}, true, false, false},
+		{"own read permission cannot send", "owner", "public01", []string{"messages:read"}, true, true, false},
 		{"team send", "member", "team01", []string{"messages:send"}, true, true, true},
 		{"team reply read", "member", "main", []string{"messages:read"}, true, false, true},
 		{"outside team", "outsider", "team01", []string{"messages:send"}, true, true, false},
@@ -64,6 +80,43 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 				t.Fatalf("allowed=%t, error=%v", tc.allowed, err)
 			}
 		})
+	}
+	// A private Mac tab initiated the inbox with this owner's attached agent: receiving is allowed,
+	// and a reply uses that inbox's authority. First contact with the private tab remains refused.
+	crewMacTeamTabsCache.Store("p\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: "private01", ConversationID: "private-conversation"}}})
+	t.Cleanup(func() { crewMacTeamTabsCache.Delete("p\x00owner") })
+	private := agentMessageEndpoint{Kind: triggerCallerCrew, ID: "p", UserID: "owner", ChatKey: macSharedAgentChatKey("p", "private01"), Session: crewChatSessionID("p", "private-conversation"), NetworkPairID: "pair-test", NetworkConversationID: "private-conversation", NetworkTab: "private01"}
+	attached := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{BoundAgentID: "attached-agent", Scopes: []string{"messages:send", "messages:read"}}}
+	for _, send := range []bool{false, true} {
+		err := api.externalAuthorizeMessagePeer(t.Context(), attached, private, send)
+		if (err == nil) == send {
+			t.Fatalf("private Mac source receive/first contact: send=%t error=%v", send, err)
+		}
+	}
+	inbox := agentConversation{Endpoints: [2]agentMessageEndpoint{private, {External: true, UserID: "owner", NamedAgentID: "attached-agent"}}, Messages: []agentMessage{{From: 0}}}
+	replyClaims := hostedInboxReplyClaims(attached, inbox, 1)
+	if replyClaims == attached {
+		t.Fatal("the Mac-initiated inbox did not supply reply authority")
+	}
+	if err := api.externalAuthorizeMessagePeer(t.Context(), replyClaims, private, replyClaims == attached); err != nil {
+		t.Fatalf("reply to the private Mac-initiated inbox refused: %v", err)
+	}
+	for _, changed := range []agentMessageEndpoint{
+		{Kind: private.Kind, ID: "p", UserID: "owner", ChatKey: private.ChatKey, Session: private.Session, NetworkPairID: "wrong-pair", NetworkConversationID: "private-conversation", NetworkTab: "private01"},
+		{Kind: private.Kind, ID: "p", UserID: "owner", ChatKey: private.ChatKey, Session: private.Session, NetworkPairID: "pair-test", NetworkConversationID: "rotated-conversation", NetworkTab: "private01"},
+		{Kind: private.Kind, ID: "p", UserID: "owner", ChatKey: macSharedAgentChatKey("p", "missing01"), Session: private.Session, NetworkPairID: "pair-test", NetworkConversationID: "private-conversation", NetworkTab: "missing01"},
+	} {
+		if err := api.externalAuthorizeMessagePeer(t.Context(), attached, changed, false); err == nil {
+			t.Fatal("a changed pair, conversation or unregistered tab was admitted")
+		}
+	}
+	// The same-owner public exception is only for AgentBridge; no people-directory access is added.
+	if _, reason := macSharedAgentFor("p", "public01", "owner", "owner"); reason == "" {
+		t.Fatal("own public agent bypassed the normal people owner route")
+	}
+	forgedOwner := agentMessageEndpoint{Kind: triggerCallerCrew, ID: "p", UserID: "outsider", ChatKey: macSharedAgentChatKey("p", "public01")}
+	if err := api.externalAuthorizeMessagePeer(t.Context(), &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{BoundAgentID: "attached-agent", Scopes: []string{"messages:read"}}}, forgedOwner, false); err == nil {
+		t.Fatal("a Mac peer with the wrong registered owner was admitted")
 	}
 	// Owner, 5 Nov: Public is AgentBridge only. An agent may message a public agent; the person's own lists (Shared
 	// with me, the agent directory) and their workspace ask still go by the audience alone.

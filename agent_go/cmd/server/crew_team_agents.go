@@ -214,4 +214,4 @@ func crewPersonShortName(userID string) string {
 
 // crewServerAgentPlaceLabel is the status of an agent that lives on the server: it answers any time (the same row as a Mac
 // agent's "Always on · copy on the server …", owner 6 Nov: one row for every own agent).
-const crewServerAgentPlaceLabel = "On the server · always on"
+const crewServerAgentPlaceLabel = "Runs on the server, always available"

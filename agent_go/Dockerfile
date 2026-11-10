@@ -157,9 +157,9 @@ RUN if [ "$INSTALL_PI_CLI" = "true" ]; then \
 RUN pip3 install --break-system-packages uv pypdf
 
 # Platform-owned Relay interpreter. Published code never installs dependencies.
-COPY --from=builder /app/agent_go/pkg/relaypython/requirements-dbos.txt /opt/relay-dbos-requirements.txt
+COPY --from=builder /app/agent_go/pkg/pythonruntime/requirements-dbos.txt /opt/dbos-requirements.txt
 RUN python3 -m venv /opt/relay-dbos \
-    && /opt/relay-dbos/bin/python -m pip install --no-cache-dir -r /opt/relay-dbos-requirements.txt
+    && /opt/relay-dbos/bin/python -m pip install --no-cache-dir -r /opt/dbos-requirements.txt
 ENV RELAY_DBOS_PYTHON=/opt/relay-dbos/bin/python
 
 # Verify npx and docker are available

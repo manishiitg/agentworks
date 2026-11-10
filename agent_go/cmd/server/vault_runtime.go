@@ -232,6 +232,8 @@ func activeMCPPerson(person string) bool {
 
 // Only the host supplies the actor; never forward a browser JWT or identity header.
 func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, error) {
+	status := 0
+	defer logSlowVaultRequest(ctx, "runtime", time.Now(), &status)
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
 	}
@@ -256,6 +258,7 @@ func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, erro
 		return nil, errors.New("Vault unavailable")
 	}
 	defer resp.Body.Close()
+	status = resp.StatusCode
 	if resp.StatusCode != 200 {
 		return nil, errors.New("Vault access unavailable")
 	}

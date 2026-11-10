@@ -298,7 +298,7 @@ Read the current Sharing procedure in `panel-access`. Inspect the saved audience
 selected agents and each agent's chat visibility before promising transcript
 access. Discover agents through `workspace action=chats` or
 `messages action=list_agents`; use the exact returned target/chat_id to read or
-send an attributed request. Live, Saved only and Hidden have different chat
+send an attributed request. Live and Hidden have different chat
 visibility. Published Main and last-shared-agent restrictions are server-owned;
 do not bypass a refused switch. Only the tab's owner controls its steering,
 Stop, reset, model and owner confirmations. Acceptance is not a completed answer.

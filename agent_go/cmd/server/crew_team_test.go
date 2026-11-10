@@ -896,6 +896,19 @@ func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	if state.OnPurpose["express/.npmrc"] != "member" || state.Versions["express/.npmrc"].File == nil {
 		t.Fatalf("not recorded on purpose: %+v", state.OnPurpose)
 	}
+	// Unsaved changes to one snapshot must not grant credential-file sharing
+	// or change metadata returned to another request from the private ledger.
+	state.OnPurpose["unapproved/.env"] = "member"
+	state.Versions["express/.npmrc"].File.Hash = "unsaved"
+	state.Events[0].File.Hash = "unsaved-event"
+	state.Events[0].Chunks[0].ID = "unsaved-chunk"
+	again, err := readCrewTeamFileState("purpose-test")
+	if err != nil || crewTeamAllowed("unapproved/.env", again.onPurpose()) || again.OnPurpose["express/.npmrc"] != "member" {
+		t.Fatalf("unsaved sharing choice escaped its request: %+v %v", again.OnPurpose, err)
+	}
+	if again.Versions["express/.npmrc"].File.Hash != version.Hash || again.Events[0].File.Hash != version.Hash || again.Events[0].Chunks[0].ID != version.Chunks[0].ID {
+		t.Fatal("unsaved file metadata changed the persisted snapshot")
+	}
 	if _, err := commitCrewTeamChanges(t.Context(), "purpose-test", "member", "stop", crewTransferDigest("stop"), []crewTeamChange{{Path: "express/.npmrc", Before: version.Hash}}); err != nil {
 		t.Fatalf("stop syncing: %v", err)
 	}

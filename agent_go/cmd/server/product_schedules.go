@@ -21,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 const productScheduleJobPrefix = "product:"
@@ -226,6 +227,10 @@ type productScheduleRun struct {
 	SessionID string
 	StartedAt time.Time
 	cancel    context.CancelFunc
+	// True only when this invocation minted the resolved session identity.
+	ownsSession bool
+	// Keep the conversation claimed until Stop has closed its native runtime.
+	stopDone chan struct{}
 }
 
 // NewProjectActionDispatcher wires the service to the live profile registry.
@@ -799,6 +804,9 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
 		return productScheduleJob{}, err
 	}
+	if err := validateCrewScheduleDependencies(manifest.Schedules); err != nil {
+		return productScheduleJob{}, err
+	}
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
 		return productScheduleJob{}, err
 	}
@@ -836,6 +844,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 		return job, fmt.Errorf("schedule not found")
 	}
 	if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
+		return job, err
+	}
+	if err := validateCrewScheduleDependencies(manifest.Schedules); err != nil {
 		return job, err
 	}
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
@@ -964,15 +975,33 @@ func (s *ProjectActionDispatcher) Running(userID, jobID string) (productSchedule
 	return *r, true
 }
 
-// Stop cancels the live run for a job.
+// Stop cancels the waiter, and native work only in a session minted by this
+// invocation, before releasing the conversation (PLAT-871-40).
 func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	r, ok := s.running[userID+"\x1f"+jobID]
 	if !ok {
+		s.mu.Unlock()
 		return false
 	}
+	if r.stopDone != nil {
+		s.mu.Unlock()
+		return true
+	}
+	r.stopDone = make(chan struct{})
+	done, sessionID, ownsSession := r.stopDone, r.SessionID, r.ownsSession
 	r.cancel()
+	s.mu.Unlock()
+	defer close(done)
+	// Runtime teardown can reenter the dispatcher. The finish path waits
+	// outside the mutex, so cancellation cannot reach a queued successor.
+	if sessionID != "" && ownsSession {
+		scheduleLogf("[SCHEDULER] stopping native run job=%s session=%s", jobID, sessionID)
+		s.api.cancelSessionRuntimeWork(sessionID, "scheduled job stopped by user", runtimePhaseCanceled)
+		scheduleLogf("[SCHEDULER] native stop complete job=%s session=%s", jobID, sessionID)
+	} else if sessionID != "" {
+		scheduleLogf("[SCHEDULER] native stop skipped: shared conversation job=%s session=%s", jobID, sessionID)
+	}
 	return true
 }
 
@@ -1038,7 +1067,7 @@ func conversationKeyForJob(job productScheduleJob) string {
 
 // popProductQueueLocked removes and returns the head of one conversation
 // queue. The caller must hold s.mu.
-func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey string) (productScheduleQueuedRun, bool) {
+func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey string, paused bool) (productScheduleQueuedRun, bool) {
 	items := queued[convKey]
 	if len(items) == 0 {
 		return productScheduleQueuedRun{}, false
@@ -1053,13 +1082,19 @@ func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey
 		}
 		return !a.IsZero() && !b.IsZero() && a.Before(b)
 	})
-	head := items[0]
-	if len(items) == 1 {
-		delete(queued, convKey)
-	} else {
-		queued[convKey] = append([]productScheduleQueuedRun(nil), items[1:]...)
+	for i, item := range items {
+		if paused && (item.triggerSource == "cron" || item.triggerSource == "queued") {
+			continue
+		}
+		remaining := append(items[:i], items[i+1:]...)
+		if len(remaining) == 0 {
+			delete(queued, convKey)
+		} else {
+			queued[convKey] = remaining
+		}
+		return item, true
 	}
-	return head, true
+	return productScheduleQueuedRun{}, false
 }
 
 func (s *ProjectActionDispatcher) runWithOptions(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted ...func(sessionID string)) (string, error) {
@@ -1150,11 +1185,54 @@ func (s *ProjectActionDispatcher) claimAutomationRun(ctx context.Context, job pr
 // queued delivery, if any.
 func (s *ProjectActionDispatcher) finishAutomationRun(jobKey, convKey string) {
 	s.mu.Lock()
+	if run := s.running[jobKey]; run != nil && run.stopDone != nil {
+		done, sessionID := run.stopDone, run.SessionID
+		s.mu.Unlock()
+		waiting := time.NewTimer(30 * time.Second)
+		select {
+		case <-done:
+		case <-waiting.C:
+			scheduleLogf("[SCHEDULER] native stop still running job=%s session=%s waited=30s", jobKey, sessionID)
+			// A late teardown must not cancel a successor in this same chat.
+			<-done
+		}
+		waiting.Stop()
+		s.mu.Lock()
+	}
 	delete(s.running, jobKey)
 	delete(s.conversations, convKey)
-	next, ok := popProductQueueLocked(s.queued, convKey)
-	if !ok {
+	s.mu.Unlock()
+	s.startNextQueuedRun(convKey)
+}
+
+// The existing clock retries idle queues after resume. Accepted work retains
+// its occurrence; no new occurrence is created for ticks missed while paused.
+func (s *ProjectActionDispatcher) resumeQueuedRuns() {
+	s.mu.Lock()
+	keys := make([]string, 0, len(s.queued))
+	for key := range s.queued {
+		keys = append(keys, key)
+	}
+	s.mu.Unlock()
+	for _, key := range keys {
+		s.startNextQueuedRun(key)
+	}
+}
+
+func (s *ProjectActionDispatcher) startNextQueuedRun(convKey string) {
+	paused := automaticSchedulePaused(context.Background(), "cron")
+	s.mu.Lock()
+	if s.conversations[convKey] || (s.heldConversation != nil && s.heldConversation(convKey)) {
 		s.mu.Unlock()
+		return
+	}
+	next, ok := popProductQueueLocked(s.queued, convKey, paused)
+	if !ok {
+		held := len(s.queued[convKey])
+		s.mu.Unlock()
+		if paused && held > 0 {
+			scheduleLogf("[SCHEDULER] conversation queue held by global pause conversation=%q pending=%d", convKey, held)
+		}
 		return
 	}
 	if s.conversations == nil {
@@ -1169,6 +1247,7 @@ func (s *ProjectActionDispatcher) finishAutomationRun(jobKey, convKey string) {
 	nextJobKey := next.job.UserID + "\x1f" + next.job.ID()
 	s.running[nextJobKey] = nextRun
 	s.mu.Unlock()
+	scheduleLogf("[SCHEDULER] dispatching accepted queued occurrence job=%s source=%s scheduled_for=%s", next.job.ID(), next.triggerSource, next.scheduledFor.UTC().Format(time.RFC3339))
 	go s.executeAutomationRun(nextCtx, nextCancel, next.job, next.triggerSource, next.scheduledFor, next.options, nextRun, nextJobKey, convKey, next.onStarted)
 }
 
@@ -1222,6 +1301,34 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	// No admission record is written, so a dependency retry stays pending in
 	// the single clock and keeps its original expiry window.
 	if automaticSchedulePaused(runCtx, triggerSource) {
+		// A conversation-queued delivery was accepted before this admission.
+		// Put it back if pause began after it was popped. Dependency retries
+		// already have their durable pending row and stay with the clock.
+		if options.AllowQueue {
+			s.mu.Lock()
+			if s.queued == nil {
+				s.queued = map[string][]productScheduleQueuedRun{}
+			}
+			waiting := productScheduleQueuedRun{job: job, triggerSource: triggerSource,
+				scheduledFor: scheduledFor, queuedAt: run.StartedAt, options: options, onStarted: onStarted}
+			replaced := false
+			for i, queued := range s.queued[convKey] {
+				if queued.triggerSource == "cron" && triggerSource == "cron" && queued.job.ID() == job.ID() {
+					// Keep the queue's existing latest-occurrence coalescing rule.
+					if !queued.scheduledFor.After(scheduledFor) {
+						s.queued[convKey][i] = waiting
+					}
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				s.queued[convKey] = append(s.queued[convKey], waiting)
+			}
+			s.mu.Unlock()
+			scheduleLogf("[SCHEDULER] retained queued occurrence during pause job=%s source=%s scheduled_for=%s", job.ID(), triggerSource, scheduledFor.UTC().Format(time.RFC3339))
+			return "", ErrProductRunQueued
+		}
 		scheduleLogf("[SCHEDULER] held at admission by global pause job=%s source=%s", job.ID(), triggerSource)
 		return "", productschedule.ErrSkip
 	}
@@ -1274,6 +1381,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	}
 	var binding productConversationBinding
 	var bindErr error
+	freshSessionID := ""
 	newAgentName := "" // set when this run creates a named Crew agent's tab
 	if job.Profile.ID == "relays" && !productEnabled("relays") {
 		bindErr = errFlowsDisabled
@@ -1289,6 +1397,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		conversationKey := job.ConversationKey
 		if job.Schedule.New {
 			conversationKey = runID
+			freshSessionID = "product-" + uuid.NewString()
 		}
 		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, conversationKey), title)
 	} else if job.ProjectID != "" {
@@ -1329,7 +1438,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		s.failAutomationSetupRun(job, options, setupErr)
 		return "", setupErr
 	}
-	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(runCtx, job.UserID, job.Profile, binding, "")
+	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(runCtx, job.UserID, job.Profile, binding, freshSessionID)
 	if err != nil {
 		setupErr := fmt.Errorf("open product conversation: %w", err)
 		s.failAutomationSetupRun(job, options, setupErr)
@@ -1374,7 +1483,24 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		}
 	}
 	s.mu.Lock()
+	// Stop may have arrived while the conversation was being resolved.
+	// Without a published session it cancels only this setup, never a guessed
+	// project session that could belong to another turn.
+	if err := runCtx.Err(); err != nil {
+		s.mu.Unlock()
+		return "", err
+	}
+	if s.api.isSessionMarkedStopped(sessionID) {
+		// A newly admitted occurrence intentionally starts work again. Clear
+		// both existing guards here, never from a canceled turn's recovery.
+		s.api.clearSessionStopped(sessionID)
+		mcpagent.ClearHTTPSessionStopped(sessionID)
+		scheduleLogf("[SCHEDULER] cleared stopped guard for admitted run job=%s session=%s", job.ID(), sessionID)
+	}
 	run.SessionID = sessionID
+	// A saved/persistent identity wins over the preferred fresh one. In that
+	// case this invocation does not own the session and cannot tear it down.
+	run.ownsSession = freshSessionID != "" && sessionID == freshSessionID
 	s.mu.Unlock()
 	for _, cb := range onStarted {
 		if cb != nil {

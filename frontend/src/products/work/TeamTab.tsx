@@ -236,13 +236,13 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
   const personRow = (person: CrewPeoplePerson) => {
     const activity = live(person.user_id)
     const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
-    return <div key={person.user_id} className={`flex items-start gap-2 py-2 ${pending === `change:${person.user_id}` ? 'opacity-60' : ''}`}>
-      <span aria-hidden="true" className="mt-0.5 grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
+    return <div key={person.user_id} className={`flex items-center gap-2 py-2 ${pending === `change:${person.user_id}` ? 'opacity-60' : ''}`}>
+      <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
         {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
       </span>
-      {activity && <span className="mt-1.5 shrink-0" title={activity.active_label || undefined}><Dot on={activity.active} /></span>}
+      {activity && <span className="flex shrink-0 items-center" title={activity.active_label || undefined}><Dot on={activity.active} /></span>}
       {options.length > 0 && !closed
         ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={pending === `change:${person.user_id}`}>{null}</Saving>
           <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) void propose(person.user_id, person.name, next) }}
@@ -250,7 +250,7 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
             <option value={person.level}>{person.level_label}</option>
             {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
           </select></span>
-        : !person.owner && <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
+        : !person.owner && <span className="shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
     </div>
   }
   return <section aria-label="People" className={card}>
@@ -419,7 +419,8 @@ export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent
     </div>
     <div className="mt-1 flex flex-wrap gap-1.5">
       {uses.map(use => <span key={`${use.kind}:${use.name}`} className="rounded-full border border-border px-2 py-px text-xs">{use.name}{use.personal ? ' · yours' : ''}</span>)}
-      {!uses.length && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
+      {agent.uses_note && <span className="text-xs text-muted-foreground">{agent.uses_note}</span>}
+      {!uses.length && !agent.uses_note && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
     </div>
     <p className={label}>{agent.can_edit_rule ? 'When someone else asks' : 'When you ask it'}</p>
     <p className="rounded-md bg-muted/60 px-2.5 py-2 text-[12.5px] text-muted-foreground">{agent.when_others_line}</p>

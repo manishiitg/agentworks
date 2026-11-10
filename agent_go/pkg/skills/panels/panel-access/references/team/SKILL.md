@@ -30,12 +30,30 @@ rather than copying action names or old workflow-team policy fields:
   and follow the service's confirmation requirement.
 - `agents` lists what teammates share. `agent_rule` changes only your own
   agent's instructions for others, change permission and chat visibility.
-  Use the offered enums; the website calls visibility Live, Saved only, Hidden.
+  Use the offered enums; the website calls chat visibility Live (empty) or Hidden (`agent`).
 - `clashes` shows both versions when the same lines changed. Read the Crew
   builder's clash procedure before `resolve`; save the requested version or
-  merge, never silently discard either person's work.
+  merge, never silently discard either person's work. Team history is private
+  server state, separate from the Crew database: use these tools rather than
+  trying to read or edit it through project files or database tools. Recent history
+  keeps at least 30 days or 500 changes, plus current-file bases and both sides
+  of open clashes. If an older copy needs to catch up, refresh Team sync first;
+  old arbitrary versions can be unavailable even while a clash's saved sides remain.
 
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
 and tab controls remain theirs. Read back the saved result and say what is
 shared, with whom, and whether an invitation still waits for acceptance.
+
+The agent menu's "How this works" explains an agent, the team, who is on it and
+what teammates can use, from this Crew's real agents and people (the server
+words it, differently for the owner and for a teammate). An agent on the server
+shows "Runs on the server, always available". When asked how teams work, say
+the same: a team is the people the owner adds in Share, then Team; teammates
+use only the agents the owner shares.
+
+Accepting a Team invite follows where the person is. In the Mac app there is one action, "Add to my Mac": the shared
+folder syncs to that Mac, through the server the invite was listed from (a server the person already added). On the
+website there is one action, "Join", and the team works on the server. Decline is in both. The server says whether
+the Crew can be added to a Mac (`can_add_to_mac`: the Team shares a folder); when it cannot, the Mac app says so and
+offers only Decline.

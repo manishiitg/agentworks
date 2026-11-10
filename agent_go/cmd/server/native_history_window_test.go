@@ -237,6 +237,43 @@ func TestNativeHistorySlidingWindowKeepsOccurrenceIdentities(t *testing.T) {
 				t.Fatal("durable input did not retain the complete submitted prompt")
 			}
 
+			// PR1730: an API input already in the event store must not become
+			// a second terminal input merely because its native preview is short.
+			apiPrompt := strings.TrimSpace(strings.Repeat("API prompt ", nativeHistoryMessageBytes/4))
+			o.api.recordLiveCodingAgentUserMessage(o.snapshot.SessionID, apiPrompt, provider, "api-long-prompt", "sent_to_cli", "")
+			appendRow("user", apiPrompt)
+			apiWindow, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fresh.consume(apiWindow, path, false)
+			if counts := nativeTerminalEventUserCounts(o.api.eventStore, o.snapshot.SessionID); counts[apiPrompt] != 1 {
+				t.Fatal("native preview duplicated the full API prompt")
+			}
+
+			// The newest reply remains bounded in the preview, but live recovery
+			// and terminal completion must receive its entire source text.
+			reply := strings.TrimSpace(strings.Repeat("complete reply ", nativeHistoryMessageBytes/4))
+			appendRow("assistant", reply)
+			replyWindow, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(builderConversationMessageText(replyWindow[len(replyWindow)-1])) > nativeHistoryMessageBytes+3 {
+				t.Fatal("assistant preview lost its display bound")
+			}
+			fresh.consume(replyWindow, path, false)
+			if fresh.lastAssistant != reply {
+				t.Fatal("completion result retained only the assistant preview")
+			}
+			if replies := liveAssistantMessageCounts(o.api.eventStore.GetAllEventsRaw(o.snapshot.SessionID)); replies[normalizedAssistantMessageText(reply)] != 1 {
+				t.Fatal("recovered assistant event retained only the preview")
+			}
+			fresh.consume(replyWindow, path, false)
+			if replies := liveAssistantMessageCounts(o.api.eventStore.GetAllEventsRaw(o.snapshot.SessionID)); replies[normalizedAssistantMessageText(reply)] != 1 {
+				t.Fatal("replaying a full reply duplicated it")
+			}
+
 		})
 	}
 }

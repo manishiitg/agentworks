@@ -1752,42 +1752,6 @@ func (es *EventStore) GetStats() map[string]interface{} {
 	}
 }
 
-// DelegationStartEventData implements events.EventData for delegation_start
-type DelegationStartEventData struct {
-	DelegationID      string   `json:"delegation_id"`
-	Depth             int      `json:"depth"`
-	Instruction       string   `json:"instruction"`
-	ReasoningLevel    string   `json:"reasoning_level,omitempty"`
-	ModelID           string   `json:"model_id,omitempty"`
-	Servers           []string `json:"servers,omitempty"`
-	BackgroundAgentID string   `json:"background_agent_id,omitempty"`
-	AgentTemplate     string   `json:"agent_template,omitempty"`
-	Timestamp         string   `json:"timestamp"`
-}
-
-func (d *DelegationStartEventData) GetEventType() events.EventType {
-	return events.EventType("delegation_start")
-}
-
-// DelegationEndEventData implements events.EventData for delegation_end
-type DelegationEndEventData struct {
-	DelegationID string  `json:"delegation_id"`
-	Depth        int     `json:"depth"`
-	Result       string  `json:"result"`
-	Error        string  `json:"error,omitempty"`
-	Success      bool    `json:"success"`
-	Timestamp    string  `json:"timestamp"`
-	InputTokens  int64   `json:"input_tokens,omitempty"`
-	OutputTokens int64   `json:"output_tokens,omitempty"`
-	ToolCalls    int64   `json:"tool_calls,omitempty"`
-	Duration     string  `json:"duration,omitempty"`
-	TotalCostUSD float64 `json:"total_cost_usd,omitempty"`
-}
-
-func (d *DelegationEndEventData) GetEventType() events.EventType {
-	return events.EventType("delegation_end")
-}
-
 // GenericEventData is a generic event data type that wraps a map
 // Used for events that don't need a specific struct (e.g. background agent events)
 type GenericEventData struct {
@@ -1932,6 +1896,9 @@ func sweepTurnHeartbeats(now time.Time) {
 			continue
 		}
 		line := fmt.Sprintf("[TURN] session=%s still_running age=%s last_chunk_age=%s chunks=%d", b.session, b.age.Round(time.Second), b.sinceChunk.Round(time.Second), b.chunks)
+		if b.chunks == 0 {
+			line += " text_status=no_text_yet"
+		}
 		if extra := turnDiagnosticsFor(b.session); extra != "" {
 			line += " " + extra
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythonruntime"
 	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -54,10 +55,10 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	script := crewExecutableBinding{ID: "qualify", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/qualify", Kind: "script"}
 	other := crewExecutableBinding{ID: "other-script", CrewID: "crew-other", CrewRoot: "Crew/other", Root: "Workflow/other-script", Kind: "script"}
 	parent := crewExecutableBinding{ID: "sequence", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/sequence", Kind: "script"}
+	// Existing duplicate records exercise source authority and reference
+	// isolation; they are not new workflow creations.
 	for _, binding := range []crewExecutableBinding{script, other, parent} {
-		if err := registerCrewExecutable(binding); err != nil {
-			t.Fatal(err)
-		}
+		seedSavedCrewExecutableForTest(t, binding)
 	}
 	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/qualify/code/script.json": `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}]}`, "Workflow/qualify/code/main.py": "print('saved')\n", "Workflow/other-script/code/script.json": `{"id":"other-script","name":"Other"}`, "Workflow/other-script/code/main.py": "print('private')\n"}}
 	files.files["Crew/lab/product.json"] = `{"product":"work","id":"crew-lab","capabilities":{"browser_mode":"headless","llm_config":{"schema_version":1,"mode":"provider_profile","provider":"codex-cli"},"selected_servers":["example-app"],"selected_tools":["example-app:read"],"selected_global_secret_names":["EXAMPLE_CREDENTIAL"]}}`
@@ -101,7 +102,15 @@ sys.exit(1)
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		provided, _ := base64.StdEncoding.DecodeString(params.ExtraEnv["VAR_AUTOMATION_CHECK_FILES"])
+		pieces := ""
+		for i := 0; ; i++ {
+			piece, found := params.ExtraEnv[fmt.Sprintf("VAR_AUTOMATION_CHECK_FILES_%d", i)]
+			if !found {
+				break
+			}
+			pieces += piece
+		}
+		provided, _ := base64.StdEncoding.DecodeString(pieces)
 		if strings.Contains(string(provided), `"outside.py"`) {
 			t.Error("source inspection followed a link into another Crew")
 			c.JSON(400, gin.H{"error": "source link refused"})
@@ -117,7 +126,7 @@ sys.exit(1)
 			c.JSON(500, gin.H{"error": "source unavailable"})
 			return
 		}
-		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", relaypython.SourceInspector)
+		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", pythonruntime.SourceInspector)
 		cmd.Dir = layout.Code
 		cmd.Env = []string{"PATH=" + checkerDir, "PYTHONPATH=" + sdk, "SECRET_FIXTURE=must-not-reach-checker", "MCP_AUTH=fixture-only"}
 		for key, value := range params.ExtraEnv {

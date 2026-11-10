@@ -128,6 +128,11 @@ func (api *StreamingAPI) restoreNativeCodingObservers() {
 		if exists {
 			continue
 		}
+		if saved.Provider == "codex-cli" {
+			if err := api.closeRestartedNativeAsyncQuestions(saved.SessionID); err != nil {
+				log.Printf("[HUMAN_INPUT] session=%s status=restart_close_failed", saved.SessionID)
+			}
+		}
 		go func() { o.poll(true); close(o.ready); go o.run() }()
 		log.Printf("[NATIVE_RECORD] restored session=%s provider=%s native=%s", saved.SessionID, saved.Provider, saved.NativeID)
 	}
@@ -281,6 +286,23 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 	if s.Pending == nil {
 		s.Pending = map[string]nativeevents.Cursor{}
 	}
+	// One operational line per read batch, not one per native tool/status row.
+	// Keep cursor movement visible when a provider returns the same window.
+	accepted, pendingAccepted := 0, 0
+	firstItem, lastItem := "", ""
+	beforeOffset := s.Cursor.Offset
+	noteAccepted := func(record llmtypes.NativeRecord) {
+		if accepted == 0 {
+			firstItem = record.ID
+		}
+		accepted++
+		lastItem = record.ID
+	}
+	defer func() {
+		if accepted > 0 {
+			log.Printf("[NATIVE_RECORD] batch session=%s provider=%s native=%s count=%d pending_count=%d first=%s last=%s cursor_before=%d cursor_after=%d", o.snapshot.SessionID, o.provider, o.nativeID, accepted, pendingAccepted, firstItem, lastItem, beforeOffset, s.Cursor.Offset)
+		}
+	}()
 	pendingChanged := false
 	for id, cursor := range s.Pending {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -297,6 +319,8 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 			}
 			found = true
 			if err := o.acceptNativeCodingRecord(record); err == nil {
+				noteAccepted(record)
+				pendingAccepted++
 				delete(s.Pending, id)
 				pendingChanged = true
 			} else if !errors.Is(err, errNativeForegroundPending) {
@@ -345,6 +369,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 			o.nativeCodingGap(s, "durable_accept_failed")
 			return
 		}
+		noteAccepted(record)
 		record.Text = ""
 		if (record.Kind == "helper" || record.Kind == "background_command") && record.TaskID != "" {
 			s.Work[record.TaskID] = record
@@ -422,7 +447,6 @@ func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.Native
 	if err := o.api.saveNativeCodingActivity(o.snapshot.SessionID, record); err != nil {
 		return err
 	}
-	log.Printf("[NATIVE_RECORD] accepted session=%s provider=%s native=%s turn=%s item=%s kind=%s state=%s followup=%s event=%s", o.snapshot.SessionID, record.Provider, record.SessionID, record.TurnID, record.ID, record.Kind, record.State, record.FollowupID, id)
 	publicationOwner := ""
 	if record.Origin == "helper_finished" && record.TurnID != "" {
 		proposed := nativereplies.Observer

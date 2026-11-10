@@ -63,11 +63,11 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // activity: "running" while a turn is going in the agent now, as the server reads it (their Mac's relayed events, or its own queue).
   activity?: 'running' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
-  uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
+  uses: { name: string; kind: string; personal?: boolean }[]; uses_note?: string; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
   // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
-  // agent; on someone else's, chat_private_line replaces the chat and chat_share_note sits above it. watch_key is its
+  // agent; on someone else's, chat_private_line replaces the chat. watch_key is its
   // tab's key where that differs.
-  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; chat_share_note?: string; watch_key?: string
+  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
@@ -90,7 +90,7 @@ export type TeamTabView = {
   new_team?: boolean
   // The agent menu's "How this works" card, worded by the server for the states that exist in this Crew; help_ask is the
   // draft its button opens in Main (absent when the viewer changes nothing here, then there is no button).
-  help?: { badge: string; title: string; text: string }[]; help_ask?: string
+  help?: { title: string; text: string }[]; help_ask?: string
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }
@@ -245,7 +245,7 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
  * server Crew, its public link. Every line is the server's; the card shows them. */
 export type CrewDashboardsTab = {
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
-  filters: { key: string; label: string; count: number }[]
+  filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
   items: { id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
@@ -260,12 +260,13 @@ export function teamFolders(target: TeamTarget, query: string): Promise<TeamFold
 }
 
 /** The Share page (crew_share_page.go, owner 9 Nov mocks): four options with the server's status and chips, the
- * viewer's agents (Ask with its two permissions) and the owner's actions, the who-can-use line and the dashboards
+ * viewer's agents (the share switch with its permissions) and the owner's actions, the who-can-use line and the dashboards
  * count. Every word and every "may change" is the server's; the page prints them and sends the person's change. */
-export type CrewShareOptionKey = 'team' | 'agents' | 'slack'
+export type CrewShareOptionKey = 'team' | 'agents'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
-export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean; changes_label: string; changes_line: string
-  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[] }
+export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean
+  title: string; line: string; changes_label: string; changes_options: { value: boolean; label: string; line: string }[]
+  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
@@ -291,7 +292,7 @@ export function teamFolderChange(target: TeamTarget, whole: boolean): Promise<Te
 }
 
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
- * does not write, as real tabs of this Crew. Their chats are read from the server through this Mac's sign-in
+ * does not write, as real tabs of this Crew (agents only: a read-only schedule chat of the viewer's own has a :schedule: key and stays out). Their chats are read from the server through this Mac's sign-in
  * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */
 export async function teamSideChats(profileId: string, projectId: string): Promise<AgentProfileSideChat[]> {
   const binding = await macBinding(projectId)
@@ -299,14 +300,14 @@ export async function teamSideChats(profileId: string, projectId: string): Promi
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
   if (!response.ok) return []
   const rows = await response.json() as AgentProfileSideChat[]
-  return (rows || []).filter(row => row.can_write === false && !row.on_your_mac && row.tab_owner_id && row.session_id && !row.is_main).map(row => {
+  return (rows || []).filter(row => row.can_write === false && !row.on_your_mac && row.tab_owner_id && row.session_id && !row.is_main && row.conversation_key.includes(':chat:')).map(row => {
     registerRemoteSession(row.session_id, binding.connection)
     return { ...row, conversation_key: `${projectId}:team:${row.conversation_key}`, chat_location: undefined, agent_id: undefined }
   })
 }
 
 /** A Team invite as the invited person sees it (owner, 5 Nov): accept on the web or on this Mac, or decline. */
-export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string }
+export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean }
 
 export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
   await teamRequest<unknown>({ project: invite.project_id, connection: invite.connection }, '/invite', 'POST', { accept })
@@ -319,9 +320,12 @@ export function useTeamInvites() {
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const connections = useConnectedWorkStore(s => s.connections)
   const [invites, setInvites] = useState<TeamInvite[]>([])
+  // The connections list is rebuilt (new objects) on every refresh of the connected servers; only its ids matter here.
+  const connectionKey = connections.map(connection => connection.id).join(',')
+  // A different person or workspace starts from nothing; a refresh of the same ones never empties the list.
+  useEffect(() => { setInvites([]) }, [user, workspace])
   useEffect(() => {
     let active = true
-    setInvites([])
     const load = async () => {
       const found: TeamInvite[] = []
       const sources = hasDesktopConnections() && getRawActiveWorkspaceId() === 'local' ? connections.filter(c => c.id !== 'local').map(c => c.id) : [undefined]
@@ -336,13 +340,14 @@ export function useTeamInvites() {
           for (const invite of data.invites || []) found.push({ ...invite, connection })
         } catch { /* An offline network keeps its copies on the computer. */ }
       }))
-      if (active) setInvites(found)
+      // The same invites keep the same list, so the card is not re-rendered by every poll.
+      if (active) setInvites(current => JSON.stringify(current) === JSON.stringify(found) ? current : found)
     }
     void load()
     const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
-  }, [user, workspace, connections])
+  }, [user, workspace, connectionKey]) // eslint-disable-line react-hooks/exhaustive-deps -- connections is read through its ids
   return invites
 }
 

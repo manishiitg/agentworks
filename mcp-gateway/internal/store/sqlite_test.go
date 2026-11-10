@@ -235,3 +235,84 @@ func TestSQLiteLoadsLegacySnapshotAfterFeatureRemoval(t *testing.T) {
 		t.Fatal("removed feature configuration was saved again")
 	}
 }
+
+// PLAT-746-812: one discovery used to rewrite the whole durable store for
+// every tool, even unchanged ones. Keep the whole catalog update atomic and
+// preserve grants, version history and rollback on a failed commit.
+func TestSQLiteDiscoveryCommitsOnceAndRestoresOnFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.sqlite")
+	s, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.AddWorkspace(Workspace{ID: "w"})
+	s.AddUser(User{ID: "u", WorkspaceID: "w"})
+	s.AddConnector(Connector{ID: "c", WorkspaceID: "w", Status: StatusActive})
+	initial := []ToolSnapshot{
+		{ConnectorID: "c", WorkspaceID: "w", PublicName: "changed", Fingerprint: "f1"},
+		{ConnectorID: "c", WorkspaceID: "w", PublicName: "revived", Fingerprint: "f1"},
+		{ConnectorID: "c", WorkspaceID: "w", PublicName: "removed", Fingerprint: "f1"},
+	}
+	if _, err = s.ReconcileToolSnapshots("c", initial); err != nil {
+		t.Fatal(err)
+	}
+	s.AddGrant(Grant{UserID: "u", PublicName: "changed"})
+	s.DisableMissingTools("c", map[string]bool{"changed": true, "removed": true})
+	next := append([]ToolSnapshot(nil), initial[:2]...)
+	next[0].Fingerprint = "f2"
+	next = append(next, ToolSnapshot{ConnectorID: "c", WorkspaceID: "w", PublicName: "new", Fingerprint: "f1"})
+	revision := func() int64 {
+		t.Helper()
+		var value int64
+		if err := s.persistence.db.QueryRow(`SELECT revision FROM gateway_configuration WHERE id=1`).Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	before := revision()
+	if _, err = s.ReconcileToolSnapshots("c", next); err != nil {
+		t.Fatal(err)
+	}
+	if revision() != before+1 {
+		t.Fatal("one discovery made more than one durable commit")
+	}
+	for _, name := range []string{"changed", "revived", "new"} {
+		if tool, ok := s.GetTool(name); !ok || tool.Status != StatusActive {
+			t.Fatal("discovered tool did not become active")
+		}
+	}
+	if tool, _ := s.GetTool("removed"); tool.Status != StatusDisabled {
+		t.Fatal("missing tool remained active")
+	}
+	if versions := s.ListToolVersions("w", "changed"); len(versions) != 1 || versions[0].Fingerprint != "f1" {
+		t.Fatal("changed tool lost its earlier definition")
+	}
+	if !s.HasGrant("u", "changed") {
+		t.Fatal("discovery lost an existing grant")
+	}
+	before = revision()
+	if _, err = s.ReconcileToolSnapshots("c", next); err != nil {
+		t.Fatal(err)
+	}
+	if revision() != before {
+		t.Fatal("unchanged discovery rewrote configuration")
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	next[0].Fingerprint = "f3"
+	if _, err = s.ReconcileToolSnapshots("c", next); err == nil {
+		t.Fatal("failed discovery commit was reported as successful")
+	}
+	if tool, _ := s.GetTool("changed"); tool.Fingerprint != "f2" {
+		t.Fatal("failed discovery remained visible")
+	}
+	s, err = NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if tool, _ := s.GetTool("changed"); tool.Fingerprint != "f2" {
+		t.Fatal("failed discovery reached durable storage")
+	}
+}

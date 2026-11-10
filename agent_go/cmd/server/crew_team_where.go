@@ -113,7 +113,7 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		// Their server copy goes now: their agents here work on their Mac, with its copy (crew_team_server_copy.go).
 		go api.removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
 	}
-	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.view(claims.UserID)})
+	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.viewLocked(claims.UserID)})
 }
 
 // crewRelayReadKey marks a relay request that only reads a Mac chat (its events, status or queue).
@@ -284,7 +284,13 @@ func crewTeamWhereFor(project, user string) string {
 	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
 		return ""
 	}
-	return t.view(user).Where
+	if t.member(user) && user != t.OwnerID {
+		if _, onMac := t.memberMac(user); onMac {
+			return "mac"
+		}
+		return "web"
+	}
+	return ""
 }
 
 // handleDesktopCrewTeamAddToMac moves the member's agents of a Team's Crew back to this Mac's existing copy ("Add to

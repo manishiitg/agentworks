@@ -341,6 +341,10 @@ func (api *StreamingAPI) saveDashboardPublicLink(w http.ResponseWriter, r *http.
 		externalError(w, 400, "invalid_arguments", "Choose the dashboard by its dashboard_id.")
 		return
 	}
+	if mode != "off" && agentWorksPrivateRoot(r.Context(), target.Root) {
+		externalError(w, 403, "agentworks_private", agentWorksPrivateLine)
+		return
+	}
 	actor := sanitizeUserIDForPath(claims.UserID)
 	current, found := dashboardPublicRecords(target.Root)[id]
 	// Turning on a link that is on changes nothing: the copy moves only on Update.

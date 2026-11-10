@@ -213,11 +213,6 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:    []string{"get_crew_costs"},
 		UIPanels: []string{"costs"},
 	},
-	"background-work": {
-		Tools:           []string{"run_in_background", "query_agent", "list_background_agents", "terminate_agent"},
-		Skills:          []string{"background-work"},
-		PromptExtension: "Background work is enabled. Read the attached `background-work` skill before delegating. Delegate only bounded independent tasks, rely on automatic completion notifications, and do not poll unless the user asks for status.",
-	},
 	"workspace-ui": {
 		Tools:           []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"},
 		Skills:          []string{"work-ui-control"},
@@ -326,13 +321,13 @@ func ResolveFeatures(profile *Profile) error {
 // project product (internal/workproduct/skills). Their text names the
 // product with {{product}}, filled from that product's product.yaml name.
 var FeatureSkillTemplates = map[string]bool{
-	"work-ui-control": true, "background-work": true,
+	"work-ui-control": true,
 }
 
 // FeatureSkillName is the registered name of a shared feature skill for one
 // product. Crew (profile work) keeps the original names; every other product
 // gets its own rendered copy, "<profile>-<base>" (code-mcp,
-// code-background-work). Skills outside FeatureSkillTemplates are global and
+// code-ui-control). Skills outside FeatureSkillTemplates are global and
 // keep their name.
 func FeatureSkillName(profileID, name string) string {
 	profileID = strings.TrimSpace(profileID)

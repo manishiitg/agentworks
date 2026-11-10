@@ -1820,7 +1820,7 @@ export const agentApi = {
 
   // --- Shared bot connector config ("_global": allowed_emails etc.) ---
 
-  getBotConfig: async (): Promise<{ delegation_tier_config?: Record<string, unknown>; default_servers?: string[]; default_skills?: string[]; allowed_emails?: string[] }> => {
+  getBotConfig: async (): Promise<{ default_servers?: string[]; default_skills?: string[]; allowed_emails?: string[] }> => {
     const response = await api.get('/api/bot/config')
     return response.data
   },
@@ -1881,22 +1881,6 @@ export const agentApi = {
     routing: Record<string, WhatsAppRoute>
   ): Promise<{ routing: Record<string, WhatsAppRoute> }> => {
     const response = await api.put('/api/whatsapp/routing', { routing })
-    return response.data
-  },
-
-  // Save delegation tier config to workspace filesystem (shared by chat and bot connector)
-  saveDelegationTierConfig: async (config: Record<string, unknown>, providerApiKeys?: Record<string, string>): Promise<{ success: boolean }> => {
-    await api.put('/api/delegation-tier-config', config)
-    // Save provider API keys to encrypted workspace file if provided
-    if (providerApiKeys && Object.keys(providerApiKeys).length > 0) {
-      await api.put('/api/provider-keys', providerApiKeys).catch(() => {})
-    }
-    return { success: true }
-  },
-
-  // Load delegation tier config from workspace filesystem
-  getDelegationTierConfig: async (): Promise<Record<string, unknown>> => {
-    const response = await api.get('/api/delegation-tier-config')
     return response.data
   },
 

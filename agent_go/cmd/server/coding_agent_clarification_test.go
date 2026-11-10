@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -374,7 +376,10 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
 		t.Fatal(err)
 	}
-	p := api.codingAgentClarifications["session"]
+	var p *pendingCodingAgentClarification
+	for _, pending := range api.codingAgentClarifications {
+		p = pending
+	}
 	if p == nil || p.ctx.Err() != nil {
 		t.Fatal("question was not retained independently of the turn")
 	}
@@ -383,6 +388,36 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	}
 	if len(api.eventStore.GetAllEventsRaw("session")) != 1 {
 		t.Fatal("native replay duplicated question")
+	}
+	// PLAT-746-764: another async call must not stop native transcript progress.
+	second := record
+	second.ID = "second-call"
+	if err := api.observeNativeAsyncQuestion("session", second); err != nil {
+		t.Fatalf("second async question blocked ingestion: %v", err)
+	}
+	var other *pendingCodingAgentClarification
+	for _, pending := range api.codingAgentClarifications {
+		if pending != p {
+			other = pending
+		}
+	}
+	if other == nil || len(api.eventStore.GetAllEventsRaw("session")) != 2 {
+		t.Fatal("second question did not retain an independent durable card")
+	}
+	if _, err := api.submitCodingAgentClarificationOutcome("different-session", "codex-cli", other.promptID, true, nil); err == nil {
+		t.Fatal("another chat could answer a native async card")
+	}
+	// The shared map has session and prompt keys. An admitted chat named like
+	// another card's prompt must not take that card through the session lookup.
+	api.lastQueryRequests[other.promptID] = QueryRequest{}
+	if _, err := api.submitCodingAgentClarificationOutcome(other.promptID, "codex-cli", other.promptID, true, nil); err == nil {
+		t.Fatal("a colliding chat key could settle another chat's card")
+	}
+	if _, err := api.submitCodingAgentClarificationOutcome("session", "codex-cli", other.promptID, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if api.codingAgentClarificationLocked("session", p.promptID) != p {
+		t.Fatal("answering the second card removed the first")
 	}
 	if err := api.submitSharedAgentQuestion("session", "codex-cli", p.promptID, true, nil); err == nil {
 		t.Fatal("shared answer could resume owner's native async question")
@@ -400,7 +435,72 @@ func TestNativeAsyncQuestionSurvivesTurnAndRefusesSharedContinuation(t *testing.
 	if err := api.observeNativeAsyncQuestion("session", record); err != nil {
 		t.Fatal(err)
 	}
-	if api.codingAgentClarifications["session"] != nil {
+	if api.codingAgentClarificationLocked("session", p.promptID) != nil {
 		t.Fatal("replay resurrected answered question")
+	}
+}
+
+// PR1730: restart must close an unanswered native card even after it leaves
+// the memory tail, without changing answered cards or blocking tool questions.
+func TestNativeAsyncRestartClosesOnlyUnansweredDurableCards(t *testing.T) {
+	journal, err := events.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "questions.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := events.NewEventStore(10)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	store.SetSessionOwner("chat", "owner")
+	if err := store.SetSessionPersistenceClass("chat", events.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{eventStore: store}
+	for _, id := range []string{"clarification:async-open", "clarification:async-answered", "clarification:blocking"} {
+		p := &pendingCodingAgentClarification{sessionID: "chat", provider: "codex-cli", promptID: id}
+		if err := api.emitCodingAgentClarification(p, "requested", "", nil); err != nil {
+			t.Fatal(err)
+		}
+		if id == "clarification:async-answered" {
+			if err := api.emitCodingAgentClarification(p, "settled", "answered", nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for i := 0; i < 505; i++ {
+		e := events.Event{ID: fmt.Sprintf("later-%d", i), Type: "user_message", SessionID: "chat", Timestamp: time.Now(),
+			Data: &unifiedevents.AgentEvent{Type: unifiedevents.EventType("user_message"), Data: events.NewGenericEventData("user_message", map[string]interface{}{"content": "later"})}}
+		if err := store.AddEventChecked("chat", e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := api.closeRestartedNativeAsyncQuestions("chat"); err != nil {
+			t.Fatal(err)
+		}
+		page, err := store.ReadDurableChatPage("chat", events.DurableEventPageOptions{Limit: 1000, FromStart: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		settlements := 0
+		for _, e := range page.Events {
+			if e.ID == "clarification:blocking:settled" {
+				t.Fatal("restart closed a non-native blocking card")
+			}
+			if e.ID != "clarification:async-open:settled" {
+				continue
+			}
+			settlements++
+			raw, _ := json.Marshal(e.Data.Data)
+			var closed unifiedevents.CodingAgentQuestionEvent
+			if err := json.Unmarshal(raw, &closed); err != nil {
+				t.Fatal(err)
+			}
+			if closed.Outcome != clarificationOutcomeUnanswered || len(closed.Answers) != 0 || closed.Metadata["message"] == nil {
+				t.Fatalf("restart invented an answer or omitted its explanation: %s", raw)
+			}
+		}
+		if settlements != 1 || len(page.Events) != 510 {
+			t.Fatalf("restart changed other cards or duplicated settlement: settlements=%d events=%d", settlements, len(page.Events))
+		}
 	}
 }

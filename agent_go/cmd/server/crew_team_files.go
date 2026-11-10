@@ -21,7 +21,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
@@ -37,11 +36,12 @@ type crewTeamVersion struct {
 	ModifiedAt string          `json:"modified_at"`
 }
 type crewTeamFileState struct {
-	Revision uint64                     `json:"revision"`
-	Versions map[string]crewTeamVersion `json:"versions"`
-	Events   []crewTeamEvent            `json:"events"`
-	Clashes  []crewTeamClash            `json:"clashes"`
-	Receipts map[string]crewTeamReceipt `json:"receipts"`
+	HistoryFloor uint64                     `json:"-"`
+	Revision     uint64                     `json:"revision"`
+	Versions     map[string]crewTeamVersion `json:"versions"`
+	Events       []crewTeamEvent            `json:"events"`
+	Clashes      []crewTeamClash            `json:"clashes"`
+	Receipts     map[string]crewTeamReceipt `json:"receipts"`
 	// OnPurpose: files that look like they hold passwords or keys which a member chose to sync anyway (owner, 5 Nov),
 	// by path, with who chose it. Everyone then syncs them like any shared file.
 	OnPurpose map[string]string `json:"on_purpose,omitempty"`
@@ -111,28 +111,7 @@ func crewTeamFilesRoot(project string) (string, error) {
 	}
 	return filepath.Join(d, "files"), nil
 }
-func readCrewTeamFileState(project string) (crewTeamFileState, error) {
-	s := crewTeamFileState{Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{}}
-	d, e := crewTeamContentDir(project)
-	if e != nil {
-		return s, e
-	}
-	raw, e := os.ReadFile(filepath.Join(d, "files.json"))
-	if os.IsNotExist(e) {
-		return s, nil
-	}
-	if e != nil {
-		return s, e
-	}
-	e = json.Unmarshal(raw, &s)
-	if s.Versions == nil {
-		s.Versions = map[string]crewTeamVersion{}
-	}
-	if s.Receipts == nil {
-		s.Receipts = map[string]crewTeamReceipt{}
-	}
-	return s, e
-}
+
 func (s crewTeamFileState) manifest() crewsync.Manifest {
 	m := crewsync.Manifest{}
 	for rel, v := range s.Versions {
@@ -159,11 +138,7 @@ func (s crewTeamFileState) held(folder crewTeamFolder) map[string]crewTeamVersio
 // shares now but did not before, so every copy receives them (a copy that already has a file adopts it without a
 // write). The caller holds the team lock and has saved the new Team record.
 func announceCrewTeamSharedAgain(project, actor string, previous, current crewTeamFolder) error {
-	state, err := readCrewTeamFileState(project)
-	if err != nil {
-		return err
-	}
-	dir, err := crewTeamContentDir(project)
+	state, err := readCrewTeamFileStateLocked(project)
 	if err != nil {
 		return err
 	}
@@ -183,7 +158,7 @@ func announceCrewTeamSharedAgain(project, actor string, previous, current crewTe
 		state.Events = append(state.Events, crewTeamEvent{Path: rel, Kind: "shared", Revision: revision, Actor: actor, Author: v.Author, At: now, File: v.File, Chunks: v.Chunks})
 	}
 	state.Revision = revision
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); err != nil {
+	if err = saveCrewTeamFileState(project, state); err != nil {
 		return err
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=shared_again files=%d revision=%d", project, logUsernameForUserID(actor), len(paths), revision)
@@ -278,11 +253,15 @@ type crewTeamChange struct {
 // the canonical bytes, events and a receipt (a retry with the same transfer returns it). The caller holds the team
 // lock and has rechecked current membership. declared are the paths the sender chose to sync on purpose.
 func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, changes []crewTeamChange, declared ...string) (crewTeamReceipt, error) {
+	return commitCrewTeamChangesAtRevision(ctx, project, actor, transfer, digest, nil, changes, declared...)
+}
+
+func commitCrewTeamChangesAtRevision(ctx context.Context, project, actor, transfer, digest string, cursor *uint64, changes []crewTeamChange, declared ...string) (crewTeamReceipt, error) {
 	dir, e := crewTeamContentDir(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
 	}
-	state, e := readCrewTeamFileState(project)
+	state, e := readCrewTeamFileStateLocked(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
 	}
@@ -292,6 +271,9 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			return old, fmt.Errorf("this transfer ID was already used for different changes")
 		}
 		return old, nil
+	}
+	if cursor != nil && (*cursor < state.HistoryFloor || *cursor > state.Revision) {
+		return crewTeamReceipt{}, errCrewTeamHistoryCatchUp
 	}
 	if transfer == "" || len(transfer) > 257 || !validCrewTeamHash(digest) || len(changes) > crewTeamCommitBatch {
 		return crewTeamReceipt{}, fmt.Errorf("use a stable transfer identity and at most %d files", crewTeamCommitBatch)
@@ -350,7 +332,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	partial := func(e error) (crewTeamReceipt, error) {
 		if applied > 0 {
 			state.Revision = receipt.Revision
-			if saveErr := fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); saveErr != nil {
+			if saveErr := saveCrewTeamFileState(project, state); saveErr != nil {
 				log.Printf("[CREW_TEAM] project=%s event=partial_commit_unsaved reason=%q", project, saveErr)
 			}
 		}
@@ -446,7 +428,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	}
 	state.Revision = receipt.Revision
 	state.Receipts[receiptKey] = receipt
-	if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); e != nil {
+	if e = saveCrewTeamFileState(project, state); e != nil {
 		return receipt, e
 	}
 	for _, event := range state.Events {
@@ -579,7 +561,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 	}
 	dir, _ := crewTeamContentDir(project)
 	if r.Method == http.MethodGet && mux.Vars(r)["op"] == "files" {
-		s, e := readCrewTeamFileState(project)
+		s, e := readCrewTeamCurrentState(project)
 		if e != nil {
 			externalError(w, 409, "team_folder_unavailable", e.Error())
 			return
@@ -599,7 +581,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	// A file a member chose to sync on purpose is an ordinary shared file here too.
-	known, _ := readCrewTeamFileState(project)
+	known, _ := readCrewTeamCurrentState(project)
 	op := known.onPurpose()
 	if !crewTeamAllowed(rel, op) || !t.Folder.holds(rel) {
 		externalError(w, 403, "team_path_forbidden", "Choose a file inside the shared folder; private state and credentials stay private.")

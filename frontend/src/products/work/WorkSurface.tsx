@@ -1,4 +1,5 @@
 import { chatForkedEvent } from '../../utils/forkChatTab'
+import { workConversationKey } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
@@ -539,8 +540,8 @@ export function useWorkChatTab(
     // Users, Providers or Schedules page. Activate it when returning to work.
     const route = currentProductRoute()
     const requestedAgent = route?.surface === product.profileId && route.id === projectId ? route.agent : undefined
-    if (requestedAgent) {
-      const key = requestedAgent === 'main' ? projectId : `${projectId}:chat:${requestedAgent}`
+    if (requestedAgent && projectId) {
+      const key = workConversationKey(projectId, requestedAgent)
       const state = useChatStore.getState()
       const existing = Object.values(state.chatTabs).find(tab => belongsToWorkProject(tab, projectId || '') && tab.metadata?.agentProfileConversationKey === key && !tab.metadata?.isViewOnly)
       if (existing && state.activeTabId !== existing.tabId) activateTab(existing.tabId)
@@ -551,7 +552,7 @@ export function useWorkChatTab(
   const destination = currentProductRoute()
   const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
   const activeConversation = activeProjectTabId ? useChatStore.getState().chatTabs[activeProjectTabId]?.metadata?.agentProfileConversationKey : undefined
-  const awaitingRequestedAgent = requestedAgent && requestedAgent !== 'main' && activeConversation !== `${projectId}:chat:${requestedAgent}`
+  const awaitingRequestedAgent = !!projectId && !!requestedAgent && requestedAgent !== 'main' && activeConversation !== workConversationKey(projectId, requestedAgent)
   return {
     // Do not flash Main while the specifically requested agent is being restored.
     tabId: awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
@@ -786,7 +787,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         const route = currentProductRoute()
         const requestedAgent = route?.surface === profileId && route.id === projectId ? new URLSearchParams(window.location.search).get('agent') : null
         if (requestedAgent && requestedAgent !== 'main') {
-          const wanted = `${projectId}:chat:${requestedAgent}`
+          const wanted = workConversationKey(projectId, requestedAgent)
           const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === wanted)
           if (tab) {
             if (useChatStore.getState().activeTabId !== tab.tabId) activateTab(tab.tabId)
@@ -810,7 +811,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     const onHistory = () => {
       const route = currentProductRoute()
       if (route?.surface !== profileId || route.id !== projectId) return
-      const key = !route.agent || route.agent === 'main' ? projectId : `${projectId}:chat:${route.agent}`
+      const key = workConversationKey(projectId, route.agent)
       const state = useChatStore.getState()
       const existing = Object.values(state.chatTabs).find(tab => belongsToWorkProject(tab, projectId) && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileConversationKey === key)
       if (existing) { if (state.activeTabId !== existing.tabId) activateTab(existing.tabId); return }
@@ -1058,6 +1059,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const conversationKey = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata?.agentProfileConversationKey : undefined)
   const requestedRoute = currentProductRoute()
   const selectedAgent = selected && conversationKey?.startsWith(`${selected.id}:chat:`) ? conversationKey.slice(`${selected.id}:chat:`.length)
+    : selected && conversationKey?.startsWith(`${selected.id}:schedule:`) ? conversationKey.slice(selected.id.length + 1)
     : selected && conversationKey === selected.id ? 'main'
       : requestedRoute?.surface === product.profileId && requestedRoute.id === selected?.id ? requestedRoute.agent : undefined
   useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined, agent: selectedAgent }, viewNavigationRevision)
@@ -1111,7 +1113,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
-  const { private: chatPrivateLine, note: chatShareNote } = useChatShareLines(tabId)
+  const { private: chatPrivateLine } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   useEffect(() => {
@@ -1573,7 +1575,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chat={<>
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
-                        {chatShareNote && <p role="status" className="border-b border-border px-3 py-1.5 text-center text-xs text-muted-foreground">{chatShareNote}</p>}
                         <div className="min-h-0 flex-1">
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}

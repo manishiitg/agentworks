@@ -358,6 +358,12 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/changes"+query, crewTeamSyncRequest{Client: b.Client, Since: b.Revision}, &page); e != nil {
 			return crewTeamStep("changes", e)
 		}
+		if page.CatchUp {
+			// Use the existing first-download reconciliation: local edited bytes
+			// stay here, against the server's current base, for the next upload.
+			b.Downloaded = false
+			pending = true // reconciliation may preserve edits made after the upload scan
+		}
 		b.FolderOnPurpose = page.OnPurpose // the server names what the folder holds on purpose
 		skipped, err := crewTeamDownload(ctx, owner, c, route, query, dir, b, page.Files)
 		if err != nil {
@@ -373,6 +379,24 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 			break
 		}
 		b.Revision = page.Through
+		if page.CatchUp {
+			b.Status = "pending"
+			if e = saveCrewTeamLocal(dir, *b); e != nil {
+				return e
+			}
+			if errors.Is(uploadErr, errCrewTeamHistoryCatchUp) {
+				uploadErr = nil
+			}
+			// Reconcile can preserve local edits without a filesystem change event.
+			// Scan them on the next round before reporting this copy up to date.
+			watch := crewTeamWatchFor(dir, b.Root)
+			watch.mu.Lock()
+			watch.full = true
+			watch.mu.Unlock()
+			crewTeamWakeSoon()
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=catch_up_applied revision=%d", b.Project, b.Client, b.Revision)
+			continue // only a subsequent normal delta may report synchronized
+		}
 		if !page.More && !b.Downloaded {
 			// From now on this copy also sends its changes (a copy that already held the team's files adopted them).
 			b.Downloaded = true
@@ -701,7 +725,7 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 		batch := scan.changes[start:min(start+crewTeamCommitBatch, len(scan.changes))]
 		// The same change set retried (a commit whose reply was lost) carries the same transfer id, so the server's
 		// receipt answers it instead of applying a stale base over a newer edit (review 5 Nov #7).
-		request := crewTeamSyncRequest{Client: b.Client, TransferID: crewTeamChangeSetID(b.Client, b.Revision, batch), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
+		request := crewTeamSyncRequest{Client: b.Client, Since: b.Revision, TransferID: crewTeamChangeSetID(b.Client, b.Revision, batch), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
 		var plan struct {
 			Missing []string `json:"missing"`
 		}

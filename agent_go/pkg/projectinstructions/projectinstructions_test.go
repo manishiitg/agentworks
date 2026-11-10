@@ -57,3 +57,13 @@ func TestProjectInstructionsAppendAfterPlatformAndStayEditable(t *testing.T) {
 		t.Fatalf("guard must block AGENTS.md and allow %s:\n%s", FileName, blocked)
 	}
 }
+
+// PLAT-746: published source files must not be attributed to another filename.
+func TestPublishedSourceKeepsFilenameInHeadingAndTruncation(t *testing.T) {
+	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
+		got := SourceSection(name, strings.Repeat("x", MaxBytes+1))
+		if strings.Contains(got, FileName) || !strings.Contains(got, "from "+name) || !strings.Contains(got, "["+name+" is") {
+			t.Fatalf("source attribution lost for %s", name)
+		}
+	}
+}

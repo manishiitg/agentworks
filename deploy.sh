@@ -196,11 +196,11 @@ product_config_dir() {
 # One real AgentWorks tool call per configured company provider, over the server's public MCP, in a dedicated smoke
 # Crew. It reports PASS/FAIL per provider and never fails a deploy. The private products/<name>/smoke.env names the
 # saved login on this computer (SMOKE_LOGIN, from `agentworks login --name`) and the Crew (SMOKE_WORKSPACE=work:<id>);
-# without it nothing runs. DEPLOY_SMOKE=0 skips it for one deploy.
+# without it nothing runs. Opt-in (owner, 9 Nov: "yes opt in"): it runs only with DEPLOY_SMOKE=1, for a batch end or a slot/provider change.
 post_deploy_smoke() {
   local product="$1" config
   config="$(deployments_dir)/products/$product/smoke.env"
-  [[ "${DEPLOY_SMOKE:-1}" != 0 ]] || { echo "==> [$product] Smoke check skipped (DEPLOY_SMOKE=0)."; return 0; }
+  [[ "${DEPLOY_SMOKE:-0}" == 1 ]] || { echo "==> [$product] Smoke check skipped (opt-in: DEPLOY_SMOKE=1 runs it)."; return 0; }
   [[ -f "$config" ]] || { echo "==> [$product] Smoke check not set up (no products/$product/smoke.env)."; return 0; }
   (
     # shellcheck disable=SC1090

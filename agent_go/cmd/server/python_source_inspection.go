@@ -11,19 +11,39 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythonruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
+
+// automationOutlineLimit is the most code the outline reads. The code travels in environment variables, which the
+// operating system limits to about 128 KiB each, so it is sent in pieces (automationSourceEnvironment). The whole
+// environment must also stay under the system's total limit (1 MiB on macOS, where a laptop runs this server), so the
+// outline stops at 400 KiB of code (about 530 KiB encoded).
+const automationOutlineLimit = 400 * 1024
+
+func automationSourceEnvironment(raw []byte) map[string]string {
+	encoded := base64.StdEncoding.EncodeToString(raw)
+	environment := map[string]string{"VAR_AUTOMATION_TYPE_CHECK": "1"}
+	const piece = 96 * 1024
+	count := 0
+	for start := 0; start < len(encoded); start += piece {
+		end := min(start+piece, len(encoded))
+		environment[fmt.Sprintf("VAR_AUTOMATION_CHECK_FILES_%d", count)] = encoded[start:end]
+		count++
+	}
+	environment["VAR_AUTOMATION_CHECK_FILES_COUNT"] = fmt.Sprint(count)
+	return environment
+}
 
 func inspectPythonAutomationSource(ctx context.Context, workspacePath string, files map[string]string) (json.RawMessage, error) {
 	raw, err := json.Marshal(files)
 	if err != nil {
 		return nil, fmt.Errorf("read automation source: %w", err)
 	}
-	if len(raw) > 64*1024 {
-		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (64 KiB limit). You can still open and run it."]}`), nil
+	if len(raw) > automationOutlineLimit {
+		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (400 KiB limit). You can still open and run it."]}`), nil
 	}
-	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), map[string]string{"VAR_AUTOMATION_CHECK_FILES": base64.StdEncoding.EncodeToString(raw), "VAR_AUTOMATION_TYPE_CHECK": "1"})
+	graph, err := inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), automationSourceEnvironment(raw))
 	if err == nil {
 		rememberCrewStepCount(workspacePath, files, graph)
 	}
@@ -48,9 +68,9 @@ func inspectPythonSourceEnvironment(ctx context.Context, workspacePath, workingD
 	if IsMultiUserMode() && client.UserID == "" {
 		return nil, fmt.Errorf("Flow execution owner unavailable")
 	}
-	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_RELAY_INSPECTOR"]),"<platform-inspector>","exec"))`
+	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_PYTHON_INSPECTOR"]),"<platform-inspector>","exec"))`
 	timeout := 15
-	environment["VAR_RELAY_INSPECTOR"] = base64.StdEncoding.EncodeToString([]byte(relaypython.SourceInspector))
+	environment["VAR_PYTHON_INSPECTOR"] = base64.StdEncoding.EncodeToString([]byte(pythonruntime.SourceInspector))
 	result, err := client.ExecuteShellCommand(validationCtx, workspace.ExecuteShellCommandParams{
 		Command: "python3 -I -c '" + check + "'", WorkingDirectory: workingDirectory, Timeout: &timeout,
 		ExtraEnv: environment,

@@ -107,7 +107,6 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 	"workspace_image_gen":  true,
 	"workspace_image_edit": true,
 	"human_tools":          true,
-	"delegation_tools":     true,
 	"workflow":             true,
 	"workflow_creator":     true,
 	"knowledgebase_tools":  true,
@@ -886,8 +885,6 @@ type QueryRequest struct {
 	BotUserID    string `json:"bot_user_id,omitempty"`
 	BotUserName  string `json:"bot_user_name,omitempty"`
 	BotUserEmail string `json:"bot_user_email,omitempty"`
-	// Delegation tier configuration: Maps reasoning levels (high/medium/low) to specific provider/model pairs
-	DelegationTierConfig *virtualtools.DelegationTierConfig `json:"delegation_tier_config,omitempty"`
 	// Selected global secret names to include (if nil/absent, no global secrets are included)
 	SelectedGlobalSecrets *[]string `json:"selected_global_secrets,omitempty"`
 	// Workspace paths of workflows to inject context for (via # selector in chat)
@@ -2449,7 +2446,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/llm-config/models/metadata", api.handleGetModelMetadata).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/azure/deployments", api.handleGetAzureDeployedModels).Methods("POST")
 	apiRouter.HandleFunc("/llm-config/validate-key", api.handleValidateAPIKey).Methods("POST")
-	apiRouter.HandleFunc("/llm-config/delegation-tiers", api.handleGetDelegationTierDefaults).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers", api.handleGetProviderManifest).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers/{provider}/models", api.handleGetProviderModels).Methods("GET")
 	apiRouter.HandleFunc("/provider-connections", api.handleProviderConnections).Methods("GET", "POST", "OPTIONS")
@@ -2638,11 +2634,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Published LLMs (workspace-backed JSON storage)
 	apiRouter.HandleFunc("/published-llms", api.handleSavePublishedLLMs).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/published-llms", api.handleLoadPublishedLLMs).Methods("GET", "OPTIONS")
-
-	// Legacy bot-connector model profile. Direct chat and product chat use their
-	// selected/profile model directly and do not load delegation tiers.
-	apiRouter.HandleFunc("/delegation-tier-config", api.handleSaveDelegationTierConfig).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/delegation-tier-config", api.handleLoadDelegationTierConfig).Methods("GET", "OPTIONS")
 
 	// OAuth API routes (from oauth_routes.go)
 	apiRouter.HandleFunc("/oauth/start", api.handleOAuthStart).Methods("POST", "OPTIONS")
@@ -5256,9 +5247,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		//
 		// This branch is deliberately narrower than "any chat with SelectedFolder
 		// set": an ordinary multi-agent chat that merely references a workflow
-		// folder must not inherit that workflow's credential (see delegation.go's
-		// workflowOwnedDelegation check, which enforces the same rule for
-		// sub-agents).
+		// folder must not inherit that workflow's credential.
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
@@ -6520,16 +6509,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register workflow runtime: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile workflow runtime: %v", err), true)
 				return
-			}
-			// Crew Run mode: readers get foreground-only turns (background
-			// delegates would need their own guard inheritance proof) and
-			// no dashboard authoring.
-			if !crewReadOnly {
-				if err := api.registerWorkBackgroundTools(llmAgent, resolvedProfile, req, sessionID, currentUserID); err != nil {
-					logfWithContext(queryLogCtx, "[WORK BACKGROUND] Failed to register tools: %v", err)
-					sendError(fmt.Sprintf("Failed to register Work background tools: %v", err), true)
-					return
-				}
 			}
 			if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder, crewReadOnly || currentUserIsReadOnly); err != nil {
 				logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
@@ -8269,11 +8248,19 @@ func (api *StreamingAPI) markMCPAgentSessionTurnRunningWithNativeID(sessionID, e
 	if len(acceptedAt) > 0 && !acceptedAt[0].IsZero() {
 		boundary = acceptedAt[0]
 	}
+	identity := retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID), AcceptedAt: boundary}
+	if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil {
+		if handle := native.Snapshot(); handle != nil {
+			identity.Provider = handle.Provider.Provider
+			identity.Transport = handle.Provider.Transport
+			identity.NativeSessionID = handle.Provider.NativeSessionID
+		}
+	}
 	api.retainedMainTurnsMu.Lock()
 	if api.retainedMainTurnCanonicalIDs == nil {
 		api.retainedMainTurnCanonicalIDs = make(map[string]retainedTurnIdentity)
 	}
-	api.retainedMainTurnCanonicalIDs[executionID] = retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID), AcceptedAt: boundary}
+	api.retainedMainTurnCanonicalIDs[executionID] = identity
 	api.retainedMainTurnsMu.Unlock()
 	api.markMCPAgentSessionTurnRunning(sessionID, executionID)
 	api.reconcileAcceptedNativeCompletions(sessionID, nativeTurnID)
@@ -8287,7 +8274,18 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 	if len(executionIDs) > 0 {
 		executionID = strings.TrimSpace(executionIDs[0])
 	}
-	for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
+	snapshots := api.terminalStore.ListRaw(sessionID)
+	if sessionOwnsCompletion {
+		api.retainedMainTurnsMu.Lock()
+		identity := api.retainedMainTurnCanonicalIDs[executionID]
+		api.retainedMainTurnsMu.Unlock()
+		if descriptor, native := identity.nativeDescriptor(sessionID); native {
+			// No terminal is created: reuse the exact-ID lifecycle and its
+			// activity watchdog with an in-memory native runtime descriptor.
+			snapshots = []terminals.Snapshot{descriptor}
+		}
+	}
+	for _, snapshot := range snapshots {
 		if !codingAgentSnapshotIsMainAgent(snapshot) {
 			continue
 		}
@@ -8297,7 +8295,9 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 		if !sessionOwnsCompletion && !terminalSnapshotHasLiveTmux(snapshot) {
 			continue
 		}
-		api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+		if snapshot.TerminalID != "" {
+			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+		}
 		provider := llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 		watchCtx, watchCancel := context.WithCancel(context.Background())
 		api.retainedMainTurnsMu.Lock()
@@ -8906,6 +8906,11 @@ func (api *StreamingAPI) releaseStaleRetainedMainTurn(sessionID, reason string) 
 		api.retainedMainTurnsMu.Unlock()
 		return false
 	}
+	identity := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
+	if _, native := identity.nativeDescriptor(sessionID); native {
+		api.retainedMainTurnsMu.Unlock()
+		return false
+	}
 	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
 	executionIDs := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
 	for _, id := range executionIDs {
@@ -9031,25 +9036,38 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		return
 	}
 
-	snapshot, ok := api.terminalStore.GetRaw(event.TerminalID)
-	if !ok || !codingAgentSnapshotIsMainAgent(snapshot) {
-		// BaseEventBridge preserves the canonical mcpagent event but has no
-		// AgentWorks terminal identity to attach to it. Resolve the main terminal
-		// from the already-tracked owner session only for the explicit Session
-		// completion source. This keeps child completions from settling the turn.
-		if !mcpAgentSessionCompletion(event) && !steeredRun {
+	snapshot, nativeOnly := expectedNativeID.nativeDescriptor(sessionID)
+	if nativeOnly {
+		// Missing/different IDs never settle an accepted input, including
+		// after a previous Run finishes or the provider becomes quiet.
+		if expectedNativeID.ID == "" || retainedCompletionTurnID(event) != expectedNativeID.ID {
 			return
 		}
-		ok = false
-		for _, candidate := range api.terminalStore.ListRaw(sessionID) {
-			if codingAgentSnapshotIsMainAgent(candidate) {
-				snapshot = candidate
-				ok = true
-				break
+		if id := completionMetadataString(event, "native_session_id"); id != "" && expectedNativeID.NativeSessionID != "" && id != expectedNativeID.NativeSessionID {
+			return
+		}
+	} else {
+		var ok bool
+		snapshot, ok = api.terminalStore.GetRaw(event.TerminalID)
+		if !ok || !codingAgentSnapshotIsMainAgent(snapshot) {
+			// BaseEventBridge preserves the canonical mcpagent event but has no
+			// AgentWorks terminal identity to attach to it. Resolve the main terminal
+			// from the already-tracked owner session only for the explicit Session
+			// completion source. This keeps child completions from settling the turn.
+			if !mcpAgentSessionCompletion(event) && !steeredRun {
+				return
 			}
-		}
-		if !ok {
-			return
+			ok = false
+			for _, candidate := range api.terminalStore.ListRaw(sessionID) {
+				if codingAgentSnapshotIsMainAgent(candidate) {
+					snapshot = candidate
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return
+			}
 		}
 	}
 
@@ -9097,20 +9115,27 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 				api.retainedMainTurnPendingExecutionIDs[sessionID] = remaining
 			}
 		}
-		// Validate native ownership before changing the terminal snapshot. A late
-		// old completion must not make the newer native turn look idle.
-		if completion, ok := retainedCompletionPayload(event); ok &&
-			(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
-			if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
-				snapshot = failed
+		if nativeOnly {
+			snapshot.State = "completed"
+			if completion, ok := retainedCompletionPayload(event); ok && (completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout" || completion.Status == "canceled" || completion.Status == "cancelled") {
+				snapshot.State = "failed"
 			}
-			if completionMetadataFlag(event, "process_exited") {
-				if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
-					snapshot = closed
+		} else {
+			// Validate native ownership before changing the terminal snapshot. A late
+			// old completion must not make the newer native turn look idle.
+			if completion, ok := retainedCompletionPayload(event); ok &&
+				(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
+				if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
+					snapshot = failed
 				}
+				if completionMetadataFlag(event, "process_exited") {
+					if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
+						snapshot = closed
+					}
+				}
+			} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
+				snapshot = completed
 			}
-		} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
-			snapshot = completed
 		}
 		delete(api.retainedMainTurnCanonicalIDs, executionID)
 		if len(pending) > 0 && !strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
@@ -9130,6 +9155,11 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 			nextWatchCtx, nextCancel = context.WithCancel(context.Background())
 			api.retainedMainTurnWatchCancels[sessionID] = nextCancel
 			nextSnapshot = snapshot
+			if identity := api.retainedMainTurnCanonicalIDs[promotedExecutionID]; nextSessionOwned {
+				if descriptor, native := identity.nativeDescriptor(sessionID); native {
+					nextSnapshot = descriptor
+				}
+			}
 			nextProvider = llmproviders.Provider(retainedCodingAgentProvider(snapshot))
 		} else {
 			if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
@@ -9156,6 +9186,10 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		watchCancel()
 	}
 
+	var settledIdentity map[string]string
+	if nativeOnly {
+		settledIdentity = map[string]string{"native_turn_id": retainedCompletionTurnID(event)}
+	}
 	if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
 		api.setSessionBusy(sessionID, false)
 		api.updateSessionStatus(sessionID, "error")
@@ -9170,13 +9204,15 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		}
 	} else {
 		if executionID != "" {
-			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", nil)
+			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", settledIdentity)
 		}
 		for _, id := range completedPendingExecutionIDs {
-			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", nil)
+			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", settledIdentity)
 		}
 		if promotedExecutionID != "" {
-			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+			if snapshot.TerminalID != "" {
+				api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
+			}
 			api.setSessionBusy(sessionID, true)
 			api.updateSessionStatus(sessionID, "running")
 			if nextWatchCtx != nil {
@@ -9206,8 +9242,8 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	if outcome == "" {
 		outcome = "completed"
 	}
-	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s covered_inputs=%d",
-		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), 1+len(completedPendingExecutionIDs))
+	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s query=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s native_session=%s covered_inputs=%d",
+		eventType, sessionID, executionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), expectedNativeID.NativeSessionID, 1+len(completedPendingExecutionIDs))
 	if promotedExecutionID == "" {
 		api.kickConversationTurnQueue(sessionID)
 	} else if nextSessionOwned {
@@ -9662,136 +9698,6 @@ func (e *sessionEventEmitter) EmitProductInteraction(kind string, payload map[st
 			Data:      data,
 		},
 	})
-}
-
-func sanitizeTierModel(model *virtualtools.TierModel) *virtualtools.TierModel {
-	if model == nil || model.Provider == "" || model.ModelID == "" {
-		return nil
-	}
-	sanitized := &virtualtools.TierModel{
-		Provider:     strings.TrimSpace(model.Provider),
-		ModelID:      strings.TrimSpace(model.ModelID),
-		Options:      model.Options,
-		ConnectionID: model.ConnectionID,
-	}
-
-	return sanitized
-}
-
-func queryRequestHasExplicitLLMSelection(req QueryRequest) bool {
-	if req.LLMConfig != nil {
-		if strings.TrimSpace(req.LLMConfig.Primary.Provider) != "" || strings.TrimSpace(req.LLMConfig.Primary.ModelID) != "" {
-			return true
-		}
-	}
-	return strings.TrimSpace(req.Provider) != "" || strings.TrimSpace(req.ModelID) != ""
-}
-
-func applyTopLevelDelegationModel(ctx context.Context, req QueryRequest, finalProvider, finalModelID string) (string, string, bool) {
-	// A provider profile is itself the user's explicit selection. It must win
-	// over stale tab-level provider/model fields sent by an older frontend state.
-	providerProfileSelected := req.DelegationTierConfig != nil &&
-		strings.EqualFold(strings.TrimSpace(req.DelegationTierConfig.Mode), "provider_profile") &&
-		strings.TrimSpace(req.DelegationTierConfig.Provider) != ""
-	if queryRequestHasExplicitLLMSelection(req) && !providerProfileSelected {
-		return finalProvider, finalModelID, false
-	}
-	tierConfig := LoadAndResolveTierConfig(ctx, req.DelegationTierConfig)
-	if tierConfig == nil {
-		return finalProvider, finalModelID, false
-	}
-	if tierConfig.Main != nil && tierConfig.Main.Provider != "" && tierConfig.Main.ModelID != "" {
-		return tierConfig.Main.Provider, tierConfig.Main.ModelID, true
-	}
-	if tierConfig.High != nil && tierConfig.High.Provider != "" && tierConfig.High.ModelID != "" {
-		return tierConfig.High.Provider, tierConfig.High.ModelID, true
-	}
-	return finalProvider, finalModelID, false
-}
-
-// resolveDelegationTierConfig builds a DelegationTierConfig by merging:
-// 1. Frontend config (from QueryRequest) - highest priority
-// 2. Environment variables (DELEGATION_TIER_*) - fallback
-// Returns nil if no tier config is available at all
-func resolveDelegationTierConfig(frontendConfig *virtualtools.DelegationTierConfig) *virtualtools.DelegationTierConfig {
-	if frontendConfig != nil && frontendConfig.Mode == "provider_profile" && strings.TrimSpace(frontendConfig.Provider) != "" {
-		defaults, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(strings.TrimSpace(frontendConfig.Provider)))
-		if ok {
-			toTierModel := func(ref llmproviders.CodingAgentTierModelRef) *virtualtools.TierModel {
-				if strings.TrimSpace(ref.Provider) == "" || strings.TrimSpace(ref.ModelID) == "" {
-					return nil
-				}
-				return &virtualtools.TierModel{Provider: ref.Provider, ModelID: ref.ModelID, Options: ref.Options}
-			}
-			return &virtualtools.DelegationTierConfig{
-				SchemaVersion: delegationTierConfigSchemaVersion,
-				Mode:          "provider_profile",
-				Provider:      strings.TrimSpace(frontendConfig.Provider),
-				Main:          toTierModel(defaults.Main),
-				High:          toTierModel(defaults.High),
-				Medium:        toTierModel(defaults.Medium),
-				Low:           toTierModel(defaults.Low),
-			}
-		}
-	}
-
-	result := &virtualtools.DelegationTierConfig{SchemaVersion: delegationTierConfigSchemaVersion, Mode: "explicit"}
-	hasAny := false
-
-	// Start with env var defaults
-	if p, m := os.Getenv("DELEGATION_TIER_HIGH_PROVIDER"), os.Getenv("DELEGATION_TIER_HIGH_MODEL"); p != "" && m != "" {
-		result.High = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-	if p, m := os.Getenv("DELEGATION_TIER_MEDIUM_PROVIDER"), os.Getenv("DELEGATION_TIER_MEDIUM_MODEL"); p != "" && m != "" {
-		result.Medium = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-	if p, m := os.Getenv("DELEGATION_TIER_LOW_PROVIDER"), os.Getenv("DELEGATION_TIER_LOW_MODEL"); p != "" && m != "" {
-		result.Low = &virtualtools.TierModel{Provider: p, ModelID: m}
-		hasAny = true
-	}
-
-	// Override with frontend config (higher priority)
-	if frontendConfig != nil {
-		if main := sanitizeTierModel(frontendConfig.Main); main != nil {
-			result.Main = main
-			hasAny = true
-		}
-		if high := sanitizeTierModel(frontendConfig.High); high != nil {
-			result.High = high
-			hasAny = true
-		}
-		if medium := sanitizeTierModel(frontendConfig.Medium); medium != nil {
-			result.Medium = medium
-			hasAny = true
-		}
-		if low := sanitizeTierModel(frontendConfig.Low); low != nil {
-			result.Low = low
-			hasAny = true
-		}
-		// Pass through custom tiers from frontend (no env var equivalent)
-		if len(frontendConfig.Custom) > 0 {
-			result.Custom = frontendConfig.Custom
-			hasAny = true
-		}
-	}
-
-	if !hasAny {
-		return nil
-	}
-	return result
-}
-
-// handleGetDelegationTierDefaults returns the env var default values for delegation tier config
-func (api *StreamingAPI) handleGetDelegationTierDefaults(w http.ResponseWriter, r *http.Request) {
-	tierConfig := resolveDelegationTierConfig(nil) // env vars only
-	if tierConfig == nil {
-		tierConfig = &virtualtools.DelegationTierConfig{}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tierConfig)
 }
 
 // getActiveSession retrieves an active session by ID
@@ -13081,8 +12987,7 @@ func workshopConvertTieredLLMConfigFor(ctx context.Context, config *workflowtype
 
 // generateTextWorkflowTiers converts the current workflow manifest's model
 // roles into the compact config consumed by generate_text_llm. Provider-profile
-// workflows (including Cursor managing the full workflow) are expanded first,
-// so this path never consults the unrelated global delegation-tier settings.
+// workflows (including Cursor managing the full workflow) are expanded first.
 func generateTextWorkflowTiers(config *workflowtypes.PresetLLMConfig) *virtualtools.WorkflowLLMTierConfig {
 	if config == nil {
 		return nil

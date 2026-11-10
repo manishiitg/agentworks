@@ -24,6 +24,7 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { fillAgentPurposeDraft, fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 
 
@@ -137,7 +138,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const shownTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's, by account,
   // under the server's display name.
-  const tabOwnerId = (tab: ChatTab) => canControl(tab) ? '' : listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+  // A read-only row that is the viewer's own (a schedule's own chat) sits with their own tabs, not under a person.
+  const me = useAuthStore(state => state.user?.id)
+  const tabOwnerId = (tab: ChatTab) => {
+    if (canControl(tab)) return ''
+    const owner = listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+    return owner === me ? '' : owner
+  }
   const personName = (id: string) => team?.people.find(person => person.user_id === id)?.name
     || ownerShortName(tabs.map(tab => tabOwnerId(tab) === id ? listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '' : '').find(Boolean) || '') || 'Someone'
   // Whether a teammate's Mac is on, the server's words (crew_team_tab.go).
@@ -632,7 +639,7 @@ const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-em
  * tab reading). While one of theirs is open, the chip names it. */
 function PersonChip({ name, presence, agents, watching, onPick, help, onAskHelp }: {
   name: string; presence?: TeamTabPresence; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
-  help?: { badge: string; title: string; text: string }[]; onAskHelp?: () => void
+  help?: { title: string; text: string }[]; onAskHelp?: () => void
 }) {
   const [open, setOpen] = useState(false)
   // "How this works": the server's help lines in place of the agents; a second click or Esc closes it.
@@ -674,14 +681,13 @@ function PersonChip({ name, presence, agents, watching, onPick, help, onAskHelp 
       <div ref={menuRef} style={position} role="menu" aria-label={`${name}'s agents`} className="fixed z-[100] w-[300px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-popover p-1.5 shadow-lg">
         <div className="flex items-start gap-2 px-2 pb-1.5 pt-1">
           {avatar('h-5 w-5')}
-          <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}</span>{presence && <span className="block">{presence.line}</span>}</p>
+          <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}'s agents</span>{presence && <span className="block">{presence.line}</span>}</p>
         </div>
         {helpOpen && help ? <div className="px-2 pb-1 pt-1" data-testid="agent-menu-help">
-          <p className="pb-1 text-[13px] font-semibold">How agents work here</p>
-          <p className="pb-1 text-[12px] text-muted-foreground">Each name is an agent in this Crew. Pick one to talk to it.</p>
-          {help.map(line => <div key={line.badge + line.title} className="flex gap-2.5 border-t border-border py-2">
-            <span className="w-[92px] shrink-0"><span className="inline-block whitespace-nowrap rounded-full border border-border px-2 text-[11px] leading-5">{line.badge}</span></span>
-            <p className="min-w-0 text-[12px] text-muted-foreground"><b className="block text-[13px] font-semibold text-foreground">{line.title}</b>{line.text}</p>
+          <p className="pb-1 text-[13px] font-semibold">How this works</p>
+          {help.map(line => <div key={line.title} className="border-t border-border py-2">
+            <b className="block text-[13px] font-semibold text-foreground">{line.title}</b>
+            <p className="text-[12px] text-muted-foreground">{line.text}</p>
           </div>)}
           {onAskHelp && <button type="button" onClick={() => { setOpen(false); onAskHelp() }} className="mt-1 rounded-full border border-primary px-3 py-0.5 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask the Crew to change this</button>}
         </div> : agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}

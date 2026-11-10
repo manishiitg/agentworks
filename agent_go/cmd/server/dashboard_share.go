@@ -254,6 +254,9 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 		if !ok || !isProjectProfileID(id.Product) {
 			return runShareState{}, dashboardFailure(404, "project unavailable")
 		}
+		if mode != runSharePrivate && agentWorksPrivateRoot(ctx, crew.Root) {
+			return runShareState{}, dashboardFailure(403, agentWorksPrivateLine)
+		}
 		var ids []string
 		var unknown []string
 		if mode == runSharePeople {

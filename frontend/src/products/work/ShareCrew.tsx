@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, MessageSquare, Slack, Users, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowLeft, Bot, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -17,18 +17,15 @@ const toMain = (projectId: string, draft: string) => {
 const optionIcons: Record<CrewShareOptionKey, { icon: LucideIcon; tone: string }> = {
   team: { icon: Users, tone: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
   agents: { icon: MessageSquare, tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-  slack: { icon: Slack, tone: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
 }
 
 /**
  * Share this Crew (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page with the server's
  * options, each a card with its one-line explanation, chips and status; a click opens its setup. Work on it with your
- * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent, Slack
- * is the Crew's Slack bot (today's bot settings, moved here from the Crew menu). Dashboards are their own Access tab
- * next to this one. The server's /share reply writes every line and says what this person may change; the page prints
+ * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent. Slack (the Crew's Slack bot) and Dashboards are their own Access tabs next to this one. The server's /share reply writes every line and says what this person may change; the page prints
  * it and sends their change to the existing routes. The same page for the owner and every teammate.
  */
-export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void; focus?: CrewShareOptionKey }) {
+export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
@@ -42,14 +39,6 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Opened for one option (the menu's Slack bot row opens Slack): that option open at the top, the others closed.
-  useEffect(() => { if (focus) setOpen({ team: false, agents: false, slack: false, [focus]: true }) }, [focus])
-  const scrolled = useRef('')
-  useEffect(() => {
-    if (!focus || !page || scrolled.current === focus) return
-    scrolled.current = focus
-    document.querySelector(`[data-share-option="${focus}"]`)?.scrollIntoView({ block: 'start' })
-  }, [focus, page])
   // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch (its dashboards are on the
   // Dashboards tab).
   if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
@@ -67,7 +56,6 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn, focus }:
     {page.options.map(option => <ShareOption key={option.key} option={option} open={isOpen(option)} onToggle={() => setOpen(prev => ({ ...prev, [option.key]: !isOpen(option) }))}>
       {option.key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
       {option.key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => setOpen(prev => ({ ...prev, team: true }))} />}
-      {option.key === 'slack' && (workspacePath ? <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={page.slack && <ShareSlackRules slack={page.slack} />} /> : <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>)}
     </ShareOption>)}
     {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
@@ -91,7 +79,27 @@ function ShareOption({ option, open, onToggle, children }: { option: CrewShareOp
   </section>
 }
 
-/** Share › Slack's Who can talk to it: the server's lines (who may message the Crew in a channel, in a direct message,
+/**
+ * The Slack tab (owner, 9 Nov: its own tab next to Share and Dashboards): the Crew's Slack bot cards with the server's
+ * "Who can talk to it" lines from the same /share reply. The Mac app's own Crew before Mac online has no server copy
+ * yet, so it shows the bot cards alone.
+ */
+export function SlackTab({ projectId, workspacePath }: { projectId: string; workspacePath?: string }) {
+  const { target } = useTeamTab(projectId)
+  const [slack, setSlack] = useState<CrewShareSlack>()
+  useEffect(() => {
+    if (!target) return
+    let active = true
+    const load = () => void crewSharePage(target).then(data => { if (active) setSlack(data.slack) }).catch(() => undefined)
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!workspacePath) return <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>
+  return <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={slack && <ShareSlackRules slack={slack} />} />
+}
+
+/** The Slack tab's Who can talk to it: the server's lines (who may message the Crew in a channel, in a direct message,
  * and who is refused), then its note. */
 function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
   return <div className="space-y-1.5 text-[13.5px]">
@@ -145,40 +153,50 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = view?.agents.find(item => item.key === agent.key && item.mine)
   const busy = Boolean(pending)
-  return <div className="rounded-xl border border-border px-3.5 py-3 text-sm">
-    <p className="text-[15px] font-semibold">{agent.name}</p>
-    {agent.line && <p className="text-xs text-muted-foreground">{agent.line}</p>}
-    {ask && <div className="mt-2.5 border-t border-border pt-2.5">
-      <div className="flex items-center gap-3">
-        <span className="min-w-0 flex-1"><span className="block font-semibold">Ask</span><span className="block text-xs text-muted-foreground">People talk to it.</span></span>
+  return <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
+    <div className="flex items-center gap-2.5 px-4 py-3.5">
+      <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Bot className="h-4 w-4" /></span>
+      <span className="min-w-0 truncate text-[17px] font-semibold">{agent.name}</span>
+      {agent.line && <span className="whitespace-nowrap text-[13px] text-muted-foreground">· {agent.line}</span>}
+    </div>
+    {ask && <>
+      <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+        <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold">{ask.title}</span><span className="block text-[13px] text-muted-foreground">{ask.line}</span></span>
         <span title={ask.fixed || undefined} className="inline-flex shrink-0 items-center gap-1.5">
           <Saving on={pending === 'ask'}>{null}</Saving>
-          <Switch aria-label={`${agent.name}: Ask`} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
+          <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
         </span>
       </div>
-      {(ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1 text-xs text-muted-foreground">{ask.note || ask.fixed}</p>}
-      {ask.on && ask.can_edit && <>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <span className="inline-flex items-center gap-2">
-            <Switch aria-label={`${agent.name}: ${ask.changes_label}`} checked={ask.can_make_changes} disabled={busy} onCheckedChange={on => void rule('can', { can_make_changes: on })} />
-            <span>{ask.changes_label}</span><Saving on={pending === 'can'}>{null}</Saving>
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="text-muted-foreground">{ask.chat_share_label}</span>
-            <span role="radiogroup" aria-label={`${agent.name}: ${ask.chat_share_label}`} className="flex overflow-hidden rounded-md border border-border">
+      {(ask.note || (!ask.can_change && ask.fixed)) && <p className="px-4 pb-3 text-[13px] text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
+      {ask.on && ask.can_edit && <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-muted-foreground">{ask.changes_label}</p>
+          <div role="radiogroup" aria-label={ask.changes_label} className="grid gap-2">
+            {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy}
+              onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
+              className={`flex gap-2.5 rounded-xl border px-3 py-2.5 text-left ${ask.can_make_changes === option.value ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/40'}`}>
+              <span aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 rounded-full border-2 ${ask.can_make_changes === option.value ? 'border-primary bg-primary' : 'border-muted-foreground/50'}`} />
+              <span><span className="block text-sm font-semibold">{option.label}</span><span className="block text-[13px] text-muted-foreground">{option.line}</span></span>
+            </button>)}
+          </div>
+          <Saving on={pending === 'can'}>{null}</Saving>
+        </div>
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-muted-foreground">{ask.chat_share_label}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex overflow-hidden rounded-lg border border-border">
               {ask.chat_share_options.map(option => <button key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy}
                 onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
-                className={`px-2 py-0.5 ${ask.chat_share === option.value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{option.label}</button>)}
+                className={`px-3 py-1 text-[13px] ${ask.chat_share === option.value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{option.label}</button>)}
             </span>
             <Saving on={pending === 'see'}>{null}</Saving>
-          </span>
-          {row && <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{row.has_rule ? '1 rule…' : 'Rules…'}</button>}
+            {row && <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-[13px] text-primary hover:underline">{ask.rules_label}</button>}
+          </div>
         </div>
-        {!ask.can_make_changes && <p className="mt-1 text-xs text-muted-foreground">{ask.changes_line}</p>}
         {rules && row && <AgentDetails agent={row} target={target} projectId={projectId} />}
-      </>}
-    </div>}
-    {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
+      </div>}
+    </>}
+    {error && <p role="alert" className="px-4 pb-3 text-xs text-destructive">{error}</p>}
   </div>
 }
 

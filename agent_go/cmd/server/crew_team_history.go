@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -81,7 +80,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	s, e := readCrewTeamFileState(project)
+	s, e := readCrewTeamFileStateLocked(project)
 	if e != nil {
 		externalError(w, 409, "team_history_unavailable", e.Error())
 		return
@@ -130,6 +129,10 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "invalid_revision", "Choose a file and two revisions from Sync.")
 			return
 		}
+		if s.HistoryFloor > 0 && (left <= s.HistoryFloor || right <= s.HistoryFloor) {
+			writeCrewTeamCatchUp(w, project, claims, team, s, min(left, right))
+			return
+		}
 		diff, err := crewTeamCompareVersions(r.Context(), project, dir, s.versionAt(rel, left), s.versionAt(rel, right), rel)
 		if err != nil {
 			externalError(w, 409, "team_history_unavailable", "These versions are unavailable.")
@@ -140,6 +143,10 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		revision, e := strconv.ParseUint(r.URL.Query().Get("revision"), 10, 64)
 		if e != nil || revision > s.Revision || !allowed(rel) {
 			externalError(w, 400, "invalid_revision", "Choose a file and revision from Sync.")
+			return
+		}
+		if s.HistoryFloor > 0 && revision <= s.HistoryFloor {
+			writeCrewTeamCatchUp(w, project, claims, team, s, revision)
 			return
 		}
 		file := s.versionAt(rel, revision)
@@ -238,6 +245,10 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				externalError(w, 400, "invalid_revision", "Choose keep current or other, or one of the saved revisions.")
 				return
 			}
+			if s.HistoryFloor > 0 && revision <= s.HistoryFloor {
+				writeCrewTeamCatchUp(w, project, claims, team, s, revision)
+				return
+			}
 			how, write = "revision", &crewTeamChange{Path: in.Path, Before: before, After: s.versionAt(in.Path, revision)}
 		}
 		if in.WinningRevision == 0 {
@@ -255,7 +266,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				externalError(w, 409, "team_restore_failed", e.Error())
 				return
 			}
-			s, e = readCrewTeamFileState(project)
+			s, e = readCrewTeamFileStateLocked(project)
 			if e != nil {
 				externalError(w, 409, "team_history_unavailable", e.Error())
 				return
@@ -268,7 +279,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				resolved++
 			}
 		}
-		if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), s, 0600); e != nil {
+		if e = saveCrewTeamFileState(project, s); e != nil {
 			externalError(w, 409, "team_restore_failed", e.Error())
 			return
 		}

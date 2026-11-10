@@ -165,7 +165,7 @@ func crewChatActionScope(action, tool string, inputs ...map[string]any) string {
 			args = inputs[0]
 		}
 		identity := crewSessionToolIdentity(tool, args)
-		for _, read := range []string{"list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents"} {
+		for _, read := range []string{"list_ui_capabilities", "get_ui_state"} {
 			if identity == platformtools.Identity(read) {
 				scope = "crews:read"
 			}
@@ -335,7 +335,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				return
 			}
 		}
-		if private := api.crewSessionChatSavedRead(r, sessionID); private != nil {
+		if private := api.crewSessionChatLimit(r, sessionID); private != nil {
 			private.refuse(w, claims.UserID)
 			return
 		}

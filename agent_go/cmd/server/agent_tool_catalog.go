@@ -7,17 +7,31 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
+// Catalog metadata is initialized from embedded files and never changes at
+// runtime. Readers must not mutate this shared slice; consent is still checked
+// for the current caller on every request.
+var agentActionsCatalog = slices.Clip(append(slices.Clone(platformtools.AgentActions), platformtools.ExperienceActions...))
+
+var agentSourceActionsByMember = func() map[string]platformtools.Action {
+	byMember := make(map[string]platformtools.Action, len(agentActionsCatalog))
+	for _, action := range agentActionsCatalog {
+		if action.Source != "" {
+			if _, exists := byMember[action.Member]; !exists {
+				byMember[action.Member] = action
+			}
+		}
+	}
+	return byMember
+}()
+
+// The returned slice is shared and read-only.
 func agentCatalogActions() []platformtools.Action {
-	return append(slices.Clone(platformtools.AgentActions), platformtools.ExperienceActions...)
+	return agentActionsCatalog
 }
 
 func agentSourceAction(name string) (platformtools.Action, bool) {
-	for _, action := range agentCatalogActions() {
-		if action.Member == name && action.Source != "" {
-			return action, true
-		}
-	}
-	return platformtools.Action{}, false
+	action, ok := agentSourceActionsByMember[name]
+	return action, ok
 }
 
 func agentConsentMember(name string) string {

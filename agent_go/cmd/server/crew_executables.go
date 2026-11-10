@@ -180,6 +180,19 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	if binding.Root == "" {
 		return fmt.Errorf("invalid executable root")
 	}
+	// Check and register under the same lock: simultaneous creates must not
+	// both observe an empty Crew and register different workflow IDs.
+	if binding.Kind == "script" {
+		existing, err := readCrewExecutables()
+		if err != nil {
+			return err
+		}
+		for _, record := range existing {
+			if record.CrewID == binding.CrewID && record.Kind == "script" {
+				return errCrewWorkflowExists
+			}
+		}
+	}
 	file, err := crewExecutableFile(binding.Root)
 	if err != nil {
 		return err
@@ -327,24 +340,15 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Enter a workflow name (up to 120 characters).", http.StatusBadRequest)
 		return
 	}
-	// One workflow per Crew (owner, 9 Nov): different tasks are paths inside it (branches its inputs choose, each way in
-	// with its own saved settings), not more workflows.
-	existing, err := readCrewExecutables()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	for _, record := range existing {
-		if record.CrewID == project.Binding.ResourceID && record.Kind == "script" {
-			http.Error(w, errCrewWorkflowExists.Error(), http.StatusConflict)
-			return
-		}
-	}
 	// PLAT-746: every new workflow is a Python script.
 	id := uuid.NewString()
 	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
-		http.Error(w, err.Error(), 500)
+		if errors.Is(err, errCrewWorkflowExists) {
+			http.Error(w, err.Error(), http.StatusConflict)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 	registerWorkflowOwner(binding.Root, project.OwnerID)

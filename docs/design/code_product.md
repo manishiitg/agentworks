@@ -71,7 +71,7 @@ sets different defaults. The Crew code must not be forked: every Crew fix
 Proposed features for `code`:
 
 - **Keep:** `live-chat`, `coding`, `files`, `terminal`, `models`,
-  `secrets`, `browser`, `costs`, `background-work`, `workspace-ui`,
+  `secrets`, `browser`, `costs`, `workspace-ui`,
   `attached-folders`. (`memory` was removed on 2026-09-28: a Code keeps
   notes in its own files. Crew's Suggestions view is not shown either.)
 - **Keep, restricted:** `bots` limited to `slack,whatsapp` and 1:1 only
@@ -306,8 +306,7 @@ Code ships a basic setup first; integrations come later. In Code's
 - **On:** chat with the coding agent (`live-chat`, `coding`), `files`,
   `terminal`, `models`, `costs`, `secrets`, `skills` (private to
   the Code), `attached-folders`, `browser`, `dashboard` with its `database`,
-  outbound `workflow-references` (calling Crews and workflows) and
-  `background-work`. Audited admin inspection is on; sharing is removed.
+  outbound `workflow-references` (calling Crews and workflows). Audited admin inspection is on; sharing is removed.
 - **Chat apps, 1:1 only** (user, 2026-09-28): `bots` with `dm_only`.
   - Slack: only the Code's **own dedicated Slack app**, never the shared
     server bot or a channel; it answers **1:1 DMs** from the owner only. The Setup tab offers

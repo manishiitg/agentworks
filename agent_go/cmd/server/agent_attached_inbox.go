@@ -54,6 +54,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	hold := func(message agentMessage, source agentMessageEndpoint, reason, why string) {
 		held[reason]++
 		heldIDs = append(heldIDs, message.ID+":"+reason)
+		log.Printf("[AGENT-INBOX] action=hold agent=%s message=%s reason=%s sender_kind=%s project=%s chat=%s same_owner=%t", agent.ID, message.ID, reason, source.Kind, source.ID, source.ChatKey, source.UserID == live.UserID)
 		if len(details) < 20 {
 			details = append(details, map[string]string{"sender": endpointDisplayLabel(source, agent.UserID), "reason": why,
 				"next": "Ask the sender to send it again once access is restored. It stops waiting 24 hours after it was sent; its history is kept."})

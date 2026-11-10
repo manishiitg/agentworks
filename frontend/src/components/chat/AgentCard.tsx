@@ -96,7 +96,9 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   useEffect(() => { dismiss() }, [activeTabId, dismiss])
   useEffect(() => {
     const scroll = (event: Event) => {
-      if (!box.current?.contains(event.target as Node)) dismiss()
+      // Only a scroll that moves the agent name matters; the chat transcript auto-scrolling while a reply streams does not.
+      const target = event.target as Node
+      if (!box.current?.contains(target) && anchor.current && target.contains(anchor.current)) dismiss()
     }
     window.addEventListener('scroll', scroll, true)
     return () => window.removeEventListener('scroll', scroll, true)

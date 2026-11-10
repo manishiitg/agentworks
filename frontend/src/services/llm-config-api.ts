@@ -4,7 +4,6 @@ import type {
   LLMDefaultsResponse,
   APIKeyValidationRequest,
   APIKeyValidationResponse,
-  DelegationTierConfig,
   SavedLLM,
   LLMDiscoveryResponse,
   ProductDefault,
@@ -176,18 +175,13 @@ export interface ProviderTierModelRef {
   options?: Record<string, unknown>
 }
 
+/** A provider's defaults: `main` is the model a chat starts with; high, medium
+ * and low are the workflow tiers (background work uses high). */
 export interface ProviderDefaultTierModels {
-  builder?: ProviderTierModelRef
+  main: ProviderTierModelRef
   high: ProviderTierModelRef
   medium: ProviderTierModelRef
   low: ProviderTierModelRef
-  maintenance?: ProviderTierModelRef
-  pulse?: ProviderTierModelRef
-  // Read-only compatibility for a backend that is still restarting during a
-  // desktop update. New provider manifests never emit these fields.
-  main?: ProviderTierModelRef
-  phase?: ProviderTierModelRef
-  auto_improve?: ProviderTierModelRef
 }
 
 export interface IntegrationKindInfo {
@@ -481,12 +475,6 @@ export const llmConfigService = {
     const token = getAuthToken()
     if (token) url.searchParams.set('token', token)
     return url.toString()
-  },
-
-  // Get delegation tier defaults from environment variables
-  getDelegationTierDefaults: async (): Promise<DelegationTierConfig> => {
-    const response = await llmConfigApi.get('/api/llm-config/delegation-tiers')
-    return response.data
   },
 
   // Load published LLMs from the workspace config folder

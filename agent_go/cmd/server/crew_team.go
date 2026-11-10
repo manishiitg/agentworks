@@ -44,6 +44,9 @@ type crewTeamInvite struct {
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
 	OwnerName string `json:"owner_name"`
+	// CanAddToMac: the Team shares a folder, so the Mac app can add this Crew to the person's Mac (Add to my Mac). The
+	// server decides; the Mac app shows that button first when it is true.
+	CanAddToMac bool `json:"can_add_to_mac"`
 }
 
 // crewTeamFolder is what the Team shares (owner, 5 Nov): one or more of the Crew's folders, or the Whole Crew. Files
@@ -200,6 +203,10 @@ func readCrewTeam(project string) (crewTeam, error) {
 	return t, err
 }
 func writeCrewTeam(t crewTeam) error {
+	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
+	if (t.On || len(t.People) > 0) && agentWorksPrivateProject(context.Background(), t.ProjectID) {
+		return errors.New(agentWorksPrivateLine)
+	}
 	dir, err := crewTeamDir(t.ProjectID)
 	if err != nil {
 		return err
@@ -282,7 +289,12 @@ func (api *StreamingAPI) stopRemovedCrewTeamSessions(previous, current crewTeam)
 	}
 }
 
-func (t crewTeam) view(user string) crewTeam {
+func (t crewTeam) view(user string) crewTeam { return t.viewLedger(user, false) }
+
+// Writers already hold the Team filesystem lock, including during first import.
+func (t crewTeam) viewLocked(user string) crewTeam { return t.viewLedger(user, true) }
+
+func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 	t.CanManage = crewTeamCanManage(t, user)
 	t.Where = ""
 	if t.member(user) && user != t.OwnerID {
@@ -294,11 +306,9 @@ func (t crewTeam) view(user string) crewTeam {
 	t.FolderAccess = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
-		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
+		if summary, e := readCrewTeamLedgerSummary(t.ProjectID, t.Folder, writerLocked); e == nil {
 			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.display(), TeamProjectID: t.ProjectID}
-			for _, v := range s.held(t.Folder) {
-				d.SizeBytes += v.File.Size
-			}
+			d.SizeBytes = summary.bytes
 			t.ServerData = d
 		}
 	}
@@ -412,6 +422,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	owner := ownerOfCrewProjectID(project)
+	if r.Method != http.MethodGet && agentWorksPrivateProject(r.Context(), project) {
+		externalError(w, 403, "agentworks_private", agentWorksPrivateLine)
+		return
+	}
 	if r.Method == http.MethodGet {
 		t, e := readCrewTeam(project)
 		if os.IsNotExist(e) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
@@ -619,7 +633,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	api.stopRemovedCrewTeamSessions(previous, input)
-	externalJSON(w, input.view(claims.UserID))
+	externalJSON(w, input.viewLocked(claims.UserID))
 }
 
 // crewTeamLent is what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
@@ -658,6 +672,10 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	if IsLocalMode() || !t.On || root == "" {
 		return nil
 	}
+	catalog := crewTeamVaultDisplayFor(t.OwnerID)
+	if catalog == nil {
+		return nil // unavailable is not "Nothing shared yet"
+	}
 	out := &crewTeamLent{Items: []crewTeamLentItem{}, Groups: []crewTeamLentGroup{}, Yours: viewer == t.OwnerID}
 	if out.Yours {
 		out.Title, out.Line = "Accounts and keys your teammates' agents use", "Their agents in this Crew use these as you. Nobody sees passwords or keys."
@@ -667,9 +685,9 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 		out.Title, out.Line = "Accounts and keys your agents use", "Agents in this Crew use these as "+owner+". Nobody sees passwords or keys."
 	}
 	apps, secrets := []string{}, []string{}
-	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
+	{
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
-		for _, server := range servers {
+		for _, server := range catalog.servers {
 			if projectVaultAppInUse(selected, chosenOnly, server.ID) {
 				apps = append(apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
 			}
@@ -769,7 +787,7 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 			_, _ = api.syncCrewTeamServerCopy(round, member, project, true)
 		}()
 	}
-	externalJSON(w, t.view(claims.UserID))
+	externalJSON(w, t.viewLocked(claims.UserID))
 }
 
 func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
@@ -801,7 +819,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
-			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID)})
+			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared()})
 		}
 	}
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
@@ -853,8 +871,16 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 		resp.Body.Close()
+		var refusal struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(b, &refusal) == nil && refusal.Error.Code == "team_history_catch_up" {
+			return nil, errCrewTeamHistoryCatchUp
+		}
 		return nil, fmt.Errorf("%s", laptopActionErrorText(string(b)))
 	}
 	return resp, nil

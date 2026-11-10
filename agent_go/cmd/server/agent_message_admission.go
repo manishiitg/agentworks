@@ -105,7 +105,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			}
 		}
 		view := hostedInboxReplyClaims(claims, c, m.From)
-		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, dest, true); err != nil {
+		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, dest, view == claims); err != nil {
 			return err
 		}
 	}
