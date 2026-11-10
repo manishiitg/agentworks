@@ -245,7 +245,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		return crews, pairs
 	}
 	crews, pairs := offered()
-	if err = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), Crews: crews}); err != nil {
+	if err = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), AppVersion: os.Getenv("AGENTWORKS_APP_VERSION"), Crews: crews}); err != nil {
 		return err
 	}
 	log.Printf("[CREW_RELAY] desktop connect connection=%s crews=%d", connectionID, len(crews))
@@ -314,7 +314,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairs = nextPairs
 				pairsMu.Unlock()
 				if changed {
-					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), Crews: next})
+					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), AppVersion: os.Getenv("AGENTWORKS_APP_VERSION"), Crews: next})
 				}
 			case <-states.C:
 				pairsMu.Lock()

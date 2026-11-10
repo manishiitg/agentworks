@@ -1238,6 +1238,8 @@ function spawnAgent(userDataPath) {
       RUNLOOP_USER_DATA_DIR: userDataPath,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       WORKSPACE_API_URL: `http://127.0.0.1:${dynamicWorkspacePort}`,
+      // The Mac app's version, for the Team page: which version each teammate's Mac runs.
+      AGENTWORKS_APP_VERSION: app.getVersion(),
       AGENTWORKS_VOICE_UNAVAILABLE_REASON: selected.voiceUnavailableReason,
       WORKSPACE_DOCS_PATH: docsDir,
       DOCS_DIR: docsDir,

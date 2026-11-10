@@ -36,6 +36,15 @@ type crewTeamAgent struct {
 	Address string `json:"address,omitempty"`
 }
 
+// crewMacSocketOnline is whether this person's Mac serving the pair is connected, and the app version it said.
+func crewMacSocketOnline(owner, project, pair string) (bool, string) {
+	sock := crewMacSocketFor(owner, project, pair)
+	if sock == nil {
+		return false, ""
+	}
+	return true, sock.version
+}
+
 // crewTeamWaitingLabel is the row's line while an agent waits for its person to answer it.
 func crewTeamWaitingLabel(name string, you bool) string {
 	if you {
@@ -59,6 +68,8 @@ type crewTeamAgentsPerson struct {
 	You    bool   `json:"you,omitempty"`
 	Owner  bool   `json:"owner,omitempty"`
 	MacOn  bool   `json:"mac_on"`
+	// AppVersion is the Mac app version their connected Mac reported ("" when off or from an older app).
+	AppVersion string `json:"app_version,omitempty"`
 	// Active is the people dot, ActiveLabel its words ("Active now on the web", "Mac on", "Last seen 2 h ago").
 	Active      bool            `json:"active"`
 	ActiveLabel string          `json:"active_label"`
@@ -78,7 +89,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 	// addresses it by project. Return the actual tab identity to the browser.
 	mainKey := crewTeamOwnerMainKey(ctx, t)
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
-		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
+		owner.MacOn, owner.AppVersion = crewMacSocketOnline(t.OwnerID, t.ProjectID, b.PairID)
 	}
 	if !onMac {
 		// A Crew that lives on the server (owner, 5 Nov): its owner's agents are server tabs, In team unless Only me.
@@ -138,7 +149,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		person := crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller}
 		if pair, onMac := t.memberMac(p.UserID); onMac {
 			// Their agents here work on their Mac (crew_team_where.go): listed from it, marked when it is off.
-			person.MacOn = crewMacSocketFor(p.UserID, t.ProjectID, pair) != nil
+			person.MacOn, person.AppVersion = crewMacSocketOnline(p.UserID, t.ProjectID, pair)
 			person.Agents = []crewTeamAgent{}
 			for _, tab := range crewMacTabsFor(ctx, p.UserID, t.ProjectID, caller) {
 				name := firstNonEmptyTrimmed(tab.Name, "Agent")
