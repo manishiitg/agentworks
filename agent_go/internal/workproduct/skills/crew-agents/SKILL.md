@@ -16,11 +16,24 @@ when the person asks for them (`include_hidden`).
 
 Chat IDs stay fixed. `main` is the calling owner’s default chat address (external channels retain the project’s main chat); use a listed ID to keep addressing the same agent after the main chat changes.
 
-The main chat leads. It splits work, hands parts to other tabs, collects what
-they report and decides when tabs disagree or would change the same files.
-Every other tab does the work it is given, reports the result back to the main
-chat once and checks with it before starting large or overlapping work on its
-own. Each owner controls their own named Builder tab and any further tabs they create.
+Use Main as the coordinator for work that spans several areas: keep the overall
+request and decisions there, hand off focused work when useful, collect results,
+and resolve dependencies or overlapping file changes. Main can do small tasks
+itself; it does not have to delegate every request.
+
+Use other tabs as independent specialists with clear names and purposes, such
+as UI/UX, GitHub or review. Reuse a suitable existing tab before making another.
+A person can work directly in a specialist tab; it owns that task end to end
+and does not need Main's approval for routine work the person requested.
+Coordinate with Main when the task affects the broader plan or another tab's
+work. Main is a coordination role, not extra permissions or an edit lock.
+
+When handing off work, give the source of context, a focused task, expected
+result, relevant files and constraints. Agree who edits overlapping files.
+The receiving tab returns its result, what it checked and anything still
+blocked once to the requesting tab, using the reply address provided.
+
+Each owner controls their own named Builder tab and any further tabs they create.
 All owners can view all owners’ tabs. Only a tab’s owner can type, steer, stop,
 use its terminal, rename, reset, close or change its model, on the website or MCP.
 A person speaks directly in their own tabs; other owners communicate through
