@@ -314,6 +314,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				if line := readCrewTeamState(doc.ID).sharedLine(); line != "" {
 					item["shared_line"] = line
 				}
+				// Someone else working in this Crew's Team now, for the row even while it is closed (owner, 10 Nov).
+				if busy := crewTeamBusyFor(doc.ID); busy != nil {
+					item["team_busy"] = busy
+				}
 			}
 			// The person's own AgentWorks agent: the left menu pins it apart from the server's Crews.
 			if binding.OwnerID == claims.UserID && doc.ID == agentWorksCrewID(claims.UserID) {
