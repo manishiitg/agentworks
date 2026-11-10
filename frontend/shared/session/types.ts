@@ -86,6 +86,7 @@ export interface GetEventsResponse {
 }
 
 export interface PendingQueuedMessage {
+  display_metadata?: Record<string, unknown>
   message_id?: string
   steering?: boolean
   delivery_error?: string
