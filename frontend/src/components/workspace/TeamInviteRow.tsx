@@ -43,7 +43,8 @@ function TeamInviteRow({ invite }: { invite: TeamInvite }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The invite could not be answered. Try again.') } finally { setBusy(false) }
   }
   const line = !inMacApp ? 'Join to open this team here. You can also add its shared folder to your Mac later.'
-    : !canAdd ? "This team has no shared folder, so it can't be added to this Mac."
+    : invite.can_add_to_mac !== true ? "This team has no shared folder, so it can't be added to this Mac."
+    : !connection ? "Add this team's network to your Mac first (Servers), then try again."
       : 'Add it to this Mac: its shared folder syncs here and you can chat with its shared agents.'
   return <div role="group" aria-label={`Team invite: ${invite.name}`} className="rounded-lg border border-border px-3 py-2 text-[13px]">
     <p className="leading-5"><b className="font-medium">{invite.owner_name}</b> invited you to the {invite.name} team.</p>
