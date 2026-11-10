@@ -84,12 +84,14 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 		member = crewTeamOwnerAgent(r.Context(), project, chatKey, claims.UserID)
 	}
 	if member == "" || member == claims.UserID {
+		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team key=%q self=%t", project, strings.TrimPrefix(chatKey, project+codeChatSideMarker), member != "")
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return triggerTarget{}, "", false
 	}
 	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workspace:"+crewProfileID+":"+project+"/agent/"+chatKey)
 	if err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed key=%q member=%s reason=%q", project, strings.TrimPrefix(chatKey, project+codeChatSideMarker), logUsernameForUserID(member), err)
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return triggerTarget{}, "", false
 	}
