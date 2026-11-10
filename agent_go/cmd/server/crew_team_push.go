@@ -73,110 +73,113 @@ func pushCrewTeamBusy(project string) {
 	if err != nil || !t.On {
 		return
 	}
-	busy := crewRelayStreams.busyPeople(project)
-	people := map[string]bool{t.OwnerID: true}
-	for _, p := range t.People {
-		if !p.Invited {
-			people[p.UserID] = true
-		}
-	}
-	// A person's agents that run on the server count too (owner, 10 Nov: a server agent working showed nowhere on a
-	// teammate's Mac): a chat of theirs in this Crew with a turn going now.
-	for person := range people {
-		if busy[person] == "running" {
-			continue
-		}
-		if records, err := defaultProductConversationRegistryStore().projectChats(context.Background(), person, crewProfileID, project); err == nil {
-			for _, record := range records {
-				if crewServerChatRunning(record.SessionID) {
-					busy[person] = "running"
-					break
-				}
-			}
-		}
-	}
+	// One source for every screen (owner, 10 Nov): the Team's agents list, which knows each person's place (their Mac
+	// or the server), whether their Mac is on and each agent's activity wherever it runs. Read as the owner, counting
+	// only agents in the Team, so an Only me agent never shows anyone working.
+	ctx, done := context.WithTimeout(context.Background(), 20*time.Second)
+	defer done()
+	people := teamAgentsByPerson(ctx, t, t.OwnerID)
 	label := shareOwnerLabeler()
+	members := map[string]bool{}
+	for _, p := range people {
+		members[p.UserID] = true
+	}
 	crewMacSockets.Lock()
-	targets, online := []*crewMacSocket{}, map[string]bool{}
+	targets := []*crewMacSocket{}
 	for _, sock := range crewMacSockets.byDevice {
-		if people[sock.owner] && sock.send != nil {
+		if members[sock.owner] && sock.send != nil {
 			targets = append(targets, sock)
-			online[sock.owner] = true
 		}
 	}
 	crewMacSockets.Unlock()
-	// A person whose agents work on the server is online whether or not a Mac of theirs is connected.
-	for person := range people {
-		if !crewTeamAgentOnMac(t, person) {
-			online[person] = true
-		}
-	}
 	for _, sock := range targets {
-		state, line := crewTeamBusyLine(busy, sock.owner, label)
-		everyone, _ := json.Marshal(crewTeamPeopleFor(people, busy, online, sock.owner, label))
+		everyone := crewTeamPeopleFor(t, people, sock.owner, label)
+		state, line := crewTeamBusyLine(everyone)
+		raw, _ := json.Marshal(everyone)
 		key := project + "/" + sock.owner
-		sent := state + "|" + line + "|" + string(everyone)
+		sent := state + "|" + line + "|" + string(raw)
 		if previous, ok := crewTeamBusySent.Load(key); ok && previous.(string) == sent {
 			continue
 		}
-		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line, Event: everyone}) == nil {
+		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line, Event: raw}) == nil {
 			crewTeamBusySent.Store(key, sent)
-			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s state=%q people=%s", project, logUsernameForUserID(sock.owner), state, everyone)
+			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s state=%q people=%s", project, logUsernameForUserID(sock.owner), state, raw)
 		}
 	}
 }
 
-// crewTeamPresence is one other person of a Team as a Mac shows them (owner, 10 Nov: who is online, per person):
-// "working", "waiting" (their agent waits for them), "online" (their Mac is connected) or "offline".
+// crewTeamPresence is one other person of a Team as a Mac shows them. A person works on a project in one place, their
+// Mac or the server (owner, 10 Nov); State is "working", "waiting" (an agent of theirs waits for them), "online" or
+// "offline", and Line says their place in plain words.
 type crewTeamPresence struct {
 	Name  string `json:"name"`
 	State string `json:"state"`
+	Line  string `json:"line"`
 }
 
-func crewTeamPeopleFor(people map[string]bool, busy map[string]string, online map[string]bool, viewer string, label func(string) string) []crewTeamPresence {
+func crewTeamPeopleFor(t crewTeam, people []crewTeamAgentsPerson, viewer string, label func(string) string) []crewTeamPresence {
 	out := []crewTeamPresence{}
-	for person := range people {
-		if person == viewer {
+	for _, p := range people {
+		if p.UserID == viewer {
 			continue
+		}
+		onMac := crewTeamAgentOnMac(t, p.UserID)
+		working, waiting, answers := false, false, false
+		for _, a := range p.Agents {
+			if !a.InTeam {
+				continue
+			}
+			working = working || a.Activity == "running"
+			waiting = waiting || a.Activity == "waiting"
+			answers = answers || a.PlaceServer
+		}
+		line, available := "server · always available", true
+		if onMac {
+			switch {
+			case p.MacOn:
+				line = "Mac · on"
+			case answers:
+				line = "Mac · off · agents answer from the server"
+			default:
+				line, available = "Mac · off", false
+			}
 		}
 		state := "offline"
 		switch {
-		case busy[person] == "running":
+		case working:
 			state = "working"
-		case busy[person] == "waiting":
+		case waiting:
 			state = "waiting"
-		case online[person]:
+		case available:
 			state = "online"
 		}
-		out = append(out, crewTeamPresence{Name: strings.SplitN(label(person), "@", 2)[0], State: state})
+		out = append(out, crewTeamPresence{Name: strings.SplitN(firstNonEmptyTrimmed(p.Name, label(p.UserID)), "@", 2)[0], State: state, Line: line})
 	}
 	slices.SortFunc(out, func(a, b crewTeamPresence) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 
-// crewTeamBusyLine is what one person's Mac is told: the others working ("A is working", "A and B are working"), else
-// the others waiting for their person.
-func crewTeamBusyLine(busy map[string]string, viewer string, label func(string) string) (string, string) {
-	names := map[string][]string{}
-	for person, state := range busy {
-		if person != viewer {
-			names[state] = append(names[state], strings.SplitN(label(person), "@", 2)[0])
+// crewTeamBusyLine is the row's spinner state and hover line: the others working ("A is working", "A and B are
+// working"), else the others waiting for their person.
+func crewTeamBusyLine(people []crewTeamPresence) (string, string) {
+	for _, state := range []string{"working", "waiting"} {
+		names := []string{}
+		for _, p := range people {
+			if p.State == state {
+				names = append(names, p.Name)
+			}
 		}
-	}
-	for _, state := range []string{"running", "waiting"} {
-		list := names[state]
-		if len(list) == 0 {
+		if len(names) == 0 {
 			continue
 		}
-		slices.Sort(list)
-		who, verb := list[0], "is"
-		if len(list) > 1 {
-			who, verb = strings.Join(list[:len(list)-1], ", ")+" and "+list[len(list)-1], "are"
+		who, verb := names[0], "is"
+		if len(names) > 1 {
+			who, verb = strings.Join(names[:len(names)-1], ", ")+" and "+names[len(names)-1], "are"
 		}
-		if state == "running" {
-			return state, who + " " + verb + " working"
+		if state == "working" {
+			return "running", who + " " + verb + " working"
 		}
-		return state, who + " " + verb + " waiting for an answer"
+		return "waiting", who + " " + verb + " waiting for an answer"
 	}
 	return "", ""
 }
