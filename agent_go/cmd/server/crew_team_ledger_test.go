@@ -12,7 +12,7 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// PLAT-746-809: the one-time import must preserve deletion history, clash
+// PLAT-746-817: the one-time import must preserve deletion history, clash
 // sides, retry receipts and explicit credential-file sharing, without replay.
 func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())

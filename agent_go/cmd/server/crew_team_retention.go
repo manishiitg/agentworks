@@ -40,6 +40,18 @@ func (s *crewTeamFileState) retainHistory(now time.Time) (int, int) {
 		indices := byPath[path]
 		return sort.Search(len(indices), func(i int) bool { return s.Events[indices[i]].Revision > revision }) - 1
 	}
+	// Every revision above the floor must remain reconstructible, including
+	// a file unchanged between the boundary and its next retained update.
+	// Current/previous versions alone do not preserve that starting base.
+	floor := s.HistoryFloor
+	if first > 0 && boundary > 0 {
+		floor = max(floor, boundary-1)
+	}
+	for path, indices := range byPath {
+		if position := atVersion(path, floor); position >= 0 {
+			protected[indices[position]] = true
+		}
+	}
 	for path, v := range s.Versions {
 		position := atVersion(path, v.Revision)
 		if position < 0 {

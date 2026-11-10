@@ -14,7 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
-// PLAT-746-809: protected old clash/current bases must not make a pruned gap
+// PLAT-746-817: protected old clash/current bases must not make a pruned gap
 // look like a complete readable history; time and event-count retention combine.
 func TestTeamRetentionKeepsClashBasesWithoutHidingHistoryGaps(t *testing.T) {
 	now := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
@@ -28,6 +28,9 @@ func TestTeamRetentionKeepsClashBasesWithoutHidingHistoryGaps(t *testing.T) {
 				}
 				if i == 2 || i == 3 {
 					path = "clash.txt"
+				}
+				if i == 50 || i == 200 || i == 400 || i == 600 {
+					path = "boundary.txt"
 				}
 				at := now.Add(-40 * 24 * time.Hour)
 				if recent && i == 50 {
@@ -46,6 +49,10 @@ func TestTeamRetentionKeepsClashBasesWithoutHidingHistoryGaps(t *testing.T) {
 			}
 			if removed == 0 || state.HistoryFloor != expected {
 				t.Fatalf("wrong history boundary %d (want %d), removed %d", state.HistoryFloor, expected, removed)
+			}
+			base := state.versionAt("boundary.txt", 150)
+			if base == nil || base.Hash != crewTransferDigest("50") {
+				t.Fatal("file active at the history boundary was misreported as deleted")
 			}
 			if state.versionAt("anchor.txt", 1) == nil || state.versionAt("clash.txt", 2) == nil || state.versionAt("clash.txt", 3) == nil {
 				t.Fatal("protected current or clash side was lost")
@@ -82,7 +89,7 @@ func TestTeamCatchUpPreservesLocalEditsBeforeTheNextUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = commitCrewTeamChanges(t.Context(), "catch-up", "owner", "initial", crewTransferDigest("initial"), []crewTeamChange{{Path: "team/note.txt", After: &version}}); err != nil {
+	if _, err = commitCrewTeamChanges(t.Context(), "catch-up", "owner", "initial", crewTransferDigest("initial"), []crewTeamChange{{Path: "team/note.txt", After: &version}, {Path: "team/activity.txt", After: &version}}); err != nil {
 		t.Fatal(err)
 	}
 	state, err := readCrewTeamFileState("catch-up")
@@ -94,11 +101,18 @@ func TestTeamCatchUpPreservesLocalEditsBeforeTheNextUpload(t *testing.T) {
 	v := state.Versions["team/note.txt"]
 	v.Revision = 600
 	state.Versions["team/note.txt"] = v
+	activity := v
+	activity.Revision = 599
+	state.Versions["team/activity.txt"] = activity
 	state.Versions["team/gone.txt"] = crewTeamVersion{Revision: 500}
 	state.Versions["not-shared.txt"] = v
 	old := time.Now().Add(-40 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)
 	for i := 1; i <= 600; i++ {
-		state.Events = append(state.Events, crewTeamEvent{Path: "team/note.txt", Revision: uint64(i), Actor: "owner", At: old, File: syncFile(version), Chunks: version.Chunks})
+		path := "team/activity.txt"
+		if i == 50 || i == 200 || i == 400 || i == 600 {
+			path = "team/note.txt"
+		}
+		state.Events = append(state.Events, crewTeamEvent{Path: path, Revision: uint64(i), Actor: "owner", At: old, File: syncFile(version), Chunks: version.Chunks})
 	}
 	if err = saveCrewTeamFileState("catch-up", state); err != nil {
 		t.Fatal(err)
@@ -127,6 +141,15 @@ func TestTeamCatchUpPreservesLocalEditsBeforeTheNextUpload(t *testing.T) {
 		t.Fatalf("old history was misreported or leaked folders: %d %s", response.Code, response.Body.String())
 	}
 
+	// With floor100, note.txt was still at revision50 during revision150.
+	// This must return its actual bytes, never204-as-deleted or a newer version.
+	request = httptest.NewRequest(http.MethodGet, "/api/crew-teams/catch-up/history?folder_id=f1&path=team%2Fnote.txt&revision=150", nil)
+	request = request.WithContext(context.WithValue(request.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.String() != "server copy" {
+		t.Fatalf("retained-range history lost boundary base: %d %s", response.Code, response.Body.String())
+	}
 	deltas := 0
 	observed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/sync/changes") {
