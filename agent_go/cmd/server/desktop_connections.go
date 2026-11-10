@@ -467,12 +467,14 @@ type desktopProject struct {
 	OwnedByCaller *bool  `json:"owned_by_caller,omitempty"`
 	OwnerName     string `json:"owner_name,omitempty"`
 	SharedLine    string `json:"shared_line,omitempty"`
-	Icon          string `json:"icon,omitempty"`
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Kind          string `json:"kind"`
-	Mode          string `json:"mode,omitempty"`
-	PersonalAgent bool   `json:"personal_agent,omitempty"`
+	// TeamBusy is who else is working in this Crew's Team now, from the server's note to this Mac (crew_team_push.go).
+	TeamBusy      *crewTeamBusyNote `json:"team_busy,omitempty"`
+	Icon          string            `json:"icon,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Kind          string            `json:"kind"`
+	Mode          string            `json:"mode,omitempty"`
+	PersonalAgent bool              `json:"personal_agent,omitempty"`
 }
 
 func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
@@ -545,7 +547,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent})
+				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent, TeamBusy: crewTeamBusyFor(crewTeamRemoteNoteKey(p.ID))})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {
