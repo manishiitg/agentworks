@@ -26,6 +26,15 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 				target.Label += " · " + agent.Name
 				return target, nil
 			}
+			// The Crew owner's agent on their Mac, for a Team member: the Team decides who may message it
+			// (crewTeamOwnerAgent), and the message goes to the owner's Mac or its server copy (deliverToMacSharedAgent).
+			// A Team member counts as a co-owner below, whose lookup knows only the server's own chats (owner, 10 Nov:
+			// every message to a teammate's Mac agent was refused).
+			if chat, ok := crewTeamOwnerMacChat(ctx, target.CrewID, chatID, caller); ok {
+				target.Chat, target.CrewOwner = chat, chat.OwnerID
+				target.Label += " · " + chat.Name
+				return target, nil
+			}
 			if !crewProjectOwnedByCaller(caller, target.Path) {
 				chat, ok := sharedCrewAgentChat(ctx, caller, target.Path, chatID)
 				if !ok {
@@ -98,4 +107,29 @@ func (api *StreamingAPI) authorizeGoalMessageTab(ctx context.Context, peer agent
 	}
 	tab, root, ok := api.goalTabForSession(ctx, peer.Session)
 	return ok && root == peer.Path && tab.ID == peer.ChatKey && tab.OwnerID == peer.UserID
+}
+
+// crewTeamOwnerMacChat is the Crew owner's Mac agent that chatID names, when the Crew lives on the owner's Mac and the
+// caller is another person of its Team who may message it.
+func crewTeamOwnerMacChat(ctx context.Context, project, chatID, caller string) (*codeChat, bool) {
+	if IsLocalMode() || project == "" || !crewRelayTwin(project) {
+		return nil, false
+	}
+	owner := ownerOfCrewProjectID(project)
+	if owner == "" || owner == caller || crewTeamOwnerAgent(ctx, project, chatID, caller) == "" {
+		return nil, false
+	}
+	short := strings.TrimPrefix(chatID, project+codeChatSideMarker)
+	main := chatID == project
+	if t, err := readCrewTeam(project); err == nil && chatID == crewTeamOwnerMainKey(ctx, t) {
+		main = true // the Team's agents list names the owner's Main by its chat there
+	}
+	for _, agent := range readMacSharedAgents(project) {
+		if agent.Tab == macMainTab && !main || agent.Tab != macMainTab && agent.Tab != short && macSharedAgentChatKey(project, agent.Tab) != chatID {
+			continue
+		}
+		key := macSharedAgentChatKey(project, agent.Tab)
+		return &codeChat{OwnerID: owner, ID: key, Key: key, Name: firstNonEmptyTrimmed(agent.Name, "Agent"), Purpose: agent.Purpose}, true
+	}
+	return nil, false
 }
