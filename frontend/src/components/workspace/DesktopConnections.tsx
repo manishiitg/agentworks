@@ -27,10 +27,10 @@ import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 
 
-type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
+type SidebarProject = { id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
- * 10 Nov). The personal AgentWorks agent is rendered by its network group. */
+ * 10 Nov). The personal AgentWorks agent is on the Home page only. */
 function ProjectList<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
   const rest = projects.filter(project => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run'))
   return <>{rest.map(render)}</>
@@ -114,7 +114,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
       </h2>
       {rows.map(renderProject)}
     </section>)}
-    {orderedProjects.filter(project => project.personal_agent).map(renderProject)}
+    {/* The personal AgentWorks agent is on the Home page, not in the left menu (owner, 10 Nov). */}
     {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
     <div className="space-y-1"><ProjectList projects={server} render={renderProject} /></div>
     {children}
@@ -212,7 +212,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         <button type="button" aria-pressed={showingAll} title="Crews from every network" onClick={() => setSelectedLocations(connections.map(connection => connection.id))}
           className={`flex h-9 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${showingAll ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>All</button>
       </div>}
-      {unpinnedRows.filter(project => project.personal_agent).map(project => renderProject(project))}
+      {/* The personal AgentWorks agent is on the Home page, not in the left menu (owner, 10 Nov). */}
       <div className="space-y-1"><ProjectList projects={unpinnedRows} render={project => renderProject(project)} /></div>
       {selectedLocations.includes(active) && children}
         {locations.map(connection => {

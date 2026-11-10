@@ -1,3 +1,4 @@
+import { UploadingAttachments } from './chat/UploadingAttachments'
 import { nextComposerHint, recordComposerShortcut } from '../utils/composerHints'
 import { chatTabSwitchKeys } from '../products/work/workTabs'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -895,6 +896,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [cdpChecking, setCdpChecking] = useState(false)
   const [showCdpPopup, setShowCdpPopup] = useState(false)
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const [uploadingFiles, setUploadingFiles] = useState<{ tabId: string | null; files: File[] } | null>(null)
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const isCdpDisconnected = browserMode === 'cdp' && (!cdpEnabled || cdpConnected === false)
 
@@ -2452,6 +2454,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const stillOwnsUpload = () => isChatIdentityCurrent(uploadIdentity) && Boolean(activeTabId) &&
       useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId
     setIsUploadingFiles(true)
+    setUploadingFiles({ tabId: activeTabId, files })
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
     const uploadedPaths: string[] = []
     const uploadedAbsolutePaths = new Map<string, string>()
@@ -2507,7 +2510,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           if (stillOwnsUpload()) addToast(`Files uploaded, but could not be inserted into the terminal. Return to chat to use the attachments. ${error instanceof Error ? error.message : ''}`, 'error')
         }
       }
-      if (!stillOwnsUpload()) { setIsUploadingFiles(false); return }
+      if (!stillOwnsUpload()) { setIsUploadingFiles(false); setUploadingFiles(null); return }
       if (activeTabId && !insertedIntoTerminal) {
         const latestFileContext = useChatStore.getState().getTabConfig(activeTabId)?.fileContext || chatFileContext
         const seenPaths = new Set(latestFileContext.map((item: { path: string }) => item.path))
@@ -2560,6 +2563,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     console.info('[CHAT_UPLOAD] upload completed', { uploadedCount: uploadedPaths.length, failureCount: failures.length })
 
     setIsUploadingFiles(false)
+    setUploadingFiles(null)
   }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
 
   useEffect(() => {
@@ -2946,6 +2950,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           <div ref={setMicBannerHost} className="empty:hidden" />
           {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
+            {uploadingFiles && uploadingFiles.tabId === activeTabId && <UploadingAttachments files={uploadingFiles.files} />}
             <FileContextDisplay
               attachmentMode
               files={chatFileContext}
