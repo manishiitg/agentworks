@@ -64,6 +64,12 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalError(w, 409, "use_mac", "Fork this chat in the Mac app where it runs.")
 		return
 	}
+	forkStarted := time.Now()
+	forkCompleted := false
+	defer func() {
+		log.Printf("[CHAT_FORK_PHASE] phase=total source=%s elapsed_ms=%d success=%t", source.Record.SessionID, time.Since(forkStarted).Milliseconds(), forkCompleted)
+	}()
+	phaseStarted := time.Now()
 	raw, err := ReadChatHistoryConversation(user, source.Record.SessionID, source.Record.WorkspacePath)
 	if err != nil {
 		externalError(w, 422, "history_unavailable", "This chat has no saved conversation yet. Send a message first.")
@@ -80,6 +86,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalError(w, 422, "history_unavailable", "This chat has no saved conversation yet. Send a message first.")
 		return
 	}
+	log.Printf("[CHAT_FORK_PHASE] phase=history source=%s elapsed_ms=%d success=true", source.Record.SessionID, time.Since(phaseStarted).Milliseconds())
 	choice, err := effectiveProfileChatModel(slot.profile, slot.binding, source.Record, source.Identity)
 	if err != nil {
 		externalFailure(w, err)
@@ -101,6 +108,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	request.Header = r.Header.Clone()
 	request.Header.Del("X-Session-ID")
 	request.Header.Del("X-Conversation-Continuation")
+	phaseStarted = time.Now()
 	destination, err := api.resolveAgentProfileConversation(request, slot.profile, key, name)
 	if err != nil {
 		externalFailure(w, err)
@@ -117,6 +125,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	log.Printf("[CHAT_FORK_PHASE] phase=register_chat source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	destination.Provider, destination.ModelID, destination.ConnectionID = query.Provider, query.ModelID, query.ConnectionID
 	runtime, nativeErr := api.forkCrewNativeRuntime(r, source.Record, destination)
 	note := "Conversation copied into an independent chat."
@@ -133,6 +142,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		applyCrewNativeToolPolicy(&slot.profile, true, slot.binding.ProjectNativeAgentTools)
 		runtime.WorkshopMode, runtime.AgentToolsMode = crewCLIMode(false), normalizeAgentToolsMode(slot.profile.Runtime.AgentTools.Mode)
 	}
+	phaseStarted = time.Now()
 	path, pathOK := workProjectChatHistoryConversationPath(user, destination.WorkspacePath, destination.SessionID, time.Now())
 	if !pathOK || path == "" {
 		externalError(w, 500, "history_unavailable", "Could not save the copied conversation. Try again.")
@@ -155,6 +165,8 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalFailure(w, err)
 		return
 	}
+	forkCompleted = true
+	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
 	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "next": note})
 }
@@ -220,6 +232,7 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 	if handle.Provider == "claude-code" {
 		cwds = append(cwds, claudeSessionWorkingDirs(store, handle.NativeSessionID, handle.WorkingDir)...)
 	}
+	exportStarted := time.Now()
 	var bundle *sessiontransfer.Bundle
 	for _, cwd := range cwds {
 		if cwd == "" {
@@ -234,6 +247,7 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 			break
 		}
 	}
+	log.Printf("[CHAT_FORK_PHASE] phase=export source=%s session=%s elapsed_ms=%d success=%t", source.SessionID, destination.SessionID, time.Since(exportStarted).Milliseconds(), err == nil && bundle != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -256,11 +270,16 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 	}
 	// Import alone preserves the native ID. Always fork first: unsupported
 	// formats use saved history instead of sharing a writer with the original.
+	copyStarted := time.Now()
 	fork, err := sessiontransfer.ForkJSONL(bundle, filepath.Join(staging, "fork"), cwd)
+	log.Printf("[CHAT_FORK_PHASE] phase=copy source=%s session=%s elapsed_ms=%d success=%t", source.SessionID, destination.SessionID, time.Since(copyStarted).Milliseconds(), err == nil)
 	if err != nil {
 		return nil, err
 	}
-	return api.importCrewNativeInto(r.Context(), claims, roots, destination, destination.SessionID, fork, cwd)
+	importStarted := time.Now()
+	runtime, err := api.importCrewNativeInto(r.Context(), claims, roots, destination, destination.SessionID, fork, cwd)
+	log.Printf("[CHAT_FORK_PHASE] phase=register_native source=%s session=%s elapsed_ms=%d success=%t", source.SessionID, destination.SessionID, time.Since(importStarted).Milliseconds(), err == nil)
+	return runtime, err
 }
 
 // Avoid exporting formats ForkJSONL cannot fork, and pass the bound before export.
