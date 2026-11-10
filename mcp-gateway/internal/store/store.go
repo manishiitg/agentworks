@@ -724,28 +724,40 @@ func (s *MemoryStore) ListConnectors(workspaceID string) []Connector {
 // keeps its earlier version in the history. Grants still decide who may call it.
 func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 	s.mu.Lock()
-	defer s.persistUnlock()
+	snapshot, changed := s.upsertToolSnapshotLocked(t)
+	if changed {
+		s.persistUnlock()
+	} else {
+		s.mu.Unlock()
+	}
+	return snapshot
+}
+
+// Caller holds the store writer lock; changed controls whether anything needs
+// committing, without marshalling the full configuration just to compare it.
+func (s *MemoryStore) upsertToolSnapshotLocked(t ToolSnapshot) (ToolSnapshot, bool) {
 	t.Status, t.ApprovedFingerprint = StatusActive, t.Fingerprint
 	prev, known := s.tools[t.PublicName]
 	if !known {
 		t.Version = 1
 		s.tools[t.PublicName] = t
-		return t
+		return t, true
 	}
 	if prev.Fingerprint == t.Fingerprint {
 		// Unchanged: revive a tool the last discovery dropped (DisableMissingTools) and activate one an older
 		// release held for review, with its grants intact.
-		if prev.Status != StatusActive || prev.ApprovedFingerprint != prev.Fingerprint {
+		changed := prev.Status != StatusActive || prev.ApprovedFingerprint != prev.Fingerprint
+		if changed {
 			prev.Status, prev.ApprovedFingerprint = StatusActive, prev.Fingerprint
 			s.tools[t.PublicName] = prev
 		}
-		return prev
+		return prev, changed
 	}
 	t.Version = prev.Version + 1
 	log.Printf("gateway: tool definition changed and activated: connector=%s tool=%s v%d->v%d fingerprint %s->%s", t.ConnectorID, t.PublicName, prev.Version, t.Version, prev.Fingerprint, t.Fingerprint)
 	s.toolVersions[t.PublicName] = append(s.toolVersions[t.PublicName], prev)
 	s.tools[t.PublicName] = t
-	return t
+	return t, true
 }
 
 func (s *MemoryStore) ListToolVersions(workspaceID, publicName string) []ToolSnapshot {
@@ -764,7 +776,15 @@ func (s *MemoryStore) ListToolVersions(workspaceID, publicName string) []ToolSna
 // UpsertToolSnapshot revives it.
 func (s *MemoryStore) DisableMissingTools(connectorID string, present map[string]bool) {
 	s.mu.Lock()
-	defer s.persistUnlock()
+	if s.disableMissingToolsLocked(connectorID, present) {
+		s.persistUnlock()
+	} else {
+		s.mu.Unlock()
+	}
+}
+
+func (s *MemoryStore) disableMissingToolsLocked(connectorID string, present map[string]bool) bool {
+	changed := false
 	for name, t := range s.tools {
 		if t.ConnectorID == connectorID && !present[name] && t.Status != StatusDisabled {
 			if t.Status == StatusActive && t.ApprovedFingerprint == "" {
@@ -772,8 +792,46 @@ func (s *MemoryStore) DisableMissingTools(connectorID string, present map[string
 			}
 			t.Status = StatusDisabled
 			s.tools[name] = t
+			changed = true
 		}
 	}
+	return changed
+}
+
+// ReconcileToolSnapshots applies one successful upstream discovery atomically.
+// Readers see either the old catalog or the committed new catalog; failed
+// persistence restores the old snapshot and keeps the existing denial latch.
+func (s *MemoryStore) ReconcileToolSnapshots(connectorID string, tools []ToolSnapshot) ([]ToolSnapshot, error) {
+	for _, tool := range tools {
+		if tool.ConnectorID != connectorID {
+			return nil, errors.New("discovered tool belongs to a different connection")
+		}
+	}
+	s.mu.Lock()
+	if s.persistence != nil && s.persistence.err != nil {
+		err := s.persistence.err
+		s.mu.Unlock()
+		return nil, err
+	}
+	seen := make(map[string]bool, len(tools))
+	result := make([]ToolSnapshot, 0, len(tools))
+	changed := false
+	for _, tool := range tools {
+		snapshot, updated := s.upsertToolSnapshotLocked(tool)
+		result = append(result, snapshot)
+		seen[snapshot.PublicName] = true
+		changed = changed || updated
+	}
+	missing := s.disableMissingToolsLocked(connectorID, seen)
+	if changed || missing {
+		s.persistUnlock()
+	} else {
+		s.mu.Unlock()
+	}
+	if err := s.PersistenceError(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *MemoryStore) GetTool(publicName string) (ToolSnapshot, bool) {
