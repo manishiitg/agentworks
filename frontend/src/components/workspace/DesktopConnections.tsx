@@ -25,15 +25,24 @@ import { productRoutePath } from '../../utils/productRoutes'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
+import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, type MenuFilter } from './MenuGroups'
 
 
 type SidebarProject = { id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
  * 10 Nov). The personal AgentWorks agent is on the Home page only. */
+const menuListed = (project: SidebarProject) => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run')
 function ProjectList<T extends SidebarProject>({ projects, render }: { projects: T[]; render: (project: T) => ReactNode }) {
-  const rest = projects.filter(project => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run'))
-  return <>{rest.map(render)}</>
+  return <>{projects.filter(menuListed).map(render)}</>
+}
+
+/** The menu filter over listed projects: what is shown, and the dropdown's count for each choice. */
+function useProjectFilter<T extends SidebarProject>(projects: T[], keyOf: (project: T) => string) {
+  const { groups, filter } = useMenuGroups()
+  const listed = projects.filter(menuListed)
+  const counts = (choice: MenuFilter) => listed.filter(project => matchesMenuFilter(choice, groups, keyOf(project), project)).length
+  return { counts, shown: (project: T) => matchesMenuFilter(filter, groups, keyOf(project), project) }
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
@@ -63,15 +72,18 @@ function useAllProjectsExpanded(hasPins: boolean) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
   return useSidebarExpansionStore(state => state.expanded[key] ?? !hasPins)
 }
-function AllProjects({ children, hasPins }: { children: ReactNode; hasPins: boolean }) {
+function AllProjects({ children, hasPins, counts }: { children: ReactNode; hasPins: boolean; counts: (filter: MenuFilter) => number }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
   const expanded = useAllProjectsExpanded(hasPins)
   const toggle = useSidebarExpansionStore(state => state.toggle)
   return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? '' : 'mt-auto'}`}>
-    <button type="button" aria-expanded={expanded} onClick={() => toggle(key, !hasPins)} className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="min-w-0 flex-1">All projects</span>
-      <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-    </button>
+    {/* The heading is the filter (owner, 10 Nov): All, Mine, Shared with me or one of the person's groups. */}
+    <div className="flex w-full shrink-0 items-center gap-2 rounded-lg px-2 py-1.5">
+      <div className="min-w-0 flex-1"><ProjectFilterMenu counts={counts} /></div>
+      <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide projects' : 'Show projects'} onClick={() => toggle(key, !hasPins)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </button>
+    </div>
     {expanded && <div className="mt-1">{children}</div>}
   </section>
 }
@@ -91,6 +103,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     onMoveUp={canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={canPin && pinnedIndex >= 0 && pinnedIndex < pinnedProjects.length - 1 ? () => move(1) : undefined}
     showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
     pinned={pinned?.includes(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))} onTogglePin={canPin && !project.personal_agent ? () => { const key = connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id); setPinned(key, !pinned?.includes(key)) } : undefined}
+    groupsMenu={project.kind === 'crew' && !project.personal_agent ? <ProjectGroupsMenu name={project.name} projectKey={connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)} /> : undefined}
     stateLine={location === 'mac' ? macCrewStateText(state) : undefined} offline={location === 'mac' && mac?.online === false} onMac={location === 'mac' ? (mac?.online ? 'on' : 'off') : undefined} onOpen={() => {
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
@@ -103,10 +116,11 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     const project = orderedProjects.find(item => !item.personal_agent && connectedProjectKey(getRawActiveWorkspaceId(), item.kind, item.id) === key)
     return project ? [project] : []
   })
-  const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
+  const filtered = useProjectFilter(orderedProjects, project => connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
+  const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project) && filtered.shown(project)))
   return <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
     {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>{pinnedProjects.map(renderProject)}</section>}
-    <AllProjects hasPins={Boolean(pinned?.length)}>
+    <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}>
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
@@ -179,6 +193,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       selected={project.connection.id === active && project.selected}
       location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} remote={project.connection.id !== 'local'} showLocation={shortcut || selectedLocations.length > 1}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && project.kind === 'crew' && !project.personal_agent ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
+      groupsMenu={project.kind === 'crew' && !project.personal_agent ? <ProjectGroupsMenu name={project.name} projectKey={key} /> : undefined}
       onOpen={() => {
         visit(key)
         if (project.connection.id === active) openSidebarProject(project.kind, project.id)
@@ -190,13 +205,14 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
   const showingAll = connections.length > 1 && locations.length === connections.length
-  const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)))
+  const filtered = useProjectFilter(visible, keyFor)
+  const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)) && filtered.shown(project))
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
-      <AllProjects hasPins={Boolean(pinned?.length)}>
+      <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}>
       {connections.length > 1 && <div role="group" aria-label="Show Crews from" className="mb-2 flex items-center gap-1 overflow-x-auto px-1 py-2">
         {connections.map(connection => {
           const selected = selectedLocations.includes(connection.id)
@@ -222,6 +238,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
         return null
       })}
+      {visible.length > 0 && !unpinnedRows.length && <p className="px-2.5 py-2 text-xs text-muted-foreground">Nothing here for this filter.</p>}
       {!visible.length && locations.length > 0 && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
       </AllProjects>
     </div>
