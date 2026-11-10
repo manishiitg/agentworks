@@ -907,6 +907,16 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	return ctx, nil
 }
 
+// PLAT-746-819: the waiting row needs the same admitted sender as the started turn.
+// Never derive attribution from the envelope or reuse it for a different chat/person.
+func queuedTurnDisplayAttribution(sessionID string, turn queuedConversationTurn) map[string]interface{} {
+	p := turn.Principal
+	if sessionID != turn.SessionID || p.DeliveredMessageSession != sessionID || p.DeliveredMessageUser != turn.UserID || turn.UserID == "" {
+		return nil
+	}
+	return maps.Clone(p.DeliveredMessage)
+}
+
 func (api *StreamingAPI) recordQueuedConversationUserMessage(sessionID string, turn queuedConversationTurn) {
 	// A keyed submission already shows as a provisional queued bubble in the
 	// submitting browser. Its durable row is the turn's own user_message, which
@@ -915,7 +925,7 @@ func (api *StreamingAPI) recordQueuedConversationUserMessage(sessionID string, t
 	if sanitizeClientMessageID(turn.SubmissionID) != "" {
 		return
 	}
-	api.recordLiveCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "")
+	api.recordAttributedCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "", queuedTurnDisplayAttribution(sessionID, turn))
 }
 
 func (api *StreamingAPI) registerQueuedTurnWaiter(turnID string, callback func(event *unifiedevents.AgentEvent)) <-chan queuedConversationTurnResult {

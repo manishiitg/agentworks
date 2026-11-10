@@ -11129,6 +11129,10 @@ func (api *StreamingAPI) deliverControlKeyToLiveMainTerminal(ctx context.Context
 }
 
 func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID string) {
+	api.recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID, nil)
+}
+
+func (api *StreamingAPI) recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageID string, attribution map[string]interface{}) {
 	message = strings.TrimSpace(message)
 	if sessionID == "" || message == "" || api == nil || api.eventStore == nil {
 		return
@@ -11141,6 +11145,12 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 		"agent_label":     providerDisplayLabel(provider),
 		"message_id":      messageID,
 		"delivery_status": deliveryStatus,
+	}
+	// Display-only fields from admitted delivery; queue IDs/status remain authoritative.
+	for _, key := range []string{"source", "sender_label", "sender_kind", "sender_agent", "sender_channel", "sender_user_id", "display_content", "display_content_truncated", "agent_message_inbox", "agent_message_instructions", "shared_message_id"} {
+		if value, ok := attribution[key]; ok {
+			eventData.Metadata[key] = value
+		}
 	}
 	if deliveryStatus == "failed" {
 		eventData.Metadata["confirmation"] = "failed"

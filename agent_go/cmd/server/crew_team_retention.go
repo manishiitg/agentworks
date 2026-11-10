@@ -117,7 +117,7 @@ func crewTeamCatchUpManifest(claims *UserClaims, team crewTeam, state crewTeamFi
 
 func writeCrewTeamCatchUp(w http.ResponseWriter, project string, claims *UserClaims, team crewTeam, state crewTeamFileState, requested uint64) {
 	out := crewTeamCatchUpManifest(claims, team, state)
-	log.Printf("[CREW_TEAM_LEDGER] project=%s event=history_catch_up requested_revision=%d current_revision=%d history_floor=%d", project, requested, state.Revision, state.HistoryFloor)
+	log.Printf("[CREW_TEAM_LEDGER] project=%s event=history_catch_up status=409 requested_revision=%d current_revision=%d history_floor=%d", project, requested, state.Revision, state.HistoryFloor)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
 	json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "team_history_catch_up", "message": errCrewTeamHistoryCatchUp.Error()}, "revision": state.Revision, "catch_up": true, "manifest": out.Files})

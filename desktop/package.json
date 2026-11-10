@@ -1,6 +1,6 @@
 {
   "name": "runloop-desktop",
-  "version": "1.25.146",
+  "version": "1.25.147",
   "description": "Standalone Mac app for AgentWorks",
   "repository": "github:manishiitg/agentworks",
   "main": "main.js",
