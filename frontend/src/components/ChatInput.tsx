@@ -1,4 +1,4 @@
-import { nextComposerHint } from '../utils/composerHints'
+import { nextComposerHint, recordComposerShortcut } from '../utils/composerHints'
 import { chatTabSwitchKeys } from '../products/work/workTabs'
 import { useAuthStore } from '../stores/useAuthStore'
 import { resolveSlashCommandInput } from '../commands/commandPrompt'
@@ -2097,6 +2097,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (['/', '@', '#'].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) recordComposerShortcut(useAuthStore.getState().user?.id || '', e.key)
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
     if (showCommandDialog || showFileDialog) {
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Tab'].includes(e.key)) return
@@ -2140,6 +2141,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && isTurnInFlight) {
       e.preventDefault()
       if (micStateRef.current === 'recording') { micRef.current?.stopDictation(); return }
+      recordComposerShortcut(useAuthStore.getState().user?.id || '', 'queue')
       if (!executeSlashCommandFromQuery(queryToSubmit.trim())) void routeSubmit(queryToSubmit, 'queue')
       return
     }
@@ -2165,6 +2167,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
     // Handle CTRL+Enter (Windows/Linux) or CMD+Enter (Mac) to add new line
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      recordComposerShortcut(useAuthStore.getState().user?.id || '', 'newline')
       e.preventDefault()
       const textarea = e.target as HTMLTextAreaElement
       const start = textarea.selectionStart
@@ -2743,13 +2746,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const command = mac ? '⌘' : 'Ctrl+'
     const tabs = chatTabSwitchKeys()
     setOccasionalHint(nextComposerHint(hintOwner, [
-      '/ commands · @ files · # Crews',
-      'While working, Shift+Enter queues your message.',
-      `${AGENT_NEWLINE_KEY} adds a new line.`,
-      `${command}← / ${command}→ goes back / forward across agents and projects.`,
-      `${mac ? tabs.mac : tabs.other} switches agents in this project.`,
-      `${command}K opens search.`,
-      `${mac ? '⌥⇧T' : 'Alt+Shift+T'} opens a new agent.`,
+      { id: '/', text: '/ opens commands.' },
+      { id: '@', text: '@ attaches files.' },
+      { id: '#', text: '# adds Crew references.' },
+      { id: 'queue', text: 'While working, Shift+Enter queues your message.' },
+      { id: 'newline', text: `${AGENT_NEWLINE_KEY} adds a new line.` },
+      { id: 'history', text: `${command}← / ${command}→ goes back / forward across agents and projects.`, feature: 'chat-history-keys' },
+      { id: 'tabs', text: `${mac ? tabs.mac : tabs.other} switches agents in this project.`, feature: 'chat-tab-keys' },
+      { id: 'search', text: `${command}K opens search.`, feature: 'quick-switcher' },
+      { id: 'new', text: `${mac ? '⌥⇧T' : 'Alt+Shift+T'} opens a new agent.`, feature: 'chat-tab-new' },
     ]))
   }
 

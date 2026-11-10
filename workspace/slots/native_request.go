@@ -16,6 +16,7 @@ type NativeSessionRequest struct {
 	Operation string          `json:"operation"`
 	Transport string          `json:"transport"`
 	Bundle    json.RawMessage `json:"bundle,omitempty"`
+	MaxBytes  int64           `json:"max_bytes,omitempty"`
 }
 
 var nativeRuntimeID = regexp.MustCompile(`^[0-9a-f]{64}$`)
