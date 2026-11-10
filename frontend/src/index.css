@@ -1924,14 +1924,9 @@
 /* App-wide colors inherit into navigation and portaled dialogs. Explicit
    report/force-light themes still define their own tokens on their boundary. */
 /* Default uses the original .dark palette above, not an alternate dark theme.
-   Keep only typography and the chat-specific semantic colors here. */
+   Keep only the independently approved typography here. */
 html.dark[data-appearance="dark"] {
   --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --appearance-bold: hsl(var(--foreground));
-  --appearance-link: #60a5fa;
-  --appearance-code: #60a5fa;
-  --appearance-code-background: #1f2937;
-  --appearance-selection: #264f78;
 }
 /* Neutral surfaces separate content from chrome without tinting the whole app.
    Blue is reserved for links/actions/focus; status colors keep their meanings. */
@@ -1992,20 +1987,27 @@ html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-sco
   background: hsl(var(--background));
 }
 
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
+/* Inline paths/names are code labels, not blue emphasis. Keep real link colors. */
+html.dark[data-appearance="dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: #d4d4d4 !important;
+  background-color: rgb(255 255 255 / 0.07) !important;
+}
+
+/* Default keeps the renderer's original chat colors and native text selection. */
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
   color: hsl(var(--foreground));
 }
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown strong {
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown strong {
   color: var(--appearance-bold);
 }
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown a {
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown a {
   color: var(--appearance-link);
 }
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
   color: var(--appearance-code) !important;
   background-color: var(--appearance-code-background) !important;
 }
-html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) ::selection {
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) ::selection {
   background-color: var(--appearance-selection);
   color: hsl(var(--foreground));
 }
