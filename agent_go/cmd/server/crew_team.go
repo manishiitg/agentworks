@@ -1041,7 +1041,17 @@ func moveCrewTeamToTwin(owner, previous, created string) {
 		return
 	}
 	old.ProjectID, old.On = created, false
-	if err = writeCrewTeam(old); err != nil {
+	for id, agent := range old.Agents {
+		if agent.ChatKey == previous {
+			agent.ChatKey = created
+		} else if suffix, ok := strings.CutPrefix(agent.ChatKey, previous+codeChatSideMarker); ok {
+			agent.ChatKey = created + codeChatSideMarker + suffix
+		}
+		old.Agents[id] = agent
+	}
+	// This is the explicit identity-preserving move. Ordinary writes correctly
+	// reject a record belonging to a different project, including the renamed one.
+	if err = fsutil.WriteJSONAtomic(filepath.Join(to, "team.json"), old, 0600); err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=moved_failed from=%s reason=%q", created, previous, err)
 		return
 	}
