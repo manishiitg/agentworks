@@ -429,8 +429,12 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 // the Mac off it says what happens to their agents: the Crew owner's In team agents answer from the server, a member's
 // wait for their Mac (crew_mac_waiting.go).
 func crewTeamPersonPresence(t crewTeam, p crewTeamAgentsPerson, viewer string) *crewTeamTabPresence {
-	if p.UserID == "" || p.UserID == viewer || !crewTeamAgentOnMac(t, p.UserID) {
+	if p.UserID == "" || p.UserID == viewer {
 		return nil
+	}
+	// Agents that work on the server are always there (owner, 10 Nov: a server person showed no dot, as if unknown).
+	if !crewTeamAgentOnMac(t, p.UserID) {
+		return &crewTeamTabPresence{Online: true, Line: p.Name + "'s agents work on the server · always available", Tone: "on"}
 	}
 	if p.MacOn || (p.Owner && IsLocalMode()) {
 		line := p.Name + "'s Mac is on"
