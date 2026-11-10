@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AlertCircle, FolderOpen, Loader2, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import type { CrewOnboarding } from './crewStarterTypes'
@@ -13,6 +14,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
   error: string | null
   allowExistingFolder?: boolean
 }) {
+  const workspace = useWorkspaceConnectionStore(state => state.profiles.find(profile => profile.id === state.activeWorkspaceId))
   const [title, setTitle] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [editingFolder, setEditingFolder] = useState(false)
@@ -29,6 +31,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
   const changeFolder = (folder: string) => { setRootPath(folder); setLocalChat(undefined); setChatChoiceFolder(''); setChoosingChat(false); createAfterChatChoice.current = false }
   const formRef = useRef<HTMLFormElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  const creationPlace = location ? location.can_choose_folder ? 'This Mac' : workspace?.type === 'remote' ? workspace.name : 'the server' : null
   const canChangeFolder = allowExistingFolder && location?.can_choose_folder === true
   const closingRef = useRef({ onClose, submitting })
   closingRef.current = { onClose, submitting }
@@ -99,6 +102,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
         <button type="button" onClick={onClose} disabled={submitting} aria-label="Close" className="rounded-lg p-2 text-muted-foreground hover:bg-muted disabled:opacity-50"><X className="h-4 w-4" /></button>
       </header>
       <div className="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+        <p className="text-sm text-muted-foreground" aria-live="polite">Creating on: <strong className="font-medium text-foreground">{creationPlace || 'Loading…'}</strong></p>
         <label className="block text-sm font-medium" htmlFor="crew-wizard-name">Name
           <input ref={nameRef} id="crew-wizard-name" value={title} onChange={event => setTitle(event.target.value)} maxLength={60} disabled={submitting} placeholder="e.g. My project" className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
         </label>
@@ -118,7 +122,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
             </div>
             <button type="button" disabled={submitting} onClick={() => { changeFolder(''); setEditingFolder(false); setFolderError(null) }} className="mt-1.5 text-xs text-muted-foreground hover:text-foreground">Use default folder</button>
           </> : <p className="mt-1.5 break-all text-sm text-muted-foreground" title={rootPath || location?.folder}>{rootPath || (locationLoading ? 'Checking folder…' : locationError ? 'Could not load the project folder. Update and restart the local app if Retry does not help.' : location?.folder)}</p>}
-          {!rootPath && location && !locationLoading && !locationError && <p className="mt-1 text-xs text-muted-foreground">Your project files will be saved here. Choose an existing folder to continue a previous chat.</p>}
+          {!rootPath && location && !locationLoading && !locationError && <p className="mt-1 text-xs text-muted-foreground">{location.can_choose_folder ? canChangeFolder ? 'Your project files will be saved here. Choose an existing folder to continue a previous chat.' : 'Your project files will be saved here.' : `This project will be created on ${creationPlace}. To use a folder on your computer, switch to Mac first.`}</p>}
           {locationError && <button type="button" onClick={() => setLocationRevision(value => value + 1)} className="mt-1 text-xs text-primary">Retry folder lookup</button>}
           {folderError && <p role="alert" className="mt-1 text-xs text-destructive">{folderError}</p>}
         </section>
