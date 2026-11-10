@@ -169,7 +169,7 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := &recordingRegistrar{}
-	if err := f.api.registerCrewSettingsChatTools(reg, nil, profile, owner, false, "global-pause-chat", externalCommandCrewRoot, "https://example.com"); err != nil {
+	if err := f.api.registerCrewSettingsChatTools(reg, nil, &resolvedAgentProfile{Definition: profile}, owner, false, "global-pause-chat", externalCommandCrewRoot, "https://example.com"); err != nil {
 		t.Fatal(err)
 	}
 	tool, ok := reg.tools["manage_schedules"]
