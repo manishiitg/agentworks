@@ -193,7 +193,6 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 // PendingAction or receipt committed by an in-flight transfer.
 
 const crewNativeDivergedCode = "native_history_diverged"
-const crewPairInUseCode = "crew_pair_in_use"
 const crewSyncForbiddenCode = "crew_sync_forbidden"
 
 // Keep refusal identity and HTTP status separate from user-facing wording.
