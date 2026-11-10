@@ -201,8 +201,9 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						// A member's copy names whose Crew it is; copies joined before the name was kept get it here.
 						if t.OwnerID != c.User.ID {
 							if local := crewTeamMemberCopy(t.ProjectID); local != "" {
-								if name := strings.SplitN(t.OwnerName, "@", 2)[0]; name != "" && readCrewTeamState(local).SharedBy != name {
-									_ = writeCrewTeamState(local, func(s *crewTeamLocalState) { s.SharedBy = name })
+								name, network := strings.SplitN(t.OwnerName, "@", 2)[0], crewTeamNetworkName(c)
+								if saved := readCrewTeamState(local); name != "" && (saved.SharedBy != name || saved.SharedFrom != network) {
+									_ = writeCrewTeamState(local, func(s *crewTeamLocalState) { s.SharedBy, s.SharedFrom = name, network })
 								}
 							}
 						}

@@ -201,7 +201,7 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		local = id
 	}
 	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) {
-		s.MemberOf, s.SharedBy = project, strings.SplitN(team.OwnerName, "@", 2)[0]
+		s.MemberOf, s.SharedBy, s.SharedFrom = project, strings.SplitN(team.OwnerName, "@", 2)[0], crewTeamNetworkName(c)
 	}); err != nil {
 		return "", err
 	}
