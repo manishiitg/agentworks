@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -94,8 +94,14 @@ func saveCrewTeamLocal(dir string, b crewTeamLocal) error {
 		// PLAT-746-820: successful idle rounds change only this heartbeat.
 		// Keep it roughly current without rewriting the file baselines every round.
 		saved.LastSynced = b.LastSynced
-		if err == nil && age >= 0 && age < 10*time.Minute && reflect.DeepEqual(saved, b) {
-			return nil
+		if err == nil && age >= 0 && age < 10*time.Minute {
+			// Compare the persisted representation: omitempty slices become nil
+			// on reload, whereas a scan returns an allocated empty slice.
+			previous, previousErr := json.Marshal(saved)
+			next, nextErr := json.Marshal(b)
+			if previousErr == nil && nextErr == nil && bytes.Equal(previous, next) {
+				return nil
+			}
 		}
 	}
 	err := fsutil.WriteJSONAtomic(filepath.Join(dir, "binding.json"), b, 0600)
