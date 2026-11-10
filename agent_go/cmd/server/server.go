@@ -371,8 +371,7 @@ type ActiveSessionInfo struct {
 type StreamingAPI struct {
 	crewPanels crewPanelCache
 
-	crewTurnSnapshots     sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
-	workspaceGitChatUsage sync.Map // authorized chat/workspace -> incremental tool-path index
+	crewTurnSnapshots sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
 
 	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex

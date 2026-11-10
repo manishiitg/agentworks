@@ -17,7 +17,10 @@ export interface GitRepo {
   /** Repo folder relative to the workspace ("" for the workspace itself). */
   root: string
   branch: string
-  used_in_chat?: boolean
+  /** The repository this checkout belongs to (its main checkout's folder). */
+  repository?: string
+  /** A linked worktree of that repository. */
+  worktree?: boolean
   detached?: boolean
   upstream?: string
   ahead: number
@@ -109,8 +112,8 @@ export const workspaceGitApi = {
     const response = await api.post(ENDPOINT, { workspace_path: workspacePath, repo, ...action })
     return (response.data?.repo as GitRepo | undefined) ?? null
   },
-  async status(workspacePath: string, sessionId?: string): Promise<GitRepo[]> {
-    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status', session_id: sessionId } })
+  async status(workspacePath: string): Promise<GitRepo[]> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'status' } })
     if (response.data?.git_unavailable) throw new Error('Git is unavailable.')
     return (response.data?.repos as GitRepo[] | undefined) ?? []
   },
