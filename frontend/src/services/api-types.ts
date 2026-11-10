@@ -244,8 +244,10 @@ export interface ChatContextView {
   limits?: { label: string; used_percent: number; resets_at?: string }[]
   idle_compaction?: { on: boolean }
   idle_compaction_hint?: string
-  /** On: a reply that ends with the chat over 300K tokens is followed by a compaction. Off by default. */
+  /** On: a reply that ends with the chat over 300K tokens is followed by a compaction. On unless turned off. */
   compact_early?: { on: boolean }
+  /** Set for a long chat: picking another model first offers to compact (the server's words). */
+  switch_note?: string
   compact_early_hint?: string
   /** A Claude chat only: on runs Claude Code as the native terminal (the AgentWorks mod drives it), off as the chat view. */
   claude_terminal?: { on: boolean }
