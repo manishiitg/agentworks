@@ -164,42 +164,91 @@ type crewTeamTabReply struct {
 }
 
 type crewTeamHelpLine struct {
-	Badge string `json:"badge"`
 	Title string `json:"title"`
 	Text  string `json:"text"`
 }
 
-// crewTeamHelp words the agent menu's help card from the rows the viewer sees, so a state that no agent here is in
-// (such as "On your Mac") is not explained.
+// crewTeamHelp words the agent menu's "How this works" card from this Crew's real agents and people for the viewer
+// (owner, 10 Nov: a new person must learn what an agent and a team are, and see who is on it and what they can use).
 func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
-	var server, mac, inTeam, answersOnly, mine bool
+	owner := r.CanSwitch
+	var mac, mine bool
+	var shared, onlyMe, usable []string
+	ownerName := ""
+	var others []string
+	for _, p := range r.People {
+		if p.Note == "owner" {
+			ownerName = p.Name
+		}
+		if p.Note != "you" && p.Note != "invited" && p.Note != "owner" {
+			others = append(others, p.Name)
+		}
+	}
 	for _, a := range r.Agents {
-		server = server || a.Place == "server"
 		mac = mac || a.Place == "mac"
-		inTeam = inTeam || a.InTeam
-		answersOnly = answersOnly || (a.CanMakeChanges != nil && !*a.CanMakeChanges)
 		mine = mine || a.Mine
+		what := a.Name
+		if a.InTeam && a.CanMakeChanges != nil {
+			what += " (answers only)"
+			if *a.CanMakeChanges {
+				what = a.Name + " (answers and changes)"
+			}
+		}
+		switch {
+		case a.Mine && a.InTeam:
+			shared = append(shared, what)
+		case a.Mine:
+			onlyMe = append(onlyMe, a.Name)
+		case a.InTeam:
+			usable = append(usable, a.OwnerName+"'s "+what)
+		}
 	}
 	lines := []crewTeamHelpLine{}
-	if server {
-		lines = append(lines, crewTeamHelpLine{Badge: "On the server", Title: "Where it runs", Text: "It keeps working when your computer is off."})
-	}
+	agentText := "One chat in this Crew with its own job. An agent on the server works and answers even when your computer is off."
 	if mac {
-		lines = append(lines, crewTeamHelpLine{Badge: "On your Mac", Title: "Where it runs", Text: "It runs on your computer. Shared agents still answer your team from the server while your Mac is off."})
+		agentText += " An agent on your Mac stops when it is off; a shared one still answers your team from the server."
 	}
-	if server || (mac && inTeam) {
-		lines = append(lines, crewTeamHelpLine{Badge: "always on", Title: "Always on", Text: "Answers your team's messages any time, not only when you are here."})
+	lines = append(lines, crewTeamHelpLine{Title: "What is an agent?", Text: agentText})
+	if owner {
+		parts := []string{}
+		if len(shared) > 0 {
+			parts = append(parts, "Shared with your team: "+strings.Join(shared, ", ")+".")
+		}
+		if len(onlyMe) > 0 {
+			parts = append(parts, "Only you: "+strings.Join(onlyMe, ", ")+".")
+		}
+		if len(parts) > 0 {
+			lines = append(lines, crewTeamHelpLine{Title: "Agents here", Text: strings.Join(parts, " ")})
+		}
+		team := "Just you. A team is the people you work with on this Crew. Add people in Share, then Team."
+		title := "Your team"
+		if r.Team.On && len(others) > 0 {
+			title = fmt.Sprintf("Your team (%d people)", len(others)+1)
+			team = "You (owner) and " + strings.Join(others, ", ") + ". A team is the people you work with on this Crew. Add or remove people in Share, then Team."
+		}
+		lines = append(lines, crewTeamHelpLine{Title: title, Text: team})
+		if len(others) > 0 {
+			text := "Teammates chat only with the agents you share, and you pick per agent whether they get answers only or can make changes. Change it in Share."
+			if len(shared) == 0 {
+				text = "No agent is shared yet, so teammates cannot chat with anything. Share one in Share."
+			}
+			lines = append(lines, crewTeamHelpLine{Title: "What your teammates can do", Text: text})
+		}
+	} else {
+		who := ownerName
+		if who == "" {
+			who = "the owner"
+		}
+		text := "You are on " + who + "'s team."
+		if len(usable) > 0 {
+			text += " You can chat with: " + strings.Join(usable, ", ") + "."
+		}
+		lines = append(lines, crewTeamHelpLine{Title: "Your team", Text: text})
 	}
-	if inTeam {
-		lines = append(lines, crewTeamHelpLine{Badge: "Shared", Title: "Shared with my team", Text: "People in this Crew's Team can talk to it. Turn it off to keep an agent only for you."})
-	}
-	if answersOnly {
-		lines = append(lines, crewTeamHelpLine{Badge: "answers only", Title: "For them it answers only", Text: "Teammates can ask questions. They cannot change the Crew or its files through it."})
-	}
-	lines = append(lines, crewTeamHelpLine{Badge: "+", Title: "Add an agent", Text: "Press + next to the names, or ask in chat: \"add an agent for bug triage\"."})
+	lines = append(lines, crewTeamHelpLine{Title: "Add an agent", Text: "Press + next to the names, or ask in chat: \"add an agent for bug triage\"."})
 	ask := ""
 	if mine || r.CanSwitch || r.CanAddFolder {
-		ask = "Explain how the agents in this Crew work: where each one runs, which are shared with my team and which are always on, and what teammates can do through them. Then help me change any of it. Change it only when I say so."
+		ask = "Explain how the agents and the team in this Crew work: which agents are shared with my team and which are only mine, who is on the team and what teammates can do through the agents. Then help me change any of it. Change it only when I say so."
 	}
 	return lines, ask
 }

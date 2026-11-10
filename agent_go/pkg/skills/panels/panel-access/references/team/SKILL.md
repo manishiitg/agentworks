@@ -39,3 +39,10 @@ Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
 and tab controls remain theirs. Read back the saved result and say what is
 shared, with whom, and whether an invitation still waits for acceptance.
+
+The agent menu's "How this works" explains an agent, the team, who is on it and
+what teammates can use, from this Crew's real agents and people (the server
+words it, differently for the owner and for a teammate). An agent on the server
+shows "Runs on the server, always available". When asked how teams work, say
+the same: a team is the people the owner adds in Share, then Team; teammates
+use only the agents the owner shares.

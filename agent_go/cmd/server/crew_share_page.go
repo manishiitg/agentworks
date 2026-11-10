@@ -280,7 +280,7 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		}
 		line := a.PlaceLabel
 		if line == "" {
-			line = "On the server · always on"
+			line = "Runs on the server, always available"
 			if a.Place == "mac" {
 				line = "On their Mac"
 			}
