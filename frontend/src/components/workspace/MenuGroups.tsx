@@ -113,21 +113,35 @@ function NameInput({ initial = '', placeholder, onDone }: { initial?: string; pl
 }
 
 /** The "All projects" heading as a dropdown: All, Mine, Shared with me, then the person's groups. */
-export function ProjectFilterMenu({ counts }: { counts: (filter: MenuFilter) => number }) {
+/** A network the menu can show: the Mac or a connected server (the desktop app only). */
+export type MenuNetwork = { id: string; name: string }
+
+export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }: { counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
   const { groups, error, filter, pick } = useMenuGroups()
   const popover = usePopover()
   const [editing, setEditing] = useState<string | null>(null) // a group id, or "new"
   const label = filter === 'mine' ? 'Mine' : filter === 'shared' ? 'Shared with me' : filter.startsWith('group:') ? groups.find(group => `group:${group.id}` === filter)?.name || 'All projects' : 'All projects'
   const choose = (next: MenuFilter) => { pick(next); popover.close() }
+  // Networks sit at the top of the same menu (owner, 10 Nov: they were chips that did not fit); "all" shows every one.
+  const networkName = network === 'all' ? 'All networks' : networks.find(item => item.id === network)?.name
+  const networkOption = (id: string, name: string) => <button key={`network:${id}`} type="button" onClick={() => { onNetwork?.(id); popover.close() }} className={`${item} ${network === id ? 'bg-muted' : ''}`}>
+    <span className="min-w-0 flex-1 truncate">{name}</span>{network === id && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+  </button>
   const option = (value: MenuFilter, name: string) => <button key={value} type="button" onClick={() => choose(value)} className={`${item} ${filter === value ? 'bg-muted' : ''}`}>
     <span className="min-w-0 flex-1 truncate">{name}</span><span className="text-muted-foreground">{counts(value)}</span>
   </button>
   return <>
-    <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
+    <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}${networks.length > 1 && networkName ? `, ${networkName}` : ''}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
       className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="truncate">{label}</span><ListFilter className={`h-3.5 w-3.5 shrink-0 ${filter === 'all' ? '' : 'text-foreground'}`} aria-hidden="true" />
+      <span className="truncate">{label}</span>{networks.length > 1 && networkName && <span className="max-w-24 shrink-0 truncate text-[11px]">· {networkName}</span>}<ListFilter className={`h-3.5 w-3.5 shrink-0 ${filter === 'all' ? '' : 'text-foreground'}`} aria-hidden="true" />
     </button>
     {popover.render('Show projects', 'w-56', <>
+      {networks.length > 1 && <>
+        <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Network</p>
+        {networks.map(item => networkOption(item.id, item.name))}
+        {networkOption('all', 'All networks')}
+        <div className="my-1 h-px bg-border" />
+      </>}
       {option('all', 'All projects')}
       {option('mine', 'Mine')}
       {option('shared', 'Shared with me')}
