@@ -1711,7 +1711,7 @@ func queryRequestToMap(req QueryRequest) (map[string]interface{}, error) {
 	return out, nil
 }
 
-// RunsWorkspace is where a job's schedule-runs.json lives for a user.
+// RunsWorkspace selects a job's user-scoped history namespace.
 func (s *ProjectActionDispatcher) RunsWorkspace(ctx context.Context, job productScheduleJob) (string, error) {
 	if job.ProjectID != "" {
 		return agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath), nil

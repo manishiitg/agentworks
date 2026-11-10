@@ -411,19 +411,12 @@ func (s *SchedulerService) getWorkflowWebhookPayload(w http.ResponseWriter, r *h
 		return
 	}
 
-	runs, err := ReadScheduleRuns(r.Context(), result.WorkspacePath)
+	run, err := findScheduleHistoryDetail(r.Context(), result.WorkspacePath, "run_id=? AND schedule_id=? AND has_webhook=1", runID, id)
 	if err != nil {
 		http.Error(w, "could not read webhook history", http.StatusInternalServerError)
 		return
 	}
-	found := false
-	for _, run := range runs {
-		if run.ID == runID && run.ScheduleID == id && run.Webhook != nil {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if run == nil {
 		http.Error(w, "webhook run not found", http.StatusNotFound)
 		return
 	}

@@ -422,6 +422,7 @@ func TestWebhookSessionOriginAndHistoryMetadata(t *testing.T) {
 }
 
 func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
+	scheduleHistoryFixture(t)
 	workspace := "Workflow/test"
 	sched := webhookTestSchedule(t, "bearer")
 	manifest := NewWorkflowManifest("API test")
@@ -440,7 +441,7 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	for i := 0; i < maxScheduleRuns; i++ {
 		runs = append(runs, ScheduleRunEntry{ID: uuid.NewString(), ScheduleID: sched.ID, Status: "success", StartedAt: time.Now().UTC().Add(time.Duration(i+1) * time.Second)})
 	}
-	runsRaw, _ := json.Marshal(runs)
+	writeLegacyScheduleHistory(t, workspace, runs)
 	deliveryRaw, _ := json.Marshal(WorkflowWebhookDelivery{
 		RunID:      "run-1",
 		DeliveryID: "delivery-1",
@@ -449,7 +450,6 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	})
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath(workspace):              string(manifestRaw),
-		scheduleRunsPath(workspace):          string(runsRaw),
 		webhookInputPath(workspace, "run-1"): string(deliveryRaw),
 	}}
 	ws := httptest.NewServer(mock)

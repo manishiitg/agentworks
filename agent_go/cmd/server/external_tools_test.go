@@ -43,6 +43,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
  {"id":"outsider","username":"outsider","can_create":true,"products":["agentworks"]}
  ]}`)
 	f := &externalToolsFixture{api: &StreamingAPI{}, docs: t.TempDir()}
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("WORKSPACE_DOCS_PATH", f.docs)
 	oldDocs := viper.Get("docs-dir")
 	viper.Set("docs-dir", f.docs)
