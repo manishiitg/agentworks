@@ -540,7 +540,7 @@ export function useWorkChatTab(
     // Users, Providers or Schedules page. Activate it when returning to work.
     const route = currentProductRoute()
     const requestedAgent = route?.surface === product.profileId && route.id === projectId ? route.agent : undefined
-    if (requestedAgent) {
+    if (requestedAgent && projectId) {
       const key = workConversationKey(projectId, requestedAgent)
       const state = useChatStore.getState()
       const existing = Object.values(state.chatTabs).find(tab => belongsToWorkProject(tab, projectId || '') && tab.metadata?.agentProfileConversationKey === key && !tab.metadata?.isViewOnly)
@@ -552,7 +552,7 @@ export function useWorkChatTab(
   const destination = currentProductRoute()
   const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
   const activeConversation = activeProjectTabId ? useChatStore.getState().chatTabs[activeProjectTabId]?.metadata?.agentProfileConversationKey : undefined
-  const awaitingRequestedAgent = requestedAgent && requestedAgent !== 'main' && activeConversation !== workConversationKey(projectId, requestedAgent)
+  const awaitingRequestedAgent = !!projectId && !!requestedAgent && requestedAgent !== 'main' && activeConversation !== workConversationKey(projectId, requestedAgent)
   return {
     // Do not flash Main while the specifically requested agent is being restored.
     tabId: awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
