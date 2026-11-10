@@ -12,14 +12,11 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -246,7 +243,7 @@ func clearFalseCrewTeamClashes(ctx context.Context) {
 
 // clearFalseCrewTeamClashesIn closes one store's false clashes; the caller holds the team lock.
 func clearFalseCrewTeamClashesIn(project string) (int, error) {
-	state, err := readCrewTeamFileState(project)
+	state, err := readCrewTeamFileStateLocked(project)
 	if err != nil {
 		return 0, err
 	}
@@ -260,19 +257,9 @@ func clearFalseCrewTeamClashesIn(project string) (int, error) {
 	if n == 0 {
 		return 0, nil
 	}
-	dir, err := crewTeamContentDir(project)
-	if err != nil {
-		return 0, err
-	}
-	record := filepath.Join(dir, "files.json")
-	raw, err := os.ReadFile(record)
-	if err != nil {
-		return 0, err
-	}
-	if err = os.WriteFile(record+".before-clash-cleanup-"+time.Now().UTC().Format("20060102T150405Z"), raw, 0o600); err != nil {
-		return 0, err
-	}
-	if err = fsutil.WriteJSONAtomic(record, state, 0o600); err != nil {
+	// SQLite keeps the complete history in one transaction; this only marks
+	// false clashes resolved and never discards either side's saved events.
+	if err = saveCrewTeamFileState(project, state); err != nil {
 		return 0, err
 	}
 	publishCrewPanelChanged(project)

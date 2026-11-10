@@ -21,7 +21,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
@@ -111,19 +110,6 @@ func crewTeamFilesRoot(project string) (string, error) {
 	}
 	return filepath.Join(d, "files"), nil
 }
-func readCrewTeamFileState(project string) (crewTeamFileState, error) {
-	d, err := crewTeamContentDir(project)
-	if err != nil {
-		return crewTeamFileState{}, err
-	}
-	state, err := cachedCrewTeamFileState(filepath.Join(d, "files.json"))
-	if err != nil {
-		return state, err
-	}
-	// Existing callers may edit the returned state before saving. They must
-	// never change a cached snapshot or another request's on-purpose grants.
-	return cloneCrewTeamFileState(state), nil
-}
 
 func (s crewTeamFileState) manifest() crewsync.Manifest {
 	m := crewsync.Manifest{}
@@ -151,11 +137,7 @@ func (s crewTeamFileState) held(folder crewTeamFolder) map[string]crewTeamVersio
 // shares now but did not before, so every copy receives them (a copy that already has a file adopts it without a
 // write). The caller holds the team lock and has saved the new Team record.
 func announceCrewTeamSharedAgain(project, actor string, previous, current crewTeamFolder) error {
-	state, err := readCrewTeamFileState(project)
-	if err != nil {
-		return err
-	}
-	dir, err := crewTeamContentDir(project)
+	state, err := readCrewTeamFileStateLocked(project)
 	if err != nil {
 		return err
 	}
@@ -175,7 +157,7 @@ func announceCrewTeamSharedAgain(project, actor string, previous, current crewTe
 		state.Events = append(state.Events, crewTeamEvent{Path: rel, Kind: "shared", Revision: revision, Actor: actor, Author: v.Author, At: now, File: v.File, Chunks: v.Chunks})
 	}
 	state.Revision = revision
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); err != nil {
+	if err = saveCrewTeamFileState(project, state); err != nil {
 		return err
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=shared_again files=%d revision=%d", project, logUsernameForUserID(actor), len(paths), revision)
@@ -274,7 +256,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	if e != nil {
 		return crewTeamReceipt{}, e
 	}
-	state, e := readCrewTeamFileState(project)
+	state, e := readCrewTeamFileStateLocked(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
 	}
@@ -342,7 +324,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	partial := func(e error) (crewTeamReceipt, error) {
 		if applied > 0 {
 			state.Revision = receipt.Revision
-			if saveErr := fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); saveErr != nil {
+			if saveErr := saveCrewTeamFileState(project, state); saveErr != nil {
 				log.Printf("[CREW_TEAM] project=%s event=partial_commit_unsaved reason=%q", project, saveErr)
 			}
 		}
@@ -438,7 +420,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	}
 	state.Revision = receipt.Revision
 	state.Receipts[receiptKey] = receipt
-	if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); e != nil {
+	if e = saveCrewTeamFileState(project, state); e != nil {
 		return receipt, e
 	}
 	for _, event := range state.Events {

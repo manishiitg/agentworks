@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -81,7 +80,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	s, e := readCrewTeamFileState(project)
+	s, e := readCrewTeamFileStateLocked(project)
 	if e != nil {
 		externalError(w, 409, "team_history_unavailable", e.Error())
 		return
@@ -255,7 +254,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				externalError(w, 409, "team_restore_failed", e.Error())
 				return
 			}
-			s, e = readCrewTeamFileState(project)
+			s, e = readCrewTeamFileStateLocked(project)
 			if e != nil {
 				externalError(w, 409, "team_history_unavailable", e.Error())
 				return
@@ -268,7 +267,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				resolved++
 			}
 		}
-		if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), s, 0600); e != nil {
+		if e = saveCrewTeamFileState(project, s); e != nil {
 			externalError(w, 409, "team_restore_failed", e.Error())
 			return
 		}

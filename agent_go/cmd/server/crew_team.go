@@ -282,7 +282,12 @@ func (api *StreamingAPI) stopRemovedCrewTeamSessions(previous, current crewTeam)
 	}
 }
 
-func (t crewTeam) view(user string) crewTeam {
+func (t crewTeam) view(user string) crewTeam { return t.viewLedger(user, false) }
+
+// Writers already hold the Team filesystem lock, including during first import.
+func (t crewTeam) viewLocked(user string) crewTeam { return t.viewLedger(user, true) }
+
+func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 	t.CanManage = crewTeamCanManage(t, user)
 	t.Where = ""
 	if t.member(user) && user != t.OwnerID {
@@ -294,7 +299,7 @@ func (t crewTeam) view(user string) crewTeam {
 	t.FolderAccess = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
-		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
+		if s, e := loadCrewTeamFileState(t.ProjectID, writerLocked); e == nil {
 			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.display(), TeamProjectID: t.ProjectID}
 			for _, v := range s.held(t.Folder) {
 				d.SizeBytes += v.File.Size
@@ -619,7 +624,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	api.stopRemovedCrewTeamSessions(previous, input)
-	externalJSON(w, input.view(claims.UserID))
+	externalJSON(w, input.viewLocked(claims.UserID))
 }
 
 // crewTeamLent is what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
@@ -773,7 +778,7 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 			_, _ = api.syncCrewTeamServerCopy(round, member, project, true)
 		}()
 	}
-	externalJSON(w, t.view(claims.UserID))
+	externalJSON(w, t.viewLocked(claims.UserID))
 }
 
 func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {

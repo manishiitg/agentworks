@@ -33,7 +33,9 @@ rather than copying action names or old workflow-team policy fields:
   Use the offered enums; the website calls chat visibility Live (empty) or Hidden (`agent`).
 - `clashes` shows both versions when the same lines changed. Read the Crew
   builder's clash procedure before `resolve`; save the requested version or
-  merge, never silently discard either person's work.
+  merge, never silently discard either person's work. Team history is private
+  server state, separate from the Crew database: use these tools rather than
+  trying to read or edit it through project files or database tools.
 
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
