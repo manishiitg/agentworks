@@ -268,6 +268,29 @@ func TestWorkspaceGitFindsReposTwoFoldersDeepButNotInDependencies(t *testing.T) 
 	if !roots["app"] || !roots["code/service"] || roots["node_modules/pkg"] {
 		t.Fatalf("repos: %v", roots)
 	}
+	// PLAT-746-833: an agent worktree in app/.claude/worktrees was invisible
+	// (dot folders are skipped), and a listed nested checkout also counted as
+	// one untracked folder of its parent.
+	repo := filepath.Join(project, "app")
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", filepath.Join(repo, ".claude", "worktrees", "feature"))
+	_, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	var worktree, parent map[string]any
+	for _, r := range body["repos"].([]any) {
+		switch r.(map[string]any)["root"] {
+		case "app/.claude/worktrees/feature":
+			worktree = r.(map[string]any)
+		case "app":
+			parent = r.(map[string]any)
+		}
+	}
+	if worktree == nil || worktree["worktree"] != true || worktree["repository"] != "app" {
+		t.Fatalf("hidden agent worktree: %v", body["repos"])
+	}
+	for _, f := range parent["files"].([]any) {
+		if path := f.(map[string]any)["path"].(string); strings.HasPrefix(path, ".claude/worktrees/") {
+			t.Fatalf("nested worktree counted in its parent: %s", path)
+		}
+	}
 }
 
 // The platform's private .sandbox-cache folder never shows up as a change, is never walked into (an unreadable folder inside it must not warn), and
