@@ -350,7 +350,11 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		// An In team agent with a standby copy answers on the server while the Mac is off (Always on); an Only me one
 		// keeps waiting for the Mac.
 		// For a member's agent too (owner is then the member): it answers as them (crew_standby_runas.go).
-		standby := !published && api.crewStandbyRoute(context.Background(), owner, project, held.Tab, heldSender(held.Args), true)
+		var routeArgs struct {
+			Own bool `json:"own_agent_message"`
+		}
+		_ = json.Unmarshal(held.Args, &routeArgs)
+		standby := !routeArgs.Own && !published && api.crewStandbyRoute(context.Background(), owner, project, held.Tab, heldSender(held.Args), true)
 		if !published && !standby && !macOn {
 			stopped[queue] = true
 			continue

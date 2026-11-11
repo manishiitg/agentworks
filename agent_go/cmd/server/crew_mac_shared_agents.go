@@ -557,7 +557,7 @@ func macSharedAgentRows(caller string, byAgent bool) []map[string]any {
 				continue
 			}
 			presence, available := "Its owner's Mac is off; messages wait for it", online
-			if crewPublishedTarget(project, agent.Tab) || crewStandbyCanAnswer(project, owner, agent.Tab) {
+			if crewPublishedTarget(project, agent.Tab) || caller != owner && crewStandbyCanAnswer(project, owner, agent.Tab) {
 				presence, available = "Answers now, on the server", true
 			} else if online {
 				presence = "Answers now, on its owner's Mac"
@@ -956,7 +956,8 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	// The answer is read from the same Mac, the agent's published server workspace, or its standby copy on the server
 	// while the Mac is off (Always on).
 	published := crewPublishedTarget(dest.ID, tab)
-	standby := !published && api.crewStandbyRoute(ctx, dest.UserID, dest.ID, tab, source.UserID, true)
+	own := crewOwnAgentMessage(dest, source)
+	standby := !own && !published && api.crewStandbyRoute(ctx, dest.UserID, dest.ID, tab, source.UserID, true)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		if published {
 			return api.publishedAgentCall(context.Background(), dest.UserID, dest.ID, call, true)
@@ -966,7 +967,6 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		}
 		return callCrewMacFor(context.Background(), dest.UserID, dest.ID, call, timeout)
 	}
-	own := crewOwnAgentMessage(dest, source)
 	if source.UserID == dest.UserID && !own && agent.Audience == "" && !agent.AgentBridgePublic {
 		return fmt.Errorf("this private agent requires an admitted own-agent message")
 	}
