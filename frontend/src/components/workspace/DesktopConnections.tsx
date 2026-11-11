@@ -256,7 +256,8 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
           if (!response.ok) throw new Error('Chats unavailable')
           result = await response.json()
         }
-        const teammates = await teamSideChats('work', projectId, connectionId)
+        // A failed Team read leaves the person's own agents listed (owner, 11 Nov: a Team failure hid them all).
+        const teammates = await teamSideChats('work', projectId, connectionId).catch(() => [] as AgentProfileSideChat[])
         const rows = [...(Array.isArray(result) ? result : []), ...teammates]
         const unique = rows.filter((row, index) => rows.findIndex(other => other.conversation_key === row.conversation_key) === index)
         if (!cancelled && isChatIdentityCurrent(identity)) { setLoadedChats({ identity, chats: unique }); setError(false) }
