@@ -1405,8 +1405,8 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		}
 		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, conversationKey), title)
 	} else if job.ProjectID != "" {
-		// A schedule set from a side chat (tab) runs there while that chat
-		// exists; otherwise, and for every other schedule, in the main chat.
+		// A saved physical destination never falls back to another agent.
+		// Unconverted default destinations are removed in the Main-independent cutover.
 		key := job.ProjectID
 		if chatKey := scheduleChatKey(job); chatKey != "" && projectChatExists(runCtx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
 			key = chatKey // an existing chat keeps its own title
@@ -1419,6 +1419,8 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 				}
 			}
 			key, newAgentName = chatKey, job.AgentName
+		} else if strings.TrimSpace(job.Schedule.ChatKey) != "" {
+			bindErr = fmt.Errorf("the selected agent is unavailable; choose another agent in this automation")
 		}
 		if bindErr == nil {
 			binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)

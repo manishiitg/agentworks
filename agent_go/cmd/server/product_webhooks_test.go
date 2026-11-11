@@ -68,3 +68,38 @@ func TestProjectWebhookFileStoresOnlyEncryptedSecret(t *testing.T) {
 		t.Fatalf("webhook encryption storage contract: found=%v err=%v", found, err)
 	}
 }
+
+// PLAT-746-885: a pinned webhook destination must survive storage and an edit;
+// otherwise removing the Main role silently routes its next call elsewhere.
+func TestCrewWebhookPreservesPhysicalDestination(t *testing.T) {
+	_, _ = newScheduleRunWorkspaceStub(t)
+	ctx := context.Background()
+	root := "Crew/project-1"
+	manifest := productProjectManifest{Product: "work", ID: "project-1", OwnerID: "owner"}
+	manifest.Triggers = []productWebhookTrigger{{ID: "hook", Name: "Hook", Enabled: true,
+		ChatKey: "project-1:chat:physical-agent", Message: "Inspect the event",
+		Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "sealed-fixture"}}}
+	if err := saveCrewEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	records, err := readProjectWebhookDefinitions(ctx, root)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("read webhook: %v", err)
+	}
+	view, err := crewWebhookExecutionView(records[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	view.Name = "Renamed hook"
+	manifest.Triggers = []productWebhookTrigger{view}
+	if err := saveCrewEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	records, err = readProjectWebhookDefinitions(ctx, root)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("read edited webhook: %v", err)
+	}
+	if records[0].Action.Tab != "project-1:chat:physical-agent" {
+		t.Fatal("editing a webhook lost its physical agent destination")
+	}
+}
