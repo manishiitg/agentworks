@@ -49,7 +49,7 @@ import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
 import { parseProductInteraction, type ProductInteraction } from '../../shared/session/interactions'
 import { ConversationContinuityNotice, isConversationContinuityNotice } from './ConversationContinuityNotice'
 import { DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
-import { QueuedInboxControls, QueuedMessageControls, QueuedMessageNotice } from './chat/QueuedMessageControls'
+import { QueuedInboxStatus, QueuedMessageControls, QueuedMessageNotice } from './chat/QueuedMessageControls'
 import { deliveryTickState } from './events/system/deliveryTickState'
 import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
@@ -99,6 +99,8 @@ function groupWorkingSteps(items: TranscriptItem[], showThinking?: boolean): Tra
       if (showThinking) { flush(); out.push(item) }
       continue
     }
+    // In chat, message cards and optional tool rows must stay outside the activity disclosure.
+    if (showThinking !== undefined && item.kind === 'tools') { flush(); out.push(item); continue }
     if (isWorkingStep(item)) { run.push(item); continue }
     flush()
     out.push(item)
@@ -358,7 +360,7 @@ const TranscriptEvent: React.FC<{
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
   const inboxMessage = agentInboxMessage(metadata)
-  if (inboxMessage) return <><AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} /><QueuedInboxControls sessionId={event.session_id} metadata={metadata} /></>
+  if (inboxMessage) return <><AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} queueStatus={<QueuedInboxStatus sessionId={event.session_id} metadata={metadata} />} /><QueuedMessageNotice sessionId={event.session_id} metadata={metadata} /></>
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
@@ -725,7 +727,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
 const InternalActivityEvent: React.FC<{ title: string; content: string; timestamp: string }> = ({ title, content, timestamp }) => {
   const [open, setOpen] = useState(false)
   return (
-    <div data-testid="terminal-clear-system-activity" className="my-3 border-y border-border/60 py-2">
+    <div data-testid="terminal-clear-system-activity" className="my-3 w-[min(100%,52rem)] rounded-xl border border-border bg-muted/20 p-3">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
@@ -1062,12 +1064,12 @@ const WebSearchCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
 
 // A message this chat sent to another agent: one compact row (who, and whether it went), the text behind a disclosure.
 const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
-  const [open, toggleOpen] = useDisclosure(`sent:${pair.key}`)
+  const [open, toggleOpen] = useDisclosure(`sent:${pair.key}`, true)
   const view = useMemo(() => parseAgentMessageSend(pair.name, pair.args, pair.result, pair.status), [pair.name, pair.args, pair.result, pair.status])
   if (!view) return null
-  const state = view.failed ? 'could not send' : view.accepted ? 'sent' : 'sending'
+  const state = view.state
   return (
-    <div data-testid="terminal-clear-message-sent" className="my-3 border-y border-border/60 py-2">
+    <div data-testid="terminal-clear-message-sent" className="my-3 w-[min(100%,52rem)] rounded-xl border border-border bg-muted/20 p-3">
       <button
         type="button"
         onClick={toggleOpen}
@@ -1076,7 +1078,7 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
       >
         <Send className={`h-3.5 w-3.5 shrink-0 ${view.failed ? 'text-red-500' : 'text-primary/70'}`} aria-hidden="true" />
         <span className="truncate">
-          Message to <span className="font-medium text-foreground/85">{view.targetLabel || view.target || 'this conversation'}</span>
+          You → <span className="font-medium text-foreground/85">{view.targetLabel || view.target || 'Agent'}</span>
         </span>
         <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
         {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}
@@ -1084,6 +1086,7 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
       {open && (
         <div className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 [&_li]:!text-[12px] [&_p]:!text-[12px]">
           <ConversationMarkdownRenderer content={view.message} framed={false} maxHeight="none" copyableCode />
+          <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Tool details</summary><ToolCallCard pair={pair} /></details>
           {view.failed && view.error && <p className="mt-2 whitespace-pre-wrap text-red-400">{view.error}</p>}
         </div>
       )}
@@ -1092,10 +1095,11 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
 }
 
 const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows' }> = ({ item, toolLayout }) => {
+  const showTools = useChatDisplayStore(state => state.showTools)
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
   const segments = useMemo(() => segmentToolBatch(item.key, pairs), [item.key, pairs])
-  if (toolLayout === 'rows') return <div data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{pairs.map(pair=><ToolCallCard key={pair.key} pair={pair} row />)}</div>
-  if (segments.length === 1 && segments[0].kind === 'tools') {
+  const rows = toolLayout === 'rows' || showTools
+  if (!rows && segments.length === 1 && segments[0].kind === 'tools') {
     return <ToolChip chipKey={item.key} pairs={pairs} toolCount={item.toolCount} />
   }
   return (
@@ -1104,6 +1108,7 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
         ? <WebSearchCard key={segment.pair.key} pair={segment.pair} />
         : segment.kind === 'message'
           ? <MessageSentCard key={segment.pair.key} pair={segment.pair} />
+          : rows ? <div key={segment.key} data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{segment.pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>
           : <ToolChip key={segment.key} chipKey={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} />)}
     </>
   )

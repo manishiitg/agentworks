@@ -1,5 +1,5 @@
 import React from 'react'
-import { Loader2 } from 'lucide-react'
+import { Clock, Loader2 } from 'lucide-react'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
@@ -45,15 +45,11 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
 
-/** Incoming agent cards show queue status without composer actions. */
-export const QueuedInboxControls: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
+/** Incoming queue state stays in the card header, without a separate status row. */
+export const QueuedInboxStatus: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
-  const queued = useQueuedMessageControlsStore(state => Boolean(sessionId && clientId && state.bySession[sessionId]?.messages[clientId]))
-  if (!queued) return null
-  return (
-    <div className="-mt-1 mb-2 flex flex-col items-start gap-0.5 text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5 text-[11px]"><span className="text-amber-500">Waiting in line</span></span>
-      <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
-    </div>
-  )
+  const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
+  if (!message) return null
+  const reason = message.delivery_error || message.queue_detail || 'Waiting for the current reply'
+  return <span title={reason} aria-label={reason} className="inline-flex text-amber-500"><Clock aria-hidden="true" className="h-3.5 w-3.5" /></span>
 }

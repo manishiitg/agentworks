@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Bot } from 'lucide-react'
 import { shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview } from '../utils/terminalEventTranscript'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
@@ -19,7 +19,7 @@ const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
 // A message another agent sent into this chat (owner, 5 Nov): shown like a typed message, a bubble on the right, with
 // who sent it and the time in small text under it.
-export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
+export function AgentInboxMessage({ message, timestamp, artifact = null, queueStatus }: { queueStatus?: ReactNode; message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
   const [expanded, setExpanded] = useState(false)
@@ -33,6 +33,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
         <span className="min-w-0 break-words font-medium text-foreground">{message.sender}</span>
         {/* The label often ends with the channel already ("… · AgentBridge"): show it once. */}
         {message.kind && !message.sender.endsWith(message.kind) && <span>{message.kind}</span>}
+        {queueStatus}
         {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
       </header>
       <div data-testid="agent-inbox-body" className="agent-inbox-prose min-w-0 max-w-full break-words [overflow-wrap:anywhere] px-4 py-3 text-left text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
