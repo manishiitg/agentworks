@@ -55,7 +55,7 @@ func (api *StreamingAPI) desktopCrewChatBinding(ctx context.Context, project str
 	// The local single-user account is derived here, never from a server
 	// claim. The remote account is independently checked by the server.
 	claims := &UserClaims{UserID: GetDefaultUserID(), Username: GetDefaultUserID()}
-	if _, err := api.crewSyncRoots(ctx, claims, project); err != nil {
+	if _, err := api.crewSyncRootsWithWorkspace(ctx, claims, project, api.readExternalWorkspace); err != nil {
 		return nil, nil, desktopConnection{}, err
 	}
 	// Cloud off stops file sync only; the owner keeps using the Mac Crew from the phone (PLAT-856-509).
@@ -257,11 +257,11 @@ func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, clai
 	if call.Tab != "" && !crewMacTabID(call.Tab) {
 		return fail(http.StatusBadRequest)
 	}
-	binding, _, err := resolveConversationBindingForUser(ctx, claims.UserID, profile, project)
+	admitted, err := readCrewProjectBinding(ctx, claims.UserID, profile, project, "")
 	if err != nil {
 		return fail(http.StatusForbidden)
 	}
-	tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profile.ID, project, binding.WorkspacePath)
+	tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profile.ID, project, admitted.Binding.WorkspacePath)
 	if err != nil {
 		return fail(http.StatusConflict)
 	}

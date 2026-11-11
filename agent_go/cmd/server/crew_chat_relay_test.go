@@ -474,7 +474,7 @@ func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, "team")
+	binding, err := readCrewProjectBinding(ctx, "owner", profile, "team", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +486,7 @@ func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
 	}
 	store := defaultProductConversationRegistryStore()
 	key := "team:chat:abcdef12"
-	record := ProductConversationRecord{ProfileID: "work", ConversationKey: key, ConversationID: "current", SessionID: "current-session", WorkspacePath: binding.WorkspacePath, ResourceID: "team"}
+	record := ProductConversationRecord{ProfileID: "work", ConversationKey: key, ConversationID: "current", SessionID: "current-session", WorkspacePath: binding.Binding.WorkspacePath, ResourceID: "team"}
 	doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey("work", key): record}}
 	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
 		t.Fatal(err)

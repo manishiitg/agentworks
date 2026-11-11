@@ -170,6 +170,18 @@ func isCrewReaderTurn(req QueryRequest, callerID string) bool {
 var errCrewProjectUnavailable = errors.New("This Crew is unavailable. Ask its owner to share it with you, or open another Crew.")
 
 func resolveCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
+	binding, err := readCrewProjectBinding(ctx, callerID, profile, projectID, selectedFolder)
+	if err != nil {
+		return crewProjectBinding{}, err
+	}
+	if binding.OwnedByCaller && !binding.CoOwner {
+		binding.Binding, err = defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, callerID, profile, binding.Binding)
+	}
+	return binding, err
+}
+
+// readCrewProjectBinding performs the same admission without repairing or creating Main.
+func readCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
 	denied := func() (crewProjectBinding, error) {
 		return crewProjectBinding{}, errCrewProjectUnavailable
 	}
@@ -185,10 +197,6 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 				log.Printf("[OWNER_MISMATCH] %s: %s/%s is registered to %q, not %q; refusing to open it as theirs", binding.WorkspacePath, id.Product, id.Folder, registered, callerID)
 				return denied()
 			}
-		}
-		binding, err = defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, callerID, profile, binding)
-		if err != nil {
-			return crewProjectBinding{}, err
 		}
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	} else if !errors.Is(err, errProjectNotFound) {
