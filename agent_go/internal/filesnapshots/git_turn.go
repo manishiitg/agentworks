@@ -281,22 +281,39 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 }
 
 func (s Store) turnRepo(ctx context.Context, dir, root string) (gitTurnRepo, error) {
-	head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
-	dirty, err := s.turnCandidatePaths(ctx, dir, strings.TrimSpace(string(head)))
+	// One call gives the Git folder and the current commit. A checkout with no
+	// commits yet prints only the folder and exits 1. This runs for every
+	// checkout before and after every reply, so the lookups are kept few.
+	meta, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir", "--verify", "-q", "HEAD").Output()
+	lines := strings.Split(strings.TrimSpace(string(meta)), "\n")
+	var exit *exec.ExitError
+	if lines[0] == "" || (err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1 && len(lines) == 1)) {
+		if err == nil {
+			err = errors.New("Git did not report the checkout's folder")
+		}
+		return gitTurnRepo{}, err
+	}
+	gitdir, head := lines[0], ""
+	if len(lines) > 1 {
+		head = strings.TrimSpace(lines[1])
+	}
+	identity, err := checkoutIdentity(gitdir)
 	if err != nil {
 		return gitTurnRepo{}, err
 	}
-	branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
+	dirty, err := s.turnCandidatePaths(ctx, dir, head)
+	if err != nil {
+		return gitTurnRepo{}, err
+	}
+	branch := ""
+	if raw, readErr := os.ReadFile(filepath.Join(gitdir, "HEAD")); readErr == nil {
+		branch = strings.TrimPrefix(strings.TrimSpace(string(raw)), "ref: refs/heads/")
+		if strings.HasPrefix(branch, "ref: ") || branch == head {
+			branch = "" // another kind of ref, or a detached commit
+		}
+	}
 	remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
-	gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
-	if err != nil {
-		return gitTurnRepo{}, err
-	}
-	identity, err := checkoutIdentity(strings.TrimSpace(string(gitdir)))
-	if err != nil {
-		return gitTurnRepo{}, err
-	}
-	repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
+	repo := gitTurnRepo{Head: head, Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: branch, GitHubRepo: GitHubRepo(string(remote))}}
 	if repo.Label.Branch == "" && len(repo.Head) >= 8 {
 		repo.Label.Branch = "detached@" + repo.Head[:8]
 	}
