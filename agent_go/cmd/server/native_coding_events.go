@@ -17,6 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	agentevents "github.com/manishiitg/mcpagent/events"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
@@ -541,7 +542,10 @@ func (api *StreamingAPI) nativeCodingBackgroundWork(sessionID string) []SessionB
 	api.nativeObserversMu.Lock()
 	var observers []*nativeTerminalObserver
 	for _, o := range api.nativeObservers {
-		if o.snapshot.SessionID == sessionID {
+		// Claude in the chat view (no terminal session): its own live task list (claudeTaskBackgroundWork) is the
+		// running work, with each task's description and Stop. The transcript's started records there never see a
+		// completion and stayed "running" for days (51 items, the oldest a week old) (PLAT-746-854).
+		if o.snapshot.SessionID == sessionID && !(o.provider == string(llmproviders.ProviderClaudeCode) && strings.TrimSpace(o.snapshot.TmuxSession) == "") {
 			observers = append(observers, o)
 		}
 	}
