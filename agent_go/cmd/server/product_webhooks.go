@@ -395,7 +395,7 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 	}
 	if trigger.ownConversation() {
 		trigger.ChatKey = ""
-	} else if trigger.ChatKey == "" && !isInternalTriggerKind(req.Kind) {
+	} else if trigger.ChatKey == "" && !isInternalTriggerKind(req.Kind) && !trigger.IsInternal() {
 		return productWebhookResponse{}, false, fmt.Errorf("choose an agent or give this webhook its own chat")
 	}
 	// Who made it and who changed it now; the run still happens as the Crew's owner.
