@@ -82,7 +82,7 @@ func agentDeliveryMode(a namedMessageAgent) string {
 		return "inbox"
 	}
 	switch a.Attachment.DeliveryRoute {
-	case "codex_desktop", "codex_queue", "claude_session", "claude_channel", "muse_monitor", "pi_extension":
+	case appAgentDeliveryRoute, "codex_desktop", "codex_queue", "claude_session", "claude_channel", "muse_monitor", "pi_extension":
 		return "live"
 	case "codex_hook", "claude_hook", "cursor_hook", "muse_hook", "agy_hook":
 		return "next_step"

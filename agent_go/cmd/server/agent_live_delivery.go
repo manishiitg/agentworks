@@ -18,6 +18,7 @@ import (
 )
 
 type namedAgentAttachment struct {
+	DeviceID                string    `json:"device_id,omitempty"` // app chat identity, not an access grant
 	LastStartupDiagnosticID string    `json:"last_startup_diagnostic_id,omitempty"`
 	Repository              string    `json:"repository,omitempty"`
 	Branch                  string    `json:"branch,omitempty"`
@@ -180,7 +181,13 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 
 func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
-	if !namedAgentOperationAllowed(claims, true) || claims.AccessToken == nil {
+	connectionID := ""
+	if claims != nil && claims.AccessToken != nil {
+		connectionID = claims.AccessToken.ID
+	} else if externalArg(args, "action") == "ack" {
+		connectionID, _ = appAgentLoginID(claims)
+	}
+	if !namedAgentOperationAllowed(claims, true) || connectionID == "" {
 		externalError(w, 403, "insufficient_scope", "An approved agent connection is required.")
 		return
 	}
@@ -228,6 +235,10 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	a := &s.Agents[index]
+	if claims.AccessToken == nil && (a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute) {
+		externalError(w, 403, "attachment_refused", "This login does not own an app attachment.")
+		return
+	}
 	ackDelivery, previousAttachment := "", ""
 	receiptUnchanged := false
 	var startupDiagnostic *agentworksclient.StartupDiagnostic
@@ -254,9 +265,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if a.Attachment != nil {
 			previousAttachment = a.Attachment.ID
 		}
-		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
+		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: connectionID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
 	case "startup_failure":
-		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != connectionID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
@@ -274,7 +285,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			startupDiagnostic = &d
 		}
 	case "label":
-		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != connectionID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
@@ -319,16 +330,20 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		a.Attachment = nil
 	case "ack":
-		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != connectionID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox"}, transport) {
+		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox", appAgentDeliveryRoute}, transport) {
 			externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat has received the message.")
 			return
 		}
 
+		if (transport == appAgentDeliveryRoute) != (a.Attachment.DeliveryRoute == appAgentDeliveryRoute) {
+			externalError(w, 400, "invalid_arguments", "Receipt transport does not match the attachment.")
+			return
+		}
 		found := false
 		for ci := range s.Conversations {
 			c := &s.Conversations[ci]
@@ -407,6 +422,13 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 var errAgentLoginUnavailable = errors.New("connection revoked")
 
 func currentAgentAttachment(ctx context.Context, claims *UserClaims, name, id string) (namedMessageAgent, *UserClaims, error) {
+	if connection, err := appAgentLoginID(claims); err == nil {
+		a, err := namedAgentForClaims(ctx, claims, name)
+		if err != nil || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.ID != id || a.Attachment.ConnectionID != connection {
+			return namedMessageAgent{}, nil, fmt.Errorf("attachment changed")
+		}
+		return a, claims, nil
+	}
 	if claims == nil || claims.AccessToken == nil {
 		return namedMessageAgent{}, nil, fmt.Errorf("agent connection required")
 	}
