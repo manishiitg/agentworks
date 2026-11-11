@@ -3453,7 +3453,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onOpenCommands: productCommandsAvailable ? openCommandMenu : undefined,
                         onOpenLiveView: activeTabId && shouldShowLiveTerminalControl(liveTerminalOffered, isProductSurface, isInteractiveWorkflowBuilderChat, showProductTerminalControl) ? () => chooseViewMode(activeTabId, 'terminal') : undefined,
                         liveViewTitle: mainAgentRuntimeLabel || undefined, onOpenChange: setSendOptionsOpen,
-                        sendOptions: { busy: isStreaming || transcriptTurnActive, onNewChat: showNewChatAction ? onNewChat : undefined, backgroundWork },
+                        // Fresh chat in the Context column starts over; no second Clear chat here.
+                        sendOptions: { busy: isStreaming || transcriptTurnActive, backgroundWork },
                       }} /></Suspense>
                     : label
                 })()}
