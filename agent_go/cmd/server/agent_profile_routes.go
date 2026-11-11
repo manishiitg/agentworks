@@ -1404,6 +1404,10 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "remove agent event log: "+err.Error())
 		return
 	}
+	if err := removeCrewAgentListing(binding.ResourceID, userID, binding.ConversationKey); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if _, err := store.removeSlot(r.Context(), userID, profile, binding); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
 		return
@@ -1413,10 +1417,6 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-	}
-	if err := removeCrewAgentListing(binding.ResourceID, userID, binding.ConversationKey); err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
 	}
 	publishCrewPanelChanged(binding.ResourceID)
 	log.Printf("[CREW_AGENT_REMOVE] profile=%s sessions=%d history_deleted=true", profile.ID, len(sessionIDs))
