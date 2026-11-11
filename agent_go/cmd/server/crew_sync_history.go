@@ -39,6 +39,21 @@ type crewHandoffConversation struct {
 	Notice         string                    `json:"-"`
 }
 
+// Metadata for an explicitly selected agent belongs to the project, not Main.
+// This does not create a registry entry or choose a replacement agent.
+func (api *StreamingAPI) crewHandoffProjectTemplate(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
+	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
+	binding, err := resolveProductProjectBinding(ctx, claims.UserID, profile, project)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
+	applyCrewNativeToolPolicy(&profile, true, binding.ProjectNativeAgentTools)
+	return ProductConversationRecord{ProfileID: profile.ID, WorkspacePath: binding.WorkspacePath, ResourceID: project, handoffAgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)}, nil
+}
+
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
 	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
 	if err != nil {
