@@ -912,8 +912,12 @@ function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
   // sorts below the second pending send, briefly reversing two quick sends.
   // Proven events still keep the server's order (including a reply that was
   // already in progress when a person sent a follow-up).
-  const pending = (event: PollingEvent) => event.type === 'user_message' &&
-    (eventFields(event).metadata as Record<string, unknown> | undefined)?.provisional === true
+  const pending = (event: PollingEvent) => {
+    const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+    // Incoming queue cards use the server's original queued_at timestamp, not
+    // a local send time. A failed old delivery must not stay below newer replies.
+    return event.type === 'user_message' && metadata?.provisional === true && metadata.source !== 'agent_message'
+  }
   const pendingOrder = Number(pending(a)) - Number(pending(b))
   if (pendingOrder) return pendingOrder
   // The main chat survives server restarts; EventStore's per-session sequence

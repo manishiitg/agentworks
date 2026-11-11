@@ -1,5 +1,5 @@
 import React from 'react'
-import { Clock, Loader2 } from 'lucide-react'
+import { CircleAlert, Clock, Loader2 } from 'lucide-react'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
@@ -53,5 +53,6 @@ export const QueuedInboxStatus: React.FC<{ sessionId?: string; metadata?: Record
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
   if (!message) return null
   const reason = message.delivery_error || message.queue_detail || 'Waiting for the current reply'
-  return <span title={reason} aria-label={reason} className="inline-flex text-amber-500"><Clock aria-hidden="true" className="h-3.5 w-3.5" /></span>
+  const Icon = message.delivery_error ? CircleAlert : Clock
+  return <span title={reason} aria-label={reason} className="inline-flex text-amber-500"><Icon aria-hidden="true" className="h-3.5 w-3.5" /></span>
 }

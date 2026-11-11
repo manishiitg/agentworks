@@ -85,7 +85,7 @@ const cliIcons: Record<string, string> = {
 function AgentCliMark({ tabId }: { tabId: string }) {
   const provider = useChatStore(state => {
     const meta = state.chatTabs[tabId]?.metadata
-    return meta?.agentProfileChatProvider || meta?.agentProfileEngine
+    return meta?.agentProfileEngine || meta?.agentProfileChatProvider
   })
   return <AgentCliIcon provider={provider} />
 }

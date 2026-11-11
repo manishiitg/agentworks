@@ -206,6 +206,15 @@ describe('selectTerminalEvents — owned terminal (workflow step, message-sequen
 })
 
 describe('selectTerminalEvents — main agent', () => {
+  it('places an incoming queued AgentBridge card at its original time, not the pending-send tail (PLAT-746)', () => {
+    const incoming = evt({
+      id: 'incoming', session_id: 's1', type: 'user_message', timestamp: '2026-11-11T10:00:00Z',
+      data: { data: { content: 'Earlier incoming message', metadata: { provisional: true, source: 'agent_message', client_message_id: 'incoming' } } } as never,
+    })
+    const newer = evt({ id: 'reply', session_id: 's1', type: 'unified_completion', timestamp: '2026-11-11T11:00:00Z', data: { data: { final_result: 'Newer reply' } } as never })
+    expect(selectTerminalEvents([newer, incoming], null).map(event => event.id)).toEqual(['incoming', 'reply'])
+  })
+
   it.each([null, terminal({ session_id: 's1', owner_id: 'main:s1', execution_kind: 'main_agent' })])(
     'keeps quick sends in order while the first durable echo replaces its pending row',
     (main) => {
