@@ -4260,12 +4260,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// the lane. Give the drainer its older turn before doing any agent work.
 	if releaseInputLane != nil && !conversationTurnQueueExecution(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
 		if idleRun != nil {
-			http.Error(w, "turn_running", http.StatusConflict)
+			if !idleRun.beforeQueued {
+				http.Error(w, "turn_running", http.StatusConflict)
+				return
+			}
+			// This compaction was reserved specifically to precede this backlog.
+			// It owns the input lane; queued messages remain held until it finishes.
+		} else {
+			api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+			// The deferred lane release kicks the drainer after durable admission.
 			return
 		}
-		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
-		// The deferred lane release kicks the drainer after durable admission.
-		return
 	}
 	if _, delegated := r.Context().Value(agentMessageAdmissionKey{}).(func(string) (func(), error)); delegated {
 		releaseAuthority, admissionErr := acquireAgentMessageAuthority(r.Context(), sessionID)

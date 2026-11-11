@@ -23,9 +23,10 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
     const { min, max } = bounds(question)
     return count >= min && count <= max && (!(useOther[question.id] || question.options.length === 0) || !!otherText[question.id]?.trim())
   })
+  const canUseFirstOptions = prompt.questions.length > 0 && prompt.questions.every(question => question.options.length > 0)
   // The user can explicitly submit the first options for every question.
   const submit = async (auto = false) => {
-    if (!pending || (!auto && !ready) || !onAnswer || submitting) return
+    if (!pending || (auto && !canUseFirstOptions) || (!auto && !ready) || !onAnswer || submitting) return
     setSubmitting(true)
     setError('')
     try {
@@ -96,7 +97,7 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
     </div>
     {pending ? <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-2">
       <button type="button" onClick={() => void submit()} disabled={!ready || submitting || !onAnswer} className="min-h-11 rounded-md bg-primary px-4 text-sm font-medium sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Send answer'}</button>
-      <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer || prompt.questions.some(q => !q.options.length)} className="min-h-11 rounded-md px-3 text-sm font-medium text-muted-foreground sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>
+      {canUseFirstOptions && <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer} className="min-h-11 rounded-md px-3 text-sm font-medium text-muted-foreground sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>}
     </div>
       : <p className="text-xs text-muted-foreground">{prompt.statusMessage || (prompt.state === 'answered' ? 'Choice submitted' : prompt.state === 'unanswered' ? 'This question closed without an answer.' : 'Question interrupted')}</p>}
     {pending && !onAnswer && <p className="mt-2 text-xs text-muted-foreground">This conversation cannot be changed.</p>}

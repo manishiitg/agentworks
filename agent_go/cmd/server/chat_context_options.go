@@ -849,6 +849,12 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 		return false
 	}
 	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
+	// The compaction now owns dispatch through idleCompacts. Release the queue's
+	// reservation before starting its request, or it rejects its own dispatch_pending
+	// occupancy. Do not clear this after launching: completion may already kick a new drain.
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, sessionID)
+	api.conversationTurnQueueMu.Unlock()
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early_before_queued", sessionID, chat.provider, owner, tokens)
 	go func() {
 		api.runIdleCompaction(sessionID, owner, chat, tokens, 0, run)
