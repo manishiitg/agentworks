@@ -64,6 +64,13 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	}
 	const schedule = `{"schedules":[{"id":"daily","name":"Daily check","project":{"kind":"crew","id":"team"},"action":{"type":"message","tab":"team:chat:remove"},"input":{"messages":["Check status"]},"enabled":false}]}`
 	f.write(t, externalCommandCrewState+"/schedules.json", schedule)
+	var workflow map[string]any
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/workflow.json")), &workflow); err != nil {
+		t.Fatal(err)
+	}
+	workflow["schedules"] = []any{map[string]any{"id": "script-notify", "name": "Script notification", "chat_id": "team:chat:remove", "enabled": false}}
+	rawWorkflow, _ := json.Marshal(workflow)
+	f.write(t, externalCommandCrewState+"/workflow.json", string(rawWorkflow))
 	call := func(input AgentProfileConversationRequest) *httptest.ResponseRecorder {
 		t.Helper()
 		body, _ := json.Marshal(input)
@@ -81,13 +88,13 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	if err = json.Unmarshal(response.Body.Bytes(), &preview); err != nil {
 		t.Fatal(err)
 	}
-	if len(preview.Dependencies) != 1 || preview.Dependencies[0].Name != "Daily check" {
+	if len(preview.Dependencies) != 2 || preview.Dependencies[0].Name != "Daily check" {
 		t.Fatalf("missing named dependency: %+v", preview.Dependencies)
 	}
 	if f.read(t, externalCommandCrewState+"/schedules.json") != schedule || !projectChatExists(ctx, "owner", "work", "team", "team:chat:remove") {
 		t.Fatal("preview changed work")
 	}
-	response = call(AgentProfileConversationRequest{ConversationKey: "team:chat:remove", RemovalConfirmation: preview.Confirmation, RemovalChoices: map[string]string{preview.Dependencies[0].ID: "team:chat:keep"}})
+	response = call(AgentProfileConversationRequest{ConversationKey: "team:chat:remove", RemovalConfirmation: preview.Confirmation, RemovalChoices: map[string]string{preview.Dependencies[0].ID: "team:chat:keep", preview.Dependencies[1].ID: "team:chat:keep"}})
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("confirm: %d %s", response.Code, response.Body.String())
 	}
@@ -112,6 +119,13 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	}
 	if len(saved.Schedules) != 1 || saved.Schedules[0].Action.Tab != "team:chat:keep" || saved.Schedules[0].Enabled {
 		t.Fatal("linked work was lost, not reassigned, or enabled")
+	}
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/workflow.json")), &workflow); err != nil {
+		t.Fatal(err)
+	}
+	notify := workflow["schedules"].([]any)[0].(map[string]any)
+	if notify["chat_id"] != "team:chat:keep" || notify["enabled"] != false {
+		t.Fatal("script destination not reassigned with its full physical key")
 	}
 }
 
@@ -164,5 +178,27 @@ func TestAgentRemovalDependentGraphDoesNotDependOnRecordOrder(t *testing.T) {
 	}
 	if err := plan.apply(context.Background(), "current", map[string]string{"root": "crew:chat:other", later: "remove"}, "crew"); err != nil {
 		t.Fatal("inactive stale choice activated a child", err)
+	}
+}
+
+func TestAgentRemovalFunctionCallersRequireTheirOwnChoice(t *testing.T) {
+	plan := crewAgentRemovalPlan{preview: crewAgentRemovalPreview{Confirmation: "current", Dependencies: []crewAgentRemovalDependency{{ID: "fn", Name: "Function", CanReassign: true}}, Destinations: []crewAgentRemovalDestination{{Key: "crew:chat:other"}}}, files: []*crewAgentRemovalFile{
+		{path: "crew/functions.json", collection: "functions", choices: map[int]string{0: "fn"}, document: map[string]any{"functions": []any{map[string]any{"id": "fn", "name": "report"}}}},
+		{path: "crew/webhooks.json", collection: "webhooks", choices: map[int]string{}, document: map[string]any{"webhooks": []any{map[string]any{"id": "hook", "name": "Incoming report", "action": map[string]any{"function": "report"}}}}},
+	}}
+	plan.addDependentFunctionCalls()
+	if len(plan.preview.Dependencies) != 2 {
+		t.Fatal("stored caller omitted")
+	}
+	caller := plan.preview.Dependencies[1].ID
+	plan.files = nil
+	if err := plan.apply(context.Background(), "current", map[string]string{"fn": "remove"}, "crew"); err == nil {
+		t.Fatal("function deleted with a dangling unconfirmed caller")
+	}
+	if err := plan.apply(context.Background(), "current", map[string]string{"fn": "crew:chat:other"}, "crew"); err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.apply(context.Background(), "current", map[string]string{"fn": "remove", caller: "remove"}, "crew"); err != nil {
+		t.Fatal(err)
 	}
 }
