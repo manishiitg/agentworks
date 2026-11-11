@@ -39,11 +39,13 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onImportLocalChat, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
+  onImportLocalChat, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
   mainPurpose?: string
+  createRequest?: number
+  projectId?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>; onPin: (key: string, pinned: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
@@ -60,6 +62,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
+  useEffect(() => { if (createRequest) { setNewTabName(''); setAddMode('new') } }, [createRequest])
   const [forking, setForking] = useState(false)
   const beginAddAgent = () => {
     if (surface === 'work') setAddMode('choose')
@@ -119,7 +122,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const onStrip = (tab: ChatTab) => tab.tabId === canonicalTabId || !listedFor(tab) || sideChatPinned(tab)
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
   const mainTab = tabs.find(tab => tab.tabId === canonicalTabId) ?? activeTab
-  const placeProject = mainTab?.metadata?.agentProfileId === 'work' ? mainTab.metadata?.agentProfileProjectId : undefined
+  const placeProject = projectId || (mainTab?.metadata?.agentProfileId === 'work' ? mainTab.metadata?.agentProfileProjectId : undefined)
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
   const livesOnMac = useCrewLivesOnMac(placeProject)
