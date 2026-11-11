@@ -71,6 +71,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/agent/codeexec"
@@ -3549,6 +3550,7 @@ func (w *statusCapturingResponseWriter) Unwrap() http.ResponseWriter {
 
 func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler {
 	startAPILatencySummary()
+	workspacereads.StartSummary(time.Minute, log.Printf)
 	slow := apiSlowRequestThreshold()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !shouldLogAPIRequests() {
@@ -3557,6 +3559,8 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 		}
 
 		start := time.Now()
+		readsCtx, reads := workspacereads.WithRequest(r.Context())
+		r = r.WithContext(readsCtx)
 		recorder := &statusCapturingResponseWriter{ResponseWriter: w, start: start}
 		route := apiRouteTemplate(r)
 		stream := isAPIStreamRequest(r, route)
@@ -3586,8 +3590,8 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 				return
 			}
 			if !traceRequest && status < http.StatusBadRequest && elapsed >= slow {
-				logfWithContext(api.httpRequestLogContext(r), "[API] slow %s %s request_id=%q status=%d bytes=%d duration=%s",
-					r.Method, requestLogPath(r), requestLogID(r), status, recorder.bytes, elapsed.Round(time.Millisecond))
+				logfWithContext(api.httpRequestLogContext(r), "[API] slow %s %s request_id=%q status=%d bytes=%d duration=%s workspace_reads=%d workspace_read_ms=%d",
+					r.Method, requestLogPath(r), requestLogID(r), status, recorder.bytes, elapsed.Round(time.Millisecond), reads.Reads(), reads.Millis())
 				return
 			}
 			if traceRequest {
