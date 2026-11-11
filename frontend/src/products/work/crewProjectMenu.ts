@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -34,9 +34,11 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
-    // One Share row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
-    add('mcp', 'Share', 'Share', UsersRound, 'access', 'Share')
-    // The Slack bot row opens Share › Slack (owner, 9 Nov; WorkIntegrationsPanel maps its slack-bot target there).
+    // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
+    // Online, how everyone else reaches it (Mac online, Share agents, Slack, Dashboards). Each opens its own page.
+    add('mcp', 'Share', 'Team', UsersRound, 'team')
+    add('mcp', 'Share', 'Online', Globe, 'online')
+    // The Slack bot row opens Online › Slack (owner, 9 Nov; WorkIntegrationsPanel maps its slack-bot target there).
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }

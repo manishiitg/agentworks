@@ -6,10 +6,13 @@ import "net/http"
 // component (YourComputerPanel), and this reply decides its shape. AccessHere "mac" means this app holds the Mac's own
 // controls (the Mac app's local backend); anywhere else the rows only the Mac can change come as text, worded here.
 
+// Each tab belongs to one of the side menu's two pages (owner, 11 Nov: Share split into Team and Online): "team" is the
+// people who work on the Crew with you, "online" is how everyone else reaches it. The page shows one group's tabs.
 type crewAccessTab struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
 	Detail string `json:"detail,omitempty"`
+	Group  string `json:"group"`
 }
 
 type crewAccessText struct {
@@ -37,7 +40,7 @@ type crewAccessReach struct {
 // approved mockup docs/design/agentbridge-panel-mock-20261111.html).
 func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAccessMacCard {
 	kept := "Only messages between agents are kept on the server, so replies can find their way back."
-	team := "No Team yet. Add people on the Team tab."
+	team := "No Team yet. Add people under Team."
 	if teamOn {
 		kept = "The server keeps messages between agents, the folder you share with your Team, and Team chats answered while this Mac is off."
 		team = "Only agents you put In team. Through your Mac while it is on; from the server's copy of the shared folder when it is off."
@@ -59,25 +62,27 @@ func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
 const crewPublishTabShown = false
 
 var crewAccessMacTabs = func() []crewAccessTab {
-	tabs := []crewAccessTab{{ID: "mac", Label: "Mac online", Detail: "you, from anywhere"}}
+	tabs := []crewAccessTab{{ID: "mac", Label: "Mac online", Detail: "you, from anywhere", Group: "online"}}
 	if crewPublishTabShown {
-		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server"})
+		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server", Group: "online"})
 	}
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// The Crew's Access tabs (owner, 9 Nov: separate tabs for dashboards and for Slack): Share this Crew, with its two
-// options (work on it with your team, share agents; crew_share_page.go), its id still "team"; Slack, the Crew's Slack
-// bot (added by crewAccessAddSlack only where it is offered); and Dashboards, everything the Crew publishes
-// (crew_dashboards_tab.go). A Crew on a Mac has Mac online before them.
+// The Crew's Access tabs (owner, 9 Nov: separate tabs for dashboards and for Slack; 11 Nov: Team and Online): Team, the
+// people who work on the Crew with you (crew_share_page.go's team option), alone on the Team page; then the Online
+// page: Share agents (who else can ask your agents, and actions), Slack, the Crew's Slack bot (added by
+// crewAccessAddSlack only where it is offered), and Dashboards, everything the Crew publishes (crew_dashboards_tab.go).
+// A Crew on a Mac has Mac online first.
 var crewAccessPeopleTabs = []crewAccessTab{
-	{ID: "team", Label: "Share", Detail: "people and agents"},
-	{ID: "dashboards", Label: "Dashboards", Detail: "what this Crew publishes"},
+	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
+	{ID: "agents", Label: "Share agents", Detail: "who else can ask your agents", Group: "online"},
+	{ID: "dashboards", Label: "Dashboards", Detail: "what this Crew publishes", Group: "online"},
 }
 
-var crewAccessSlackTab = crewAccessTab{ID: "slack", Label: "Slack", Detail: "talk to this Crew in Slack"}
+var crewAccessSlackTab = crewAccessTab{ID: "slack", Label: "Slack", Detail: "talk to this Crew in Slack", Group: "online"}
 
-// crewAccessAddSlack puts the Slack tab between Share and Dashboards when the server offers it; a tab not listed falls
+// crewAccessAddSlack puts the Slack tab between Share agents and Dashboards when the server offers it; a tab not listed falls
 // back to the first one on the page.
 func (api *StreamingAPI) crewAccessAddSlack(r *http.Request, out *crewSyncReply, viewer string) {
 	if len(out.AccessTabs) == 0 || out.AccessView == "summary" || !api.crewSlackTabOffered(r, viewer, out.ProjectID) {

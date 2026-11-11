@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, Bot, MessageSquare, Users, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, Bot, X } from 'lucide-react'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
@@ -7,30 +7,26 @@ import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
 import { SlackBotChoice } from '../../components/integrations/ProductSlackPanel'
-import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewShareOption, type CrewShareOptionKey, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
+import { openCrewAccess } from './MacSharedAgents'
+import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewShareOptionKey, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
   if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error')
 }
 
-const optionIcons: Record<CrewShareOptionKey, { icon: LucideIcon; tone: string }> = {
-  team: { icon: Users, tone: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
-  agents: { icon: MessageSquare, tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-}
-
 /**
- * Share this Crew (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page with the server's
- * options, each a card with its one-line explanation, chips and status; a click opens its setup. Work on it with your
- * team is the Team (the first-time wizard, People and the folder line), Share agents is Ask and actions per agent. Slack (the Crew's Slack bot) and Dashboards are their own Access tabs next to this one. The server's /share reply writes every line and says what this person may change; the page prints
- * it and sends their change to the existing routes. The same page for the owner and every teammate.
+ * The Team page and the Online page's Share agents tab (owner, 11 Nov: Share split into Team and Online; 9 Nov approved
+ * mocks "Share a Crew" and "Share in Slack"). Each prints its option from the server's /share reply: the title, its
+ * one-line explanation, then its setup. Team is the Team (the first-time wizard, People and the folder line); Share
+ * agents is Ask and actions per agent. The server writes every line and says what this person may change; the page
+ * prints it and sends their change to the existing routes. The same pages for the owner and every teammate.
  */
-export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn }: { projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void }) {
+export function ShareCrew({ option: key, projectId, workspacePath, onBack, onTurnOn }: { option: CrewShareOptionKey; projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
   const [error, setError] = useState('')
-  const [open, setOpen] = useState<Partial<Record<CrewShareOptionKey, boolean>>>({})
   useEffect(() => {
     if (!target) return
     let active = true
@@ -41,46 +37,28 @@ export function ShareCrew({ projectId, workspacePath, onBack, onTurnOn }: { proj
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
   // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch (its dashboards are on the
   // Dashboards tab).
-  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
+  if (state.unbound) return key === 'team' ? <TeamTab projectId={projectId} onTurnOn={onTurnOn} /> : <p className="text-xs text-muted-foreground">Turn on Mac online to share your agents.</p>
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
-  const isOpen = (option: CrewShareOption) => open[option.key] ?? option.open
+  const option = page.options.find(item => item.key === key)
+  if (!option) return null
   return <div className="space-y-3">
     <div className="flex items-start gap-2 px-1">
       {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>}
-      <div>
-        <h2 className="text-[17px] font-semibold">{page.title}</h2>
-        <p className="text-[13px] text-muted-foreground">{page.lead}</p>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[17px] font-semibold">{option.title}</h2>
+        <p className="text-[13px] text-muted-foreground">{option.line}</p>
       </div>
+      <span className={`shrink-0 whitespace-nowrap pt-1 text-xs ${option.on ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{option.status}</span>
     </div>
     {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
-    {page.options.map(option => <ShareOption key={option.key} option={option} open={isOpen(option)} onToggle={() => setOpen(prev => ({ ...prev, [option.key]: !isOpen(option) }))}>
-      {option.key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
-      {option.key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => setOpen(prev => ({ ...prev, team: true }))} />}
-    </ShareOption>)}
-    {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
+    {key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
+    {key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => openCrewAccess(projectId, '', 'team')} />}
+    {key === 'team' && state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
 }
 
-function ShareOption({ option, open, onToggle, children }: { option: CrewShareOption; open: boolean; onToggle: () => void; children: ReactNode }) {
-  const { icon: Icon, tone } = optionIcons[option.key] || optionIcons.team
-  return <section aria-label={option.title} data-share-option={option.key} className="overflow-hidden rounded-2xl border border-border bg-card">
-    <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-start gap-4 px-4 py-4 text-left hover:bg-muted/30">
-      <span aria-hidden="true" className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tone}`}><Icon className="h-5 w-5" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-semibold">{option.title}</span>
-        <span className="block text-[13px] text-muted-foreground">{option.line}</span>
-        {option.chips.length > 0 && <span className="mt-2 flex flex-wrap gap-1.5">
-          {option.chips.map(chip => <span key={chip} className="rounded-full border border-border px-2.5 py-px text-xs text-muted-foreground">{chip}</span>)}
-        </span>}
-      </span>
-      <span className={`shrink-0 whitespace-nowrap pt-0.5 text-xs ${option.on ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{option.status}</span>
-    </button>
-    {open && <div className="border-t border-border px-4 py-3.5">{children}</div>}
-  </section>
-}
-
 /**
- * The Slack tab (owner, 9 Nov: its own tab next to Share and Dashboards): the Crew's Slack bot cards with the server's
+ * The Slack tab (owner, 9 Nov: its own Online tab next to Dashboards): the Crew's Slack bot cards with the server's
  * "Who can talk to it" lines from the same /share reply. The Mac app's own Crew before Mac online has no server copy
  * yet, so it shows the bot cards alone.
  */
