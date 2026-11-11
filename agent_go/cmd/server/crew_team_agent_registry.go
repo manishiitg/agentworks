@@ -82,6 +82,7 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 		bySource[source] = id
 		byChat[chat] = id
 	}
+	ownerMainKey := crewOwnerMainChatKey(t.ProjectID)
 	for i := range people {
 		if !current.member(people[i].UserID) {
 			people[i].Agents = nil
@@ -98,6 +99,20 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 			chat := people[i].UserID + "/" + a.ChatKey
 			id := bySource[source]
 			if existing := byChat[chat]; existing != "" {
+				if id != "" && id != existing && people[i].UserID == current.OwnerID && tab == macMainTab && a.ChatKey == ownerMainKey {
+					// Main moved onto an existing chat. Identity and privacy stay
+					// with each chat; only their role/tab changes.
+					previous := current.Agents[id]
+					physical, ok := strings.CutPrefix(previous.ChatKey, t.ProjectID+codeChatSideMarker)
+					if ok && physical != "" && physical != macMainTab && bySource[previous.OwnerID+"/"+physical] == "" {
+						previous.Tab = physical
+						current.Agents[id] = previous
+						delete(bySource, source)
+						bySource[previous.OwnerID+"/"+physical] = id
+						log.Printf("[CREW_TEAM] project=%s event=agent_main_role_changed agent=%s main=false in_team=%v", t.ProjectID, id, previous.InTeam)
+						id = existing
+					}
+				}
 				if id != "" && id != existing {
 					log.Printf("[CREW_TEAM] project=%s event=agent_registry_row_refused person=%s tab=%q reason=%q", t.ProjectID, people[i].UserID, tab, "Team chat is already bound to another agent")
 					continue
@@ -109,6 +124,9 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
 				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: true}
 				bySource[source] = id
+			}
+			if record.Tab != tab && (record.Tab == macMainTab || tab == macMainTab) {
+				log.Printf("[CREW_TEAM] project=%s event=agent_main_role_changed agent=%s main=%v in_team=%v", t.ProjectID, id, tab == macMainTab, record.InTeam)
 			}
 			delete(bySource, record.OwnerID+"/"+record.Tab)
 			record.Tab = tab
@@ -138,8 +156,15 @@ func (t crewTeam) registeredAgent(person, key string) (crewTeamRegisteredAgent, 
 	if a, ok := t.Agents[key]; ok {
 		return a, a.OwnerID == person
 	}
+	// Exact chat identity wins before role aliases, including while discovery
+	// is catching up with a changed Main pointer.
 	for _, a := range t.Agents {
-		if a.OwnerID == person && (a.Tab == key || a.ChatKey == key || crewTeamMainAgent(t, person, key) && a.Tab == macMainTab) {
+		if a.OwnerID == person && a.ChatKey == key {
+			return a, true
+		}
+	}
+	for _, a := range t.Agents {
+		if a.OwnerID == person && (a.Tab == key || crewTeamMainAgent(t, person, key) && a.Tab == macMainTab) {
 			return a, true
 		}
 	}

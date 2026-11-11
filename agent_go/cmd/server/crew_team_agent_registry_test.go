@@ -28,7 +28,7 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	if ownerID == "" || memberID == "" || ownerID == memberID {
 		t.Fatal("agents of different owners must have different IDs")
 	}
-	people[0].Agents[0] = crewTeamAgent{Tab: "owner-tab", ChatKey: crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID), Place: "server"}
+	people[0].Agents[0] = crewTeamAgent{Tab: macMainTab, ChatKey: crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID), Place: "server"}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
 		t.Fatal(err)
 	}
@@ -218,6 +218,69 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err := checkCrewTeamRegistries(io.Discard); err != nil {
 		t.Fatalf("healthy registry failed team-check: %v", err)
 	}
+	// Main is a role, not identity: moving it to a private registered chat
+	// must retain both IDs and each chat's independent permissions.
+	secondKey := "team:chat:second"
+	secondID := crewTeamAgentIDPrefix + uuid.NewString()
+	second := crewTeamRegisteredAgent{ID: secondID, OwnerID: "owner", Tab: "second", ChatKey: secondKey, Place: "server", InTeam: false, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent, WhenOthersAsk: "second rule"}}
+	old := afterConflict.Agents[mainID]
+	old.InTeam, old.Rule.WhenOthersAsk = true, "first rule"
+	afterConflict.Agents[mainID], afterConflict.Agents[secondID] = old, second
+	if err := writeCrewTeamAgentFixture(afterConflict); err != nil {
+		t.Fatal(err)
+	}
+	ownerEntries := map[string]ProductConversationRecord{}
+	for _, chat := range []string{key, secondKey, "team"} {
+		ownerEntries[productConversationRegistryEntryKey(crewProfileID, chat)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: chat, WorkspacePath: externalCommandCrewRoot, SessionID: "session-" + chat}
+	}
+	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: ownerEntries}); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+secondKey+`"}`)
+	if crewTeamOwnerMainKey(ctx, afterConflict) != secondKey || crewTeamMainAgent(afterConflict, "owner", key) || !crewTeamMainAgent(afterConflict, "owner", secondKey) {
+		t.Fatal("Main did not follow its manifest pointer")
+	}
+	rows, err := defaultProductConversationRegistryStore().projectChats(ctx, "owner", crewProfileID, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.IsMainChat != (row.ConversationKey == secondKey) {
+			t.Fatal("bare root overrode the manifest Main")
+		}
+	}
+	if agent, ok := afterConflict.registeredAgent("owner", secondKey); !ok || agent.ID != secondID || agent.InTeam {
+		t.Fatal("stale Main role overrode exact private chat identity")
+	}
+	// B arrives first, without A in this discovery round: role movement cannot
+	// depend on map order or on the old chat still being discoverable.
+	moved := []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: secondKey, Place: "server"}}}}
+	if err := assignCrewTeamAgentIDs(afterConflict, moved); err != nil {
+		t.Fatal(err)
+	}
+	if len(moved[0].Agents) != 1 || moved[0].Agents[0].ID != secondID || moved[0].Agents[0].InTeam {
+		t.Fatal("Main reassignment replaced identity or shared a private chat")
+	}
+	rebound, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Tab, second.Tab = "root-example", macMainTab
+	if rebound.Agents[mainID] != old || rebound.Agents[secondID] != second {
+		t.Fatalf("Main movement changed more than role: %+v", rebound.Agents)
+	}
+	view := crewTeamTabFor(ctx, rebound, "owner")
+	if !strings.Contains(view.Intro, "Main is not shared") {
+		t.Fatal("Team tab did not explain its private Main")
+	}
+	for _, person := range teamAgentsByPerson(ctx, rebound, "member") {
+		for _, agent := range person.Agents {
+			if agent.ID == secondID {
+				t.Fatal("private Main became visible to a teammate")
+			}
+		}
+	}
+	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
 	// Retain the separate malformed-persisted-registry refusal below.
 	if err := writeCrewTeamAgentFixture(saved); err != nil {
 		t.Fatal(err)

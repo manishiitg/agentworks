@@ -21,7 +21,7 @@ import (
 // Main has an explicit role: the person's default chat or the owner's saved
 // Main pointer. A root-* chat ID alone never grants that role.
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
-	if key == macMainTab || key == crewOwnerDefaultChatKey(t.ProjectID, person) {
+	if key == macMainTab || person != t.OwnerID && key == crewOwnerDefaultChatKey(t.ProjectID, person) {
 		return true
 	}
 	return person == t.OwnerID && (key == t.ProjectID || key != "" && key == crewOwnerMainChatKey(t.ProjectID))
@@ -86,14 +86,7 @@ func crewTeamAgentOnMac(t crewTeam, person string) bool {
 
 // crewTeamOwnerMainKey is the chat key the website uses for the Crew owner's Main.
 func crewTeamOwnerMainKey(ctx context.Context, t crewTeam) string {
-	if records, err := defaultProductConversationRegistryStore().projectChats(ctx, t.OwnerID, crewProfileID, t.ProjectID); err == nil {
-		for _, record := range records {
-			if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(t.ProjectID, t.OwnerID) {
-				return record.ConversationKey
-			}
-		}
-	}
-	return t.ProjectID
+	return crewOwnerMainChatKey(t.ProjectID)
 }
 
 // crewTeamAgentKey resolves an internal native binding to its registry ID.

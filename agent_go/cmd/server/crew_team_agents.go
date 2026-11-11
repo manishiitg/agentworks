@@ -198,6 +198,10 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		return out
 	}
 	identities, _ := store.agentIdentities(ctx, member, crewProfileID, project)
+	mainKey := crewOwnerDefaultChatKey(project, member)
+	if member == t.OwnerID {
+		mainKey = crewOwnerMainChatKey(project)
+	}
 	for _, record := range records {
 		identity := identities[record.ConversationKey]
 		if !t.seesAgent(caller, member, record.ConversationKey) || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) || crewFunctionTabKey(record.ConversationKey) {
@@ -210,7 +214,7 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		// Named like the left menu (sideChatsFor, owner 5 Nov): their default chat is their Main, a tab its own name;
 		// never a raw chat title or an email.
 		name := firstNonEmptyTrimmed(identity.Name, "Agent")
-		if member == t.OwnerID && record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) {
+		if record.ConversationKey == mainKey {
 			name, tab = "Main", macMainTab
 		}
 		activity := ""

@@ -617,7 +617,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 		if entryKey == main || (strings.HasPrefix(entryKey, side) && len(entryKey) > len(side) && !strings.Contains(entryKey[len(side):], ":")) {
 			mainKey, known := mainKeys[record.WorkspacePath]
 			if !known {
-				mainKey = projectID // Transitional legacy display until first resolve migrates it.
+				mainKey = "" // Main comes only from the saved role pointer.
 				if raw, found, readErr := store.read(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json"); readErr != nil {
 					return nil, readErr
 				} else if found {
@@ -625,12 +625,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 					if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 						return nil, err
 					}
-					// A Run person keeps their own unmigrated root; an owner's
-					// shared manifest must not take that caller's main role away.
-					_, ownLegacyRoot := document.Entries[main]
-					if manifest.MainChatKey != "" && !ownLegacyRoot {
-						mainKey = manifest.MainChatKey
-					}
+					mainKey = manifest.MainChatKey
 				}
 				mainKeys[record.WorkspacePath] = mainKey
 			}

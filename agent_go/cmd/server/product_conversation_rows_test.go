@@ -44,7 +44,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			keys := []string{mainKey, project + ":chat:side", project + ":chat:child:nested", project + ":schedule:kept", project + ":schedule:kept:one-run", project + ":function:f:call", project + ":webhook:w:call", project + "_more:chat:other"}
 			if user == "run" {
 				keys = append(keys, project)
-			} // old Run person's own root retains Main
+			} // A leftover bare root must not override the saved Main pointer.
 			for i, key := range keys {
 				entry := productConversationRegistryEntryKey(crewProfileID, key)
 				doc.Entries[entry] = record(user, key)
@@ -94,6 +94,25 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 	files[crew+"/product.json"] = string(manifest)
 	rowsFor := func(user string) conversationRegistryRows {
 		return conversationRegistryRows{db: db, namespace: productConversationRegistryPath(user)}
+	}
+	// Both adapters obey the explicit pointer even with a bare root present.
+	for _, adapter := range []func() ([]ProductConversationRecord, error){
+		func() ([]ProductConversationRecord, error) {
+			return old.projectChats(ctx, "run", crewProfileID, project)
+		},
+		func() ([]ProductConversationRecord, error) {
+			return rowsFor("run").projectChats(ctx, crewProfileID, project, old.read)
+		},
+	} {
+		chats, err := adapter()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, chat := range chats {
+			if chat.IsMainChat != (chat.ConversationKey == mainKey) {
+				t.Fatal("bare root overrides manifest Main")
+			}
+		}
 	}
 	type history struct {
 		Current  ProductConversationRecord

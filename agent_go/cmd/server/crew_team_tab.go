@@ -322,6 +322,13 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		return out
 	}
+	mainKey := crewOwnerMainChatKey(t.ProjectID)
+	for _, a := range t.Agents {
+		if a.OwnerID == t.OwnerID && a.ChatKey == mainKey && !a.InTeam {
+			out.Intro += " Main is not shared with the Team."
+			break
+		}
+	}
 	byPerson := teamAgentsByPerson(ctx, t, viewer)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
