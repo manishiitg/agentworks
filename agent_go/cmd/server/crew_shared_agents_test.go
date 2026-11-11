@@ -356,6 +356,30 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := f.api.readAgentMessages(otherCtx, "other", wrong, inbox, 0, 30, 0); err == nil {
 		t.Fatal("another chat read the private reply inbox")
 	}
+	// Hiding an agent invalidates both existing replies and queued delivery,
+	// even though the caller remains a member of the Team.
+	pair := agentConversation{Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("other", caller), targetMessageEndpoint("other", target)}}
+	if err := f.api.recheckAgentMessageAdmission(otherCtx, pair, agentMessage{From: 0}); err != nil {
+		t.Fatalf("allowed queued Team message: %v", err)
+	}
+	if err := updateCrewTeamRegisteredAgent("team", "owner", shared.ID, func(a *crewTeamRegisteredAgent) { a.InTeam = false }); err != nil {
+		t.Fatal(err)
+	}
+	if directoryHas(shared.ID) {
+		t.Fatal("hidden Team agent remained listed")
+	}
+	if err := requireLinkedOwnCrew(otherCtx, "other", caller, target); err == nil {
+		t.Fatal("stale target bypassed visibility at link admission")
+	}
+	if err := f.api.recheckAgentMessageAdmission(otherCtx, pair, agentMessage{From: 0}); err == nil {
+		t.Fatal("queued send bypassed agent privacy")
+	}
+	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Hidden reply", inbox, "team-hidden"); err == nil {
+		t.Fatal("existing reply bypassed agent privacy")
+	}
+	if err := updateCrewTeamRegisteredAgent("team", "owner", shared.ID, func(a *crewTeamRegisteredAgent) { a.InTeam = true }); err != nil {
+		t.Fatal(err)
+	}
 	// Membership loss removes discovery and invalidates existing reply contacts.
 	team.People = nil
 	if err := writeCrewTeam(team); err != nil {

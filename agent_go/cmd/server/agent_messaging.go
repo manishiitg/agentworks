@@ -1518,7 +1518,8 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 // in an existing conversation needs no new link.
 func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
 	if target.TeamAgentID != "" {
-		return nil // resolveTeamAgentTarget already applied the directory's live visibility rule.
+		_, _, err := crewTeamAgentByID(ctx, target.CrewID, userID, target.TeamAgentID)
+		return err
 	}
 	if caller.Stamp.Type != triggerCallerCrew || strings.TrimSpace(caller.Path) == "" || caller.ConditionJob != "" || caller.NamedAgentID != "" {
 		return nil
