@@ -225,6 +225,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
   const team = useTeamTab(expanded ? projectId : undefined, connectionId)
   const liveProjectId = useCrewAgentsStore(state => state.projectId)
+  const [showHiddenAgents, setShowHiddenAgents] = useState(false)
   const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
   // The active-session cache is already refreshed for the current connection, including outside the desktop app.
@@ -284,6 +285,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   // Grouped by person like the open Crew's list (owner, 10 Nov: another network's Crew listed everyone's agents in one
   // list, two "Main"s and no names): yours under You, each teammate under their name with their online dot.
   const shown = chats.filter(chat => chat.pinned !== false)
+  const hiddenAgents = chats.filter(chat => chat.pinned === false)
   const people = [...new Set(shown.filter(chat => chat.can_write === false && chat.tab_owner_id).map(chat => chat.tab_owner_id!))]
   const personName = (id: string) => (shown.find(chat => chat.tab_owner_id === id)?.tab_owner_name || 'Teammate').split('@')[0]
   const presence = (name: string) => teamBusy?.people?.find(person => person.name === name)
@@ -298,6 +300,11 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
           {shown.filter(chat => chat.can_write === false && chat.tab_owner_id === id).map(chatRow)}
         </div>
       })}
-    </>}</div>)}</>
+    </>}
+    {hiddenAgents.length > 0 && <button type="button" aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted max-md:min-h-10">
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden {hiddenAgents.length === 1 ? 'agent' : 'agents'}
+    </button>}
+    {showHiddenAgents && hiddenAgents.map(chatRow)}
+    </div>)}</>
 }
 
