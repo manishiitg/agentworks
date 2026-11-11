@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,14 +45,16 @@ type crewAccessLine struct {
 
 // crewAccessFacts is what the tree is made from; the Mac and the server each fill it from where they stand.
 type crewAccessFacts struct {
-	MacOnline  bool
-	TeamKnown  bool
-	Team       *crewTeam
-	People     []crewTeamAgentsPerson // everyone in the Team with their in-team agents (crew_team_agents.go)
-	Agents     []macSharedAgent
-	LastChange time.Time
-	Clashes    []crewTeamClash
-	Progress   *crewTeamRound
+	MacOnline bool
+	TeamKnown bool
+	// PeopleUnknown: the Team is on but its people could not be read yet; the line names no count rather than 0.
+	PeopleUnknown bool
+	Team          *crewTeam
+	People        []crewTeamAgentsPerson // everyone in the Team with their in-team agents (crew_team_agents.go)
+	Agents        []macSharedAgent
+	LastChange    time.Time
+	Clashes       []crewTeamClash
+	Progress      *crewTeamRound
 	// This Mac's own copy of the shared folder (absent on the website): its last good round, files and last error.
 	LocalSynced time.Time
 	LocalFiles  int
@@ -131,7 +134,11 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		people = append(people, crewAccessPerson{UserID: p.UserID, Name: name, Online: p.Active, OnlineLabel: p.ActiveLabel, AgentsLabel: agents, StatusLabel: status})
 	}
 	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
-	lines = append(lines, crewAccessLine{Kind: "team", Title: fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people")), People: people})
+	title := fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people"))
+	if f.PeopleUnknown {
+		title = "Team"
+	}
+	lines = append(lines, crewAccessLine{Kind: "team", Title: title, People: people})
 	// One working copy per member (owner, 5 Nov): where this member's own agents work.
 	switch f.Where {
 	case "mac":
@@ -292,6 +299,8 @@ type crewAccessRemote struct {
 	people  []crewTeamAgentsPerson
 	clashes []crewTeamClash
 	last    time.Time
+	// peopleRead: people came from a good /agents read (this one or an earlier one); without it the count is unknown.
+	peopleRead bool
 }
 
 // crewAccessTreeFor builds the tree where this server stands, like crewAccessSummaryFor.
@@ -345,6 +354,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 	remote := api.crewAccessRemoteRead(ctx, owner, c, project, b.PeerProjectID)
 	if remote.team != nil {
 		f.TeamKnown, f.Team, f.People, f.Clashes, f.LastChange = true, remote.team, remote.people, remote.clashes, remote.last
+		f.PeopleUnknown = remote.team.On && !remote.peopleRead
 		if dir, err := crewTeamLocalDir(owner, c, b.PeerProjectID, remote.team.Folder.ID); err == nil {
 			f.Progress = crewTeamRoundFor(dir)
 			if local, err := readCrewTeamLocal(dir); err == nil {
@@ -363,22 +373,34 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 	}
 	round, done := context.WithTimeout(ctx, 6*time.Second)
 	defer done()
+	var prev crewAccessRemote
+	if v, ok := crewAccessRemoteCache.Load(key); ok {
+		prev = v.(crewAccessRemote)
+	}
+	started := time.Now()
+	// One server read; a failed one is logged and its last good result kept, so a slow server never turns the Team
+	// line into "0 other people" (owner, 11 Nov screenshot) or hides clashes that are still open.
+	read := func(step, route string, out any) bool {
+		err := crewTeamRemoteJSON(round, owner, c, http.MethodGet, route, nil, out)
+		if err != nil {
+			log.Printf("[CREW_TEAM] project=%s event=access_read_failed peer=%s step=%s elapsed_ms=%d kept_last=%t reason=%q", project, peer, step, time.Since(started).Milliseconds(), !prev.at.IsZero(), err)
+		}
+		return err == nil
+	}
 	var out crewAccessRemote
 	var t crewTeam
 	route := "/api/crew-teams/" + url.PathEscape(peer)
-	if crewTeamRemoteJSON(round, owner, c, http.MethodGet, route, nil, &t) != nil {
-		if v, ok := crewAccessRemoteCache.Load(key); ok {
-			return v.(crewAccessRemote) // keep the last good read rather than saying something wrong
-		}
-		return out
+	if !read("team", route, &t) {
+		return prev
 	}
 	out.team = &t
+	out.people, out.peopleRead, out.clashes, out.last = prev.people, prev.peopleRead, prev.clashes, prev.last
 	if t.On {
 		var agents struct {
 			People []crewTeamAgentsPerson `json:"people"`
 		}
-		if crewTeamRemoteJSON(round, owner, c, http.MethodGet, route+"/agents", nil, &agents) == nil {
-			out.people = agents.People
+		if read("agents", route+"/agents", &agents) {
+			out.people, out.peopleRead = agents.People, true
 		}
 	}
 	if t.FolderAccess && t.Folder.ID != "" {
@@ -386,13 +408,13 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 		var clashes struct {
 			Clashes []crewTeamClash `json:"clashes"`
 		}
-		if crewTeamRemoteJSON(round, owner, c, http.MethodGet, route+"/clashes"+folder, nil, &clashes) == nil {
+		if read("clashes", route+"/clashes"+folder, &clashes) {
 			out.clashes = clashes.Clashes
 		}
 		var events struct {
 			Events []crewTeamEvent `json:"events"`
 		}
-		if crewTeamRemoteJSON(round, owner, c, http.MethodGet, route+"/events"+folder, nil, &events) == nil && len(events.Events) > 0 {
+		if read("events", route+"/events"+folder, &events) && len(events.Events) > 0 {
 			out.last, _ = time.Parse(time.RFC3339Nano, events.Events[0].At)
 		}
 	}
