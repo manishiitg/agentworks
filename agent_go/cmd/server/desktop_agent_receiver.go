@@ -15,7 +15,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type desktopAppReplyKey struct{}
 type desktopAppOwnDeliveryKey struct{}
 
 type desktopAppRecipient struct {
@@ -330,13 +329,11 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 		ctx = context.WithValue(ctx, desktopAppOwnDeliveryKey{}, true)
 		text = crewOwnAgentMessageText(message.Sender, replyTo, message.Text)
 	} else {
-		// Keep the authenticated reply address separate from model-supplied arguments.
-		ctx = context.WithValue(ctx, desktopAppReplyKey{}, replyTo)
 		// Reuse normal guest-turn restrictions, not Team grants or a relay pair.
 		ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: "network:" + message.SenderUser, SenderName: message.Sender, Owner: record})
 	}
 	idempotency := "agentbridge:" + connectionID + ":" + message.ID
-	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency})
+	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
 	body, _ := json.Marshal(AgentProfileChatRequest{Message: text, ConversationKey: record.ConversationKey, DeliveryMode: "queue"})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 	req = mux.SetURLVars(req, map[string]string{"id": record.ProfileID})

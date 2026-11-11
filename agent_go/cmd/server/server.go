@@ -3731,8 +3731,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	if ask, ok := r.Context().Value(crewMacSharedAskKey{}).(*crewMacSharedAsk); ok && req.SharedAgentSender != "" {
 		req.sharedAsk = ask
-		if reply, ok := r.Context().Value(desktopAppReplyKey{}).(string); ok {
-			req.appAgentReplyTo = reply
+	}
+	// The queue retains server-owned delivery provenance separately from request
+	// JSON and restores it only for its exact user/session. Keep replies on that inbox.
+	if req.SharedAgentSender != "" {
+		if delivery, ok := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{}); ok {
+			req.appAgentReplyTo, _ = delivery["app_agent_reply_to"].(string)
 		}
 	}
 	if err := validateRequestedCDPPorts(req); err != nil {
