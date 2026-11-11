@@ -161,7 +161,16 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		t.Fatalf("URL changed: %s -> %v", link, again)
 	}
 	call("dashboard", map[string]any{"action": "restore", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2, "revision": rev1})
-	bad := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": "<html><body><script>window.report.unknown()</script></body></html>"}})["dashboard"].(map[string]any)["revision"]
+	// PLAT-750-90: the publish API must not apply a homemade JS/DOM checker.
+	// The page creates its target at runtime; future browser APIs can be guarded.
+	browserPage := `<html><body><script>
+const target = document.createElement('div'); target.id = ['dynamic', 'target'].join('-'); document.body.append(target);
+document.getElementById('dynamic-target').textContent = 'Ready';
+if (typeof FutureBrowserAPI !== 'undefined') new FutureBrowserAPI();
+</script></body></html>`
+	browserRevision := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": browserPage}})["dashboard"].(map[string]any)["revision"]
+	call("dashboard", map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": browserRevision})
+	bad := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": browserRevision, "files": map[string]any{"index.html": "<html><body><script>window.report.unknown()</script></body></html>"}})["dashboard"].(map[string]any)["revision"]
 	rejected := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": bad}})
 	requireRemoteError(t, rejected, "invalid HTML", "invalid_dashboard")
 	// Preview credentials retain their originating connection's live bounds,
