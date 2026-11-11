@@ -3,7 +3,7 @@ import { ChevronRight, Lock } from 'lucide-react'
 import { liveFeed } from '../../services/liveFeed'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
-import { teamRequest, type TeamTarget } from './teamApi'
+import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 /** The Team's activity log as the server writes it (crew_team_activity_log.go): every line is the server's; the text of
  * a message is there only when both agents' chats are shared Live with the viewer. */
@@ -30,21 +30,32 @@ function tabFor(end: ActivityEnd) {
 /** Read again when the Team panel changes (a crew_panel notice or a Team change), like the Team tab itself. */
 function useTeamActivity(target: TeamTarget, projectId: string) {
   const [view, setView] = useState<ActivityView>()
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
   useEffect(() => {
     let active = true
-    const load = () => { void teamRequest<ActivityView>({ project: target.project, connection: target.connection }, '/activity').then(data => { if (active) setView(data) }).catch(() => {}) }
+    setView(undefined)
+    setError('')
+    let request = 0
+    const load = () => {
+      const current = ++request
+      void teamRequest<ActivityView>({ project: target.project, connection: target.connection }, '/activity')
+        .then(data => { if (active && current === request) { setView(data); setError('') } })
+        .catch(reason => { if (active && current === request) setError(teamFailure(reason).message) })
+    }
     load()
     window.addEventListener('agentworks:team-updated', load)
     const unlive = liveFeed.subscribe(['crew_panel'], null, load, projectId)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load); unlive() }
-  }, [target.project, target.connection, projectId])
-  return view
+  }, [target.project, target.connection, projectId, retry])
+  return { view, error, reload: () => setRetry(value => value + 1) }
 }
 
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {
-  const view = useTeamActivity(target, projectId)
+  const { view, error, reload } = useTeamActivity(target, projectId)
   const [open, setOpen] = useState('')
-  if (!view) return null
+  if (error) return <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div>
+  if (!view) return <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>
   const heading = 'mb-1.5 mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
   return <section aria-label="Activity" className="space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm">
     <p className={heading}>Now</p>
