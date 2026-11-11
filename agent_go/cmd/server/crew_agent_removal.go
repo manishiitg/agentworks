@@ -208,11 +208,10 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 		}
 	}
 	if api.whatsappManager != nil {
-		svc, err := api.whatsappManager.ServiceForUser(ctx, caller, "", "")
+		routes, err := api.whatsappManager.RoutingForUser(ctx, caller)
 		if err != nil {
 			return plan, err
 		}
-		routes := svc.GetRouting()
 		ids := linkedRoutes(map[string]ChannelRoute(routes), "WhatsApp")
 		if len(ids) > 0 {
 			raw, err := json.Marshal(routes)
@@ -223,7 +222,10 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 			plan.applyChannels = append(plan.applyChannels, func(ctx context.Context, choices map[string]string) error {
 				unlock := api.whatsappManager.LockAccountRouting(caller)
 				defer unlock()
-				current := svc.GetRouting()
+				current, err := api.whatsappManager.RoutingForUser(ctx, caller)
+				if err != nil {
+					return err
+				}
 				for channel, id := range ids {
 					if choices[id] == "remove" {
 						delete(current, channel)
@@ -233,7 +235,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 						current[channel] = route
 					}
 				}
-				return svc.SetRouting(services.WhatsAppRouting(current))
+				return api.whatsappManager.SetRoutingForUser(ctx, caller, services.WhatsAppRouting(current))
 			})
 		}
 	}
