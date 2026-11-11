@@ -36,7 +36,7 @@ type crewAccessLine struct {
 	Target string `json:"target,omitempty"` // dashboard: the Share tab the line opens ("dashboards")
 	// Dashboards (dashboard line): each dashboard the viewer may open, by name; each opens that dashboard.
 	Dashboards []crewAccessDashboard `json:"dashboards,omitempty"`
-	Count      int                   `json:"count,omitempty"` // dashboard: how many
+	Count      int                   `json:"count,omitempty"` // agents or dashboards: how many
 	Tag        string                `json:"tag,omitempty"`   // dashboard: who can open them ("not shared", "your team", ...)
 	People     []crewAccessPerson    `json:"people,omitempty"`
 	Progress   *crewTeamRound        `json:"progress,omitempty"`
@@ -151,7 +151,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		}
 	}
 	if len(inTeam) > 0 {
-		lines = append(lines, crewAccessLine{Kind: "agents", Title: "Shared with the team", Detail: strings.Join(inTeam, ", ")})
+		lines = append(lines, crewAccessLine{Kind: "agents", Title: "Shared with the team", Count: len(inTeam), Detail: strings.Join(inTeam, ", ")})
 	}
 	lines = append(lines, crewAccessPublicLine(f.Agents)...)
 	if f.Team.Folder.shared() {

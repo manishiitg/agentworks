@@ -142,6 +142,17 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const treeLines = (lines: CrewAccessLine[]) => lines.map((line, index) => {
     const Icon = lineIcon[line.kind] || Globe
+    // Keep the shared names available without filling the menu on every Crew open.
+    if (line.kind === 'agents') return <div key={`${scope}:${line.kind}:${index}`} role="listitem">
+      <details className="group/shared-agents">
+        <summary className={`${lineButton} items-center list-none cursor-pointer [&::-webkit-details-marker]:hidden`}>
+          <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/shared-agents:rotate-90" />
+          <span className="min-w-0 flex-1 font-medium text-foreground">{line.title}</span>
+          {line.count !== undefined && <span className="shrink-0 text-muted-foreground">{line.count} {line.count === 1 ? 'agent' : 'agents'}</span>}
+        </summary>
+        {line.detail && <p className="break-words pl-6 pr-1.5 pb-1 text-[11px] text-muted-foreground">{line.detail}</p>}
+      </details>
+    </div>
     // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line (no
     // "Manage dashboards" link, owner 10 Nov). With none, the server's one line and its Ask, as before.
     if (line.kind === 'dashboard' && line.dashboards?.length) {
