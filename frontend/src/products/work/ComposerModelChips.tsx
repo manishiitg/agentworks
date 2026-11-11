@@ -90,7 +90,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // This chat's switch note, read when the menu opens, and a model picked in a long chat waiting for the choice.
   const [switchNote, setSwitchNote] = useState('')
   const [contextTokens, setContextTokens] = useState(0)
-  const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string; connectionId?: string } | null>(null)
+  const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string; connectionId?: string; effort?: string } | null>(null)
   useEffect(() => {
     if (!menuOpen || !sessionId) return
     let active = true
@@ -100,7 +100,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const confirmSwitchRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (pendingSwitch) confirmSwitchRef.current?.focus()
-  }, [pendingSwitch])
+  }, [Boolean(pendingSwitch)])
   useOpenFromStatusBar(sessionId, () => setMenuOpen(true))
   const profileId = meta?.agentProfileId || ''
   const projectId = meta?.agentProfileProjectId || ''
@@ -116,6 +116,14 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
     workspacePath, accountProduct: profileId,
+  })
+
+  const destinationConnection = pendingSwitch
+    ? pendingSwitch.connectionId || (pendingSwitch.option.id === selectedOption?.id ? connectionId || meta?.agentProfileChatConnectionID : undefined) || switchAccountFor(pendingSwitch.option) || `global:${pendingSwitch.option.provider}`
+    : undefined
+  const destination = useWorkModelChoices(sources, {
+    selectedOption: pendingSwitch?.option, selectedConnectionId: destinationConnection,
+    inUseConnectionId: destinationConnection, workspacePath, accountProduct: profileId,
   })
 
   const onMenuOpen = (open: boolean) => { setMenuOpen(open); if (!open) setPendingSwitch(null); actions?.onOpenChange?.(open) }
@@ -187,7 +195,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     setPendingSwitch(null)
     setMenuOpen(false)
     if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
-    switchTo(pending.option, pending.modelId, pending.connectionId)
+    if (pending.option.id !== selectedOption.id) {
+      const model = pending.modelId || destination.defaultForOption(pending.option, destinationConnection).modelId
+      if (!destination.selectableModels.some(item => item.model_id === model) || destination.cursorSelectionDisabled) return
+      void save(pending.option, model, destination.effortForPick(model, pending.effort, pending.option), destinationConnection)
+    } else switchTo(pending.option, pending.modelId, pending.connectionId)
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
   // Optional setup and defaults on the Models page and this project's usage.
@@ -215,12 +227,23 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const pendingKeepsAccount = !pendingSwitch?.connectionId || pendingSwitch.connectionId === currentAccountId
   const pendingModelID = pendingSwitch ? pendingSwitch.modelId || (!changesCLI && pendingKeepsAccount
     ? currentModel : defaultForOption(pendingSwitch.option, pendingSwitch.connectionId || switchAccountFor(pendingSwitch.option)).modelId) : ''
-  const pendingModelLabel = models.find(model => model.id === pendingModelID)?.label
+  const pendingModelLabel = destination.selectableModels.find(model => model.model_id === pendingModelID)?.model_name || models.find(model => model.id === pendingModelID)?.label
     || sources.providerManifest.find(provider => provider.id === pendingSwitch?.option.provider)?.models?.find(model => model.model_id === pendingModelID)?.model_name
     || pendingModelID || 'Default model'
-  const pendingAccount = sources.accounts?.find(account => account.id === (pendingSwitch?.connectionId || currentAccountId))
+  const pendingAccount = sources.accounts?.find(account => account.id === (destinationConnection || currentAccountId))
   const pendingAccountLabel = pendingAccount ? pendingAccount.via_connection ? pendingAccount.display_name
     : onThisMac && accountRelation(pendingAccount) === 'server' ? 'This Mac' : accountOptionLabel(pendingAccount) : ''
+  const destinationModels = destination.selectableModels
+  const destinationLevels = destination.levelsForModel(pendingModelID, pendingSwitch?.option)
+  const destinationEffort = destination.effortForPick(pendingModelID, pendingSwitch?.effort, pendingSwitch?.option)
+  const destinationReady = !destination.cursorSelectionDisabled && destinationModels.some(model => model.model_id === pendingModelID)
+  const stageDestination = (option: AgentProfileProviderOption, account?: string) => {
+    const nextAccount = account || switchAccountFor(option) || `global:${option.provider}`
+    const defaults = defaultForOption(option, nextAccount)
+    setPendingSwitch({ option, connectionId: nextAccount, modelId: defaults.modelId, effort: defaults.reasoningEffort })
+  }
+  const fieldClass = 'flex items-center justify-between gap-3 border-b border-border px-2.5 py-2 text-xs last:border-0'
+  const selectClass = 'min-w-0 max-w-[190px] rounded bg-popover p-1 text-right text-popover-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const switchActionClass = 'flex cursor-pointer items-center rounded-md border px-3 py-2.5 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <>{sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
     triggerExtra={triggerExtra} wide={Boolean(pendingSwitch)} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
@@ -232,10 +255,27 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0 flex-1"><span className="block text-[10px] text-muted-foreground">Next reply</span><span>{changesCLI ? `${pendingCLI} · ` : ''}{pendingModelLabel}</span></div>
       </div>
+      {changesCLI && <div className="mb-3.5 rounded-md border border-border" onKeyDown={event => event.stopPropagation()}>
+        <label className={fieldClass}><span className="text-muted-foreground">CLI</span><select className={selectClass} value={pendingSwitch.option.id} onChange={event => {
+          const option = cliGroups.find(group => group.option.id === event.target.value)?.option
+          if (option) stageDestination(option)
+        }}>{cliGroups.filter(group => group.option.id !== selectedOption.id).map(group => <option key={group.option.id} value={group.option.id}>{group.option.label || group.option.provider}</option>)}</select></label>
+        <label className={fieldClass}><span className="text-muted-foreground">Account</span><select className={selectClass} value={destinationConnection} onChange={event => stageDestination(pendingSwitch.option, event.target.value)}>
+          {cliGroups.find(group => group.option.id === pendingSwitch.option.id)?.accounts.map(account => <option key={account.id} value={account.id}>{accountOptionLabel(account)}</option>)}
+        </select></label>
+        <label className={fieldClass}><span className="text-muted-foreground">Model</span><select className={selectClass} value={destinationReady ? pendingModelID : ''} disabled={destination.cursorSelectionDisabled || !destinationModels.length} onChange={event => setPendingSwitch({ ...pendingSwitch, modelId: event.target.value, effort: undefined })}>
+          {!destinationReady && <option value="">Choose a model</option>}
+          {destinationModels.map(model => <option key={model.model_id} value={model.model_id}>{model.model_name || model.model_id}</option>)}
+        </select></label>
+        {destinationLevels.length > 0 && <label className={fieldClass}><span className="text-muted-foreground">Reasoning effort</span><select className={selectClass} value={destinationEffort || ''} onChange={event => setPendingSwitch({ ...pendingSwitch, effort: event.target.value })}>
+          {destinationLevels.map(level => <option key={level.id} value={level.id}>{level.label}</option>)}
+        </select></label>}
+        {destination.cursorModelsError && <p className="px-2.5 py-2 text-xs text-muted-foreground">{destination.cursorModelsError}</p>}
+      </div>}
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{changesCLI
         ? `${pendingCLI} starts with recent messages and access to the full saved conversation. It can search older history when needed—not load it all upfront.`
         : `${contextTokens > 0 ? `This chat has ${formatTokens(contextTokens)} tokens. ` : ''}Continue with the current context, or summarize it first to make it smaller.`}</p>
-      <Menu.Item ref={confirmSwitchRef} className={`${switchActionClass} mb-2 border-foreground/80 bg-foreground text-background data-[highlighted]:opacity-90`}
+      <Menu.Item disabled={changesCLI && !destinationReady} ref={confirmSwitchRef} className={`${switchActionClass} mb-2 border-foreground/80 bg-foreground text-background data-[highlighted]:opacity-90`}
         onSelect={() => void finishSwitch(!changesCLI)}>{changesCLI ? `Switch to ${pendingCLI}` : 'Summarize & switch'}</Menu.Item>
       {!changesCLI && <Menu.Item className={`${switchActionClass} border-border data-[highlighted]:bg-muted`} onSelect={() => void finishSwitch(false)}>Keep full history & switch</Menu.Item>}
       <p className="mt-2 text-[11px] text-muted-foreground">{changesCLI ? 'Your chat stays here. No automatic summary.' : 'A summary keeps the key context, not every detail.'}</p>
