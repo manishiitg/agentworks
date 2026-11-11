@@ -70,7 +70,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   }, [query.data, sessionId, owns])
 
   const change = async (message: PendingQueuedMessage, steer: boolean, retry = false, edit = false) => {
-    if (message.can_manage !== true || !message.message_id || action || !owns() || (edit && message.attachment_pending)) return
+    if ((message.can_manage !== true && !(message.can_dismiss === true && !steer && !retry && !edit)) || !message.message_id || action || !owns() || (edit && message.attachment_pending)) return
     setAction(message.message_id)
     setError('')
     try {

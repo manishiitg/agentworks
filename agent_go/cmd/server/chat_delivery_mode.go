@@ -98,6 +98,11 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		if !ok {
 			continue
 		}
+		if turn.RetryAt != nil {
+			message.QueueReason, message.QueueDetail = "provider_limit", "Waiting for Claude's limit to reset"
+			message.CanSteer = false
+			continue
+		}
 		message.QueueReason, message.CanSteer = api.queuedMessageDeliveryState(sessionID, turn.Request)
 		message.Refreshing = message.QueueReason == "refreshing"
 		message.QueueDetail = api.queuedMessageWaitDetail(sessionID, message.QueueReason)
@@ -190,6 +195,12 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 		return
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	if !websiteDeviceClaims(GetUserFromContext(r.Context())) {
+		for i := range messages {
+			messages[i].CanDismiss = false
+		}
+	}
+
 	if messages == nil {
 		messages = []PendingQueuedMessage{}
 	}
@@ -207,7 +218,7 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || !personTypedQueuedTurn(turn) {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || (!personTypedQueuedTurn(turn) && (steer || !websiteDeviceClaims(GetUserFromContext(ctx)) || !dismissibleIncomingTurn(turn))) {
 			continue
 		}
 		if turn.StartedAt != nil {

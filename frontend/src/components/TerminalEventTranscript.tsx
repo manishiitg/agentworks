@@ -1121,7 +1121,6 @@ const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: 
     : failed ? count : `${count} completed`
   return <div data-testid="terminal-work-summary" className="my-1 flex items-center gap-1 py-1 text-[11px] text-muted-foreground">
     <span>{label}</span>
-    {failed > 0 && <span className="text-red-400">· {failed} failed</span>}
   </div>
 }
 

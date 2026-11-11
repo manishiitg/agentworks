@@ -144,6 +144,8 @@ type queuedConversationPrincipal struct {
 }
 
 type queuedConversationTurn struct {
+	RetryAt       *time.Time                  `json:"retry_at,omitempty"`
+	LimitRetried  bool                        `json:"limit_retried,omitempty"`
 	ID            string                      `json:"id"`
 	ComposerInput bool                        `json:"composer_input,omitempty"`
 	UserID        string                      `json:"user_id"`
@@ -344,6 +346,8 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 				delete(api.conversationTurnQueueOwners, sessionID)
 			}
 			api.conversationTurnQueueMu.Unlock()
+		} else if head.RetryAt != nil && time.Now().Before(*head.RetryAt) {
+			api.wakeConversationQueueAt(sessionID, *head.RetryAt)
 		} else if oldest.ID == "" || head.CreatedAt.Before(oldest.CreatedAt) || (head.CreatedAt.Equal(oldest.CreatedAt) && head.ID < oldest.ID) {
 			oldest = head
 		}
@@ -361,9 +365,10 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 		return queuedConversationTurn{}, false, err
 	}
 	for i := range turns {
-		if turns[i].ID == oldest.ID && turns[i].UserID == oldest.UserID && turns[i].SessionID == sessionID && turns[i].StartedAt == nil && turns[i].DeliveryError == "" {
+		if turns[i].ID == oldest.ID && turns[i].UserID == oldest.UserID && turns[i].SessionID == sessionID && turns[i].StartedAt == nil && turns[i].DeliveryError == "" && (turns[i].RetryAt == nil || !time.Now().Before(*turns[i].RetryAt)) {
 			now := time.Now().UTC()
 			turns[i].StartedAt = &now
+			turns[i].RetryAt = nil
 			if err := api.writeConversationTurnQueue(ctx, oldest.UserID, turns); err != nil {
 				logTurnQueue("cannot persist queue claim for session %s: %v", sessionID, err)
 				return queuedConversationTurn{}, false, err
@@ -442,11 +447,12 @@ func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, 
 		return queuedConversationTurn{}, false
 	}
 	for i := range turns {
-		if turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" {
+		if turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" || (turns[i].RetryAt != nil && time.Now().Before(*turns[i].RetryAt)) {
 			continue
 		}
 		now := time.Now().UTC()
 		turns[i].StartedAt = &now
+		turns[i].RetryAt = nil
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
 			logTurnQueue("cannot claim turn %s: %v", turns[i].ID, err)
 			return queuedConversationTurn{}, false
@@ -571,7 +577,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		} else if pending {
 			// Admission or an explicit owner action changed a head while
 			// claiming. The next kick uses a fresh registered-owner snapshot.
-			go api.kickConversationTurnQueue(sessionID)
+			api.retryUnreadableConversationQueue(sessionID)
 		}
 		return
 	}
@@ -811,10 +817,17 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	if err != nil {
 		// A failure may precede the normal user echo, or follow partial work.
-		// Keep its content and explicit owner retry; never replay it automatically.
+		// Keep failures for explicit resolution, except the one typed incoming Claude quota retry.
 		// Persist the no-replay state before publishing failure. A crash or
 		// failed queue write must not publish a verdict recovery can contradict.
-		if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
+		retryAt := api.incomingQuotaRetryAt(turn, result.QueryID)
+		if !retryAt.IsZero() {
+			if persistErr := api.deferIncomingQuotaTurn(storageCtx, turn, retryAt); persistErr != nil {
+				logTurnQueue("cannot persist quota wait for %s: %v", turn.ID, persistErr)
+			} else {
+				logTurnQueue("turn %s waits for Claude reset at %s (one retry)", turn.ID, retryAt.Format(time.RFC3339))
+			}
+		} else if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
 			logTurnQueue("cannot persist failed turn %s: %v", turn.ID, persistErr)
 		} else {
 			api.recordFailedQueuedConversationUserMessage(turn)
@@ -989,7 +1002,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		}
 		turns = dropStaleWaitingTurns(turns, time.Now().UTC())
 		for i := range turns {
-			if turns[i].Steering {
+			if turns[i].Steering || (turns[i].LimitRetried && turns[i].StartedAt != nil) {
 				// An interrupted steer may have reached the CLI. Never replay it blindly.
 				turns[i].DeliveryError = "Delivery unconfirmed after restart. Check the chat before resending."
 				turns[i].Steering = false
@@ -1025,7 +1038,7 @@ const staleWaitingTurnAge = 30 * time.Minute
 func dropStaleWaitingTurns(turns []queuedConversationTurn, now time.Time) []queuedConversationTurn {
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
-		if turn.Request.DeliveryMode != "queue" && turn.DeliveryError == "" && turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
+		if turn.RetryAt == nil && turn.Request.DeliveryMode != "queue" && turn.DeliveryError == "" && turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
 			logTurnQueue("dropping a message that waited %s without starting (session %s)", now.Sub(turn.CreatedAt).Round(time.Minute), turn.SessionID)
 			continue
 		}
@@ -1057,6 +1070,7 @@ type PendingQueuedMessage struct {
 	QueueReason string `json:"queue_reason"`
 	QueueDetail string `json:"queue_detail,omitempty"`
 	CanSteer    bool   `json:"can_steer"`
+	CanDismiss  bool   `json:"can_dismiss"`
 	CanManage   bool   `json:"can_manage"` // Only messages typed by the person in chat get composer actions.
 	// Started: the queue handed this message to its turn, which has not finished. The chat keeps showing it as being sent
 	// until the turn's own user row arrives, instead of it vanishing between the queue and the chat.
@@ -1090,6 +1104,12 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 		return nil
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	if !websiteDeviceClaims(GetUserFromContext(ctx)) {
+		for i := range messages {
+			messages[i].CanDismiss = false
+		}
+	}
+
 	api.projectQueuedMessageDelivery(sessionID, turns, messages)
 	api.projectPendingChatAttachments(userID, sessionID, turns, messages)
 	return messages
@@ -1109,6 +1129,7 @@ func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sess
 		message := PendingQueuedMessage{
 			MessageID:       turn.ID,
 			CanManage:       personTypedQueuedTurn(turn),
+			CanDismiss:      dismissibleIncomingTurn(turn),
 			Steering:        turn.Steering,
 			DeliveryError:   turn.DeliveryError,
 			ClientMessageID: clientMessageID,
@@ -1198,4 +1219,95 @@ func personQueuedRequest(turn queuedConversationTurn) bool {
 		return false
 	}
 	return true
+}
+
+// Incoming failures may be dismissed by the person whose queue owns them, never edited or steered.
+func dismissibleIncomingTurn(turn queuedConversationTurn) bool {
+	return turn.DeliveryError != "" && turn.StartedAt == nil && !turn.Steering &&
+		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message"
+}
+
+func (api *StreamingAPI) wakeConversationQueueAt(sessionID string, at time.Time) {
+	api.conversationTurnQueueMu.Lock()
+	if api.conversationTurnQueueWatching == nil {
+		api.conversationTurnQueueWatching = make(map[string]bool)
+	}
+	if api.conversationTurnQueueWatching[sessionID] {
+		api.conversationTurnQueueMu.Unlock()
+		return
+	}
+	api.conversationTurnQueueWatching[sessionID] = true
+	api.conversationTurnQueueMu.Unlock()
+	time.AfterFunc(time.Until(at), func() {
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueWatching, sessionID)
+		api.conversationTurnQueueMu.Unlock()
+		api.kickConversationTurnQueue(sessionID)
+	})
+}
+
+// Read only typed metadata for this exact execution/native turn. Never infer a reset from error prose.
+func (api *StreamingAPI) incomingQuotaRetryAt(turn queuedConversationTurn, queryID string) time.Time {
+	if turn.LimitRetried || queryID == "" || api.eventStore == nil ||
+		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] != "agent_message" {
+		return time.Time{}
+	}
+	api.trackedWorkflowExecutionsMux.RLock()
+	nativeTurnID := ""
+	if execution := api.trackedWorkflowExecutions[queryID]; execution != nil && execution.SessionID == turn.SessionID {
+		nativeTurnID = execution.Metadata["native_turn_id"]
+	}
+	api.trackedWorkflowExecutionsMux.RUnlock()
+	all := api.eventStore.GetAllEventsRaw(turn.SessionID)
+	for i := len(all) - 1; i >= 0; i-- {
+		event := all[i]
+		if event.Type != "unified_completion" || event.Data == nil {
+			continue
+		}
+		matched := event.ExecutionID == queryID
+		if nativeTurnID != "" {
+			matched = retainedCompletionTurnID(event) == nativeTurnID
+		}
+		if !matched {
+			continue
+		}
+		raw, _ := json.Marshal(event.Data.Data)
+		var completion struct {
+			Provider string `json:"provider"`
+			Metadata struct {
+				Code    string `json:"error_code"`
+				RetryAt string `json:"retry_at"`
+			} `json:"metadata"`
+		}
+		if json.Unmarshal(raw, &completion) != nil {
+			return time.Time{}
+		}
+		if completion.Metadata.Code != "quota_exhausted" || (completion.Provider != "claude-code" && turn.Request.Provider != "claude-code") {
+			return time.Time{}
+		}
+		at, err := time.Parse(time.RFC3339, completion.Metadata.RetryAt)
+		if err == nil {
+			return at
+		}
+		return time.Time{}
+	}
+	return time.Time{}
+}
+
+func (api *StreamingAPI) deferIncomingQuotaTurn(ctx context.Context, turn queuedConversationTurn, at time.Time) error {
+	lock := productConversationRegistryMutex(conversationTurnQueuePath(turn.UserID))
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, turn.UserID)
+	if err != nil {
+		return err
+	}
+	for i := range turns {
+		if turns[i].ID == turn.ID {
+			turns[i].StartedAt, turns[i].RetryAt = nil, &at
+			turns[i].Steering, turns[i].LimitRetried, turns[i].DeliveryError = false, true, ""
+			return api.writeConversationTurnQueue(ctx, turn.UserID, turns)
+		}
+	}
+	return fmt.Errorf("queued delivery no longer exists")
 }

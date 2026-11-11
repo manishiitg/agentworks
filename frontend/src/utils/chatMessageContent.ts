@@ -33,5 +33,15 @@ export function getDisplaySafeUserMessageContent(content: string): string {
     .map(marker => content.indexOf(marker))
     .filter(index => index >= 0)
   const end = markerIndexes.length > 0 ? Math.min(...markerIndexes) : content.length
-  return content.slice(0, end).trim()
+  const text = content.slice(0, end).trim()
+  const reply = /^<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>$/.exec(text)
+  if (reply) {
+    try {
+      const answers: unknown = JSON.parse(reply[1])
+      if (Array.isArray(answers) && answers.length && answers.every(item => item && typeof item.answer === 'string')) {
+        return answers.map(item => item.answer).join('\n\n')
+      }
+    } catch { /* Preserve malformed or ordinary user text. */ }
+  }
+  return text
 }
