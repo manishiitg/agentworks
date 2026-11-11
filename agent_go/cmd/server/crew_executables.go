@@ -280,8 +280,10 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			}
 			manifest, found, err := ReadWorkflowManifest(r.Context(), binding.Root)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
+				// One unavailable saved script must not hide the other workflows.
+				// Do not log manifest contents or change the saved binding on a GET.
+				log.Printf("[CREW_EXECUTABLE] list_skip id=%s reason=manifest_unavailable", binding.ID)
+				continue
 			}
 			if found {
 				var inputs []workflow.Variable
