@@ -1404,6 +1404,10 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "remove agent event log: "+err.Error())
 		return
 	}
+	if err := removeCrewSharedAgent(binding.WorkspacePath, binding.ConversationKey); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if err := removeCrewAgentListing(binding.ResourceID, userID, binding.ConversationKey); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return

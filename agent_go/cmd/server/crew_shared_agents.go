@@ -198,3 +198,25 @@ func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessa
 func logSharedCrewAgent(user, key, action string) {
 	log.Printf("[CREW_SHARED_AGENT] user=%q chat=%q action=%s", sanitizeUserIDForPath(user), key, action)
 }
+
+// Remove only this agent's public listing; preserve the Crew's audience and
+// every other agent. Called by the same confirmed removal used by UI and MCP.
+func removeCrewSharedAgent(root, key string) error {
+	identity, ok := projectIdentityOf(root)
+	if !ok {
+		return nil
+	}
+	return defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		id := projectOwnerKey(identity.Product, identity.Folder)
+		record, exists := projects[id]
+		if !exists {
+			return false, nil
+		}
+		before := len(record.SharedAgents)
+		record.SharedAgents = slices.DeleteFunc(record.SharedAgents, func(agent string) bool { return agent == key })
+		_, hadSince := record.SharedAgentSince[key]
+		delete(record.SharedAgentSince, key)
+		projects[id] = record
+		return before != len(record.SharedAgents) || hadSince, nil
+	})
+}

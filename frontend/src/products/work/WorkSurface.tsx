@@ -436,7 +436,16 @@ export function useWorkChatTab(
         const agents = await agentApi.listAgentProfileSideChats(product.profileId, target.id, true)
         if (cancelled) return
         setPreparedProject(target.id)
-        if (!agents.some(agent => agent.is_main)) return
+        if (!agents.some(agent => agent.is_main)) {
+          const state = useChatStore.getState()
+          for (const tab of Object.values(state.chatTabs)) {
+            if (belongsToWorkProject(tab, target.id) && tab.metadata?.agentProfileIsMainChat) {
+              state.setTabMetadata(tab.tabId, { agentProfileIsMainChat: false })
+            }
+          }
+          setFailure(current => current?.projectId === target.id ? null : current)
+          return
+        }
         const chatStore = useChatStore.getState()
         // The route boundary still checks project access. A prepared local Main does not need
         // resolving/recreating whenever the person returns to an already-open project.

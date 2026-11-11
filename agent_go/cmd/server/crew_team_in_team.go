@@ -18,13 +18,14 @@ import (
 // Every Team agent has one server-issued ID. Visibility and rules live on that
 // agent's registry row. Native chat keys are resolved only at transport boundaries.
 
-// Main has an explicit role: the person's default chat or the owner's saved
-// Main pointer. A root-* chat ID alone never grants that role.
+// Main is an optional role on the owner's saved physical agent. A bare
+// project address or a deterministic member name must not fabricate that role.
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
-	if key == macMainTab || person != t.OwnerID && key == crewOwnerDefaultChatKey(t.ProjectID, person) {
-		return true
+	if person != t.OwnerID {
+		return false
 	}
-	return person == t.OwnerID && (key == t.ProjectID || key != "" && key == crewOwnerMainChatKey(t.ProjectID))
+	main := crewOwnerMainChatKey(t.ProjectID)
+	return main != "" && (key == main || key == macMainTab || key == t.ProjectID)
 }
 
 // agentInTeam: the person's own choice for the agent, else In team (new agents are shared).
