@@ -1,5 +1,6 @@
 import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, NO_LONGER_AVAILABLE } from '../../components/providers/ProviderAccounts'
 import { ComposerActionItems, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
+import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
 import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -127,6 +128,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // Attach and commands stay available while model choices are loading.
   const fallbackMenu = actions ? <Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
     <ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} />
+    <ComposerSendKeys busy={busy} />
   </Chip> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
@@ -284,5 +286,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
     {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
     </div>
+    {/* The message-box keys span both columns at the very bottom (owner-approved mockup, 11 Nov). */}
+    {actions && <ComposerSendKeys busy={busy} />}
   </Chip></>
 }
