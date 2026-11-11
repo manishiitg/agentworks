@@ -2399,7 +2399,7 @@ func SetToolCompletionAuthority(authority func(sessionID, toolID, name string) b
 
 // CompleteNativeTool closes only a command we observed starting in this chat.
 // Replayed native records and ordinary tools cannot manufacture completions.
-func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time) {
+func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time, failed bool) {
 	toolCallsMu.Lock()
 	tc := openToolCall[sessionID][toolID]
 	if tc == nil || !tc.nativeCompletion {
@@ -2412,7 +2412,13 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time)
 	if at.IsZero() {
 		at = time.Now()
 	}
-	es.AddEvent(sessionID, Event{ID: "native-command-end:" + toolID, Type: "tool_call_end", Timestamp: at, SessionID: sessionID,
+	event := Event{ID: "native-command-end:" + toolID, Type: "tool_call_end", Timestamp: at, SessionID: sessionID,
 		Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: at, SessionID: sessionID,
-			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt)}}})
+			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt)}}}
+	if failed {
+		event.Type = "tool_call_error"
+		event.Data.Type = events.EventType("tool_call_error")
+		event.Data.Data = &events.ToolCallErrorEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Error: "Native command exited unsuccessfully."}
+	}
+	es.AddEvent(sessionID, event)
 }

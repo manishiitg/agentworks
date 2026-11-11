@@ -345,7 +345,9 @@ func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
 	toolResultResolverMu.RLock()
 	previous := toolCompletionAuthority
 	toolResultResolverMu.RUnlock()
-	SetToolCompletionAuthority(func(session, id, name string) bool { return session == "native-late-command" && id == "exec-native" })
+	SetToolCompletionAuthority(func(session, id, name string) bool {
+		return session == "native-late-command" && (id == "exec-native" || id == "exec-failed")
+	})
 	defer SetToolCompletionAuthority(previous)
 	store := NewEventStore(500)
 	const session = "native-late-command"
@@ -357,13 +359,26 @@ func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
 	if len(ids) != 1 || ids[0] != "ordinary-call" {
 		t.Fatalf("premature native completion: %v", ids)
 	}
-	store.CompleteNativeTool("another-chat", "exec-native", time.Now())
+	store.CompleteNativeTool("another-chat", "exec-native", time.Now(), false)
 	if len(toolEndIDs(t, store, session)) != 1 {
 		t.Fatal("another chat completed the command")
 	}
-	store.CompleteNativeTool(session, "exec-native", time.Now())
-	store.CompleteNativeTool(session, "exec-native", time.Now())
+	store.CompleteNativeTool(session, "exec-native", time.Now(), false)
+	store.CompleteNativeTool(session, "exec-native", time.Now(), false)
 	if ids = toolEndIDs(t, store, session); len(ids) != 2 {
 		t.Fatalf("native completion missing or replayed: %v", ids)
+	}
+	store.AddEvent(session, startEvent(session, "exec-failed", "exec_command"))
+	store.CompleteNativeTool(session, "exec-failed", time.Now(), true)
+	foundFailure := false
+	for _, e := range store.GetEvents(session, GetEventsOptions{}).Events {
+		if e.Data != nil {
+			if d, ok := e.Data.Data.(*events.ToolCallErrorEvent); ok && d.ToolCallID == "exec-failed" {
+				foundFailure = true
+			}
+		}
+	}
+	if !foundFailure {
+		t.Fatal("native failure was presented as success")
 	}
 }
