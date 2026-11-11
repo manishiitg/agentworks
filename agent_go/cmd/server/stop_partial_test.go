@@ -23,6 +23,9 @@ func TestStopSettlementPersistsPartialProseWithoutFinalAnswer(t *testing.T) {
 	defer store.Stop()
 	store.SetDurableJournal(journal)
 	const sid = "stopped-chat"
+	if err := store.SetSessionPersistenceClass(sid, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
 	add := func(id, kind string, data agentevents.EventData) {
 		store.AddEvent(sid, storeevents.Event{ID: id, Type: kind, Timestamp: time.Now(), SessionID: sid, ExecutionKind: "main", Data: agentevents.NewAgentEvent(data)})
 	}
