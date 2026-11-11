@@ -392,6 +392,37 @@ fetch('/x').then(showRows);
 	}
 }
 
+// PLAT-750-90: browser constructors must not block a standalone page's publication.
+func TestValidateHTMLReportAcceptsBrowserGlobalsWithoutExternalScripts(t *testing.T) {
+	t.Parallel()
+	html := `<!doctype html><html><head><title>Browser APIs</title></head><body>
+<script>
+const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+  entry.target.classList.toggle('visible', entry.isIntersecting);
+}));
+document.querySelectorAll('section').forEach(section => observer.observe(section));
+const audio = new Audio();
+const option = new Option('All', 'all');
+const canvas = new OffscreenCanvas(10, 10);
+const path = new Path2D();
+const matrix = new DOMMatrix();
+const clipboard = new ClipboardItem({ 'text/plain': new Blob(['hello']) });
+const notification = new Notification('Ready');
+speechSynthesis.speak(new SpeechSynthesisUtterance('Ready'));
+const animation = new Animation(new KeyframeEffect(document.body, [], 100));
+const response = new Response('ready');
+</script></body></html>`
+	result := validateReport(t, html, ReportHTMLValidationHooks{})
+	if !strings.Contains(result, `"valid": true`) || strings.Contains(result, "undefined function") {
+		t.Fatalf("browser globals must not require inline declarations: %s", result)
+	}
+	// Keep catching an actual missing user callback; this patch only fills the globals catalog.
+	result = validateReport(t, strings.Replace(html, "new IntersectionObserver(entries", "new MissingObserver(entries", 1), ReportHTMLValidationHooks{})
+	if !strings.Contains(result, `"valid": false`) || !strings.Contains(result, "MissingObserver") {
+		t.Fatalf("unknown user function should still fail: %s", result)
+	}
+}
+
 func TestValidateHTMLReportWarnsWhenDarkModeOnlyFollowsTheOS(t *testing.T) {
 	t.Parallel()
 	osOnly := `<!doctype html><html><head><title>Theme</title><style>@media (prefers-color-scheme: dark){body{background:#000}}</style></head><body>x</body></html>`
