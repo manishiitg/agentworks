@@ -1439,6 +1439,11 @@ func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint
 }
 
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
+	// A Team address carries revocable visibility. Never reuse an inbox whose
+	// endpoint lacks that identity, even when it points to the same chat.
+	if existing.TeamAgentID != requested.TeamAgentID {
+		return false
+	}
 	if existing.NamedAgentID != requested.NamedAgentID || existing.UserID != requested.UserID || existing.Kind != requested.Kind || existing.ID != requested.ID || existing.Profile != requested.Profile || existing.Path != requested.Path || existing.External != requested.External {
 		return false
 	}
