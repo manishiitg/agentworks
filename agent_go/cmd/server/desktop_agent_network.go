@@ -80,8 +80,8 @@ func desktopAgentNetworkRows(ctx context.Context, owner string) ([]map[string]in
 	return rows, note
 }
 
-func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner string, caller triggerLinkCaller, raw string, in crewNetworkMessage) (map[string]any, error) {
-	connectionID, address, ok := splitCrewNetworkAddress(raw)
+func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner string, caller triggerLinkCaller, raw string, in desktopAgentNetworkRequest) (map[string]any, error) {
+	connectionID, address, ok := splitDesktopAgentNetworkAddress(raw)
 	if !IsLocalMode() || !ok || caller.Chat == nil {
 		return nil, fmt.Errorf("use an agent address from your network directory")
 	}
@@ -135,7 +135,7 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodPost, "/api/external/v1/agents/app", args, &out); err != nil {
 		return nil, err
 	}
-	qualifyCrewNetworkReplyAddresses(out, connectionID)
+	qualifyDesktopAgentReplyAddresses(out, connectionID)
 	return out, nil
 }
 
