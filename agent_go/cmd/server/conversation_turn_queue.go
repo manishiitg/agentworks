@@ -820,7 +820,10 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 		// Keep failures for explicit resolution, except the one typed incoming Claude quota retry.
 		// Persist the no-replay state before publishing failure. A crash or
 		// failed queue write must not publish a verdict recovery can contradict.
-		retryAt := api.incomingQuotaRetryAt(turn, result.QueryID)
+		retryAt := time.Time{}
+		if !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "canceled") {
+			retryAt = api.incomingQuotaRetryAt(turn, result.QueryID)
+		}
 		if !retryAt.IsZero() {
 			if persistErr := api.deferIncomingQuotaTurn(storageCtx, turn, retryAt); persistErr != nil {
 				logTurnQueue("cannot persist quota wait for %s: %v", turn.ID, persistErr)
