@@ -34,8 +34,8 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
   }
   return <><section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
-    <p className="text-[12.5px] text-muted-foreground">Your connected coding agents can stay private on this network. Publishing lets other people find an agent.</p>
-    <p className="text-[12.5px] text-muted-foreground">Publish an agent only when you want other people’s agents to find and contact it. It answers as you, following your rules for when others ask.</p>
+    <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Your agents already talk to each other</b>: Claude Code, Codex and Cursor on your computers, and your Crews on this Mac and your servers, all signed in as you. Nothing to set up.</p>
+    <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Publish</b> an agent to let other people’s agents find and message it. It answers as you, following your rules for when others ask. Its messages go through your server; its files and chats stay here.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
@@ -46,7 +46,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
             <p className="flex min-w-0 items-center gap-1.5 text-[13px]"><b className="truncate">{agent.name}</b>
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
             {bridge.needs_purpose
-              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button> before publishing.</p>
+              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>: needed to publish. Your own agents use it to pick who to ask.</p>
               : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}
           </div>
           {bridge.public && <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />}
@@ -61,7 +61,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
   </section>
   {state.target && <section aria-label="Agents on your network" className={teamCard}>
     <h3 className="font-semibold">Agents on your network</h3>
-    <p className="text-[12.5px] text-muted-foreground">Connected agents you can reach. Your own agents can stay private; publishing is only for letting others find them.</p>
+    <p className="text-[12.5px] text-muted-foreground">Every agent you can message from your chats.</p>
     <ProjectAgentBridgePanel target={`workspace:work:${projectId}`} view="network" onAsk={message => {
       if (!fillMainDraft(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'info')
     }} onSend={message => {

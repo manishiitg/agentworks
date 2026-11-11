@@ -32,7 +32,7 @@ type ServerCopy = { name: string; detail: string }
 type AccessTab = { id: CrewAccessSection; label: string; detail?: string }
 type AccessText = { line: string; note?: string }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
-type MacCard = { online: boolean; status: string; line: string }
+type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
@@ -321,7 +321,13 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
                 : <span title="Turn this off in the Mac app."><Switch aria-label="Mac online" checked disabled /></span>}
           </div>
           {connections.length > 1 && pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
-          <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>
+          <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}</p>
+          {status.access_mac?.kept && <p className="text-xs text-muted-foreground">{status.access_mac.kept}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>}
+          {!!status.access_mac?.reach?.length && <div aria-label="Who can reach this Crew" className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Who can reach this Crew</p>
+            <dl className="divide-y divide-border text-[12.5px]">{status.access_mac.reach.map(row => <div key={row.who} className="grid grid-cols-[38%_1fr] gap-2 py-1.5">
+              <dt className="font-medium">{row.who}</dt><dd className="text-muted-foreground">{row.how}</dd></div>)}</dl>
+          </div>}
           {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border pt-2.5">
             <p className="text-xs text-muted-foreground">Which network?</p>
             {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start rounded-full px-3.5" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
