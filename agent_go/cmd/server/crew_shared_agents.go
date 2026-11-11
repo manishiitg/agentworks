@@ -180,6 +180,12 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 // The original recipient's Share grant admits this contact, including replies.
 // The caller can keep their own conversation private.
 func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessageEndpoint) error {
+	if agent.TeamAgentID != "" {
+		if _, _, err := resolveTeamMessageEndpoint(ctx, agent, caller.UserID); err != nil {
+			return admissionRefused("Team agent unavailable or access removed")
+		}
+		return nil
+	}
 	if agent.Kind != triggerCallerCrew || agent.ChatKey == "" || strings.HasPrefix(agent.ChatKey, "messages:") || crewProjectOwnedByCaller(caller.UserID, agent.Path) {
 		return nil
 	}

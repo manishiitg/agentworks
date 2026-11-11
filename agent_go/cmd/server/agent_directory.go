@@ -91,12 +91,6 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		id, _ := crew["id"].(string)
 		profileID, _ := crew["profile_id"].(string)
 		crewPath, _ := crew["workspace_path"].(string)
-		if onlyLinked && crewProjectOwnedByCallerStrict(claims.UserID, crewPath) {
-			root := canonicalCrewWorkspaceRoot(crewPath)
-			if root != canonicalCrewWorkspaceRoot(here) && !linked[root] {
-				continue
-			}
-		}
 		name, _ := crew["name"].(string)
 		if identity, ok := crew["identity"].(accessibleProjectIdentity); ok && strings.TrimSpace(identity.Name) != "" {
 			name = identity.Name
@@ -119,7 +113,13 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		}
 		owned := crewProjectOwnedByCallerStrict(claims.UserID, crewPath)
 		team, teamErr := readCrewTeam(id)
-		inTeam := !IsLocalMode() && teamErr == nil && team.On && team.member(claims.UserID) && team.OwnerID == owner && crewTeamAccountActive(claims.UserID)
+		inTeam := !IsLocalMode() && teamErr == nil && crewTeamAgentsVisible(team, claims.UserID) && team.OwnerID == owner
+		if !inTeam && onlyLinked && crewProjectOwnedByCallerStrict(claims.UserID, crewPath) {
+			root := canonicalCrewWorkspaceRoot(crewPath)
+			if root != canonicalCrewWorkspaceRoot(here) && !linked[root] {
+				continue
+			}
+		}
 		// How this Crew relates to the person (backend decides): the Crew the asking agent works in, one they own, one whose
 		// Team they are in, or one shared with them (owner, 7 Nov).
 		relation := "shared"
@@ -141,7 +141,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 						continue
 					}
 					chats = append(chats, map[string]interface{}{"chat_id": a.ID, "name": a.Name, "purpose": a.Purpose, "owner_name": person.Name, "shared_by": person.Name, "yours": person.You, "can_write": person.You, "place": a.Place})
-					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": a.Address, "target": row["id"], "crew_id": id, "chat_id": a.ID, "name": a.Name, "crew_name": name, "relation": relation, "shared_by": person.Name, "purpose": a.Purpose, "presence": firstNonEmptyTrimmed(a.PlaceLabel, a.StatusLabel, "Runs when messaged"), "your_access": "run", "reach": "messages action=send(target=<id>) from a shared agent of this same Crew"})
+					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": a.Address, "target": row["id"], "crew_id": id, "chat_id": a.ID, "name": a.Name, "crew_name": name, "relation": relation, "shared_by": person.Name, "purpose": a.Purpose, "presence": firstNonEmptyTrimmed(a.PlaceLabel, a.StatusLabel, "Runs when messaged"), "your_access": "run", "reach": "messages action=send(target=<id>) from any of your own chats"})
 				}
 			}
 			row["chats"] = chats

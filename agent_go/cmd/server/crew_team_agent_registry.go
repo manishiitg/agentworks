@@ -168,11 +168,16 @@ func updateCrewTeamRegisteredAgent(project, person, id string, change func(*crew
 	return nil
 }
 
+// Shared by directory discovery and message admission. No calling-Crew restriction.
+func crewTeamAgentsVisible(t crewTeam, person string) bool {
+	return t.On && t.member(person) && crewTeamAccountActive(person) && crewTeamAccountActive(t.OwnerID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID
+}
+
 // crewTeamAgentByID admits a Team message by actual agent ownership, never by
 // Crew editing rights. Only current shared agents of active members are targets.
 func crewTeamAgentByID(ctx context.Context, project, caller, id string) (crewTeamAgent, string, error) {
 	t, err := readCrewTeam(project)
-	if err != nil || !t.On || !t.member(caller) || !crewTeamAccountActive(caller) || !crewTeamAccountActive(t.OwnerID) || ownerOfCrewProjectID(project) != t.OwnerID {
+	if err != nil || !crewTeamAgentsVisible(t, caller) {
 		return crewTeamAgent{}, "", fmt.Errorf("This Crew's Team is not available to you")
 	}
 	for _, person := range teamAgentsByPerson(ctx, t, caller) {
@@ -207,7 +212,7 @@ func crewTeamNativeChatKey(project, owner string, agent crewTeamAgent) string {
 
 func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) (crewTeamAgent, error) {
 	t, err := readCrewTeam(project)
-	if err != nil || !t.On || !t.member(person) || !crewTeamAccountActive(person) || ownerOfCrewProjectID(project) != t.OwnerID {
+	if err != nil || !crewTeamAgentsVisible(t, person) {
 		return crewTeamAgent{}, fmt.Errorf("This Crew's Team is not available to you")
 	}
 	for _, p := range teamAgentsByPerson(ctx, t, person) {
@@ -220,7 +225,7 @@ func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) 
 			}
 		}
 	}
-	return crewTeamAgent{}, fmt.Errorf("Share one of your agents with this Team first, then message this agent")
+	return crewTeamAgent{}, nil // A private sender keeps its ordinary chat endpoint.
 }
 
 // Re-resolve queued messages and replies by ID. The saved chat key cannot route

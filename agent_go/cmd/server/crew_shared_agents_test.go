@@ -286,4 +286,89 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal("sharing changed the original agent context")
 	}
 
+	// PLAT-746-820: network-visible Team agents are reachable from an unrelated
+	// private Crew chat, with replies bound to that exact originating chat.
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {coach.ConversationKey: true, private.ConversationKey: false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	team = mustReadCrewTeam(t, "team")
+	shared, _ := team.registeredAgent("owner", coach.ConversationKey)
+	privateAgent, _ := team.registeredAgent("owner", private.ConversationKey)
+	directoryHas := func(id string) bool {
+		t.Helper()
+		out, err := listAgentDirectory(withDirectoryThisCrew(otherCtx, callerRoot), GetUserFromContext(otherCtx))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range out["agents"].([]map[string]interface{}) {
+			if row["chat_id"] == id {
+				return true
+			}
+		}
+		return false
+	}
+	if !directoryHas(shared.ID) || directoryHas(privateAgent.ID) {
+		t.Fatal("directory visibility differs from Team privacy")
+	}
+	target, err := f.api.resolveAgentChatTarget(otherCtx, triggerTarget{Kind: triggerCallerCrew, CrewID: "team", CrewProfile: crewProfileID, CrewOwner: "owner", Path: externalCommandCrewRoot}, shared.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.api.resolveTeamAgentTarget(otherCtx, target, privateAgent.ID); err == nil {
+		t.Fatal("private Team agent was admitted")
+	}
+	turns := make(chan string, 4)
+	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, _ map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		turns <- session
+		return internalSessionTurnResult{}, nil
+	}
+	result, err := f.api.sendAgentMessage(otherCtx, "other", caller, target, "Ask across the network", "", "team-cross-crew")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case session := <-turns:
+		if session != coach.SessionID {
+			t.Fatalf("wrong target session: %s", session)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Team delivery did not reach target")
+	}
+	inbox := result["inbox_id"].(string)
+	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: coach.ConversationKey, SessionID: coach.SessionID}}
+	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Reply to the private caller", inbox, "team-reply"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case session := <-turns:
+		if session != callerTab.SessionID {
+			t.Fatalf("reply went to %s instead of original chat", session)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reply did not reach original chat")
+	}
+	wrong := caller
+	wrong.Chat = &codeChat{Key: "calling:chat:someone-else", SessionID: "another-session"}
+	if _, err := f.api.readAgentMessages(otherCtx, "other", wrong, inbox, 0, 30, 0); err == nil {
+		t.Fatal("another chat read the private reply inbox")
+	}
+	// Membership loss removes discovery and invalidates existing reply contacts.
+	team.People = nil
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if directoryHas(shared.ID) {
+		t.Fatal("non-member directory retained Team agent")
+	}
+	if _, err := f.api.resolveTeamAgentTarget(otherCtx, target, shared.ID); err == nil {
+		t.Fatal("removed member could send")
+	}
+	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Late reply", inbox, "team-revoked"); err == nil {
+		t.Fatal("reply bypassed membership revocation")
+	}
+
 }
