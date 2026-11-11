@@ -255,16 +255,11 @@ if [ "$ENABLE_CHAT_TERMINAL_DEBUGS" = true ]; then
     echo "🔬 Chat terminal diagnostics enabled for this run"
 fi
 
-# Every server launched by this script owns an isolated tmux socket. Coding
-# agent session names are process-global otherwise, and shutdown cleanup from
-# one dev/test server can kill sessions belonging to the desktop app or a
-# second server. TMUX_TMPDIR is inherited by the Go server and all CLI adapter
-# subprocesses, so ordinary tmux commands continue to work without extra flags.
+# Keep the socket across restarts so a chat can close its previous CLI before
+# relaunching. Each checkout/user still has its own server; explicit instance
+# sockets (run-local-instance.sh and test harnesses) retain their own scope.
 if [ -z "${TMUX_TMPDIR:-}" ]; then
-    TMUX_TMPDIR="${TMPDIR:-/tmp}/agentworks-tmux-$$"
-    AGENTWORKS_AUTO_TMUX_TMPDIR=true
-else
-    AGENTWORKS_AUTO_TMUX_TMPDIR=false
+    TMUX_TMPDIR="$(dev_tmux_directory "$SCRIPT_DIR")" || exit 1
 fi
 mkdir -p "$TMUX_TMPDIR"
 chmod 700 "$TMUX_TMPDIR"
@@ -1895,9 +1890,8 @@ cleanup_on_exit() {
             stop_mcp_gateway
         fi
     fi
-    if [ "$AGENTWORKS_AUTO_TMUX_TMPDIR" = true ]; then
-        rm -rf "$TMUX_TMPDIR"
-    fi
+    # Keep the socket directory: a surviving CLI must remain discoverable by
+    # the next backend, including after a background launcher exits.
     dev_instance_release
 }
 

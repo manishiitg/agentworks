@@ -71,3 +71,11 @@ dev_stop_recorded_listener() {
     fi
     return 0
 }
+
+# PLAT-746-859: a restart must find the previous backend's tmux sessions.
+# Scope by OS user and checkout so independent dev instances stay isolated.
+dev_tmux_directory() {
+    local checkout_key
+    checkout_key="$(printf '%s' "$1" | shasum -a 256 | cut -c1-20)" || return 1
+    printf '/tmp/aw-dev-tmux-%s-%s\n' "$(id -u)" "$checkout_key"
+}
