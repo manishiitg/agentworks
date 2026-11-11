@@ -51,7 +51,19 @@ func (api *StreamingAPI) crewHandoffProjectTemplate(ctx context.Context, claims 
 		return ProductConversationRecord{}, err
 	}
 	applyCrewNativeToolPolicy(&profile, true, binding.ProjectNativeAgentTools)
-	return ProductConversationRecord{ConversationKey: crewOwnerMainChatKey(project), ProfileID: profile.ID, WorkspacePath: binding.WorkspacePath, ResourceID: project, handoffAgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)}, nil
+	template := ProductConversationRecord{ProfileID: profile.ID, WorkspacePath: binding.WorkspacePath, ResourceID: project, handoffAgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)}
+	key := crewOwnerMainChatKey(project)
+	if key != "" {
+		doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID))
+		if err != nil {
+			return template, err
+		}
+		record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, key)]
+		if exists && validProjectMainRecord(claims.UserID, profile.ID, project, binding.WorkspacePath, record) {
+			template.ConversationKey, template.ConversationID = key, record.ConversationID
+		}
+	}
+	return template, nil
 }
 
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {

@@ -182,7 +182,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if in.Snapshot.StatePath == "" || in.Snapshot.Git != nil || in.Snapshot.DatabasePath != "" {
 		return out, fmt.Errorf("publish this agent's selected files and native session only")
 	}
-	main, err := api.crewHandoffMain(ctx, claims, id)
+	main, err := api.crewHandoffProjectTemplate(ctx, claims, id)
 	if err != nil {
 		return out, err
 	}
@@ -191,7 +191,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	}
 	var imported *crewMoveChat
 	err = readCrewMoveData(in.Snapshot.StatePath, func(h crewMoveHeader, chat *crewMoveChat) error {
-		if h.AgentTab != selection.Tab || h.AccountID != selection.AccountID || h.MainKey != h.SourceID || len(h.Settings) != 0 {
+		if h.AgentTab != selection.Tab || h.AccountID != selection.AccountID || (h.MainKey != "" && !ordinaryProjectChatKey(h.SourceID, h.MainKey)) || len(h.Settings) != 0 {
 			return fmt.Errorf("agent records differ from the confirmed publish")
 		}
 		if chat == nil {
@@ -225,7 +225,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if err != nil {
 		return out, err
 	}
-	if !strings.HasPrefix(in.MacMainConversationID, "conversation-") || !productConversationKeyPattern.MatchString(in.MacMainConversationID) {
+	if in.MacMainConversationID != "" && (!strings.HasPrefix(in.MacMainConversationID, "conversation-") || !productConversationKeyPattern.MatchString(in.MacMainConversationID)) {
 		return out, fmt.Errorf("the Mac main conversation identity is missing")
 	}
 	if imported == nil {
