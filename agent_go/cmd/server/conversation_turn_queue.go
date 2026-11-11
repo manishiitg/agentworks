@@ -145,6 +145,7 @@ type queuedConversationPrincipal struct {
 
 type queuedConversationTurn struct {
 	ID            string                      `json:"id"`
+	ComposerInput bool                        `json:"composer_input,omitempty"`
 	UserID        string                      `json:"user_id"`
 	SessionID     string                      `json:"session_id"`
 	Request       QueryRequest                `json:"request"`
@@ -244,6 +245,7 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	}
 	if submission, ok := ctx.Value(chatSubmissionContextKey{}).(chatSubmissionContext); ok {
 		turn.SubmissionID = submission.ID
+		turn.ComposerInput = submission.ComposerInput && personQueuedRequest(turn)
 	}
 	path := conversationTurnQueuePath(userID)
 	lock := productConversationRegistryMutex(path)
@@ -897,7 +899,7 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	}
 	if displayID := queuedTurnDisplayID(turn); displayID != "" {
 		ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{
-			ID: displayID, Owner: turn.UserID, Session: turn.SessionID, Message: pendingAttachmentSubmissionQuery(turn.Request),
+			ID: displayID, Owner: turn.UserID, Session: turn.SessionID, Message: pendingAttachmentSubmissionQuery(turn.Request), ComposerInput: turn.ComposerInput,
 		})
 	}
 	if len(turn.Principal.DeliveredMessage) > 0 && turn.Principal.DeliveredMessageUser == turn.UserID && turn.Principal.DeliveredMessageSession == turn.SessionID {
@@ -1055,6 +1057,7 @@ type PendingQueuedMessage struct {
 	QueueReason string `json:"queue_reason"`
 	QueueDetail string `json:"queue_detail,omitempty"`
 	CanSteer    bool   `json:"can_steer"`
+	CanManage   bool   `json:"can_manage"` // Only messages typed by the person in chat get composer actions.
 	// Started: the queue handed this message to its turn, which has not finished. The chat keeps showing it as being sent
 	// until the turn's own user row arrives, instead of it vanishing between the queue and the chat.
 	Started bool `json:"started,omitempty"`
@@ -1105,6 +1108,7 @@ func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sess
 		}
 		message := PendingQueuedMessage{
 			MessageID:       turn.ID,
+			CanManage:       personTypedQueuedTurn(turn),
 			Steering:        turn.Steering,
 			DeliveryError:   turn.DeliveryError,
 			ClientMessageID: clientMessageID,
@@ -1173,4 +1177,25 @@ func autoSteerablePersonTurn(turn queuedConversationTurn) bool {
 	return sanitizeClientMessageID(turn.SubmissionID) != "" && turn.DeliveryError == "" && !turn.Steering &&
 		req.DeliveryMode != "queue" && !req.DisableLiveInputDelivery && !req.IsAutoNotification &&
 		strings.TrimSpace(req.BotPlatform) == "" && (trigger == "" || trigger == "manual" || trigger == "interactive")
+}
+
+// personTypedQueuedTurn distinguishes chat input from inbound channels and automated
+// work using persisted request/principal attribution, never message text (PLAT-746-860).
+func personTypedQueuedTurn(turn queuedConversationTurn) bool {
+	return turn.ComposerInput && sanitizeClientMessageID(turn.SubmissionID) != ""
+}
+
+func personQueuedRequest(turn queuedConversationTurn) bool {
+	req, p := turn.Request, turn.Principal
+	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
+	if sanitizeClientMessageID(turn.SubmissionID) == "" || req.IsAutoNotification || req.ParentSessionID != "" || strings.TrimSpace(req.BotPlatform) != "" ||
+		(trigger != "" && trigger != "manual" && trigger != "interactive") || len(p.DeliveredMessage) != 0 || p.CrewAskInput != nil ||
+		p.AccessTokenID != "" || p.BotRouteGrant != "" || p.SlackTrustedApp {
+		return false
+	}
+	switch p.Provider {
+	case "bot_route", "bot_owner", slackDMProvider:
+		return false
+	}
+	return true
 }

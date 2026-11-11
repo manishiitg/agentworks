@@ -103,7 +103,7 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		message.QueueDetail = api.queuedMessageWaitDetail(sessionID, message.QueueReason)
 		// Steer now is only for a message the person queued on purpose (queue mode). In steer mode the server hands the
 		// message in by itself as soon as it can, so offering the button there only adds a choice.
-		if message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
+		if !message.CanManage || message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
 			message.CanSteer = false
 		}
 	}
@@ -207,7 +207,7 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || !personTypedQueuedTurn(turn) {
 			continue
 		}
 		if turn.StartedAt != nil {
@@ -288,7 +288,7 @@ func (api *StreamingAPI) retryQueuedConversationMessage(ctx context.Context, use
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || !personTypedQueuedTurn(turn) {
 			continue
 		}
 		if turn.StartedAt != nil || turn.Steering || turn.DeliveryError == "" {

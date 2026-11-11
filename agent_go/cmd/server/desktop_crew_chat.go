@@ -216,6 +216,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Session-ID", conversation.SessionID)
 	r.Header.Set("Idempotency-Key", call.SubmissionID)
+	if call.Operation == "send" && call.ComposerInput {
+		r.Header.Set("X-Chat-Input", "composer")
+	}
 	r = mux.SetURLVars(r, map[string]string{"id": "work", "session_id": conversation.SessionID})
 	capture := &internalResponseCapture{}
 	handler(capture, r)

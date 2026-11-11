@@ -45,6 +45,7 @@ type chatSubmissionStore struct {
 type chatSubmissionContextKey struct{}
 type chatSubmissionContext struct {
 	ID, Owner, Session, Message string
+	ComposerInput               bool
 	// handle lets a dispatch that outlives the HTTP response (live input to a
 	// busy CLI) record its real outcome after the early "accepted" reply.
 	handle *chatSubmissionHandle
@@ -333,7 +334,7 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(status)
 		_, _ = w.Write(capture.body.Bytes())
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, handle: handle}))
+	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, ComposerInput: r.Header.Get("X-Chat-Input") == "composer" && websiteDeviceClaims(GetUserFromContext(r.Context())), handle: handle}))
 	return capture, r, finish, true
 }
 

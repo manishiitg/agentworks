@@ -26,6 +26,7 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
     chatIdentityGeneration: generation,
     headers: {
       ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
+      'X-Chat-Input': 'composer',
       'Idempotency-Key': context.submissionId || crypto.randomUUID(),
       ...(context.submittedAtClientTime ? { 'X-Client-Submitted-At': context.submittedAtClientTime } : {}),
       ...(context.continuation ? { 'X-Conversation-Continuation': 'true' } : {}),
