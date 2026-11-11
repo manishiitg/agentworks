@@ -692,7 +692,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
   if (overview && overviewOpen) {
     const live = sessions.filter(item => item.state !== 'completed')
     const replays = sessions.filter(item => item.state === 'completed')
-    const sessionRows = (items: BrowserSession[]) => <ul className="space-y-1">{items.map(item => <li key={item.browser_session}><button type="button" className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => chooseBrowser(item.browser_session)}><Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.label || (item.kind === 'playwright' ? 'Script browser' : 'Private browser')}</span><span className="shrink-0 text-muted-foreground">{item.state === 'completed' ? 'Replay' : 'Live'}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></button></li>)}</ul>
+    const sessionRows = (items: BrowserSession[]) => <ul className="space-y-1">{items.map(item => <li key={item.browser_session}><button type="button" className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => chooseBrowser(item.browser_session)}><Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.label || (item.kind === 'playwright' ? 'Script browser' : 'Browser on the server')}</span><span className="shrink-0 text-muted-foreground">{item.state === 'completed' ? 'Replay' : 'Live'}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></button></li>)}</ul>
     return <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="Browser workspace">
       <WorkspaceViewHeader icon={Monitor} title="Browser" />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" aria-label="Browser content">
@@ -715,7 +715,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
           title="Browser"
           context={<>{browserPicker}<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status" title={singleBrowserLabel}><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}</span>{lastAction}</>}
           actions={<>
-            {overview && <button type="button" className={tertiaryButtonClass} onClick={() => { setOverviewOpen(true); setExpanded(false); setMenuOpen(false) }}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Browsers</button>}
+            {overview && <button type="button" className={tertiaryButtonClass} onClick={() => { setOverviewOpen(true); setExpanded(false); setMenuOpen(false) }}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Browser</button>}
             {startToggle}
             {recordingIndicator}
             {pageSizeToggle}
