@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
@@ -1607,6 +1608,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	cliUpdateCtx, stopCLIUpdates := context.WithCancel(context.Background())
 	defer stopCLIUpdates()
 	cliUpdatesEnabled := !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_ENABLED")), "false") && !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_DRY_RUN")), "true")
+	// A local install with no Node.js gets the app's own copy on first need.
+	if localProductInstallation() {
+		if stateRoot, err := workflowCLIStateRoot(); err == nil {
+			node := noderuntime.New(filepath.Join(stateRoot, "node"))
+			if node.Activate() {
+				log.Printf("[NODE] using AgentWorks' own Node.js")
+			}
+			noderuntime.SetDefault(node)
+			defer noderuntime.SetDefault(nil)
+		}
+	}
 	if root, err := cliupdate.DefaultRoot(); err == nil {
 		sdks, sdkErr := codingsdks.New(cliUpdateCtx, filepath.Join(filepath.Dir(root), "coding-sdks"), cliUpdatesEnabled && localProductInstallation(), log.Printf)
 		if sdkErr != nil {
