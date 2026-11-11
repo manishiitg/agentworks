@@ -81,13 +81,14 @@ func compactTypeArgs(prefix ...interface{}) []interface{} {
 }
 
 type compactRow struct {
-	sequence int64
-	kind     string
+	sequence  int64
+	kind      string
+	liveInput bool
 }
 
 // compactLatestTurnStart returns the first sequence of the latest turn.
 func (j *SQLiteEventJournal) compactLatestTurnStart(sessionID string, cap int) (int64, error) {
-	rows, err := j.reader().Query(`SELECT sequence, COALESCE(json_extract(payload, '$.type'), '') FROM structured_chat_events WHERE session_id = ? ORDER BY sequence DESC LIMIT ?`, sessionID, cap)
+	rows, err := j.reader().Query(`SELECT sequence, COALESCE(json_extract(payload, '$.type'), ''), COALESCE(json_extract(payload, '$.data.data.metadata.source'), '') = 'coding_agent_live_input' FROM structured_chat_events WHERE session_id = ? ORDER BY sequence DESC LIMIT ?`, sessionID, cap)
 	if err != nil {
 		return 0, err
 	}
@@ -95,7 +96,7 @@ func (j *SQLiteEventJournal) compactLatestTurnStart(sessionID string, cap int) (
 	var tail []compactRow
 	for rows.Next() {
 		var row compactRow
-		if err := rows.Scan(&row.sequence, &row.kind); err != nil {
+		if err := rows.Scan(&row.sequence, &row.kind, &row.liveInput); err != nil {
 			return 0, err
 		}
 		tail = append(tail, row)
@@ -110,12 +111,30 @@ func (j *SQLiteEventJournal) compactLatestTurnStart(sessionID string, cap int) (
 		if row.kind != "user_message" {
 			continue
 		}
+		// PLAT-746-874: consecutive server-recorded steering inputs are still
+		// part of the running turn, even with no tool rows between them.
+		// A live input after a completed turn is a new turn, not steering.
+		if row.liveInput && compactHasEarlierOpenInput(tail[index+1:]) {
+			continue
+		}
 		if index+1 < len(tail) && strings.HasPrefix(tail[index+1].kind, "tool_call_") {
 			continue // steering message inside a running turn
 		}
 		return row.sequence, nil
 	}
 	return tail[len(tail)-1].sequence, nil
+}
+
+func compactHasEarlierOpenInput(older []compactRow) bool {
+	for _, row := range older {
+		switch row.kind {
+		case "user_message":
+			return true
+		case "unified_completion", "agent_end", "conversation_end", "conversation_error", "context_cancelled":
+			return false
+		}
+	}
+	return false
 }
 
 func decodeCompactRows(rows *sql.Rows) ([]Event, error) {
