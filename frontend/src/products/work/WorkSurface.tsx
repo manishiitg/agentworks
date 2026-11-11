@@ -398,6 +398,12 @@ export function useWorkChatTab(
   const globalPageOpen = useAppStore(state => state.adminPage !== null || state.showSchedulesOverview || state.showWorkflowsOverview)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const { canonicalTabId, activeProjectTabId } = useChatStore(useShallow(state => selectWorkChatTabIds(state, sessionId)))
+  // The route boundary keeps this admitted project mounted while the next link is checked.
+  // Retain its displayed chat, not its Main fallback, if global selection moves ahead of the surface.
+  const displayedChat = useRef<{ projectId: string; tabId: string } | null>(null)
+  useLayoutEffect(() => {
+    if (sessionId && activeProjectTabId) displayedChat.current = { projectId: sessionId, tabId: activeProjectTabId }
+  }, [sessionId, activeProjectTabId])
   const sessionRef = useRef(session)
   const legacyRuntimeHandlerRef = useRef(onLegacyRuntimeDiscovered)
   sessionRef.current = session
@@ -546,6 +552,9 @@ export function useWorkChatTab(
     // Resolving a chat after navigating here must not dismiss the requested
     // Users, Providers or Schedules page. Activate it when returning to work.
     const route = currentProductRoute()
+    // A pending cross-project link belongs to the destination. The old mounted surface must not
+    // overwrite its selected agent with this project's Main while admission is still in flight.
+    if (route?.surface === product.profileId && route.id && route.id !== projectId) return
     const requestedAgent = route?.surface === product.profileId && route.id === projectId ? route.agent : undefined
     if (requestedAgent && projectId) {
       const key = workConversationKey(projectId, requestedAgent)
@@ -557,12 +566,16 @@ export function useWorkChatTab(
     if (canonicalTabId && !activeProjectTabId && !globalPageOpen && !showProviders) activateTab(canonicalTabId)
   }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders, product.profileId, projectId, routeRevision])
   const destination = currentProductRoute()
+  const departing = destination?.surface === product.profileId && !!destination.id && destination.id !== projectId
+  const retainedTabId = displayedChat.current?.projectId === projectId ? displayedChat.current.tabId : undefined
+  const retainedTab = retainedTabId ? useChatStore.getState().chatTabs[retainedTabId] : undefined
+  const previousProjectTabId = retainedTab && belongsToWorkProject(retainedTab, projectId || '') ? retainedTabId : null
   const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
   const activeConversation = activeProjectTabId ? useChatStore.getState().chatTabs[activeProjectTabId]?.metadata?.agentProfileConversationKey : undefined
   const awaitingRequestedAgent = !!projectId && !!requestedAgent && requestedAgent !== 'main' && activeConversation !== workConversationKey(projectId, requestedAgent)
   return {
     // Do not flash Main while the specifically requested agent is being restored.
-    tabId: awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
+    tabId: departing ? activeProjectTabId ?? previousProjectTabId : awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
     canonicalTabId: canonicalTabId ?? null,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
