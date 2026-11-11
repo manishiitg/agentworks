@@ -66,6 +66,9 @@ func agentRemovalRecordRefs(record map[string]any, collection, key, project stri
 			fields = append(fields, field)
 		}
 	}
+	if collection == "schedules" {
+		add(record, "chat_id", false)
+	}
 	action, _ := record["action"].(map[string]any)
 	input, _ := record["input"].(map[string]any)
 	condition, _ := input["condition"].(map[string]any)
@@ -112,8 +115,9 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 			continue
 		}
 		seen[root] = true
-		for _, collection := range []string{"schedules", "webhooks", "functions"} {
-			file := path.Join(root, collection+".json")
+		for _, source := range []struct{ collection, filename string }{{"schedules", "schedules.json"}, {"webhooks", "webhooks.json"}, {"functions", "functions.json"}, {"schedules", "workflow.json"}} {
+			collection := source.collection
+			file := path.Join(root, source.filename)
 			raw, found, err := readFileFromWorkspace(ctx, file)
 			if err != nil {
 				return plan, err
@@ -158,6 +162,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 			plan.files = append(plan.files, state)
 		}
 	}
+	plan.addDependentFunctionCalls()
 	plan.addDependentSchedules()
 	// Project-wide Slack/WhatsApp destinations keep their independent sender/thread
 	// chats. Only a channel explicitly bound to this physical agent is a link.
@@ -335,7 +340,7 @@ func (plan crewAgentRemovalPlan) apply(ctx context.Context, confirmation string,
 				for j, object := range file.references[i] {
 					field := file.fields[i][j]
 					target := choice
-					if field == "chat_id" {
+					if field == "chat_id" && object["kind"] == "agent" {
 						target = strings.TrimPrefix(choice, project+codeChatSideMarker)
 					}
 					object[field] = target
@@ -427,6 +432,63 @@ func (plan *crewAgentRemovalPlan) addDependentSchedules() {
 						dep.WhenRemoved = append(dep.WhenRemoved, parent)
 					}
 				}
+			}
+		}
+	}
+}
+
+// Removing a function explicitly bound to this agent also exposes its stored
+// callers. Only this Crew's admitted entry-point documents are considered.
+func (plan *crewAgentRemovalPlan) addDependentFunctionCalls() {
+	for changed := true; changed; {
+		changed = false
+		functions := map[string]string{}
+		for _, file := range plan.files {
+			if file.collection != "functions" {
+				continue
+			}
+			records, _ := file.document[file.collection].([]any)
+			for i, item := range records {
+				if file.choices[i] == "" {
+					continue
+				}
+				record, _ := item.(map[string]any)
+				name, _ := record["name"].(string)
+				functions[path.Dir(file.path)+"/"+name] = file.choices[i]
+			}
+		}
+		for _, file := range plan.files {
+			records, _ := file.document[file.collection].([]any)
+			for i, item := range records {
+				if file.choices[i] != "" {
+					continue
+				}
+				record, _ := item.(map[string]any)
+				action, _ := record["action"].(map[string]any)
+				name, _ := action["function"].(string)
+				input, _ := record["input"].(map[string]any)
+				condition, _ := input["condition"].(map[string]any)
+				target, _ := condition["target"].(map[string]any)
+				if target["kind"] == "function" {
+					name, _ = target["name"].(string)
+					if name == "" {
+						name, _ = target["function"].(string)
+					}
+				}
+				if name == "" {
+					continue
+				}
+				parent := functions[path.Dir(file.path)+"/"+name]
+				if parent == "" {
+					continue
+				}
+				id, _ := record["id"].(string)
+				label, _ := record["name"].(string)
+				stable := sha256.Sum256([]byte(file.path + "/" + id))
+				key := hex.EncodeToString(stable[:])
+				file.choices[i] = key
+				plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{ID: key, Kind: "function caller", Name: firstNonEmptyTrimmed(label, "Linked work"), WhenRemoved: []string{parent}})
+				changed = true
 			}
 		}
 	}
