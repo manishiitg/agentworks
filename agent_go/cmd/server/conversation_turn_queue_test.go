@@ -358,7 +358,7 @@ func TestRetainedSendRechecksIdleBacklogAtDeliveryBoundary(t *testing.T) {
 // attribution, without trusting envelope text or changing turn authority.
 func TestQueuedAgentMessageKeepsServerDisplayAttribution(t *testing.T) {
 	ctx := internalBotRequestContext(context.Background(), GetDefaultUserID(), nil)
-	stamp := map[string]interface{}{"source": "agent_message", "sender_label": "Reviewer", "display_content": "Actual message"}
+	stamp := map[string]interface{}{"source": "agent_message", "sender_label": "Reviewer", "display_content": "Actual message", "app_agent_reply_to": "network:login:inbox-admitted"}
 	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, stamp)
 	principal := queuedPrincipalFromContext(ctx)
 	principal.DeliveredMessageSession = "chat"
@@ -376,7 +376,7 @@ func TestQueuedAgentMessageKeepsServerDisplayAttribution(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := restored.Value(deliveredAgentMessageKey{}).(map[string]interface{})
-	if got["display_content"] != "Actual message" || got["sender_label"] != "Reviewer" {
+	if got["display_content"] != "Actual message" || got["sender_label"] != "Reviewer" || got["app_agent_reply_to"] != "network:login:inbox-admitted" {
 		t.Fatalf("lost admitted display attribution: %#v", got)
 	}
 	other, err := (&StreamingAPI{}).queuedConversationTurnContext(queuedConversationTurn{UserID: GetDefaultUserID(), SessionID: "different-chat", Principal: saved}, nil)
