@@ -122,8 +122,20 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if tab := macSharedAgentTab("team", "team"); tab != macMainTab {
 		t.Fatalf("a message to the Crew with Main shared went to %q", tab)
 	}
+	// PLAT-746-890: an unpublished, Only-me tab is also reached by the
+	// owner's other agent through the same offline queue, not a shared thread.
+	ownKey := "team" + codeChatSideMarker + "own01"
+	document.Entries[productConversationRegistryEntryKey(crewProfileID, ownKey)] = ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "team", ConversationKey: ownKey, ConversationID: "own-conversation", SessionID: "own-session", WorkspacePath: externalCommandCrewRoot}
+	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
+		t.Fatal(err)
+	}
+	shared := readMacSharedAgents("team")
+	shared = append(shared, macSharedAgent{Tab: "own01", Name: "Private", Address: "private", ConversationID: "own-conversation"})
+	if err := writeMacSharedAgents("team", shared); err != nil {
+		t.Fatal(err)
+	}
 	store := agentMessageStore{}
-	for _, user := range []string{"other", "removed"} {
+	for _, user := range []string{"other", "removed", "owner"} {
 		store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + user, Name: user, UserID: user})
 		store.Conversations = append(store.Conversations, agentConversation{ID: "inbox-" + user, Next: 1,
 			Endpoints: [2]agentMessageEndpoint{
@@ -132,6 +144,8 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 			}, Messages: []agentMessage{{ID: "ask-" + user, From: 0, Sequence: 1, Text: "answer this", SentAt: time.Now(), Delivery: "delivered"}},
 		})
 	}
+	store.Conversations[2].Endpoints[1].ChatKey = ownKey
+	store.Conversations[2].Endpoints[1].Mode = "builder"
 	if err := saveAgentMessageStore(t.Context(), store); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +162,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		}
 		return len(s.Waiting)
 	}
-	if got := waitingCount(); got != 2 {
+	if got := waitingCount(); got != 3 {
 		t.Fatalf("offline asks not retained: %d", got)
 	}
 	// A broken record is not evidence of revocation: retain the original asks.
@@ -158,7 +172,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		t.Fatal(err)
 	}
 	f.api.deliverCrewMacWaiting("owner", "team", "pair")
-	if waitingCount() != 2 {
+	if waitingCount() != 3 {
 		t.Fatal("transient record failure discarded waiting mail")
 	}
 	if err := os.WriteFile(sharedPath, sharedBytes, 0600); err != nil {
@@ -184,7 +198,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
-	delivered := false
+	delivered, ownDelivered := false, false
 	for {
 		select {
 		case m := <-commands:
@@ -192,15 +206,23 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 				continue
 			}
 			var args struct {
-				Sender    string `json:"sender_id"`
-				TeamInbox string `json:"team_inbox"`
+				Sender         string `json:"sender_id"`
+				TeamInbox      string `json:"team_inbox"`
+				Own            bool   `json:"own_agent_message"`
+				ConversationID string `json:"own_conversation_id"`
 			}
 			_ = json.Unmarshal(m.Call.Args, &args)
-			if args.Sender != "other" {
+			if args.Sender != "other" && args.Sender != "owner" {
 				t.Fatalf("revoked sender reached the Mac: %s", args.Sender)
 			}
 			// A Team message carries its original inbox, so the agent can answer there.
 			delivered = delivered || m.Call.Operation == "agent_ask" && args.TeamInbox == "inbox-other"
+			if args.Sender == "owner" {
+				if m.Call.Tab != "own01" || args.TeamInbox != "inbox-owner" || !args.Own || args.ConversationID != "own-conversation" {
+					t.Fatalf("private own delivery lost exact chat/inbox: %+v %+v", m.Call, args)
+				}
+				ownDelivered = true
+			}
 			body := json.RawMessage(`{"ok":true}`)
 			if m.Call.Operation == "agent_read" {
 				body = json.RawMessage(`{"working":false,"messages":[{"role":"assistant","text":"answer from original Mac"}]}`)
@@ -223,7 +245,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 					}
 				}
 			}
-			if delivered && refused && waitingCount() == 0 {
+			if delivered && ownDelivered && refused && waitingCount() == 0 {
 				return
 			}
 		case <-ctx.Done():
