@@ -59,3 +59,24 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 		t.Fatal("another person's chat advertised as own")
 	}
 }
+
+// PLAT-746-890: a published visitor must not borrow the owner's private reach.
+func TestDesktopAppVisitorCanOnlyReplyToAdmittedInbox(t *testing.T) {
+	const reply = "network:login:inbox-admitted"
+	visitor := QueryRequest{SharedAgentSender: "network:visitor", AgentMessageInbox: reply}
+	if desktopAppTurnMayAddress(visitor, reply) {
+		t.Fatal("serialized inbox field granted reply authority")
+	}
+	visitor.appAgentReplyTo = reply
+	if !desktopAppTurnMayAddress(visitor, reply) {
+		t.Fatal("authenticated explicit reply refused")
+	}
+	for _, target := range []string{"network:login:agent:private", "network:login:inbox-other", "network:other:inbox-admitted"} {
+		if desktopAppTurnMayAddress(visitor, target) {
+			t.Fatal("visitor borrowed private reach")
+		}
+	}
+	if !desktopAppTurnMayAddress(QueryRequest{}, "network:login:agent:private") {
+		t.Fatal("owner's own turn refused")
+	}
+}
