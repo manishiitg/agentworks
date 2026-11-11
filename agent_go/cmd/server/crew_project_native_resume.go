@@ -217,7 +217,11 @@ func writeLocalProjectPreview(w http.ResponseWriter, r *http.Request, sessions [
 				preview = append(preview, map[string]string{"role": message.Role, "text": body})
 			}
 		}
-		writeAgentProfileJSON(w, 200, map[string]any{"session": session, "messages": preview, "total_messages": total, "history_note": "Most recent messages. Older messages stay in the original chat.", "native_copy_unavailable": localNativeCopyUnavailable(session)})
+		// Newest first, so the preview opens on where the chat left off (owner, 11 Nov).
+		for i, j := 0, len(preview)-1; i < j; i, j = i+1, j-1 {
+			preview[i], preview[j] = preview[j], preview[i]
+		}
+		writeAgentProfileJSON(w, 200, map[string]any{"session": session, "messages": preview, "total_messages": total, "history_note": "Newest first. Older messages stay in the original chat.", "native_copy_unavailable": localNativeCopyUnavailable(session)})
 		return
 	}
 	externalError(w, 404, "session_unavailable", "This conversation is no longer available. Refresh the list.")
