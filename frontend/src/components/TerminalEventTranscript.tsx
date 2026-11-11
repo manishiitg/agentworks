@@ -1003,7 +1003,7 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
         <div data-testid="terminal-working-group-steps" className="mt-1 border-l border-border pl-3">
           {item.steps.map((step, index) => step.kind === 'thinking'
             ? <ThinkingBatch key={step.key} item={step} live={live && index === item.steps.length - 1} />
-            : <ToolBatch key={step.key} item={step} toolLayout={toolLayout} />)}
+            : <ToolBatch key={step.key} item={step} toolLayout={toolLayout} live={live} />)}
         </div>
       )}
     </div>
@@ -1019,10 +1019,10 @@ type ToolBatchSegment =
   | { kind: 'message'; pair: PairedToolCall }
   | { kind: 'tools'; key: string; pairs: PairedToolCall[] }
 
-function segmentToolBatch(batchKey: string, pairs: PairedToolCall[]): ToolBatchSegment[] {
+function segmentToolBatch(batchKey: string, pairs: PairedToolCall[], showSearch: boolean): ToolBatchSegment[] {
   const segments: ToolBatchSegment[] = []
   for (const pair of pairs) {
-    if (isWebSearchToolCall(pair.name, pair.args)) {
+    if (showSearch && isWebSearchToolCall(pair.name, pair.args)) {
       segments.push({ kind: 'search', pair })
       continue
     }
@@ -1090,13 +1090,13 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   )
 }
 
-const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows' }> = ({ item, toolLayout }) => {
+const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows'; live?: boolean }> = ({ item, toolLayout, live = false }) => {
   const showTools = useChatDisplayStore(state => state.showTools)
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
-  const segments = useMemo(() => segmentToolBatch(item.key, pairs), [item.key, pairs])
   const rows = toolLayout === 'rows' || showTools
+  const segments = useMemo(() => segmentToolBatch(item.key, pairs, rows), [item.key, pairs, rows])
   if (!rows && segments.length === 1 && segments[0].kind === 'tools') {
-    return <ToolChip chipKey={item.key} pairs={pairs} toolCount={item.toolCount} />
+    return <WorkSummary pairs={pairs} toolCount={item.toolCount} live={live} />
   }
   return (
     <>
@@ -1105,40 +1105,24 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
         : segment.kind === 'message'
           ? <MessageSentCard key={segment.pair.key} pair={segment.pair} />
           : rows ? <div key={segment.key} data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{segment.pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>
-          : <ToolChip key={segment.key} chipKey={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} />)}
+          : <WorkSummary key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} />)}
     </>
   )
 }
 
-const ToolChip: React.FC<{ chipKey: string; pairs: PairedToolCall[]; toolCount: number }> = ({ chipKey, pairs, toolCount }) => {
-  // A conversation should lead with what the agent said, not implementation
-  // detail. Even failures stay closed initially: the visible failed count is
-  // the signal, and the user chooses when to inspect arguments/results.
-  const [expanded, toggle] = useDisclosure(`batch:${chipKey}`)
-
-  return (
-    <div data-testid="terminal-clear-tool-batch" className="my-1">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={expanded}
-        data-testid="terminal-clear-tool-batch-toggle"
-        className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <span>{toolCount} tool {toolCount === 1 ? 'call' : 'calls'}</span>
-        {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0" />
-          : <ChevronRight className="h-3 w-3 shrink-0" />}
-      </button>
-      {expanded && (
-        <div data-testid="terminal-clear-tool-batch-content" className="mt-1 space-y-0.5 border-l border-border pl-3">
-          {pairs.map(pair => (
-            <ToolCallCard key={pair.key} pair={pair} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
+// Work details off is a status, never a disclosure: old saved expansion state cannot reveal tool payloads.
+// Incoming/outgoing message cards remain independent conversation content.
+const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
+  const failed = pairs.filter(pair => pair.status === 'error' || Boolean(pair.result && formatToolCallResult(pair.result).isError)).length
+  const unfinished = pairs.filter(pair => pair.status === 'running').length
+  const count = `${toolCount} ${toolCount === 1 ? 'step' : 'steps'}`
+  const label = unfinished
+    ? live ? `Working… · ${count}` : `${count} · unfinished`
+    : failed ? count : `${count} completed`
+  return <div data-testid="terminal-work-summary" className="my-1 flex items-center gap-1 py-1 text-[11px] text-muted-foreground">
+    <span>{label}</span>
+    {failed > 0 && <span className="text-red-400">· {failed} failed</span>}
+  </div>
 }
 
 interface TerminalEventTranscriptProps {
@@ -1450,7 +1434,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
-            ? <ToolBatch item={item} toolLayout={toolLayout} />
+            ? <ToolBatch item={item} toolLayout={toolLayout} live={workingNow && index === items.length - 1 && !streamingText.trim()} />
             : item.kind === 'thinking'
               ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} showText={searchable && showThinking} />
               : (

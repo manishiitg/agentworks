@@ -15,9 +15,9 @@ export function ThinkingDisplayMenuItem({ className, compact = false }: { classN
 export function ToolsDisplayMenuItem({ className, compact = false }: { className: string; compact?: boolean }) {
   const show = useChatDisplayStore(state => state.showTools)
   const setShow = useChatDisplayStore(state => state.setShowTools)
-  return <Menu.CheckboxItem className={className} checked={show} onCheckedChange={setShow} onSelect={event => event.preventDefault()} title="Show individual tools in chat. Off shows a compact count you can open when needed.">
+  return <Menu.CheckboxItem className={className} checked={show} onCheckedChange={setShow} onSelect={event => event.preventDefault()} title="Show the details of each work step. Off keeps a non-clickable progress and step count.">
     {!compact && <Wrench aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />}
-    <span className="flex-1">{compact ? 'Tools' : 'Show tools'}</span>
+    <span className="flex-1">{compact ? 'Work details' : 'Show work details'}</span>
     <span className={compact ? 'flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-muted-foreground/50' : undefined}><Menu.ItemIndicator><Check aria-hidden="true" className="h-3 w-3" /></Menu.ItemIndicator></span>
   </Menu.CheckboxItem>
 }
