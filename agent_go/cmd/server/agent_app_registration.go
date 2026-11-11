@@ -47,6 +47,19 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			return
 		}
 		externalJSON(w, map[string]any{"agent_id": a.ID, "agent_name": a.Name, "attachment_id": a.Attachment.ID, "delivery_route": appAgentDeliveryRoute})
+	case "send", "read":
+		if _, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id")); err != nil {
+			externalError(w, 403, "attachment_refused", "This app chat is no longer connected.")
+			return
+		}
+		// This route is message-only: never reinterpret a target as a Crew,
+		// workflow, file or remote-control operation.
+		target, inbox := externalArg(args, "target"), externalArg(args, "inbox_id")
+		if target != "" && !strings.HasPrefix(target, "agent:") || inbox != "" && !strings.HasPrefix(inbox, "inbox-") || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "chat_id") != "" {
+			externalError(w, 400, "invalid_arguments", "Use a named agent or its reply inbox.")
+			return
+		}
+		api.externalAgentMessages(w, r, args)
 	case "inbox":
 		api.readAttachedAgentInbox(w, r, args)
 	case "validate":
@@ -57,7 +70,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 		args["transport"] = appAgentDeliveryRoute
 		api.externalAgentAttachment(w, r, args)
 	default:
-		externalError(w, 400, "invalid_arguments", "Choose register, inbox, validate or ack.")
+		externalError(w, 400, "invalid_arguments", "Choose register, send, read, inbox, validate or ack.")
 	}
 }
 

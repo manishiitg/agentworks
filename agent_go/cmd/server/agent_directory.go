@@ -225,7 +225,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			agents = append(agents, row)
 		}
 	}
-	networkRows, networkError := crewNetworkAgentRows(ctx, claims.UserID, here)
+	networkRows, networkError := desktopAgentNetworkRows(ctx, claims.UserID)
 	agents = append(agents, networkRows...)
 	sort.SliceStable(agents, func(i, j int) bool {
 		rank := func(row map[string]interface{}) int {

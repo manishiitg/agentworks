@@ -77,26 +77,27 @@ type agentMessageEndpoint struct {
 type agentMessage struct {
 	// Removing an incoming message affects only its recipient's inbox. The sender
 	// keeps the original message and receipts in the shared conversation record.
-	InboxRemovedAt     time.Time `json:"inbox_removed_at,omitempty"`
-	InboxAtSend        bool      `json:"inbox_at_send,omitempty"`
-	AgentSequence      int       `json:"agent_sequence,omitempty"`
-	ID                 string    `json:"message_id"`
-	Sequence           int       `json:"sequence"`
-	From               int       `json:"from"`
-	Text               string    `json:"message"`
-	SentAt             time.Time `json:"sent_at"`
-	Submission         string    `json:"submission_id,omitempty"`
-	SenderConnectionID string    `json:"sender_connection_id,omitempty"`
-	Delivery           string    `json:"delivery"`
-	Error              string    `json:"delivery_error,omitempty"`
-	LiveTransport      string    `json:"live_transport,omitempty"`
-	LiveSession        string    `json:"live_session,omitempty"`
-	LiveAttachment     string    `json:"live_attachment,omitempty"`
-	Kind               string    `json:"kind,omitempty"` // "ping": a server-authored person notification, not a peer message
-	DeliveredAt        time.Time `json:"delivered_at,omitempty"`
-	PingedAt           time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
-	PingSender         string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
-	PingCount          int       `json:"ping_count,omitempty"`  // on a ping line: messages it is waiting on
+	InboxRemovedAt       time.Time `json:"inbox_removed_at,omitempty"`
+	InboxAtSend          bool      `json:"inbox_at_send,omitempty"`
+	AgentSequence        int       `json:"agent_sequence,omitempty"`
+	ID                   string    `json:"message_id"`
+	Sequence             int       `json:"sequence"`
+	From                 int       `json:"from"`
+	Text                 string    `json:"message"`
+	SentAt               time.Time `json:"sent_at"`
+	Submission           string    `json:"submission_id,omitempty"`
+	SenderWebsiteSession string    `json:"sender_website_session,omitempty"`
+	SenderConnectionID   string    `json:"sender_connection_id,omitempty"`
+	Delivery             string    `json:"delivery"`
+	Error                string    `json:"delivery_error,omitempty"`
+	LiveTransport        string    `json:"live_transport,omitempty"`
+	LiveSession          string    `json:"live_session,omitempty"`
+	LiveAttachment       string    `json:"live_attachment,omitempty"`
+	Kind                 string    `json:"kind,omitempty"` // "ping": a server-authored person notification, not a peer message
+	DeliveredAt          time.Time `json:"delivered_at,omitempty"`
+	PingedAt             time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
+	PingSender           string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
+	PingCount            int       `json:"ping_count,omitempty"`  // on a ping line: messages it is waiting on
 
 	File *agentMessageFileReference `json:"file,omitempty"`
 }
@@ -586,6 +587,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	if claims := GetUserFromContext(ctx); c.Endpoints[side].External && claims != nil && claims.AccessToken != nil {
 		m.SenderConnectionID = claims.AccessToken.ID
+	}
+	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken == nil && c.Endpoints[side].NamedAgentID != "" {
+		if _, err := appAgentLoginID(claims); err == nil {
+			m.SenderWebsiteSession = claims.ID
+		}
 	}
 	c.Messages = append(c.Messages, m)
 	if sid := c.Endpoints[side].ShareID; sid != "" {
@@ -1335,7 +1341,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				networkAddress = id
 			}
 			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
-				out, e := api.crewNetworkMessageFromMac(ctx, userID, caller, networkAddress, crewNetworkMessage{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id")})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, crewNetworkMessage{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id")})
 				if e != nil {
 					return "", e
 				}
@@ -1376,7 +1382,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			id, _ := args["inbox_id"].(string)
 			if IsLocalMode() && strings.HasPrefix(id, "network:") {
-				out, e := api.crewNetworkMessageFromMac(ctx, userID, caller, id, crewNetworkMessage{Read: true, After: externalInt(args, "after", 0), Limit: externalInt(args, "limit", 30)})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, id, crewNetworkMessage{Read: true, After: externalInt(args, "after", 0), Limit: externalInt(args, "limit", 30)})
 				if e != nil {
 					return "", e
 				}

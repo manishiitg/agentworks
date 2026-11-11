@@ -23,9 +23,9 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 		return &UserClaims{UserID: user, Username: user, RegisteredClaims: jwt.RegisteredClaims{ID: id, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
 	}
 	first, second, stranger := login("owner", "first-login"), login("owner", "second-login"), login("other", "other-login")
-	register := func(c *UserClaims, device, conversation string) (int, map[string]any) {
+	request := func(c *UserClaims, args map[string]any) (int, map[string]any) {
 		t.Helper()
-		raw, _ := json.Marshal(map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes"})
+		raw, _ := json.Marshal(args)
 		r := httptest.NewRequest(http.MethodPost, "/api/external/v1/agents/app", bytes.NewReader(raw))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, c))
 		w := httptest.NewRecorder()
@@ -35,6 +35,9 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 			t.Fatal(err)
 		}
 		return w.Code, out
+	}
+	register := func(c *UserClaims, device, conversation string) (int, map[string]any) {
+		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes"})
 	}
 	code, row := register(first, "device-one", "chat-one")
 	if code != 200 {
@@ -84,6 +87,29 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if _, _, err := currentAgentAttachment(ctx, second, "notes-agent", id); err != nil {
 		t.Fatal(err)
 	}
+	// A second device has no Crew either: send and read through the same
+	// named-agent inbox, then prove sign-out blocks the stored message.
+	status, receiver := request(first, map[string]any{"action": "register", "agent_name": "receiving-agent", "device_id": "device-two", "conversation_id": "chat-two"})
+	if status != 200 {
+		t.Fatalf("second device: %d %v", status, receiver)
+	}
+	send := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "agent:receiving-agent", "message": "Keep this note", "submission_id": "login-only-message"}
+	status, sent := request(second, send)
+	if status != 200 || sent["inbox_id"] == "" {
+		t.Fatalf("named send: %d %v", status, sent)
+	}
+	inboxArgs := map[string]any{"action": "inbox", "agent_name": "receiving-agent", "attachment_id": receiver["attachment_id"]}
+	status, inbox := request(first, inboxArgs)
+	if status != 200 || len(inbox["messages"].([]any)) != 1 {
+		t.Fatalf("stored inbox: %d %v", status, inbox)
+	}
+	if status, _ := request(stranger, inboxArgs); status != 403 {
+		t.Fatalf("another login read a private inbox: %d", status)
+	}
+	invalid := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "workspace:work:unpaired", "message": "no"}
+	if status, _ := request(second, invalid); status != 400 {
+		t.Fatalf("app message path admitted a Crew operation: %d", status)
+	}
 	revokedSessions.Lock()
 	revokedSessions.until[second.ID] = time.Now().Add(time.Hour)
 	revokedSessions.Unlock()
@@ -93,6 +119,10 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	}
 	if code, _ := register(second, "device-one", "chat-one"); code != 403 {
 		t.Fatalf("signed-out registration: %d", code)
+	}
+	status, held := request(first, inboxArgs)
+	if status != 200 || len(held["messages"].([]any)) != 0 || held["held"] != float64(1) {
+		t.Fatalf("revoked sender message was released: %d %v", status, held)
 	}
 	restricted := *first
 	restricted.Scope = "report-preview"
