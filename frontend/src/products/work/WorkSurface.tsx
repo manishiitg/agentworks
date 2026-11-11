@@ -567,7 +567,8 @@ export function useWorkChatTab(
   }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders, product.profileId, projectId, routeRevision])
   const destination = currentProductRoute()
   const departing = destination?.surface === product.profileId && !!destination.id && destination.id !== projectId
-  const retainedTabId = displayedChat.current?.projectId === projectId ? displayedChat.current.tabId : undefined
+  const displayed = displayedChat.current
+  const retainedTabId = displayed && displayed.projectId === projectId ? displayed.tabId : undefined
   const retainedTab = retainedTabId ? useChatStore.getState().chatTabs[retainedTabId] : undefined
   const previousProjectTabId = retainedTab && belongsToWorkProject(retainedTab, projectId || '') ? retainedTabId : null
   const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
