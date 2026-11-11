@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
@@ -42,6 +44,38 @@ func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 	saved, err := readCrewTeam("team")
 	if err != nil || !saved.On || !saved.agentInTeam("owner", main) || !saved.agentInTeam("owner", selected) || saved.agentInTeam("owner", hidden) {
 		t.Fatalf("Finish did not apply checked and unchecked choices: %+v (%v)", saved.Agents, err)
+	}
+
+	saved.People = append(saved.People, crewTeamPerson{UserID: "other"})
+	if err := writeCrewTeam(saved); err != nil {
+		t.Fatal(err)
+	}
+	// PLAT-746: setup may turn the Team on before its Mac pushes agent metadata.
+	// The registry already owns the IDs the wizard listed; choices must work now.
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-team"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, person := range teamAgentsByPerson(ctx, saved, "owner") {
+		if person.UserID == "owner" && len(person.Agents) != 0 {
+			t.Fatal("fixture unexpectedly has a pushed Mac agent list")
+		}
+	}
+	hiddenAgent, _ := saved.registeredAgent("owner", hidden)
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", hiddenAgent.ID, true); err != nil {
+		t.Fatalf("own registered agent refused before Mac push: %v", err)
+	}
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", selectedAgent.ID, false); err != nil {
+		t.Fatalf("another registered shared agent must allow hiding this one: %v", err)
+	}
+	if _, _, err := crewTeamOwnAgent(ctx, "team", "other", hiddenAgent.ID); !errors.Is(err, errCrewTeamAgentNotYours) {
+		t.Fatalf("other person admitted to agent choice: %v", err)
+	}
+	mainAgent, _ := saved.registeredAgent("owner", main)
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", mainAgent.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", hiddenAgent.ID, false); !errors.Is(err, errCrewTeamLastShared) {
+		t.Fatalf("last shared agent rule lost: %v", err)
 	}
 }
 
