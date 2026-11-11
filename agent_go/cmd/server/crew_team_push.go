@@ -35,6 +35,8 @@ func pushCrewTeamNote(project, kind string, revision uint64, everyone bool) {
 		return
 	}
 	crewTeamPushed.Store(key, revision)
+	// The website's open Team tab reads again now (teamApi.ts watchTeamTab).
+	publishCrewPanelChanged(project)
 	crewTeamWakeSoon() // server working copies follow the same change notice as Macs
 	t, err := readCrewTeam(project)
 	if err != nil || !everyone && !t.On {
@@ -76,6 +78,7 @@ func crewTeamBusySentKey(project string, sock *crewMacSocket) string {
 var crewTeamBusySent sync.Map // crewTeamBusySentKey -> last line sent
 
 func pushCrewTeamBusy(project string) {
+	publishCrewPanelChanged(project) // someone started or stopped: the website's open Team tab reads again now
 	crewMacSockets.Lock()
 	connected := make([]*crewMacSocket, 0, len(crewMacSockets.byDevice))
 	for _, sock := range crewMacSockets.byDevice {
@@ -225,8 +228,11 @@ func noteCrewTeamBusy(project, state, line string, everyone json.RawMessage) {
 	} else {
 		crewTeamBusyNotes.Store(local, note)
 	}
-	// The left menu re-reads its list on a sessions notice.
+	// The left menu re-reads its list on a sessions notice; this Crew's open Team tab re-reads on its own notice.
 	livefeed.Default.Publish(livefeed.Sessions, "")
+	if !strings.HasPrefix(local, "remote:") {
+		publishCrewPanelChanged(local)
+	}
 }
 
 // crewTeamBusyFor is the note for a Crew on this Mac, while it is fresh (a turn never reported ended stops counting).

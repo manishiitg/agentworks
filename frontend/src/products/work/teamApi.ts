@@ -104,7 +104,9 @@ export type TeamTabView = {
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }
 
 // One read of the Team tab per Crew for the whole page (the Team tab, the left menu, tabs, watching lines): every
-// screen shares it. A live notice (crew_panel) or a Team change reads it again at once; otherwise every 15 s.
+// screen shares it. A live notice (crew_panel) reads it again at once: the server sends one when a Team agent starts or
+// stops and when the Team changes, and relays it to Macs (crew_team_push.go). A slow 60 s read covers a missed notice
+// (owner, 11 Nov: the 15 s read made a Mac fetch one Team's tab about every 8 s).
 type TabEntry = { state: TeamTabState; listeners: Set<(state: TeamTabState) => void>; load: () => Promise<void>; stop: () => void }
 const tabCache = new Map<string, TabEntry>()
 
@@ -139,7 +141,7 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
       if (again) { again = false; void created.load() }
     }
     const reload = () => { void created.load() }
-    const timer = window.setInterval(() => { if (!document.hidden) reload() }, 15000)
+    const timer = window.setInterval(() => { if (!document.hidden) reload() }, 60000)
     window.addEventListener('agentworks:team-updated', reload)
     const unlive = liveFeed.subscribe(['crew_panel'], null, reload, project)
     created.stop = () => { window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
