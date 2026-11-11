@@ -310,7 +310,7 @@ func TestDesktopServerURLAcceptsBrowserLinks(t *testing.T) {
 	}
 }
 
-// PLAT-746-820: server Crew links must open the member's active Mac copy,
+// PLAT-746-865: server Crew links must open the member's active Mac copy,
 // without resolving another person's copy or a different saved connection.
 func TestDesktopMemberCrewResolvesOnlyOwnActiveCopy(t *testing.T) {
 	desktopTestEnvironment(t)
@@ -320,15 +320,20 @@ func TestDesktopMemberCrewResolvesOnlyOwnActiveCopy(t *testing.T) {
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: local, ProjectID: local, OwnerID: owner}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeDesktopConnections(owner, []desktopConnection{{ID: "saved", Server: "https://example.com"}}); err != nil {
+	if err := writeDesktopConnections(owner, []desktopConnection{{ID: "saved", Server: "https://example.com", User: UserInfo{ID: "remote-member"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) { s.MemberOf = remote }); err != nil {
 		t.Fatal(err)
 	}
-	binding := crewroot.SyncBinding{Mode: "relay", Side: "local", Editing: "local", ConnectionID: "saved", PeerProjectID: remote}
+	binding := crewroot.SyncBinding{Mode: "relay", PairID: "member-pair", Side: "local", Editing: "local", ConnectionID: "saved", PeerProjectID: remote}
 	if err := crewroot.WriteSync(local, binding); err != nil {
 		t.Fatal(err)
+	}
+	// A real join receives a pair ID from the server. ReadSync rejects missing
+	// pairs, so verify the fixture before exercising route admission.
+	if got, err := crewroot.ReadSync(local); err != nil || got == nil {
+		t.Fatalf("member pairing fixture unreadable: %v", err)
 	}
 	api := &StreamingAPI{}
 	call := func(person, connection, project string, proof bool) *httptest.ResponseRecorder {
