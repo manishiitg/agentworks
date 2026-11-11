@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -470,7 +471,87 @@ func (api *StreamingAPI) previewNewProjectChats(w http.ResponseWriter, r *http.R
 // localNativeChatName returns the name the AI program shows for this chat: for Claude the latest /rename
 // (custom-title) or else its latest generated title (ai-title), read from the transcript's tail; for Codex the
 // latest thread_name in ~/.codex/session_index.jsonl. Empty when the program has not named it.
+// Chat names are remembered until their file changes (size or time), so listing chats re-reads nothing that has
+// not changed (owner, 11 Nov: the list became slower once names were read).
+var localNativeNameCache = struct {
+	sync.Mutex
+	claude map[string]localNativeNameEntry       // transcript path -> name
+	codex  map[string]localNativeCodexIndexEntry // session_index.jsonl path -> names by thread ID
+}{claude: map[string]localNativeNameEntry{}, codex: map[string]localNativeCodexIndexEntry{}}
+
+type localNativeNameEntry struct {
+	size  int64
+	mtime time.Time
+	name  string
+}
+
+type localNativeCodexIndexEntry struct {
+	size  int64
+	mtime time.Time
+	names map[string]string
+}
+
 func localNativeChatName(path string, source localNativeSource, id string, size int64) string {
+	switch source.Provider {
+	case "claude-code":
+		info, err := os.Stat(path)
+		if err != nil {
+			return ""
+		}
+		localNativeNameCache.Lock()
+		cached, ok := localNativeNameCache.claude[path]
+		localNativeNameCache.Unlock()
+		if ok && cached.size == info.Size() && cached.mtime.Equal(info.ModTime()) {
+			return cached.name
+		}
+		name := localNativeChatNameRead(path, source, id, info.Size())
+		localNativeNameCache.Lock()
+		localNativeNameCache.claude[path] = localNativeNameEntry{size: info.Size(), mtime: info.ModTime(), name: name}
+		localNativeNameCache.Unlock()
+		return name
+	case "codex-cli":
+		index := filepath.Join(filepath.Dir(source.Root), "session_index.jsonl")
+		info, err := os.Stat(index)
+		if err != nil {
+			return ""
+		}
+		localNativeNameCache.Lock()
+		defer localNativeNameCache.Unlock()
+		cached, ok := localNativeNameCache.codex[index]
+		if !ok || cached.size != info.Size() || !cached.mtime.Equal(info.ModTime()) {
+			cached = localNativeCodexIndexEntry{size: info.Size(), mtime: info.ModTime(), names: localNativeCodexNames(index)}
+			localNativeNameCache.codex[index] = cached
+		}
+		return cached.names[id]
+	}
+	return ""
+}
+
+// localNativeCodexNames reads Codex's thread names once: the latest thread_name per thread ID wins.
+func localNativeCodexNames(index string) map[string]string {
+	names := map[string]string{}
+	f, err := os.Open(index)
+	if err != nil {
+		return names
+	}
+	defer f.Close()
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		var row struct {
+			ID         string `json:"id"`
+			ThreadName string `json:"thread_name"`
+		}
+		if len(line) > 0 && json.Unmarshal(line, &row) == nil && row.ID != "" && strings.TrimSpace(row.ThreadName) != "" {
+			names[row.ID] = strings.TrimSpace(row.ThreadName)
+		}
+		if err != nil {
+			return names
+		}
+	}
+}
+
+func localNativeChatNameRead(path string, source localNativeSource, id string, size int64) string {
 	latest := func(file string, offset int64, match func(line []byte) string) string {
 		f, err := os.Open(file)
 		if err != nil {
@@ -495,7 +576,7 @@ func localNativeChatName(path string, source localNativeSource, id string, size 
 	}
 	switch source.Provider {
 	case "claude-code":
-		const tail = 2 << 20
+		const tail = 1 << 20
 		offset := int64(0)
 		if size > tail {
 			offset = size - tail
@@ -521,21 +602,6 @@ func localNativeChatName(path string, source localNativeSource, id string, size 
 			return ""
 		})
 		return strings.TrimSpace(firstNonEmptyTrimmed(custom, generated))
-	case "codex-cli":
-		key := []byte(`"` + id + `"`)
-		return latest(filepath.Join(filepath.Dir(source.Root), "session_index.jsonl"), 0, func(line []byte) string {
-			if !bytes.Contains(line, key) {
-				return ""
-			}
-			var row struct {
-				ID         string `json:"id"`
-				ThreadName string `json:"thread_name"`
-			}
-			if json.Unmarshal(line, &row) != nil || row.ID != id {
-				return ""
-			}
-			return row.ThreadName
-		})
 	}
 	return ""
 }
