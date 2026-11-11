@@ -14,7 +14,7 @@ const isMacApp = () => !!window.electronAPI?.getDesktopConnection
 const isPhoneLabel = (device: NotifyDevice) => /iPhone|iPad|Android/.test(device.label)
 
 /**
- * Settings › Notifications (owner, 5 Nov, approved mockup): the same switch as the bell for this device,
+ * Account & settings › Notifications: controls for this device,
  * "needs me" alerts, the sound on a computer, and every device of this person. The server decides every send.
  */
 export default function NotificationsPage() {
