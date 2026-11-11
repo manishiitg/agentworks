@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -245,6 +246,10 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	if source.Provider == "codex-cli" {
 		label = "Codex"
 	}
+	// The chat's own name (Claude's /rename or generated title, Codex's thread name) beats its first message (owner, 11 Nov).
+	if name := localNativeChatName(path, source, id, info.Size()); name != "" {
+		title = name
+	}
 	if title == "" || strings.HasPrefix(title, "<") {
 		title = label + " conversation"
 	}
@@ -460,4 +465,77 @@ func (api *StreamingAPI) previewNewProjectChats(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeAgentProfileJSON(w, 200, map[string]any{"sessions": sessions, "partial": partial})
+}
+
+// localNativeChatName returns the name the AI program shows for this chat: for Claude the latest /rename
+// (custom-title) or else its latest generated title (ai-title), read from the transcript's tail; for Codex the
+// latest thread_name in ~/.codex/session_index.jsonl. Empty when the program has not named it.
+func localNativeChatName(path string, source localNativeSource, id string, size int64) string {
+	latest := func(file string, offset int64, match func(line []byte) string) string {
+		f, err := os.Open(file)
+		if err != nil {
+			return ""
+		}
+		defer f.Close()
+		if offset > 0 {
+			if _, err := f.Seek(offset, io.SeekStart); err != nil {
+				return ""
+			}
+		}
+		reader, name := bufio.NewReaderSize(f, 64*1024), ""
+		for {
+			line, err := reader.ReadBytes('\n')
+			if got := match(line); got != "" {
+				name = got
+			}
+			if err != nil {
+				return strings.TrimSpace(name)
+			}
+		}
+	}
+	switch source.Provider {
+	case "claude-code":
+		const tail = 2 << 20
+		offset := int64(0)
+		if size > tail {
+			offset = size - tail
+		}
+		custom, generated := "", ""
+		latest(path, offset, func(line []byte) string {
+			if !bytes.Contains(line, []byte(`"custom-title"`)) && !bytes.Contains(line, []byte(`"ai-title"`)) {
+				return ""
+			}
+			var row struct {
+				Type        string `json:"type"`
+				CustomTitle string `json:"customTitle"`
+				AITitle     string `json:"aiTitle"`
+			}
+			if json.Unmarshal(line, &row) == nil {
+				if row.Type == "custom-title" && strings.TrimSpace(row.CustomTitle) != "" {
+					custom = row.CustomTitle
+				}
+				if row.Type == "ai-title" && strings.TrimSpace(row.AITitle) != "" {
+					generated = row.AITitle
+				}
+			}
+			return ""
+		})
+		return strings.TrimSpace(firstNonEmptyTrimmed(custom, generated))
+	case "codex-cli":
+		key := []byte(`"` + id + `"`)
+		return latest(filepath.Join(filepath.Dir(source.Root), "session_index.jsonl"), 0, func(line []byte) string {
+			if !bytes.Contains(line, key) {
+				return ""
+			}
+			var row struct {
+				ID         string `json:"id"`
+				ThreadName string `json:"thread_name"`
+			}
+			if json.Unmarshal(line, &row) != nil || row.ID != id {
+				return ""
+			}
+			return row.ThreadName
+		})
+	}
+	return ""
 }
