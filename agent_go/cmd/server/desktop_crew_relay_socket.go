@@ -499,7 +499,7 @@ func (api *StreamingAPI) desktopCrewBusyChats(ctx context.Context, local, pair s
 	}
 	if time.Since(list.at) > 30*time.Second {
 		ids := []string{}
-		if main := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns-main", Operation: "resolve"}); main.Status == http.StatusOK {
+		if main := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "turns-main", Operation: "resolve", Source: "busy-chat-poll"}); main.Status == http.StatusOK {
 			var out struct {
 				ConversationID string `json:"conversation_id"`
 			}

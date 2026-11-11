@@ -105,6 +105,9 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if err != nil {
 		return fail(404, "The local Crew is unavailable.")
 	}
+	if call.Operation == "status" {
+		return api.desktopCrewExistingChatStatus(ctx, claims, profile, project, call)
+	}
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/agent-profiles/work/conversation", nil)
 	r = mux.SetURLVars(r, map[string]string{"id": "work"})
 	conversation, err := api.resolveAgentProfileConversation(r, profile, project, "")
@@ -188,7 +191,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	switch call.Operation {
 	case "resolve":
 		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: conversation.IsMainChat, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
-		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s", project, conversation.SessionID, conversation.ConversationID, call.ID)
+		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s source=%s", project, conversation.SessionID, conversation.ConversationID, call.ID, crewChatRequestSource(call.Source))
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	case "send":
 		if strings.TrimSpace(call.Message) == "" {
@@ -243,6 +246,67 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=%s session=%s conversation=%s request=%s status=%d", project, call.Operation, conversation.SessionID, conversation.ConversationID, call.ID, status)
 	}
 	return crewChatResult{ID: call.ID, Status: status, Body: data}
+}
+
+// desktopCrewExistingChatStatus reads only existing, currently admitted local tabs.
+// PLAT-746-876: a polling read must not initialize Main or another conversation.
+func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, project string, call crewChatCall) crewChatResult {
+	fail := func(code int) crewChatResult {
+		return crewChatResult{ID: call.ID, Status: code, Body: json.RawMessage(`{"error":"This chat is unavailable on your Mac."}`)}
+	}
+	if call.Tab != "" && !crewMacTabID(call.Tab) {
+		return fail(http.StatusBadRequest)
+	}
+	binding, _, err := resolveConversationBindingForUser(ctx, claims.UserID, profile, project)
+	if err != nil {
+		return fail(http.StatusForbidden)
+	}
+	tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profile.ID, project, binding.WorkspacePath)
+	if err != nil {
+		return fail(http.StatusConflict)
+	}
+	for _, tab := range tabs {
+		record := tab.Record
+		if tab.OwnerID != claims.UserID || hiddenFromTabStrip(record.ConversationKey) {
+			continue
+		}
+		main := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, claims.UserID)
+		side, isSide := strings.CutPrefix(record.ConversationKey, project+codeChatSideMarker)
+		if !main && (!isSide || !crewMacTabID(side)) {
+			continue
+		}
+		if call.Tab != "" {
+			if record.ConversationKey != project+codeChatSideMarker+call.Tab {
+				continue
+			}
+		} else if call.ConversationID != "" {
+			if record.ConversationID != call.ConversationID {
+				continue
+			}
+		} else if !main {
+			continue
+		}
+		if call.ConversationID != "" && record.ConversationID != call.ConversationID {
+			return fail(http.StatusConflict)
+		}
+		r, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/sessions/"+record.SessionID+"/status", nil)
+		r = mux.SetURLVars(r, map[string]string{"session_id": record.SessionID})
+		capture := &internalResponseCapture{}
+		api.handleGetSessionStatus(capture, r)
+		status := capture.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		data := capture.body.Bytes()
+		if !json.Valid(data) {
+			return fail(status)
+		}
+		return crewChatResult{ID: call.ID, Status: status, Body: data}
+	}
+	if call.ConversationID != "" || call.Tab != "" {
+		return fail(http.StatusConflict)
+	}
+	return fail(http.StatusNotFound)
 }
 
 // The browser owns a virtual paired session. Project only events proven to

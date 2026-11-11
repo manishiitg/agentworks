@@ -29,6 +29,7 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
+	Source         string          `json:"source,omitempty"` // Fixed diagnostic route label; never caller identity.
 	SubmissionID   string          `json:"submission_id,omitempty"`
 	ConversationID string          `json:"conversation_id,omitempty"`
 	ID             string          `json:"id"`
@@ -806,4 +807,14 @@ func (api *StreamingAPI) crewMacTwinForOwner(r *http.Request, project string) bo
 	}
 	b, err := api.crewChatPair(r, project, "")
 	return err == nil && b.Mode == "relay"
+}
+
+// crewChatRequestSource logs only fixed labels, never remote content or caller IDs.
+func crewChatRequestSource(source string) string {
+	switch source {
+	case "conversation-route", "team-tabs-refresh", "busy-chat-poll":
+		return source
+	default:
+		return "unspecified"
+	}
 }

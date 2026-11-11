@@ -186,7 +186,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 		}
 	}
 	if withMain {
-		main := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "resolve"}, 10*time.Second)
+		main := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "resolve", Source: "team-tabs-refresh"}, 10*time.Second)
 		var out struct {
 			ConversationID string `json:"conversation_id"`
 		}
