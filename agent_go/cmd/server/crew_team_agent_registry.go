@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,8 +87,9 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 			people[i].Agents = nil
 			continue
 		}
-		for j := range people[i].Agents {
-			a := &people[i].Agents[j]
+		accepted := make([]crewTeamAgent, 0, len(people[i].Agents))
+		for _, discovered := range people[i].Agents {
+			a := &discovered
 			tab := a.Tab
 			if crewTeamMainAgent(current, people[i].UserID, a.ChatKey) || tab == macMainTab {
 				tab = macMainTab
@@ -97,7 +99,8 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 			id := bySource[source]
 			if existing := byChat[chat]; existing != "" {
 				if id != "" && id != existing {
-					return fmt.Errorf("Team chat is already bound to another agent")
+					log.Printf("[CREW_TEAM] project=%s event=agent_registry_row_refused person=%s tab=%q reason=%q", t.ProjectID, people[i].UserID, tab, "Team chat is already bound to another agent")
+					continue
 				}
 				id = existing
 			}
@@ -115,7 +118,9 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 			record.ChatKey, record.Name, record.Purpose, record.Place = a.ChatKey, a.Name, a.Purpose, a.Place
 			current.Agents[id] = record
 			a.ID, a.InTeam, a.Address = id, record.InTeam, crewTeamAgentAddress(t.ProjectID, id)
+			accepted = append(accepted, *a)
 		}
+		people[i].Agents = accepted
 	}
 	after, err := json.Marshal(current.Agents)
 	if err != nil || bytes.Equal(before, after) {

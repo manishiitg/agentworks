@@ -18,19 +18,13 @@ import (
 // Every Team agent has one server-issued ID. Visibility and rules live on that
 // agent's registry row. Native chat keys are resolved only at transport boundaries.
 
-// crewTeamMainAgent: the key is one of the names of the person's Main: a Mac Main tab, their default chat, the
-// owner's Crew Main (the bare project key AgentBridge uses), or a root tab (named Main in the list).
+// Main has an explicit role: the person's default chat or the owner's saved
+// Main pointer. A root-* chat ID alone never grants that role.
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
-	for _, a := range t.Agents {
-		if a.OwnerID == person && a.Tab == macMainTab && a.ChatKey == key {
-			return true
-		}
-	}
-	if key == macMainTab || key == crewOwnerDefaultChatKey(t.ProjectID, person) || person == t.OwnerID && key == t.ProjectID {
+	if key == macMainTab || key == crewOwnerDefaultChatKey(t.ProjectID, person) {
 		return true
 	}
-	tab, ok := strings.CutPrefix(key, t.ProjectID+codeChatSideMarker)
-	return ok && strings.HasPrefix(tab, "root-")
+	return person == t.OwnerID && (key == t.ProjectID || key != "" && key == crewOwnerMainChatKey(t.ProjectID))
 }
 
 // agentInTeam: the person's own choice for the agent, else In team (new agents are shared).

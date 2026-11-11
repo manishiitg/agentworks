@@ -117,7 +117,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
 	ctx := context.Background()
-	key := "team:chat:imported-example"
+	key := "team:chat:root-example"
 	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
 	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: "imported-session"}
 	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
@@ -131,7 +131,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	mainID := crewTeamAgentIDPrefix + uuid.NewString()
 	main := crewTeamRegisteredAgent{ID: mainID, OwnerID: "owner", Tab: macMainTab, ChatKey: key, Place: "server", InTeam: false, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
 	oldBinding := main
-	oldBinding.Tab = "imported-example"
+	oldBinding.Tab = "root-example"
 	team.Agents = map[string]crewTeamRegisteredAgent{mainID: oldBinding}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 		t.Fatal("discovery replaced Main identity or privacy")
 	}
 	// A second native tab label for this same owner/chat must reuse the existing ID.
-	people[0].Agents[0].Tab = "imported-example"
+	people[0].Agents[0].Tab = "root-example"
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
 		t.Fatal(err)
 	}
@@ -158,9 +158,73 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if saved.Agents[mainID].Tab != macMainTab {
 		t.Fatal("matching the chat must update its tab without replacing its ID")
 	}
+	// A member's default Main and two root chats remain three independent agents.
+	// The owner's manifest Main is itself a root chat; that role is owner-only.
+	saved.People = []crewTeamPerson{{UserID: "member"}}
+	if err := writeCrewTeam(saved); err != nil {
+		t.Fatal(err)
+	}
+	memberKeys := []string{crewOwnerDefaultChatKey("team", "member"), "team:chat:root-member-one", "team:chat:root-member-two"}
+	entries := map[string]ProductConversationRecord{}
+	for _, chat := range memberKeys {
+		entries[productConversationRegistryEntryKey(crewProfileID, chat)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: chat, WorkspacePath: externalCommandCrewRoot, SessionID: "session-" + chat}
+	}
+	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("member"), productConversationRegistryDocument{Entries: entries}); err != nil {
+		t.Fatal(err)
+	}
+	memberRows := memberTeamAgents(ctx, saved, "member", "member")
+	if len(memberRows) != 3 {
+		t.Fatalf("member discovery lost chats: %+v", memberRows)
+	}
+	for _, row := range memberRows {
+		wantMain := row.ChatKey == memberKeys[0]
+		if (row.Tab == macMainTab) != wantMain || crewTeamMainAgent(saved, "member", row.ChatKey) != wantMain {
+			t.Fatalf("member root chat received Main role: %+v", row)
+		}
+	}
+	people = []crewTeamAgentsPerson{{UserID: "owner", Agents: discovered}, {UserID: "member", Agents: memberRows}}
+	if err := assignCrewTeamAgentIDs(saved, people); err != nil {
+		t.Fatal(err)
+	}
+	registered, err := readCrewTeam("team")
+	if err != nil || len(registered.Agents) != 4 {
+		t.Fatalf("expected four independent identities: %v %+v", err, registered.Agents)
+	}
+	for _, chat := range memberKeys {
+		a, ok := registered.registeredAgent("member", chat)
+		if !ok || a.ChatKey != chat || a.ID == mainID {
+			t.Fatalf("member chat lost its own identity: %s %+v", chat, a)
+		}
+	}
+	// A conflicting discovery row must not erase unrelated people or change
+	// either binding. Exercise the real bySource/byChat collision from the incident.
+	conflict := crewTeamAgent{Tab: macMainTab, ChatKey: memberKeys[1]}
+	people[1].Agents = append([]crewTeamAgent{conflict}, memberRows...)
+	if err := assignCrewTeamAgentIDs(registered, people); err != nil {
+		t.Fatal(err)
+	}
+	if len(people[0].Agents) != 1 || people[0].Agents[0].ID != mainID || len(people[1].Agents) != 3 {
+		t.Fatalf("one conflict hid healthy agents: %+v", people)
+	}
+	afterConflict, err := readCrewTeam("team")
+	if err != nil || len(afterConflict.Agents) != len(registered.Agents) {
+		t.Fatalf("conflict changed registry size: %v", err)
+	}
+	for id, before := range registered.Agents {
+		if afterConflict.Agents[id] != before {
+			t.Fatalf("conflict changed identity or settings: %s", id)
+		}
+	}
+	if err := checkCrewTeamRegistries(io.Discard); err != nil {
+		t.Fatalf("healthy registry failed team-check: %v", err)
+	}
+	// Retain the separate malformed-persisted-registry refusal below.
+	if err := writeCrewTeamAgentFixture(saved); err != nil {
+		t.Fatal(err)
+	}
 	dupID := crewTeamAgentIDPrefix + uuid.NewString()
 	duplicate := saved.Agents[mainID]
-	duplicate.ID, duplicate.Tab = dupID, "imported-example"
+	duplicate.ID, duplicate.Tab = dupID, "root-example"
 	saved.Agents[dupID] = duplicate
 	dir, err := crewTeamDir("team")
 	if err != nil {
