@@ -497,6 +497,7 @@ const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone
 // The row already supplies horizontal padding, so a second full padding step
 // made every assistant turn look unnecessarily inset.
 const AGENT_BLOCK_CLASS = 'pl-1 pr-1'
+const AGENT_REPLY_TO_AGENT_CLASS = 'ml-6 border-l-2 border-border pl-3 max-md:ml-3'
 
 const SearchMatchContext = createContext<string | null>(null)
 const DisclosureContext = createContext<Map<string, boolean> | null>(null)
@@ -518,7 +519,7 @@ function useDisclosure(key: string, initial = false) {
 // Where an item sits in its agent turn. A turn is everything between two user
 // messages: tool batches, thoughts, replies, presentation and activity rows.
 type TurnDone = { key: string; durationNs: number; at: string }
-type TurnSlot = { widgetScope?: string; agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone }
+type TurnSlot = { widgetScope?: string; agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone; toAgent?: boolean }
 
 // Agent turns share one clock: the first turn, and any turn more than this
 // long after the previous labelled one. User rows always carry their own
@@ -537,9 +538,17 @@ function isUserItem(item: TranscriptRenderItem | undefined): boolean {
   return item?.kind === 'event' && item.event.type === 'user_message'
 }
 
+/** A user row the server stamped as another agent's message (agentInboxMessage reads the same stamp). */
+function isAgentMessageItem(item: TranscriptRenderItem): boolean {
+  if (item.kind !== 'event') return false
+  const metadata = transcriptEventPayload(item.event).metadata
+  return Boolean(metadata && typeof metadata === 'object' && agentInboxMessage(metadata as Record<string, unknown>))
+}
+
 function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
   const slots: TurnSlot[] = []
   let inTurn = false
+  let toAgent = false
   let userKey = 'initial'
   let replyIndex = 0
   let lastLabelled = NaN
@@ -553,6 +562,7 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
   data.forEach((item, index) => {
     if (isUserItem(item)) {
       inTurn = false
+      toAgent = isAgentMessageItem(item)
       userKey = item.key
       replyIndex = 0
       // User rows always show their time; still advance the label clock so
@@ -568,7 +578,7 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
     const widgetScope = `${userKey}:reply:${replyIndex}`
     if (item.kind === 'event' && isAgentResponseEvent(item.event)) replyIndex++
     const next = data[index + 1]
-    slots.push({ widgetScope, agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item) })
+    slots.push({ widgetScope, agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item), toAgent })
   })
   // The header carries the turn's reply metadata (turn, duration, time): the
   // turn's first reply, or its first event while there is no reply yet.
@@ -1462,7 +1472,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           // tool batch, thought and reply of that turn on the same rail.
           return (
             <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
-              <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
+              {/* A reply to another agent's message sits indented on a rail, so it reads as that thread, not the person's (PLAT-746-853). */}
+              <div className={`${AGENT_BLOCK_CLASS} ${slot.toAgent ? AGENT_REPLY_TO_AGENT_CLASS : ''} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
                 <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
                   {displayedBody}
