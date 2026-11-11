@@ -241,13 +241,16 @@ func crewMoveKey(key string, h crewMoveHeader, destination, main string) (string
 	if h.AgentTab != "" && crewAgentTargetMatches(key, h) {
 		return crewAgentPublishKey(destination, h.AgentTab), nil
 	}
-	if key == h.MainKey || key == h.SourceID || key == "" {
+	if strings.HasPrefix(key, h.SourceID+codeChatSideMarker) && productConversationKeyPattern.MatchString(key) {
+		return destination + strings.TrimPrefix(key, h.SourceID), nil
+	}
+	if key == h.SourceID || key == "" {
+		if main == "" {
+			return "", errChooseProjectAgent
+		}
 		return main, nil
 	}
-	if !strings.HasPrefix(key, h.SourceID+":") || !productConversationKeyPattern.MatchString(key) {
-		return "", fmt.Errorf("a moved chat has an invalid Crew address")
-	}
-	return destination + strings.TrimPrefix(key, h.SourceID), nil
+	return "", fmt.Errorf("a moved chat has an invalid Crew address")
 }
 
 func (api *StreamingAPI) disableCrewMoveSchedules(ctx context.Context, roots crewroot.Roots, statePath string) error {

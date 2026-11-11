@@ -118,7 +118,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	var main ProductConversationRecord
 	if input.Action == "server" {
-		main, err = api.crewHandoffMain(r.Context(), claims, roots.ID)
+		main, err = api.crewHandoffProjectTemplate(r.Context(), claims, roots.ID)
 		if err != nil {
 			externalError(w, 409, "sync_unavailable", err.Error())
 			return

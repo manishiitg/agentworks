@@ -426,7 +426,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	// HTTP. Complete it before taking the file lock used by that endpoint.
 	var main ProductConversationRecord
 	if input.Action == "push" && input.Editing == "server" {
-		main, err = api.crewHandoffMain(ctx, claims, roots.ID)
+		main, err = api.crewHandoffProjectTemplate(ctx, claims, roots.ID)
 		if err != nil {
 			return crewSyncReply{}, err
 		}
