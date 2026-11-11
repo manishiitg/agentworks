@@ -66,17 +66,17 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading agents…</p>}
     <div className="max-h-80 space-y-1 overflow-y-auto">
       {visible.map((agent, index) => <div key={agent.id}>
-        {(index === 0 || (visible[index - 1].yours === true) !== (agent.yours === true)) && <h4 className="pb-1 pt-2 text-xs font-medium text-muted-foreground">{agent.yours === true ? 'Your agents' : 'Other available agents'}</h4>}
+        {(index === 0 || (visible[index - 1].yours === true) !== (agent.yours === true)) && <h4 className="pb-1 pt-2 text-xs font-medium text-muted-foreground">{agent.yours === true ? 'Your agents · only you can message them' : 'Other people’s agents · published or shared with you'}</h4>}
         <details className="rounded-lg border border-border px-3 py-2">
         <summary className="cursor-pointer text-xs marker:text-muted-foreground">
           <span className="font-medium">{name(agent)}</span>
-          {agent.yours === true && <span className="ml-2 text-[11px] text-muted-foreground">Your agent · {agent.published ? 'Published to the network' : 'Only your account'}</span>}
+          {agent.yours === true && <span className="ml-2 text-[11px] text-muted-foreground">{agent.published ? 'Published' : 'Only you'}</span>}
           <span className={`ml-2 text-[11px] ${agent.online === true ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{agent.online === true ? 'Connected' : agent.presence || (agent.online === false ? 'Offline' : 'Status unknown')}</span>
           <span className="mt-0.5 block truncate text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</span>
         </summary>
         <div className="mt-2 space-y-2 border-t border-border pt-2 text-xs">
           <p className="whitespace-pre-wrap break-words text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</p>
-          {agent.yours === true && <p className="text-muted-foreground">Connected means available through your account. Publishing lets other people on the network find and message this agent.</p>}
+          {agent.yours === true && <p className="text-muted-foreground">Connected means your own agents can message it now. Publishing lets other people’s agents find and message it too.</p>}
           {agent.provider && <p className="text-muted-foreground">{providerLabel(agent.provider)}</p>}
           <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted" onClick={() => {
             if ((agent.yours === true || agent.published === true) && onSend) {
