@@ -49,6 +49,7 @@ import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
 import { parseProductInteraction, type ProductInteraction } from '../../shared/session/interactions'
 import { ConversationContinuityNotice, isConversationContinuityNotice } from './ConversationContinuityNotice'
 import { DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
+import { QueuedInboxControls, QueuedMessageControls, QueuedMessageNotice } from './chat/QueuedMessageControls'
 import { deliveryTickState } from './events/system/deliveryTickState'
 import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
@@ -357,7 +358,7 @@ const TranscriptEvent: React.FC<{
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
   const inboxMessage = agentInboxMessage(metadata)
-  if (inboxMessage) return <AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} />
+  if (inboxMessage) return <><AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} /><QueuedInboxControls sessionId={event.session_id} metadata={metadata} /></>
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
@@ -438,8 +439,10 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
+            <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
           </div>
         )}
+        <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
       </div>
     )
   }
@@ -462,8 +465,10 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
+            <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
         </div>
       </div>
+      <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
     </article>
   )
 }
