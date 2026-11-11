@@ -120,6 +120,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			section := crewPanelSection{}
 			connected := 0
 			mcps := 0
+			slackSelected := false
 			for _, group := range data.Vaults {
 				for _, item := range group.Items {
 					if !item.Selected {
@@ -134,6 +135,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 						destination = "mcp:gmail"
 					case "slack":
 						destination = "mcp:slack-account"
+						slackSelected = true
 					default:
 						continue
 					}
@@ -154,8 +156,16 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					if item.AccountEmail != "" {
 						detail = item.AccountEmail + " · " + status
 					}
-					section.Rows = append(section.Rows, crewPanelRow{ID: item.Kind + ":" + item.ID, Label: item.Name, Detail: detail, Destination: destination, Connected: on, Attention: item.Status == "needs_attention"})
+					label := item.Name
+					if item.Kind == "slack" {
+						label = "Slack as me" // owner, 11 Nov: the person's own Slack account, named for what it does
+					}
+					section.Rows = append(section.Rows, crewPanelRow{ID: item.Kind + ":" + item.ID, Label: label, Detail: detail, Destination: destination, Connected: on, Attention: item.Status == "needs_attention"})
 				}
+			}
+			// Slack as me is listed even before it is connected, like GitHub (owner, 11 Nov).
+			if !slackSelected && api.slackSignInReady() {
+				section.Rows = append(section.Rows, crewPanelRow{ID: "slack-account", Label: "Slack as me", Detail: "Not connected", Destination: "mcp:slack-account"})
 			}
 			section.Detail = "None selected"
 			if mcps > 0 {
