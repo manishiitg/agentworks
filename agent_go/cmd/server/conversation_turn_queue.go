@@ -553,10 +553,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	// "Compact at 300K" in a chat that is never quiet: compact once before the next queued message; its end kicks the
 	// queue again (chat_context_options.go).
 	if api.compactBeforeQueuedTurn(sessionID) {
-		api.conversationTurnQueueMu.Lock()
-		delete(api.conversationTurnQueueDraining, sessionID)
-		api.conversationTurnQueueMu.Unlock()
-		return
+		return // compaction took over and released the dispatch reservation
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
