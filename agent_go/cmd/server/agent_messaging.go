@@ -46,25 +46,21 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
-	TeamAgentID string `json:"team_agent_id,omitempty"`
-	// Set only by an admitted originating Mac pair; replies return to that exact chat.
-	NetworkTab            string `json:"network_tab,omitempty"`
-	NetworkPairID         string `json:"network_pair_id,omitempty"`
-	NetworkConversationID string `json:"network_conversation_id,omitempty"`
-	ConditionJob          string `json:"condition_job,omitempty"`
-	NamedAgentID          string `json:"named_agent_id,omitempty"`
-	UserID                string `json:"user_id"`
-	Kind                  string `json:"kind"`
-	ID                    string `json:"id"`
-	Profile               string `json:"profile,omitempty"`
-	Path                  string `json:"path,omitempty"`
-	Label                 string `json:"label"`
-	Session               string `json:"session,omitempty"`
-	ChatKey               string `json:"chat_key,omitempty"`
-	External              bool   `json:"external,omitempty"`
-	Mode                  string `json:"mode,omitempty"`
-	Guest                 string `json:"guest,omitempty"`
-	FunctionCallID        string `json:"function_call_id,omitempty"`
+	TeamAgentID    string `json:"team_agent_id,omitempty"`
+	ConditionJob   string `json:"condition_job,omitempty"`
+	NamedAgentID   string `json:"named_agent_id,omitempty"`
+	UserID         string `json:"user_id"`
+	Kind           string `json:"kind"`
+	ID             string `json:"id"`
+	Profile        string `json:"profile,omitempty"`
+	Path           string `json:"path,omitempty"`
+	Label          string `json:"label"`
+	Session        string `json:"session,omitempty"`
+	ChatKey        string `json:"chat_key,omitempty"`
+	External       bool   `json:"external,omitempty"`
+	Mode           string `json:"mode,omitempty"`
+	Guest          string `json:"guest,omitempty"`
+	FunctionCallID string `json:"function_call_id,omitempty"`
 	// OwnerAuthority is set at send time, from the validated connection, only for the person's own unrestricted external
 	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
 	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
@@ -416,11 +412,6 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, fmt.Errorf("choose another agent or chat")
 		}
 		e := callerMessageEndpoint(userID, caller)
-		if origin, ok := ctx.Value(crewNetworkOriginKey{}).(crewNetworkOrigin); ok {
-			e.NetworkPairID = origin.Pair
-			e.NetworkConversationID = origin.Conversation
-			e.NetworkTab = origin.Tab
-		}
 		e = api.agentMessageCallerRole(e)
 		dest := targetMessageEndpoint(userID, target)
 		if dest.ShareID != "" {
@@ -990,7 +981,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 // agentMessageSteerableReply is a reply from the agent this chat asked (the conversation's second side; the
 // asker is Endpoints[0]) when both sides act for the same person: it may enter the asker's running turn, under
 // that turn's own access. New tasks, follow-ups from the asker, other people's agents, guests, shares, network
-// pairs and function calls keep their own turn and its own admission.
+// messages and function calls keep their own turn and its own admission.
 func agentMessageSteerableReply(c agentConversation, m agentMessage) bool {
 	if m.From != 1 || m.Kind != "" || m.File != nil {
 		return false
@@ -998,7 +989,7 @@ func agentMessageSteerableReply(c agentConversation, m agentMessage) bool {
 	asker, replier := c.Endpoints[0], c.Endpoints[1]
 	return asker.UserID != "" && asker.UserID == replier.UserID && asker.Session != "" && !asker.External &&
 		asker.Guest == "" && asker.Mode != "run" && asker.ShareID == "" && replier.ShareID == "" &&
-		asker.NetworkPairID == "" && asker.FunctionCallID == "" && asker.ConditionJob == "" &&
+		asker.FunctionCallID == "" && asker.ConditionJob == "" &&
 		crossPersonOwner(replier, asker.UserID) == ""
 }
 
@@ -1123,9 +1114,6 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	if err := validateMessageDestination(ctx, dest); err != nil {
 		return dest.Session, err
-	}
-	if dest.NetworkPairID != "" {
-		return dest.Session, api.deliverCrewNetworkReply(ctx, c, m, source, dest)
 	}
 	if dest.FunctionCallID != "" {
 		call := lookupCrewFunctionCall(dest.FunctionCallID)
@@ -1343,7 +1331,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				networkAddress = id
 			}
 			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
-				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, crewNetworkMessage{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id")})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, networkAddress, desktopAgentNetworkRequest{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id")})
 				if e != nil {
 					return "", e
 				}
@@ -1384,7 +1372,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			id, _ := args["inbox_id"].(string)
 			if IsLocalMode() && strings.HasPrefix(id, "network:") {
-				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, id, crewNetworkMessage{Read: true, After: externalInt(args, "after", 0), Limit: externalInt(args, "limit", 30)})
+				out, e := api.desktopAgentNetworkMessage(ctx, userID, caller, id, desktopAgentNetworkRequest{Read: true, After: externalInt(args, "after", 0), Limit: externalInt(args, "limit", 30)})
 				if e != nil {
 					return "", e
 				}
