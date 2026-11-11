@@ -411,6 +411,35 @@ class Migration(unittest.TestCase):
         self.assertEqual(hashes(self.base), after)
         self.assertTrue((self.runtime/'runs/iteration-1/run_metadata.json').is_file())
 
+    def test_slack_channel_links_follow_the_goal_to_its_crew(self):
+        # PLAT-746-848: a move left Slack links naming the old Workflow/ path, so the channel stopped reaching it.
+        other={'workspace_path':'Workflow/unrelated'}
+        targets={'targets':[{'workspace_path':'Workflow/old-goal','slug':'revenue','platform_bot':True},{**other,'slug':'other','platform_bot':True}],
+                 'channels':{'C1':{'targets':[{'workspace_path':'Workflow/old-goal'},other],'default':{'workspace_path':'Workflow/old-goal'}}}}
+        routes={'C2':{'workflow_id':'old-goal','workspace_path':'Workflow/old-goal','bot_grant':'run','trigger':{'mode':'mention'}},'C3':{'workflow_id':'unrelated','workspace_path':'Workflow/unrelated'}}
+        bots={'slack':{'id':'slack','enabled':True,'allowed_channels':json.dumps(routes)}}
+        write(self.docs/'config/slack-targets.json',targets);write(self.docs/'config/bot-connectors.json',bots)
+        crew={'workspace_path':'Crew/target','profile_id':'work'}
+        def check():
+            saved=m.read(self.docs/'config/slack-targets.json')
+            self.assertEqual(saved['targets'],[{**crew,'slug':'revenue','platform_bot':True},{**other,'slug':'other','platform_bot':True}])
+            self.assertEqual(saved['channels']['C1'],{'targets':[crew,other],'default':crew})
+            saved=json.loads(m.read(self.docs/'config/bot-connectors.json')['slack']['allowed_channels'])
+            self.assertEqual(saved['C2'],{'workspace_path':'Crew/target','profile_id':'work','conversation_key':'crew','workspace_user_id':'owner','bot_grant':'run','trigger':{'mode':'mention'}})
+            self.assertEqual(saved['C3'],routes['C3'])
+        result=self.conversion().apply()
+        self.assertEqual(len(result['slack_repointed']),4)
+        check()
+        # One-off for a Goal that already moved without its links: plain backup first, then re-point; a rerun writes nothing.
+        write(self.docs/'config/slack-targets.json',targets);write(self.docs/'config/bot-connectors.json',bots)
+        result=m.SlackRepoint(self.docs,self.state,'old-goal','crew').apply()
+        self.assertEqual(result['status'],'re-pointed')
+        self.assertEqual(m.read(Path(result['backup'])/'config/slack-targets.json'),targets)
+        check()
+        before=hashes(self.base)
+        self.assertEqual(m.SlackRepoint(self.docs,self.state,'old-goal','crew').apply()['status'],'nothing to re-point')
+        self.assertEqual(hashes(self.base),before)
+
     def test_retired_measurements_remain_unchanged_without_creating_crew_goals(self):
         # PLAT-746-364: preserve historical data, not the retired Goal concept.
         # Existing steps still read ordinary helper files under this path.
