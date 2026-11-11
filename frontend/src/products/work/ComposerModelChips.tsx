@@ -17,12 +17,26 @@ import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsa
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
-import ChatContextItems, { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import ChatContextItems, { ContextDisplayMenuItem, changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
 const rowClass = menuRowClass
 const labelClass = menuLabelClass
 const contentClass = 'z-[100] max-h-[min(360px,var(--radix-dropdown-menu-content-available-height))] w-[min(260px,calc(100vw-24px))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg'
+
+const displayToggleClass = 'flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded px-2 py-1.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
+
+function ComposerShortcuts({ busy }: { busy: boolean }) {
+  return <Menu.Sub>
+    <Menu.SubTrigger className="ml-auto flex cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[state=open]:bg-muted">
+      Shortcuts<ChevronRight className="h-3 w-3" aria-hidden="true" />
+    </Menu.SubTrigger>
+    <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+      <Menu.Label className={labelClass}>Keyboard shortcuts</Menu.Label>
+      <ComposerSendKeys busy={busy} />
+    </Menu.SubContent></Menu.Portal>
+  </Menu.Sub>
+}
 
 export type Choice = { id: string; label: string }
 
@@ -136,7 +150,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // Attach and commands stay available while model choices are loading.
   const fallbackMenu = actions ? <Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
     <ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} />
-    <ComposerSendKeys busy={busy} />
+    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
+    <ComposerShortcuts busy={busy} />
   </Chip> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
@@ -245,7 +260,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const fieldClass = 'flex items-center justify-between gap-3 border-b border-border px-2.5 py-2 text-xs last:border-0'
   const selectClass = 'min-w-0 max-w-[190px] rounded bg-popover p-1 text-right text-popover-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const switchActionClass = 'flex cursor-pointer items-center rounded-md border px-3 py-2.5 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring'
-  return <>{sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
+  return <><Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
     triggerExtra={triggerExtra} wide={Boolean(pendingSwitch)} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     {pendingSwitch ? <div className="min-w-0 p-2.5" aria-label="Finish changing the model">
       <Menu.Label className="mb-1 text-base font-semibold leading-snug">Switch to {changesCLI ? pendingCLI : pendingModelLabel}?</Menu.Label>
@@ -336,20 +351,25 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
-    <ThinkingDisplayMenuItem className={rowClass} />
-    <ToolsDisplayMenuItem className={rowClass} />
+    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     {companyServer
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
         || (meta?.agentProfileChatProvider === selectedOption.provider ? meta?.agentProfileChatConnectionID : undefined), selectedOption.provider)} />}
     {separator}
+    <div className="flex items-center gap-1">
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models</Menu.Item>
     </div>
+    </div>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
-    {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
+    {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} showDisplay={false} showTerminal={false} /></div>}
     </div>}
-    {/* The message-box keys span both columns at the very bottom (owner-approved mockup, 11 Nov). */}
-    {actions && !pendingSwitch && <ComposerSendKeys busy={busy} />}
+    {!pendingSwitch && <div className="mt-1.5 flex flex-wrap items-center gap-x-1 border-t border-border pt-1.5" aria-label="Chat display">
+      <ThinkingDisplayMenuItem compact className={displayToggleClass} />
+      <ToolsDisplayMenuItem compact className={displayToggleClass} />
+      {sessionId && <ContextDisplayMenuItem compact className={displayToggleClass} />}
+      <ComposerShortcuts busy={busy} />
+    </div>}
   </Chip></>
 }

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Terminal } from 'lucide-react'
-import { Button } from '../../components/ui/Button'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip'
+import { Check, Terminal } from 'lucide-react'
+import * as Menu from '@radix-ui/react-dropdown-menu'
 import { agentApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
-import { changeChatContext, chatContextChangedEvent } from './ChatContextItems'
+import { changeChatContext, chatContextChangedEvent, menuRowClass } from './ChatContextItems'
 
 /**
- * One-click Claude Code terminal switch beside the model chip. Shown only when the server offers the switch
+ * Claude Code terminal switch inside the model menu. Shown only when the server offers the switch
  * for this chat (Claude chats); the same server setting as the switch in the model menu.
  */
 export default function ClaudeTerminalToggle({ sessionId, modelKey }: { sessionId: string; modelKey?: string }) {
@@ -33,31 +32,15 @@ export default function ClaudeTerminalToggle({ sessionId, modelKey }: { sessionI
   }, [sessionId, modelKey])
 
   if (!offered) return null
-  const label = on
-    ? 'You are using the native Claude Code terminal. Click to go back to the normal chat.'
-    : 'Want the native Claude Code terminal experience? Click here to run this chat in Claude Code itself.'
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant={on ? 'secondary' : 'ghost'}
-            size="icon"
-            disabled={busy}
-            aria-pressed={on}
-            aria-label={label}
-            onClick={async () => {
-              setBusy(true)
-              try { await changeChatContext(sessionId, { claude_terminal: !on }) } finally { setBusy(false) }
-            }}
-            className="h-7 w-7 shrink-0 p-0"
-          >
-            <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-64 text-xs">{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
+  return <Menu.CheckboxItem className={menuRowClass} checked={on} disabled={busy}
+    title="Use the native Claude Code terminal. Turn off to return to normal chat; the conversation continues."
+    onSelect={event => event.preventDefault()}
+    onCheckedChange={async checked => {
+      setBusy(true)
+      try { await changeChatContext(sessionId, { claude_terminal: checked === true }) } finally { setBusy(false) }
+    }}>
+    <Terminal className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+    <span className="flex-1">Claude terminal</span>
+    <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+  </Menu.CheckboxItem>
 }
