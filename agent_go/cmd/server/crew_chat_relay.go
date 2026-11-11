@@ -32,6 +32,7 @@ type crewChatCall struct {
 	SubmissionID   string          `json:"submission_id,omitempty"`
 	ConversationID string          `json:"conversation_id,omitempty"`
 	ID             string          `json:"id"`
+	ComposerInput  bool            `json:"composer_input,omitempty"`
 	Operation      string          `json:"operation"`
 	Message        string          `json:"message,omitempty"`
 	DeliveryMode   string          `json:"delivery_mode,omitempty"`
@@ -238,6 +239,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		}
 		call.ConversationID = generation
 		call.SubmissionID = r.Header.Get("Idempotency-Key")
+		call.ComposerInput = r.Header.Get("X-Chat-Input") == "composer"
 	}
 	owner := GetUserIDFromContext(r.Context())
 	if call.Operation == "send" {

@@ -1,6 +1,5 @@
 import React from 'react'
 import { Loader2 } from 'lucide-react'
-import { isIncomingQueuedMessage } from '../../utils/queuedMessageDelivery'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
@@ -10,7 +9,7 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const controls = useQueuedMessageControlsStore(state => sessionId ? state.bySession[sessionId] : undefined)
   const message = clientId ? controls?.messages[clientId] : undefined
-  if (!controls || !message?.message_id || isIncomingQueuedMessage(message)) return null
+  if (!controls || !message?.message_id || message.can_manage !== true) return null
   const refreshing = Boolean(message.refreshing && !message.delivery_error)
   const pending = Boolean(message.steering || controls.busyMessageId === message.message_id)
   const disabled = pending || Boolean(controls.busyMessageId)

@@ -5,7 +5,6 @@ import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { clientMessageEventId, isProvisionalUserMessage, pendingQueuedProvisionals, userMessageMetadata } from '../../utils/clientMessageIdentity'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
-import { isIncomingQueuedMessage } from '../../utils/queuedMessageDelivery'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
 
 export interface DurableChatQueueHandle { recallLatest: () => boolean }
@@ -71,7 +70,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   }, [query.data, sessionId, owns])
 
   const change = async (message: PendingQueuedMessage, steer: boolean, retry = false, edit = false) => {
-    if (isIncomingQueuedMessage(message) || !message.message_id || action || !owns() || (edit && message.attachment_pending)) return
+    if (message.can_manage !== true || !message.message_id || action || !owns() || (edit && message.attachment_pending)) return
     setAction(message.message_id)
     setError('')
     try {
@@ -102,7 +101,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   const messages = (query.data ?? []).filter(message => !message.started)
   useImperativeHandle(ref, () => ({ recallLatest: () => {
     if (!canEdit || !onEdit || !owns()) return false
-    const message = [...messages].reverse().find(message => !isIncomingQueuedMessage(message) && message.message_id && !message.steering && !message.delivery_error && !message.attachment_pending)
+    const message = [...messages].reverse().find(message => message.can_manage === true && message.message_id && !message.steering && !message.delivery_error && !message.attachment_pending)
     if (!message) return false
     if (!action) void change(message, false, false, true)
     return true

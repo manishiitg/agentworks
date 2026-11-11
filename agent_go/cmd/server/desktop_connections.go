@@ -437,7 +437,7 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			pr.Out.Header.Set("Authorization", "Bearer "+c.Token)
 			setCrewMacPair(pr.Out.Header, owner, c, path)
 			// Session id is a request selector, validated against the remote user.
-			for _, key := range []string{"X-Session-ID", "X-Client-Submitted-At", "X-Conversation-Continuation", "X-Queued-Chat-Delivery"} {
+			for _, key := range []string{"X-Chat-Input", "X-Session-ID", "X-Client-Submitted-At", "X-Conversation-Continuation", "X-Queued-Chat-Delivery"} {
 				if value := r.Header.Get(key); value != "" {
 					pr.Out.Header.Set(key, value)
 				}

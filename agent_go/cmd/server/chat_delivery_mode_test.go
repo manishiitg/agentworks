@@ -25,7 +25,7 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	enqueue := func(id, text string) queuedConversationTurn {
 		t.Helper()
-		keyed := context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: id})
+		keyed := context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: id})
 		turn, _, err := api.enqueueConversationTurn(keyed, "owner", "chat", QueryRequest{Query: text, AgentMode: "multi-agent", DeliveryMode: "queue"})
 		if err != nil {
 			t.Fatal(err)
@@ -117,7 +117,7 @@ func TestQueuedSteerPolicyMismatchDoesNotCancelCurrentTurn(t *testing.T) {
 	r := sharedSecretsRequest(http.MethodPost, "/api/query", "owner", req)
 	r.Header.Set("X-Session-ID", sid)
 	ctx := context.WithValue(r.Context(), queuedMessageSteerKey{}, true)
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queued-input", Owner: "owner", Session: sid, Message: req.Query})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: "queued-input", Owner: "owner", Session: sid, Message: req.Query})
 	w := httptest.NewRecorder()
 	api.handleQuery(w, r.WithContext(ctx))
 	if w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" || canceled {
@@ -131,7 +131,7 @@ func TestQueuedSteerPolicyMismatchDoesNotCancelCurrentTurn(t *testing.T) {
 func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	api := newConversationTurnQueueTestAPI(map[string]string{})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queue-state-client"})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: "queue-state-client"})
 	turn, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", QueryRequest{Query: "follow up", AgentMode: "multi-agent", DeliveryMode: "queue"})
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +226,7 @@ func TestChatDeliverySteerCannotFallBackToANewTurn(t *testing.T) {
 func TestChatDeliveryQueueKeepsOwnerAndTokenBoundaries(t *testing.T) {
 	api := newConversationTurnQueueTestAPI(map[string]string{})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queue-owner-client"})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: "queue-owner-client"})
 	turn, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", QueryRequest{Query: "private", AgentMode: "multi-agent"})
 	if err != nil {
 		t.Fatal(err)
@@ -246,5 +246,62 @@ func TestChatDeliveryQueueKeepsOwnerAndTokenBoundaries(t *testing.T) {
 	}
 	if got := api.mustReadTurnQueueForTest(t, "owner"); len(got) != 1 || got[0].StartedAt != nil {
 		t.Fatalf("foreign request changed queue: %+v", got)
+	}
+}
+
+// PLAT-746-860: a submission ID alone must not grant incoming messages composer actions.
+func TestQueueComposerActionsExcludeEveryNonComposerSource(t *testing.T) {
+	cases := []struct {
+		name     string
+		composer bool
+		change   func(*QueryRequest, *UserClaims)
+		want     bool
+	}{
+		{"typed chat", true, nil, true},
+		{"unknown ingress", false, nil, false},
+		{"slack", false, func(r *QueryRequest, c *UserClaims) { r.BotPlatform = "slack" }, false},
+		{"whatsapp", false, func(r *QueryRequest, c *UserClaims) { r.BotPlatform = "whatsapp" }, false},
+		{"email", false, func(r *QueryRequest, c *UserClaims) { r.TriggeredBy = "email" }, false},
+		{"schedule", false, func(r *QueryRequest, c *UserClaims) { r.TriggeredBy = "cron" }, false},
+		{"webhook", false, func(r *QueryRequest, c *UserClaims) { r.TriggeredBy = "webhook" }, false},
+		{"background", false, func(r *QueryRequest, c *UserClaims) { r.ParentSessionID = "parent" }, false},
+		{"notification", false, func(r *QueryRequest, c *UserClaims) { r.IsAutoNotification = true }, false},
+		{"spoofed composer bot", true, func(r *QueryRequest, c *UserClaims) { r.BotPlatform = "slack" }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newConversationTurnQueueTestAPI(map[string]string{})
+			claims := &UserClaims{UserID: "owner"}
+			req := QueryRequest{Query: "message", AgentMode: "multi-agent", DeliveryMode: "queue"}
+			if tc.change != nil {
+				tc.change(&req, claims)
+			}
+			ctx := context.WithValue(context.Background(), UserContextKey, claims)
+			ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "input", ComposerInput: tc.composer})
+			turn, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows := api.pendingQueuedMessages(ctx, "owner", "chat")
+			if len(rows) != 1 || rows[0].CanManage != tc.want {
+				t.Fatalf("projected actions: %+v", rows)
+			}
+			_, status, err := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, false)
+			if tc.want {
+				if err != nil || status != http.StatusOK {
+					t.Fatalf("typed remove: %d %v", status, err)
+				}
+			} else {
+				if status != http.StatusNotFound {
+					t.Fatalf("incoming remove: %d", status)
+				}
+				if _, status, _ = api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true); status != http.StatusNotFound {
+					t.Fatalf("incoming steer: %d", status)
+				}
+				if _, status, _ = api.retryQueuedConversationMessage(ctx, "owner", "chat", turn.ID); status != http.StatusNotFound {
+					t.Fatalf("incoming retry: %d", status)
+				}
+			}
+		})
 	}
 }
