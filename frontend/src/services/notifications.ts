@@ -55,12 +55,19 @@ async function call<T>(base: string, path: string, method = 'GET', body?: unknow
 
 export const loadNotifySettings = () => call<NotifySettings>(deviceBase(), '/api/notifications')
 
+/** Display listeners re-read this device's server state after a successful change. */
+export const notifyDevicesChangedEvent = 'agentworks:notify-devices-changed'
+function changedDevices(devices: NotifyDevice[]): NotifyDevice[] {
+  window.dispatchEvent(new Event(notifyDevicesChangedEvent))
+  return devices
+}
+
 export const saveNotifyNeedsMe = (needsMe: boolean) => call<NotifySettings>(deviceBase(), '/api/notifications', 'PUT', { needs_me: needsMe })
 
 // removeNotifyDevice stops notifications on one of the person's devices; this device also drops its subscription.
 export async function removeNotifyDevice(id: string): Promise<NotifyDevice[]> {
   if (id === notifyDeviceId()) return turnNotificationsOff()
-  return (await call<{ devices: NotifyDevice[] }>(deviceBase(), `/api/notifications/devices/${encodeURIComponent(id)}`, 'DELETE')).devices
+  return changedDevices((await call<{ devices: NotifyDevice[] }>(deviceBase(), `/api/notifications/devices/${encodeURIComponent(id)}`, 'DELETE')).devices)
 }
 
 function deviceLabel(): string {
@@ -100,7 +107,7 @@ export function webPushSupported(): boolean {
 export async function turnNotificationsOn(settings: NotifySettings, sound: boolean): Promise<NotifyDevice[]> {
   const id = notifyDeviceId()
   if (isMacApp()) {
-    return (await call<{ devices: NotifyDevice[] }>(deviceBase(), '/api/notifications/devices', 'POST', { id, kind: 'mac', label: deviceLabel(), sound })).devices
+    return changedDevices((await call<{ devices: NotifyDevice[] }>(deviceBase(), '/api/notifications/devices', 'POST', { id, kind: 'mac', label: deviceLabel(), sound })).devices)
   }
   if (notifyNeedsHomeScreen()) throw new Error(NOTIFY_HOME_SCREEN_HINT)
   if (!webPushSupported()) throw new Error("This browser can't show notifications.")
@@ -113,9 +120,9 @@ export async function turnNotificationsOn(settings: NotifySettings, sound: boole
     subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(settings.vapid_public_key) as BufferSource })
   }
   const json = subscription.toJSON()
-  return (await call<{ devices: NotifyDevice[] }>(deviceBase(), '/api/notifications/devices', 'POST', {
+  return changedDevices((await call<{ devices: NotifyDevice[] }>(deviceBase(), '/api/notifications/devices', 'POST', {
     id, kind: 'web', label: deviceLabel(), endpoint: json.endpoint, keys: json.keys, sound,
-  })).devices
+  })).devices)
 }
 
 export async function turnNotificationsOff(): Promise<NotifyDevice[]> {
@@ -126,7 +133,7 @@ export async function turnNotificationsOff(): Promise<NotifyDevice[]> {
       await (await registration?.pushManager.getSubscription())?.unsubscribe()
     } catch { /* the server no longer sends to it either way */ }
   }
-  return devices
+  return changedDevices(devices)
 }
 
 // reportNotifyFocus tells the server shown on screen which chat is in front on this device (or none), so that chat
