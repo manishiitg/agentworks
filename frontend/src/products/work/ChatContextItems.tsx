@@ -91,10 +91,9 @@ export async function changeChatContext(sessionId: string, body: ChatContextChan
  * and the switches and actions the server offers for it. Everything comes from the server; a choice is sent
  * back and the server's answer is shown. Mounted only while the menu is open, so it reads fresh numbers.
  */
-export default function ChatContextItems({ sessionId, modelLabel }: { sessionId: string; modelLabel?: string }) {
+export default function ChatContextItems({ sessionId, modelLabel, showDisplay = true, showTerminal = true }: { sessionId: string; modelLabel?: string; showDisplay?: boolean; showTerminal?: boolean }) {
   const [view, setView] = useState<ChatContextView | null>(null)
   const [busy, setBusy] = useState(false)
-  const preferences = useChatPreferences()
 
   useEffect(() => {
     let cancelled = false
@@ -141,7 +140,7 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
       <SettingLabel label="Compact at 300K" hint={view.compact_early_hint} />
       <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
     </Menu.CheckboxItem>}
-    {view.claude_terminal && <Menu.CheckboxItem className={menuRowClass} checked={view.claude_terminal.on} disabled={busy} onSelect={keepOpen}
+    {showTerminal && view.claude_terminal && <Menu.CheckboxItem className={menuRowClass} checked={view.claude_terminal.on} disabled={busy} onSelect={keepOpen}
       onCheckedChange={checked => void send({ claude_terminal: checked === true })}>
       <SettingLabel label="Native Claude Code terminal" hint="Claude Code as you know it, slash commands included. From the next message; the conversation continues." />
       <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
@@ -156,11 +155,20 @@ export default function ChatContextItems({ sessionId, modelLabel }: { sessionId:
         <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Fresh chat
       </Menu.Item>}
     </div>}
-    {/* The person's own display choice, saved on the server for all their chats and devices; off until turned on. */}
-    <Menu.CheckboxItem className={menuRowClass} checked={preferences.showContextIndicator} disabled={!preferences.ready || preferences.save.isPending} onSelect={keepOpen}
-      onCheckedChange={checked => preferences.save.mutate({ show_context_indicator: checked === true }, { onError: () => useChatStore.getState().addToast('Could not save that. Try again in a moment.', 'error') })}>
-      <span className="min-w-0 flex-1">Show context use in the chat box</span>
-      <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
-    </Menu.CheckboxItem>
+    {showDisplay && <ContextDisplayMenuItem />}
   </>
+}
+
+
+// Same server-saved display preference, also used in the compact composer footer.
+export function ContextDisplayMenuItem({ compact = false, className = menuRowClass }: { compact?: boolean; className?: string }) {
+  const preferences = useChatPreferences()
+  return <Menu.CheckboxItem className={className} checked={preferences.showContextIndicator} disabled={!preferences.ready || preferences.save.isPending}
+    title="Show context use in the chat box" onSelect={event => event.preventDefault()}
+    onCheckedChange={checked => preferences.save.mutate({ show_context_indicator: checked === true }, { onError: () => useChatStore.getState().addToast('Could not save that. Try again in a moment.', 'error') })}>
+    <span className="min-w-0 flex-1">{compact ? 'Context' : 'Show context use in the chat box'}</span>
+    <span className={compact ? 'flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-muted-foreground/50' : undefined}>
+      <Menu.ItemIndicator><Check className="h-3 w-3" aria-hidden="true" /></Menu.ItemIndicator>
+    </span>
+  </Menu.CheckboxItem>
 }
