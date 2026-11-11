@@ -127,6 +127,7 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 		for _, item := range choices {
 			if item.Key == key {
 				allowed = true
+				name = item.Name
 			}
 		}
 		if !allowed {
