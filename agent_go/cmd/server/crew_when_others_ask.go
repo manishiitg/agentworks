@@ -58,6 +58,11 @@ func crewTeamAgentRuleFor(ctx context.Context, project, person, key string) crew
 func withAgentRuleArgs(ctx context.Context, args map[string]any, project, person, key string) map[string]any {
 	rule := crewTeamAgentRuleFor(ctx, project, person, key)
 	args["when_others_ask"], args["can_make_changes"] = rule.WhenOthersAsk, rule.CanMakeChanges
+	// The person's own agent on another computer or login is the person: their agents may give each other work, so
+	// the Team's Answer only / Make changes applies to other people only (PLAT-746-852).
+	if sender, _ := args["sender_id"].(string); sender != "" && sender == person {
+		args["own"] = true
+	}
 	return args
 }
 
