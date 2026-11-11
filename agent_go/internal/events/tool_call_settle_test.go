@@ -336,3 +336,34 @@ func TestErroredToolCallIsNotSweptIntoSyntheticSettle(t *testing.T) {
 		t.Error("an errored call was ALSO settled as if it had never reported -- it reported an error, which is a real outcome, not silence")
 	}
 }
+
+// PLAT-746-891: the reply ended while a native command kept running. A
+// five-second UI cleanup must not manufacture completion of that process.
+func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
+	restore := shortenSettleGrace(t)
+	defer restore()
+	toolResultResolverMu.RLock()
+	previous := toolCompletionAuthority
+	toolResultResolverMu.RUnlock()
+	SetToolCompletionAuthority(func(session, id, name string) bool { return session == "native-late-command" && id == "exec-native" })
+	defer SetToolCompletionAuthority(previous)
+	store := NewEventStore(500)
+	const session = "native-late-command"
+	store.AddEvent(session, startEvent(session, "exec-native", "exec_command"))
+	store.AddEvent(session, startEvent(session, "ordinary-call", "read_file"))
+	store.AddEvent(session, turnEndEvent(session))
+	time.Sleep(200 * time.Millisecond)
+	ids := toolEndIDs(t, store, session)
+	if len(ids) != 1 || ids[0] != "ordinary-call" {
+		t.Fatalf("premature native completion: %v", ids)
+	}
+	store.CompleteNativeTool("another-chat", "exec-native", time.Now())
+	if len(toolEndIDs(t, store, session)) != 1 {
+		t.Fatal("another chat completed the command")
+	}
+	store.CompleteNativeTool(session, "exec-native", time.Now())
+	store.CompleteNativeTool(session, "exec-native", time.Now())
+	if ids = toolEndIDs(t, store, session); len(ids) != 2 {
+		t.Fatalf("native completion missing or replayed: %v", ids)
+	}
+}
