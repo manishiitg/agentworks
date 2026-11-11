@@ -193,6 +193,8 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return
 		}
+		// The turn's pull requests do not depend on its file changes.
+		go api.linkTurnPullRequests(snapshot, roots)
 		if snapshot.beforeErr != nil || snapshot.record.ID == "" {
 			reason := crewSnapshotFailureReason(snapshot.beforeErr)
 			log.Printf("[FILE_SNAPSHOT] phase=before_failed session=%s execution=%s snapshot=%s reason=%s error=%v", snapshot.sessionID, snapshot.executionID, snapshot.record.ID, reason, snapshot.beforeErr)

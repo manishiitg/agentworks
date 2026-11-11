@@ -1,6 +1,7 @@
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { ReplyFileChanges } from './chat/ReplyFileChanges'
-import { replyFileChangesByMessage } from '../utils/replyFileChanges'
+import { replyFileChangesByMessage, replyPullRequestsByMessage } from '../utils/replyFileChanges'
+import { ReplyLinkedPullRequests } from './chat/ReplyLinkedPullRequests'
 import { TranscriptFind } from './chat/TranscriptFind'
 import { transcriptSearchText } from '../utils/transcriptSearch'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
@@ -1230,7 +1231,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined),
     [scoped, questions, searchable, showThinking],
   )
-  const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : []))), [events, items])
+  const replyIds = useMemo(() => new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : [])), [items])
+  const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], replyIds), [events, replyIds])
+  const linkedPullRequests = useMemo(() => replyPullRequestsByMessage(events ?? [], replyIds), [events, replyIds])
   // Retry belongs to the latest human turn, never an older failed message
   // after the user has continued the conversation.
   const retryItem = useMemo(() => [...items].reverse().find(item =>
@@ -1449,7 +1452,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
               )
           const match = searchMatch?.key === item.key ? searchMatch.query : null
           const changeRef = item.kind === 'event' ? fileChanges.get(item.event.id) : undefined
-          const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}</SearchMatchContext.Provider>
+          const linkedPRs = item.kind === 'event' ? linkedPullRequests.get(item.event.id) : undefined
+          const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}{linkedPRs && item.kind === 'event' && <ReplyLinkedPullRequests pullRequests={linkedPRs} sessionId={item.event.session_id || terminal?.session_id || ''} cardGroups={changeRef?.summary?.groups} />}</SearchMatchContext.Provider>
           const matchStyle = match ? 'ring-1 ring-inset ring-yellow-400/70 bg-yellow-400/5' : ''
           if (!slot?.agent) {
             return <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>
