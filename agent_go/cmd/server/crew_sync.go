@@ -168,10 +168,14 @@ func crewSyncClaimsGate(claims *UserClaims, id string) *crewSyncFailure {
 }
 
 func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, id string) (crewroot.Roots, error) {
+	return api.crewSyncRootsWithWorkspace(ctx, claims, id, api.resolveExternalWorkspace)
+}
+
+func (api *StreamingAPI) crewSyncRootsWithWorkspace(ctx context.Context, claims *UserClaims, id string, workspace func(context.Context, *UserClaims, string) (crewProjectBinding, productProjectManifest, bool)) (crewroot.Roots, error) {
 	if failure := crewSyncClaimsGate(claims, id); failure != nil {
 		return crewroot.Roots{}, failure
 	}
-	binding, _, ok := api.resolveExternalWorkspace(ctx, claims, id)
+	binding, _, ok := workspace(ctx, claims, id)
 	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
 		if ok && binding.OwnerID != "" {
 			return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: fmt.Sprintf("only this project's main owner can move it between computers; ask %s to open it on their Mac", shareOwnerLabel(binding.OwnerID))}

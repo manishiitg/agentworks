@@ -56,6 +56,14 @@ func externalWorkspaceAllowed(claims *UserClaims) bool {
 }
 
 func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
+	return api.externalWorkspaceBinding(ctx, claims, raw, resolveCrewProjectBinding)
+}
+
+func (api *StreamingAPI) readExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
+	return api.externalWorkspaceBinding(ctx, claims, raw, readCrewProjectBinding)
+}
+
+func (api *StreamingAPI) externalWorkspaceBinding(ctx context.Context, claims *UserClaims, raw string, bind func(context.Context, string, agentprofiles.Profile, string, string) (crewProjectBinding, error)) (crewProjectBinding, productProjectManifest, bool) {
 	if api == nil || api.agentProfiles == nil || claims == nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
@@ -71,7 +79,7 @@ func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *U
 	if err != nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
-	binding, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, id, "")
+	binding, err := bind(ctx, claims.UserID, profile, id, "")
 	if err != nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
