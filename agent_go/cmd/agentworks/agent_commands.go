@@ -184,7 +184,10 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name      string `json:"agent_name"`
+			Name      string `json:"name"`
+			AgentName string `json:"agent_name"`
+			Address   string `json:"id"`
+			Target    string `json:"target"`
 			Label     string `json:"label"`
 			ID        string `json:"agent_id"`
 			Provider  string `json:"provider"`
@@ -202,6 +205,24 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	}
 	if json.Unmarshal(raw, &data) != nil {
 		return "Agent roster unavailable."
+	}
+	for i := range data.Agents {
+		a := &data.Agents[i]
+		if a.Name == "" {
+			a.Name = a.AgentName
+		}
+		if a.Name == "" {
+			a.Name = a.Label
+		}
+		if a.Label == "" {
+			a.Label = a.Name
+		}
+		if a.Address == "" {
+			a.Address = a.Target
+		}
+		if a.Address == "" && a.AgentName != "" {
+			a.Address = "agent:" + a.AgentName
+		}
 	}
 	sort.SliceStable(data.Agents, func(i, j int) bool {
 		if data.Agents[i].Online != data.Agents[j].Online {
@@ -251,7 +272,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.Published {
 			shared = " | published to the network"
 		}
-		fmt.Fprintf(&b, "%s | agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")
@@ -260,7 +281,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		b.WriteString(clean(data.Hint) + "\n")
 	}
 	if len(data.Hosted) > 0 {
-		b.WriteString("\nChats inside AgentWorks (they can't receive messages yet):\n")
+		b.WriteString("\nChats inside AgentWorks:\n")
 		for _, h := range data.Hosted {
 			fmt.Fprintf(&b, "agent:%s | %s | %s\n", clean(h.Name), clean(h.Display), clean(h.Why))
 		}
