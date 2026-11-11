@@ -547,6 +547,11 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
+				// A Team this Mac joined on the Mac is listed once, as its working copy here (owner, 11 Nov: the
+				// member saw it twice, the server row asking them to use it on the web).
+				if crewTeamMemberCopy(p.ID) != "" {
+					continue
+				}
 				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent, TeamBusy: crewTeamBusyFor(crewTeamRemoteNoteKey(p.ID))})
 			}
 			for _, p := range inventory.Workflows {
