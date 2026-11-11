@@ -77,6 +77,17 @@ func TestDesktopAppVisitorCanOnlyReplyToAdmittedInbox(t *testing.T) {
 	if desktopAppTurnMayAddress(visitor, reply) {
 		t.Fatal("serialized inbox field granted reply authority")
 	}
+	for _, trigger := range []QueryRequest{{AgentMessageFromOtherPerson: true}, {PinRunMode: true}, {CrewGuestCaller: "visitor"}, {BotPlatform: "webhook"}, {AskedBy: "visitor"}} {
+		if !desktopAppTurnRestricted(trigger, "owner") {
+			t.Fatal("non-owner recorded trigger acquired private reach")
+		}
+	}
+	directory := map[string]interface{}{"agents": []map[string]interface{}{{"target": "agent:private", "yours": true}, {"target": "agent:published", "published": true}}}
+	publicAgentDirectoryOnly(directory)
+	rows := directory["agents"].([]map[string]interface{})
+	if len(rows) != 1 || rows[0]["target"] != "agent:published" {
+		t.Fatal("visitor listing exposed a private agent or hid a published agent")
+	}
 	visitor.appAgentReplyTo = reply
 	if !desktopAppTurnMayAddress(visitor, reply) {
 		t.Fatal("authenticated explicit reply refused")

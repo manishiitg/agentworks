@@ -88,13 +88,14 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	// A shared Run turn must not borrow the owner's saved login. The local
 	// current chat, not an agent-supplied agent_name, selects the named sender.
 	source := api.agentMessageCallerRole(callerMessageEndpoint(owner, caller))
-	if source.Mode != "builder" || source.Guest != "" || source.FunctionCallID != "" {
+	if source.FunctionCallID != "" {
 		return nil, fmt.Errorf("this turn cannot use the person's AgentBridge login")
 	}
 	api.lastQueryMu.RLock()
-	prior := api.lastQueryRequests[caller.Chat.SessionID]
+	prior, known := api.lastQueryRequests[caller.Chat.SessionID]
 	api.lastQueryMu.RUnlock()
-	if !desktopAppTurnMayAddress(prior, raw) {
+	restricted := !known || source.Mode != "builder" || source.Guest != "" || desktopAppTurnRestricted(prior, owner)
+	if restricted && strings.HasPrefix(address, "inbox-") && (prior.appAgentReplyTo == "" || prior.appAgentReplyTo != raw) {
 		return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
 	}
 	connection, err := desktopConnectionFor(owner, connectionID)
@@ -125,6 +126,7 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 		args["inbox_id"] = address
 	} else {
 		args["target"] = address
+		args["public_only"] = restricted // server-derived turn provenance, never a tool argument
 	}
 	if in.Read {
 		args["action"], args["after"], args["limit"] = "read", in.After, in.Limit
@@ -140,8 +142,24 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 // A published agent's visitor may receive a reply, but cannot use the owner's
 // saved login to reach that owner's private agents. JSON cannot set the fence.
 func desktopAppTurnMayAddress(prior QueryRequest, address string) bool {
-	if strings.TrimSpace(prior.SharedAgentSender) == "" {
+	if !desktopAppTurnRestricted(prior, "") {
 		return true
 	}
 	return prior.appAgentReplyTo != "" && prior.appAgentReplyTo == address
+}
+
+func desktopAppTurnRestricted(prior QueryRequest, owner string) bool {
+	return strings.TrimSpace(prior.SharedAgentSender) != "" || prior.AgentMessageFromOtherPerson || prior.PinRunMode || prior.CrewGuestCaller != "" || prior.BotPlatform != "" || (prior.AskedBy != "" && prior.AskedBy != owner)
+}
+
+func publicAgentDirectoryOnly(out map[string]interface{}) {
+	rows, _ := out["agents"].([]map[string]interface{})
+	kept := make([]map[string]interface{}, 0, len(rows))
+	for _, row := range rows {
+		if row["published"] == true || row["scope"] == "everyone" {
+			kept = append(kept, row)
+		}
+	}
+	out["agents"] = kept
+	out["notice"] = "This turn can use published agents and reply to its original sender; your private agents are unavailable."
 }

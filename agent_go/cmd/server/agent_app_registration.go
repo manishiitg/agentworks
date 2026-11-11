@@ -106,7 +106,8 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 		}
 		if target != "" {
 			resolved, err := api.externalMessageTargetForOperation(r.Context(), claims, args, externalArg(args, "action") == "send")
-			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, targetMessageEndpoint(claims.UserID, resolved)) {
+			publicOnly, _ := args["public_only"].(bool)
+			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, targetMessageEndpoint(claims.UserID, resolved)) || (publicOnly && !appAgentPublished(r.Context(), resolved.NamedAgentID)) {
 				externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
 				return
 			}
@@ -211,6 +212,19 @@ func appAgentPeerAllowed(ctx context.Context, user string, peer agentMessageEndp
 		if share.ID == peer.ShareID && share.serverScope() {
 			_, err := store.authorizeShare(share.ID, peer.ShareVersion, time.Now().UTC())
 			return err == nil
+		}
+	}
+	return false
+}
+
+func appAgentPublished(ctx context.Context, agentID string) bool {
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil || agentID == "" {
+		return false
+	}
+	for _, share := range store.serverSharesOf(agentID, time.Now().UTC()) {
+		if _, err := store.authorizeShare(share.ID, share.RevocationVersion, time.Now().UTC()); err == nil {
+			return true
 		}
 	}
 	return false

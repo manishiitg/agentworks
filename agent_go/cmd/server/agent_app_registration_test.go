@@ -100,6 +100,12 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if status != 200 || sent["inbox_id"] == "" {
 		t.Fatalf("named send: %d %v", status, sent)
 	}
+	// A non-owner-triggered app turn cannot borrow this private same-account route.
+	send["public_only"] = true
+	if status, _ := request(second, send); status != 404 {
+		t.Fatalf("non-owner turn reached owner's private agent: %d", status)
+	}
+	delete(send, "public_only")
 	inboxArgs := map[string]any{"action": "inbox", "agent_name": "receiving-agent", "attachment_id": receiver["attachment_id"]}
 	status, inbox := request(first, inboxArgs)
 	if status != 200 || len(inbox["messages"].([]any)) != 1 {
@@ -140,7 +146,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if _, e := state.authorizeShare(share.ID, 1, time.Now()); e != nil {
 		t.Fatalf("private grant fixture is not genuinely authorized: %v", e)
 	}
-	publicSend := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "agent:other/public-helper", "message": "A public request", "submission_id": "public-app-message"}
+	publicSend := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "agent:other/public-helper", "message": "A public request", "submission_id": "public-app-message", "public_only": true}
 	if status, _ := request(second, publicSend); status != 404 {
 		t.Fatalf("private grant used as publication: %d", status)
 	}
