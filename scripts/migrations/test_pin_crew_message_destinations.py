@@ -34,7 +34,12 @@ class PinDestinationsTest(unittest.TestCase):
             file = crew / "schedules.json"
             original = json.dumps({"schedules": rows})
             file.write_text(original)
-            changes = pin.inspect(crew, registry)
+            executable = root / "script"
+            executable.mkdir()
+            script_file = executable / "workflow.json"
+            script_original = json.dumps({"schedules": [{"chat_id": "main", "enabled": False}, {"chat_id": ""}]})
+            script_file.write_text(script_original)
+            changes = pin.inspect(crew, registry, executable_roots=[executable])
             pin.apply(changes, root / "backup")
             self.assertEqual((root / "backup/schedules.json").read_text(), original)
             saved = json.loads(file.read_text())["schedules"]
@@ -43,7 +48,9 @@ class PinDestinationsTest(unittest.TestCase):
             self.assertEqual(saved[1:4], rows[1:4])
             self.assertEqual(saved[4]["input"]["condition"]["target"]["chat_id"], "original")
             self.assertTrue(all(not row["enabled"] for row in saved))
-            self.assertEqual(pin.inspect(crew, registry), [])
+            self.assertEqual(pin.inspect(crew, registry, executable_roots=[executable]), [])
+            self.assertEqual((root / "backup/workflow.json").read_text(), script_original)
+            self.assertEqual(json.loads(script_file.read_text())["schedules"], [{"chat_id":key,"enabled":False},{"chat_id":""}])
             registry.write_text('{"entries":{}}')
             with self.assertRaises(ValueError):
                 pin.inspect(crew, registry)

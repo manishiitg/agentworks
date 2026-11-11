@@ -39,13 +39,17 @@ export function AgentRemovalDialog({ projectId }: { projectId: string }) {
     if (current?.tab.metadata?.agentProfileProjectId === projectId) current.finish(null)
   }, [projectId])
   if (!mine) return null
-  const visibleDependencies: NonNullable<typeof preview>['dependencies'] = []
-  const visibleIds = new Set<string>()
-  for (const item of preview?.dependencies || []) {
-    if (!item.when_removed?.length || item.when_removed.some(id => visibleIds.has(id) && choices[id] === 'remove')) {
-      visibleDependencies.push(item); visibleIds.add(item.id)
+  const dependencies = preview?.dependencies || []
+  const visibleIds = new Set(dependencies.filter(item => !item.when_removed?.length).map(item => item.id))
+  for (let changed = true; changed;) {
+    changed = false
+    for (const item of dependencies) {
+      if (!visibleIds.has(item.id) && item.when_removed?.some(id => visibleIds.has(id) && choices[id] === 'remove')) {
+        visibleIds.add(item.id); changed = true
+      }
     }
   }
+  const visibleDependencies = dependencies.filter(item => visibleIds.has(item.id))
   const ready = preview && visibleDependencies.every(item => choices[item.id]) && isChatIdentityCurrent(mine.identity)
   return createPortal(<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onClick={() => mine.finish(null)}>
     <div role="dialog" aria-modal="true" aria-label="Remove agent" className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-popover p-5 shadow-xl" onClick={event => event.stopPropagation()}>
