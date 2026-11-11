@@ -1,7 +1,7 @@
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Loader2, Paperclip, Plus, Terminal, Wand2 } from 'lucide-react'
-import { ChatSendOptions, type ChatSendOptionsProps } from './ChatSendModeButton'
+import { ChatSendOptions, ComposerSendKeys, type ChatSendOptionsProps } from './ChatSendModeButton'
 
 /** Presentation only: every action keeps its existing handler and admission. */
 export type ComposerActions = {
@@ -33,6 +33,7 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
       }}
       className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
       <ComposerActionItems uploading={uploading} onAttach={onAttach} onOpenCommands={onOpenCommands} onOpenLiveView={onOpenLiveView} liveViewTitle={liveViewTitle} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
+      <ComposerSendKeys busy={Boolean(sendOptions?.busy)} />
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }
