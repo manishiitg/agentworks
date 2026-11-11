@@ -221,8 +221,10 @@ func crewTeamAgentByID(ctx context.Context, project, caller, id string) (crewTea
 }
 
 func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target triggerTarget, id string) (triggerTarget, error) {
-	agent, owner, err := crewTeamAgentByID(ctx, target.CrewID, GetUserIDFromContext(ctx), id)
+	caller := GetUserIDFromContext(ctx)
+	agent, owner, err := crewTeamAgentByID(ctx, target.CrewID, caller, id)
 	if err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed agent_id=%q caller_id=%q reason=%q", target.CrewID, id, caller, err)
 		return target, err
 	}
 	key := crewTeamNativeChatKey(target.CrewID, owner, agent)
