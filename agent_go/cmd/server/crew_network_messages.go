@@ -215,8 +215,11 @@ func (api *StreamingAPI) deliverCrewNetworkReply(ctx context.Context, c agentCon
 		return fmt.Errorf("the sending Mac is no longer paired with this Crew")
 	}
 	tab := dest.NetworkTab
-	// A reply from the person's own agent is theirs (PLAT-746-852); anyone else's stays answer-only.
-	args, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": source.Label, "sender_channel": "AgentBridge", "network_inbox": c.ID, "own": source.UserID == dest.UserID})
+	// Set only here, after pair admission, from endpoint identities: a reply from the person's own agent is theirs
+	// (PLAT-746-852); anyone else's keeps the Team rule.
+	own := crewOwnAgentMessage(dest, source)
+	args, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": source.Label, "sender_channel": "AgentBridge", "network_inbox": c.ID, "own_agent_message": own}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
+	log.Printf("[CREW_NETWORK] event=reply_policy project=%s message=%s own_agent=%t source_mode=%q dest_mode=%q", dest.ID, m.ID, own, source.Mode, dest.Mode)
 	result := callCrewMacFor(ctx, dest.UserID, dest.ID, crewChatCall{Operation: "network_reply", Tab: tab, ConversationID: dest.NetworkConversationID, Message: m.Text, Caller: source.Label, SubmissionID: m.ID, Args: args}, 30*time.Second)
 	if result.Status != http.StatusOK {
 		return fmt.Errorf("the originating Mac chat could not receive this reply")

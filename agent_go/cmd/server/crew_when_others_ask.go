@@ -58,11 +58,6 @@ func crewTeamAgentRuleFor(ctx context.Context, project, person, key string) crew
 func withAgentRuleArgs(ctx context.Context, args map[string]any, project, person, key string) map[string]any {
 	rule := crewTeamAgentRuleFor(ctx, project, person, key)
 	args["when_others_ask"], args["can_make_changes"] = rule.WhenOthersAsk, rule.CanMakeChanges
-	// The person's own agent on another computer or login is the person: their agents may give each other work, so
-	// the Team's Answer only / Make changes applies to other people only (PLAT-746-852).
-	if sender, _ := args["sender_id"].(string); sender != "" && sender == person {
-		args["own"] = true
-	}
 	return args
 }
 
@@ -230,7 +225,7 @@ func crewAskModeLine(canChange bool) string {
 	if canChange {
 		return "[Your owner now lets you make changes for this person: you may change files, run commands and use your tools for them. This replaces any earlier answer-only note in this thread.]"
 	}
-	return "[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can choose Make changes for this agent in the Team tab.]"
+	return "[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can change this agent's access if they want it to make changes.]"
 }
 
 // whenOthersAskNote is the turn's note for another person's ask: the fixed line, then the owner's rule if set.

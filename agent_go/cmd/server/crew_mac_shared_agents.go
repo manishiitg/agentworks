@@ -942,7 +942,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox, "own_agent_message": crewOwnAgentMessage(dest, source)}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
 	ask := crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.

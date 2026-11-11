@@ -380,8 +380,9 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		// message on the server, and the agent answers with a message if it wants to (owner, 7 Nov).
 		TeamInbox    string `json:"team_inbox"`
 		NetworkInbox string `json:"network_inbox"`
-		// Own: the server found the sender is this agent's own person on another computer or login (PLAT-746-852).
-		Own bool `json:"own"`
+		// OwnAgentMessage: the server found, from admitted endpoints, that the sender is this agent's own person on
+		// another computer or login (PLAT-746-852). Only the server sets it.
+		OwnAgentMessage bool `json:"own_agent_message"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -494,7 +495,11 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		// "From tester-b's Claude Code (helper) · AgentBridge", or the person and their app (owner, 5 Nov).
 		senderAgent := strings.TrimSpace(call.Caller)
 		if strings.TrimSpace(args.SenderAgent) != "" {
-			senderAgent = strings.SplitN(senderAgent, "@", 2)[0] + "'s " + strings.TrimSpace(args.SenderAgent)
+			person, named := strings.SplitN(senderAgent, "@", 2)[0], strings.TrimSpace(args.SenderAgent)
+			// "claude-reviewer", not "claude-reviewer's claude-reviewer", when the agent's name is the sender's.
+			if senderAgent = person + "'s " + named; strings.EqualFold(person, named) {
+				senderAgent = named
+			}
 		}
 		senderChannel := firstNonEmptyTrimmed(args.SenderChannel, "shared agent")
 		attribution := map[string]interface{}{"source": "agent_message", "sender_label": senderAgent + " · " + senderChannel, "sender_agent": senderAgent, "sender_channel": senderChannel, "sender_user_id": args.SenderID, "display_content": message, "shared_message_id": call.SubmissionID}
@@ -507,7 +512,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, attribution)
 		// The sender's turn starts from the owner's own chat with this agent (owner, 4 Nov, decisions log).
 		ask := &crewMacSharedAsk{Sender: args.SenderID, SenderName: call.Caller, WhenOthersAsk: args.WhenOthersAsk}
-		text := crewMacSharedAgentText(*agent, args.CanMakeChanges || args.Own, call.Caller, message)
+		text := crewMacSharedAgentText(*agent, args.CanMakeChanges || args.OwnAgentMessage, call.Caller, message)
 		if args.TeamInbox != "" {
 			replyTo := "team:" + project + ":" + args.TeamInbox
 			if networkReply {
@@ -517,15 +522,15 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			if networkReply {
 				text = strings.Replace(text, "a teammate.", "an agent on your connected network.", 1)
 			}
-			if args.Own {
+			if args.OwnAgentMessage {
 				text = crewOwnAgentMessageText(call.Caller, replyTo, message)
 			}
 		}
-		if args.Own {
+		if args.OwnAgentMessage {
 			// The owner's own agent: the turn is the owner's, with no "When others ask" note or answer-only line.
 			ask.Sender = ""
 		}
-		log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%q operation=%s own=%t can_make_changes=%t", project, call.Tab, call.Operation, args.Own, args.Own || args.CanMakeChanges)
+		log.Printf("[CREW_SHARED_AGENT] local project=%s tab=%q operation=%s own=%t can_make_changes=%t", project, call.Tab, call.Operation, args.OwnAgentMessage, args.OwnAgentMessage || args.CanMakeChanges)
 		if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
 			ask.Owner = owner
 			if err := markCrewStandbySession(ctx, project, claims.UserID, owner.SessionID); err != nil { // the chat the thread starts from
