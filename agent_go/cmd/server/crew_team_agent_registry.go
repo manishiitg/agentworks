@@ -305,7 +305,7 @@ func removeCrewAgentListing(project, person, key string) error {
 		return err
 	}
 	for id, a := range t.Agents {
-		if a.OwnerID == person && (a.ChatKey == key || crewTeamNativeChatKey(project, person, a) == key) {
+		if a.OwnerID == person && (a.ChatKey == key || crewTeamNativeChatKey(project, person, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey}) == key) {
 			delete(t.Agents, id)
 		}
 	}
