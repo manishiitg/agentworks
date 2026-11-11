@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { ChevronRight, Folder, Loader2, X } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
@@ -74,7 +74,7 @@ function useFolderSize(target: TeamTarget, query?: string) {
  * and says what this person may change, and its /folders reads the Crew's folders where the Crew is; this only shows
  * them and sends the person's choices.
  */
-export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?: () => void }) {
+export function TeamTab({ projectId, onTurnOn, onBack }: { projectId: string; onTurnOn?: () => void; onBack?: () => void }) {
   const state = useTeamTab(projectId)
   const tabId = useId()
   const [section, setSection] = useState<{ project: string; tab: 'activity' | 'settings' }>()
@@ -102,27 +102,31 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
-    {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
-    {team.on && <div role="tablist" aria-label="Team" className="flex gap-1 border-b border-border">
-      {(['activity', 'settings'] as const).map(tab => <button key={tab} type="button" role="tab"
-        id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
-        tabIndex={selected === tab ? 0 : -1}
-        onClick={() => setSection({ project: projectId, tab })}
-        onKeyDown={event => {
-          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-          event.preventDefault()
-          const next = event.key === 'Home' ? 'activity' : event.key === 'End' ? 'settings' : tab === 'activity' ? 'settings' : 'activity'
-          setSection({ project: projectId, tab: next })
-          document.getElementById(`${tabId}-${next}`)?.focus()
-        }}
-        className={`border-b-2 px-4 py-2 text-sm font-medium ${selected === tab ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-        {tab === 'activity' ? 'Activity' : 'Settings'}
-      </button>)}
+    {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
+    {team.on && <div className="flex items-stretch gap-2">
+      {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+      <div role="tablist" aria-label="Team" className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm">
+        {(['activity', 'settings'] as const).map(tab => <button key={tab} type="button" role="tab"
+          id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
+          tabIndex={selected === tab ? 0 : -1}
+          onClick={() => setSection({ project: projectId, tab })}
+          onKeyDown={event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+            event.preventDefault()
+            const next = event.key === 'Home' ? 'activity' : event.key === 'End' ? 'settings' : tab === 'activity' ? 'settings' : 'activity'
+            setSection({ project: projectId, tab: next })
+            document.getElementById(`${tabId}-${next}`)?.focus()
+          }}
+          className={`min-w-0 rounded-lg px-2 py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
+          <span className="block font-semibold">{tab === 'activity' ? 'Activity' : 'Settings'}</span>
+          <span className="mt-0.5 block text-[11px]">{tab === 'activity' ? 'Who is working, messages' : 'People, folder and sync'}</span>
+        </button>)}
+      </div>
     </div>}
     {selected === 'activity' ? <div role="tabpanel" id={`${tabId}-activity-panel`} aria-labelledby={`${tabId}-activity`} tabIndex={0}>
-      <p className="mb-3 text-sm text-muted-foreground">See who is working, messages between agents, and recent Team events.</p>
       <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />
     </div> : <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-settings-panel`} aria-labelledby={team.on ? `${tabId}-settings` : undefined} className="space-y-3">
+    {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
     <PeopleCard view={view} target={target} projectId={projectId} />
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
