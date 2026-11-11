@@ -1,6 +1,9 @@
 package events
 
-import "testing"
+import (
+	pkgevents "github.com/manishiitg/mcpagent/events"
+	"testing"
+)
 
 func TestDeliveredAgentAttributionIsScopedAndDurable(t *testing.T) {
 	const session, text = "chat-delivery", "[Agent message from Autopilot] a request"
@@ -58,4 +61,42 @@ func TestDeliveredAttributionKeepsServerClientID(t *testing.T) {
 			t.Fatalf("%s: sender %v", row.ID, got)
 		}
 	}
+}
+
+// PLAT-746: an incoming queued card must not indent an unrelated reply.
+func TestAgentReplyRequiresExactDeliveredTurnAndClearsForHumanSteer(t *testing.T) {
+	const session = "reply-attribution"
+	store := openClientMessageTestStore(t, session)
+	input := journalTestEvent("agent-input", "review")
+	input.Data.TurnID = "turn-agent"
+	userMessageEventData(&input).Metadata = map[string]interface{}{"source": "agent_message", "message_id": "msg-review"}
+	store.AddEvent(session, input)
+	check := func(id, turn, want string) {
+		t.Helper()
+		reply := Event{ID: id, Type: "agent_response", Data: pkgevents.NewAgentEvent(NewGenericEventData("agent_response", map[string]interface{}{"content": "reply"}))}
+		reply.Data.TurnID = turn
+		store.AddEvent(session, reply)
+		rows := durableRows(t, store, session)
+		for _, row := range rows {
+			if row.ID == id {
+				if row.ReplyToAgentMessageID != want {
+					t.Fatalf("%s: got %q want %q", id, row.ReplyToAgentMessageID, want)
+				}
+				return
+			}
+		}
+		t.Fatalf("missing %s", id)
+	}
+	check("unrelated", "turn-human", "")
+	check("unknown", "", "")
+	check("related", "turn-agent", "msg-review")
+	queued := journalTestEvent("queued", "next incoming")
+	queued.Data.TurnID = "turn-agent"
+	userMessageEventData(&queued).Metadata = map[string]interface{}{"source": "agent_message", "message_id": "msg-queued", "delivery_status": "queued_for_turn"}
+	store.AddEvent(session, queued)
+	check("still-related", "turn-agent", "msg-review")
+	human := journalTestEvent("steer", "answer me")
+	human.Data.TurnID = "turn-agent"
+	store.AddEvent(session, human)
+	check("after-steer", "turn-agent", "")
 }
