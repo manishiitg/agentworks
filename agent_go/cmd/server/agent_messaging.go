@@ -87,6 +87,7 @@ type agentMessage struct {
 	SentAt               time.Time `json:"sent_at"`
 	Submission           string    `json:"submission_id,omitempty"`
 	SenderWebsiteSession string    `json:"sender_website_session,omitempty"`
+	SenderNonOwnerTurn   bool      `json:"sender_non_owner_turn,omitempty"`
 	SenderConnectionID   string    `json:"sender_connection_id,omitempty"`
 	Delivery             string    `json:"delivery"`
 	Error                string    `json:"delivery_error,omitempty"`
@@ -568,6 +569,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	c.Next++
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
+	m.SenderNonOwnerTurn, _ = ctx.Value(appNonOwnerMessageKey{}).(bool)
 	if file != nil {
 		m.File, err = storeMessageFile(ctx, userID, file)
 		if err != nil {
