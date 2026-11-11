@@ -399,3 +399,21 @@ func TestIncomingQuotaWaitSurvivesStalePruningAndCannotStartEarly(t *testing.T) 
 		t.Fatal("second automatic retry allowed")
 	}
 }
+
+// A provider cooldown must not trap the person's follow-up behind incoming deliveries.
+func TestQuotaWaitingHeadLetsOnlyComposerMessagesPass(t *testing.T) {
+	now := time.Now()
+	reset := now.Add(time.Hour)
+	waiting := queuedConversationTurn{ID: "waiting", UserID: "owner", SessionID: "chat", RetryAt: &reset}
+	incoming := queuedConversationTurn{ID: "incoming", UserID: "owner", SessionID: "chat"}
+	person := queuedConversationTurn{ID: "person", UserID: "owner", SessionID: "chat", ComposerInput: true, SubmissionID: "typed"}
+	if head := conversationQueueHead([]queuedConversationTurn{waiting, incoming, person}, "owner", "chat", now); head.ID != "person" {
+		t.Fatalf("head=%s", head.ID)
+	}
+	if head := conversationQueueHead([]queuedConversationTurn{waiting, incoming}, "owner", "chat", now); head.ID != "waiting" {
+		t.Fatalf("incoming passed wait: %s", head.ID)
+	}
+	if head := conversationQueueHead([]queuedConversationTurn{waiting, incoming, person}, "owner", "chat", reset.Add(time.Second)); head.ID != "waiting" {
+		t.Fatalf("due retry skipped: %s", head.ID)
+	}
+}
