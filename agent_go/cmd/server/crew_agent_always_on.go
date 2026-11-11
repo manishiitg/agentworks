@@ -431,11 +431,21 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	if err != nil {
 		return "", err
 	}
-	if !strings.HasPrefix(macKey, binding.PeerProjectID+codeChatSideMarker) {
-		return "", fmt.Errorf("choose the standby agent's physical address")
-	}
-	key := roots.ID + strings.TrimPrefix(macKey, binding.PeerProjectID)
 	main.ConversationKey = crewOwnerMainChatKey(roots.ID)
+	key := ""
+	if macKey == binding.PeerProjectID {
+		// The optional Main role may still be explicitly shared. Never create
+		// an agent to satisfy this address after that role has been removed.
+		key = main.ConversationKey
+		if key == "" {
+			return "", errChooseProjectAgent
+		}
+	} else {
+		if !strings.HasPrefix(macKey, binding.PeerProjectID+codeChatSideMarker) {
+			return "", fmt.Errorf("choose the standby agent's physical address")
+		}
+		key = roots.ID + strings.TrimPrefix(macKey, binding.PeerProjectID)
+	}
 	store := defaultProductConversationRegistryStore()
 	path := productConversationRegistryPath(claims.UserID)
 	lock := productConversationRegistryMutex(path)

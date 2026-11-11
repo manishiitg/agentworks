@@ -51,7 +51,7 @@ func (api *StreamingAPI) crewHandoffProjectTemplate(ctx context.Context, claims 
 		return ProductConversationRecord{}, err
 	}
 	applyCrewNativeToolPolicy(&profile, true, binding.ProjectNativeAgentTools)
-	return ProductConversationRecord{ProfileID: profile.ID, WorkspacePath: binding.WorkspacePath, ResourceID: project, handoffAgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)}, nil
+	return ProductConversationRecord{ConversationKey: crewOwnerMainChatKey(project), ProfileID: profile.ID, WorkspacePath: binding.WorkspacePath, ResourceID: project, handoffAgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)}, nil
 }
 
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
