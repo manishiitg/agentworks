@@ -13,6 +13,9 @@ import (
 // One login-level metadata stream lets a helper wake saved dormant chats without
 // keeping a socket per dormant name. Bodies still require the exact attachment.
 func agentWakeClaims(ctx context.Context, claims *UserClaims) (*UserClaims, error) {
+	if _, err := appAgentLoginID(claims); err == nil {
+		return claims, nil
+	}
 	if claims == nil || claims.AccessToken == nil {
 		return nil, fmt.Errorf("agent connection required")
 	}
@@ -29,6 +32,16 @@ func agentWakeClaims(ctx context.Context, claims *UserClaims) (*UserClaims, erro
 // This never authorizes a body read, receipt, inspect or attachment.
 func agentWakeReceiver(ctx context.Context, live *UserClaims, a namedMessageAgent) *UserClaims {
 	if a.UserID != live.UserID {
+		return nil
+	}
+	if a.Attachment != nil && a.Attachment.DeliveryRoute == appAgentDeliveryRoute {
+		connection, err := appAgentLoginID(live)
+		if err == nil && a.Attachment.ConnectionID == connection {
+			return live
+		}
+		return nil
+	}
+	if live.AccessToken == nil {
 		return nil
 	}
 	if a.Attachment != nil {
@@ -59,6 +72,14 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 		externalError(w, 403, "attachment_refused", "Account messaging connection unavailable.")
 		return
 	}
+	appDevice := ""
+	if claims.AccessToken == nil {
+		appDevice = r.URL.Query().Get("device_id")
+		if appDevice == "" || len(appDevice) > 128 {
+			externalError(w, 400, "invalid_arguments", "Give this app's device identity.")
+			return
+		}
+	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		externalError(w, 500, "stream_unavailable", "Streaming is unavailable.")
@@ -80,6 +101,19 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 	if write(map[string]any{"type": "connected"}) != nil {
 		return
 	}
+	appPresence := map[string]*agentLiveStream{}
+	streamCtx, stop := context.WithCancel(r.Context())
+	defer stop()
+	r = r.WithContext(streamCtx)
+	defer func() {
+		agentLiveEvents.Lock()
+		defer agentLiveEvents.Unlock()
+		for id, stream := range appPresence {
+			if agentLiveEvents.online[id] == stream {
+				delete(agentLiveEvents.online, id)
+			}
+		}
+	}()
 	heartbeat := time.NewTicker(10 * time.Second)
 	defer heartbeat.Stop()
 	sent := map[string]int{}
@@ -96,10 +130,42 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 		if err != nil {
 			return
 		}
+		if connection, e := appAgentLoginID(live); e == nil {
+			current := map[string]bool{}
+			for _, a := range store.Agents {
+				if a.UserID != live.UserID || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.ConnectionID != connection || a.Attachment.DeviceID != appDevice {
+					continue
+				}
+				current[a.ID] = true
+				stream := appPresence[a.ID]
+				if stream == nil || stream.attachmentID != a.Attachment.ID {
+					stream = &agentLiveStream{attachmentID: a.Attachment.ID, cancel: stop}
+					agentLiveEvents.Lock()
+					old := agentLiveEvents.online[a.ID]
+					agentLiveEvents.online[a.ID] = stream
+					agentLiveEvents.Unlock()
+					if old != nil && old != appPresence[a.ID] && old.cancel != nil {
+						old.cancel()
+					}
+					appPresence[a.ID] = stream
+				}
+				recordNamedAgentActivity(r.Context(), a.ID, a.Attachment.ID, false)
+			}
+			for id, stream := range appPresence {
+				if !current[id] {
+					agentLiveEvents.Lock()
+					if agentLiveEvents.online[id] == stream {
+						delete(agentLiveEvents.online, id)
+					}
+					agentLiveEvents.Unlock()
+					delete(appPresence, id)
+				}
+			}
+		}
 		agents := map[string]namedMessageAgent{}
 		receivers := map[string]*UserClaims{}
 		for _, a := range store.Agents {
-			if a.UserID != live.UserID {
+			if a.UserID != live.UserID || (appDevice != "" && (a.Attachment == nil || a.Attachment.DeviceID != appDevice || a.Attachment.DeliveryRoute != appAgentDeliveryRoute)) {
 				continue
 			}
 			agents[a.ID] = a
