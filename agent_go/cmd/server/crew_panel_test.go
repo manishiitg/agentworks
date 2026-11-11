@@ -346,3 +346,22 @@ func TestCrewInboxSwitchIsOwnerOnlyAndPanelFollows(t *testing.T) {
 		t.Fatalf("row after on: %+v %v", row, err)
 	}
 }
+
+// PLAT-746-840: a known Crew's activity must not invalidate every expanded Crew.
+func TestSessionNoticeScopesKnownCrewAndKeepsUnknownRefresh(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	f.api.activeSessions = map[string]*ActiveSessionInfo{"known": {WorkspacePath: externalCommandCrewRoot}}
+	sub := livefeed.Default.Subscribe()
+	defer livefeed.Default.Unsubscribe(sub)
+	f.api.publishSessionChanged("known")
+	notices, resync := sub.Drain()
+	if resync || len(notices) != 1 || notices[0].Kind != livefeed.Sessions || notices[0].Project != "team" {
+		t.Fatalf("known Crew notice: %+v resync=%v", notices, resync)
+	}
+	f.api.publishSessionChanged("unknown")
+	notices, resync = sub.Drain()
+	if resync || len(notices) != 1 || notices[0].Project != "" || notices[0].Kind != livefeed.Sessions {
+		t.Fatalf("unknown session lost broad refresh: %+v resync=%v", notices, resync)
+	}
+}

@@ -67,7 +67,7 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 		}
 		log.Printf("[SDK_BACKGROUND] list session=%s tasks=%d closed=%s", sessionID, len(update.Tasks), update.Closed)
 		api.observeRuntimeSnapshot(sessionID)
-		publishSessionsChanged()
+		api.publishSessionChanged(sessionID)
 		if update.Closed == "finished" {
 			go api.followUpFinishedClaudeTasks(sessionID)
 		}

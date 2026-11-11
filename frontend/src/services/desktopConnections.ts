@@ -1,3 +1,4 @@
+import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 import { getDesktopApiBaseUrl, getAuthToken } from './api'
 import type { AuthUser } from './api'
 
@@ -7,7 +8,7 @@ export type DesktopInventory = { status: 'connected' | 'sign_in' | 'unavailable'
 
 export async function desktopRequest<T>(path = '', method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/desktop-connections${path}`, {
-    method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
+    method, headers: { ...admissionWindowHeaders(), Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }).catch(() => { throw new Error('Could not reach the local app. Check that the backend is running, then try again.') })
   if (!response.ok) {

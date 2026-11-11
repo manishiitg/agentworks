@@ -239,7 +239,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   // This network's chat changes arrive as live notices; another network's list is checked every minute.
   const here = connectionId === getRawActiveWorkspaceId()
   const [reload, setReload] = useState(0)
-  useLiveRefetch(() => setReload(value => value + 1), { kinds: ['sessions'], fallbackMs: 60_000, minIntervalMs: 5_000, enabled: expanded && here })
+  useLiveRefetch(() => setReload(value => value + 1), { kinds: ['sessions'], project: projectId, fallbackMs: 60_000, minIntervalMs: 5_000, enabled: expanded && here })
   useEffect(() => {
     if (!expanded) return
     let cancelled = false

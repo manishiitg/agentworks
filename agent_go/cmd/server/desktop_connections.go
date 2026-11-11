@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -524,6 +525,12 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 	results := make(chan result, 2)
 	for _, kind := range []string{"crew", "goal"} {
 		go func(kind string) {
+			started := time.Now()
+			defer func() {
+				if id := clientSwitchID(r); id != "" {
+					log.Printf("[SWITCH_INVENTORY] switch=%q kind=%s duration=%s", id, kind, time.Since(started).Round(time.Millisecond))
+				}
+			}()
 			path, method, body := "/api/workflows/manifests", "GET", ""
 			if kind == "crew" {
 				path, method, body = "/api/workspaces", "POST", `{"action":"list","detail":"navigation"}`
