@@ -258,7 +258,7 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	if len([]rune(title)) > 80 {
 		title = string([]rune(title)[:80]) + "…"
 	}
-	return localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: info.ModTime().UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}, true
+	return localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: localNativeLastMessageAt(path, info).UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}, true
 }
 
 func listLocalNativeSessions(ctx context.Context, project string, sources []localNativeSource, excluded map[string]bool) ([]localProjectNativeSession, bool) {
@@ -604,4 +604,58 @@ func localNativeChatNameRead(path string, source localNativeSource, id string, s
 		return strings.TrimSpace(firstNonEmptyTrimmed(custom, generated))
 	}
 	return ""
+}
+
+// localNativeLastMessageAt is when the chat last had a message: the newest "timestamp" in the transcript's tail
+// (Claude rows and Codex rows both carry one), so the list shows and sorts by real conversation time, not by
+// when the file was last touched (owner, 11 Nov). Cached with the file's size and time; falls back to the
+// file's modification time.
+var localNativeLastAtCache = struct {
+	sync.Mutex
+	m map[string]localNativeLastAtEntry
+}{m: map[string]localNativeLastAtEntry{}}
+
+type localNativeLastAtEntry struct {
+	size  int64
+	mtime time.Time
+	at    time.Time
+}
+
+func localNativeLastMessageAt(path string, info os.FileInfo) time.Time {
+	localNativeLastAtCache.Lock()
+	cached, ok := localNativeLastAtCache.m[path]
+	localNativeLastAtCache.Unlock()
+	if ok && cached.size == info.Size() && cached.mtime.Equal(info.ModTime()) {
+		return cached.at
+	}
+	at := info.ModTime()
+	if f, err := os.Open(path); err == nil {
+		const tail = 256 << 10
+		if info.Size() > tail {
+			_, _ = f.Seek(info.Size()-tail, io.SeekStart)
+		}
+		reader, latest := bufio.NewReaderSize(f, 64*1024), time.Time{}
+		for {
+			line, err := reader.ReadBytes('\n')
+			if i := bytes.Index(line, []byte(`"timestamp":"`)); i >= 0 {
+				rest := line[i+len(`"timestamp":"`):]
+				if j := bytes.IndexByte(rest, '"'); j > 0 {
+					if t, perr := time.Parse(time.RFC3339Nano, string(rest[:j])); perr == nil && t.After(latest) {
+						latest = t
+					}
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		f.Close()
+		if !latest.IsZero() {
+			at = latest
+		}
+	}
+	localNativeLastAtCache.Lock()
+	localNativeLastAtCache.m[path] = localNativeLastAtEntry{size: info.Size(), mtime: info.ModTime(), at: at}
+	localNativeLastAtCache.Unlock()
+	return at
 }
