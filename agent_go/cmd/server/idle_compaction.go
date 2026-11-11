@@ -453,11 +453,9 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	api.handleQuery(recorder, httpReq)
 	if recorder.status >= http.StatusBadRequest {
 		logSkip("turn_refused_" + strconv.Itoa(recorder.status))
-		if run.beforeQueued {
-			// Refused (a turn still held the chat): try again before the next queued message instead of waiting
-			// 10 minutes, so a busy chat over the mark still compacts in its next gap (PLAT-746-855).
-			compactBeforeQueuedAttempts.Delete(sessionID)
-		}
+		// Keep the pre-queue attempt timestamp on refusal too. Its completion
+		// kicks the queue immediately; clearing the cooldown here creates a
+		// tight retry loop while a competing turn still owns the session.
 		run.finish(llmtypes.IdleCompactResult{}, nil)
 		return
 	}

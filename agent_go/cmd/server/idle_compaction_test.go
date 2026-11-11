@@ -110,3 +110,34 @@ func TestQueuedCompactionDoesNotRefuseItsOwnReservationOrBacklog(t *testing.T) {
 		t.Fatal("the active compaction lane must still exclude competing turns")
 	}
 }
+
+// PLAT-746-880: a refused compaction used to erase its cooldown, so each
+// queue wake immediately tried again while the current reply was still running.
+func TestRefusedQueuedCompactionRetainsCooldownWhileTurnRuns(t *testing.T) {
+	const session = "compact-refusal-cooldown"
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	release, ok := api.tryLockSessionInputLane(session, 0)
+	if !ok {
+		t.Fatal("could not occupy input lane")
+	}
+	defer release()
+	run := newIdleCompactRun()
+	run.beforeQueued = true
+	if !api.reserveQueuedCompaction(session, run) {
+		t.Fatal("could not reserve racing compaction")
+	}
+	t.Cleanup(func() { idleCompacts.end(session, run); compactBeforeQueuedAttempts.Delete(session) })
+	api.runIdleCompaction(session, "person-1", idleCompactChat{personReq: QueryRequest{Query: "last message", AgentMode: "multi-agent"}}, 310000, 0, run)
+	if _, ok := compactBeforeQueuedAttempts.Load(session); !ok {
+		t.Fatal("refused attempt erased its cooldown")
+	}
+	attempts := 1
+	for i := 0; i < 1000; i++ {
+		if api.compactBeforeQueuedTurn(session) {
+			attempts++
+		}
+	}
+	if attempts != 1 {
+		t.Fatalf("running turn caused %d compaction attempts", attempts)
+	}
+}
