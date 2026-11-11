@@ -330,13 +330,7 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			continue // One caller's unreadable document must not block others.
 		}
 		api.noteConversationQueueReadState(sessionID, owner, nil)
-		var head queuedConversationTurn
-		for _, turn := range turns {
-			if turn.UserID == owner && turn.SessionID == sessionID && turn.StartedAt == nil && turn.DeliveryError == "" {
-				head = turn
-				break
-			}
-		}
+		head := conversationQueueHead(turns, owner, sessionID, time.Now())
 		if head.ID == "" {
 			// Keep the file lock through index cleanup: a concurrent enqueue
 			// must register again after we remove this empty membership.
@@ -446,8 +440,9 @@ func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, 
 		logTurnQueue("cannot read queue for %s: %v", userID, err)
 		return queuedConversationTurn{}, false
 	}
+	head := conversationQueueHead(turns, userID, sessionID, time.Now())
 	for i := range turns {
-		if turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" || (turns[i].RetryAt != nil && time.Now().Before(*turns[i].RetryAt)) {
+		if turns[i].ID != head.ID || turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" || (turns[i].RetryAt != nil && time.Now().Before(*turns[i].RetryAt)) {
 			continue
 		}
 		now := time.Now().UTC()
@@ -1230,6 +1225,8 @@ func dismissibleIncomingTurn(turn queuedConversationTurn) bool {
 		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message"
 }
 
+// Kicks and claims are idempotent: an old timer may wake after another queue watcher,
+// but the persisted StartedAt and the session drainer prevent duplicate dispatch.
 func (api *StreamingAPI) wakeConversationQueueAt(sessionID string, at time.Time) {
 	api.conversationTurnQueueMu.Lock()
 	if api.conversationTurnQueueWatching == nil {
@@ -1313,4 +1310,25 @@ func (api *StreamingAPI) deferIncomingQuotaTurn(ctx context.Context, turn queued
 		}
 	}
 	return fmt.Errorf("queued delivery no longer exists")
+}
+
+// A delayed incoming head preserves incoming order, but never blocks a person's new message.
+func conversationQueueHead(turns []queuedConversationTurn, owner, sessionID string, now time.Time) queuedConversationTurn {
+	var head queuedConversationTurn
+	for _, turn := range turns {
+		if turn.UserID != owner || turn.SessionID != sessionID || turn.StartedAt != nil || turn.DeliveryError != "" {
+			continue
+		}
+		if head.ID == "" {
+			head = turn
+			if turn.RetryAt == nil || !now.Before(*turn.RetryAt) {
+				return turn
+			}
+			continue
+		}
+		if personTypedQueuedTurn(turn) && (turn.RetryAt == nil || !now.Before(*turn.RetryAt)) {
+			return turn
+		}
+	}
+	return head
 }
