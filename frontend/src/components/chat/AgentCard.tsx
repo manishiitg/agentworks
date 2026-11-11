@@ -50,7 +50,7 @@ function AgentNowRow({ tabId, activity, presence }: { tabId: string; activity?: 
 function AgentRuntimeRows({ tabId }: { tabId: string }) {
   const meta = useChatStore(state => state.chatTabs[tabId]?.metadata)
   const providers = useLLMStore(state => state.providerManifest)
-  const provider = meta?.agentProfileChatProvider || meta?.agentProfileEngine
+  const provider = meta?.agentProfileEngine || meta?.agentProfileChatProvider
   const manifest = providers.find(item => item.id === provider)
   const program = manifest ? codingProviderName(manifest) : provider
   const model = meta?.agentProfileModelID
