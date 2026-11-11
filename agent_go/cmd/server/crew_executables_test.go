@@ -558,3 +558,37 @@ func TestCrewWorkflowRegistrationAllowsOnlyOneConcurrentCreate(t *testing.T) {
 		t.Fatalf("another Crew could not create its workflow: %v", err)
 	}
 }
+
+// PLAT-792: a missing code folder in a duplicate saved record broke the whole list.
+func TestCrewWorkflowListKeepsReadableScriptWhenAnotherRecordIsUnavailable(t *testing.T) {
+	svc, _, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Reports", Purpose: "Run reports", IdempotencyKey: "unavailable-script"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{projectActions: svc}
+	url := "/api/crew-executables?crew_id=" + crew.CrewID
+	created := httptest.NewRecorder()
+	api.handleCrewExecutables(created, httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"name":"Daily report","kind":"script"}`)).WithContext(ctx))
+	var good crewExecutableBinding
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &good) != nil {
+		t.Fatalf("create readable workflow: %d %s", created.Code, created.Body)
+	}
+	broken := crewExecutableBinding{ID: "missing-script", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/missing-script", Kind: "script"}
+	seedSavedCrewExecutableForTest(t, broken)
+	if _, _, err := ReadWorkflowManifest(ctx, broken.Root); err == nil || !strings.Contains(err.Error(), "saved script is unavailable") {
+		t.Fatalf("fixture must reproduce missing script, got %v", err)
+	}
+	listed := httptest.NewRecorder()
+	api.handleCrewExecutables(listed, httptest.NewRequest(http.MethodGet, url, nil).WithContext(ctx))
+	var response struct {
+		Executables []crewExecutableBinding `json:"executables"`
+	}
+	if listed.Code != http.StatusOK || json.Unmarshal(listed.Body.Bytes(), &response) != nil || len(response.Executables) != 1 || response.Executables[0].ID != good.ID {
+		t.Fatalf("readable workflow must remain visible: %d %s", listed.Code, listed.Body)
+	}
+	if binding, err := findCrewExecutable(broken.Root); err != nil || binding == nil {
+		t.Fatalf("listing must not delete the unavailable binding: %v", err)
+	}
+}
