@@ -32,6 +32,14 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
 		t.Fatal(err)
 	}
+	team, err := readCrewTeam("p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	team.Agents = crewTeamAgentFixtures("p", map[string]map[string]bool{"owner": {"own01": false, "main": true, "team01": true}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
 	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", Address: "public-agent", AgentBridgePublic: true}, {Tab: "own01", Name: "Private helper", Address: "own-helper", ConversationID: "own-conversation"}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
