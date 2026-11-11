@@ -1,5 +1,6 @@
 import React from 'react'
 import { Loader2 } from 'lucide-react'
+import { isIncomingQueuedMessage } from '../../utils/queuedMessageDelivery'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
@@ -9,7 +10,7 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const controls = useQueuedMessageControlsStore(state => sessionId ? state.bySession[sessionId] : undefined)
   const message = clientId ? controls?.messages[clientId] : undefined
-  if (!controls || !message?.message_id) return null
+  if (!controls || !message?.message_id || isIncomingQueuedMessage(message)) return null
   const refreshing = Boolean(message.refreshing && !message.delivery_error)
   const pending = Boolean(message.steering || controls.busyMessageId === message.message_id)
   const disabled = pending || Boolean(controls.busyMessageId)
@@ -45,14 +46,14 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
 
-/** A queued message from another agent renders as its own card on the agent side; its controls sit on one line under that card. */
+/** Incoming agent cards show queue status without composer actions. */
 export const QueuedInboxControls: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const queued = useQueuedMessageControlsStore(state => Boolean(sessionId && clientId && state.bySession[sessionId]?.messages[clientId]))
   if (!queued) return null
   return (
     <div className="-mt-1 mb-2 flex flex-col items-start gap-0.5 text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5 text-[11px]"><span className="text-amber-500">Waiting in line</span><QueuedMessageControls sessionId={sessionId} metadata={metadata} /></span>
+      <span className="inline-flex items-center gap-1.5 text-[11px]"><span className="text-amber-500">Waiting in line</span></span>
       <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
     </div>
   )

@@ -38,3 +38,8 @@ export function splitQueuedMessages(messages: string[], autoNotificationPrefix: 
     auto: messages.filter(message => message.startsWith(autoNotificationPrefix)),
   }
 }
+
+/** Server-attributed incoming agent messages show status, not composer actions. */
+export function isIncomingQueuedMessage(message: { display_metadata?: Record<string, unknown> }): boolean {
+  return message.display_metadata?.source === 'agent_message'
+}
