@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,29 +67,6 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	if err != nil {
 		return err
 	}
-	// Repair only the known imported-Main duplication from the initial cutover.
-	// Main keeps its identity and settings. Conflicting settings need an explicit repair.
-	removed := []string{}
-	mainByChat := map[string]crewTeamRegisteredAgent{}
-	for _, a := range current.Agents {
-		if a.Tab == macMainTab {
-			key := a.OwnerID + "/" + a.ChatKey
-			if _, exists := mainByChat[key]; exists {
-				return fmt.Errorf("Team registry has duplicate Main agents")
-			}
-			mainByChat[key] = a
-		}
-	}
-	for id, a := range current.Agents {
-		main, exists := mainByChat[a.OwnerID+"/"+a.ChatKey]
-		if exists && a.Tab != macMainTab && strings.HasPrefix(a.Tab, "imported-") && a.ChatKey == current.ProjectID+codeChatSideMarker+a.Tab {
-			if a.InTeam != main.InTeam || a.Rule != main.Rule {
-				return fmt.Errorf("Team duplicate agent settings disagree")
-			}
-			delete(current.Agents, id)
-			removed = append(removed, id)
-		}
-	}
 	bySource := map[string]string{}
 	byChat := map[string]string{}
 	for id, a := range current.Agents {
@@ -148,13 +124,7 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
 		return err
 	}
-	if err := fsutil.WriteJSONAtomic(filename, current, 0600); err != nil {
-		return err
-	}
-	for _, id := range removed {
-		log.Printf("[CREW_TEAM] project=%s event=duplicate_imported_main_removed agent=%s", current.ProjectID, id)
-	}
-	return nil
+	return fsutil.WriteJSONAtomic(filename, current, 0600)
 }
 
 // Native keys are accepted only inside the transport/discovery adapter. Team

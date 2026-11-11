@@ -173,30 +173,11 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err := checkCrewTeamRegistries(io.Discard); err == nil {
 		t.Fatal("checker accepted duplicate owner/chat binding")
 	}
-	if err := assignCrewTeamAgentIDs(saved, people); err != nil {
-		t.Fatal(err)
-	}
-	repaired, err := readCrewTeam("team")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(repaired.Agents) != 1 || repaired.Agents[mainID].ID != mainID || repaired.Agents[mainID].InTeam || repaired.Agents[mainID].Rule != main.Rule {
-		t.Fatal("repair did not preserve converted Main and its settings")
-	}
-	if err := checkCrewTeamRegistries(io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	// An ambiguous privacy conflict must never silently widen access.
-	duplicate.InTeam = true
-	repaired.Agents[dupID] = duplicate
-	if err := fsutil.WriteJSONAtomic(file, repaired, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := assignCrewTeamAgentIDs(repaired, people); err == nil {
-		t.Fatal("conflicting duplicate privacy accepted")
+	if err := assignCrewTeamAgentIDs(saved, people); err == nil {
+		t.Fatal("registry accepted duplicate owner/chat binding")
 	}
 	unchanged, err := readCrewTeam("team")
-	if err != nil || len(unchanged.Agents) != 2 {
-		t.Fatal("refused repair changed saved registry")
+	if err != nil || len(unchanged.Agents) != 2 || unchanged.Agents[mainID] != saved.Agents[mainID] || unchanged.Agents[dupID] != duplicate {
+		t.Fatal("refused duplicate registry write changed identities or settings")
 	}
 }
