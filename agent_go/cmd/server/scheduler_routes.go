@@ -718,6 +718,9 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 			ownerID := productWorkspaceUserID(r.Context())
 			chatKey, err := projectScheduleChatKey(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, req.ChatID)
+			if err == nil && req.TargetWorkflowID == "" && !destination.Isolated && chatKey == "" {
+				err = fmt.Errorf("choose an agent or give this schedule its own chat")
+			}
 			if err == nil && chatKey != "" && destination.Isolated {
 				err = fmt.Errorf("a schedule with its own or a new conversation does not use chat_id; choose chat_id or run_destination %s or %s", runDestinationNew, runDestinationIsolated)
 			}
