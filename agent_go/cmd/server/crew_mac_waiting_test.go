@@ -146,11 +146,22 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	store.Conversations[2].Endpoints[1].ChatKey = ownKey
 	store.Conversations[2].Endpoints[1].Mode = "builder"
+	store.Conversations[2].Endpoints[1].NetworkPairID = "pair"
+	store.Conversations[2].Endpoints[1].NetworkConversationID = "own-conversation"
+	store.Conversations[2].Endpoints[1].NetworkTab = "own01"
+	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: "own01", ConversationID: "own-conversation"}}})
+	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00owner") })
 	if err := saveAgentMessageStore(t.Context(), store); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range store.Conversations {
-		if err := f.api.deliverToMacSharedAgent(t.Context(), c, c.Messages[0], c.Endpoints[0], c.Endpoints[1]); err != nil {
+		var err error
+		if c.Endpoints[0].UserID == "owner" {
+			err = f.api.deliverCrewNetworkReply(t.Context(), c, c.Messages[0], c.Endpoints[0], c.Endpoints[1])
+		} else {
+			err = f.api.deliverToMacSharedAgent(t.Context(), c, c.Messages[0], c.Endpoints[0], c.Endpoints[1])
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -186,7 +197,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		t.Fatal(err)
 	}
 	// The Team list reads the Mac's tabs once it is back, and nobody answers this fixture's Mac until the loop below.
-	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now()})
+	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: "own01", ConversationID: "own-conversation"}}})
 	commands := make(chan crewRelayMessage, 8)
 	sock, err := f.api.crewRelayRegister(t.Context(), &UserClaims{UserID: "owner", Username: "owner"}, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: "team", Pair: "pair"}}}, func(m crewRelayMessage) error { commands <- m; return nil }, nil)
 	if err != nil {
