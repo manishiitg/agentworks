@@ -14,8 +14,6 @@ import (
 )
 
 var (
-	reportHTMLIDPattern                = regexp.MustCompile(`(?i)\bid\s*=\s*["']([^"']+)["']`)
-	reportHTMLImmediateDOMWritePattern = regexp.MustCompile(`(?s)document\.getElementById\(\s*["']([^"']+)["']\s*\)\s*\.\s*(?:innerHTML|textContent|style|className|value)\b`)
 
 	// window.report.query('...') / ("...") / (`...`). Only literal SQL is
 	// checked; a query built from variables or a template with ${} is reported
@@ -187,11 +185,6 @@ var (
 	reportScriptTypePattern    = regexp.MustCompile(`(?i)(?:^|\s)type\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
 	reportInlineHandlerPattern = regexp.MustCompile(`(?i)\son[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 	reportJSProtocolPattern    = regexp.MustCompile(`(?i)\bhref\s*=\s*(?:"\s*javascript:([^"]*)"|'javascript:([^']*)')`)
-	reportHTMLClosePattern     = regexp.MustCompile(`(?i)</html\s*>`)
-	reportLinkTagPattern       = regexp.MustCompile(`(?i)<link\b([^>]*)>`)
-	reportLinkHrefPattern      = regexp.MustCompile(`(?i)(?:^|\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
-	reportLinkRelPattern       = regexp.MustCompile(`(?i)(?:^|\s)rel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
-	reportBaseTagPattern       = regexp.MustCompile(`(?i)<base\b`)
 )
 
 func reportFirstNonEmpty(values ...string) string {
@@ -243,7 +236,7 @@ func reportScriptBlocks(content string) []reportScriptBlock {
 
 // reportHandlerCode is executable JS outside <script> blocks: inline event
 // handler attributes (onclick="...") and javascript: hrefs. It runs on user
-// interaction, so it is always deferred -- but its calls must still resolve.
+// interaction; platform method calls use the same host contract.
 type reportHandlerCode struct {
 	code   string
 	offset int
@@ -292,10 +285,6 @@ type reportJSStripper struct {
 
 func isReportJSIdentChar(c byte) bool {
 	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
-}
-
-func isReportJSIdentStart(c byte) bool {
-	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 func isReportSpace(c byte) bool {
@@ -542,390 +531,6 @@ func (s *reportJSStripper) onlySpaceSinceLineStart(i int) bool {
 	return true
 }
 
-// reportJSSpan is a [start, end) byte range of stripped report code.
-type reportJSSpan struct{ start, end int }
-
-// reportMatchBracket matches the bracket at s[open] to its closer. The input
-// is stripped code, so only code brackets remain and a depth count suffices.
-func reportMatchBracket(s string, open int) (int, bool) {
-	depth := 0
-	for i := open; i < len(s); i++ {
-		switch s[i] {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			depth--
-			if depth == 0 {
-				return i + 1, true
-			}
-		}
-	}
-	return 0, false
-}
-
-func reportMatchBracketBack(s string, close int) (int, bool) {
-	depth := 0
-	for i := close; i >= 0; i-- {
-		switch s[i] {
-		case ')', ']', '}':
-			depth++
-		case '(', '[', '{':
-			depth--
-			if depth == 0 {
-				return i, true
-			}
-		}
-	}
-	return 0, false
-}
-
-// reportJSBodySpans returns the function and arrow bodies in stripped code. A
-// DOM write inside one runs when the function is called, not when the block
-// parses, so ordering checks only apply outside these spans.
-func reportJSBodySpans(stripped string) []reportJSSpan {
-	var spans []reportJSSpan
-	for _, loc := range reportJSFunctionKwPattern.FindAllStringIndex(stripped, -1) {
-		i := loc[1]
-		for i < len(stripped) && (isReportSpace(stripped[i]) || stripped[i] == '*') {
-			i++
-		}
-		for i < len(stripped) && isReportJSIdentChar(stripped[i]) {
-			i++
-		}
-		for i < len(stripped) && isReportSpace(stripped[i]) {
-			i++
-		}
-		if i >= len(stripped) || stripped[i] != '(' {
-			continue
-		}
-		end, ok := reportMatchBracket(stripped, i)
-		if !ok {
-			continue
-		}
-		j := end
-		for j < len(stripped) && isReportSpace(stripped[j]) {
-			j++
-		}
-		if j >= len(stripped) || stripped[j] != '{' {
-			continue
-		}
-		if bodyEnd, ok := reportMatchBracket(stripped, j); ok {
-			spans = append(spans, reportJSSpan{start: j, end: bodyEnd})
-		}
-	}
-	for idx := 0; idx < len(stripped); {
-		next := strings.Index(stripped[idx:], "=>")
-		if next < 0 {
-			break
-		}
-		arrow := idx + next
-		idx = arrow + 2
-		j := arrow + 2
-		for j < len(stripped) && isReportSpace(stripped[j]) {
-			j++
-		}
-		if j < len(stripped) && stripped[j] == '{' {
-			if end, ok := reportMatchBracket(stripped, j); ok {
-				spans = append(spans, reportJSSpan{start: j, end: end})
-			}
-			continue
-		}
-		spans = append(spans, reportJSSpan{start: j, end: reportArrowExprEnd(stripped, j)})
-	}
-	return spans
-}
-
-func reportArrowExprEnd(s string, start int) int {
-	depth := 0
-	for k := start; k < len(s); k++ {
-		switch s[k] {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			depth--
-			if depth < 0 {
-				return k
-			}
-		case ';', ',':
-			if depth == 0 {
-				return k
-			}
-		}
-	}
-	return len(s)
-}
-
-func reportSpanContains(spans []reportJSSpan, offset int) bool {
-	for _, span := range spans {
-		if offset >= span.start && offset < span.end {
-			return true
-		}
-	}
-	return false
-}
-
-var (
-	reportJSFunctionKwPattern     = regexp.MustCompile(`\bfunction\b`)
-	reportJSFuncDefPattern        = regexp.MustCompile(`\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)`)
-	reportJSVarDefPattern         = regexp.MustCompile(`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)`)
-	reportJSVarDestructurePattern = regexp.MustCompile(`\b(?:const|let|var)\s*([{\[])`)
-	reportJSVarRestPattern        = regexp.MustCompile(`,\s*([A-Za-z_$][\w$]*)\s*=`)
-	reportJSAssignDefPattern      = regexp.MustCompile(`(?:^|[^\w$.'"])([A-Za-z_$][\w$]*)\s*=\s*[^=]`)
-	reportJSCatchPattern          = regexp.MustCompile(`\bcatch\s*\(\s*([A-Za-z_$][\w$]*)`)
-	reportJSClassPattern          = regexp.MustCompile(`\bclass\s+([A-Za-z_$][\w$]*)`)
-	reportJSWindowAssignPattern   = regexp.MustCompile(`\b(?:window|globalThis|self)\s*\.\s*([A-Za-z_$][\w$]*)\s*=`)
-	reportJSImportNamedPattern    = regexp.MustCompile(`\bimport\s*\{([^}]*)\}`)
-	reportJSImportDefaultPattern  = regexp.MustCompile(`\bimport\s+([A-Za-z_$][\w$]*)`)
-	reportJSImportStarPattern     = regexp.MustCompile(`\bimport\s*\*\s*as\s+([A-Za-z_$][\w$]*)`)
-	reportJSIdentPattern          = regexp.MustCompile(`[A-Za-z_$][\w$]*`)
-)
-
-// reportJSCallKeywords look like calls (name followed by a paren) but are
-// statements, operators, or declarations.
-var reportJSCallKeywords = map[string]bool{
-	"if": true, "for": true, "while": true, "switch": true, "catch": true,
-	"function": true, "return": true, "typeof": true, "instanceof": true,
-	"in": true, "of": true, "new": true, "delete": true, "void": true,
-	"do": true, "else": true, "with": true, "await": true, "yield": true,
-	"import": true, "super": true, "case": true, "default": true, "extends": true,
-	"debugger": true,
-}
-
-// reportCollectJSDefinitions gathers every name the stripped code defines:
-// declarations, assignments (globals in a classic script), parameters, catch
-// bindings, classes, window assignments, and imports. When in doubt it
-// defines: an extra definition hides at most one error, a missed one invents
-// one.
-func reportCollectJSDefinitions(stripped string, defined map[string]bool) {
-	add := func(name string) {
-		if name != "" {
-			defined[name] = true
-		}
-	}
-	for _, m := range reportJSFuncDefPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSVarDefPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSVarRestPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSAssignDefPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSCatchPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSClassPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSWindowAssignPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSImportNamedPattern.FindAllStringSubmatch(stripped, -1) {
-		for _, part := range strings.Split(m[1], ",") {
-			fields := strings.Fields(part)
-			switch {
-			case len(fields) == 3 && fields[1] == "as":
-				add(fields[2])
-			case len(fields) == 1:
-				add(fields[0])
-			}
-		}
-	}
-	for _, m := range reportJSImportDefaultPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	for _, m := range reportJSImportStarPattern.FindAllStringSubmatch(stripped, -1) {
-		add(m[1])
-	}
-	// Destructuring declarations: every identifier inside is usable.
-	for _, loc := range reportJSVarDestructurePattern.FindAllStringSubmatchIndex(stripped, -1) {
-		if end, ok := reportMatchBracket(stripped, loc[2]); ok {
-			for _, name := range reportJSIdentPattern.FindAllString(stripped[loc[2]:end], -1) {
-				add(name)
-			}
-		}
-	}
-	reportCollectJSParams(stripped, add)
-}
-
-func reportCollectJSParams(stripped string, add func(string)) {
-	for _, loc := range reportJSFunctionKwPattern.FindAllStringIndex(stripped, -1) {
-		i := loc[1]
-		for i < len(stripped) && (isReportSpace(stripped[i]) || stripped[i] == '*') {
-			i++
-		}
-		for i < len(stripped) && isReportJSIdentChar(stripped[i]) {
-			i++
-		}
-		for i < len(stripped) && isReportSpace(stripped[i]) {
-			i++
-		}
-		if i >= len(stripped) || stripped[i] != '(' {
-			continue
-		}
-		if end, ok := reportMatchBracket(stripped, i); ok {
-			reportDefineParamList(stripped[i+1:end-1], add)
-		}
-	}
-	for idx := 0; idx < len(stripped); {
-		next := strings.Index(stripped[idx:], "=>")
-		if next < 0 {
-			break
-		}
-		arrow := idx + next
-		idx = arrow + 2
-		j := arrow - 1
-		for j >= 0 && isReportSpace(stripped[j]) {
-			j--
-		}
-		if j < 0 {
-			continue
-		}
-		if stripped[j] == ')' {
-			if open, ok := reportMatchBracketBack(stripped, j); ok {
-				reportDefineParamList(stripped[open+1:j], add)
-			}
-			continue
-		}
-		k := j
-		for k >= 0 && isReportJSIdentChar(stripped[k]) {
-			k--
-		}
-		add(stripped[k+1 : j+1])
-	}
-}
-
-func reportDefineParamList(params string, add func(string)) {
-	depth := 0
-	start := 0
-	flush := func(end int) {
-		part := strings.TrimSpace(params[start:end])
-		start = end + 1
-		if part == "" {
-			return
-		}
-		cut := len(part)
-		d := 0
-		for i := 0; i < len(part) && cut == len(part); i++ {
-			switch part[i] {
-			case '(', '[', '{':
-				d++
-			case ')', ']', '}':
-				d--
-			case '=':
-				if d == 0 {
-					cut = i
-				}
-			}
-		}
-		head := strings.TrimSpace(part[:cut])
-		head = strings.TrimPrefix(head, "...")
-		if head == "" {
-			return
-		}
-		if head[0] == '{' || head[0] == '[' {
-			for _, name := range reportJSIdentPattern.FindAllString(head, -1) {
-				add(name)
-			}
-			return
-		}
-		if isReportJSIdentStart(head[0]) {
-			i := 1
-			for i < len(head) && isReportJSIdentChar(head[i]) {
-				i++
-			}
-			add(head[:i])
-		}
-	}
-	for i := 0; i < len(params); i++ {
-		switch params[i] {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			depth--
-		case ',':
-			if depth == 0 {
-				flush(i)
-			}
-		}
-	}
-	flush(len(params))
-}
-
-// reportJSCall is a bare `name(` in stripped code: not a method call, not the
-// tail of a longer identifier.
-type reportJSCall struct {
-	name  string
-	paren int
-}
-
-func reportJSCalls(stripped string) []reportJSCall {
-	var calls []reportJSCall
-	for i := 0; i < len(stripped); i++ {
-		if stripped[i] != '(' {
-			continue
-		}
-		j := i - 1
-		for j >= 0 && isReportSpace(stripped[j]) {
-			j--
-		}
-		k := j
-		for k >= 0 && isReportJSIdentChar(stripped[k]) {
-			k--
-		}
-		name := stripped[k+1 : j+1]
-		if name == "" || !isReportJSIdentStart(name[0]) {
-			continue
-		}
-		if k >= 0 && stripped[k] == '.' {
-			continue
-		}
-		calls = append(calls, reportJSCall{name: name, paren: i})
-	}
-	return calls
-}
-
-// reportIsAsyncArrow reports whether `async (` at paren opens an async arrow
-// function's parameter list: the matching closer is followed by =>. A bare
-// `async` is never a real call, but a user-defined async() still resolves
-// through the normal defined set.
-func reportIsAsyncArrow(stripped string, paren int) bool {
-	end, ok := reportMatchBracket(stripped, paren)
-	if !ok {
-		return false
-	}
-	for end < len(stripped) && isReportSpace(stripped[end]) {
-		end++
-	}
-	return end+1 < len(stripped) && stripped[end] == '=' && stripped[end+1] == '>'
-}
-
-// reportMethodBody reports whether the call at paren is really a method,
-// getter, or setter definition (its argument list is followed by a body
-// block) and, if so, that body span. A genuine call is never directly
-// followed by a block in agent-authored code.
-func reportMethodBody(stripped string, paren int) (reportJSSpan, bool) {
-	end, ok := reportMatchBracket(stripped, paren)
-	if !ok {
-		return reportJSSpan{}, false
-	}
-	j := end
-	for j < len(stripped) && isReportSpace(stripped[j]) {
-		j++
-	}
-	if j >= len(stripped) || stripped[j] != '{' {
-		return reportJSSpan{}, false
-	}
-	bodyEnd, ok := reportMatchBracket(stripped, j)
-	if !ok {
-		return reportJSSpan{}, false
-	}
-	return reportJSSpan{start: j, end: bodyEnd}, true
-}
-
 // reportKnownReportMethods mirrors the win.report object installReportHost
 // builds (reportHostRuntime.ts): every method a report may call. workspacePath
 // and theme are properties, not calls, so they are not listed.
@@ -940,207 +545,40 @@ var reportKnownReportMethods = []string{
 var (
 	reportJSWindowReportCallPattern = regexp.MustCompile(`\bwindow\s*\.\s*report\s*\.\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)?)\s*\(`)
 	reportJSBareReportCallPattern   = regexp.MustCompile(`(?:^|[^\w$.])report\s*\.\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)?)\s*\(`)
-	reportJSReadyArgPattern         = regexp.MustCompile(`\bready\(\s*([A-Za-z_$][\w$]*)\s*\)`)
-	reportJSListenerArgPattern      = regexp.MustCompile(`\baddEventListener\(\s*[^,()]*,\s*([A-Za-z_$][\w$]*)\s*[,)]`)
-	reportJSTimerArgPattern         = regexp.MustCompile(`\b(?:setTimeout|setInterval|requestAnimationFrame|queueMicrotask)\(\s*([A-Za-z_$][\w$]*)\s*[,)]`)
-	reportJSThenArgPattern          = regexp.MustCompile(`\.(?:then|catch|finally)\(\s*([A-Za-z_$][\w$]*)\s*[,)]`)
-	reportJSArrayArgPattern         = regexp.MustCompile(`\.(?:map|filter|forEach|find|findIndex|findLast|some|every|reduce|reduceRight|sort)\(\s*([A-Za-z_$][\w$]*)\s*[,)]`)
-	reportJSImportWordPattern       = regexp.MustCompile(`(?:^|[^\w$.])import\b`)
-	reportJSExportWordPattern       = regexp.MustCompile(`(?:^|[^\w$.])export\b`)
 )
 
-type reportDOMWrite struct {
-	id    string
-	start int
-}
-
-// reportDOMWrites finds immediate document.getElementById('...').<sink>
-// writes in raw code, skipping matches that sit inside a string literal or
-// comment (blank in the stripped twin).
-func reportDOMWrites(raw, stripped string) []reportDOMWrite {
-	var out []reportDOMWrite
-	for _, loc := range reportHTMLImmediateDOMWritePattern.FindAllStringSubmatchIndex(raw, -1) {
-		if loc[0] < len(stripped) && stripped[loc[0]] == ' ' {
-			continue
-		}
-		out = append(out, reportDOMWrite{id: raw[loc[2]:loc[3]], start: loc[0]})
-	}
-	return out
-}
-
-func reportIDOffsets(content string) map[string][]int {
-	ids := map[string][]int{}
-	for _, loc := range reportHTMLIDPattern.FindAllStringSubmatchIndex(content, -1) {
-		id := content[loc[2]:loc[3]]
-		ids[id] = append(ids[id], loc[0])
-	}
-	return ids
-}
-
-// reportJSUnit is one executable JS fragment: an inline <script> body or an
-// inline handler attribute, with its stripped twin (same length, so offsets
-// match) and its absolute document offset for line numbers.
-type reportJSUnit struct {
-	raw      string
-	stripped string
-	base     int
-	handler  bool
-}
-
-// validateReportJS checks the report's executable JavaScript: block shape,
-// DOM-write targets and their ordering, calls to undefined functions, unknown
-// window.report methods, and callback references. Library/loading choices are
-// advisory because preview_report is the authoritative browser check.
-func validateReportJS(content string, blocks []reportScriptBlock) (errors, warnings []string, scriptCount int) {
-	var units []reportJSUnit
-	hasExternalScript := false
+// validateReportHostCalls checks only the injected platform API. JavaScript
+// syntax, names, callbacks and DOM behavior belong to the compiler/browser.
+func validateReportHostCalls(content string, blocks []reportScriptBlock) []string {
+	var fragments []reportHandlerCode
 	for _, b := range blocks {
-		if !b.closed {
-			errors = append(errors, fmt.Sprintf("script block opened at line %d is never closed with </script>; the rest of the document is swallowed as code", reportLineNumber(content, b.openStart)))
-			continue
+		if !b.hasSrc && !b.data {
+			fragments = append(fragments, reportHandlerCode{code: b.code, offset: b.codeStart})
 		}
-		if b.hasSrc {
-			hasExternalScript = true
-			if lower := strings.ToLower(strings.TrimSpace(b.src)); !strings.HasPrefix(lower, "http") && !strings.HasPrefix(lower, "data:") {
-				warnings = append(warnings, fmt.Sprintf("script src %q (line %d) is not an absolute HTTPS/data URL; validate its resolution in preview_report", b.src, reportLineNumber(content, b.openStart)))
-			}
-			continue
-		}
-		if b.data {
-			continue
-		}
-		stripped, unterminated := stripReportJS(b.code)
-		if unterminated {
-			errors = append(errors, fmt.Sprintf("script block ending at line %d ends inside a string or comment; a \"</script>\" inside a string ends the block early -- write it as <\\/script>", reportLineNumber(content, b.codeEnd)))
-		}
-		units = append(units, reportJSUnit{raw: b.code, stripped: stripped, base: b.codeStart})
 	}
-	for _, h := range reportInlineHandlerCode(content) {
-		stripped, _ := stripReportJS(h.code)
-		units = append(units, reportJSUnit{raw: h.code, stripped: stripped, base: h.offset, handler: true})
+	fragments = append(fragments, reportInlineHandlerCode(content)...)
+	known := map[string]bool{}
+	for _, method := range reportKnownReportMethods {
+		known[method] = true
 	}
-
-	defined := map[string]bool{}
-	for _, u := range units {
-		reportCollectJSDefinitions(u.stripped, defined)
-	}
-	knownReport := map[string]bool{}
-	for _, m := range reportKnownReportMethods {
-		knownReport[m] = true
-	}
-	line := func(u reportJSUnit, rel int) int {
-		return reportLineNumber(content, u.base+rel)
-	}
-	resolved := func(name string) bool {
-		return defined[name] || reportJSGlobals[name]
-	}
-
-	seenCall := map[string]bool{}
-	seenReportMethod := map[string]bool{}
-	seenCallback := map[string]bool{}
-	seenMissingID := map[string]bool{}
-	seenOrderID := map[string]bool{}
-	seenModule := map[string]bool{}
-	ids := reportIDOffsets(content)
-
-	for _, u := range units {
-		spans := reportJSBodySpans(u.stripped)
-		for _, call := range reportJSCalls(u.stripped) {
-			if reportJSCallKeywords[call.name] || resolved(call.name) {
-				continue
-			}
-			if call.name == "async" && reportIsAsyncArrow(u.stripped, call.paren) {
-				continue
-			}
-			if span, ok := reportMethodBody(u.stripped, call.paren); ok {
-				spans = append(spans, span)
-				continue
-			}
-			if seenCall[call.name] {
-				continue
-			}
-			seenCall[call.name] = true
-			if hasExternalScript {
-				warnings = append(warnings, fmt.Sprintf("call to %q (line %d) is not defined inline and may be supplied by an external script; preview the report to verify the CDN library loaded", call.name, line(u, call.paren)))
-			} else {
-				errors = append(errors, fmt.Sprintf("calls undefined function %q (line %d); define it in a <script> block, fix the spelling, or remove the call", call.name, line(u, call.paren)))
-			}
-		}
+	seen := map[string]bool{}
+	var errors []string
+	for _, fragment := range fragments {
+		// Ignore method-looking text in comments and literals; this scanner
+		// is only for finding host calls, never for judging JS validity.
+		stripped, _ := stripReportJS(fragment.code)
 		for _, re := range []*regexp.Regexp{reportJSWindowReportCallPattern, reportJSBareReportCallPattern} {
-			for _, loc := range re.FindAllStringSubmatchIndex(u.stripped, -1) {
-				method := strings.Join(strings.Fields(u.stripped[loc[2]:loc[3]]), "")
-				if knownReport[method] || seenReportMethod[method] {
+			for _, loc := range re.FindAllStringSubmatchIndex(stripped, -1) {
+				method := strings.Join(strings.Fields(stripped[loc[2]:loc[3]]), "")
+				if known[method] || seen[method] {
 					continue
 				}
-				seenReportMethod[method] = true
-				errors = append(errors, fmt.Sprintf("window.report.%s does not exist (line %d); available methods: %s", method, line(u, loc[2]), strings.Join(reportKnownReportMethods, ", ")))
+				seen[method] = true
+				errors = append(errors, fmt.Sprintf("window.report.%s does not exist (line %d); available methods: %s", method, reportLineNumber(content, fragment.offset+loc[2]), strings.Join(reportKnownReportMethods, ", ")))
 			}
-		}
-		for _, re := range []*regexp.Regexp{reportJSReadyArgPattern, reportJSListenerArgPattern, reportJSTimerArgPattern, reportJSThenArgPattern, reportJSArrayArgPattern} {
-			for _, loc := range re.FindAllStringSubmatchIndex(u.stripped, -1) {
-				name := u.stripped[loc[2]:loc[3]]
-				if resolved(name) || seenCallback[name] {
-					continue
-				}
-				seenCallback[name] = true
-				if hasExternalScript {
-					warnings = append(warnings, fmt.Sprintf("callback %q (line %d) is not defined inline and may be supplied by an external script; preview the report to verify the CDN library loaded", name, line(u, loc[2])))
-				} else {
-					errors = append(errors, fmt.Sprintf("passes undefined function %q as a callback (line %d); define it or fix the spelling", name, line(u, loc[2])))
-				}
-			}
-		}
-		for _, loc := range reportJSImportWordPattern.FindAllStringIndex(u.stripped, -1) {
-			if seenModule["import"] {
-				break
-			}
-			j := loc[1]
-			for j < len(u.stripped) && isReportSpace(u.stripped[j]) {
-				j++
-			}
-			if j < len(u.stripped) && u.stripped[j] == '.' {
-				continue // import.meta
-			}
-			seenModule["import"] = true
-			warnings = append(warnings, fmt.Sprintf("ES module import found (line %d); validate module resolution and CORS in preview_report", line(u, loc[0])))
-		}
-		for _, loc := range reportJSExportWordPattern.FindAllStringIndex(u.stripped, -1) {
-			if seenModule["export"] {
-				break
-			}
-			seenModule["export"] = true
-			warnings = append(warnings, fmt.Sprintf("ES module export found (line %d); validate module execution in preview_report", line(u, loc[0])))
-		}
-		for _, write := range reportDOMWrites(u.raw, u.stripped) {
-			offsets, ok := ids[write.id]
-			if !ok {
-				if !seenMissingID[write.id] {
-					seenMissingID[write.id] = true
-					errors = append(errors, fmt.Sprintf("script writes to missing element id %q; update the script or restore that element", write.id))
-				}
-				continue
-			}
-			if u.handler || seenOrderID[write.id] || reportSpanContains(spans, write.start) {
-				continue
-			}
-			// An immediate write runs when the block parses: the element must
-			// already exist above it. Writes inside functions run on call.
-			abs := u.base + write.start
-			definedAbove := false
-			for _, off := range offsets {
-				if off < abs {
-					definedAbove = true
-					break
-				}
-			}
-			if definedAbove {
-				continue
-			}
-			seenOrderID[write.id] = true
-			errors = append(errors, fmt.Sprintf("script writes to element id %q before that element appears in the document (line %d); move the <script> below the element or wrap the code in window.report.ready(...)", write.id, line(u, write.start)))
 		}
 	}
-	return errors, warnings, len(blocks)
+	return errors
 }
 
 // registerHTMLReportTools exposes the deliberately small report contract. A
@@ -1161,7 +599,7 @@ func registerHTMLReportTools(
 
 	mcpAgent.RegisterCustomTool(
 		"validate_report_html",
-		"Validate one HTML report document under db/reports/: document shape, scripted element ids, inline-script placement and ordering, calls to undefined functions and unknown window.report methods, literal SQL against db/db.sqlite, referenced db/ paths, resolvable asset references, and app-theme hooks. HTTPS CDN stylesheets and scripts are allowed. document_path defaults to db/reports/index.html.",
+		"Validate one HTML report document under db/reports/: platform API calls, literal SQL against db/db.sqlite, and referenced workspace files and scripts. This is not an HTML/JavaScript checker; use browser preview for runtime behavior. document_path defaults to db/reports/index.html.",
 		params,
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			relativePath := "db/reports/index.html"
@@ -1194,12 +632,6 @@ func ValidateDashboardHTML(ctx context.Context, relativePath, content string, ho
 	lower := strings.ToLower(content)
 	errors := make([]string, 0)
 	warnings := make([]string, 0)
-	if !strings.Contains(lower, "<html") {
-		warnings = append(warnings, "missing explicit <html> root; the browser will synthesize one, but a complete document is easier to inspect")
-	}
-	if !strings.Contains(lower, "<body") {
-		warnings = append(warnings, "missing explicit <body>; the browser will synthesize one, but a complete document is easier to inspect")
-	}
 	title := ""
 	if start := strings.Index(lower, "<title"); start >= 0 {
 		if openEnd := strings.Index(lower[start:], ">"); openEnd >= 0 {
@@ -1209,84 +641,8 @@ func ValidateDashboardHTML(ctx context.Context, relativePath, content string, ho
 			}
 		}
 	}
-	if title == "" {
-		warnings = append(warnings, "missing non-empty <title>; add one for toolbar naming and accessibility")
-	}
 	blocks := reportScriptBlocks(content)
-	jsErrors, jsWarnings, scriptCount := validateReportJS(content, blocks)
-	errors = append(errors, jsErrors...)
-	warnings = append(warnings, jsWarnings...)
-
-	// Content after </html> is silently dropped by the browser: a
-	// <script> pasted there never runs.
-	if closes := reportHTMLClosePattern.FindAllStringIndex(content, -1); len(closes) > 0 {
-		if rest := strings.TrimSpace(content[closes[len(closes)-1][1]:]); rest != "" {
-			errors = append(errors, fmt.Sprintf("content after </html> is ignored by the browser (line %d); move it inside the document", reportLineNumber(content, closes[len(closes)-1][1])))
-		}
-	}
-
-	// A <base> tag is valid, but it changes every relative URL. Make the
-	// choice visible and leave runtime resolution to preview_report.
-	if loc := reportBaseTagPattern.FindStringIndex(content); loc != nil {
-		warnings = append(warnings, fmt.Sprintf("a <base> tag repoints relative URLs (line %d); verify all linked assets and navigation in preview_report", reportLineNumber(content, loc[0])))
-	}
-
-	// Subresources never resolve inside the sandboxed srcdoc report;
-	// https URLs are already an error above, data: URLs are fine.
-	for _, loc := range reportLinkTagPattern.FindAllStringSubmatchIndex(content, -1) {
-		attrs := content[loc[2]:loc[3]]
-		href := ""
-		if m := reportLinkHrefPattern.FindStringSubmatch(attrs); m != nil {
-			href = reportFirstNonEmpty(m[1], m[2], m[3])
-		}
-		if href == "" || strings.HasPrefix(href, "data:") || strings.HasPrefix(strings.ToLower(href), "http") {
-			continue
-		}
-		rel := ""
-		if m := reportLinkRelPattern.FindStringSubmatch(attrs); m != nil {
-			rel = strings.ToLower(reportFirstNonEmpty(m[1], m[2], m[3]))
-		}
-		tagLine := reportLineNumber(content, loc[0])
-		if strings.Contains(rel, "stylesheet") {
-			warnings = append(warnings, fmt.Sprintf("stylesheet link %q is relative (line %d); verify that it resolves in preview_report", href, tagLine))
-		} else {
-			warnings = append(warnings, fmt.Sprintf("resource link %q is ignored inside the sandboxed report (line %d); drop the tag or inline the asset", href, tagLine))
-		}
-	}
-
-	// Theme: the Report tab mirrors the APP theme onto the document as
-	// `.dark` + `data-theme`, not the OS scheme. A report that only keys
-	// off prefers-color-scheme ignores the in-app toggle.
-	usesOSScheme := strings.Contains(lower, "prefers-color-scheme")
-	usesAppTheme := strings.Contains(lower, ".dark") || strings.Contains(lower, "data-theme") || strings.Contains(lower, "report:theme") || strings.Contains(lower, "var(--")
-	if usesOSScheme && !usesAppTheme {
-		warnings = append(warnings, "dark mode keys only off prefers-color-scheme (the OS), so it ignores the app's light/dark toggle; key off `:root.dark` / `[data-theme=\"dark\"]` or the injected hsl(var(--token)) palette instead")
-	}
-
-	// Tabs: view-switch buttons without tab semantics leave
-	// screen-reader and keyboard users with no selected-state
-	// announcement.
-	hasTabButtons := strings.Contains(lower, "<button") &&
-		(strings.Contains(content, "data-report-view") ||
-			strings.Contains(lower, "tabbtn") ||
-			strings.Contains(lower, "tab-button"))
-	hasTabRoles := strings.Contains(lower, "role=\"tab\"") ||
-		strings.Contains(lower, "role='tab'") ||
-		strings.Contains(lower, "aria-selected")
-	if hasTabButtons && !hasTabRoles {
-		warnings = append(warnings, "view-switch buttons have no tab semantics; add role=\"tablist\"/role=\"tab\", aria-selected toggling, and arrow-key support")
-	}
-
-	// Activity: a hand-rolled feed over the run summaries duplicates
-	// the platform widget. Custom merged timelines stay valid; this
-	// is a nudge, not a mandate.
-	queriesActivity := strings.Contains(content, "org_dashboard_notifications")
-	buildsRows := strings.Contains(content, "innerHTML") ||
-		strings.Contains(content, "insertAdjacentHTML") ||
-		strings.Contains(content, "createElement")
-	if queriesActivity && buildsRows && !strings.Contains(content, "renderActivity") {
-		warnings = append(warnings, "hand-rolled activity feed over org_dashboard_notifications; consider window.report.renderActivity(target) for the standard route-grouped section (custom merged timelines remain valid)")
-	}
+	errors = append(errors, validateReportHostCalls(content, blocks)...)
 
 	// Live SQL: run each literal query through the database so a typo'd
 	// table or column fails here, not silently in the Report tab.
@@ -1354,7 +710,7 @@ func ValidateDashboardHTML(ctx context.Context, relativePath, content string, ho
 			"sql_unchecked":      dynamicQueries + (len(queries) - sqlChecked),
 			"referenced_paths":   pathsChecked,
 			"paths_unchecked":    len(referenced) - pathsChecked,
-			"script_blocks":      scriptCount,
+			"script_blocks":      len(blocks),
 			"sql_check_enabled":  hooks.ExplainSQL != nil,
 			"path_check_enabled": hooks.FileExists != nil,
 		},
