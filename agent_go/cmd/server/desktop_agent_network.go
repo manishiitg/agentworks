@@ -91,6 +91,12 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if source.Mode != "builder" || source.Guest != "" || source.FunctionCallID != "" {
 		return nil, fmt.Errorf("this turn cannot use the person's AgentBridge login")
 	}
+	api.lastQueryMu.RLock()
+	prior := api.lastQueryRequests[caller.Chat.SessionID]
+	api.lastQueryMu.RUnlock()
+	if !desktopAppTurnMayAddress(prior, raw) {
+		return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
+	}
 	connection, err := desktopConnectionFor(owner, connectionID)
 	if err != nil {
 		return nil, err
@@ -129,4 +135,13 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	}
 	qualifyCrewNetworkReplyAddresses(out, connectionID)
 	return out, nil
+}
+
+// A published agent's visitor may receive a reply, but cannot use the owner's
+// saved login to reach that owner's private agents. JSON cannot set the fence.
+func desktopAppTurnMayAddress(prior QueryRequest, address string) bool {
+	if strings.TrimSpace(prior.SharedAgentSender) == "" {
+		return true
+	}
+	return prior.appAgentReplyTo != "" && prior.appAgentReplyTo == address
 }

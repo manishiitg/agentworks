@@ -15,6 +15,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+type desktopAppReplyKey struct{}
+
 type desktopAppRecipient struct {
 	Record       ProductConversationRecord
 	Registration desktopAppAgentRegistration
@@ -326,6 +328,8 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	if message.Own {
 		text = crewOwnAgentMessageText(message.Sender, replyTo, message.Text)
 	} else {
+		// Keep the authenticated reply address separate from model-supplied arguments.
+		ctx = context.WithValue(ctx, desktopAppReplyKey{}, replyTo)
 		// Reuse normal guest-turn restrictions, not Team grants or a relay pair.
 		ctx = context.WithValue(ctx, crewMacSharedAskKey{}, &crewMacSharedAsk{Sender: "network:" + message.SenderUser, SenderName: message.Sender, Owner: record})
 	}

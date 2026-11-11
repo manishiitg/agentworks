@@ -916,6 +916,8 @@ type QueryRequest struct {
 	resolvedResumeTarget *resolvedResumeTarget `json:"-"`
 	// sharedAsk is another person's message to a shared Mac agent: their thread starts from the owner's own chat.
 	sharedAsk *crewMacSharedAsk `json:"-"`
+	// appAgentReplyTo is stamped by authenticated inbox delivery, never request JSON.
+	appAgentReplyTo string `json:"-"`
 	// providerSwitchedFrom is the coding provider of the retained CLI this turn replaced (the person changed the agent
 	// mid-chat); empty otherwise. It only feeds the log line that proves the conversation was carried over.
 	providerSwitchedFrom string `json:"-"`
@@ -3729,6 +3731,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	if ask, ok := r.Context().Value(crewMacSharedAskKey{}).(*crewMacSharedAsk); ok && req.SharedAgentSender != "" {
 		req.sharedAsk = ask
+		if reply, ok := r.Context().Value(desktopAppReplyKey{}).(string); ok {
+			req.appAgentReplyTo = reply
+		}
 	}
 	if err := validateRequestedCDPPorts(req); err != nil {
 		http.Error(w, "Invalid CDP configuration: "+err.Error(), http.StatusBadRequest)

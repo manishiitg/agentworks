@@ -17,6 +17,8 @@ import (
 func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENT_PRODUCTS", "bullpen")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "bullpen")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true},{"id":"other","can_create":true}]}`)
 	api := &StreamingAPI{}
 	login := func(user, id string) *UserClaims {
