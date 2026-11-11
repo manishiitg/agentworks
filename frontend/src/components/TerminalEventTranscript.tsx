@@ -724,7 +724,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
 const InternalActivityEvent: React.FC<{ title: string; content: string; timestamp: string }> = ({ title, content, timestamp }) => {
   const [open, setOpen] = useState(false)
   return (
-    <div data-testid="terminal-clear-system-activity" className="my-1 w-[min(100%,52rem)] rounded-lg border border-border/60 px-3 py-2">
+    <div data-testid="terminal-clear-system-activity" className="my-3 border-y border-border/60 py-2">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
