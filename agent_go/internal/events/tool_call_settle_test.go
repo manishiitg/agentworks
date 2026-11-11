@@ -1,6 +1,7 @@
 package events
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -380,5 +381,36 @@ func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
 	}
 	if !foundFailure {
 		t.Fatal("native failure was presented as success")
+	}
+}
+
+// PLAT-746-891: Stop/provider loss has no command result. The same durable
+// neutral end must survive loss of in-memory telemetry (history reload).
+func TestUnavailableNativeRuntimeSettlesCommandsAfterTelemetryLoss(t *testing.T) {
+	for _, reload := range []bool{false, true} {
+		session := fmt.Sprintf("native-runtime-ended-%t", reload)
+		store := NewEventStore(500)
+		store.AddEvent(session, startEvent(session, "exec-lost", "exec_command"))
+		if reload {
+			toolCallsMu.Lock()
+			delete(openToolCall, session)
+			toolCallsMu.Unlock()
+		}
+		store.EndNativeCommandsWithoutResult(session)
+		store.EndNativeCommandsWithoutResult(session)
+		if ids := toolEndIDs(t, store, session); len(ids) != 1 {
+			t.Fatalf("reload=%t ends=%v", reload, ids)
+		}
+		found := false
+		for _, event := range store.GetEvents(session, GetEventsOptions{}).Events {
+			if event.Data != nil {
+				if end, ok := event.Data.Data.(*events.ToolCallEndEvent); ok && end.ToolCallID == "exec-lost" {
+					found = end.SyntheticSettle && end.Result != ""
+				}
+			}
+		}
+		if !found {
+			t.Fatal("runtime disappearance must remain neutral, not successful")
+		}
 	}
 }
