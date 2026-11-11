@@ -332,10 +332,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, err
 		}
 	}
-	if inboxID == "" && target.TeamAgentID != "" {
-		if caller.Stamp.Type != triggerCallerCrew || caller.Stamp.ID != target.CrewID || caller.Chat == nil {
-			return nil, fmt.Errorf("Send to a Team agent from an agent of the same Crew")
-		}
+	// Target visibility is account-based. Keep a shared sender's stable Team ID
+	// when available; other own chats retain their normal reply endpoint.
+	if inboxID == "" && target.TeamAgentID != "" && caller.Stamp.Type == triggerCallerCrew && caller.Stamp.ID == target.CrewID && caller.Chat != nil {
 		agent, err := crewTeamSendingAgent(ctx, target.CrewID, userID, caller.Chat.Key)
 		if err != nil {
 			return nil, err
@@ -1518,6 +1517,9 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 // agent is exempt, decided by its role on the server. Shared and Team Crews follow their own sharing rules, and a reply
 // in an existing conversation needs no new link.
 func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
+	if target.TeamAgentID != "" {
+		return nil // resolveTeamAgentTarget already applied the directory's live visibility rule.
+	}
 	if caller.Stamp.Type != triggerCallerCrew || strings.TrimSpace(caller.Path) == "" || caller.ConditionJob != "" || caller.NamedAgentID != "" {
 		return nil
 	}
