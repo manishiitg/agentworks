@@ -22,6 +22,9 @@ bash "$ROOT/install.sh" --dmg "${DMGS[0]}" --sha256-file "${DMGS[0]}.sha256" --a
 RESOURCES="$STAGE/Applications/AgentWorks.app/Contents/Resources"
 "$STAGE/bin/agentworks" --version
 "$RESOURCES/bin/tmux" -V
+# Browser work calls agent-browser by name: a DMG without it fails here, not on a person's laptop.
+"$RESOURCES/bin/agent-browser" --version | grep -q '^agent-browser 0\.38\.2$' || { echo 'The packaged app has no agent-browser 0.38.2' >&2; exit 1; }
+printf 'Browser tool: %s\n' "$("$RESOURCES/bin/agent-browser" --version)"
 [ -x "$RESOURCES/agentworks-vault" ] || { echo 'The packaged app has no Vault' >&2; exit 1; }
 printf 'Vault: %s bytes\n' "$(stat -f %z "$RESOURCES/agentworks-vault")"
 printf '[]' > "$STAGE/tools.json"
