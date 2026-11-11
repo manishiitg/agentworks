@@ -47,7 +47,7 @@ func automationReachableFiles(files map[string]string) map[string]string {
 	if _, ok := files["main.py"]; !ok {
 		return files
 	}
-	reached := map[string]string{}
+	reached := map[string]string{"main.py": files["main.py"]}
 	queue := []string{"main.py"}
 	add := func(name string) {
 		if source, ok := files[name]; ok {
