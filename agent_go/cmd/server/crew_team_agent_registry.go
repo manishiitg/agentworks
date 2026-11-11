@@ -210,13 +210,18 @@ func crewTeamAgentByID(ctx context.Context, project, caller, id string) (crewTea
 	if err != nil || !crewTeamAgentsVisible(t, caller) {
 		return crewTeamAgent{}, "", fmt.Errorf("This Crew's Team is not available to you")
 	}
+	compared := []string{}
 	for _, person := range teamAgentsByPerson(ctx, t, caller) {
 		for _, agent := range person.Agents {
+			if agent.InTeam {
+				compared = append(compared, agent.ID)
+			}
 			if agent.ID == id && agent.InTeam {
 				return agent, person.UserID, nil
 			}
 		}
 	}
+	log.Printf("[CREW_TEAM] project=%s event=agent_lookup_refused agent_id=%q caller_id=%q compared_agent_ids=%q", project, id, caller, compared)
 	return crewTeamAgent{}, "", fmt.Errorf("That agent isn't in this Crew's Team now")
 }
 
