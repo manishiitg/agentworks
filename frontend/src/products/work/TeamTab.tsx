@@ -448,7 +448,7 @@ function LentFold({ lent, target, projectId }: { lent: TeamLent; target: TeamTar
   </div>
 }
 
-/** The one Leave control, a full-width button at the end of the Share page (shown when the server says the viewer may leave). */
+/** The one Leave control, a full-width button at the end of the Team page (shown when the server says the viewer may leave). */
 export function LeaveTeam({ target, confirm }: { target: TeamTarget; confirm?: string }) {
   const { pending, error, run } = useSave()
   // The first click only asks, in place; Leave sends the request.

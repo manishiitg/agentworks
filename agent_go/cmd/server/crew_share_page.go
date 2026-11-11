@@ -13,11 +13,10 @@ import (
 	"time"
 )
 
-// The Share page (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"): one page "Share this Crew" with
-// up to three options, each a card with a status: Work on it with your team (the Team and the People list), Share
-// agents (people ask the viewer's agents, or start actions the owner set up) and Slack (the Crew's Slack bot, today's
-// bot settings moved here from the Crew menu). Dashboards have their own Access tab next to Share (owner, 9 Nov:
-// "we should have a separate tab for dashboards"; crew_dashboards_tab.go). The server writes every line, chip and
+// The share reply (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"; 11 Nov: Share split into Team and
+// Online): two options, each with a status: Team (the Team and the People list, the Team page) and Share agents
+// (people ask the viewer's agents, or start actions the owner set up; an Online tab), plus the Slack tab's rules.
+// Dashboards have their own Online tab (crew_dashboards_tab.go). The server writes every line, chip and
 // status and says which controls this viewer may change; the page prints them and sends the person's change to the
 // existing routes (Team save, people, agent-visibility, agent-rule, the Slack bot routes), plus POST action for one
 // action's on/off.
@@ -108,9 +107,9 @@ type crewShareActionsGroup struct {
 	WizardFor string `json:"wizard_for,omitempty"`
 }
 
+// crewSharePage feeds two pages (owner, 11 Nov): the Team page shows the team option, the Online page's Share agents tab
+// the agents option; each prints its option's title and line.
 type crewSharePage struct {
-	Title   string            `json:"title"`
-	Lead    string            `json:"lead"`
 	Options []crewShareOption `json:"options"`
 	// Share agents: the cards, the line under them ("Who can use these: ..."), and its empty line.
 	Agents      []crewShareAgent `json:"agents"`
@@ -153,7 +152,7 @@ func crewShareSlackRules(owner bool) *crewShareSlack {
 			{Allowed: true, Where: "In a direct message:", Line: "people this Crew is shared with, as themselves, with their own access."},
 			{Allowed: false, Line: "Guests, people from other Slack workspaces, and anyone whose Slack email isn't an AgentWorks account."},
 		},
-		Note: "Each Slack thread becomes its own chat in this Crew. Who the Crew is shared with is set under “Work on it with your team”.",
+		Note: "Each Slack thread becomes its own chat in this Crew. Who the Crew is shared with is set under Team.",
 	}
 }
 
@@ -335,7 +334,7 @@ const (
 	crewShareActionsIntro     = "Ready-made jobs others can start, like “Review a pull request”. They fill in a few details and get the result back. The job uses your access, but they never get it."
 	crewShareOwnerOnlyActions = "Only the Crew's owner turns actions on or off. Ask the owner to change this action."
 	crewSharePublishedAction  = "This action comes from published source. Change its source and publish again."
-	crewShareTeamOffNote      = "Turn on “Work on it with your team” first. Then people in it can ask this agent."
+	crewShareTeamOffNote      = "Turn on the Team first. Then people in it can ask this agent."
 )
 
 var crewShareChatOptions = []crewChatShareOption{{crewChatShareLive, "Live"}, {crewChatShareAgent, "Hidden"}}
@@ -589,7 +588,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	tab := crewTeamTabFor(ctx, t, viewer)
 	root := crewProjectRootByID(t.ProjectID)
 	everyone, named := crewPeopleShareRecord(root)
-	page := crewSharePage{Title: "Share this Crew", Lead: "Two ways. Use any of them. Click one to set it up.", Agents: []crewShareAgent{}, AgentsIntro: crewShareActionsIntro,
+	page := crewSharePage{Agents: []crewShareAgent{}, AgentsIntro: crewShareActionsIntro,
 		WhoCanUse: crewShareWhoLine(t, everyone, named)}
 
 	// Share agents: the viewer's own agents with Ask, the owner's actions on them, then cards with actions only.
@@ -721,8 +720,8 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		agentStatus = "On · " + strings.Join(agentParts, " · ")
 	}
 	page.Options = []crewShareOption{
-		{Key: "team", Title: "Work on it with your team", Line: "They build and run this Crew with you: same files, same agents, their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
-		{Key: "agents", Title: "Share agents", Line: "Let others ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
+		{Key: "team", Title: "Team", Line: "People who work on this Crew with you: the same files and agents, each on their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
+		{Key: "agents", Title: "Share agents", Line: "Let people outside the Team, other Crews and apps ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
 	}
 	anyOpen := false
 	for i := range page.Options {

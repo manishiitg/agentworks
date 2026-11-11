@@ -49,13 +49,15 @@ type crewPanelSection struct {
 	refreshAt time.Time // Server-only: a cached/in-flight snapshot needs one later read.
 }
 type crewPanelAccess struct {
-	Where   string           `json:"where,omitempty"`
-	Place   string           `json:"place,omitempty"`
-	Role    string           `json:"role,omitempty"`
-	View    string           `json:"view,omitempty"`
-	Summary string           `json:"summary,omitempty"`
-	Tree    []crewAccessLine `json:"tree"`
-	Asking  []crewPanelAsk   `json:"asking"`
+	Where   string `json:"where,omitempty"`
+	Place   string `json:"place,omitempty"`
+	Role    string `json:"role,omitempty"`
+	View    string `json:"view,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// TeamDetail is the menu's Team row: "Off" or "You + 2" (owner, 11 Nov: Share split into Team and Online).
+	TeamDetail string           `json:"team_detail,omitempty"`
+	Tree       []crewAccessLine `json:"tree"`
+	Asking     []crewPanelAsk   `json:"asking"`
 }
 type crewPanelAsk struct {
 	macAskActivity
@@ -369,7 +371,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 	externalJSON(w, out)
 }
 
-// crewPanelDashboardLine adds the Crew's dashboard to the Share tree, from the panel's own dashboards and sharing
+// crewPanelDashboardLine adds the Crew's dashboards to the Online tree, from the panel's own dashboards and sharing
 // reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess

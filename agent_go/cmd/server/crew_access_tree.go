@@ -12,9 +12,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// The Share tree under the side panel's Share row (owner, 5 Nov, approved mockup "Access Side Panel"): one item per
-// thing worth saying, each a title and a muted detail, so nothing is cut off. Lines with nothing to say are left out.
-// The server writes every line; the Mac app and the website show the same tree.
+// The tree under the side panel's Team and Online rows (owner, 5 Nov, approved mockup "Access Side Panel"; 11 Nov: the
+// one Share row split into Team and Online): one item per thing worth saying, each a title and a muted detail, so
+// nothing is cut off. Lines with nothing to say are left out. Each line says which row it sits under (Group). The
+// server writes every line; the Mac app and the website show the same tree.
 
 type crewAccessPerson struct {
 	UserID      string `json:"user_id"` // screens find the person's tabs by account, never by name
@@ -26,7 +27,8 @@ type crewAccessPerson struct {
 }
 
 type crewAccessLine struct {
-	Kind   string `json:"kind"` // mac, team, where, agents, dashboard, public, folder, clash
+	Kind   string `json:"kind"`  // mac, team, where, agents, dashboard, public, folder, clash
+	Group  string `json:"group"` // the menu row it sits under: "team" or "online" (crewAccessLineGroup)
 	Title  string `json:"title"`
 	Detail string `json:"detail,omitempty"`
 	Path   string `json:"path,omitempty"`   // dashboard: the document the line opens
@@ -64,7 +66,28 @@ type crewAccessFacts struct {
 	Member bool
 }
 
+// crewAccessTeamOffTitle is the Team line while the Team is off; the menu's Team row then says Off.
+const crewAccessTeamOffTitle = "Team off"
+
+// crewAccessLineGroup puts each line under its menu row: the people who work on the Crew with you and their shared
+// folder under Team, and how everyone else reaches it (Mac online, AgentBridge, dashboards) under Online.
+func crewAccessLineGroup(kind string) string {
+	switch kind {
+	case "team", "where", "agents", "folder", "clash":
+		return "team"
+	}
+	return "online"
+}
+
 func crewAccessTree(f crewAccessFacts) []crewAccessLine {
+	lines := crewAccessTreeLines(f)
+	for i := range lines {
+		lines[i].Group = crewAccessLineGroup(lines[i].Kind)
+	}
+	return lines
+}
+
+func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 	lines := []crewAccessLine{}
 	teamOn := f.TeamKnown && f.Team != nil && f.Team.On
 	// Offline is already shown on the Share row; it needs no duplicate child.
@@ -83,7 +106,7 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	}
 	if !teamOn {
 		if f.MacOnline || f.ServerCrew {
-			lines = append(lines, crewAccessLine{Kind: "team", Title: "Team off", Detail: "Turn on to work on this Crew with people"})
+			lines = append(lines, crewAccessLine{Kind: "team", Title: crewAccessTeamOffTitle, Detail: "Turn on to work on this Crew with people"})
 		}
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
@@ -165,15 +188,15 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	return lines
 }
 
-// crewAccessDashboardLine is the Crew's dashboard in the Share tree (owner, 5 Nov: one place for Share and the
+// crewAccessDashboardLine is the Crew's dashboards in the Online tree (owner, 5 Nov: one place for Share and the
 // dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
 // One header (owner, 9 Nov mock): "Dashboards", how many and who can open them, then each dashboard by name.
 func crewAccessDashboardLine(items []crewAccessDashboard, shared string) crewAccessLine {
 	if len(items) == 0 {
-		return crewAccessLine{Kind: "dashboard", Title: "No dashboard yet · ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
+		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No dashboard yet · ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
 	}
 	// Mock approved 9 Nov: a header "Dashboards  N" with who can open them as a tag, then one row per dashboard.
-	return crewAccessLine{Kind: "dashboard", Title: "Dashboards", Count: len(items), Tag: crewAccessDashboardShared(shared), Path: items[0].Path, Target: "dashboards", Dashboards: items}
+	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Dashboards", Count: len(items), Tag: crewAccessDashboardShared(shared), Path: items[0].Path, Target: "dashboards", Dashboards: items}
 }
 
 // crewAccessDashboard is one dashboard under the dashboard line: its name and the document it opens.
