@@ -50,13 +50,16 @@ func checkCrewTeamRegistries(out io.Writer) error {
 			}
 		}
 		bindings := map[string]bool{}
+		chats := map[string]bool{}
 		for id, a := range t.Agents {
 			_, idErr := uuid.Parse(strings.TrimPrefix(id, crewTeamAgentIDPrefix))
 			binding := a.OwnerID + "/" + a.Tab
-			if idErr != nil || !strings.HasPrefix(id, crewTeamAgentIDPrefix) || id != a.ID || !people[a.OwnerID] || a.OwnerID == "" || a.Tab == "" || a.ChatKey == "" || bindings[binding] || (a.Place != "mac" && a.Place != "server") {
+			chat := a.OwnerID + "/" + a.ChatKey
+			if idErr != nil || !strings.HasPrefix(id, crewTeamAgentIDPrefix) || id != a.ID || !people[a.OwnerID] || a.OwnerID == "" || a.Tab == "" || a.ChatKey == "" || bindings[binding] || chats[chat] || (a.Place != "mac" && a.Place != "server") {
 				valid = false
 			}
 			bindings[binding] = true
+			chats[chat] = true
 			if a.InTeam {
 				shared++
 			}

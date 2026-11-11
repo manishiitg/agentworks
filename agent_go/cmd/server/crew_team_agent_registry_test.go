@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,4 +109,89 @@ func writeCrewTeamAgentFixture(team crewTeam) error {
 	}
 	pruneCrewStandby(team.ProjectID)
 	return nil
+}
+
+// PLAT-746-820: imported Main was named correctly but allocated a second Team ID.
+func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	ctx := context.Background()
+	key := "team:chat:imported-example"
+	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
+	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: "imported-session"}
+	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
+		t.Fatal(err)
+	}
+	team := crewTeam{RegistryVersion: 1, ProjectID: "team", OwnerID: "owner", On: true}
+	discovered := memberTeamAgents(ctx, team, "owner", "owner")
+	if len(discovered) != 1 || discovered[0].Tab != macMainTab || discovered[0].ChatKey != key {
+		t.Fatalf("manifest Main not used for identity: %+v", discovered)
+	}
+	mainID := crewTeamAgentIDPrefix + uuid.NewString()
+	main := crewTeamRegisteredAgent{ID: mainID, OwnerID: "owner", Tab: macMainTab, ChatKey: key, Place: "server", InTeam: false, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
+	team.Agents = map[string]crewTeamRegisteredAgent{mainID: main}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	people := []crewTeamAgentsPerson{{UserID: "owner", Agents: discovered}}
+	if err := assignCrewTeamAgentIDs(team, people); err != nil {
+		t.Fatal(err)
+	}
+	if people[0].Agents[0].ID != mainID || people[0].Agents[0].InTeam {
+		t.Fatal("discovery replaced Main identity or privacy")
+	}
+	// A second native tab label for this same owner/chat must reuse the existing ID.
+	people[0].Agents[0].Tab = "imported-example"
+	if err := assignCrewTeamAgentIDs(team, people); err != nil {
+		t.Fatal(err)
+	}
+	if people[0].Agents[0].ID != mainID {
+		t.Fatal("same chat received another identity")
+	}
+	saved, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dupID := crewTeamAgentIDPrefix + uuid.NewString()
+	duplicate := saved.Agents[mainID]
+	duplicate.ID, duplicate.Tab = dupID, "imported-example"
+	saved.Agents[dupID] = duplicate
+	dir, err := crewTeamDir("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "team.json")
+	if err := fsutil.WriteJSONAtomic(file, saved, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkCrewTeamRegistries(io.Discard); err == nil {
+		t.Fatal("checker accepted duplicate owner/chat binding")
+	}
+	if err := assignCrewTeamAgentIDs(saved, people); err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repaired.Agents) != 1 || repaired.Agents[mainID].ID != mainID || repaired.Agents[mainID].InTeam || repaired.Agents[mainID].Rule != main.Rule {
+		t.Fatal("repair did not preserve converted Main and its settings")
+	}
+	if err := checkCrewTeamRegistries(io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	// An ambiguous privacy conflict must never silently widen access.
+	duplicate.InTeam = true
+	repaired.Agents[dupID] = duplicate
+	if err := fsutil.WriteJSONAtomic(file, repaired, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := assignCrewTeamAgentIDs(repaired, people); err == nil {
+		t.Fatal("conflicting duplicate privacy accepted")
+	}
+	unchanged, err := readCrewTeam("team")
+	if err != nil || len(unchanged.Agents) != 2 {
+		t.Fatal("refused repair changed saved registry")
+	}
 }
