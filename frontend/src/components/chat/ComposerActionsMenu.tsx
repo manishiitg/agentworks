@@ -45,7 +45,7 @@ export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpe
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
       </Menu.Item>
       {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }} className={rowClass}>
-        <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands
+        <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands<kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">/</kbd>
       </Menu.Item>}
       {onOpenLiveView && <>
         <Menu.Separator className="my-1 h-px bg-border" />
