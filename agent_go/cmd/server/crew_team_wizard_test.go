@@ -28,9 +28,34 @@ func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
 	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: entries}); err != nil {
 		t.Fatal(err)
 	}
-	previous := crewTeam{ProjectID: "team", OwnerID: "owner", Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"main": false, selected: false, hidden: true}})}
-	if err := writeCrewTeam(previous); err != nil {
+	// A fresh, off Team has no registry yet. The wizard GET discovers and
+	// registers its owner's agents before returning selectable IDs.
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner"}); err != nil {
 		t.Fatal(err)
+	}
+	options := httptest.NewRecorder()
+	f.api.handleCrewTeamSetup(options, adminRequest(http.MethodGet, "/api/crew-teams/team/setup", "", &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
+	var view crewWizardView
+	if options.Code != http.StatusOK || json.Unmarshal(options.Body.Bytes(), &view) != nil || len(view.Agents) != 3 {
+		t.Fatalf("fresh off-Team wizard: %d %s", options.Code, options.Body.String())
+	}
+	previous, err := readCrewTeam("team")
+	if err != nil || previous.On || len(previous.Agents) != 3 {
+		t.Fatalf("wizard did not register agents while Team stayed off: %+v %v", previous, err)
+	}
+	for _, agent := range view.Agents {
+		if err := setCrewTeamAgentChoice(ctx, "team", "owner", agent.Key, true); err != nil {
+			t.Fatalf("fresh off-Team owner choice refused: %v", err)
+		}
+	}
+	for _, key := range []string{main, selected} {
+		if err := setCrewTeamAgentChoice(ctx, "team", "owner", key, false); err != nil {
+			t.Fatalf("off-Team choice refused: %v", err)
+		}
+	}
+	previous, err = readCrewTeam("team")
+	if err != nil || previous.On {
+		t.Fatalf("choosing agents turned Team on: %v", err)
 	}
 	if agents := crewWizardAgents(ctx, previous); len(agents) != 3 {
 		t.Fatalf("fixture must expose Main and both side agents: %+v", agents)
