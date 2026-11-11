@@ -463,3 +463,51 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-746-876: status polling reads existing authorized records, never creates Main,
+// and stops accepting a conversation as soon as its registry slot changes.
+func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(id string) crewChatResult {
+		return f.api.desktopCrewExistingChatStatus(ctx, claims, profile, "team", crewChatCall{Operation: "status", ConversationID: id})
+	}
+	if got := read(""); got.Status != http.StatusNotFound {
+		t.Fatalf("missing Main should remain absent, got %d", got.Status)
+	}
+	store := defaultProductConversationRegistryStore()
+	key := "team:chat:abcdef12"
+	record := ProductConversationRecord{ProfileID: "work", ConversationKey: key, ConversationID: "current", SessionID: "current-session", WorkspacePath: binding.WorkspacePath, ResourceID: "team"}
+	doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey("work", key): record}}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	f.api.activeSessions = map[string]*ActiveSessionInfo{"current-session": {SessionID: "current-session", UserID: "owner", Status: "completed"}}
+	if got := read("current"); got.Status != http.StatusOK {
+		t.Fatalf("current owned tab refused: %d %s", got.Status, got.Body)
+	}
+	if got := read("foreign"); got.Status != http.StatusConflict {
+		t.Fatalf("unknown conversation accepted: %d", got.Status)
+	}
+	// Removing the saved record must invalidate status even though its runtime still exists.
+	doc.Entries = map[string]ProductConversationRecord{}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("current"); got.Status != http.StatusConflict {
+		t.Fatalf("removed tab runtime remained addressable: %d", got.Status)
+	}
+	after, err := store.loadDocument(ctx, productConversationRegistryPath("owner"))
+	if err != nil || len(after.Entries) != 0 {
+		t.Fatalf("status created a conversation: %v", err)
+	}
+}
