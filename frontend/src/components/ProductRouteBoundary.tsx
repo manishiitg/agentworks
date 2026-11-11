@@ -85,9 +85,14 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       // Resolve before reading the selected server's workspace or chat. This also
       // handles notification clicks and direct links carrying the server Crew ID.
       if (route?.surface === 'work' && route.id && window.electronAPI?.getDesktopConnection?.()) {
-        const member = await desktopRequest<{ project_id: string }>(`/${encodeURIComponent(getRawActiveWorkspaceId())}/member-crew/${encodeURIComponent(route.id)}`)
+        let member: { project_id: string } | undefined
+        try {
+          member = await desktopRequest<{ project_id: string }>(`/${encodeURIComponent(getRawActiveWorkspaceId())}/member-crew/${encodeURIComponent(route.id)}`)
+        } catch {
+          // A failed local lookup must not block the ordinary, permission-checked open.
+        }
         if (controller.signal.aborted) return
-        if (member.project_id && member.project_id !== route.id) {
+        if (member?.project_id && member.project_id !== route.id) {
           await window.electronAPI.openDesktopConnection?.('local', productRoutePath({ ...route, id: member.project_id }))
           return
         }
