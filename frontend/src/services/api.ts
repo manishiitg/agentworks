@@ -1265,7 +1265,7 @@ export const agentApi = {
 
   /** Forgets a closed Code side chat (tab) on the server; its history is kept. */
   previewAgentRemoval: async (profileId: string, conversationKey: string) => {
-    const response = await api.post<{ confirmation: string; dependencies: { id: string; kind: string; name: string; can_reassign: boolean }[]; destinations: { key: string; name: string }[]; effects: string[] }>(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey, preview_removal: true })
+    const response = await api.post<{ confirmation: string; dependencies: { id: string; kind: string; name: string; can_reassign: boolean; when_removed?: string[] }[]; destinations: { key: string; name: string }[]; effects: string[] }>(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey, preview_removal: true })
     return response.data
   },
   closeAgentProfileSideChat: async (profileId: string, conversationKey: string, confirmation: string, choices: Record<string, string>): Promise<void> => {

@@ -39,7 +39,14 @@ export function AgentRemovalDialog({ projectId }: { projectId: string }) {
     if (current?.tab.metadata?.agentProfileProjectId === projectId) current.finish(null)
   }, [projectId])
   if (!mine) return null
-  const ready = preview && preview.dependencies.every(item => choices[item.id]) && isChatIdentityCurrent(mine.identity)
+  const visibleDependencies: NonNullable<typeof preview>['dependencies'] = []
+  const visibleIds = new Set<string>()
+  for (const item of preview?.dependencies || []) {
+    if (!item.when_removed?.length || item.when_removed.some(id => visibleIds.has(id) && choices[id] === 'remove')) {
+      visibleDependencies.push(item); visibleIds.add(item.id)
+    }
+  }
+  const ready = preview && visibleDependencies.every(item => choices[item.id]) && isChatIdentityCurrent(mine.identity)
   return createPortal(<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onClick={() => mine.finish(null)}>
     <div role="dialog" aria-modal="true" aria-label="Remove agent" className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-popover p-5 shadow-xl" onClick={event => event.stopPropagation()}>
       <h2 className="text-base font-semibold">Remove {mine.tab.name}?</h2>
@@ -50,7 +57,7 @@ export function AgentRemovalDialog({ projectId }: { projectId: string }) {
         <ul className="mt-3 list-inside list-disc text-sm text-muted-foreground">{preview.effects.map(effect => <li key={effect}>{effect}</li>)}</ul>
         {preview.dependencies.length === 0 ? <p className="mt-4 text-sm">No linked automations or channels.</p> : <div className="mt-4 space-y-3">
           <p className="text-sm font-medium">Choose what happens to each linked item:</p>
-          {preview.dependencies.map(item => <label key={item.id} className="block rounded-lg border border-border p-3 text-sm">
+          {visibleDependencies.map(item => <label key={item.id} className="block rounded-lg border border-border p-3 text-sm">
             <span className="block font-medium">{item.name}</span><span className="text-xs text-muted-foreground">{item.kind}</span>
             <select aria-label={`What happens to ${item.name}`} value={choices[item.id] || ''} onChange={event => setChoices(current => ({ ...current, [item.id]: event.target.value }))} className="mt-2 block w-full rounded-md border border-input bg-background p-2">
               <option value="">Choose…</option><option value="remove">Remove this item</option>

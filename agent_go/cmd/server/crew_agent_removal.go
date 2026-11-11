@@ -16,10 +16,11 @@ import (
 // PLAT-746-886: deletion is a server-owned plan, shared by the app and MCP.
 // A preview never changes work. Every linked item needs an explicit choice.
 type crewAgentRemovalDependency struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	Name        string `json:"name"`
-	CanReassign bool   `json:"can_reassign"`
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Name        string   `json:"name"`
+	CanReassign bool     `json:"can_reassign"`
+	WhenRemoved []string `json:"when_removed,omitempty"`
 }
 type crewAgentRemovalDestination struct {
 	Key  string `json:"key"`
@@ -149,7 +150,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 				if input, ok := record["input"].(map[string]any); ok && input["condition"] != nil {
 					kind = "watcher"
 				}
-				plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{dependency, kind, name, reassign})
+				plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{ID: dependency, Kind: kind, Name: name, CanReassign: reassign})
 				state.choices[index] = dependency
 				state.references[index] = objects
 				state.fields[index] = fields
@@ -157,6 +158,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 			plan.files = append(plan.files, state)
 		}
 	}
+	plan.addDependentSchedules()
 	// Project-wide Slack/WhatsApp destinations keep their independent sender/thread
 	// chats. Only a channel explicitly bound to this physical agent is a link.
 	linkedRoutes := func(routes map[string]ChannelRoute, platform string) map[string]string {
@@ -168,7 +170,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 			stable := sha256.Sum256([]byte(platform + "/" + channel))
 			id := hex.EncodeToString(stable[:])
 			ids[channel] = id
-			plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{id, "channel", platform + " · " + channel, true})
+			plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{ID: id, Kind: "channel", Name: platform + " · " + channel, CanReassign: true})
 		}
 		return ids
 	}
@@ -270,15 +272,31 @@ func (plan crewAgentRemovalPlan) apply(ctx context.Context, confirmation string,
 	for _, target := range plan.preview.Destinations {
 		valid[target.Key] = true
 	}
-	if len(choices) != len(plan.preview.Dependencies) {
-		return fmt.Errorf("Choose Remove or another agent for every linked item.")
-	}
+	selected := map[string]string{}
+	known := map[string]bool{}
 	for _, dep := range plan.preview.Dependencies {
+		known[dep.ID] = true
+		active := len(dep.WhenRemoved) == 0
+		for _, parent := range dep.WhenRemoved {
+			if selected[parent] == "remove" {
+				active = true
+			}
+		}
+		if !active {
+			continue
+		}
 		choice := choices[dep.ID]
 		if choice != "remove" && (!dep.CanReassign || !valid[choice]) {
 			return fmt.Errorf("Choose Remove or an available agent for %s.", dep.Name)
 		}
+		selected[dep.ID] = choice
 	}
+	for id := range choices {
+		if !known[id] {
+			return fmt.Errorf("Linked work changed. Review the removal preview again.")
+		}
+	}
+	choices = selected
 	for _, apply := range plan.applyChannels {
 		if err := apply(ctx, choices); err != nil {
 			return err
@@ -296,7 +314,7 @@ func (plan crewAgentRemovalPlan) apply(ctx context.Context, confirmation string,
 			if id != "" && choice == "remove" {
 				continue
 			}
-			if id != "" {
+			if id != "" && choice != "" {
 				for j, object := range file.references[i] {
 					field := file.fields[i][j]
 					target := choice
@@ -318,4 +336,56 @@ func (plan crewAgentRemovalPlan) apply(ctx context.Context, confirmation string,
 		}
 	}
 	return nil
+}
+
+// A schedule depending on a removed schedule cannot remain runnable. Show it
+// only when its prerequisite is chosen for removal, never delete it implicitly.
+func (plan *crewAgentRemovalPlan) addDependentSchedules() {
+	for _, file := range plan.files {
+		if file.collection != "schedules" {
+			continue
+		}
+		records, _ := file.document[file.collection].([]any)
+		known := map[string]string{}
+		for i, item := range records {
+			record, _ := item.(map[string]any)
+			id, _ := record["id"].(string)
+			if file.choices[i] != "" {
+				known[id] = file.choices[i]
+			}
+		}
+		for {
+			added := false
+			for i, item := range records {
+				if file.choices[i] != "" {
+					continue
+				}
+				record, _ := item.(map[string]any)
+				when, _ := record["when"].(map[string]any)
+				after, _ := when["after"].(map[string]any)
+				dependencies, _ := after["schedules"].([]any)
+				var parents []string
+				for _, dependency := range dependencies {
+					id, _ := dependency.(string)
+					if parent := known[id]; parent != "" {
+						parents = append(parents, parent)
+					}
+				}
+				if len(parents) == 0 {
+					continue
+				}
+				id, _ := record["id"].(string)
+				name, _ := record["name"].(string)
+				stable := sha256.Sum256([]byte(file.path + "/" + id))
+				key := hex.EncodeToString(stable[:])
+				plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{ID: key, Kind: "dependent schedule", Name: firstNonEmptyTrimmed(name, "Schedule"), WhenRemoved: parents})
+				file.choices[i] = key
+				known[id] = key
+				added = true
+			}
+			if !added {
+				break
+			}
+		}
+	}
 }
