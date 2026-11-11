@@ -53,14 +53,9 @@ var errCrewTeamLastShared = errors.New("Keep at least one agent shared with the 
 // crewTeamSharedKeys are the IDs of this person's currently shared agents.
 func crewTeamSharedKeys(ctx context.Context, t crewTeam, person string) []string {
 	var keys []string
-	for _, p := range teamAgentsByPerson(ctx, t, person) {
-		if p.UserID != person {
-			continue
-		}
-		for _, a := range p.Agents {
-			if a.InTeam {
-				keys = append(keys, a.ID)
-			}
+	for _, a := range t.Agents {
+		if a.OwnerID == person && a.InTeam {
+			keys = append(keys, a.ID)
 		}
 	}
 	return keys
@@ -149,21 +144,13 @@ func crewTeamRuleKey(ctx context.Context, t crewTeam, person, rowKey string) str
 	return rowKey
 }
 
-// crewTeamOwnRows are person's own agents exactly as their Team tab lists them (crewTeamTabFor): key, name and tab.
-// The owner's Mac agents come from the list the Mac last pushed, so they stay here while the Mac is off (Always on).
+// crewTeamOwnRows uses the registry's ownership, independent of whether the Mac
+// has pushed its agent list since Team setup. Discovery is not an access check.
 func crewTeamOwnRows(ctx context.Context, t crewTeam, person string) []crewTeamAgent {
 	var rows []crewTeamAgent
-	if !t.On {
-		if person == t.OwnerID {
-			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}) {
-				rows = append(rows, crewTeamAgent{ID: row.ID, ChatKey: row.WatchKey, Name: row.Name, Tab: row.Tab})
-			}
-		}
-		return rows
-	}
-	for _, p := range teamAgentsByPerson(ctx, t, person) {
-		if p.UserID == person {
-			rows = append(rows, p.Agents...)
+	for _, a := range t.Agents {
+		if a.OwnerID == person {
+			rows = append(rows, crewTeamAgent{ID: a.ID, ChatKey: a.ChatKey, Name: a.Name, Tab: a.Tab})
 		}
 	}
 	return rows
