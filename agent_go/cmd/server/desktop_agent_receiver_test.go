@@ -45,6 +45,16 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if err != nil || len(after.Entries) != 0 {
 		t.Fatalf("recipient lookup recreated a chat: %v", err)
 	}
+	// PLAT-746-890 / optional Main: a project alias is not a physical recipient.
+	alias := record
+	alias.ConversationKey = alias.ResourceID
+	doc.Entries[productConversationRegistryEntryKey(crewProfileID, alias.ConversationKey)] = alias
+	if err := store.writeDocument(ctx, path, doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := desktopAppAgentRecipient(ctx, "owner", alias); err == nil {
+		t.Fatal("project alias accepted instead of a selected physical chat")
+	}
 	// A registry reference to someone else's workspace does not advertise their
 	// chat under this laptop login, even if its record sits in the local namespace.
 	foreign := record
