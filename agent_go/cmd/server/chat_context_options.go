@@ -552,8 +552,13 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 		return
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
+		return
+	}
 	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
-	if !found || !loadCompactionPreferences(context.Background(), owner).compactEarly() {
+	if !found {
+		// Every give-up says why: chats grew 19K -> 419K with no compact_early line at all (PLAT-746-855).
+		log.Printf("[IDLE_COMPACT] session=%s owner=%s action=skip reason=compact_early_no_tab", sessionID, owner)
 		return
 	}
 	followed := func() (provider string, lastPerson time.Time) {
@@ -567,6 +572,7 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 	provider, person := followed()
 	tokens, _, _ := api.chatContextUsage(sessionID, provider, "", false)
 	if tokens < compactEarlyTokens {
+		log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=skip reason=compact_early_below_mark", sessionID, provider, owner, tokens)
 		return
 	}
 	// Wait for a quiet chat: the person is often still reading the reply or typing the next message, and a

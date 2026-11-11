@@ -59,7 +59,7 @@ type idleCompactConfig struct {
 
 func idleCompactConfigFromEnv() idleCompactConfig {
 	cfg := idleCompactConfig{MinTokens: 200_000, MinPercent: 60, IdleFrom: 50 * time.Minute, IdleTo: 58 * time.Minute,
-		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 90 * time.Second, MaxConcurrent: 2}
+		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 10 * time.Minute, MaxConcurrent: 2}
 	positive := func(key string) (int, bool) {
 		n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
 		return n, err == nil && n > 0
@@ -453,6 +453,11 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	api.handleQuery(recorder, httpReq)
 	if recorder.status >= http.StatusBadRequest {
 		logSkip("turn_refused_" + strconv.Itoa(recorder.status))
+		if run.beforeQueued {
+			// Refused (a turn still held the chat): try again before the next queued message instead of waiting
+			// 10 minutes, so a busy chat over the mark still compacts in its next gap (PLAT-746-855).
+			compactBeforeQueuedAttempts.Delete(sessionID)
+		}
 		run.finish(llmtypes.IdleCompactResult{}, nil)
 		return
 	}
