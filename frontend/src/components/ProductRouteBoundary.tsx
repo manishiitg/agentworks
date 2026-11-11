@@ -1,3 +1,5 @@
+import { desktopRequest } from '../services/desktopConnections'
+import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { markViewSwitchAdmitted, markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 import { workspaceSettingsPage } from '../utils/workspaceSettingsRoutes'
 import { syncWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
@@ -80,6 +82,17 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     if (route && !enabled.includes(route.surface)) { finish('disabled'); return () => controller.abort() }
     if (!allowed.length || (route && !allowed.includes(route.surface))) { finish('unavailable'); return () => controller.abort() }
     const initialize = async () => {
+      // Resolve before reading the selected server's workspace or chat. This also
+      // handles notification clicks and direct links carrying the server Crew ID.
+      if (route?.surface === 'work' && route.id && window.electronAPI?.getDesktopConnection?.()) {
+        const member = await desktopRequest<{ project_id: string }>(`/${encodeURIComponent(getRawActiveWorkspaceId())}/member-crew/${encodeURIComponent(route.id)}`)
+        if (controller.signal.aborted) return
+        if (member.project_id && member.project_id !== route.id) {
+          await window.electronAPI.openDesktopConnection?.('local', productRoutePath({ ...route, id: member.project_id }))
+          return
+        }
+      }
+
       let state = useWorkspaceReturnStore.getState()
       if (state.account !== account || state.workspace !== workspace || !state.ready || requested === '/') {
         useWorkspaceReturnStore.setState({ account, workspace, ready: false, record: null, restore: null, firstVisit: false, note: '', saveError: '' })

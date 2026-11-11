@@ -160,13 +160,19 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 // crewTeamAddressOnMac is this Mac's send_message target for a Team agent addressed the server's way
 // (workspace:work:<online copy>/agent/<agent ID>): "team:<the Crew here paired with that copy>:<agent ID>", or "".
 func crewTeamAddressOnMac(raw string) string {
-	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), "workspace:"+crewProfileID+":")
-	if !ok {
-		return ""
+	raw = strings.TrimSpace(raw)
+	var project, chatKey string
+	var ok bool
+	if rest, team := strings.CutPrefix(raw, "team:"); team {
+		project, chatKey, ok = strings.Cut(rest, ":")
+	} else if rest, workspace := strings.CutPrefix(raw, "workspace:"+crewProfileID+":"); workspace {
+		project, chatKey, ok = strings.Cut(rest, "/agent/")
 	}
-	project, chatKey, ok := strings.Cut(rest, "/agent/")
 	if !ok || project == "" || chatKey == "" {
 		return ""
+	}
+	if local := crewTeamMemberCopy(project); local != "" {
+		return "team:" + local + ":" + chatKey
 	}
 	if local := crewLocalCopyOf(project); local != "" {
 		return "team:" + local + ":" + chatKey
