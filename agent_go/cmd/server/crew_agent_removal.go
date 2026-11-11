@@ -274,15 +274,32 @@ func (plan crewAgentRemovalPlan) apply(ctx context.Context, confirmation string,
 	}
 	selected := map[string]string{}
 	known := map[string]bool{}
+	active := map[string]bool{}
 	for _, dep := range plan.preview.Dependencies {
 		known[dep.ID] = true
-		active := len(dep.WhenRemoved) == 0
-		for _, parent := range dep.WhenRemoved {
-			if selected[parent] == "remove" {
-				active = true
+		if len(dep.WhenRemoved) == 0 {
+			active[dep.ID] = true
+		}
+	}
+	// Reachability is independent of file/preview order; an inactive stale choice
+	// must not activate anything downstream, including a cycle.
+	for changed := true; changed; {
+		changed = false
+		for _, dep := range plan.preview.Dependencies {
+			if active[dep.ID] {
+				continue
+			}
+			for _, parent := range dep.WhenRemoved {
+				if active[parent] && choices[parent] == "remove" {
+					active[dep.ID] = true
+					changed = true
+					break
+				}
 			}
 		}
-		if !active {
+	}
+	for _, dep := range plan.preview.Dependencies {
+		if !active[dep.ID] {
 			continue
 		}
 		choice := choices[dep.ID]
@@ -385,6 +402,31 @@ func (plan *crewAgentRemovalPlan) addDependentSchedules() {
 			}
 			if !added {
 				break
+			}
+		}
+		// Discovery can reach a second parent later than its child. Refresh
+		// every conditional edge only after the complete reachable set exists.
+		for i, item := range records {
+			key := file.choices[i]
+			if key == "" {
+				continue
+			}
+			for j := range plan.preview.Dependencies {
+				dep := &plan.preview.Dependencies[j]
+				if dep.ID != key || dep.Kind != "dependent schedule" {
+					continue
+				}
+				record, _ := item.(map[string]any)
+				when, _ := record["when"].(map[string]any)
+				after, _ := when["after"].(map[string]any)
+				dependencies, _ := after["schedules"].([]any)
+				dep.WhenRemoved = nil
+				for _, dependency := range dependencies {
+					id, _ := dependency.(string)
+					if parent := known[id]; parent != "" {
+						dep.WhenRemoved = append(dep.WhenRemoved, parent)
+					}
+				}
 			}
 		}
 	}

@@ -52,8 +52,14 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = store.resolveOrCreate(ctx, "owner", profile, binding, ""); err != nil {
-			t.Fatal(err)
+		record, createErr := store.resolveOrCreate(ctx, "owner", profile, binding, "")
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if key == "team:chat:remove" {
+			if err = store.writeMainChatPointer(ctx, externalCommandCrewState+"/product.json", key, record.SessionID); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	const schedule = `{"schedules":[{"id":"daily","name":"Daily check","project":{"kind":"crew","id":"team"},"action":{"type":"message","tab":"team:chat:remove"},"input":{"messages":["Check status"]},"enabled":false}]}`
@@ -87,6 +93,13 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	}
 	if projectChatExists(ctx, "owner", "work", "team", "team:chat:remove") || !projectChatExists(ctx, "owner", "work", "team", "team:chat:keep") {
 		t.Fatal("removed wrong agent")
+	}
+	var manifest productProjectManifest
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/product.json")), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.MainChatKey != "" || manifest.SessionID != "" {
+		t.Fatal("deleted Main was retained or replaced")
 	}
 	var saved struct {
 		Schedules []struct {
@@ -124,5 +137,32 @@ func TestAgentRemovalRequiresDependentScheduleChoiceOnlyWhenNeeded(t *testing.T)
 	}
 	if err := plan.apply(context.Background(), "current", map[string]string{"parent": "remove", child: "remove"}, "crew"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The input file can list a child before its second parent. Removing only that
+// later parent must still require the child's explicit removal choice.
+func TestAgentRemovalDependentGraphDoesNotDependOnRecordOrder(t *testing.T) {
+	plan := crewAgentRemovalPlan{preview: crewAgentRemovalPreview{Confirmation: "current", Dependencies: []crewAgentRemovalDependency{{ID: "root", Name: "Root", CanReassign: true}}, Destinations: []crewAgentRemovalDestination{{Key: "crew:chat:other"}}}, files: []*crewAgentRemovalFile{{path: "schedules.json", collection: "schedules", choices: map[int]string{0: "root"}, document: map[string]any{"schedules": []any{
+		map[string]any{"id": "root"},
+		map[string]any{"id": "child", "when": map[string]any{"after": map[string]any{"schedules": []any{"root", "later"}}}},
+		map[string]any{"id": "later", "when": map[string]any{"after": map[string]any{"schedules": []any{"root"}}}},
+	}}}}}
+	plan.addDependentSchedules()
+	if len(plan.preview.Dependencies) != 3 || len(plan.preview.Dependencies[1].WhenRemoved) != 2 {
+		t.Fatal("later parent omitted")
+	}
+	child, later := plan.preview.Dependencies[1].ID, plan.preview.Dependencies[2].ID
+	// Reverse preview order to exercise the public confirmation policy as well.
+	plan.preview.Dependencies[0], plan.preview.Dependencies[2] = plan.preview.Dependencies[2], plan.preview.Dependencies[0]
+	plan.files = nil
+	if err := plan.apply(context.Background(), "current", map[string]string{"root": "remove", later: "remove"}, "crew"); err == nil {
+		t.Fatal("child removed without choice")
+	}
+	if err := plan.apply(context.Background(), "current", map[string]string{"root": "remove", later: "remove", child: "remove"}, "crew"); err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.apply(context.Background(), "current", map[string]string{"root": "crew:chat:other", later: "remove"}, "crew"); err != nil {
+		t.Fatal("inactive stale choice activated a child", err)
 	}
 }
