@@ -38,6 +38,35 @@ describe('protected deep-link boundary', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
+  it('falls through a failed member lookup but still requires ordinary route admission', async () => {
+    // PLAT-746-865: a local lookup failure must not block an otherwise available Crew.
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
+    const open = vi.fn()
+    window.electronAPI = { getDesktopConnection: () => 'saved', openDesktopConnection: open } as unknown as typeof window.electronAPI
+    mocks.member.mockRejectedValue(new Error('Local lookup unavailable'))
+    const activate = vi.fn()
+    mocks.resolve.mockResolvedValue(activate)
+    const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
+    useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
+    window.history.replaceState({}, '', '/crew/projects/team-online')
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<ProductRouteBoundary account="member" allowedProducts={['work']}>Admitted Crew</ProductRouteBoundary>))
+      expect(mocks.member).toHaveBeenCalledOnce()
+      expect(activate).toHaveBeenCalledOnce()
+      expect(open).not.toHaveBeenCalled()
+      expect(host.textContent).toContain('Admitted Crew')
+      mocks.resolve.mockRejectedValueOnce({ response: { status: 403 } })
+      await act(async () => {
+        window.history.pushState({}, '', '/crew/projects/denied')
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      })
+      expect(host.textContent).not.toContain('Admitted Crew')
+      expect(host.textContent).toContain('not available')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('keeps the admitted workspace mounted during a Crew lookup, but removes it on refusal or account change', async () => {
     // PLAT-746: every sidebar navigation used to unmount the chat for Opening link.
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
