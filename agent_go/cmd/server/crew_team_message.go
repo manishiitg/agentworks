@@ -84,7 +84,7 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed key=%q member=%s reason=%q", project, strings.TrimPrefix(chatKey, project+codeChatSideMarker), logUsernameForUserID(member), err)
 		// Membership was admitted above; a target-resolution failure is not a Team removal.
-		externalError(w, 409, "agent_target_failed", "Could not open that Team agent: "+err.Error())
+		externalError(w, 409, "agent_target_failed", crewTeamTargetFailureMessage(err))
 		return triggerTarget{}, "", false
 	}
 	return target, member, true
@@ -225,4 +225,19 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 		}
 	}
 	return rows
+}
+
+// Only fixed, person-facing resolver errors cross the HTTP boundary. File and
+// registry errors remain in the server log, not in another member's response.
+func crewTeamTargetFailureMessage(err error) string {
+	switch err.Error() {
+	case "Choose a chat_id from list_agents for this Crew", "Choose this Team agent's chat_id from list_agents":
+		return "Could not open that Team agent. Refresh the agent list and use its chat_id."
+	case "This Crew's Team is not available to you", "That agent isn't in this Crew's Team now", "shared agent unavailable or access denied":
+		return "That Team agent is no longer available to you. Refresh the agent list."
+	case "Crew chat runtime unavailable":
+		return "That Team agent's chat is temporarily unavailable. Try again shortly."
+	default:
+		return "Could not open that Team agent. Try again; if it still fails, ask the Crew owner to check the server log."
+	}
 }
