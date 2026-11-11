@@ -2,10 +2,11 @@ import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, 
 import { ComposerActionItems, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
+import { formatTokens } from '../../utils/formatTokens'
 import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { BarChart3, Check, ChevronDown, ChevronRight, Laptop, Loader2, Server, Settings2 } from 'lucide-react'
+import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, Loader2, Server, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -88,11 +89,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const [menuOpen, setMenuOpen] = useState(false)
   // This chat's switch note, read when the menu opens, and a model picked in a long chat waiting for the choice.
   const [switchNote, setSwitchNote] = useState('')
+  const [contextTokens, setContextTokens] = useState(0)
   const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string; connectionId?: string } | null>(null)
   useEffect(() => {
     if (!menuOpen || !sessionId) return
     let active = true
-    agentApi.getChatContext(sessionId).then(view => { if (active) setSwitchNote(view?.switch_note || '') }).catch(() => undefined)
+    agentApi.getChatContext(sessionId).then(view => { if (active) { setSwitchNote(view?.switch_note || ''); setContextTokens(view?.used_tokens || 0) } }).catch(() => undefined)
     return () => { active = false }
   }, [menuOpen, sessionId])
   const confirmSwitchRef = useRef<HTMLDivElement>(null)
@@ -171,11 +173,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     const model = modelId || defaults.modelId
     void save(option, model, effortForPick(model, defaults.reasoningEffort, option), targetConnectionId)
   }
-  // A long chat: another model re-reads all of it once, so the menu first offers to compact (owner, 10 Nov, approved
-  // mockup "Model Switch Choice"). The server says when (switch_note); a short chat switches at once.
+  // The server offers compaction for a long chat within one CLI. Across CLIs,
+  // confirm the handoff without compacting the old CLI: recent context and archive access carry over.
   const pickModel = (option: AgentProfileProviderOption, modelId?: string, targetConnectionId?: string) => {
     const changes = option.id !== selectedOption.id || (modelId !== undefined && modelId !== currentModel) || Boolean(targetConnectionId && targetConnectionId !== currentAccountId)
-    if (!changes || !switchNote) { switchTo(option, modelId, targetConnectionId); return false }
+    if (!changes || (option.id === selectedOption.id && !switchNote)) { switchTo(option, modelId, targetConnectionId); return false }
     setPendingSwitch({ option, modelId, connectionId: targetConnectionId })
     return true
   }
@@ -207,16 +209,37 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
+  const changesCLI = Boolean(pendingSwitch && pendingSwitch.option.id !== selectedOption.id)
+  const pendingCLI = pendingSwitch?.option.label || pendingSwitch?.option.provider || ''
+  const currentCLI = selectedOption.label || selectedOption.provider || ''
+  const pendingKeepsAccount = !pendingSwitch?.connectionId || pendingSwitch.connectionId === currentAccountId
+  const pendingModelID = pendingSwitch ? pendingSwitch.modelId || (!changesCLI && pendingKeepsAccount
+    ? currentModel : defaultForOption(pendingSwitch.option, pendingSwitch.connectionId || switchAccountFor(pendingSwitch.option)).modelId) : ''
+  const pendingModelLabel = models.find(model => model.id === pendingModelID)?.label
+    || sources.providerManifest.find(provider => provider.id === pendingSwitch?.option.provider)?.models?.find(model => model.model_id === pendingModelID)?.model_name
+    || pendingModelID || 'Default model'
+  const pendingAccount = sources.accounts?.find(account => account.id === (pendingSwitch?.connectionId || currentAccountId))
+  const pendingAccountLabel = pendingAccount ? pendingAccount.via_connection ? pendingAccount.display_name
+    : onThisMac && accountRelation(pendingAccount) === 'server' ? 'This Mac' : accountOptionLabel(pendingAccount) : ''
+  const switchActionClass = 'flex cursor-pointer items-center rounded-md border px-3 py-2.5 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <>{sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
-    triggerExtra={triggerExtra} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
-    {pendingSwitch ? <div className="min-w-0" aria-label="Finish changing the model">
-      <Menu.Label className={labelClass}>Change model</Menu.Label>
-      <p className="px-2.5 pb-2 text-xs text-muted-foreground">{switchNote}</p>
-      <Menu.Item ref={confirmSwitchRef} className={`${rowClass} flex-col items-start`} onSelect={() => void finishSwitch(true)}>
-        <span>Compact, then switch</span><span className="text-[11px] text-muted-foreground">Continues from a short summary</span>
-      </Menu.Item>
-      <Menu.Item className={rowClass} onSelect={() => void finishSwitch(false)}>Switch and keep the whole chat</Menu.Item>
-      <Menu.Item className={rowClass} onSelect={event => { event.preventDefault(); setPendingSwitch(null) }}>Cancel</Menu.Item>
+    triggerExtra={triggerExtra} wide={Boolean(pendingSwitch)} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
+    {pendingSwitch ? <div className="min-w-0 p-2.5" aria-label="Finish changing the model">
+      <Menu.Label className="mb-1 text-base font-semibold leading-snug">Switch to {changesCLI ? pendingCLI : pendingModelLabel}?</Menu.Label>
+      <p className="mb-4 text-xs text-muted-foreground">{changesCLI ? 'Continue in this tab' : currentCLI}{pendingAccountLabel ? ` · ${pendingAccountLabel}` : ''}</p>
+      <div className="mb-3.5 flex items-center gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs">
+        <div className="min-w-0 flex-1"><span className="block text-[10px] text-muted-foreground">Current</span><span>{changesCLI ? `${currentCLI} · ` : ''}{modelLabel}</span></div>
+        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="min-w-0 flex-1"><span className="block text-[10px] text-muted-foreground">Next reply</span><span>{changesCLI ? `${pendingCLI} · ` : ''}{pendingModelLabel}</span></div>
+      </div>
+      <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{changesCLI
+        ? `${pendingCLI} starts with recent messages and access to the full saved conversation. It can search older history when needed—not load it all upfront.`
+        : `${contextTokens > 0 ? `This chat has ${formatTokens(contextTokens)} tokens. ` : ''}Continue with the current context, or summarize it first to make it smaller.`}</p>
+      <Menu.Item ref={confirmSwitchRef} className={`${switchActionClass} mb-2 border-foreground/80 bg-foreground text-background data-[highlighted]:opacity-90`}
+        onSelect={() => void finishSwitch(!changesCLI)}>{changesCLI ? `Switch to ${pendingCLI}` : 'Summarize & switch'}</Menu.Item>
+      {!changesCLI && <Menu.Item className={`${switchActionClass} border-border data-[highlighted]:bg-muted`} onSelect={() => void finishSwitch(false)}>Keep full history & switch</Menu.Item>}
+      <p className="mt-2 text-[11px] text-muted-foreground">{changesCLI ? 'Your chat stays here. No automatic summary.' : 'A summary keeps the key context, not every detail.'}</p>
+      <Menu.Item className="ml-auto mt-3 w-fit cursor-pointer rounded px-1 py-0.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground" onSelect={event => { event.preventDefault(); setPendingSwitch(null) }}>Cancel</Menu.Item>
     </div> : <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
@@ -286,6 +309,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
     </div>}
     {/* The message-box keys span both columns at the very bottom (owner-approved mockup, 11 Nov). */}
-    {actions && <ComposerSendKeys busy={busy} />}
+    {actions && !pendingSwitch && <ComposerSendKeys busy={busy} />}
   </Chip></>
 }
