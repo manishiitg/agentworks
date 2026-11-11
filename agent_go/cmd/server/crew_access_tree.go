@@ -106,7 +106,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 	}
 	if !teamOn {
 		if f.MacOnline || f.ServerCrew {
-			lines = append(lines, crewAccessLine{Kind: "team", Title: crewAccessTeamOffTitle, Detail: "Turn on to work on this Crew with people"})
+			lines = append(lines, crewAccessLine{Kind: "team", Title: crewAccessTeamOffTitle})
 		}
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
