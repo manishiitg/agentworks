@@ -256,6 +256,9 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
 			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
 			if t.On && t.Folder.ID == b.FolderID {
+				if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
+					continue
+				}
 				if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
 					log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=final_upload_failed reason=%q", b.Project, logUsernameForUserID(b.RemoteUser), err)
 					continue
@@ -280,6 +283,9 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		if stillTheirs && onMac {
 			// Their last changes go up first; if that fails the copy stays and the next pass tries again.
+			if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
+				continue
+			}
 			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
 			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
 			if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
@@ -315,6 +321,28 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			done()
 		}
 	}
+}
+
+// PLAT-746-820: a never-downloaded, absent copy has nothing to upload when
+// retiring it. Re-read under the sync lock; never remove its physical root.
+func retireMissingUndownloadedCrewTeamCopy(ctx context.Context, dir string) bool {
+	unlock, err := wf.LockWorkspace(ctx, dir)
+	if err != nil {
+		return false
+	}
+	defer unlock()
+	b, err := readCrewTeamLocal(dir)
+	if err != nil || b.Downloaded || b.Revision != 0 || b.Root == "" {
+		return false
+	}
+	if _, err = os.Lstat(b.Root); !os.IsNotExist(err) {
+		return false // existing files, links and permission failures retain normal handling
+	}
+	if err = os.RemoveAll(dir); err != nil {
+		return false
+	}
+	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=never_downloaded_root_missing", b.Project, logUsernameForUserID(b.RemoteUser))
+	return true
 }
 
 var crewTeamCopyCreating sync.Map

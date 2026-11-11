@@ -24,6 +24,52 @@ import (
 )
 
 // PLAT-746-820: idle sync rounds rewrote the full file baseline every five seconds.
+// PLAT-746-820: final upload retried forever for an absent, never-downloaded copy.
+func TestRetireMissingUndownloadedCrewTeamCopyPreservesExistingAndDownloadedCopies(t *testing.T) {
+	for _, scenario := range []struct {
+		name                 string
+		downloaded, existing bool
+		revision             uint64
+		removed              bool
+	}{
+		{name: "missing never downloaded", removed: true},
+		{name: "missing downloaded", downloaded: true},
+		{name: "missing with revision", revision: 1},
+		{name: "existing unsent files", existing: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "binding")
+			root := filepath.Join(t.TempDir(), "copy")
+			if scenario.existing {
+				if err := os.MkdirAll(root, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, "unsent.txt"), []byte("keep"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			b := crewTeamLocal{Project: "example", RemoteUser: "member", Root: root, Downloaded: scenario.downloaded, Revision: scenario.revision,
+				Files: map[string]crewTeamLocalFile{"remote-entry.txt": {}}}
+			if err := saveCrewTeamLocal(dir, b); err != nil {
+				t.Fatal(err)
+			}
+			if removed := retireMissingUndownloadedCrewTeamCopy(t.Context(), dir); removed != scenario.removed {
+				t.Fatalf("removed=%t, want %t", removed, scenario.removed)
+			}
+			_, err := os.Stat(filepath.Join(dir, "binding.json"))
+			if os.IsNotExist(err) != scenario.removed {
+				t.Fatalf("binding state: %v", err)
+			}
+			if scenario.existing {
+				data, err := os.ReadFile(filepath.Join(root, "unsent.txt"))
+				if err != nil || string(data) != "keep" {
+					t.Fatalf("unsent file changed: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestCrewTeamLocalSkipsUnchangedRoundsAndRefreshesHeartbeat(t *testing.T) {
 	dir := t.TempDir()
 	b := crewTeamLocal{Root: t.TempDir(), Status: "up_to_date", LastSynced: time.Now().UTC().Format(time.RFC3339Nano), Files: map[string]crewTeamLocalFile{}}
