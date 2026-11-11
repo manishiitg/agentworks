@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -226,6 +227,9 @@ func installComputerUse(ctx context.Context) error {
 	}
 	dir := filepath.Join(base, "runtime")
 	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	if err := noderuntime.EnsureDefault(ctx); err != nil {
 		return err
 	}
 	// Exact release, private destination, no package lifecycle scripts or global install.
