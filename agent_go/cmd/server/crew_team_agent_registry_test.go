@@ -130,7 +130,9 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	}
 	mainID := crewTeamAgentIDPrefix + uuid.NewString()
 	main := crewTeamRegisteredAgent{ID: mainID, OwnerID: "owner", Tab: macMainTab, ChatKey: key, Place: "server", InTeam: false, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
-	team.Agents = map[string]crewTeamRegisteredAgent{mainID: main}
+	oldBinding := main
+	oldBinding.Tab = "imported-example"
+	team.Agents = map[string]crewTeamRegisteredAgent{mainID: oldBinding}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
@@ -152,6 +154,9 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	saved, err := readCrewTeam("team")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if saved.Agents[mainID].Tab != macMainTab {
+		t.Fatal("matching the chat must update its tab without replacing its ID")
 	}
 	dupID := crewTeamAgentIDPrefix + uuid.NewString()
 	duplicate := saved.Agents[mainID]
