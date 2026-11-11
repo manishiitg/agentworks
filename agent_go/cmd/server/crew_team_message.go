@@ -83,7 +83,8 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workspace:"+crewProfileID+":"+project+"/agent/"+chatKey)
 	if err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed key=%q member=%s reason=%q", project, strings.TrimPrefix(chatKey, project+codeChatSideMarker), logUsernameForUserID(member), err)
-		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
+		// Membership was admitted above; a target-resolution failure is not a Team removal.
+		externalError(w, 409, "agent_target_failed", "Could not open that Team agent: "+err.Error())
 		return triggerTarget{}, "", false
 	}
 	return target, member, true
