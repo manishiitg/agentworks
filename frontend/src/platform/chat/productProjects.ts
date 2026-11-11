@@ -131,7 +131,7 @@ export function parseProductProjectManifest<P extends string>(
   const id = asString(raw.id)
   const title = asString(raw.title)
   const sessionId = asString(raw.session_id)
-  if (raw.schema_version !== 1 || raw.product !== product || !id || !title || !sessionId) return null
+  if (raw.schema_version !== 1 || raw.product !== product || !id || !title || (product !== 'work' && !sessionId)) return null
   const createdAt = asString(raw.created_at) || lastModified || new Date(0).toISOString()
   return {
     schemaVersion: 1,
