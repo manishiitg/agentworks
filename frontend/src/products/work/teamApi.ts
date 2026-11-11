@@ -49,7 +49,7 @@ async function teamTarget(project: string): Promise<TeamTarget | undefined> {
 
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
-export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; presence?: TeamTabPresence }
+export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; you?: boolean; presence?: TeamTabPresence }
 // A teammate's Mac, as the server words it (crew_team_tab.go); absent when their agents work on the server.
 // tone picks the dot's colour: on (Mac on), server (Mac off, shared agents answer from the server), away (they wait).
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
@@ -175,7 +175,7 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
 /** The People list (crew_people.go): the Team and the Share as one list with two levels. The server words every line and
  * says what each person may be moved to; the card shows them and sends the person's choice. */
 export type CrewPeopleLevelKey = 'works' | 'dashboards'
-export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; note?: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
+export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; note?: string; invited?: boolean; owner?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
 export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
 export type CrewPeopleView = {
   kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; add_everyone?: string

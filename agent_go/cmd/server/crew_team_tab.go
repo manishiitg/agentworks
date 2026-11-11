@@ -22,6 +22,8 @@ type crewTeamTabPerson struct {
 	Active      bool   `json:"active"`
 	ActiveLabel string `json:"active_label,omitempty"`
 	CanRemove   bool   `json:"can_remove"`
+	// You is the viewer's own row, the owner included (whose note stays "owner"), so lists of other people skip it.
+	You bool `json:"you"`
 	// Presence is the dot by a teammate's name on the tab bar and left menu; nil for the viewer, an invited person and
 	// anyone whose agents work on the server (no Mac to speak of).
 	Presence *crewTeamTabPresence `json:"presence,omitempty"`
@@ -328,7 +330,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	person := func(id, note string, removable bool) {
 		p := seen[id]
 		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: crewPersonShortName(id), Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
-			CanRemove: removable && view.CanManage && id != viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
+			CanRemove: removable && view.CanManage && id != viewer, You: id == viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
 	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
 	for _, p := range t.People {
