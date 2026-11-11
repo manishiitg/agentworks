@@ -1,19 +1,27 @@
 package server
 
-import (
-	"context"
-	"testing"
-)
+import "testing"
 
-// PLAT-746-852: a message from the agent owner's own account (their agent on another computer or login) is the
-// owner's, not answer-only; another person's message keeps the Team rule.
-func TestAgentRuleArgsMarkOnlyTheOwnersOwnAgent(t *testing.T) {
-	own := withAgentRuleArgs(context.Background(), map[string]any{"sender_id": "owner-1"}, "", "owner-1", "")
-	if own["own"] != true {
-		t.Fatalf("owner's own agent not marked own: %v", own)
-	}
-	other := withAgentRuleArgs(context.Background(), map[string]any{"sender_id": "colleague-2"}, "", "owner-1", "")
-	if _, marked := other["own"]; marked || other["can_make_changes"] != false {
-		t.Fatalf("another person's agent must stay on the Team rule (answer only by default): %v", other)
+// PLAT-746-852: a message from the agent's own person (their agent on another computer or login) is theirs, not
+// answer-only. Only admitted endpoint identities decide: a label, a Run chat or a guest-driven chat never counts.
+func TestOwnAgentMessageNeedsAdmittedSameOwnerAndNonRunEndpoints(t *testing.T) {
+	dest := agentMessageEndpoint{UserID: "owner", Mode: "builder"}
+	for _, tc := range []struct {
+		name         string
+		source, dest agentMessageEndpoint
+		want         bool
+	}{
+		{"own agent", agentMessageEndpoint{UserID: "owner", Mode: "builder"}, dest, true},
+		{"other person's agent with an owner-like label", agentMessageEndpoint{UserID: "other", Label: "owner", OwnerAuthority: true}, dest, false},
+		{"unknown sender", agentMessageEndpoint{}, dest, false},
+		{"Run sender", agentMessageEndpoint{UserID: "owner", Mode: "run"}, dest, false},
+		{"guest-driven sender", agentMessageEndpoint{UserID: "owner", Guest: "other"}, dest, false},
+		{"Run recipient", agentMessageEndpoint{UserID: "owner"}, agentMessageEndpoint{UserID: "owner", Mode: "run"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := crewOwnAgentMessage(tc.dest, tc.source); got != tc.want {
+				t.Fatalf("own agent = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

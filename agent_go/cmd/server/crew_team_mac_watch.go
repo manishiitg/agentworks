@@ -524,7 +524,10 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
+	// The agent's person comes from the Team registry (crewMemberMacAgentFor), never from the message.
+	member := dest
+	member.UserID = person
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox, "own_agent_message": crewOwnAgentMessage(member, source)}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
 	ask := crewChatCall{Operation: "agent_ask", Tab: agent.Tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	_, status := read(0, 0)

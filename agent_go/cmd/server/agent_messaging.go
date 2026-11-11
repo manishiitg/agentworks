@@ -1453,6 +1453,14 @@ func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
 // caps) or one of the owner's Crew builder chats (source.Mode "builder"). A receiving chat that is already restricted
 // (dest.Mode "run", or a recorded guest) stays so; workflow runs, schedules, bots, Code chats, capped or agent-bound
 // connections and Crew sessions with no recorded mode are never granted it.
+// crewOwnAgentMessage is true when a message comes from the receiving agent's own person (their agent on another computer
+// or login), judged only from admitted endpoint identities, never a label or the message: the Team's Answer only / Make
+// changes applies to other people, and a Run or guest-driven chat on either side never counts (PLAT-746-852).
+func crewOwnAgentMessage(dest, source agentMessageEndpoint) bool {
+	return source.UserID != "" && source.UserID == dest.UserID && source.Mode != "run" && strings.TrimSpace(source.Guest) == "" &&
+		dest.Mode != "run" && strings.TrimSpace(dest.Guest) == "" && !crewMessageRunMode(dest, source, "")
+}
+
 func crewMessageRunMode(dest, source agentMessageEndpoint, guest string) bool {
 	if dest.Mode == "builder" {
 		return false
