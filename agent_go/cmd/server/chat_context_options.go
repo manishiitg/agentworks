@@ -845,20 +845,36 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 	}
 	run := newIdleCompactRun()
 	run.beforeQueued = true
-	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+	if !api.reserveQueuedCompaction(sessionID, run) {
 		return false
 	}
-	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
-	// The compaction now owns dispatch through idleCompacts. Release the queue's
-	// reservation before starting its request, or it rejects its own dispatch_pending
-	// occupancy. Do not clear this after launching: completion may already kick a new drain.
-	api.conversationTurnQueueMu.Lock()
-	delete(api.conversationTurnQueueDraining, sessionID)
-	api.conversationTurnQueueMu.Unlock()
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early_before_queued", sessionID, chat.provider, owner, tokens)
 	go func() {
 		api.runIdleCompaction(sessionID, owner, chat, tokens, 0, run)
 		api.kickConversationTurnQueue(sessionID) // the queued messages go on after it
 	}()
 	return true
+}
+
+// reserveQueuedCompaction transfers the queue reservation to compaction before
+// any request can observe dispatch_pending as a competing turn.
+func (api *StreamingAPI) reserveQueuedCompaction(sessionID string, run *idleCompactRun) bool {
+	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+		return false
+	}
+	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, sessionID)
+	api.conversationTurnQueueMu.Unlock()
+	return true
+}
+
+// A reserved pre-queue compaction must precede the backlog, not yield to it.
+// All other new turns preserve the existing queued-message ordering.
+func shouldYieldToConversationBacklog(ctx context.Context) bool {
+	if conversationTurnQueueExecution(ctx) {
+		return false
+	}
+	run := idleCompactRunFromContext(ctx)
+	return run == nil || !run.beforeQueued
 }
