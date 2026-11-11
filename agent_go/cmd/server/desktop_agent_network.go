@@ -64,7 +64,7 @@ func desktopAgentNetworkRows(ctx context.Context, owner string) ([]map[string]in
 			if target == "" {
 				target, _ = row["id"].(string)
 			}
-			if !strings.HasPrefix(target, "agent:") {
+			if !strings.HasPrefix(target, "agent:") || (row["agent_id"] == nil && row["scope"] != "everyone") {
 				continue
 			}
 			copy := make(map[string]interface{}, len(row)+2)
@@ -95,7 +95,7 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if err != nil {
 		return nil, err
 	}
-	records, err := defaultProductConversationRegistryStore().projectChats(ctx, owner, normalizeInternalProfileID(caller.Stamp.ProfileID), caller.Stamp.ID)
+	records, err := desktopAppAgentRecords(ctx, owner)
 	if err != nil {
 		return nil, err
 	}

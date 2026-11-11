@@ -64,6 +64,10 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		conversation, message := pending.conversation, pending.message
 		source := conversation.Endpoints[message.From]
 		if !serverAuthoredKind(message.Kind) {
+			if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute && !appAgentPeerAllowed(r.Context(), agent.UserID, source) {
+				hold(message, source, "named_agent_not_published", "This named agent is not available through AgentBridge.")
+				continue
+			}
 			if !store.shareSenderAllowed(conversation, message.From, agent.UserID, now) {
 				hold(message, source, "share_check_failed", "Sharing with this chat has ended.")
 				continue

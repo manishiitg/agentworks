@@ -47,6 +47,9 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || (record.ConversationKey != record.ResourceID && !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey)) || !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
 			continue
 		}
+		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
+		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
+		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
 		out[record.ConversationID] = record
 	}
 	return out, nil
