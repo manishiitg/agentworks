@@ -106,7 +106,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 		}
 		if target != "" {
 			resolved, err := api.externalMessageTargetForOperation(r.Context(), claims, args, externalArg(args, "action") == "send")
-			if err != nil || resolved.NamedAgentID == "" {
+			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, targetMessageEndpoint(claims.UserID, resolved)) {
 				externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
 				return
 			}
@@ -118,7 +118,7 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 				return
 			}
 			peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, externalArg(args, "action") == "send")
-			if err != nil || peer.NamedAgentID == "" {
+			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, peer) {
 				externalError(w, 403, "inbox_refused", "Use this named agent's reply inbox.")
 				return
 			}
@@ -192,4 +192,26 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 		return empty, err
 	}
 	return *a, nil
+}
+
+// Own named agents need no publication. Other accounts use the existing public
+// AgentBridge grant, not a private Crew/Team or old person-specific share.
+func appAgentPeerAllowed(ctx context.Context, user string, peer agentMessageEndpoint) bool {
+	if peer.NamedAgentID == "" {
+		return false
+	}
+	if peer.UserID == user {
+		return true
+	}
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		return false
+	}
+	for _, share := range store.Shares {
+		if share.ID == peer.ShareID && share.serverScope() {
+			_, err := store.authorizeShare(share.ID, peer.ShareVersion, time.Now().UTC())
+			return err == nil
+		}
+	}
+	return false
 }

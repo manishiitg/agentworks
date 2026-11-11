@@ -110,6 +110,48 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if status, _ := request(second, invalid); status != 400 {
 		t.Fatalf("app message path admitted a Crew operation: %d", status)
 	}
+	// Other logins need the existing public named-agent grant: a valid old
+	// person-specific grant is not a substitute in this login-only route.
+	status, foreign := request(stranger, map[string]any{"action": "register", "agent_name": "public-helper", "device_id": "other-device", "conversation_id": "other-chat"})
+	if status != 200 {
+		t.Fatalf("other registered chat: %d %v", status, foreign)
+	}
+	share := agentShare{ID: "app-public-share", OwnerUserID: "other", AgentID: foreign["agent_id"].(string), SubjectUserID: "owner", Capability: shareCapabilityChat, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour), RevocationVersion: 1}
+	setShare := func() {
+		t.Helper()
+		agentMessageMu.Lock()
+		state, e := readAgentMessageStore(ctx)
+		if e == nil {
+			state.Shares = []agentShare{share}
+			e = saveAgentMessageStore(ctx, state)
+		}
+		agentMessageMu.Unlock()
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	setShare()
+	state, e := readAgentMessageSnapshot(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := state.authorizeShare(share.ID, 1, time.Now()); e != nil {
+		t.Fatalf("private grant fixture is not genuinely authorized: %v", e)
+	}
+	publicSend := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "agent:other/public-helper", "message": "A public request", "submission_id": "public-app-message"}
+	if status, _ := request(second, publicSend); status != 404 {
+		t.Fatalf("private grant used as publication: %d", status)
+	}
+	share.SubjectUserID = shareScopeServer
+	setShare()
+	status, publicReceipt := request(second, publicSend)
+	if status != 200 {
+		t.Fatalf("published named agent refused: %d %v", status, publicReceipt)
+	}
+	status, reply := request(stranger, map[string]any{"action": "send", "agent_name": "public-helper", "attachment_id": foreign["attachment_id"], "inbox_id": publicReceipt["inbox_id"], "message": "The explicit reply", "submission_id": "public-app-reply"})
+	if status != 200 || reply["inbox_id"] != publicReceipt["inbox_id"] {
+		t.Fatalf("reply lost its original inbox: %d %v", status, reply)
+	}
 	revokedSessions.Lock()
 	revokedSessions.until[second.ID] = time.Now().Add(time.Hour)
 	revokedSessions.Unlock()
