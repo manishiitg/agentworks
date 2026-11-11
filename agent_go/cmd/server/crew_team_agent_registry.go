@@ -131,6 +131,8 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: true}
 				bySource[source] = id
 			}
+			delete(bySource, record.OwnerID+"/"+record.Tab)
+			record.Tab = tab
 			delete(byChat, record.OwnerID+"/"+record.ChatKey)
 			byChat[chat] = id
 			bySource[source] = id
