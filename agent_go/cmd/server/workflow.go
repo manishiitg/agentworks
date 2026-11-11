@@ -22,6 +22,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowrun"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -207,6 +208,8 @@ var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
 // A nonzero limit bounds the HTTP body before allocation or JSON decoding.
 // Oversized records can be skipped by read-only callers without altering them.
 func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+	started := time.Now()
+	defer func() { workspacereads.Record(ctx, filePath, time.Since(started)) }()
 	// URL-encode the filepath segments
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
