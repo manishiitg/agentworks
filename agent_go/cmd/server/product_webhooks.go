@@ -79,6 +79,7 @@ func (t productWebhookTrigger) shownRunDestination() string {
 }
 
 type productWebhookRequest struct {
+	ChatID            string         `json:"chat_id,omitempty"`
 	WorkspaceFunction bool           `json:"-"` // Set only by the typed function service.
 	ProfileID         string         `json:"profile_id"`
 	ProjectID         string         `json:"project_id"`
@@ -93,6 +94,7 @@ type productWebhookRequest struct {
 }
 
 type productWebhookResponse struct {
+	ChatID         string         `json:"chat_id,omitempty"`
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
 	Enabled        bool           `json:"enabled"`
@@ -122,10 +124,11 @@ func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
 		ID: trigger.ID, Name: trigger.Name, Enabled: trigger.Enabled,
 		Message: trigger.Message, AuthMode: authMode,
 		Path:           path,
+		ChatID:         trigger.ChatKey,
 		RunDestination: trigger.shownRunDestination(),
 		Kind:           normalizeTriggerKind(trigger.Kind),
 		Caller:         trigger.Caller,
-		Starts:         automationStartsMessageLine("Main"),
+		Starts:         automationStartsMessageLine("the selected conversation"),
 		ChangedBy:      automationChangedByLine(trigger.CreatedBy, trigger.UpdatedBy),
 	}
 }
@@ -293,7 +296,7 @@ func (s *ProjectActionDispatcher) listProductWebhooks(w http.ResponseWriter, r *
 	if profileID == "" {
 		profileID = "work"
 	}
-	_, _, manifest, err := s.projectManifest(r.Context(), productWorkspaceUserID(r.Context()), profileID, projectID)
+	profile, binding, manifest, err := s.projectManifest(r.Context(), productWorkspaceUserID(r.Context()), profileID, projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -306,7 +309,7 @@ func (s *ProjectActionDispatcher) listProductWebhooks(w http.ResponseWriter, r *
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": responses, "run_destinations": runDestinationChoices})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": responses, "run_destinations": projectRunDestinations(productScheduleJob{UserID: productWorkspaceUserID(r.Context()), Profile: profile, ProjectID: projectID, WorkspacePath: binding.WorkspacePath})})
 }
 
 func (s *ProjectActionDispatcher) projectWebhookConfigs(ctx context.Context, userID, profileID, projectID string) ([]productWebhookTrigger, error) {
@@ -379,6 +382,21 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 		if strings.TrimSpace(req.RunDestination) == "" {
 			trigger.RunDestination = firstNonEmptyTrimmed(manifest.Triggers[index].RunDestination, runDestinationChat)
 		}
+	}
+	if index < 0 && strings.TrimSpace(req.RunDestination) == "" && strings.TrimSpace(req.ChatID) == "" {
+		trigger.RunDestination = runDestinationIsolated
+	}
+	if strings.TrimSpace(req.ChatID) != "" {
+		key, e := projectScheduleChatKey(ctx, userID, profile.ID, manifest.ID, req.ChatID)
+		if e != nil {
+			return productWebhookResponse{}, false, e
+		}
+		trigger.ChatKey = key
+	}
+	if trigger.ownConversation() {
+		trigger.ChatKey = ""
+	} else if trigger.ChatKey == "" && !isInternalTriggerKind(req.Kind) {
+		return productWebhookResponse{}, false, fmt.Errorf("choose an agent or give this webhook its own chat")
 	}
 	// Who made it and who changed it now; the run still happens as the Crew's owner.
 	trigger.UpdatedBy = automationActor(ctx)

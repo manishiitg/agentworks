@@ -138,7 +138,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		}
 		externalJSON(w, map[string]any{"crew_id": crewID, "triggers": out})
 	case "create", "update":
-		req := productWebhookRequest{ProfileID: profileID, ProjectID: crewID, Enabled: true, RunDestination: runDestinationChat}
+		req := productWebhookRequest{ProfileID: profileID, ProjectID: crewID, Enabled: true}
 		if action == "update" {
 			var current *productWebhookTrigger
 			for i := range triggers {
@@ -158,6 +158,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		}
 		req.Name, req.Message, req.AuthMode = str("name", req.Name), str("message", req.Message), str("auth_mode", req.AuthMode)
 		req.RunDestination, req.Kind = str("run_destination", req.RunDestination), str("kind", req.Kind)
+		req.ChatID = str("chat_id", req.ChatID)
 		if value, ok := trigger["enabled"].(bool); ok {
 			req.Enabled = value
 		}

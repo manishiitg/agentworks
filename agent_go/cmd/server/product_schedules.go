@@ -1419,7 +1419,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 				}
 			}
 			key, newAgentName = chatKey, job.AgentName
-		} else if strings.TrimSpace(job.Schedule.ChatKey) != "" {
+		} else if strings.TrimSpace(job.Schedule.ChatKey) != "" || isProjectProfileID(job.Profile.ID) {
 			bindErr = fmt.Errorf("the selected agent is unavailable; choose another agent in this automation")
 		}
 		if bindErr == nil {
@@ -1862,14 +1862,14 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 	if strings.TrimSpace(job.ProjectID) == "" {
 		return nil
 	}
-	out := []ScheduleRunDestination{{ID: runDestinationNew, Label: runDestinationChoiceNew.Label}, {ID: runDestinationChat, Label: runDestinationChoiceChat.Label}}
+	out := []ScheduleRunDestination{{ID: runDestinationNew, Label: runDestinationChoiceNew.Label}}
 	tabs := []ScheduleRunDestination{}
 	if chats, err := crewOwnerChatRecords(context.Background(), job.UserID, job.Profile.ID, job.ProjectID, job.WorkspacePath); err == nil {
 		side := strings.TrimSpace(job.ProjectID) + codeChatSideMarker
 		for _, chat := range chats {
 			key := chat.Record.ConversationKey
 			// The main chat is listed once, as "chat", even when its record sits under a tab key.
-			if chat.OwnerID != job.UserID || chat.Record.IsMainChat || !strings.HasPrefix(key, side) {
+			if chat.OwnerID != job.UserID || !strings.HasPrefix(key, side) {
 				continue
 			}
 			id := strings.TrimPrefix(key, side)
@@ -1907,9 +1907,12 @@ func projectScheduleChatKey(ctx context.Context, userID, profileID, projectID, c
 	if chatID == "" {
 		return "", nil
 	}
-	key := strings.TrimSpace(projectID) + codeChatSideMarker + chatID
+	key := chatID
+	if !strings.HasPrefix(key, strings.TrimSpace(projectID)+codeChatSideMarker) {
+		key = strings.TrimSpace(projectID) + codeChatSideMarker + chatID
+	}
 	if !projectChatExists(ctx, userID, profileID, projectID, key) {
-		return "", fmt.Errorf("chat_id %q is not a tab of this project; list the tabs first, and leave chat_id empty for the main chat", chatID)
+		return "", fmt.Errorf("chat_id %q is not a tab of this project; list the agents and choose one", chatID)
 	}
 	return key, nil
 }

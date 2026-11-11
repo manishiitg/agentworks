@@ -131,7 +131,7 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 	if err != nil {
 		return productConversationBinding{}, true, err
 	}
-	return crewOwnerDefaultBinding(userID, crew.Binding), crew.OwnedByCaller, nil
+	return crew.Binding, crew.OwnedByCaller, nil
 }
 
 // crewBuilderDiskHiddenFromUser reports whether project-local transcript
@@ -170,14 +170,7 @@ func isCrewReaderTurn(req QueryRequest, callerID string) bool {
 var errCrewProjectUnavailable = errors.New("This Crew is unavailable. Ask its owner to share it with you, or open another Crew.")
 
 func resolveCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
-	binding, err := readCrewProjectBinding(ctx, callerID, profile, projectID, selectedFolder)
-	if err != nil {
-		return crewProjectBinding{}, err
-	}
-	if binding.OwnedByCaller && !binding.CoOwner {
-		binding.Binding, err = defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, callerID, profile, binding.Binding)
-	}
-	return binding, err
+	return readCrewProjectBinding(ctx, callerID, profile, projectID, selectedFolder)
 }
 
 // readCrewProjectBinding performs the same admission without repairing or creating Main.

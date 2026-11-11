@@ -6,9 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"log"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -29,144 +27,45 @@ func originalMainChatKey(projectID, conversationID string) string {
 	return projectID + codeChatSideMarker + "root-" + hex.EncodeToString(sum[:6])
 }
 
-// main is the fixed project address, never a physical chat ID. Lazy migration:
-// move a legacy root slot once, with a plain registry backup; thereafter the
-// root address resolves only through main_chat_key. Remove this migration
-// once the owner-authorized server rollouts have moved their registries.
+// Project admission is independent of a chat. Only an actual default-chat open
+// resolves this optional role, and it never repairs, creates or adopts an agent.
+var errChooseProjectAgent = errors.New("Choose an agent in this Crew, or create an agent first.")
+
 func (store productConversationRegistryStore) resolveProjectMainAddress(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) (productConversationBinding, error) {
-	if !isProjectProfileID(profile.ID) || !binding.ProjectMainAddress || binding.ManifestPath == "" {
+	if !isProjectProfileID(profile.ID) || !binding.ProjectMainAddress {
 		return binding, nil
 	}
-	path := productConversationRegistryPath(userID)
-	lock := productConversationRegistryMutex(path)
-	lock.Lock()
-	defer lock.Unlock()
+	if binding.ManifestPath == "" {
+		return binding, errChooseProjectAgent
+	}
 	raw, found, err := store.read(ctx, binding.ManifestPath)
 	if err != nil {
 		return binding, err
 	}
 	if !found {
-		return binding, errors.New("project manifest was not found")
+		return binding, errChooseProjectAgent
 	}
 	var manifest productProjectManifest
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 		return binding, err
 	}
 	if manifest.ID != binding.ResourceID || manifest.Product != profile.ID {
-		return binding, errors.New("project main address does not match its manifest")
+		return binding, errInvalidMainChat
 	}
-	doc, err := store.loadDocument(ctx, path)
+	key := strings.TrimSpace(manifest.MainChatKey)
+	if !ordinaryProjectChatKey(manifest.ID, key) {
+		return binding, errChooseProjectAgent
+	}
+	doc, err := store.loadDocument(ctx, productConversationRegistryPath(userID))
 	if err != nil {
 		return binding, err
 	}
-	mainKey := strings.TrimSpace(manifest.MainChatKey)
-	if mainKey != "" {
-		record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, mainKey)]
-		if !exists || !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, record) {
-			// Fix forward using only this caller's ordinary chats in the same
-			// project. Prefer the original root, otherwise the newest chat.
-			var replacement ProductConversationRecord
-			for _, candidate := range doc.Entries {
-				if !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, candidate) {
-					continue
-				}
-				if replacement.SessionID == "" || candidate.ConversationKey == manifest.ID || (replacement.ConversationKey != manifest.ID && (candidate.UpdatedAt > replacement.UpdatedAt || (candidate.UpdatedAt == replacement.UpdatedAt && candidate.ConversationKey < replacement.ConversationKey))) {
-					replacement = candidate
-				}
-			}
-			if replacement.SessionID != "" {
-				log.Printf("product main chat: repairing missing pointer project=%s previous=%s replacement=%s", manifest.ID, mainKey, replacement.ConversationKey)
-				if replacement.ConversationKey == manifest.ID {
-					mainKey, manifest.SessionID = "", replacement.SessionID
-				} else {
-					mainKey = replacement.ConversationKey
-					if err := store.writeMainChatPointer(ctx, binding.ManifestPath, mainKey, replacement.SessionID); err != nil {
-						return binding, err
-					}
-				}
-			} else if manifest.SessionID != "" {
-				// No surviving slot: reopen the manifest's existing session,
-				// keeping its transcript rather than creating an empty session.
-				log.Printf("product main chat: restoring missing pointer project=%s previous=%s from manifest session", manifest.ID, mainKey)
-				mainKey = ""
-			}
-		}
+	record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, key)]
+	if !exists || record.ConversationKey != key || !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, record) {
+		return binding, errChooseProjectAgent
 	}
-	if mainKey == "" {
-		// Backup is per registry, before its first legacy move; never overwrite.
-		backup := path + ".before-chat-ids.json"
-		if _, exists, e := store.read(ctx, backup); e != nil {
-			return binding, e
-		} else if !exists {
-			if registryRaw, exists, e := store.read(ctx, path); e != nil {
-				return binding, e
-			} else if exists {
-				if e := store.write(ctx, backup, registryRaw); e != nil {
-					return binding, e
-				}
-			}
-		}
-		legacyKey := productConversationRegistryEntryKey(profile.ID, manifest.ID)
-		record, legacy := doc.Entries[legacyKey]
-		if !legacy {
-			// A failed manifest write may follow the completed one-time move.
-			for _, candidate := range doc.Entries {
-				if candidate.ProfileID == profile.ID && candidate.SessionID == manifest.SessionID && workspacePathsMatchForUser(userID, candidate.WorkspacePath, binding.WorkspacePath) {
-					record = candidate
-					break
-				}
-			}
-		}
-		if record.SessionID == "" {
-			now := store.now().UTC().Format(time.RFC3339Nano)
-			record = ProductConversationRecord{ConversationID: "conversation-" + store.newID(), SessionID: manifest.SessionID, ProfileID: profile.ID, ProfileVersion: profile.Version, WorkspacePath: binding.WorkspacePath, ResourceID: manifest.ID, Title: binding.Title, Description: binding.Description, CreatedAt: now, UpdatedAt: now}
-		}
-		if record.ConversationID == "" || record.SessionID == "" || record.ProfileID != profile.ID || !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
-			return binding, errors.New("the original main chat has an invalid identity")
-		}
-		mainKey = record.ConversationKey
-		if legacy || mainKey == "" || mainKey == manifest.ID {
-			mainKey = originalMainChatKey(manifest.ID, record.ConversationID)
-		}
-		physical := productConversationRegistryEntryKey(profile.ID, mainKey)
-		if other, exists := doc.Entries[physical]; exists && (other.ConversationID != record.ConversationID || other.SessionID != record.SessionID) {
-			return binding, errors.New("the original main chat ID is already in use")
-		}
-		record.ConversationKey = mainKey
-		doc.Entries[physical] = record
-		if legacy {
-			delete(doc.Entries, legacyKey)
-			if identity, exists := doc.Agents[legacyKey]; exists {
-				if doc.Agents == nil {
-					doc.Agents = map[string]ProductAgentIdentity{}
-				}
-				doc.Agents[physical] = identity
-				delete(doc.Agents, legacyKey)
-			}
-			if prior, exists := doc.Previous[legacyKey]; exists {
-				for index := range prior {
-					prior[index].ConversationKey = mainKey
-				}
-				doc.Previous[physical] = prior
-				delete(doc.Previous, legacyKey)
-			}
-		}
-		if err := store.writeDocument(ctx, path, doc); err != nil {
-			return binding, err
-		}
-		if err := store.writeMainChatPointer(ctx, binding.ManifestPath, mainKey, record.SessionID); err != nil {
-			return binding, err
-		}
-	}
-	if !ordinaryProjectChatKey(manifest.ID, mainKey) {
-		return binding, errInvalidMainChat
-	}
-	record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, mainKey)]
-	if !exists || record.SessionID == "" || !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
-		return binding, errors.New("the project's main chat was not found")
-	}
-	binding.ConversationKey, binding.ProjectMainChatKey = mainKey, mainKey
-	// A physical key never adopts a different session from a role pointer.
+	binding.ConversationKey, binding.ProjectMainChatKey = key, key
+	binding.ProjectMainAddress = false
 	binding.AuthoritativeSessionID = ""
 	return binding, nil
 }

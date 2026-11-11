@@ -189,7 +189,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 				chatKey = key
 			} else if !isolated && isProjectProfileID(profileID) {
-				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && !project.Self.IsMain {
+				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil {
 					chatKey = project.Self.Key
 				}
 			}
@@ -326,7 +326,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if !ok {
 				enabled = true
 			}
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: triggerCallerFromArgs(args)}, "")
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ChatID: externalArg(args, "chat_id"), ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: triggerCallerFromArgs(args)}, "")
 			if err != nil {
 				return "", err
 			}
@@ -388,7 +388,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				caller = updated
 			}
 			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ChatID: externalArg(args, "chat_id"), ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
 			if err != nil {
 				return "", err
 			}

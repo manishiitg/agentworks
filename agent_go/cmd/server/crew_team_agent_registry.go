@@ -286,3 +286,35 @@ func resolveTeamMessageEndpoint(ctx context.Context, endpoint agentMessageEndpoi
 	}
 	return endpoint, route, nil
 }
+
+// Agent deletion removes its public identity, not another agent's sharing.
+func removeCrewAgentListing(project, person, key string) error {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return err
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	t, err := readCrewTeam(project)
+	if os.IsNotExist(err) {
+		mu.Unlock()
+		return nil
+	}
+	if err != nil {
+		mu.Unlock()
+		return err
+	}
+	for id, a := range t.Agents {
+		if a.OwnerID == person && (a.ChatKey == key || crewTeamNativeChatKey(project, person, a) == key) {
+			delete(t.Agents, id)
+		}
+	}
+	t.Revision++
+	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu.Unlock()
+	if err == nil {
+		pruneCrewStandby(project)
+		go pushCrewTeamRecordChanged(t)
+	}
+	return err
+}

@@ -224,7 +224,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
-        onRemove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
+        onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
         tabId: tab.tabId,
         activity: tab.tabId === canonicalTabId ? projectActivity : undefined,
         setup: setupOf(tab),
@@ -253,7 +253,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       moveDown: key && after ? () => { void moveSideChat(key, after) } : undefined,
       dropHere: key ? from => { void moveSideChat(from, key) } : undefined,
       setPinned: pinKey ? pinned => { void pinSideChat(pinKey, pinned) } : undefined,
-      remove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
+      remove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
     }
   }
   // The left menu's order: shown agents (pinned, or open now) first, then the hidden ones. Cmd/Ctrl+1..5 and the arrows

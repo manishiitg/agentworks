@@ -48,6 +48,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
 			"id":              map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
 			"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
+			"chat_id":         map[string]interface{}{"type": "string", "description": "An existing agent ID from the Crew list when run_destination is chat."},
 			"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp + " Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
 			"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
 			"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
@@ -95,7 +96,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if err := authorizeTriggerCallerWorkflow(ctx, userID, caller); err != nil {
 				return "", err
 			}
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: caller}, "")
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ChatID: externalArg(args, "chat_id"), ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: caller}, "")
 			if err != nil {
 				return "", err
 			}
@@ -148,7 +149,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 				return "", err
 			}
 			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ChatID: externalArg(args, "chat_id"), ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
 			if err != nil {
 				return "", err
 			}

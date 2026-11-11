@@ -563,6 +563,7 @@ func (store productConversationRegistryStore) removeSlot(ctx context.Context, us
 	}
 	delete(document.Entries, entryKey)
 	delete(document.Previous, entryKey)
+	delete(document.Agents, entryKey)
 	document.Version = productConversationRegistryVersion
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return nil, err
@@ -871,6 +872,11 @@ func (store productConversationRegistryStore) resolveOrCreate(
 	binding productConversationBinding,
 	preferredSessionID string,
 ) (ProductConversationRecord, error) {
+	var err error
+	binding, err = store.resolveProjectMainAddress(ctx, userID, profile, binding)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
@@ -1310,7 +1316,7 @@ func resolveProductProjectBinding(ctx context.Context, userID string, profile ag
 	if err != nil {
 		return binding, err
 	}
-	return defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, userID, profile, binding)
+	return binding, nil
 }
 
 // errProjectNotFound marks "no such project in this root", as opposed to a project that is there and broken
@@ -1407,7 +1413,7 @@ func resolveProductProjectBindingInRoot(
 			strings.TrimSpace(manifest.ID) != resourceProjectID {
 			continue
 		}
-		if strings.TrimSpace(manifest.Title) == "" || strings.TrimSpace(manifest.SessionID) == "" {
+		if strings.TrimSpace(manifest.Title) == "" {
 			return productConversationBinding{}, fmt.Errorf("project %q has an incomplete product manifest", resourceProjectID)
 		}
 		if isProjectProfileID(profile.ID) {
