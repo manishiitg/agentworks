@@ -40,6 +40,88 @@ def encode(value):
     return (json.dumps(value, indent=2, ensure_ascii=False) + '\n').encode()
 
 
+def slack_repoint(docs, old_root, crew_root, crew_id, owner):
+    """Point a moved Goal's Slack links at its Crew (PLAT-746-848).
+
+    Slack keeps which channel goes to which product in config files; a Goal
+    that became a Crew must keep its channels, so its entries are re-pointed
+    here (never deleted on read). Returns ({file: bytes}, changed, left)."""
+    def norm(path):
+        return (path or '').strip().replace('\\', '/').strip('/').lower()
+    def key(ref):
+        return ((ref.get('profile_id') or '').strip().lower(), norm(ref.get('workspace_path')))
+    def old(ref):
+        return isinstance(ref, dict) and key(ref) == ('', norm(old_root))
+    crew_key = ('work', norm(crew_root))
+    def crew_ref(ref):
+        return {**ref, 'workspace_path': crew_root, 'profile_id': 'work'}
+    def unique(refs):
+        out = []
+        for ref in refs:
+            if not any(key(seen) == key(ref) for seen in out):
+                out.append(ref)
+        return out
+    writes, changed, left = {}, [], []
+    file = docs/'config/slack-targets.json'
+    doc = read(file)
+    if doc:
+        before = encode(doc)
+        settings = doc.get('targets') or []
+        crew_has_settings = any(key(entry) == crew_key for entry in settings if isinstance(entry, dict))
+        kept = []
+        for entry in settings:
+            if old(entry):
+                changed.append('target settings')
+                if crew_has_settings:
+                    continue  # the Crew's own settings win; the old entry stays in the backup
+                entry, crew_has_settings = crew_ref(entry), True
+            kept.append(entry)
+        if 'targets' in doc:
+            doc['targets'] = kept
+        for channel, entry in (doc.get('channels') or {}).items():
+            if any(old(ref) for ref in entry.get('targets') or []):
+                entry['targets'] = unique([crew_ref(ref) if old(ref) else ref for ref in entry['targets']])
+                changed.append('channel ' + channel)
+            if old(entry.get('default')):
+                entry['default'] = crew_ref(entry['default'])
+                changed.append('channel default ' + channel)
+        if encode(doc) != before:
+            writes[file] = encode(doc)
+    # The shared bot's admin channel routes (allowed_channels is a JSON string).
+    file = docs/'config/bot-connectors.json'
+    doc = read(file)
+    if doc:
+        touched = False
+        for connector, cfg in doc.items():
+            if not isinstance(cfg, dict) or not cfg.get('allowed_channels'):
+                continue
+            routes = json.loads(cfg['allowed_channels'])
+            if not isinstance(routes, dict):
+                continue
+            moved = False
+            for channel, route in routes.items():
+                if old(route):
+                    route.pop('workflow_id', None)
+                    route.update(workspace_path=crew_root, profile_id='work', conversation_key=crew_id, workspace_user_id=owner)
+                    changed.append(connector + ' channel route ' + channel)
+                    moved = True
+            if moved:
+                cfg['allowed_channels'] = json.dumps(routes, separators=(',', ':'), ensure_ascii=False)
+                touched = True
+        if touched:
+            writes[file] = encode(doc)
+    # A workflow's own Slack app is chosen again from the Crew's Slack settings.
+    for connection in (read(docs/'config/slack-config.json') or {}).get('connections') or []:
+        refs = [connection, *(connection.get('targets') or [])]
+        for route in (connection.get('channel_routes') or {}).values():
+            if isinstance(route, dict):
+                refs.extend(route.get('targets') or [])
+                refs.append(route.get('default'))
+        if any(old(ref) for ref in refs):
+            left.append('Slack app ' + str(connection.get('id')) + ': choose it again in the Crew\'s Slack settings')
+    return writes, changed, left
+
+
 def safe_id(value):
     if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
         raise ValueError('Choose an exact saved identity, without a path.')
@@ -453,6 +535,8 @@ class Conversion:
         self.inputs()
         self.inspect_database()
         self.source_moves()
+        slack_writes, self.slack_repointed, self.slack_left = slack_repoint(self.docs, self.root, self.crew_root, self.crew, self.owner)
+        self.writes.update(slack_writes)
         self.writes[self.binding_file] = encode({'id': self.workflow, 'crew_id': crew, 'crew_root': self.crew_root,
                                                  'workspace_path': self.root, 'kind': 'workflow', 'runtime_root': 'workflows/' + self.workflow})
         self.counts.update(workflows=1, goals=0,
@@ -900,6 +984,8 @@ class Conversion:
                 'next':('Start the upgraded app and test this Python automation from its Crew chat.' if getattr(self, 'python_source', False) else 'Ask this Crew’s chat to update this workflow before running it. Task text and code were not rewritten.'),
                 'owner_evidence':self.owner_proof,
                 'carried_crew_links':getattr(self, 'carried_crew_links', []),
+                'slack_repointed':getattr(self, 'slack_repointed', []),
+                'slack_left':getattr(self, 'slack_left', []),
                 'dashboard_retargets':getattr(self, 'dashboard_retargets', []),
                 'dashboard_source_moves':getattr(self, 'dashboard_source_moves', []),
                 'database_columns_with_old_paths':self.database_path_columns,
@@ -1029,6 +1115,48 @@ class LearningCleanup:
         return result
 
 
+class SlackRepoint:
+    """One-off: re-point the Slack links of a Goal that already moved to its Crew (PLAT-746-848).
+
+    Stop the app first: it caches the shared bot's routes. --apply copies the
+    changed files to a plain backup before writing them."""
+    def __init__(self, docs, state, workflow, crew):
+        self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
+        self.root = 'Workflow/' + safe_id(workflow)
+        self.crew = safe_id(crew)
+        binding = read(self.state/'ownership/crew-executables'/(hashlib.sha256(self.root.encode()).hexdigest()+'.json'), {})
+        if binding.get('crew_id') != crew or binding.get('workspace_path') != self.root or binding.get('kind') != 'workflow':
+            raise ValueError('Choose the exact workflow bound to this Crew.')
+        projects = read(self.state/'ownership/projects.json', {}).get('projects', {})
+        matches = [p for p in projects.values() if p.get('product') == 'work' and p.get('project_id') == crew]
+        if len(matches) != 1:
+            raise ValueError('One registered destination Crew is required.')
+        self.crew_root = binding['crew_root']
+        self.writes, self.changed, self.left = slack_repoint(self.docs, self.root, self.crew_root, self.crew, safe_id(matches[0]['owner_id']))
+
+    def report(self):
+        return {'status': 'ready' if self.writes else 'nothing to re-point', 'workflow': self.root, 'crew_id': self.crew,
+                'crew_root': self.crew_root, 'slack_repointed': self.changed, 'slack_left': self.left,
+                'files': [str(file.relative_to(self.docs)) for file in self.writes]}
+
+    def apply(self):
+        result = self.report()
+        if not self.writes:
+            return result
+        backup = self.state/'migrations/goal-to-crew'/('slack-'+safe_id(self.root.split('/')[1])+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'))
+        backup.mkdir(parents=True, mode=0o700)
+        for file, data in self.writes.items():
+            target = backup/file.relative_to(self.docs)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file, target)
+            if file_sha256(target) != file_sha256(file):
+                raise ValueError('Backup verification failed. Slack settings were not changed.')
+        for file, data in self.writes.items():
+            file.write_bytes(data)
+        result.update(status='re-pointed', backup=str(backup))
+        return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docs', type=Path, required=True)
@@ -1041,6 +1169,7 @@ def main():
     parser.add_argument('--deployment-mode', choices=('local', 'server'), default='local', help='Use the existing browser conversion policy for this installation')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--finish-runtime', action='store_true', help='Move remaining runtime for one already converted Crew workflow')
+    parser.add_argument('--repoint-slack', action='store_true', help='For a Goal that already moved: point its Slack channel links at the Crew; --apply backs up the Slack files first. Stop the app first.')
     parser.add_argument('--cleanup-learnings', action='store_true', help='Report retired learnings; --apply backs up and deletes them only after the Crew stamps contract 1.0.52')
     args=parser.parse_args()
     try:
@@ -1048,7 +1177,11 @@ def main():
             raise ValueError('--leave-schedules is only for adoption, not relocation or cleanup.')
         if args.finish_runtime and args.cleanup_learnings:
             raise ValueError('Choose either runtime relocation or post-upgrade cleanup.')
-        if args.cleanup_learnings:
+        if sum(map(bool, (args.finish_runtime, args.cleanup_learnings, args.repoint_slack))) > 1:
+            raise ValueError('Choose one of runtime relocation, learnings cleanup or Slack re-point.')
+        if args.repoint_slack:
+            conversion = SlackRepoint(args.docs,args.state,args.workflow,args.crew)
+        elif args.cleanup_learnings:
             conversion = LearningCleanup(args.docs,args.state,args.workflow,args.crew)
         elif args.finish_runtime:
             conversion = RuntimeRelocation(args.docs,args.state,args.workflow,args.crew)
