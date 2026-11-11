@@ -67,7 +67,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
       return false
     } finally { if (generation.current === turn) setBusy(false) }
   }
-  return { status, loading, busy, error: error || checkingError, connect: (browserId?: string) => select('connect', browserId), disconnect: () => select('disconnect'), selectWorkspace: (mode: string, port?: number) => select('workspace', undefined, mode, port), download }
+  return { status, loading, busy, error: error || checkingError, refresh: () => refreshRef.current(), connect: (browserId?: string) => select('connect', browserId), disconnect: () => select('disconnect'), selectWorkspace: (mode: string, port?: number) => select('workspace', undefined, mode, port), download }
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
@@ -103,6 +103,23 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
       setPairingStarted(true)
     } catch { browserWindow.close(); setPairError('Could not open the connection. Allow a new browser tab, then try again.') }
   }
+  // Rename and Remove act on the person's saved browser (account level), then the status is read again.
+  const manage = async (body: Record<string, string>, failure: string) => {
+    setPairError('')
+    try { await api.post('/api/browser/extension', body, { skipSessionContext: true }); connection.refresh() }
+    catch { setPairError(failure) }
+  }
+  // Inline, not a browser dialog: the Mac app cannot show prompt() boxes.
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const saveName = async () => {
+    if (!editing) return
+    const name = editing.value.trim()
+    const current = browsers.find(browser => browser.id === editing.id)
+    setEditing(null)
+    if (name && current && name !== current.name) await manage({ action: 'rename', browser_id: editing.id, name }, 'Could not rename this Chrome. Use a name of up to 60 characters that you have not used yet.')
+  }
+  const confirmRemove = async (id: string) => { setRemoving(null); await manage({ action: 'remove', browser_id: id }, 'Could not remove this Chrome. Try again.') }
   const picked = status.selected ? status.browser_id : undefined
   const anyConnected = browsers.some(browser => browser.enabled && browser.connected)
   const steps = <div className="rounded-lg border border-primary/40 bg-primary/5 p-3" aria-label="Use your own Chrome">
@@ -132,17 +149,22 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
         <div className="flex min-w-0 items-center gap-2">
           {browsers.length > 1 && <span aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${isPicked ? 'border-primary bg-primary/70' : 'border-muted-foreground/60'}`} />}
           <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${live ? 'bg-emerald-500' : 'bg-muted-foreground/60'}`} />
-          <span className="min-w-0 truncate text-sm font-medium">{browsers.length > 1 || !isPicked ? browser.name : 'Your Chrome'}</span>
+          {editing?.id === browser.id
+            ? <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={event => { event.preventDefault(); void saveName() }}><input autoFocus aria-label="Chrome name" maxLength={60} value={editing.value} onChange={event => setEditing({ id: browser.id, value: event.target.value })} className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-0.5 text-sm" /><Button type="submit" size="xs">Save</Button><Button type="button" size="xs" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></form>
+            : <span className="min-w-0 truncate text-sm font-medium">{browsers.length > 1 || !isPicked ? browser.name : 'Your Chrome'}</span>}
           <span className="shrink-0 rounded-full border border-border px-2 text-[11px] text-muted-foreground">extension</span>
           <span className="flex-1" />
           {live && !isPicked && <Button size="xs" variant="outline" disabled={busy} onClick={() => { void connect(browser.id) }}>Use this</Button>}
           <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-44 !p-1">
             {close => <div className="space-y-1">
-              {browser.enabled && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect() }}>Disconnect</Button>}
+              {isPicked && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect() }}>Stop using in this Crew</Button>}
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void pair() }}>Reconnect</Button>
+              <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); setEditing({ id: browser.id, value: browser.name }) }}>Rename</Button>
+              <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); setRemoving(browser.id) }}>Remove</Button>
             </div>}
           </IconPopover>
         </div>
+        {removing === browser.id && <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs"><span>Remove {browser.name}? Crews that used it stop using it. You can connect that Chrome again later.</span><Button size="xs" variant="outline" disabled={busy} onClick={() => { void confirmRemove(browser.id) }}>Remove</Button><Button size="xs" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button></p>}
         <p className={`mt-0.5 text-xs text-muted-foreground ${browsers.length > 1 ? 'ml-6' : ''}`}>
           {live ? (isPicked ? (browsers.length > 1 ? 'Connected · agents use this one' : 'Connected. Agents in this Crew use it.') : 'Connected')
             : !browser.enabled ? 'Disconnected. Connect it again to use it.'

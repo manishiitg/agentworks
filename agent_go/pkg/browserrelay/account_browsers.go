@@ -296,7 +296,7 @@ func (m *Manager) DisconnectBrowser(user, id string) error {
 	return nil
 }
 
-func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, authorize func(string, string, string, string) error, displayName func(string, string, string) string) {
+func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, platform string, authorize func(string, string, string, string) error, displayName func(string, string, string) string) {
 	if !validBrowserID(hello.BrowserID) {
 		m.rejectPairing(conn, "", "invalid_browser_id", "Reload the browser extension and connect again.", "")
 		return
@@ -359,15 +359,15 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 		record.Version = hello.Version
 	}
 	if record.Name == "" {
-		record.Name = brand
-		count := 0
-		for existing, r := range m.browserRecords {
-			if strings.HasPrefix(existing, user+"\x00") && r.Browser == brand {
-				count++
-			}
+		// Named from what the server already sees: the browser and the system it connects from ("Chrome on Mac"), with
+		// " 2", " 3" when taken. The person renames it ("Work profile"); no account email or computer name is read.
+		base := brand
+		if platform != "" {
+			base = brand + " on " + platform
 		}
-		if count > 0 {
-			record.Name = brand + " " + strconv.Itoa(count+1)
+		record.Name = base
+		for n := 2; m.browserNameTakenLocked(user, record.Name, hello.BrowserID); n++ {
+			record.Name = base + " " + strconv.Itoa(n)
 		}
 	}
 	m.browserRecords[k] = record
@@ -478,4 +478,103 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 			return
 		}
 	}
+}
+
+// browserPlatform is the system a browser connects from, from its pairing request's User-Agent: Mac, Windows, Linux or
+// ChromeOS; "" when it says none of them.
+func browserPlatform(userAgent string) string {
+	switch {
+	case strings.Contains(userAgent, "CrOS"):
+		return "ChromeOS"
+	case strings.Contains(userAgent, "Windows"):
+		return "Windows"
+	case strings.Contains(userAgent, "Macintosh"), strings.Contains(userAgent, "Mac OS X"):
+		return "Mac"
+	case strings.Contains(userAgent, "Linux"), strings.Contains(userAgent, "X11"):
+		return "Linux"
+	}
+	return ""
+}
+
+// browserNameTakenLocked: another saved browser of this person already has this name. Caller holds m.mu.
+func (m *Manager) browserNameTakenLocked(user, name, exceptID string) bool {
+	for k, r := range m.browserRecords {
+		if strings.HasPrefix(k, user+"\x00") && r.ID != exceptID && r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// RenameBrowser sets the name of one of this person's saved browsers (owner only: the record is keyed by the person).
+func (m *Manager) RenameBrowser(user, id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 60 || strings.ContainsFunc(name, func(r rune) bool { return r < 32 || r == 127 }) {
+		return errors.New("Give the browser a name of up to 60 characters")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := key(user, id)
+	r, ok := m.browserRecords[k]
+	if !ok {
+		return errors.New("This browser connection is unavailable")
+	}
+	if m.browserNameTakenLocked(user, name, id) {
+		return errors.New("Another of your browsers already has that name")
+	}
+	previous := r
+	r.Name = name
+	m.browserRecords[k] = r
+	if err := m.persistBrowsersLocked(); err != nil {
+		m.browserRecords[k] = previous
+		return err
+	}
+	for bk, b := range m.bindings {
+		if strings.HasPrefix(bk, user+"\x00") && b.browserID == id {
+			b.browserName = name
+		}
+	}
+	notifyChange(key(user, ""))
+	return nil
+}
+
+// RemoveBrowser forgets one of this person's saved browsers: its connection closes, and any Crew that picked it falls back to
+// "not connected" (the choice is cleared). Connecting that Chrome again saves it anew.
+func (m *Manager) RemoveBrowser(user, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := key(user, id)
+	r, ok := m.browserRecords[k]
+	if !ok {
+		return errors.New("This browser connection is unavailable")
+	}
+	previousSelected := map[string]string{}
+	for sk, selectedID := range m.selectedBrowsers {
+		if strings.HasPrefix(sk, user+"\x00") && selectedID == id {
+			previousSelected[sk] = selectedID
+			delete(m.selectedBrowsers, sk)
+		}
+	}
+	delete(m.browserRecords, k)
+	if err := m.persistBrowsersLocked(); err != nil {
+		m.browserRecords[k] = r
+		for sk, selectedID := range previousSelected {
+			m.selectedBrowsers[sk] = selectedID
+		}
+		return err
+	}
+	if a := m.accountBrowsers[k]; a != nil {
+		_ = a.write(envelope{Type: "account-disconnected"})
+		a.close()
+		delete(m.accountBrowsers, k)
+	}
+	for bk, b := range m.bindings {
+		if strings.HasPrefix(bk, user+"\x00") && b.browserID == id {
+			b.closeWithReason("Browser removed")
+			delete(m.bindings, bk)
+		}
+	}
+	log.Printf("[BROWSER_CONN] event=remove user=%q installation=%q brand=%s", user, id, r.Browser)
+	notifyChange(key(user, ""))
+	return nil
 }
