@@ -3,7 +3,8 @@ import React, { act, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ resolve: vi.fn(), observe: vi.fn(() => vi.fn()), cancel: vi.fn(), authValid: false, checkAuth: vi.fn().mockResolvedValue(undefined) }))
+const mocks = vi.hoisted(() => ({ member: vi.fn(), resolve: vi.fn(), observe: vi.fn(() => vi.fn()), cancel: vi.fn(), authValid: false, checkAuth: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../services/desktopConnections', () => ({ desktopRequest: mocks.member }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: { getState: () => ({ checkAuth: mocks.checkAuth, isAuthenticated: mocks.authValid }) } }))
 vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { get: vi.fn().mockResolvedValue({ version: 1, revision: 0, last: null, recent: [], destination: { surface: 'bullpen' }, first_visit: true }) } }))
 vi.mock('../utils/restoreWorkspaceChat', () => ({ restoreWorkspaceChat: vi.fn().mockResolvedValue(undefined) }))
@@ -17,8 +18,26 @@ vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: { g
 import { ProductRouteBoundary } from './ProductRouteBoundary'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-afterEach(() => { vi.clearAllMocks(); mocks.authValid = false; window.history.replaceState({}, '', '/') })
+afterEach(() => { vi.clearAllMocks(); mocks.authValid = false; window.history.replaceState({}, '', '/'); delete window.electronAPI })
 describe('protected deep-link boundary', () => {
+  it('opens a server Crew link in its member Mac copy before admitting the server workspace', async () => {
+    // PLAT-746-820: notification and saved server links opened the unusable duplicate Crew.
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
+    const open = vi.fn().mockResolvedValue(undefined)
+    window.electronAPI = { getDesktopConnection: () => 'saved', openDesktopConnection: open } as unknown as typeof window.electronAPI
+    mocks.member.mockResolvedValue({ project_id: 'member-local' })
+    window.history.replaceState({}, '', '/crew/projects/team-online?agent=agent-stable&view=files')
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<ProductRouteBoundary account="member" allowedProducts={['work']}>Server workspace</ProductRouteBoundary>))
+      expect(mocks.member).toHaveBeenCalledWith('/saved/member-crew/team-online')
+      expect(open).toHaveBeenCalledWith('local', '/crew/projects/member-local?view=files&agent=agent-stable')
+      expect(mocks.resolve).not.toHaveBeenCalled()
+      expect(host.textContent).not.toContain('Server workspace')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('keeps the admitted workspace mounted during a Crew lookup, but removes it on refusal or account change', async () => {
     // PLAT-746: every sidebar navigation used to unmount the chat for Opening link.
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }

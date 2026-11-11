@@ -24,6 +24,7 @@ import (
 	"unicode"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Read once before startup can launch children. Never put these credentials in
@@ -477,6 +478,31 @@ type desktopProject struct {
 	PersonalAgent bool              `json:"personal_agent,omitempty"`
 }
 
+// desktopMemberCrew resolves only this person's active member copy on the named
+// connection. The Team lookup remains the single source of the local Crew ID.
+func desktopMemberCrew(owner, connection, project string) string {
+	local := crewTeamMemberCopy(project)
+	if local == "" || ownerOfCrewProjectID(local) != owner {
+		return ""
+	}
+	b, err := crewroot.ReadSync(local)
+	if err != nil || b == nil || b.Editing != "local" || (connection != "local" && b.ConnectionID != connection) {
+		return ""
+	}
+	if _, err := desktopConnectionFor(owner, b.ConnectionID); err != nil {
+		return ""
+	}
+	return local
+}
+
+func (api *StreamingAPI) handleDesktopMemberCrew(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	local := desktopMemberCrew(GetUserFromContext(r.Context()).UserID, mux.Vars(r)["connection"], mux.Vars(r)["project"])
+	desktopJSON(w, map[string]string{"project_id": local})
+}
+
 func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
@@ -547,6 +573,9 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
+				if id != "local" && desktopMemberCrew(GetUserFromContext(r.Context()).UserID, id, p.ID) != "" {
+					continue
+				}
 				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent, TeamBusy: crewTeamBusyFor(crewTeamRemoteNoteKey(p.ID))})
 			}
 			for _, p := range inventory.Workflows {

@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func desktopTestRequest(method, path, body, owner string) *http.Request {
@@ -306,5 +307,63 @@ func TestDesktopServerURLAcceptsBrowserLinks(t *testing.T) {
 		if got.String() != tc.want {
 			t.Errorf("origin = %q, want %q", got.String(), tc.want)
 		}
+	}
+}
+
+// PLAT-746-820: server Crew links must open the member's active Mac copy,
+// without resolving another person's copy or a different saved connection.
+func TestDesktopMemberCrewResolvesOnlyOwnActiveCopy(t *testing.T) {
+	desktopTestEnvironment(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "false")
+	const local, remote, owner = "member-local", "team-online", "member"
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: local, ProjectID: local, OwnerID: owner}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDesktopConnections(owner, []desktopConnection{{ID: "saved", Server: "https://example.com"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) { s.MemberOf = remote }); err != nil {
+		t.Fatal(err)
+	}
+	binding := crewroot.SyncBinding{Mode: "relay", Side: "local", Editing: "local", ConnectionID: "saved", PeerProjectID: remote}
+	if err := crewroot.WriteSync(local, binding); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	call := func(person, connection, project string, proof bool) *httptest.ResponseRecorder {
+		r := desktopTestRequest("GET", "/api/desktop-connections/"+connection+"/member-crew/"+project, "", person)
+		r = mux.SetURLVars(r, map[string]string{"connection": connection, "project": project})
+		if !proof {
+			r.Header.Del("X-AgentWorks-Desktop")
+		}
+		w := httptest.NewRecorder()
+		api.handleDesktopMemberCrew(w, r)
+		return w
+	}
+	for _, c := range []struct{ person, connection, project, want string }{
+		{owner, "saved", remote, local}, {owner, "local", remote, local},
+		{"outsider", "saved", remote, ""}, {owner, "another", remote, ""}, {owner, "saved", local, ""},
+	} {
+		w := call(c.person, c.connection, c.project, true)
+		var got map[string]string
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got["project_id"] != c.want {
+			t.Fatalf("resolve %+v: %d %s", c, w.Code, w.Body.String())
+		}
+	}
+	if w := call(owner, "saved", remote, false); w.Code != 403 {
+		t.Fatalf("non-desktop caller admitted: %d", w.Code)
+	}
+	for _, address := range []string{"team:" + remote + ":agent-stable", "workspace:work:" + remote + "/agent/agent-stable"} {
+		if got := crewTeamAddressOnMac(address); got != "team:"+local+":agent-stable" {
+			t.Fatalf("agent identity changed: %s", got)
+		}
+	}
+	binding.Editing = "server"
+	if err := crewroot.ReplaceSync(local, binding); err != nil {
+		t.Fatal(err)
+	}
+	if got := desktopMemberCrew(owner, "saved", remote); got != "" {
+		t.Fatalf("web copy redirected to Mac: %s", got)
 	}
 }
