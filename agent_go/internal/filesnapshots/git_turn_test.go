@@ -703,3 +703,46 @@ func TestTurnCaptureLimitWarnsOnlyForFilesTheReplyChanged(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-746-876: a Crew-root cwd must not select every nested scratch worktree.
+func TestCrewRootTurnSkipsBothDirtyLinkedWorktreesAndCapturesMainRepo(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		name := "default-root"
+		if explicit {
+			name = "explicit-root"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newCrew(t)
+			f.repo("app", map[string]string{"a.txt": "committed\n"})
+			for _, dir := range []string{"first", "second"} {
+				f.git("app", "worktree", "add", "--quiet", "-b", dir, filepath.Join(f.s.Root, dir))
+				f.put(dir+"/a.txt", "dirty before\n")
+			}
+			if explicit {
+				f.s.WorkingDir = f.s.Root
+			}
+			f.put("app/a.txt", "main before\n")
+			f.backdateAll()
+			before, err := f.s.BeginGitTurn(t.Context(), "root-reply")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, dir := range []string{"app", "first", "second"} {
+				f.put(dir+"/a.txt", "changed during reply\n")
+			}
+			after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, record := range []Record{before, after} {
+				if _, found := record.GitTurn["app"]; !found || len(record.GitTurn) != 1 {
+					t.Fatalf("capture must select only the main repo: %+v", record.GitTurn)
+				}
+			}
+			c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+			if err != nil || len(c.Changes) != 1 || c.Changes[0].Checkout == nil || c.Changes[0].Checkout.Root != "app" {
+				t.Fatalf("main change missing or scratch changes captured: %v %+v", err, c)
+			}
+		})
+	}
+}
