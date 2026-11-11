@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -183,6 +184,13 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 		}
 	}
 	a := &store.Agents[index]
+	// The authenticated account is the security boundary. A fresh sign-in of
+	// that same person may supersede their exact chat; device IDs are routing
+	// identity, not an independent device-possession credential.
+	oldAttachment := ""
+	if a.Attachment != nil && a.Attachment.ConnectionID != connection {
+		oldAttachment = a.Attachment.ID
+	}
 	changed := a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose)
 	if a.Attachment == nil || a.Attachment.ConnectionID != connection {
 		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), DeliveryContract: 2, DeliveryRoute: appAgentDeliveryRoute, Provider: "agentworks", DeviceID: device, SessionID: session, ConnectionID: connection}
@@ -194,6 +202,9 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	}
 	if err := saveAgentMessageStore(ctx, store); err != nil {
 		return empty, err
+	}
+	if oldAttachment != "" {
+		log.Printf("[AGENT_REG] superseded agent=%s old_attachment=%s new_attachment=%s", a.ID, oldAttachment, a.Attachment.ID)
 	}
 	return *a, nil
 }

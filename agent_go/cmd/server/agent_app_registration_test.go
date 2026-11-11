@@ -78,6 +78,18 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 			t.Fatalf("different recipient took name: %d", code)
 		}
 	}
+	// Same routing IDs under another account create a separate agent, never
+	// supersede or grant access to this person's registered inbox.
+	foreignStatus, foreignCopy := register(stranger, "device-one", "chat-one")
+	if foreignStatus != 200 || foreignCopy["agent_id"] == agentID {
+		t.Fatalf("cross-account identity was not isolated: %d", foreignStatus)
+	}
+	if _, _, err := currentAgentAttachment(ctx, stranger, "notes-agent", attachment); err == nil {
+		t.Fatal("another account read the original attachment using identical routing IDs")
+	}
+	if _, _, err := currentAgentAttachment(ctx, first, "notes-agent", attachment); err != nil {
+		t.Fatal("another account replaced the owner's attachment")
+	}
 	code, renewed := register(second, "device-one", "chat-one")
 	if code != 200 || renewed["agent_id"] != agentID || renewed["attachment_id"] == attachment {
 		t.Fatalf("login renewal: %d %v", code, renewed)
