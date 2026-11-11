@@ -373,7 +373,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not pin this tab.', 'error')
     }
   }
-  // Cmd/Ctrl+arrows use app history; numbers still pick a chat within this project.
+  // Cmd/Ctrl+Left/Right step to the previous/next agent and numbers pick one, within this project.
   // Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while this product is on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
@@ -387,7 +387,19 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       if (event.target instanceof Element && event.target.closest('.xterm')) return
       const action = workChatTabShortcut(event)
       if (!action) return
-      if (action.kind === 'adjacent') return // The app shell owns browser Back/Forward.
+      if (action.kind === 'adjacent') {
+        // Cmd/Ctrl+Left/Right: the previous or next agent in the menu's order. While text is typed they keep their
+        // editing job (line start on a Mac, previous word elsewhere); in an empty chat box they switch (PLAT-746-849).
+        const field = event.target instanceof Element ? event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor') : null
+        if (field && !((field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) && field.value === '')) return
+        const order = numberedTabsRef.current
+        if (order.length < 2) return
+        const current = order.findIndex(tab => tab.tabId === useChatStore.getState().activeTabId)
+        event.preventDefault()
+        markFeatureUsed('chat-tab-keys')
+        onSelectTab(order[(Math.max(current, 0) + action.direction + order.length) % order.length].tabId)
+        return
+      }
       event.preventDefault()
       markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {
