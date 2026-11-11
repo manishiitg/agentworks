@@ -2,10 +2,12 @@
  * chat (`<crew>:chat:agent-x`), "schedule:<id>" for a message schedule's own chat (`<crew>:schedule:<id>`), "main" for Main. */
 export function workConversationKey(projectId: string, agent?: string | null): string {
   if (!agent || agent === 'main') return projectId
+  if (agent.startsWith('team:')) return `${projectId}:${agent}`
   return agent.startsWith('schedule:') ? `${projectId}:${agent}` : `${projectId}:chat:${agent}`
 }
 
 /** The deep-link agent for a listed conversation key: the part after the Crew's id, so the link keeps its full identity. */
 export function workConversationAgent(key: string): string | undefined {
+  if (key.includes(':team:')) return key.slice(key.indexOf(':team:') + 1)
   return key.split(':chat:')[1] ?? (key.includes(':schedule:') ? key.slice(key.indexOf(':schedule:') + 1) : undefined)
 }

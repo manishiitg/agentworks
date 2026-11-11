@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
+import api, { getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
 import { liveFeed } from '../../services/liveFeed'
@@ -33,17 +33,25 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
 }
 
 /** The Mac app's own Crew is kept online through Mac online (its crew-sync binding); undefined elsewhere. */
-async function macBinding(project: string): Promise<{ connection: string; peer: string; side?: string } | undefined> {
-  if (!(hasDesktopConnections() && getRawActiveWorkspaceId() === 'local')) return undefined
-  const { data } = await api.get<{ binding?: { connection_id: string; peer_project_id: string; side?: string } }>(`/api/crew-sync/${encodeURIComponent(project)}`, { skipSessionContext: true })
+async function macBinding(project: string, workspace = getRawActiveWorkspaceId()): Promise<{ connection: string; peer: string; side?: string } | undefined> {
+  if (!(hasDesktopConnections() && workspace === 'local')) return undefined
+  const route = `/api/crew-sync/${encodeURIComponent(project)}`
+  type Binding = { binding?: { connection_id: string; peer_project_id: string; side?: string } }
+  let data: Binding
+  if (workspace === getRawActiveWorkspaceId()) data = (await api.get<Binding>(route, { skipSessionContext: true })).data
+  else {
+    const response = await fetch(`${getLocalApiBaseUrl()}${route}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+    if (!response.ok) throw new Error('The local Team connection is unavailable.')
+    data = await response.json() as Binding
+  }
   return data.binding?.connection_id ? { connection: data.binding.connection_id, peer: data.binding.peer_project_id, side: data.binding.side } : undefined
 }
 
 /** Where this Crew's Team is kept: on the website the Crew itself; in the Mac app its online copy, through the Mac's
  * saved sign-in (undefined until Mac online pairs it). */
-async function teamTarget(project: string): Promise<TeamTarget | undefined> {
-  if (!(hasDesktopConnections() && getRawActiveWorkspaceId() === 'local')) return { project }
-  const binding = await macBinding(project)
+async function teamTarget(project: string, workspace = getRawActiveWorkspaceId()): Promise<TeamTarget | undefined> {
+  if (!(hasDesktopConnections() && workspace === 'local')) return { project, ...(workspace !== getRawActiveWorkspaceId() ? { connection: workspace } : {}) }
+  const binding = await macBinding(project, workspace)
   return binding ? { connection: binding.connection, project: binding.peer, localProject: project } : undefined
 }
 
@@ -100,7 +108,7 @@ export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: 
 type TabEntry = { state: TeamTabState; listeners: Set<(state: TeamTabState) => void>; load: () => Promise<void>; stop: () => void }
 const tabCache = new Map<string, TabEntry>()
 
-function watchTeamTab(project: string, key: string, listener: (state: TeamTabState) => void) {
+function watchTeamTab(project: string, key: string, workspace: string, listener: (state: TeamTabState) => void) {
   let entry = tabCache.get(key)
   if (!entry) {
     // A turn sends many crew_panel notices: one read at a time (a notice during a read reads once more after it), and an
@@ -120,7 +128,7 @@ function watchTeamTab(project: string, key: string, listener: (state: TeamTabSta
       if (reading) { again = true; return }
       reading = true
       try {
-        const target = await teamTarget(project)
+        const target = await teamTarget(project, workspace)
         if (!target) publish({ unbound: true, error: '' })
         else {
           const view = await teamRequest<TeamTabView>(target, '/tab')
@@ -150,16 +158,17 @@ function watchTeamTab(project: string, key: string, listener: (state: TeamTabSta
   }
 }
 
-export function useTeamTab(project?: string): TeamTabState {
+export function useTeamTab(project?: string, connection?: string): TeamTabState {
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const user = useAuthStore(s => s.user?.id)
-  const [state, setState] = useState<TeamTabState>({ error: '' })
+  const source = connection ?? workspace
+  const key = `${workspace}\x00${source}\x00${user}\x00${project}`
+  const [loaded, setLoaded] = useState<{ key: string; state: TeamTabState }>()
   useEffect(() => {
-    setState({ error: '' })
     if (!project || !user) return
-    return watchTeamTab(project, `${workspace}\x00${user}\x00${project}`, setState)
-  }, [project, workspace, user])
-  return state
+    return watchTeamTab(project, key, source, state => setLoaded({ key, state }))
+  }, [project, source, user, key])
+  return loaded?.key === key ? loaded.state : { error: '' }
 }
 
 const changed = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
@@ -294,8 +303,8 @@ export function teamFolderChange(target: TeamTarget, whole: boolean): Promise<Te
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
  * does not write, as real tabs of this Crew (agents only: a read-only schedule chat of the viewer's own has a :schedule: key and stays out). Their chats are read from the server through this Mac's sign-in
  * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */
-export async function teamSideChats(profileId: string, projectId: string): Promise<AgentProfileSideChat[]> {
-  const binding = await macBinding(projectId)
+export async function teamSideChats(profileId: string, projectId: string, workspace = getRawActiveWorkspaceId()): Promise<AgentProfileSideChat[]> {
+  const binding = await macBinding(projectId, workspace)
   if (!binding || binding.side !== 'local') return []
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
   if (!response.ok) return []

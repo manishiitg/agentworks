@@ -1,7 +1,6 @@
-import { AgentMark } from '../chat/AgentIcon'
+import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
+import { ProjectAgentMark } from './SidebarCrewAgentMark'
 import { workConversationAgent } from '../../utils/workConversationKey'
-import { useAgentMenuState } from '../chat/agentMenuState'
-import type { ActiveSessionInfo } from '../../services/api-types'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
@@ -224,6 +223,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   useEffect(() => { if (selected && saved !== true) toggle(key, false) }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
   const [loadedChats, setLoadedChats] = useState<{ identity: number; chats: AgentProfileSideChat[] }>({ identity: captureChatIdentity(), chats: [] })
   const chats = isChatIdentityCurrent(loadedChats.identity) ? loadedChats.chats : []
+  const team = useTeamTab(expanded ? projectId : undefined, connectionId)
   const liveProjectId = useCrewAgentsStore(state => state.projectId)
   const [error, setError] = useState(false)
   const activity = useConnectedWorkStore(state => isChatIdentityCurrent(state.identity) ? state.activity[connectionId]?.sessions : undefined)
@@ -239,7 +239,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   // This network's chat changes arrive as live notices; another network's list is checked every minute.
   const here = connectionId === getRawActiveWorkspaceId()
   const [reload, setReload] = useState(0)
-  useLiveRefetch(() => setReload(value => value + 1), { kinds: ['sessions'], project: projectId, fallbackMs: 60_000, minIntervalMs: 5_000, enabled: expanded && here })
+  useLiveRefetch(() => setReload(value => value + 1), { kinds: ['sessions', 'crew_panel'], project: projectId, fallbackMs: 60_000, minIntervalMs: 5_000, enabled: expanded && here })
   useEffect(() => {
     if (!expanded) return
     let cancelled = false
@@ -255,7 +255,10 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
           if (!response.ok) throw new Error('Chats unavailable')
           result = await response.json()
         }
-        if (!cancelled && isChatIdentityCurrent(identity)) { setLoadedChats({ identity, chats: Array.isArray(result) ? result : [] }); setError(false) }
+        const teammates = await teamSideChats('work', projectId, connectionId)
+        const rows = [...(Array.isArray(result) ? result : []), ...teammates]
+        const unique = rows.filter((row, index) => rows.findIndex(other => other.conversation_key === row.conversation_key) === index)
+        if (!cancelled && isChatIdentityCurrent(identity)) { setLoadedChats({ identity, chats: unique }); setError(false) }
       } catch { if (!cancelled && isChatIdentityCurrent(identity)) setError(true) }
     }
     void load()
@@ -275,7 +278,8 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   }
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
-    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
+    const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
+    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
   // Grouped by person like the open Crew's list (owner, 10 Nov: another network's Crew listed everyone's agents in one
   // list, two "Main"s and no names): yours under You, each teammate under their name with their online dot.
@@ -295,13 +299,5 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
         </div>
       })}
     </>}</div>)}</>
-}
-
-/** Inactive project rows use the same marks as the open Crew, including unread completions. */
-function ProjectAgentMark({ projectId, sessionId, session, local }: { projectId: string; sessionId: string; session?: ActiveSessionInfo; local: boolean }) {
-  const tabId = useChatStore(state => local ? Object.values(state.chatTabs).find(tab => tab.sessionId === sessionId && tab.metadata?.agentProfileProjectId === projectId)?.tabId : undefined)
-  const state = useAgentMenuState(tabId || `sidebar:${projectId}:${sessionId}`, undefined, local ? { sessionId } : undefined)
-  const remoteState = runtimeNeedsUserInput(session) ? 'waiting' : session && hasActiveSessionWork(session) ? 'running' : null
-  return <AgentMark state={local ? state : remoteState} />
 }
 
