@@ -67,7 +67,13 @@ func pushCrewTeamNote(project, kind string, revision uint64, everyone bool) {
 // menu shows it on the project's row even when the project is closed (owner, 10 Nov). The note carries only names and
 // a state, never what anyone typed; the state is "running" when anyone else is working, "waiting" when anyone else's
 // agent waits for them, else "".
-var crewTeamBusySent sync.Map // "<project>/<person>" -> last line sent
+// crewTeamBusySentKey is one Mac's last note: a person with two Macs gets it on each (keyed by person alone, the
+// second Mac was skipped as "already sent").
+func crewTeamBusySentKey(project string, sock *crewMacSocket) string {
+	return project + "/" + sock.owner + "/" + sock.device
+}
+
+var crewTeamBusySent sync.Map // crewTeamBusySentKey -> last line sent
 
 func pushCrewTeamBusy(project string) {
 	crewMacSockets.Lock()
@@ -110,14 +116,14 @@ func pushCrewTeamBusy(project string) {
 		everyone := crewTeamPeopleFor(t, people, sock.owner, label)
 		state, line := crewTeamBusyLine(everyone)
 		raw, _ := json.Marshal(everyone)
-		key := project + "/" + sock.owner
+		key := crewTeamBusySentKey(project, sock)
 		sent := state + "|" + line + "|" + string(raw)
 		if previous, ok := crewTeamBusySent.Load(key); ok && previous.(string) == sent {
 			continue
 		}
 		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line, Event: raw}) == nil {
 			crewTeamBusySent.Store(key, sent)
-			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s state=%q people=%s", project, logUsernameForUserID(sock.owner), state, raw)
+			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s device=%s state=%q people=%s", project, logUsernameForUserID(sock.owner), sock.device, state, raw)
 		}
 	}
 }

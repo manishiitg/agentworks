@@ -177,7 +177,7 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 		publishCrewPanelChanged(project)
 		// A Mac that starts serving a Team's Crew is online for its people, and is told who else is (crew_team_push.go).
 		if _, had := previous[project]; !had {
-			crewTeamBusySent.Delete(project + "/" + sock.owner)
+			crewTeamBusySent.Delete(crewTeamBusySentKey(project, sock))
 			go pushCrewTeamBusy(project)
 		}
 	}
