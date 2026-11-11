@@ -5940,6 +5940,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Publish the final scoped executors once, not the growing set after every tool.
+		finishToolRegistration := func() {}
+		if agent := llmAgent.GetUnderlyingAgent(); agent != nil {
+			finishToolRegistration = agent.DeferToolRegistryPublication()
+			defer finishToolRegistration()
+		}
+
 		var workspaceEnv map[string]string // hoisted so secrets can be injected after allChatSecrets is computed
 		log.Printf("[CHAT_TOOLS_DEBUG] isChatMode=%v agentNonNil=%v", isChatMode, llmAgent.GetUnderlyingAgent() != nil)
 
@@ -7015,6 +7022,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[INSTRUCTIONS] Failed to save prompt snapshot for session %s: %v", sessionID, err)
 			}
 		}
+
+		finishToolRegistration()
 
 		if api.internalPreparedAgent != nil && api.internalPreparedAgent(streamCtx, llmAgent.GetUnderlyingAgent()) {
 			_ = llmAgent.Close()
