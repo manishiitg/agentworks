@@ -64,9 +64,6 @@ func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifes
 		if chatID != nil {
 			sched.ChatID = strings.TrimSpace(*chatID)
 		}
-		if sched.ChatID == "" {
-			sched.ChatID = "main"
-		}
 		return validateExecutableSchedule(ctx, buildScheduleContext(workspace, manifest, *sched))
 	}
 	destination = strings.ToLower(strings.TrimSpace(destination))

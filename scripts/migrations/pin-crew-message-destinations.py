@@ -5,7 +5,7 @@ One-off operator tool, not a startup migration. Stop the app before applying.
 Use the Crew's private data folder and its owner's conversation registry JSON.
 No database, transcript, secret, function tab, or project identity is rewritten.
 Run separately for each Crew on each authorized server/laptop. Remove this tool
-when the rollout is complete. Workflow/script destinations are a separate step.
+when the rollout is complete. Explicit executable roots also convert saved chat_id destinations.
 """
 import argparse
 import copy
@@ -42,7 +42,7 @@ def pin_document(document, collection, project, main):
     return result
 
 
-def inspect(crew, registry_file, registry_workspace=None):
+def inspect(crew, registry_file, registry_workspace=None, executable_roots=()):
     manifest = read_json(crew / "product.json")
     project = manifest.get("id")
     if not project or manifest.get("product") != "work":
@@ -71,6 +71,17 @@ def inspect(crew, registry_file, registry_workspace=None):
         after = pin_document(before, collection, project, main)
         if before != after:
             changes.append((file, after))
+    for executable in executable_roots:
+        file = executable / "workflow.json"
+        before = read_json(file)
+        after = copy.deepcopy(before)
+        for schedule in after.get("schedules", []):
+            # Blank script destinations no longer need a conversation. Only
+            # an explicitly saved Main role is pinned to its physical agent.
+            if schedule.get("chat_id", "").strip() in ("main", project):
+                schedule["chat_id"] = main
+        if before != after:
+            changes.append((file, after))
     return changes
 
 
@@ -80,8 +91,12 @@ def apply(changes, backup):
     backup.mkdir(mode=0o700, parents=True, exist_ok=False)
     # Back up every changed file before changing any of them. Existing backups
     # are never overwritten. Nothing is printed from an automation's payload.
-    for file, _ in changes:
-        shutil.copy2(file, backup / file.name)
+    names = {}
+    for index, (file, _) in enumerate(changes):
+        name = file.name if sum(p.name == file.name for p, _ in changes) == 1 else f"{index}-{file.name}"
+        shutil.copy2(file, backup / name)
+        names[str(file)] = name
+    (backup / "files.json").write_text(json.dumps(names, indent=2) + "\n")
     for file, document in changes:
         file.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
 
@@ -91,12 +106,13 @@ def main():
     parser.add_argument("--crew-root", type=Path, required=True)
     parser.add_argument("--owner-registry", type=Path, required=True)
     parser.add_argument("--registry-workspace", help="exact logical Crew path if the registry does not store an absolute path")
+    parser.add_argument("--executable-root", type=Path, action="append", default=[], help="explicit executable root belonging to this Crew; repeat as needed")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--backup", type=Path)
     args = parser.parse_args()
     if args.apply and not args.backup:
         parser.error("--apply requires a new --backup directory")
-    changes = inspect(args.crew_root, args.owner_registry, args.registry_workspace)
+    changes = inspect(args.crew_root, args.owner_registry, args.registry_workspace, args.executable_root)
     if args.apply:
         apply(changes, args.backup)
     print(f"{'Updated' if args.apply else 'Would update'} {len(changes)} automation files.")
