@@ -23,7 +23,7 @@ it('opens activity, shows lookup failure with retry, and keeps settings in their
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent === name)!
+  const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.startsWith(name))!
   try {
     await act(async () => root.render(<TeamTab projectId="one" />))
     expect(tab('Activity').getAttribute('aria-selected')).toBe('true')

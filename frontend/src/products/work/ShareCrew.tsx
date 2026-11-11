@@ -41,17 +41,20 @@ export function ShareCrew({ option: key, projectId, workspacePath, onBack, onTur
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   const option = page.options.find(item => item.key === key)
   if (!option) return null
+  // With the Team on, the Team page starts with its tabs and the back arrow beside them, like every other side panel
+  // page (owner, 11 Nov: "follow what we have everywhere"; YourComputerPanel, 4 Nov: no title row).
+  const teamTabs = key === 'team' && !!state.view?.team.on && !state.view?.new_team
   return <div className="space-y-3">
-    <div className="flex items-start gap-2 px-1">
+    {!teamTabs && <div className="flex items-start gap-2 px-1">
       {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>}
       <div className="min-w-0 flex-1">
         <h2 className="text-[17px] font-semibold">{option.title}</h2>
         <p className="text-[13px] text-muted-foreground">{option.line}</p>
       </div>
       <span className={`shrink-0 whitespace-nowrap pt-1 text-xs ${option.on ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{option.status}</span>
-    </div>
+    </div>}
     {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
-    {key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} />}
+    {key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} />}
     {key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => openCrewAccess(projectId, '', 'team')} />}
     {key === 'team' && state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
