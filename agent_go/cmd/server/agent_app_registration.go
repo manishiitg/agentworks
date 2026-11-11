@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -40,6 +41,50 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 		return
 	}
 	switch externalArg(args, "action") {
+	case "registrations", "remove":
+		// Reconciliation of this device's registrations uses the same store,
+		// not a second directory. No chat history or filesystem path is sent.
+		device := externalArg(args, "device_id")
+		if device == "" {
+			externalError(w, 400, "invalid_arguments", "Give this app's device identity.")
+			return
+		}
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		store, err := readAgentMessageStore(r.Context())
+		if err != nil {
+			externalCommunicationError(w, 503, "registration_unavailable", err)
+			return
+		}
+		rows := []map[string]string{}
+		remove := externalArg(args, "action") == "remove"
+		found := false
+		for i, a := range store.Agents {
+			if a.UserID != claims.UserID || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.DeviceID != device {
+				continue
+			}
+			if remove {
+				if a.ID != externalArg(args, "agent_id") || a.Attachment.SessionID != externalArg(args, "conversation_id") {
+					continue
+				}
+				store.Agents = slices.Delete(store.Agents, i, i+1)
+				store.revokeServerShares(a.ID, claims.UserID, time.Now().UTC())
+				found = true
+				break
+			}
+			rows = append(rows, map[string]string{"agent_id": a.ID, "agent_name": a.Name, "conversation_id": a.Attachment.SessionID})
+		}
+		if remove {
+			if !found {
+				externalError(w, 404, "registration_unavailable", "The exact app chat is no longer registered.")
+				return
+			}
+			if err := saveAgentMessageStore(r.Context(), store); err != nil {
+				externalCommunicationError(w, 503, "registration_unavailable", err)
+				return
+			}
+		}
+		externalJSON(w, map[string]any{"agents": rows, "removed": found})
 	case "register":
 		a, err := registerAppMessageAgent(r.Context(), claims, args)
 		if err != nil {
@@ -58,6 +103,25 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 		if target != "" && !strings.HasPrefix(target, "agent:") || inbox != "" && !strings.HasPrefix(inbox, "inbox-") || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "chat_id") != "" {
 			externalError(w, 400, "invalid_arguments", "Use a named agent or its reply inbox.")
 			return
+		}
+		if target != "" {
+			resolved, err := api.externalMessageTargetForOperation(r.Context(), claims, args, externalArg(args, "action") == "send")
+			if err != nil || resolved.NamedAgentID == "" {
+				externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
+				return
+			}
+		}
+		if inbox != "" {
+			caller, err := api.externalMessageCaller(r.Context(), claims, args)
+			if err != nil {
+				externalError(w, 403, "inbox_refused", "This app chat cannot use that inbox.")
+				return
+			}
+			peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, externalArg(args, "action") == "send")
+			if err != nil || peer.NamedAgentID == "" {
+				externalError(w, 403, "inbox_refused", "Use this named agent's reply inbox.")
+				return
+			}
 		}
 		api.externalAgentMessages(w, r, args)
 	case "inbox":
@@ -115,11 +179,15 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 		}
 	}
 	a := &store.Agents[index]
+	changed := a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose)
 	if a.Attachment == nil || a.Attachment.ConnectionID != connection {
 		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), DeliveryContract: 2, DeliveryRoute: appAgentDeliveryRoute, Provider: "agentworks", DeviceID: device, SessionID: session, ConnectionID: connection}
 	}
 	a.Label, a.Purpose = cleanAgentLabel(externalArg(args, "label")), cleanAgentPurpose(purpose)
 	a.EverAttached = true
+	if !changed {
+		return *a, nil
+	}
 	if err := saveAgentMessageStore(ctx, store); err != nil {
 		return empty, err
 	}

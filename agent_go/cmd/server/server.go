@@ -3102,6 +3102,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	notifyCtx, stopNotifier := context.WithCancel(context.Background())
 	defer stopNotifier()
 	api.startNotifier(notifyCtx)
+	stopAgentBridge := api.startDesktopAgentBridge()
+	defer stopAgentBridge()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
 	stopMacWaiting := api.startCrewMacWaiting()
