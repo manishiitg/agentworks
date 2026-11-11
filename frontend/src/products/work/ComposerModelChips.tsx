@@ -3,7 +3,7 @@ import { ComposerActionItems, type ComposerActions } from '../../components/chat
 import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
 import { formatTokens } from '../../utils/formatTokens'
-import { ThinkingDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
+import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, Loader2, Server, Settings2 } from 'lucide-react'
@@ -337,6 +337,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
     <ThinkingDisplayMenuItem className={rowClass} />
+    <ToolsDisplayMenuItem className={rowClass} />
     {companyServer
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
