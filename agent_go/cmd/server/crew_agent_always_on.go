@@ -427,17 +427,15 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	if err = stageCrewNative(roots, native); err != nil {
 		return "", err
 	}
-	main, err := api.crewHandoffMain(ctx, claims, roots.ID)
+	main, err := api.crewHandoffProjectTemplate(ctx, claims, roots.ID)
 	if err != nil {
 		return "", err
 	}
-	key := main.ConversationKey
-	if macKey != binding.PeerProjectID {
-		if !strings.HasPrefix(macKey, binding.PeerProjectID+codeChatSideMarker) {
-			return "", fmt.Errorf("a standby conversation has an invalid address")
-		}
-		key = roots.ID + strings.TrimPrefix(macKey, binding.PeerProjectID)
+	if !strings.HasPrefix(macKey, binding.PeerProjectID+codeChatSideMarker) {
+		return "", fmt.Errorf("choose the standby agent's physical address")
 	}
+	key := roots.ID + strings.TrimPrefix(macKey, binding.PeerProjectID)
+	main.ConversationKey = crewOwnerMainChatKey(roots.ID)
 	store := defaultProductConversationRegistryStore()
 	path := productConversationRegistryPath(claims.UserID)
 	lock := productConversationRegistryMutex(path)
