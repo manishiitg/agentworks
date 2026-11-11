@@ -1,4 +1,3 @@
-import { chatTabSwitchKeys } from '../../products/work/workTabs'
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowUp, ChevronDown, ChevronRight, RotateCcw, Square, Wand2 } from 'lucide-react'
@@ -52,34 +51,38 @@ export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backg
         </Menu.Portal>
       </Menu.Sub>
     </>}
-    <ComposerKeyboardShortcuts />
+    <ComposerKeyboardShortcuts busy={busy} />
   </>
 }
 
-/** Fixed reference, not a rotating hint or a usage tracker. */
-function ComposerKeyboardShortcuts() {
+/** Keep the reference out of the main menu; list only composer-local keys. */
+function ComposerKeyboardShortcuts({ busy }: { busy: boolean }) {
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
-  const command = mac ? '⌘' : 'Ctrl+'
-  const tabs = chatTabSwitchKeys()
   const shortcuts = [
-    ['Enter', 'Send · steer while working'],
-    [`${command}Enter`, 'Queue next while working'],
+    ['Enter', busy ? 'Steer current reply' : 'Send'],
+    ...(busy ? [[mac ? '⌘Enter' : 'Ctrl+Enter', 'Queue next']] : []),
     ['Shift+Enter', 'New line'],
     ['/', 'Commands'], ['@', 'Files'], ['#', 'Crew references'],
-    [`${command}← / ${command}→`, 'Back / forward · outside text fields'],
-    [mac ? tabs.mac : tabs.other, 'Switch agents in this project'],
-    [`${command}K`, 'Search'],
-    [mac ? '⌥⇧T' : 'Alt+Shift+T', 'New agent'],
   ]
-  return <section aria-label="Keyboard shortcuts" className="mt-1.5 border-t border-border px-2.5 pb-1 pt-2 text-[10px] text-muted-foreground">
-    <h3 className="mb-1 font-medium">Keyboard shortcuts</h3>
-    <dl className="space-y-1">
-      {shortcuts.map(([keys, label]) => <div key={keys} className="flex items-baseline justify-between gap-3">
-        <dt><kbd className="whitespace-nowrap font-mono">{keys}</kbd></dt>
-        <dd className="text-right">{label}</dd>
-      </div>)}
-    </dl>
-  </section>
+  return <>
+    <Menu.Separator className="my-1.5 h-px bg-border" />
+    <Menu.Sub>
+      <Menu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-accent data-[state=open]:bg-accent">
+        Keyboard shortcuts<ChevronRight className="ml-auto h-3.5 w-3.5" aria-hidden="true" />
+      </Menu.SubTrigger>
+      <Menu.Portal>
+        <Menu.SubContent sideOffset={6} collisionPadding={12} aria-label="Keyboard shortcuts"
+          className="z-[101] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(16rem,calc(100vw-24px))] overflow-y-auto rounded-lg border border-border bg-popover p-2.5 text-xs text-popover-foreground shadow-lg">
+          <dl className="space-y-1.5">
+            {shortcuts.map(([keys, label]) => <div key={keys} className="flex items-baseline justify-between gap-3">
+              <dt><kbd className="whitespace-nowrap font-mono text-muted-foreground">{keys}</kbd></dt>
+              <dd>{label}</dd>
+            </div>)}
+          </dl>
+        </Menu.SubContent>
+      </Menu.Portal>
+    </Menu.Sub>
+  </>
 }
 
 /** Selection expresses intent only; the server chooses delivery using live state. */
