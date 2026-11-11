@@ -183,7 +183,11 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	scan := bufio.NewScanner(io.LimitReader(file, 512*1024))
 	scan.Buffer(make([]byte, 4096), 512*1024)
 	var id, cwd, title, model string
-	for n := 0; n < 24 && scan.Scan(); n++ {
+	afterMatch := 0
+	// Claude can write hundreds of small file-history-snapshot rows before the first row that names the folder
+	// (owner, 11 Nov: a long chat was missing from the list), so the row count is not the limit; the 512 KiB
+	// prefix read above is.
+	for scan.Scan() {
 		var row struct {
 			Type        string `json:"type"`
 			SessionID   string `json:"sessionId"`
@@ -227,6 +231,11 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 			}
 			if source.Provider == "claude-code" && row.Type == "user" && title == "" {
 				title = extractClaudeTranscriptText(row.Message.Content)
+			}
+			// Once the folder matches, look only a little further for the first message and model.
+			afterMatch++
+			if title != "" && model != "" || afterMatch >= 24 {
+				break
 			}
 		}
 	}
