@@ -253,14 +253,6 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 	if err != nil {
 		return nil, err
 	}
-	// Presence of the old main slot is a rule even when it has no session.
-	ownRoot := false
-	for _, row := range selected {
-		if row.key == main {
-			ownRoot = true
-			break
-		}
-	}
 	mainKeys := map[string]string{}
 	var chats []ProductConversationRecord
 	for _, row := range selected {
@@ -273,7 +265,7 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 		}
 		mainKey, known := mainKeys[record.WorkspacePath]
 		if !known {
-			mainKey = project
+			mainKey = ""
 			raw, exists, e := read(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json")
 			if e != nil {
 				return nil, e
@@ -283,9 +275,7 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 				if e = json.Unmarshal([]byte(raw), &manifest); e != nil {
 					return nil, e
 				}
-				if manifest.MainChatKey != "" && !ownRoot {
-					mainKey = manifest.MainChatKey
-				}
+				mainKey = manifest.MainChatKey
 			}
 			mainKeys[record.WorkspacePath] = mainKey
 		}
