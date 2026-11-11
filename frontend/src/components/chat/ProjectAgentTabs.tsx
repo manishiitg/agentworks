@@ -59,7 +59,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const chatTabs = useChatStore(state => state.chatTabs)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [newTabName, setNewTabName] = useState<string | null>(null)
-  const [addMode, setAddMode] = useState<'choose' | 'fork' | null>(null)
+  const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
   const [forking, setForking] = useState(false)
   const beginAddAgent = () => {
     if (surface === 'work') setAddMode('choose')
@@ -92,7 +92,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const submitNewAgent = async (requested: string) => {
     const name = requested.trim()
     if (!name || opening) return
-    try { if (await onOpen(name) !== false) { setNewTabName(null); phoneNavigation?.onChange('chat') } }
+    try { if (await onOpen(name) !== false) { setNewTabName(null); setAddMode(null); phoneNavigation?.onChange('chat') } }
     catch (cause) { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open a new agent.', 'error') }
   }
   const isAgentTab = (tab: ChatTab) => !tab.metadata?.isViewOnly && !tab.metadata?.isScheduledRun && !tab.metadata?.isBotRun
@@ -125,6 +125,18 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const livesOnMac = useCrewLivesOnMac(placeProject)
   // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
   const sideChatsHere = allowSideChats && place !== 'mac_off'
+  useEffect(() => {
+    const add = (event: Event) => {
+      const requested = (event as CustomEvent<{ projectId: string }>).detail?.projectId
+      if (surface !== 'work' || requested !== placeProject || !sideChatsHere || opening) return
+      if (ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return
+      setNewTabName('')
+      setAddMode('new')
+    }
+    window.addEventListener('crew-new-agent', add)
+    return () => window.removeEventListener('crew-new-agent', add)
+  }, [surface, placeProject, sideChatsHere, opening, ownedListed.length])
+
   // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
   // Mac on, grey with it off, amber while moving. Online Crews keep a plain arrow.
   const arrowTone = place === 'mac' ? 'text-emerald-500' : place === 'mac_off' ? 'text-muted-foreground/50' : place === 'moving' ? 'text-amber-500' : ''
@@ -256,11 +268,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
-  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose,
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, pinned: chat.pinned,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.pinned]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
-    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
+    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crewKey])
   // The open tab's details, for the purpose line at the top of its chat.
@@ -419,7 +431,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const active = stripRef.current?.querySelector('[data-tab-active="true"]')
     if (active && typeof (active as HTMLElement).scrollIntoView === 'function') (active as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeTabId, tabs.length])
-  const newTabForm = sideChatsHere && newTabName !== null && (
+  const newTabForm = surface !== 'work' && sideChatsHere && newTabName !== null && (
     <form
       className="absolute inset-x-3 top-full z-40 flex items-center rounded-lg border border-border bg-background p-2 shadow-lg md:static md:shrink-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none"
       onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName) }}
@@ -604,14 +616,22 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           (owner, 10 Nov). */}
       {menuMode && chipPeople.length > 0 && <div className="hidden min-w-0 items-center gap-1 md:flex"><span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />{personChipList}</div>}
       {addMode && createPortal(
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking) setAddMode(null) }}>
-          <div role="dialog" aria-modal="true" aria-label={addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking && !opening) setAddMode(null) }}>
+          <div role="dialog" aria-modal="true" aria-label={addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold">{addMode === 'choose' ? 'Add agent' : 'Fork existing agent'}</h2>
-              <button type="button" autoFocus disabled={forking} aria-label="Close" onClick={() => setAddMode(null)} className="rounded p-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" /></button>
+              <h2 className="text-sm font-semibold">{addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'}</h2>
+              <button type="button" autoFocus={addMode !== 'new'} disabled={forking || opening} aria-label="Close" onClick={() => setAddMode(null)} className="rounded p-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" /></button>
             </div>
-            {addMode === 'choose' ? <div className="space-y-1">
-              <button type="button" onClick={() => { setAddMode(null); setNewTabName('') }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-4 w-4" />New agent</button>
+            {addMode === 'new' ? <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName || '') }}>
+              <label className="block text-sm">Agent name
+                <input autoFocus value={newTabName || ''} onChange={event => setNewTabName(event.target.value)} maxLength={120} disabled={opening} placeholder="e.g. Research" aria-label="Agent name" data-testid="work-new-chat-tab-name" className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" disabled={opening} onClick={() => { setAddMode(null); setNewTabName(null) }} className="rounded-md px-3 py-2 text-sm hover:bg-muted">Cancel</button>
+                <button type="submit" disabled={opening || !newTabName?.trim()} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{opening && <Loader2 className="h-4 w-4 animate-spin" />}Create agent</button>
+              </div>
+            </form> : addMode === 'choose' ? <div className="space-y-1">
+              <button type="button" onClick={() => { setNewTabName(''); setAddMode('new') }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-4 w-4" />New agent</button>
               <button type="button" onClick={() => setAddMode('fork')} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Fork existing agent…</button>
               {onImportLocalChat && <button type="button" onClick={() => { setAddMode(null); onImportLocalChat() }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><span aria-hidden="true" className="mr-2 inline-flex -space-x-1 align-middle">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-6 w-6 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
             </div> : <>
@@ -627,7 +647,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           </div>
         </div>, document.body
       )}
-      {sideChatsHere && newTabName === null && !addMode && (
+      {sideChatsHere && (surface === 'work' || newTabName === null) && !addMode && (
         <button
           type="button"
           onClick={beginAddAgent}
