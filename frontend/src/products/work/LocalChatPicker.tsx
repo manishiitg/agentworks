@@ -27,6 +27,7 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
   const [partial, setPartial] = useState(false)
+  const [program, setProgram] = useState('')
   const dialog = useRef<HTMLDivElement>(null)
   const current = chats.find(chat => chat.id === selected)
   const params = projectId ? { project_id: projectId } : { root_path: folder }
@@ -87,7 +88,8 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
       {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
       <div className="grid min-h-0 flex-1 overflow-auto rounded-lg border border-border sm:grid-cols-[minmax(220px,1fr)_2fr]">
         <div aria-label="Local conversations" className="max-h-48 overflow-y-auto border-b border-border p-2 sm:max-h-[55dvh] sm:border-b-0 sm:border-r">
-          {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No Claude, Codex or Cursor CLI chats found for this folder.</p> : chats.map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
+          {(() => { const programs = [...new Set(chats.map(chat => chat.provider))]; return programs.length > 1 && <div role="group" aria-label="Filter by program" className="mb-2 flex flex-wrap gap-1">{['', ...programs].map(p => <button key={p || 'all'} type="button" aria-pressed={program === p} onClick={() => setProgram(p)} className={`rounded-md border px-2 py-0.5 text-xs ${program === p ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`}>{p ? localChatProgram(p).name : 'All'}</button>)}</div> })()}
+          {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No Claude, Codex or Cursor CLI chats found for this folder.</p> : chats.filter(chat => !program || chat.provider === program).map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
             <img alt="" src={`/provider-icons/${localChatProgram(chat.provider).icon}`} className="mt-0.5 h-5 w-5 shrink-0 object-contain" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{chat.title}</span><span className="mt-1 block text-xs text-muted-foreground">{localChatProgram(chat.provider).name} · {new Date(chat.updated_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span></span>
           </button>)}
           {partial && <p className="p-3 text-xs text-muted-foreground">Some chats could not be checked. Refresh to try again.</p>}
