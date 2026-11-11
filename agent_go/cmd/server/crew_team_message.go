@@ -73,9 +73,18 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 
 // crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w.
 func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey string, claims *UserClaims) (triggerTarget, string, bool) {
+	if !strings.HasPrefix(chatKey, crewTeamAgentIDPrefix) {
+		shape := "other"
+		if strings.Contains(chatKey, codeChatSideMarker) {
+			shape = "chat_key"
+		}
+		log.Printf("[CREW_TEAM] project=%s event=agent_address_stale id_shape=%s", project, shape)
+		externalError(w, 409, "stale_team_address", "This Team address is out of date. Run messages action=list_agents and use the agent's new id.")
+		return triggerTarget{}, "", false
+	}
 	_, member, lookupErr := crewTeamAgentByID(r.Context(), project, claims.UserID, chatKey)
 	if lookupErr != nil || member == claims.UserID {
-		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team agent_id=%q self=%t", project, chatKey, member == claims.UserID)
+		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team id_shape=registry_id agent_id=%q self=%t", project, chatKey, member == claims.UserID)
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return triggerTarget{}, "", false
 	}
