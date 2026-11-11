@@ -724,7 +724,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
 const InternalActivityEvent: React.FC<{ title: string; content: string; timestamp: string }> = ({ title, content, timestamp }) => {
   const [open, setOpen] = useState(false)
   return (
-    <div data-testid="terminal-clear-system-activity" className="my-3 w-[min(100%,52rem)] rounded-xl border border-border bg-muted/20 p-3">
+    <div data-testid="terminal-clear-system-activity" className="my-1 w-[min(100%,52rem)] rounded-lg border border-border/60 px-3 py-2">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
@@ -1061,12 +1061,12 @@ const WebSearchCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
 
 // A message this chat sent to another agent: one compact row (who, and whether it went), the text behind a disclosure.
 const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
-  const [open, toggleOpen] = useDisclosure(`sent:${pair.key}`, true)
+  const [open, toggleOpen] = useDisclosure(`sent:${pair.key}`)
   const view = useMemo(() => parseAgentMessageSend(pair.name, pair.args, pair.result, pair.status), [pair.name, pair.args, pair.result, pair.status])
   if (!view) return null
   const state = view.state
   return (
-    <div data-testid="terminal-clear-message-sent" className="my-3 w-[min(100%,52rem)] rounded-xl border border-border bg-muted/20 p-3">
+    <div data-testid="terminal-clear-message-sent" className="my-1 w-[min(100%,52rem)] rounded-lg border border-border/60 px-3 py-2">
       <button
         type="button"
         onClick={toggleOpen}
@@ -1083,7 +1083,6 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
       {open && (
         <div className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 [&_li]:!text-[12px] [&_p]:!text-[12px]">
           <ConversationMarkdownRenderer content={view.message} framed={false} maxHeight="none" copyableCode />
-          <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Tool details</summary><ToolCallCard pair={pair} /></details>
           {view.failed && view.error && <p className="mt-2 whitespace-pre-wrap text-red-400">{view.error}</p>}
         </div>
       )}
