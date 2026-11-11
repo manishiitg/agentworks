@@ -6,6 +6,7 @@ import type { PollingEventSchema } from '../../src/generated/event-types'
 
 export type PollingEvent = PollingEventSchema & {
   id: string
+  reply_to_agent_message_id?: string
   parent_id?: string
   hierarchy_level?: number
   span_id?: string

@@ -267,19 +267,20 @@ func pruneEventsForRetention(events []Event, maxEvents int) ([]Event, int) {
 // Event represents a generic event that can be stored and retrieved
 // Both MCP agent and orchestrator events now use the same AgentEvent structure
 type Event struct {
-	UsageExecutionID  string             `json:"usage_execution_id,omitempty"`
-	ID                string             `json:"id"`
-	Type              string             `json:"type"`
-	Timestamp         time.Time          `json:"timestamp"`
-	Data              *events.AgentEvent `json:"data,omitempty"` // Use AgentEvent directly - both systems compatible
-	Error             string             `json:"error,omitempty"`
-	SessionID         string             `json:"session_id,omitempty"`
-	ExecutionID       string             `json:"execution_id,omitempty"`
-	ParentExecutionID string             `json:"parent_execution_id,omitempty"`
-	ExecutionKind     string             `json:"execution_kind,omitempty"`
-	TerminalOwnerID   string             `json:"terminal_owner_id,omitempty"`
-	TerminalID        string             `json:"terminal_id,omitempty"`
-	Sequence          int64              `json:"sequence,omitempty"`
+	ReplyToAgentMessageID string             `json:"reply_to_agent_message_id,omitempty"`
+	UsageExecutionID      string             `json:"usage_execution_id,omitempty"`
+	ID                    string             `json:"id"`
+	Type                  string             `json:"type"`
+	Timestamp             time.Time          `json:"timestamp"`
+	Data                  *events.AgentEvent `json:"data,omitempty"` // Use AgentEvent directly - both systems compatible
+	Error                 string             `json:"error,omitempty"`
+	SessionID             string             `json:"session_id,omitempty"`
+	ExecutionID           string             `json:"execution_id,omitempty"`
+	ParentExecutionID     string             `json:"parent_execution_id,omitempty"`
+	ExecutionKind         string             `json:"execution_kind,omitempty"`
+	TerminalOwnerID       string             `json:"terminal_owner_id,omitempty"`
+	TerminalID            string             `json:"terminal_id,omitempty"`
+	Sequence              int64              `json:"sequence,omitempty"`
 }
 
 // UnmarshalJSON restores the EventData interface as a lossless generic payload.
@@ -1032,6 +1033,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	event.ensureExecutionOwnership(sessionID, es.events[sessionID])
 	es.stampExpectedClientUserMessage(sessionID, &event)
 	es.stampExpectedSender(sessionID, &event)
+	es.stampAgentReply(sessionID, &event)
 	if event.TerminalOwnerID == "" {
 		event.TerminalOwnerID = ResolveTerminalOwnerID(sessionID, event, nil)
 	}
