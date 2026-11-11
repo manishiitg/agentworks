@@ -31,7 +31,8 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
       <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
         <Bot aria-hidden="true" className="h-4 w-4 shrink-0" />
         <span className="min-w-0 break-words font-medium text-foreground">{message.sender}</span>
-        {message.kind && <span>{message.kind}</span>}
+        {/* The label often ends with the channel already ("… · AgentBridge"): show it once. */}
+        {message.kind && !message.sender.endsWith(message.kind) && <span>{message.kind}</span>}
         {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
       </header>
       <div data-testid="agent-inbox-body" className="agent-inbox-prose min-w-0 max-w-full break-words [overflow-wrap:anywhere] px-4 py-3 text-left text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
