@@ -1,3 +1,4 @@
+import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
 import { remoteSessionPath } from '../utils/remoteSessions'
 import { needsYouDecisions } from '../utils/needsYouDecisions'
@@ -519,6 +520,7 @@ api.interceptors.request.use((config) => {
   if (config.chatIdentityGeneration !== undefined) assertChatIdentityCurrent(config.chatIdentityGeneration)
   config.baseURL = getApiBaseUrl()
   config.headers = config.headers || {}
+  Object.assign(config.headers, admissionWindowHeaders())
   // A Team member's chat shown in the Mac app reads from its server (utils/remoteSessions.ts).
   // Those go through the Mac app's own address (getDesktopApiBaseUrl), which carries the app proof the connection proxy
   // requires; the local base refused them (owner, 10 Nov: a teammate's chat said "Could not load this conversation").
@@ -627,6 +629,7 @@ function getUserIdFromToken(token: string): string | null {
 workspaceApi.interceptors.request.use((config) => {
   config.baseURL = getWorkspaceApiBaseUrl()
   config.headers = config.headers || {}
+  Object.assign(config.headers, admissionWindowHeaders())
 
   // Add auth token if available
   const authToken = getAuthToken()

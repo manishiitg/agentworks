@@ -198,6 +198,26 @@ func liveFeedTerminalStatus(status string) bool {
 // on session/execution status transitions only, never per event.
 func publishSessionsChanged() { livefeed.Publish(livefeed.Sessions, "") }
 
+// Resolve from the server's active session and registered Crew folder. Unknown
+// or non-Crew sessions keep the broad notice; no client guesses ownership.
+// Call only after releasing activeSessionsMux.
+func (api *StreamingAPI) publishSessionChanged(sessionID string) {
+	api.activeSessionsMux.RLock()
+	workspace := ""
+	if session := api.activeSessions[sessionID]; session != nil {
+		workspace = session.WorkspacePath
+	}
+	api.activeSessionsMux.RUnlock()
+	parts := strings.Split(strings.Trim(workspace, "/"), "/")
+	if len(parts) > 1 && parts[0] == "Crew" {
+		if record, ok := defaultProjectOwners().Lookup("work", parts[1]); ok && record.ProjectID != "" {
+			livefeed.Default.PublishProject(livefeed.Sessions, record.ProjectID)
+			return
+		}
+	}
+	publishSessionsChanged()
+}
+
 func publishHumanInputsChanged(workspacePath string) {
 	if wf := normalizeLiveFeedWorkflow(workspacePath); wf != "" {
 		livefeed.Publish(livefeed.HumanInputs, wf)

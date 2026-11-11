@@ -198,6 +198,7 @@ export function recordTabMarkTelemetry(sessionId: string, tabId: string, status:
 let viewSwitchStartedAt = 0
 let viewSwitchWanted = ''
 let viewSwitchAdmittedAt = 0
+let viewSwitchID = ''
 let viewSwitchActivatedBy = ''
 /** A click that is not painted within this long is dropped, not timed against an unrelated later switch. */
 const VIEW_SWITCH_EXPIRES_MS = 15_000
@@ -205,6 +206,7 @@ const VIEW_SWITCH_EXPIRES_MS = 15_000
  * `wantedConversation` is the conversation key the click asked for, so the log shows whether another chat (Main) painted first. */
 export function markViewSwitchStart(wantedConversation = ''): void {
   viewSwitchStartedAt = typeof performance !== 'undefined' ? performance.now() : 0
+  viewSwitchID = `${getPageID()}:${Math.round(viewSwitchStartedAt)}`
   viewSwitchWanted = wantedConversation
   viewSwitchAdmittedAt = 0
   viewSwitchActivatedBy = ''
@@ -228,9 +230,9 @@ export function markViewSwitchAdmitted(): void {
   if (viewSwitchStartedAt && !viewSwitchAdmittedAt && typeof performance !== 'undefined') viewSwitchAdmittedAt = performance.now()
 }
 /** The pending click, unchanged: startedAt is 0 when none was asked for or it is too old to still mean this paint. */
-export function readViewSwitch(): { startedAt: number; wanted: string; admittedAt: number; activatedBy: string } {
+export function readViewSwitch(): { startedAt: number; wanted: string; admittedAt: number; activatedBy: string; switchID: string } {
   const expired = typeof performance !== 'undefined' && performance.now() - viewSwitchStartedAt > VIEW_SWITCH_EXPIRES_MS
-  return { startedAt: expired ? 0 : viewSwitchStartedAt, wanted: viewSwitchWanted, admittedAt: viewSwitchAdmittedAt, activatedBy: viewSwitchActivatedBy }
+  return { startedAt: expired ? 0 : viewSwitchStartedAt, wanted: viewSwitchWanted, admittedAt: viewSwitchAdmittedAt, activatedBy: viewSwitchActivatedBy, switchID: viewSwitchID }
 }
 /** The click has been timed against the chat it asked for. */
 export function clearViewSwitch(): void {
@@ -285,4 +287,10 @@ export function recordChatDeliveryTelemetry(
   }
   if (queue.length === 0 || timer !== undefined) return
   timer = window.setTimeout(flush, 100)
+}
+
+/** Correlation only: requests overlapping admission, not proof they caused it. */
+export function admissionWindowHeaders(): Record<string, string> {
+  const pending = readViewSwitch()
+  return pending.startedAt && !pending.admittedAt ? { 'X-Client-Switch': pending.switchID } : {}
 }

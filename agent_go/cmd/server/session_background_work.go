@@ -212,7 +212,7 @@ func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string)
 		if ws, ok := raw.(*stepworkflow.WorkshopChatSession); ok && ws != nil {
 			if _, err := ws.StopExecution(execID); err == nil {
 				api.completeTrackedExecution(execID, trackedExecutionStatusCanceled, "stopped by user", nil)
-				publishSessionsChanged()
+				api.publishSessionChanged(sessionID)
 				return true
 			}
 		}
@@ -226,6 +226,6 @@ func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string)
 		}
 	}
 	api.observeRuntimeSnapshot(sessionID)
-	publishSessionsChanged()
+	api.publishSessionChanged(sessionID)
 	return true
 }

@@ -3437,7 +3437,7 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		// X-User-ID: the workspace client sends it on /api/wp calls; the gateway overwrites it with
 		// the signed-in user (workspace_proxy.go), so allowing it only lets the preflight pass.
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-Chat-Input, X-User-ID, X-AgentWorks-Desktop")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-Chat-Input, X-Client-Switch, X-User-ID, X-AgentWorks-Desktop")
 		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, X-Queued-Steer-Unavailable, X-Renewed-Token")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
@@ -3587,6 +3587,10 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 				return
 			}
 			apiLatency.record(route, status, elapsed)
+			if switchID := clientSwitchID(r); switchID != "" {
+				logfWithContext(api.httpRequestLogContext(r), "[SWITCH_REQUEST] switch=%q method=%s path=%s status=%d duration=%s workspace_reads=%d workspace_read_ms=%d", switchID, r.Method, requestLogPath(r), status, elapsed.Round(time.Millisecond), reads.Reads(), reads.Millis())
+			}
+
 			if quiet && (status < http.StatusBadRequest || status == http.StatusConflict) {
 				return
 			}
@@ -7953,7 +7957,7 @@ func (api *StreamingAPI) trackActiveSession(sessionID, agentMode, query, userID,
 		api.eventStore.SetSessionOwner(sessionID, userID)
 	}
 
-	defer publishSessionsChanged() // runs after the unlock below
+	defer api.publishSessionChanged(sessionID) // runs after the unlock below
 	api.activeSessionsMux.Lock()
 	defer api.activeSessionsMux.Unlock()
 
@@ -9575,7 +9579,7 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 	api.observeRuntimeSnapshot(sessionID)
 	if changed {
 		api.notifyTurnEnded(sessionID, previous, status, info) // notifications.go: the server decides every send
-		publishSessionsChanged()
+		api.publishSessionChanged(sessionID)
 		if liveFeedTerminalStatus(status) {
 			api.noteCrewStandbyTurn(sessionID, workspacePath) // Always on: refresh an In team agent's server copy
 			if scheduled {
@@ -9640,7 +9644,7 @@ func (api *StreamingAPI) handleDismissSession(w http.ResponseWriter, r *http.Req
 		session.LastActivity = time.Now()
 	}
 	api.activeSessionsMux.Unlock()
-	publishSessionsChanged()
+	api.publishSessionChanged(sessionID)
 
 	log.Printf("[ACTIVE_SESSION] Dismissed session %s", sessionID)
 	w.WriteHeader(http.StatusOK)
@@ -13242,4 +13246,18 @@ func logCustomToolDuration(tool, sessionID string, run func()) {
 		log.Printf("[CUSTOM_TOOL] END tool=%s session=%s duration=%s", tool, sessionID, time.Since(started).Round(time.Millisecond))
 	}()
 	run()
+}
+
+// A correlation label, never an authority or an unbounded log payload.
+func clientSwitchID(r *http.Request) string {
+	value := r.Header.Get("X-Client-Switch")
+	if len(value) > 96 {
+		return ""
+	}
+	for _, c := range value {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == ':' || c == '.') {
+			return ""
+		}
+	}
+	return value
 }

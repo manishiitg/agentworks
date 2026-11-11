@@ -80,7 +80,7 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 	}
 	// Opening another project waits on this list (PLAT-746-840): name the slow step instead of guessing.
 	if total := time.Since(started); total >= sideChatSlowAfter {
-		log.Printf("[SIDE_CHATS] slow project=%s total=%s slot=%s records=%s identities=%s rows=%s schedules=%s mac=%s tabs=%d", projectID,
+		log.Printf("[SIDE_CHATS] slow switch=%q project=%s total=%s slot=%s records=%s identities=%s rows=%s schedules=%s mac=%s tabs=%d", clientSwitchID(r), projectID,
 			total.Round(time.Millisecond), timing.slot.Round(time.Millisecond), timing.records.Round(time.Millisecond), timing.identities.Round(time.Millisecond),
 			timing.rows.Round(time.Millisecond), timing.schedules.Round(time.Millisecond), timing.mac.Round(time.Millisecond), len(out))
 	}
@@ -547,7 +547,7 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		rows = append(rows, fmt.Sprintf("%s=%s/%s/%s own=%t err=%q", strings.TrimPrefix(row.ConversationKey, projectID), row.Engine, row.ModelID, row.ReasoningEffort, row.OwnModel, row.Error))
 	}
 	log.Printf("[CHAT_MODELS] %s project=%s effective=[%s]", r.Method, projectID, strings.Join(rows, " "))
-	log.Printf("[CHAT_MODELS] %s project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, projectID, len(allTabs),
+	log.Printf("[CHAT_MODELS] %s switch=%q project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, clientSwitchID(r), projectID, len(allTabs),
 		slotDone.Sub(started).Round(time.Millisecond), saveDone.Sub(slotDone).Round(time.Millisecond),
 		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
 	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
