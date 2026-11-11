@@ -305,3 +305,33 @@ func TestQueueComposerActionsExcludeEveryNonComposerSource(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-746-860: an inbound caller cannot acquire composer controls by sending its header.
+func TestComposerMarkerRequiresWebsitePerson(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		claims *UserClaims
+		want   bool
+	}{
+		{"website", &UserClaims{UserID: "owner"}, true},
+		{"anonymous", nil, false},
+		{"MCP", &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{ID: "token"}}, false},
+		{"Slack route", &UserClaims{UserID: "owner", Provider: "bot_route"}, false},
+		{"Slack DM", &UserClaims{UserID: "owner", Provider: slackDMProvider}, false},
+		{"WhatsApp", &UserClaims{UserID: "owner", Provider: "bot_owner"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/query", nil)
+			if tc.claims != nil {
+				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, tc.claims))
+			}
+			if isComposerChatRequest(r) {
+				t.Fatal("unmarked request accepted")
+			}
+			r.Header.Set("X-Chat-Input", "composer")
+			if isComposerChatRequest(r) != tc.want {
+				t.Fatalf("composer header admission, want %v", tc.want)
+			}
+		})
+	}
+}

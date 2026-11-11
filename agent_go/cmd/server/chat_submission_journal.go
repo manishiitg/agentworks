@@ -334,7 +334,7 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(status)
 		_, _ = w.Write(capture.body.Bytes())
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, ComposerInput: r.Header.Get("X-Chat-Input") == "composer" && websiteDeviceClaims(GetUserFromContext(r.Context())), handle: handle}))
+	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, ComposerInput: isComposerChatRequest(r), handle: handle}))
 	return capture, r, finish, true
 }
 
@@ -756,4 +756,9 @@ func submissionProjectConversationFiles(ctx context.Context, folder string) ([]s
 	paths := []string{}
 	collectWorkspaceFilePaths(listing, &paths)
 	return paths, nil
+}
+
+// The marker describes a UI submission; the authenticated person identity is still required.
+func isComposerChatRequest(r *http.Request) bool {
+	return r.Header.Get("X-Chat-Input") == "composer" && websiteDeviceClaims(GetUserFromContext(r.Context()))
 }

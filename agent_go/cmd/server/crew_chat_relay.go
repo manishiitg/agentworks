@@ -239,7 +239,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		}
 		call.ConversationID = generation
 		call.SubmissionID = r.Header.Get("Idempotency-Key")
-		call.ComposerInput = r.Header.Get("X-Chat-Input") == "composer"
+		call.ComposerInput = isComposerChatRequest(r)
 	}
 	owner := GetUserIDFromContext(r.Context())
 	if call.Operation == "send" {
