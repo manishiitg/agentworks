@@ -674,8 +674,14 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 			}
 		}
 	}
-	if len(workflows) > 0 {
+	// The Workflow row says what it holds like its siblings (owner, 11 Nov: a blank row looked broken).
+	switch {
+	case len(workflows) == 0:
+		details["workflow"] = "None yet"
+	case workflows[0].Detail != "":
 		details["workflow"] = workflows[0].Detail
+	default:
+		details["workflow"] = "Ready"
 	}
 	if len(automations) == 1 {
 		details["automations"] = automations[0].Detail
