@@ -247,7 +247,7 @@ func crewWebhookDefinition(project projectactions.Project, caller string, trigge
 	if trigger.Webhook == nil {
 		return projectWebhookDefinition{}, fmt.Errorf("webhook %s has no authentication settings", trigger.ID)
 	}
-	action := projectactions.Action{Type: "message"}
+	action := projectactions.Action{Type: "message", Tab: trigger.ChatKey}
 	if trigger.ownConversation() {
 		action.Conversation = trigger.shownRunDestination()
 	}
@@ -259,7 +259,7 @@ func crewWebhookExecutionView(record projectWebhookDefinition) (productWebhookTr
 	if err := json.Unmarshal(record.Input, &input); err != nil {
 		return productWebhookTrigger{}, err
 	}
-	return productWebhookTrigger{ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestinationFromConversation(record.Action.Conversation), Webhook: webhookExecutionConfig(record), CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy}, nil
+	return productWebhookTrigger{ChatKey: record.Action.Tab, ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestinationFromConversation(record.Action.Conversation), Webhook: webhookExecutionConfig(record), CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy}, nil
 }
 
 func internalFunctionName(id string) string { return "binding_" + strings.ReplaceAll(id, "-", "_") }

@@ -38,6 +38,7 @@ type productWebhookTrigger struct {
 	Enabled           bool                   `json:"enabled"`
 	Message           string                 `json:"message"`
 	RunDestination    string                 `json:"run_destination,omitempty"`
+	ChatKey           string                 `json:"chat_key,omitempty"`
 	Webhook           *WorkflowWebhookConfig `json:"webhook,omitempty"`
 	Kind              string                 `json:"kind,omitempty"`
 	Caller            *triggerCaller         `json:"caller,omitempty"`
@@ -371,6 +372,7 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 	trigger := productWebhookTrigger{WorkspaceFunction: req.WorkspaceFunction, ID: id, Name: strings.TrimSpace(req.Name), Enabled: req.Enabled, Message: strings.TrimSpace(req.Message), RunDestination: destination.value()}
 	if index >= 0 {
 		trigger.Webhook = manifest.Triggers[index].Webhook
+		trigger.ChatKey = manifest.Triggers[index].ChatKey
 		trigger.Kind = manifest.Triggers[index].Kind
 		trigger.Caller = manifest.Triggers[index].Caller
 		trigger.WorkspaceFunction = manifest.Triggers[index].WorkspaceFunction || req.WorkspaceFunction
@@ -752,7 +754,7 @@ func (s *ProjectActionDispatcher) deliverProductTrigger(ctx context.Context, mat
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
 	}
 	message = triggerTurnMessage(match.Trigger.Message, sourceNote, publishedFunctionPayloadReference(match.FunctionCallID, payloadPath, relativePayloadPath))
-	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, PinRunMode: match.PinRunMode, RunAsOwner: match.RunAsOwner, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), New: match.Trigger.runDestinationSetting().New, Messages: []string{message}}}
+	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, PinRunMode: match.PinRunMode, RunAsOwner: match.RunAsOwner, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ChatKey: match.Trigger.ChatKey, ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), New: match.Trigger.runDestinationSetting().New, Messages: []string{message}}}
 	// Workflow, Crew and Code calls all compare project ownership. The
 	// executing person's guest capabilities remain independent of routing.
 	if projectCallConversation(match) {
