@@ -157,7 +157,12 @@ type Comparison struct {
 	NewRepos []string `json:"-"`
 	versions map[string]savedVersion
 }
-type Store struct{ Root, Private string }
+type Store struct {
+	Root, Private string
+	// WorkingDir is fixed at turn start; unrelated linked worktrees are not
+	// included in per-reply capture. Empty means Root.
+	WorkingDir string
+}
 
 type storeState struct {
 	gate    chan struct{}

@@ -97,6 +97,7 @@ func TestDirtyTurnReusesPrivateIndexAcrossReplies(t *testing.T) {
 			if linked {
 				dir = "feature"
 				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
+				f.s.WorkingDir = filepath.Join(f.s.Root, dir)
 			}
 			f.put(dir+"/a.txt", "dirty-a\n")
 			f.put(dir+"/b.txt", "dirty-b\n")
@@ -286,6 +287,7 @@ func TestGitTurnEmptyRepositoryAndNewWorktree(t *testing.T) {
 	}
 	// A newly discovered checkout with a pre-existing commit is not a whole
 	// project of added files. It really appears after the before-capture.
+	f.s.WorkingDir = filepath.Join(f.s.Root, "second")
 	if _, err := f.s.BeginGitTurn(t.Context(), "new-worktree"); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +324,8 @@ func TestGitTurnCapturesFirstCommitCreatedDuringReply(t *testing.T) {
 
 // PLAT-746-319: capture discovery skipped linked worktrees, and ordinary files
 // had no path at all. Both must produce private diffs and scoped Undo.
-func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
+// PLAT-746-876: only the working linked checkout is captured, not sibling scratch worktrees.
+func TestTurnCapturesWorkingLinkedWorktreeAndOrdinaryFilesButSkipsSiblingWorktrees(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		name := "ordinary"
 		if linked {
@@ -335,6 +338,12 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 				f.repo("app", map[string]string{"a.txt": "before\n", "gone.txt": "removed\n"})
 				dir = "feature"
 				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
+				f.git("app", "worktree", "add", "--quiet", "-b", "sibling", filepath.Join(f.s.Root, "sibling"))
+				f.s.WorkingDir = filepath.Join(f.s.Root, dir, "nested")
+				if err := os.MkdirAll(f.s.WorkingDir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				f.put("sibling/a.txt", "unrelated dirty before\n")
 			} else {
 				f.put(dir+"/a.txt", "before\n")
 				f.put(dir+"/gone.txt", "removed\n")
@@ -347,6 +356,9 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.put(dir+"/a.txt", "after\n")
+			if linked {
+				f.put("sibling/a.txt", "unrelated dirty after\n")
+			}
 			f.put(dir+"/new.txt", "added\n")
 			if err := os.Remove(filepath.Join(f.s.Root, dir, "gone.txt")); err != nil {
 				t.Fatal(err)
@@ -358,6 +370,14 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 			r, err := f.s.FinishGitTurn(t.Context(), "reply")
 			if err != nil {
 				t.Fatal(err)
+			}
+			if linked {
+				if _, found := r.GitTurn["sibling"]; found {
+					t.Fatal("unrelated linked worktree was captured")
+				}
+				if _, found := r.GitTurn["app"]; !found {
+					t.Fatal("ordinary repository was excluded")
+				}
 			}
 			all := func(string) bool { return true }
 			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", all)

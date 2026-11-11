@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 )
 
 // Bound metadata and private tree work even when a parent folder contains
@@ -95,6 +97,7 @@ func (s Store) captureTurnFiles(ctx context.Context, ref, boundary string, loose
 
 // Do not walk checkout contents: Git reports their changed paths. A .git file
 // marks a linked worktree too; turnRepos validates it through safegit.CommandIn.
+// Unrelated linked worktrees are scratch checkouts, not this turn's capture scope.
 // Ordinary folders have no user Git and use our private before/after copies.
 func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose []string, err error) {
 	err = filepath.WalkDir(s.Root, func(p string, entry fs.DirEntry, walkErr error) error {
@@ -117,7 +120,9 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		}
 		if entry.IsDir() {
 			if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
-				dirs = append(dirs, p)
+				if !s.unrelatedLinkedWorktree(p) {
+					dirs = append(dirs, p)
+				}
 				return filepath.SkipDir
 			} else if !os.IsNotExist(err) {
 				return err
@@ -140,6 +145,27 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		loose = nil
 	}
 	return
+}
+
+// Reuse the confined Git metadata check: a .git file alone can also name
+// another kind of repository. Do not change admission or run Git to classify it.
+func (s Store) unrelatedLinkedWorktree(dir string) bool {
+	if filepath.Clean(dir) == filepath.Clean(s.Root) {
+		return false
+	}
+	gitDir, common, ok := safegit.CheckoutInside(s.Root, dir)
+	if !ok || filepath.Dir(gitDir) != filepath.Join(common, "worktrees") {
+		return false
+	}
+	cwd := s.WorkingDir
+	if cwd == "" {
+		cwd = s.Root
+	}
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
+	}
+	rel, err := filepath.Rel(dir, cwd)
+	return err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // turnCandidatePaths uses index/path metadata rather than status, whose refresh
