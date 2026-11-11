@@ -106,6 +106,12 @@ func (o *nativeTerminalObserver) run() {
 				misses = 0
 			}
 			if misses >= 3 {
+				// Drain any committed command result before declaring it unavailable.
+				// Runtime disappearance is authoritative; a normal reply end is not.
+				o.poll(false)
+				if o.provider == "codex-cli" {
+					o.api.eventStore.EndNativeCommandsWithoutResult(o.snapshot.SessionID)
+				}
 				return
 			}
 		}

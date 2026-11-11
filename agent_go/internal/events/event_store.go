@@ -2422,3 +2422,31 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time,
 	}
 	es.AddEvent(sessionID, event)
 }
+
+// EndNativeCommandsWithoutResult is called only when the owning runtime has
+// gone away, never merely because it finished a reply. Reconstruct unresolved
+// commands from retained history as well, so reload cannot resurrect a spinner.
+func (es *EventStore) EndNativeCommandsWithoutResult(sessionID string) {
+	pending := map[string]*events.ToolCallStartEvent{}
+	for _, event := range es.GetEvents(sessionID, GetEventsOptions{SinceIndex: -1}).Events {
+		if event.Data == nil {
+			continue
+		}
+		switch d := event.Data.Data.(type) {
+		case *events.ToolCallStartEvent:
+			if d.ToolName == "exec_command" && strings.HasPrefix(d.ToolCallID, "exec-") {
+				pending[d.ToolCallID] = d
+			}
+		case *events.ToolCallEndEvent:
+			delete(pending, d.ToolCallID)
+		case *events.ToolCallErrorEvent:
+			delete(pending, d.ToolCallID)
+		}
+	}
+	for id, d := range pending {
+		now := time.Now()
+		es.AddEvent(sessionID, Event{ID: "native-command-unavailable:" + id, Type: "tool_call_end", Timestamp: now, SessionID: sessionID,
+			Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: now, SessionID: sessionID,
+				Data: &events.ToolCallEndEvent{ToolName: d.ToolName, ToolCallID: id, SyntheticSettle: true, Result: "No result was captured before the command's runtime ended."}}})
+	}
+}

@@ -200,7 +200,17 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	delete(api.lastQueryRequests, sessionID)
 	api.lastQueryMu.Unlock()
 
+	// Capture provider identity before closing its registration.
+	codexRuntime := false
+	if session, ok := mcpagent.LookupSession(sessionID); ok {
+		if handle := session.Snapshot(); handle != nil {
+			codexRuntime = handle.Provider.Provider == "codex-cli"
+		}
+	}
 	closeAllCodingCLISessionsForRuntimeCancel(sessionID, closeReason)
+	if codexRuntime && api.eventStore != nil {
+		api.eventStore.EndNativeCommandsWithoutResult(sessionID)
+	}
 	// Stop closes the coding CLI, so nothing can finish the turn it was running: release every
 	// marker that says the session is busy, or the next message queues behind a dead turn forever
 	// (server B, 2026-09-30: every message after a Stop stayed "queued_for_turn").
