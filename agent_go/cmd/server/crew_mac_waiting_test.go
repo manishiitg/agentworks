@@ -125,7 +125,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	// PLAT-746-890: an unpublished, Only-me tab is also reached by the
 	// owner's other agent through the same offline queue, not a shared thread.
 	ownKey := "team" + codeChatSideMarker + "own01"
-	document.Entries[productConversationRegistryEntryKey(crewProfileID, ownKey)] = ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "team", ConversationKey: ownKey, ConversationID: "own-conversation", SessionID: "own-session", WorkspacePath: externalCommandCrewRoot}
+	document.Entries[productConversationRegistryEntryKey(crewProfileID, ownKey)] = ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "team", ConversationKey: ownKey, ConversationID: "own-conversation", SessionID: crewChatSessionID("team", "own-conversation"), WorkspacePath: externalCommandCrewRoot}
 	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
 		t.Fatal(err)
 	}
@@ -149,6 +149,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	store.Conversations[2].Endpoints[1].NetworkPairID = "pair"
 	store.Conversations[2].Endpoints[1].NetworkConversationID = "own-conversation"
 	store.Conversations[2].Endpoints[1].NetworkTab = "own01"
+	store.Conversations[2].Endpoints[1].Session = crewChatSessionID("team", "own-conversation")
 	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: "own01", ConversationID: "own-conversation"}}})
 	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00owner") })
 	if err := saveAgentMessageStore(t.Context(), store); err != nil {
