@@ -119,14 +119,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const theirs = access?.role === 'member' || access?.role === 'shared'
   const macElsewhere = data?.mac_elsewhere === true
   const accessDetail = section('access')?.detail || section('sharing')?.detail
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
+  // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
+  // Crew lives (its state icon); the server words both.
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:online' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:online' ? accessDetail : item.id === 'mcp:team' ? access?.team_detail : undefined} onClick={() => open(item)}>{item.label}</Row>
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
   // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
   const openLine = (line: CrewAccessLine) => {
-    // The dashboard line (owner, 6 Nov) opens the Share page's Dashboards tab, where the server lists them, or says
+    // The dashboard line (owner, 6 Nov) opens the Online page's Dashboards tab, where the server lists them, or says
     // there are none and offers its Ask.
     if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'dashboards'); return }
     if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
@@ -138,7 +140,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (tab) activateTab(tab.tabId); else openCrewAccess(projectId, '', 'team')
   }
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-  const treeLines = accessTree.map((line, index) => {
+  const treeLines = (lines: CrewAccessLine[]) => lines.map((line, index) => {
     const Icon = lineIcon[line.kind] || Globe
     // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line (no
     // "Manage dashboards" link, owner 10 Nov). With none, the server's one line and its Ask, as before.
@@ -174,10 +176,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       </button>)}
     </div>
   })
-  // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the server's
-  // tree (or, until it has one, the shared folder's line), then who asked; each opens Access at its place.
-  const asksTree = (asking.length > 0 || accessTree.length > 0) && <div role="list" aria-label="Share details" className="ml-3 border-l border-border pl-2 pb-1">
-    {treeLines}
+  // Each row's lines sit under it as a sub-list (owner, 5 Nov: "put inside access only like a sub menu"; 11 Nov: Team
+  // and Online), as the server groups them; who asked sits under Online. Each line opens its page at its place.
+  const teamLines = accessTree.filter(line => line.group === 'team')
+  const onlineLines = accessTree.filter(line => line.group !== 'team')
+  const teamTree = teamLines.length > 0 && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1">{treeLines(teamLines)}</div>
+  const asksTree = (asking.length > 0 || onlineLines.length > 0) && <div role="list" aria-label="Online details" className="ml-3 border-l border-border pl-2 pb-1">
+    {treeLines(onlineLines)}
     {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
       <span className="min-w-0 flex-1 truncate">{ask.label}</span>
@@ -185,13 +190,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </button>)}
     {asking.length > 5 && <p className="px-1.5 text-[11px] text-muted-foreground">+{asking.length - 5} more</p>}
   </div>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}{asksTree}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{accessRow(item)}{item.id === 'mcp:team' ? teamTree : item.id === 'mcp:online' ? asksTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Dashboards work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
-    {/* With a Share row the dashboard is a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
+    {/* With an Online row the dashboards are a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}

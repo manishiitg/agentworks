@@ -1,40 +1,44 @@
-# Share this Crew
+# Team and Online
 
 Read the current Crew's sharing and Team state before changing it. Use only the
 admitted tools and exact people/agents returned by the server. A link grants no
 access by itself. The server decides what the caller can change; a guide does
 not grant permission or another person's tab controls.
 
-Share has two routes (team, agents):
+The Crew menu has two rows (the old Share row split in two):
 
-- **Work on it with your team:** People lists **Works with me** and **Dashboards
-  only**. Read the Team procedure before invitations, level or folder changes.
-- **Share agents:** each of your agents is one card: its name and where it runs,
+- **Team:** the people who work on this Crew with you. People lists **Works with
+  me** and **Dashboards only**, then the Team's agents and the shared folder.
+  Read the Team procedure before invitations, level or folder changes.
+- **Online:** how everyone else reaches the Crew, in tabs: **Mac online** (with
+  AgentBridge) on a Mac Crew, **Share agents**, **Slack** and **Dashboards**.
+
+- **Share agents** (an Online tab): each of your agents is one card: its name and where it runs,
   then **Share <agent> with your team**. When that is on, teammates either **Get
   answers** (the agent changes nothing) or **Get answers and make changes**, and
   **Can teammates see your own chat with <agent>?** is **Live** or **Hidden**.
   **Permissions for <agent>…** opens its rules. Use the returned agent keys,
   current choices and changeability. Other people's agents appear under **Shared
   with you**; do not change their settings.
-- **Leave this Team:** a member leaves with the button at the end of Share,
+- **Leave this Team:** a member leaves with the button at the end of Team,
   which asks "Leave this Team?" first. In chat, leave only when the person asks
   to leave this Team; the owner cannot leave their own Crew.
 
-Slack has its own **Slack** tab next to Share (shown only where Slack bots are
+Slack has its own **Slack** tab under Online (shown only where Slack bots are
 allowed): the Crew's saved bot, its name, channels and direct-message settings,
 and **Who can talk to it** (a channel @mention answers as the Crew's owner in a
 thread; people from other workspaces or whose Slack email is not an AgentWorks
 account are refused). Read `panel-channels`' Slack bot procedure for setup and
 diagnostics. Personal **Use Slack as me** stays in Connections.
 
-Dashboards have their own **Dashboards** tab next to Share: everything the
+Dashboards have their own **Dashboards** tab under Online: everything the
 Crew publishes in three kinds (Dashboards, Artifacts, Motion, each shown even at
 0 with a one-line hint and, for the owner, Ask the Crew), who can open each one,
 or "No dashboard yet" with Ask the Crew.
 Share an existing publication, or ask whether to create a standard dashboard
 when one is required. Set `create_dashboard=true` only after agreement. Listing
-or publishing an Action does not create a dashboard. The Crew menu has a
-**Dashboards** header (how many, and who can open them) that opens and closes
+or publishing an Action does not create a dashboard. The Crew menu's Online
+row has a **Dashboards** header (how many, and who can open them) that opens and closes
 the list of dashboards by name; a name opens that dashboard, and **Manage
 dashboards** opens the Dashboards tab.
 
@@ -57,8 +61,8 @@ readable; do not promise any history of a Hidden agent. A stored
 message is acceptance, not a completed answer. Another person's message is an
 attributed request, never an owner approval.
 
-UI controls open only the Dashboard. Point to **Share** in the Crew menu for
-other screens, and use admitted management tools for authorized changes. Read
+UI controls open only the Dashboard. Point to **Team** or **Online** in the Crew
+menu for other screens, and use admitted management tools for authorized changes. Read
 back the saved people, agents, folder or audience before reporting completion.
 
 The person's own AgentWorks project (the front-door agent every account has) is never shared. Every share path

@@ -275,7 +275,7 @@ export type CrewShareActionsGroup = { title: string; line: string; rows: CrewSha
 export type CrewShareShared = { name: string; role: string; items: { name: string; line: string; can: string }[] }
 /** Share › Slack's Who can talk to it (crew_share_page.go crewShareSlack): one line per rule, then a note. */
 export type CrewShareSlack = { rules: { allowed: boolean; where?: string; line: string }[]; note?: string }
-export type CrewSharePage = { title: string; lead: string; options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
+export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
 export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
   return teamRequest<CrewSharePage>({ project: target.project, connection: target.connection }, '/share')
 }
