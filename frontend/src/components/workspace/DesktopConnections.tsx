@@ -20,7 +20,7 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
-import { SidebarCrewAgents } from './SidebarCrewAgents'
+import { AgentCliIcon, SidebarCrewAgents } from './SidebarCrewAgents'
 import { ChevronRight } from 'lucide-react'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -275,7 +275,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   }
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
-    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
+    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} /></button>
   }
   // Grouped by person like the open Crew's list (owner, 10 Nov: another network's Crew listed everyone's agents in one
   // list, two "Main"s and no names): yours under You, each teammate under their name with their online dot.

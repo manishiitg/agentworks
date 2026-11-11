@@ -79,6 +79,10 @@ function AgentCliMark({ tabId }: { tabId: string }) {
     const meta = state.chatTabs[tabId]?.metadata
     return meta?.agentProfileChatProvider || meta?.agentProfileEngine
   })
+  return <AgentCliIcon provider={provider} />
+}
+
+export function AgentCliIcon({ provider }: { provider?: string }) {
   const manifest = useLLMStore(state => state.providerManifest.find(item => item.id === provider))
   if (!provider) return null
   const name = manifest ? codingProviderName(manifest) : provider
