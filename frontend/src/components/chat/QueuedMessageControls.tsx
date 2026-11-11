@@ -9,7 +9,9 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const controls = useQueuedMessageControlsStore(state => sessionId ? state.bySession[sessionId] : undefined)
   const message = clientId ? controls?.messages[clientId] : undefined
-  if (!controls || !message?.message_id || message.can_manage !== true) return null
+  if (!controls || !message?.message_id || (message.can_manage !== true && message.can_dismiss !== true)) return null
+  if (message.can_manage !== true) return <button type="button" disabled={controls.busyMessageId === message.message_id}
+    onClick={() => controls.act(message, 'remove')} className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40">Dismiss</button>
   const refreshing = Boolean(message.refreshing && !message.delivery_error)
   const pending = Boolean(message.steering || controls.busyMessageId === message.message_id)
   const disabled = pending || Boolean(controls.busyMessageId)
@@ -41,7 +43,7 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
   if (!message) return null
-  const text = message.delivery_error ? `Delivery unconfirmed. ${message.delivery_error}` : message.refreshing ? "Sends after the chat restarts with the Crew's latest setup." : ''
+  const text = message.delivery_error ? `Delivery unconfirmed. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : message.refreshing ? "Sends after the chat restarts with the Crew's latest setup." : ''
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
 

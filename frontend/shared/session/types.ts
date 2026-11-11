@@ -103,6 +103,7 @@ export interface PendingQueuedMessage {
   /** Server-projected source of the work this message is waiting for. */
   queue_detail?: string
   can_manage: boolean
+  can_dismiss?: boolean
   can_steer?: boolean
   /** Handed to its turn; the chat shows it as being sent until the turn's user row arrives. */
   started?: boolean

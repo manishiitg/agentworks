@@ -335,3 +335,67 @@ func TestComposerMarkerRequiresWebsitePerson(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-746: an incoming failure gets Dismiss, never edit/steer/retry authority.
+func TestFailedIncomingDismissRequiresOwnPerson(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	turn := queuedConversationTurn{ID: "incoming", UserID: "owner", SessionID: "chat", DeliveryError: "failed",
+		Principal: queuedConversationPrincipal{DeliveredMessageUser: "owner", DeliveredMessageSession: "chat", DeliveredMessage: map[string]interface{}{"source": "agent_message"}}}
+	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
+		t.Fatal(err)
+	}
+	rows := api.pendingQueuedMessages(ctx, "owner", "chat")
+	if len(rows) != 1 || !rows[0].CanDismiss || rows[0].CanManage {
+		t.Fatalf("capabilities: %+v", rows)
+	}
+	if _, status, _ := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true); status != http.StatusNotFound {
+		t.Fatal("incoming steer allowed")
+	}
+	if _, status, _ := api.retryQueuedConversationMessage(ctx, "owner", "chat", turn.ID); status != http.StatusNotFound {
+		t.Fatal("incoming retry allowed")
+	}
+	bot := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "bot_owner"})
+	if _, status, _ := api.changeQueuedConversationMessage(bot, "owner", "chat", turn.ID, false); status != http.StatusNotFound {
+		t.Fatal("bot dismissal allowed")
+	}
+	if _, status, _ := api.changeQueuedConversationMessage(ctx, "other", "chat", turn.ID, false); status != http.StatusNotFound {
+		t.Fatal("other queue allowed")
+	}
+	if _, status, err := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, false); err != nil || status != http.StatusOK {
+		t.Fatalf("own dismissal: %d %v", status, err)
+	}
+	turn.DeliveryError = ""
+	if dismissibleIncomingTurn(turn) {
+		t.Fatal("waiting message is dismissible")
+	}
+}
+
+func TestIncomingQuotaWaitSurvivesStalePruningAndCannotStartEarly(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.Background()
+	reset := time.Now().Add(time.Hour)
+	turn := queuedConversationTurn{ID: "incoming", UserID: "owner", SessionID: "chat", CreatedAt: time.Now().Add(-time.Hour),
+		RetryAt: &reset, LimitRetried: true, Principal: queuedConversationPrincipal{DeliveredMessageUser: "owner", DeliveredMessageSession: "chat", DeliveredMessage: map[string]interface{}{"source": "agent_message"}}}
+	if len(dropStaleWaitingTurns([]queuedConversationTurn{turn}, time.Now())) != 1 {
+		t.Fatal("quota wait pruned")
+	}
+	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := api.claimNextConversationTurn(ctx, "owner", "chat"); ok {
+		t.Fatal("started before reset")
+	}
+	past := time.Now().Add(-time.Second)
+	turn.RetryAt = &past
+	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, ok := api.claimNextConversationTurn(ctx, "owner", "chat")
+	if !ok || claimed.RetryAt != nil || !claimed.LimitRetried {
+		t.Fatalf("retry claim: %+v %v", claimed, ok)
+	}
+	if !api.incomingQuotaRetryAt(claimed, "unused").IsZero() {
+		t.Fatal("second automatic retry allowed")
+	}
+}
