@@ -375,8 +375,10 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				log.Printf("[CREW_RELAY] project=%s not reached from this computer: another of your computers serves it", msg.Project)
 			}
 		case "team.changed":
-			// Someone's change to a Team's shared files landed on the server: sync now (crew_team_push.go).
+			// Someone's change to a Team's shared files or record landed on the server: sync now (crew_team_push.go), and
+			// this Mac's open Team tab for it reads again.
 			crewTeamWakeSoon()
+			publishCrewPanelChanged(crewLocalCopyOf(msg.Project))
 		case "team.busy":
 			// Who else is working in a Team now (crew_team_push.go), for the left menu's row of that project.
 			noteCrewTeamBusy(msg.Project, msg.State, msg.LastLine, msg.Event)
