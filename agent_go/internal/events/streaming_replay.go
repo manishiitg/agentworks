@@ -2,6 +2,7 @@ package events
 
 import (
 	"log"
+	"strings"
 
 	"github.com/manishiitg/mcpagent/events"
 )
@@ -67,6 +68,18 @@ func (es *EventStore) StreamingPrefix(sessionID string) (prefix []Event, covered
 		return nil, nil
 	}
 	return prefix, covered
+}
+
+// StreamingPrefixText joins only a prefix already validated by StreamingPrefix.
+func StreamingPrefixText(prefix []Event) string {
+	var text strings.Builder
+	for _, event := range prefix {
+		if event.Type == "streaming_chunk" {
+			content, _, _, _ := streamingReplayChunk(event)
+			text.WriteString(content)
+		}
+	}
+	return text.String()
 }
 
 func StreamingPrefixBytes(prefix []Event) int {
