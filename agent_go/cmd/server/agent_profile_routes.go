@@ -456,9 +456,14 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		return
 	}
 	// Always on: while the server answers for this agent from its standby copy, the owner's Mac does not run it.
-	if line := api.crewStandbyMacRefusal(r.Context(), profile.ID, input.ConversationKey, "chat"); line != "" {
-		writeAgentProfileError(w, http.StatusConflict, line)
-		return
+	// Authenticated own-agent inbox delivery targets this exact local chat, not
+	// another person's standby thread. No request JSON can select this path.
+	ownAgentDelivery, _ := r.Context().Value(desktopAppOwnDeliveryKey{}).(bool)
+	if !ownAgentDelivery {
+		if line := api.crewStandbyMacRefusal(r.Context(), profile.ID, input.ConversationKey, "chat"); line != "" {
+			writeAgentProfileError(w, http.StatusConflict, line)
+			return
+		}
 	}
 	// A Mac Crew runs on its Mac; published agents have their own server workspace.
 	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) {
