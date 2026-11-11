@@ -825,6 +825,8 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				api.kickAgentMessages(id)
 			}
 		}()
+		// How often each message found its receiver busy, for the delivery timing line (PLAT-746).
+		busyWaits := map[string]int{}
 		for {
 			ctx := context.Background()
 			agentMessageMu.Lock()
@@ -865,6 +867,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				// A reply to what this chat asked, from the same person's agent, goes straight into the running turn
 				// (owner, 2026-11-11); anything else waits for the turn to end.
 				if steer = agentMessageSteerableReply(conv, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
+					busyWaits[msg.ID]++
 					lane.Unlock()
 					time.Sleep(time.Second)
 					continue
@@ -898,6 +901,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				lane.Unlock()
 				continue
 			}
+			// Timing only: how long the message waited before delivery, and how often the receiver was busy.
+			log.Printf("[AGENT-MESSAGE] delivering %s in %s to %s: waited_ms=%d busy_waits=%d steer=%t", msg.ID, id, dest.Session, time.Since(msg.SentAt).Milliseconds(), busyWaits[msg.ID], steer)
+			deliveryStart := time.Now()
 			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), 30*time.Minute)
 			var session string
 			var deliveryErr error
@@ -917,6 +923,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
 			}
 			cancel()
+			log.Printf("[AGENT-MESSAGE] delivery call for %s returned after %dms (session=%s err=%v)", msg.ID, time.Since(deliveryStart).Milliseconds(), session, deliveryErr)
 			var held conditiontrigger.HoldError
 			hold := errors.Is(deliveryErr, conditiontrigger.ErrPaused) || errors.As(deliveryErr, &held)
 			if deliveryErr != nil && !hold {

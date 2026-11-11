@@ -6981,10 +6981,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Freeze the incrementally assembled chat identity and runtime before any
 		// turn can run. Finalization constructs the sole live Agent instance.
+		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Workspace, tools and prompt prepared, finalizing agent", time.Since(startTime).Milliseconds())
 		if err := llmAgent.FinalizeDefinition(streamCtx); err != nil {
 			sendError(fmt.Sprintf("Failed to finalize agent definition: %v", err), true)
 			return
 		}
+		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Agent finalized", time.Since(startTime).Milliseconds())
 
 		// Preserve the finalized prompt for its owner's read-only workspace
 		// inspector, including API providers and chats restored after a restart.

@@ -13,10 +13,10 @@ export type ChatSendOptionsProps = {
   backgroundWork?: ReturnType<typeof useSessionBackgroundWork>
 }
 
-/** While the agent works, Enter steers the current task and Cmd/Ctrl+Enter queues the message as the next one (owner, 10 Nov:
- * one default, no mode setting). */
-export const SEND_SHORTCUTS_BUSY = 'Enter to steer · ⌘/Ctrl+Enter to queue next · Shift+Enter for a new line'
-export const SEND_SHORTCUTS_IDLE = 'Enter to send · Shift+Enter for a new line'
+/** Shown beside the action a key triggers, like a native menu. */
+function MenuKey({ children }: { children: string }) {
+  return <kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">{children}</kbd>
+}
 
 export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backgroundWork, deferAction }: ChatSendOptionsProps & { deferAction: (action: () => void) => void }) {
   const runningCount = backgroundWork?.items.length ?? 0
@@ -28,11 +28,11 @@ export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backg
       </Menu.Item>}
       {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }}
         className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-accent">
-        <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands
+        <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands<MenuKey>/</MenuKey>
       </Menu.Item>}
       {onStop && <Menu.Item data-testid="chat-stop-button" onSelect={onStop}
         className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive">
-        <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />Stop current turn
+        <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />Stop current turn<MenuKey>Esc</MenuKey>
       </Menu.Item>}
     </>}
     {runningCount > 0 && backgroundWork && <>
@@ -51,37 +51,23 @@ export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backg
         </Menu.Portal>
       </Menu.Sub>
     </>}
-    <ComposerKeyboardShortcuts busy={busy} />
+    <ComposerSendKeys busy={busy} separated={Boolean(onNewChat || onOpenCommands || onStop || runningCount > 0)} />
   </>
 }
 
-/** Keep the reference out of the main menu; list only composer-local keys. */
-function ComposerKeyboardShortcuts({ busy }: { busy: boolean }) {
+/** One line for the message-box keys that have no menu item; queue only while work is active (PLAT-746-849). */
+function ComposerSendKeys({ busy, separated }: { busy: boolean; separated: boolean }) {
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
-  const shortcuts = [
-    ['Enter', busy ? 'Steer current reply' : 'Send'],
-    ...(busy ? [[mac ? '⌘Enter' : 'Ctrl+Enter', 'Queue next']] : []),
-    ['Shift+Enter', 'New line'],
-    ['/', 'Commands'], ['@', 'Files'], ['#', 'Crew references'],
+  const keys: Array<[string, string]> = [
+    ['↵', busy ? 'steer' : 'send'],
+    ...(busy ? [[mac ? '⌘↵' : 'Ctrl+↵', 'queue next'] as [string, string]] : []),
+    [mac ? '⇧↵' : 'Shift+↵', 'new line'],
   ]
   return <>
-    <Menu.Separator className="my-1.5 h-px bg-border" />
-    <Menu.Sub>
-      <Menu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-accent data-[state=open]:bg-accent">
-        Keyboard shortcuts<ChevronRight className="ml-auto h-3.5 w-3.5" aria-hidden="true" />
-      </Menu.SubTrigger>
-      <Menu.Portal>
-        <Menu.SubContent sideOffset={6} collisionPadding={12} aria-label="Keyboard shortcuts"
-          className="z-[101] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(16rem,calc(100vw-24px))] overflow-y-auto rounded-lg border border-border bg-popover p-2.5 text-xs text-popover-foreground shadow-lg">
-          <dl className="space-y-1.5">
-            {shortcuts.map(([keys, label]) => <div key={keys} className="flex items-baseline justify-between gap-3">
-              <dt><kbd className="whitespace-nowrap font-mono text-muted-foreground">{keys}</kbd></dt>
-              <dd>{label}</dd>
-            </div>)}
-          </dl>
-        </Menu.SubContent>
-      </Menu.Portal>
-    </Menu.Sub>
+    {separated && <Menu.Separator className="my-1.5 h-px bg-border" />}
+    <p data-testid="composer-send-keys" className="px-2.5 pb-1 pt-0.5 text-xs text-muted-foreground">
+      {keys.map(([key, label], index) => <span key={key}>{index > 0 && ' · '}<kbd className="font-mono text-foreground/80">{key}</kbd> {label}</span>)}
+    </p>
   </>
 }
 
