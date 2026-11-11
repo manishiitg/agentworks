@@ -173,8 +173,8 @@ func TestValidateHTMLReportAllowsHTTPSCDNStylesAndScripts(t *testing.T) {
 	if !strings.Contains(result, `"valid": true`) {
 		t.Fatalf("expected HTTPS CDN assets to validate: %s", result)
 	}
-	if !strings.Contains(result, `may be supplied by an external script`) {
-		t.Fatalf("expected external library globals to be reported as unchecked: %s", result)
+	if !strings.Contains(result, `"warnings": []`) {
+		t.Fatalf("external library names are the browser's responsibility: %s", result)
 	}
 }
 
