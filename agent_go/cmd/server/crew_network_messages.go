@@ -218,9 +218,19 @@ func (api *StreamingAPI) deliverCrewNetworkReply(ctx context.Context, c agentCon
 	// Set only here, after pair admission, from endpoint identities: a reply from the person's own agent is theirs
 	// (PLAT-746-852); anyone else's keeps the Team rule.
 	own := crewOwnAgentMessage(dest, source)
-	args, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": source.Label, "sender_channel": "AgentBridge", "network_inbox": c.ID, "own_agent_message": own}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
+	values := map[string]any{"sender_id": source.UserID, "sender_agent": source.Label, "sender_channel": "AgentBridge", "network_inbox": c.ID, "own_agent_message": own}
+	if own {
+		// The existing held queue replays agent_ask. Preserve the exact originating
+		// chat/inbox so an offline own reply follows the same private delivery path.
+		values["team_inbox"], values["own_conversation_id"] = c.ID, dest.NetworkConversationID
+	}
+	args, _ := json.Marshal(withAgentRuleArgs(ctx, values, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
 	log.Printf("[CREW_NETWORK] event=reply_policy project=%s message=%s own_agent=%t source_mode=%q dest_mode=%q", dest.ID, m.ID, own, source.Mode, dest.Mode)
-	result := callCrewMacFor(ctx, dest.UserID, dest.ID, crewChatCall{Operation: "network_reply", Tab: tab, ConversationID: dest.NetworkConversationID, Message: m.Text, Caller: source.Label, SubmissionID: m.ID, Args: args}, 30*time.Second)
+	call := crewChatCall{Operation: "network_reply", Tab: tab, ConversationID: dest.NetworkConversationID, Message: m.Text, Caller: source.Label, SubmissionID: m.ID, Args: args}
+	result := callCrewMacFor(ctx, dest.UserID, dest.ID, call, 30*time.Second)
+	if own && result.Status == http.StatusServiceUnavailable {
+		return holdForMac(dest.ID, "mac_off", call, c.ID, 1-m.From)
+	}
 	if result.Status != http.StatusOK {
 		return fmt.Errorf("the originating Mac chat could not receive this reply")
 	}
