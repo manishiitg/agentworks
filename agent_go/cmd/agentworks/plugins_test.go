@@ -323,3 +323,18 @@ func TestHookFailureKeepsItsCause(t *testing.T) {
 		t.Fatalf("hook failure: code=%d stderr=%q stdout=%q", code, line, stdout.String())
 	}
 }
+
+// The directory contains both named connected agents and Crew rows; display
+// their supplied identities rather than inventing an empty agent: address.
+func TestAgentRosterDisplaysMixedDirectoryIdentities(t *testing.T) {
+	raw := json.RawMessage(`{"agents":[{"agent_name":"connected","label":"Connected agent","id":"agent:connected"},{"name":"Crew Main","id":"workspace:work:example/agent/team-agent-example","presence":"Runs when called"}],"chats_inside_agentworks":[{"agent_name":"team-manager","display":"Team manager"}]}`)
+	got := agentRoster(raw, agentworksclient.LocalBridgeReply{})
+	for _, want := range []string{"Connected agent | agent:connected", "Crew Main | workspace:work:example/agent/team-agent-example", "Team manager"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, "can't receive messages") {
+		t.Fatal("obsolete messaging restriction", got)
+	}
+}
