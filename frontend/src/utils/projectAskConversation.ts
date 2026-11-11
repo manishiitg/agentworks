@@ -15,7 +15,18 @@ export async function openProjectAskConversation(project: { product?: string; pr
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
-  const { data: target } = await api.post<ProjectChat>('/api/project-ask/conversation', { workspace: project.workspacePath, ...(options?.userView ? { as_user: true } : {}) })
+  const request = { workspace: project.workspacePath, ...(options?.userView ? { as_user: true } : {}) }
+  type Selection = { choose_agent: true; agents: { key: string; name: string }[]; message: string }
+  let { data } = await api.post<ProjectChat | Selection>('/api/project-ask/conversation', request)
+  if ('choose_agent' in data) {
+    if (!data.agents.length) throw new Error(data.message)
+    const agentKey = await chooseAskAgent(data.agents)
+    assertChatIdentityCurrent(identity)
+    if (!agentKey) throw new Error('Choose an agent when you are ready to ask.')
+    data = (await api.post<ProjectChat | Selection>('/api/project-ask/conversation', { ...request, agent_key: agentKey })).data
+    if ('choose_agent' in data) throw new Error(data.message)
+  }
+  const target = data
   assertChatIdentityCurrent(identity)
   if (project.projectId && target.project_id !== project.projectId) throw new Error('The project conversation changed. Reopen the dashboard.')
   const conversation = target.conversation
@@ -41,4 +52,25 @@ export async function openProjectAskConversation(project: { product?: string; pr
     assertChatIdentityCurrent(identity)
   }
   return tabId
+}
+
+/** One native accessible picker for dashboard Ask, embedded Ask and report questions. */
+function chooseAskAgent(agents: { key: string; name: string }[]): Promise<string | null> {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog')
+    dialog.className = 'w-full max-w-sm rounded-xl border border-border bg-popover p-5 text-foreground shadow-xl backdrop:bg-black/40'
+    dialog.setAttribute('aria-label', 'Choose an agent')
+    const title = document.createElement('h2'); title.textContent = 'Who should answer?'; title.className = 'mb-3 font-semibold'
+    const select = document.createElement('select'); select.setAttribute('aria-label', 'Agent'); select.className = 'w-full rounded-md border border-input bg-background p-2'
+    const empty = document.createElement('option'); empty.value = ''; empty.textContent = 'Choose an agent…'; select.append(empty)
+    for (const agent of agents) { const option = document.createElement('option'); option.value = agent.key; option.textContent = agent.name; select.append(option) }
+    const actions = document.createElement('div'); actions.className = 'mt-4 flex justify-end gap-2'
+    const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.className = 'rounded-md px-3 py-2'
+    const open = document.createElement('button'); open.textContent = 'Open chat'; open.disabled = true; open.className = 'rounded-md bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50'
+    select.onchange = () => { open.disabled = !select.value }
+    cancel.onclick = () => dialog.close('')
+    open.onclick = () => dialog.close(select.value)
+    dialog.onclose = () => { const result = dialog.returnValue || null; dialog.remove(); resolve(result) }
+    actions.append(cancel, open); dialog.append(title, select, actions); document.body.append(dialog); dialog.showModal(); select.focus()
+  })
 }

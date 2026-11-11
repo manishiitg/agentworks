@@ -1,3 +1,4 @@
+import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
 import { workConversationKey } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -898,7 +899,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     openAgentTab(tab.tabId)
     void syncRef.current()
   }
-  return <><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
+  return <><AgentRemovalDialog projectId={projectId} /><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
     onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}

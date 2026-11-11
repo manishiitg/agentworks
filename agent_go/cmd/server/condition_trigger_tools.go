@@ -347,10 +347,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 						return nil, errors.New("open the originating Crew chat before starting this PR watch")
 					}
 				} else {
-					cfg.Target.ChatID = chats.Self.ID
-					if cfg.GitHubPR != nil && chats.Self.IsMain {
-						cfg.Target.ChatID = codeChatMainName
-					}
+					cfg.Target.ChatID = strings.TrimPrefix(chats.Self.Key, base.ProjectID+codeChatSideMarker)
 				}
 			}
 		}

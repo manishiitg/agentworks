@@ -61,7 +61,10 @@ type AgentProfileChatRequest struct {
 }
 
 type AgentProfileConversationRequest struct {
-	ConversationKey string `json:"conversation_key,omitempty"`
+	PreviewRemoval      bool              `json:"preview_removal,omitempty"`
+	RemovalConfirmation string            `json:"removal_confirmation,omitempty"`
+	RemovalChoices      map[string]string `json:"removal_choices,omitempty"`
+	ConversationKey     string            `json:"conversation_key,omitempty"`
 	// ResourceID lets Work resume with the stable project id plus the saved chat
 	// id. The server derives the tab-specific conversation key; the browser does
 	// not need to understand registry key construction.
@@ -1320,10 +1323,6 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		externalError(w, 403, "tab_owner", err.Error())
 		return
 	}
-	if binding.ProjectMainChatKey != "" && binding.ConversationKey == binding.ProjectMainChatKey {
-		writeAgentProfileError(w, http.StatusBadRequest, "The main agent cannot be closed.")
-		return
-	}
 	store := defaultProductConversationRegistryStore()
 	current, hasCurrent, previous, err := store.history(r.Context(), userID, profile, binding)
 	if err != nil {
@@ -1336,6 +1335,21 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 	records := previous
 	if hasCurrent {
 		records = append([]ProductConversationRecord{current}, records...)
+	}
+	previewSessions := make([]string, 0, len(records))
+	for _, record := range records {
+		if record.SessionID != "" {
+			previewSessions = append(previewSessions, record.SessionID)
+		}
+	}
+	plan, err := api.planCrewAgentRemoval(r.Context(), userID, binding, previewSessions)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if input.PreviewRemoval || input.RemovalConfirmation == "" {
+		writeAgentProfileJSON(w, http.StatusOK, plan.preview)
+		return
 	}
 	sessionIDs := make([]string, 0, len(records))
 	seen := make(map[string]bool, len(records))
@@ -1361,6 +1375,23 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		}
 		sessionIDs = append(sessionIDs, record.SessionID)
 	}
+	if err := plan.apply(r.Context(), input.RemovalConfirmation, input.RemovalChoices, binding.ResourceID); err != nil {
+		writeAgentProfileError(w, http.StatusConflict, err.Error())
+		return
+	}
+	turns, err := api.readConversationTurnQueue(r.Context(), userID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, turn := range turns {
+		if seen[turn.SessionID] {
+			if err := api.removeConversationTurn(r.Context(), turn); err != nil {
+				writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
 	// Keep the registry IDs until cleanup succeeds, so a failed deletion can
 	// be retried rather than leaving an undiscoverable history behind.
 	for _, sessionID := range sessionIDs {
@@ -1377,6 +1408,17 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
 		return
 	}
+	if binding.ConversationKey == binding.ProjectMainChatKey && binding.ManifestPath != "" {
+		if err := store.writeMainChatPointer(r.Context(), binding.ManifestPath, "", ""); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if err := removeCrewAgentListing(binding.ResourceID, userID, binding.ConversationKey); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	publishCrewPanelChanged(binding.ResourceID)
 	log.Printf("[CREW_AGENT_REMOVE] profile=%s sessions=%d history_deleted=true", profile.ID, len(sessionIDs))
 	w.WriteHeader(http.StatusNoContent)
 }

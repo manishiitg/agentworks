@@ -1,7 +1,8 @@
+import { requestAgentRemoval } from '../components/chat/AgentRemovalDialog'
 import { agentApi } from '../services/api'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { belongsToWorkProject, isWorkSideChatTab } from '../products/work/workTabs'
+import { belongsToWorkProject } from '../products/work/workTabs'
 import { activateTab } from './activateTab'
 import { currentProductRoute, productRoutePath } from './productRoutes'
 import { workConversationAgent, workConversationKey } from './workConversationKey'
@@ -24,7 +25,7 @@ export function canCloseWorkspaceChatTab(tab: ChatTab, tabs: Record<string, Chat
     )
   }
   if (meta?.agentProfileId === 'work') {
-    return meta.isAutomationConversation === true || isWorkSideChatTab(tab, meta.agentProfileProjectId)
+    return !!meta.agentProfileConversationKey && !meta.isScheduledRun && !meta.isBotRun
   }
   return false
 }
@@ -37,9 +38,9 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
   if (!tab || !canCloseWorkspaceChatTab(tab, state.chatTabs)) return
   const meta = tab.metadata
   const projectId = meta?.agentProfileProjectId
-  const side = isWorkSideChatTab(tab, projectId)
+  const side = meta?.agentProfileId === 'work' && meta.isViewOnly !== true
   const fallback =
-    canonicalTabId ||
+    (canonicalTabId !== tabId ? canonicalTabId : undefined) ||
     Object.values(state.chatTabs)
       .filter(
         (item) =>
@@ -63,7 +64,9 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
   // runtime resources. Never stop a running agent as a side effect of Close.
   if (side && meta?.agentProfileConversationKey && meta.agentProfileId) {
     try {
-      await agentApi.closeAgentProfileSideChat(meta.agentProfileId, meta.agentProfileConversationKey)
+      const decision = await requestAgentRemoval(tab)
+      if (!decision || !stillCurrent()) return
+      await agentApi.closeAgentProfileSideChat(meta.agentProfileId, meta.agentProfileConversationKey, decision.confirmation, decision.choices)
     } catch (cause) {
       if (stillCurrent()) {
         const data = (cause as { response?: { data?: unknown } })?.response?.data
@@ -79,6 +82,10 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
   await useChatStore
     .getState()
     .closeTab(tabId, meta?.mode === 'workflow' && meta.isViewOnly !== true)
+  if (selected && !fallback && projectId) {
+    window.history.replaceState({}, '', productRoutePath({ surface: 'work', id: projectId }))
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
   if (
     selected &&
     fallback &&

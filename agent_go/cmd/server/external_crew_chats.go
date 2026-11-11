@@ -49,26 +49,29 @@ func externalChatName(args map[string]any) (string, error) {
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use sessions action=ask from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. fork: copy a caller-owned chat_id into an independent tab, carrying saved history and native context where possible; optional name; no turn starts. Prefer fork for related work needing context. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with workspace action=ask chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes idle_compaction and, for a Claude chat, claude_terminal (true: the native Claude Code terminal; false: the chat view) for that chat; without engine only they change. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex/Cursor CLI conversations for the exact folder and available original accounts. native_preview: preview messages for a native_id from that list. native_resume: open native_id in a private tab; Claude/Codex copy independently, Cursor CLI continues the same conversation (close it in Cursor before sending here); no turn starts. Human confirmations remain in the chat.", true, false, map[string]any{
-		"crew_id":          externalString("Crew ID from workspace action=list. For native_list/native_preview before creation, use root_path instead."),
-		"root_path":        externalString("For native_list/native_preview before creating a Crew: full existing folder path on your own Mac, instead of crew_id. Requires permission to create a Crew. Preview only; create the Crew with this folder, then native_resume to open the chosen conversation."),
-		"recent_only":      map[string]any{"type": "boolean", "description": "For native_resume: explicitly import recent messages into a new provider conversation instead of copying native context. Use only when the person chooses this alternative. Older context stays in the original chat."},
-		"native_id":        externalString("Opaque id from native_list, required for native_preview or native_resume. Owner-only local existing-folder Crews. Opens a private chat tab (Claude/Codex: independent copy; Cursor CLI: same original conversation). No model turn starts until you send a message."),
-		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_preview", "native_resume", "fork", "new", "side_open", "side_close", "side_rename", "set_model", "compact", "fresh", "delete", "stop", "message", "tools", "tool"}},
-		"idle_compaction":  map[string]any{"type": "boolean", "description": "For set_model: Auto-compact when idle. " + idleCompactHint() + " On unless turned off. Omit to keep it."},
-		"compact_early":    map[string]any{"type": "boolean", "description": "For set_model: Compact at 300K. " + compactEarlyHint()},
-		"claude_terminal":  map[string]any{"type": "boolean", "description": "For set_model, a Claude chat only: true runs Claude Code as the native terminal, false as the chat view. Applies from the next message; the conversation continues. Omit to keep it."},
-		"engine":           externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
-		"model_id":         externalString("For set_model: a model of that provider."),
-		"connection_id":    externalString("For a chat model: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; empty engine restores the Crew default."),
-		"reasoning_effort": externalString("For set_model: optional reasoning level."),
-		"name":             externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
-		"message":          externalString("For message: an attributed agent message to this tab, including another owner's tab."),
-		"submission_id":    externalString("For message: stable ID for retries."),
-		"inbox_id":         externalString("For message: existing reply address."),
-		"chat_id":          externalString("main or a side chat id from list."),
-		"tool_name":        externalString("Exact native name from tools."),
-		"arguments":        map[string]any{"type": "object"},
-		"session_id":       externalString("An earlier chat's session_id from list, for read or delete."),
+		"crew_id":              externalString("Crew ID from workspace action=list. For native_list/native_preview before creation, use root_path instead."),
+		"root_path":            externalString("For native_list/native_preview before creating a Crew: full existing folder path on your own Mac, instead of crew_id. Requires permission to create a Crew. Preview only; create the Crew with this folder, then native_resume to open the chosen conversation."),
+		"recent_only":          map[string]any{"type": "boolean", "description": "For native_resume: explicitly import recent messages into a new provider conversation instead of copying native context. Use only when the person chooses this alternative. Older context stays in the original chat."},
+		"native_id":            externalString("Opaque id from native_list, required for native_preview or native_resume. Owner-only local existing-folder Crews. Opens a private chat tab (Claude/Codex: independent copy; Cursor CLI: same original conversation). No model turn starts until you send a message."),
+		"preview_removal":      map[string]any{"type": "boolean", "description": "For side_close: inspect linked work without deleting. Always preview first."},
+		"removal_confirmation": externalString("Confirmation from the removal preview, after the person confirms the listed effects."),
+		"removal_choices":      map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Every preview dependency ID mapped to remove or a destination key offered by the server."},
+		"action":               map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_preview", "native_resume", "fork", "new", "side_open", "side_close", "side_rename", "set_model", "compact", "fresh", "delete", "stop", "message", "tools", "tool"}},
+		"idle_compaction":      map[string]any{"type": "boolean", "description": "For set_model: Auto-compact when idle. " + idleCompactHint() + " On unless turned off. Omit to keep it."},
+		"compact_early":        map[string]any{"type": "boolean", "description": "For set_model: Compact at 300K. " + compactEarlyHint()},
+		"claude_terminal":      map[string]any{"type": "boolean", "description": "For set_model, a Claude chat only: true runs Claude Code as the native terminal, false as the chat view. Applies from the next message; the conversation continues. Omit to keep it."},
+		"engine":               externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
+		"model_id":             externalString("For set_model: a model of that provider."),
+		"connection_id":        externalString("For a chat model: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; empty engine restores the Crew default."),
+		"reasoning_effort":     externalString("For set_model: optional reasoning level."),
+		"name":                 externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
+		"message":              externalString("For message: an attributed agent message to this tab, including another owner's tab."),
+		"submission_id":        externalString("For message: stable ID for retries."),
+		"inbox_id":             externalString("For message: existing reply address."),
+		"chat_id":              externalString("main or a side chat id from list."),
+		"tool_name":            externalString("Exact native name from tools."),
+		"arguments":            map[string]any{"type": "object"},
+		"session_id":           externalString("An earlier chat's session_id from list, for read or delete."),
 	}, "action")
 }
 
@@ -400,12 +403,12 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		externalJSON(w, map[string]any{"crew_id": crewID, "chat_id": chat.ChatID, "name": name})
 	case "side_close", "stop":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
-		if !found || (action == "side_close" && chat.IsMain) {
+		if !found {
 			externalError(w, 404, "chat_not_found", "Pass a chat_id from list (side_close: a side chat).")
 			return
 		}
 		if action == "side_close" {
-			respond(scheduleHandler(r, api.handleCloseAgentProfileSideChat, http.MethodPost, "/api/agent-profiles/work/conversation/close", vars, nil, AgentProfileConversationRequest{ConversationKey: chat.key}))
+			respond(scheduleHandler(r, api.handleCloseAgentProfileSideChat, http.MethodPost, "/api/agent-profiles/work/conversation/close", vars, nil, AgentProfileConversationRequest{ConversationKey: chat.key, PreviewRemoval: args["preview_removal"] == true, RemovalConfirmation: externalArg(args, "removal_confirmation"), RemovalChoices: removalChoicesFromArgs(args["removal_choices"])}))
 			return
 		}
 		if !api.sessionStartedBy(chat.SessionID, claims.UserID) {
@@ -466,4 +469,11 @@ func crewCallerSideChatCount(chats []externalCrewChat) int {
 		}
 	}
 	return n
+}
+
+func removalChoicesFromArgs(value any) map[string]string {
+	raw, _ := json.Marshal(value)
+	var choices map[string]string
+	_ = json.Unmarshal(raw, &choices)
+	return choices
 }

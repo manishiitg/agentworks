@@ -454,7 +454,6 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					"title":          name,
 					"description":    description,
 					"identity":       identity,
-					"session_id":     "work:project:" + id,
 					"created_at":     now,
 					"updated_at":     now,
 				}

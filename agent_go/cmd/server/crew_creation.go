@@ -350,7 +350,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		settings = options[0]
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	sessionID := profileID + ":project:" + crewID
+	sessionID := ""
 	purpose = strings.TrimSpace(purpose)
 	capabilities := map[string]interface{}{
 		"selected_servers":             []string{},
@@ -389,7 +389,6 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"id":             crewID,
 		"title":          title,
 		"description":    purpose,
-		"session_id":     sessionID,
 		"created_at":     now,
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title},
@@ -509,6 +508,23 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	}
 	if err := selectSoleNewCrewBrowser(ctx, userID, workspacePath, profileID); err != nil {
 		log.Printf("[PROJECT_CREATE] default browser selection unavailable for %s", crewID)
+	}
+	// The personal app assistant is an explicit server-owned agent, not an
+	// implicit agent created for an ordinary Crew.
+	if settings.Role == agentWorksRole {
+		binding, err := resolveProductProjectBindingWithStore(ctx, userID, profile, crewID+codeChatSideMarker+"assistant", defaultProductProjectStore())
+		if err != nil {
+			return CreatedCrew{}, err
+		}
+		store := defaultProductConversationRegistryStore()
+		record, err := store.resolveOrCreate(ctx, userID, profile, binding, "")
+		if err != nil {
+			return CreatedCrew{}, err
+		}
+		if err = store.writeMainChatPointer(ctx, manifestPath, record.ConversationKey, record.SessionID); err != nil {
+			return CreatedCrew{}, err
+		}
+		sessionID = record.SessionID
 	}
 	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath, SessionID: sessionID}, nil
 }

@@ -211,8 +211,9 @@ export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdenti
 }
 
 /** One explicit popup, shared by the agent card and its actions menu. */
-function confirmRemoveAgent(name: string, remove: () => void) {
-  if (window.confirm(`Remove ${name}?\n\nThis permanently deletes this agent and its saved AgentWorks chat history, including earlier chats for this agent. This cannot be undone.\n\nProject files and other agents are not deleted. To keep the history, choose Cancel and use Hide from list instead.`)) remove()
+function confirmRemoveAgent(_name: string, remove: () => void) {
+  // The shared close flow opens the server-owned dependency preview.
+  remove()
 }
 
 /** One agent's actions, the same as the tab strip's (owner, 4 Nov): rename, move up or down, hide from or show in the
