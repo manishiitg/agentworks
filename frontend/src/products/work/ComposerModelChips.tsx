@@ -25,11 +25,11 @@ const contentClass = 'z-[100] max-h-[min(360px,var(--radix-dropdown-menu-content
 
 export type Choice = { id: string; label: string }
 
-export function ChoiceItems({ title, choices, value, onPick }: { title?: string; choices: Choice[]; value?: string; onPick: (id: string) => void }) {
+export function ChoiceItems({ title, choices, value, onPick, keepOpenOnPick = false }: { title?: string; choices: Choice[]; value?: string; onPick: (id: string) => void; keepOpenOnPick?: boolean }) {
   return <>
     {title && <Menu.Label className={labelClass}>{title}</Menu.Label>}
     <Menu.RadioGroup value={value} onValueChange={onPick}>
-      {choices.map(choice => <Menu.RadioItem key={choice.id} value={choice.id} className={rowClass}>
+      {choices.map(choice => <Menu.RadioItem key={choice.id} value={choice.id} className={rowClass} onSelect={keepOpenOnPick ? event => event.preventDefault() : undefined}>
         <span className="min-w-0 flex-1 truncate">{choice.label}</span>
         <Menu.ItemIndicator><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
       </Menu.RadioItem>)}
@@ -95,12 +95,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     agentApi.getChatContext(sessionId).then(view => { if (active) setSwitchNote(view?.switch_note || '') }).catch(() => undefined)
     return () => { active = false }
   }, [menuOpen, sessionId])
-  // Closing the menu without choosing drops the waiting model (the menu reopens at once after a pick, so not then).
+  const confirmSwitchRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (menuOpen) return
-    const timer = setTimeout(() => setPendingSwitch(null), 200)
-    return () => clearTimeout(timer)
-  }, [menuOpen])
+    if (pendingSwitch) confirmSwitchRef.current?.focus()
+  }, [pendingSwitch])
   useOpenFromStatusBar(sessionId, () => setMenuOpen(true))
   const profileId = meta?.agentProfileId || ''
   const projectId = meta?.agentProfileProjectId || ''
@@ -118,7 +116,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     workspacePath, accountProduct: profileId,
   })
 
-  const onMenuOpen = (open: boolean) => { setMenuOpen(open); actions?.onOpenChange?.(open) }
+  const onMenuOpen = (open: boolean) => { setMenuOpen(open); if (!open) setPendingSwitch(null); actions?.onOpenChange?.(open) }
   const onMenuClose = (event: Event) => { const action = afterClose.current; afterClose.current = null; if (action) { event.preventDefault(); action() } }
   const triggerExtra = <>
     {showContext && sessionId && <span className="ml-2 flex min-w-0"><ChatStatusBar sessionId={sessionId} busy={busy} inline /></span>}
@@ -177,9 +175,9 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // mockup "Model Switch Choice"). The server says when (switch_note); a short chat switches at once.
   const pickModel = (option: AgentProfileProviderOption, modelId?: string, targetConnectionId?: string) => {
     const changes = option.id !== selectedOption.id || (modelId !== undefined && modelId !== currentModel) || Boolean(targetConnectionId && targetConnectionId !== currentAccountId)
-    if (!changes || !switchNote) return switchTo(option, modelId, targetConnectionId)
+    if (!changes || !switchNote) { switchTo(option, modelId, targetConnectionId); return false }
     setPendingSwitch({ option, modelId, connectionId: targetConnectionId })
-    setTimeout(() => setMenuOpen(true), 0)
+    return true
   }
   const finishSwitch = async (compactFirst: boolean) => {
     const pending = pendingSwitch
@@ -210,20 +208,21 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
   return <>{sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
-    triggerExtra={triggerExtra} columns={Boolean(sessionId)} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
-    <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
+    triggerExtra={triggerExtra} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
+    {pendingSwitch ? <div className="min-w-0" aria-label="Finish changing the model">
+      <Menu.Label className={labelClass}>Change model</Menu.Label>
+      <p className="px-2.5 pb-2 text-xs text-muted-foreground">{switchNote}</p>
+      <Menu.Item ref={confirmSwitchRef} className={`${rowClass} flex-col items-start`} onSelect={() => void finishSwitch(true)}>
+        <span>Compact, then switch</span><span className="text-[11px] text-muted-foreground">Continues from a short summary</span>
+      </Menu.Item>
+      <Menu.Item className={rowClass} onSelect={() => void finishSwitch(false)}>Switch and keep the whole chat</Menu.Item>
+      <Menu.Item className={rowClass} onSelect={event => { event.preventDefault(); setPendingSwitch(null) }}>Cancel</Menu.Item>
+    </div> : <div className={sessionId ? 'grid gap-x-3 sm:grid-cols-2' : undefined}><div className="min-w-0">
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate" title={sourceText}>{sourceText}</span>
     </div>}
     {actions && <><ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} /><Menu.Separator className="my-1.5 h-px bg-border" /></>}
-    {pendingSwitch && <div className="mx-1 mb-1.5 mt-0.5 rounded-lg border border-primary/40 bg-primary/10 p-2 text-xs">
-      <p className="mb-1.5">{switchNote}</p>
-      <button type="button" onClick={() => void finishSwitch(true)} className="mb-1 block w-full rounded-md border border-primary/40 bg-background/60 px-2 py-1.5 text-left hover:bg-background">
-        Compact, then switch<span className="block text-[11px] text-muted-foreground">Continues from a short summary · uses much less of your limit</span>
-      </button>
-      <button type="button" onClick={() => void finishSwitch(false)} className="block w-full rounded-md border border-border px-2 py-1.5 text-left hover:bg-muted">Switch and keep the whole chat</button>
-    </div>}
     <Menu.Sub>
       {subRow('CLI', selectedOption.label || selectedOption.provider || selectedOption.id)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
@@ -238,7 +237,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
             {accounts.map(account => {
               const available = accountUsable(account) && accountConfigured(account)
               const current = option.id === selectedOption.id && account.id === currentAccountId
-              return <Menu.Item key={account.id} className={rowClass} disabled={saving || !available} onSelect={() => pickModel(option, undefined, account.id)}>
+              return <Menu.Item key={account.id} className={rowClass} disabled={saving || !available} onSelect={event => { if (pickModel(option, undefined, account.id)) event.preventDefault() }}>
                 <span className="min-w-0 flex-1 truncate">{account.via_connection ? account.display_name : onThisMac && accountRelation(account) === 'server' ? 'This Mac' : accountOptionLabel(account)}{!available ? ` · ${NO_LONGER_AVAILABLE}` : ''}</span>
                 {current && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
               </Menu.Item>
@@ -257,11 +256,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
           {group.current && cursorChoices.length > 1
             // The menu's type-to-jump would take the search box's keys.
             ? <div onKeyDown={event => event.stopPropagation()}>
-              <CursorModelPicker models={cursorChoices} selectedModelId={currentModel} onSelect={modelId => { setMenuOpen(false); pickModel(selectedOption, modelId) }} />
+              <CursorModelPicker models={cursorChoices} selectedModelId={currentModel} onSelect={modelId => { if (!pickModel(selectedOption, modelId)) setMenuOpen(false) }} />
             </div>
             : group.models.length > 0
-              ? <ChoiceItems choices={group.models} value={group.current ? currentModel : ''} onPick={modelId => pickModel(group.option, modelId)} />
-              : <Menu.Item className={rowClass} disabled={group.current} onSelect={() => pickModel(group.option)}>
+              ? <ChoiceItems choices={group.models} value={group.current ? currentModel : ''} onPick={modelId => { pickModel(group.option, modelId) }} keepOpenOnPick={Boolean(switchNote)} />
+              : <Menu.Item className={rowClass} disabled={group.current} onSelect={event => { if (pickModel(group.option)) event.preventDefault() }}>
                 <span className="min-w-0 flex-1 truncate">{group.current ? modelLabel : `Use ${group.option.label || group.option.provider}`}</span>
                 {group.current && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
               </Menu.Item>}
@@ -285,7 +284,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     </div>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
     {sessionId && <div className="min-w-0 sm:border-l sm:border-border sm:pl-3"><ChatContextItems sessionId={sessionId} modelLabel={label} /></div>}
-    </div>
+    </div>}
     {/* The message-box keys span both columns at the very bottom (owner-approved mockup, 11 Nov). */}
     {actions && <ComposerSendKeys busy={busy} />}
   </Chip></>
