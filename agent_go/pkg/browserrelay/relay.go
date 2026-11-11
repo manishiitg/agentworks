@@ -774,7 +774,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		return
 	}
 	if hello.Scope == "" && hello.BrowserID != "" {
-		m.serveAccountBrowser(conn, hello, authorize, displayName)
+		m.serveAccountBrowser(conn, hello, browserPlatform(r.UserAgent()), authorize, displayName)
 		return
 	}
 	m.mu.Lock()
