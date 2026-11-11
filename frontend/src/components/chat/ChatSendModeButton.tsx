@@ -64,6 +64,7 @@ export function ComposerSendKeys({ busy }: { busy: boolean }) {
     [mac ? '⇧↵' : 'Shift+↵', 'new line'],
     ...(busy ? [['↑', 'edit queued'] as [string, string], ['Esc', 'stop'] as [string, string]] : []),
     ['@', 'add a file'],
+    [mac ? '⌘← →' : 'Ctrl+← →', 'switch agent'],
     [mac ? '⌘K' : 'Ctrl+K', 'search everything'],
   ]
   return <p data-testid="composer-send-keys" className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-border px-2.5 pb-0.5 pt-2 text-xs text-muted-foreground">
