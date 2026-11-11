@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -76,6 +76,8 @@ function useFolderSize(target: TeamTarget, query?: string) {
  */
 export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
+  const tabId = useId()
+  const [section, setSection] = useState<{ project: string; tab: 'activity' | 'settings' }>()
   const { view, target, error } = state
   const [notice, setNotice] = useState('') // the server's line after a partly saved wizard, until dismissed
   useEffect(() => {
@@ -96,11 +98,31 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
   </section>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
+  const selected = team.on ? (section?.project === projectId ? section.tab : 'activity') : 'settings'
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
-    {team.on && <TeamActivity target={target} projectId={projectId} />}
+    {team.on && <div role="tablist" aria-label="Team" className="flex gap-1 border-b border-border">
+      {(['activity', 'settings'] as const).map(tab => <button key={tab} type="button" role="tab"
+        id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
+        tabIndex={selected === tab ? 0 : -1}
+        onClick={() => setSection({ project: projectId, tab })}
+        onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+          event.preventDefault()
+          const next = event.key === 'Home' ? 'activity' : event.key === 'End' ? 'settings' : tab === 'activity' ? 'settings' : 'activity'
+          setSection({ project: projectId, tab: next })
+          document.getElementById(`${tabId}-${next}`)?.focus()
+        }}
+        className={`border-b-2 px-4 py-2 text-sm font-medium ${selected === tab ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+        {tab === 'activity' ? 'Activity' : 'Settings'}
+      </button>)}
+    </div>}
+    {selected === 'activity' ? <div role="tabpanel" id={`${tabId}-activity-panel`} aria-labelledby={`${tabId}-activity`} tabIndex={0}>
+      <p className="mb-3 text-sm text-muted-foreground">See who is working, messages between agents, and recent Team events.</p>
+      <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />
+    </div> : <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-settings-panel`} aria-labelledby={team.on ? `${tabId}-settings` : undefined} className="space-y-3">
     <PeopleCard view={view} target={target} projectId={projectId} />
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
@@ -111,6 +133,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
         <TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} />
       </section>}
     </>}
+    </div>}
   </div>
 }
 
