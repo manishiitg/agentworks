@@ -90,7 +90,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 			"message": message.Text, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt}
 		if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute {
 			row["sender_user_id"] = source.UserID
-			row["own_agent_message"] = crewOwnAgentMessage(conversation.Endpoints[1-message.From], source)
+			row["own_agent_message"] = !message.SenderNonOwnerTurn && crewOwnAgentMessage(conversation.Endpoints[1-message.From], source)
 		}
 		if serverAuthoredKind(message.Kind) {
 			row["sender"], row["sender_id"], row["kind"] = "AgentWorks", "", message.Kind

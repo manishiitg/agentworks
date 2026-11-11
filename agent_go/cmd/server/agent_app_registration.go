@@ -124,6 +124,9 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 				return
 			}
 		}
+		if nonOwner, _ := args["non_owner_turn"].(bool); nonOwner {
+			r = r.WithContext(context.WithValue(r.Context(), appNonOwnerMessageKey{}, true))
+		}
 		api.externalAgentMessages(w, r, args)
 	case "inbox":
 		api.readAttachedAgentInbox(w, r, args)
@@ -222,10 +225,13 @@ func appAgentPublished(ctx context.Context, agentID string) bool {
 	if err != nil || agentID == "" {
 		return false
 	}
-	for _, share := range store.serverSharesOf(agentID, time.Now().UTC()) {
+	for _, index := range store.serverSharesOf(agentID, time.Now().UTC()) {
+		share := store.Shares[index]
 		if _, err := store.authorizeShare(share.ID, share.RevocationVersion, time.Now().UTC()); err == nil {
 			return true
 		}
 	}
 	return false
 }
+
+type appNonOwnerMessageKey struct{}
