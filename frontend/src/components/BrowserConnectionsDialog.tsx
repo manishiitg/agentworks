@@ -12,6 +12,8 @@ import { extensionVersionOlder } from '../utils/extensionVersion'
 
 export interface SavedBrowserConnection {
   id: string; name: string; browser: string; version?: string; connected: boolean; enabled: boolean
+  /** When the extension last connected (ms since epoch); 0 or missing when never. */
+  last_connected?: number
 }
 interface PairingFailure { reason: string; message: string; extension_version?: string; at: number }
 export function openBrowserConnections() { window.dispatchEvent(new Event('open-browser-connections')) }
@@ -106,7 +108,7 @@ export function BrowserConnectionsPanel({ open, onClose, onConnected, inline = t
     {!setupOpen && <>
       {savedBrowsers}
       {additionalBrowsers}
-      <Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Add browser</Button>
+      <Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}><Plus className="h-3.5 w-3.5" />Connect another Chrome</Button>
     </>}
     {setupOpen && <div className="space-y-4" aria-label="Connect browser">
       <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setPairingStarted(false) }}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>

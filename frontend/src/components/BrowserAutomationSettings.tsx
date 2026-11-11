@@ -30,8 +30,8 @@ export default function BrowserAutomationSettings({ cdpPort = 9222, onCdpPortCha
   async function copyCommand() {
     try { await navigator.clipboard.writeText(command); setCopied(true) } catch { setCopied(false) }
   }
-  return <section className="space-y-3 rounded-md border border-border p-3" aria-label="Chrome Direct setup">
-    <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">Set up Chrome Direct</h3><span role="status" className="text-xs text-muted-foreground">{cdpChecking ? 'Checking…' : cdpConnected ? 'Ready' : 'Not connected'}</span></div>
+  return <section className="space-y-3 rounded-md border border-border p-3" aria-label="AgentWorks’ own Chrome setup">
+    <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">Set up AgentWorks’ own Chrome</h3><span role="status" className="text-xs text-muted-foreground">{cdpChecking ? 'Checking…' : cdpConnected ? 'Ready' : 'Not connected'}</span></div>
     <p className="text-xs text-muted-foreground">{isMac ? 'Run the installer once. It opens Chrome with a separate profile.' : 'Launch Chrome with a separate profile using this command.'}</p>
     <pre className="overflow-x-auto rounded bg-muted/40 p-2 text-[11px]"><code>{command}</code></pre>
     <div className="flex flex-wrap gap-2">
