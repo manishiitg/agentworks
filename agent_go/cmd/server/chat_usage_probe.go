@@ -56,24 +56,32 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) 
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), chatUsageProbeTimeout)
-	defer cancel()
 	environment, ok := api.chatUsageProbeAccount(ctx, owner, provider, connectionID)
 	if !ok {
+		cancel()
 		return nil
 	}
 	key := provider + "|" + connectionID
 	chatUsageProbes.mu.Lock()
-	if cached, found := chatUsageProbes.results[key]; found && time.Now().Before(cached.expires) {
+	cached := chatUsageProbes.results[key]
+	if time.Now().Before(cached.expires) || chatUsageProbes.running[key] {
 		chatUsageProbes.mu.Unlock()
+		cancel()
 		return cached.limits
-	}
-	if chatUsageProbes.running[key] {
-		chatUsageProbes.mu.Unlock()
-		return nil
 	}
 	chatUsageProbes.running[key] = true
 	chatUsageProbes.mu.Unlock()
 
+	// PLAT-746-876: a provider quota request took 5–6 seconds on chat-context GET.
+	// Keep authorization above the cache read; only the probe moves off the request.
+	go func() {
+		defer cancel()
+		refreshChatUsageProbe(ctx, key, owner, provider, connectionID, environment)
+	}()
+	return cached.limits
+}
+
+func refreshChatUsageProbe(ctx context.Context, key, owner, provider, connectionID string, environment func() []string) {
 	started := time.Now()
 	usage, err := readNativeAccountUsage(ctx, provider, nativeUsageEnvironment(provider, environment()))
 	var limits []chatUsageLimit
@@ -93,12 +101,14 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) 
 		}
 	}
 	chatUsageProbes.mu.Lock()
+	if err != nil {
+		limits = chatUsageProbes.results[key].limits
+	}
 	chatUsageProbes.results[key] = chatUsageProbeResult{limits: limits, expires: time.Now().Add(ttl)}
 	delete(chatUsageProbes.running, key)
 	chatUsageProbes.mu.Unlock()
 	// Provider errors can carry account details; log only the outcome.
 	log.Printf("[CHAT_USAGE] probe provider=%s account=%s owner=%s success=%t windows=%d shown=%d reason=%s elapsed_ms=%d", provider, connectionID, owner, err == nil, len(usage.Windows), len(limits), reason, time.Since(started).Milliseconds())
-	return limits
 }
 
 // chatProbeWindowName maps the quota request's window labels to the names the chip knows. Windows of one model
