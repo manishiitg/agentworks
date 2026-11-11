@@ -357,20 +357,28 @@ func crewSnapshotFailureReason(err error) string {
 	}
 }
 
-// crewSetupNoticeShown remembers chats (per Crew store) that already got the
-// "setting up file tracking" line, so a Crew's first index build shows it
-// once per chat, not under every reply (PLAT-746-163). In memory: after a
-// restart a chat may see it once more.
-var crewSetupNoticeShown sync.Map
+// crewOnceNoticeShown remembers chats (per Crew store) that already got a
+// notice that repeats on every reply until the project itself changes:
+// "setting up file tracking" (PLAT-746-163) and "too many files to track"
+// (PLAT-746-893). Each shows once per chat. In memory: after a restart a chat
+// may see it once more.
+var crewOnceNoticeShown sync.Map
+
+// crewOnceNoticeFirst reports whether this chat has not yet seen the notice,
+// and marks it seen.
+func crewOnceNoticeFirst(snapshot *crewTurnSnapshot, reason string) bool {
+	_, shown := crewOnceNoticeShown.LoadOrStore(reason+"\x00"+snapshot.sessionID+"\x00"+snapshot.store.Private, true)
+	return !shown
+}
 
 func (api *StreamingAPI) publishCrewSnapshotUnavailable(snapshot *crewTurnSnapshot, reason string) {
 	end, ok := api.crewSnapshotReplyEnd(snapshot)
 	if !ok {
 		return
 	}
-	if reason == "setting_up" {
-		if _, shown := crewSetupNoticeShown.LoadOrStore(snapshot.sessionID+"\x00"+snapshot.store.Private, true); shown {
-			log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s skipped=setting_up_already_shown", snapshot.sessionID, snapshot.executionID)
+	if reason == "setting_up" || reason == "file_limit" {
+		if !crewOnceNoticeFirst(snapshot, reason) {
+			log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s skipped=%s_already_shown", snapshot.sessionID, snapshot.executionID, reason)
 			return
 		}
 	}
@@ -401,7 +409,13 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	cancelCheck()
 	incomplete := record.Review != nil && len(record.Review.IncompleteRoots) > 0
 	limited := strings.HasSuffix(record.BeforeCapture.Deferred, "file_limit") || strings.HasSuffix(record.AfterCapture.Deferred, "file_limit")
-	if unchanged && !incomplete && !limited {
+	if unchanged && !incomplete {
+		if limited {
+			// A reply that changed nothing still says once per chat that this
+			// project is too large to track fully, then stays quiet.
+			api.publishCrewSnapshotUnavailable(snapshot, "file_limit")
+			return
+		}
 		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s skipped=no_changes", snapshot.sessionID, snapshot.executionID, record.ID)
 		return
 	}
@@ -430,7 +444,9 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 			api.publishCrewSnapshotUnavailable(snapshot, "file_limit")
 			return
 		}
-		summary["note"] = crewSnapshotUnavailableText["file_limit"]
+		if crewOnceNoticeFirst(snapshot, "file_limit") {
+			summary["note"] = crewSnapshotUnavailableText["file_limit"]
+		}
 	}
 	if incomplete && !limited {
 		if !ok || summary["files"] == 0 {
