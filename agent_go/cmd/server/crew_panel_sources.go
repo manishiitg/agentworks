@@ -120,7 +120,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			section := crewPanelSection{}
 			connected := 0
 			mcps := 0
-			slackSelected := false
+			slackSelected, googleSelected := false, false
 			for _, group := range data.Vaults {
 				for _, item := range group.Items {
 					if !item.Selected {
@@ -133,6 +133,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 						mcps++
 					case "google":
 						destination = "mcp:gmail"
+						googleSelected = true
 					case "slack":
 						destination = "mcp:slack-account"
 						slackSelected = true
@@ -157,13 +158,19 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 						detail = item.AccountEmail + " · " + status
 					}
 					label := item.Name
-					if item.Kind == "slack" {
+					switch item.Kind {
+					case "slack":
 						label = "Slack as me" // owner, 11 Nov: the person's own Slack account, named for what it does
+					case "google":
+						label = "Google apps" // owner, 11 Nov: named for what it is; the account shows in the detail
 					}
 					section.Rows = append(section.Rows, crewPanelRow{ID: item.Kind + ":" + item.ID, Label: label, Detail: detail, Destination: destination, Connected: on, Attention: item.Status == "needs_attention"})
 				}
 			}
-			// Slack as me is listed even before it is connected, like GitHub (owner, 11 Nov).
+			// Google apps and Slack as me are listed even before they are connected, like GitHub (owner, 11 Nov).
+			if !googleSelected && api.signInAppReady("google") {
+				section.Rows = append(section.Rows, crewPanelRow{ID: "google-account", Label: "Google apps", Detail: "Not connected", Destination: "mcp:gmail"})
+			}
 			if !slackSelected && api.slackSignInReady() {
 				section.Rows = append(section.Rows, crewPanelRow{ID: "slack-account", Label: "Slack as me", Detail: "Not connected", Destination: "mcp:slack-account"})
 			}
@@ -265,6 +272,10 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			err := crewPanelRead(r.WithContext(ctx), api.handleCrewComputerUse, http.MethodGet, "/api/agent-profiles/work/projects/"+url.PathEscape(project)+"/computer-use", map[string]string{"id": "work", "project_id": project}, nil, nil, &data)
 			section := crewPanelSection{}
+			// Listed even while off on this Mac, like the other first-class connections (owner, 11 Nov).
+			if err == nil && !data.Enabled {
+				section.Rows = []crewPanelRow{{ID: "computer-use", Label: "Computer use", Detail: "Off", Destination: "mcp:computer-use"}}
+			}
 			if data.Enabled {
 				label := "Needs setup"
 				if data.Active {
