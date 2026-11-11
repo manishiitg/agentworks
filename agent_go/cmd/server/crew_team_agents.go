@@ -210,7 +210,7 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		// Named like the left menu (sideChatsFor, owner 5 Nov): their default chat is their Main, a tab its own name;
 		// never a raw chat title or an email.
 		name := firstNonEmptyTrimmed(identity.Name, "Agent")
-		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
+		if member == t.OwnerID && record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) {
 			name, tab = "Main", macMainTab
 		}
 		activity := ""
