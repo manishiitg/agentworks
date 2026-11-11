@@ -21,6 +21,11 @@ import (
 // crewTeamMainAgent: the key is one of the names of the person's Main: a Mac Main tab, their default chat, the
 // owner's Crew Main (the bare project key AgentBridge uses), or a root tab (named Main in the list).
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
+	for _, a := range t.Agents {
+		if a.OwnerID == person && a.Tab == macMainTab && a.ChatKey == key {
+			return true
+		}
+	}
 	if key == macMainTab || key == crewOwnerDefaultChatKey(t.ProjectID, person) || person == t.OwnerID && key == t.ProjectID {
 		return true
 	}

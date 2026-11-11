@@ -211,7 +211,7 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		// never a raw chat title or an email.
 		name := firstNonEmptyTrimmed(identity.Name, "Agent")
 		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
-			name = "Main"
+			name, tab = "Main", macMainTab
 		}
 		activity := ""
 		if crewServerChatRunning(record.SessionID) {
