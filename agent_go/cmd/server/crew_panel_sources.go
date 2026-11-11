@@ -304,17 +304,13 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			return crewPanelSection{Rows: []crewPanelRow{{ID: "whatsapp", Label: "WhatsApp", Detail: label, Destination: "mcp:whatsapp", Connected: data.Connected, Attention: data.Paired && !data.Connected}}}, err
 		}},
 		{id: "schedules", title: "Schedules", allowed: owner && api.scheduler != nil, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct{ Jobs []ScheduledJobResponse }
-			err := read(ctx, listScheduledJobsHandler(api.scheduler), "/api/schedules", url.Values{"entity_type": {"product"}, "limit": {"100000"}, "workspace_path": {workspace}}, &data)
-			// A person who may not see this Crew's schedules gets the plain empty list, like Watchers and Webhooks.
-			if denied, ok := err.(crewPanelReadError); ok && (denied.status == http.StatusForbidden || denied.status == http.StatusNotFound) {
-				err = nil
-			}
+			// This Crew's own schedules only. The schedules list route also discovers
+			// every workflow on the server for its Crew-children view; the panel
+			// dropped those and reads its workflows' schedules below, so it skips
+			// that discovery.
+			jobs, err := productScheduleJobResponses(r.WithContext(ctx), api.scheduler, "", strings.TrimRight(workspace, "/"))
 			section := crewPanelSection{}
-			for _, job := range data.Jobs {
-				if strings.TrimRight(job.WorkspacePath, "/") != strings.TrimRight(workspace, "/") {
-					continue
-				}
+			for _, job := range jobs {
 				label := "On"
 				if !job.Enabled {
 					label = "Paused"
