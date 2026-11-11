@@ -27,11 +27,12 @@ import (
 // exchange. The owner decides which tabs, Main included; unshared tabs are never reached.
 
 type macSharedAgent struct {
-	Tab      string `json:"tab"`
-	Name     string `json:"name"`
-	Purpose  string `json:"purpose"`
-	Audience string `json:"audience"` // team (In team), or "" (Only me) on an agent that is only public
-	Since    string `json:"since,omitempty"`
+	ConversationID string `json:"conversation_id,omitempty"`
+	Tab            string `json:"tab"`
+	Name           string `json:"name"`
+	Purpose        string `json:"purpose"`
+	Audience       string `json:"audience"` // team (In team), or "" (Only me) on an agent that is only public
+	Since          string `json:"since,omitempty"`
 	// Address is how other people's agents message it: agent:<owner>/<address>. The server gives it once and keeps it
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
@@ -141,8 +142,6 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 			return nil, fmt.Errorf("an agent needs a name")
 		case len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
 			return nil, fmt.Errorf("%s's purpose is longer than one line (at most %d characters)", agent.Name, productAgentPurposeMaxRunes)
-		case agent.Audience == "" && !agent.AgentBridgePublic:
-			return nil, fmt.Errorf("choose who can message %s, or make it public for agents", agent.Name)
 		case agent.Audience != "" && agent.Audience != "team":
 			return nil, fmt.Errorf("choose In team or Only me for %s", agent.Name)
 		}
@@ -275,10 +274,10 @@ func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, membe
 		if agent.Tab != tab {
 			continue
 		}
-		// The owner's attached coding chat reaches only agents explicitly published to AgentBridge.
-		// Their website continues to use the normal owner route.
-		if caller == owner && !agent.AgentBridgePublic {
-			return macSharedAgent{}, "owner"
+		// Only the admitted account's own agent gets private first contact.
+		// People views still use the normal owner route above.
+		if caller == owner && byAgent {
+			return agent, ""
 		}
 		if byAgent && agent.AgentBridgePublic || agent.Audience == "team" && slices.Contains(members, caller) {
 			return agent, ""
@@ -625,24 +624,52 @@ func ownerOfCrewProjectID(project string) string {
 
 // macAgentRow is one agent on the Mac app's Access page: Main or a side tab, with its purpose from the tab itself.
 type macAgentRow struct {
-	Tab     string `json:"tab"`
-	Name    string `json:"name"`
-	Purpose string `json:"purpose"`
+	ConversationID string `json:"conversation_id,omitempty"`
+	Tab            string `json:"tab"`
+	Name           string `json:"name"`
+	Purpose        string `json:"purpose"`
 }
 
 func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, project string) ([]macAgentRow, error) {
-	tabs, main, err := api.macCrewAgents(ctx, claims, project)
+	tabs, err := crewOwnerChatRecords(ctx, claims.UserID, crewProfileID, project, crewProjectRootByID(project))
 	if err != nil {
 		return nil, err
 	}
-	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov). A purpose is optional.
-	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: strings.TrimSpace(main.Purpose)}}
+	rows := []macAgentRow{}
 	for _, tab := range tabs {
-		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
-			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose})
+		if tab.OwnerID != claims.UserID || tab.Record.ConversationID == "" {
+			continue
 		}
+		id := macMainTab
+		if !tab.Record.IsMainChat {
+			var ok bool
+			_, id, ok = strings.Cut(tab.Record.ConversationKey, codeChatSideMarker)
+			if !ok || !crewMacTabID(id) {
+				continue
+			}
+		}
+		rows = append(rows, macAgentRow{Tab: id, Name: crewDirectoryChatName(tab), Purpose: tab.Identity.Purpose, ConversationID: tab.Record.ConversationID})
 	}
 	return rows, nil
+}
+
+// Every real owned tab is privately reachable through an existing pair. Public
+// and Team choices are retained, never inferred from this metadata roster.
+func ownMacAgentRoster(rows []macAgentRow, selected []macSharedAgent) []macSharedAgent {
+	out := make([]macSharedAgent, 0, len(rows))
+	for _, row := range rows {
+		a := macSharedAgent{Tab: row.Tab}
+		for _, saved := range selected {
+			if saved.Tab == row.Tab {
+				a = saved
+				break
+			}
+		}
+		a.Off = false
+		a.Name, a.Purpose, a.ConversationID = row.Name, row.Purpose, row.ConversationID
+		out = append(out, a)
+	}
+	return out
 }
 
 // pushMacSharedAgents saves the owner's list here and on the online copy. Name and purpose always come from the tab
@@ -652,12 +679,13 @@ func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserCl
 		return 409, "reach_off", fmt.Errorf("Turn on Use from phone and web first.")
 	}
 	previous := readMacSharedAgents(project)
+	agents = ownMacAgentRoster(rows, agents)
 	for i := range agents {
 		at := slices.IndexFunc(rows, func(row macAgentRow) bool { return row.Tab == agents[i].Tab })
 		if at < 0 {
 			return 400, "invalid_agents", fmt.Errorf("Choose one of this Crew's agents.")
 		}
-		agents[i].Name, agents[i].Purpose = rows[at].Name, rows[at].Purpose
+		agents[i].Name, agents[i].Purpose, agents[i].ConversationID = rows[at].Name, rows[at].Purpose, rows[at].ConversationID
 		// An agent goes public on AgentBridge with a purpose, so other agents know what to ask it (the server
 		// decides; the screen shows this reply after the click). One that is public already stays as it is.
 		wasPublic := slices.ContainsFunc(previous, func(p macSharedAgent) bool { return p.Tab == agents[i].Tab && p.AgentBridgePublic && !p.Off })
@@ -702,7 +730,9 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 		}
 	} else if binding != nil && binding.Mode == "relay" {
 		// A new agent joins the Team's list, or a purpose changed in its tab since: the online copy follows.
-		if next, changed := crewTeamRoster(rows, readMacSharedAgents(project), readCrewTeamState(project).TeamOn); changed || macSharedPurposesStale(rows, next) {
+		next, _ := crewTeamRoster(rows, readMacSharedAgents(project), readCrewTeamState(project).TeamOn)
+		next = ownMacAgentRoster(rows, next)
+		if !slices.Equal(next, readMacSharedAgents(project)) {
 			if _, _, err := api.pushMacSharedAgents(r.Context(), claims, project, binding, connection, rows, next); err != nil {
 				log.Printf("[CREW_SHARED_AGENT] local project=%s refresh failed: %v", project, err)
 			}
@@ -728,8 +758,12 @@ func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 
 // refreshMacSharedPurposes follows a purpose change of a shared agent on this Mac to its online copy.
 func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project string) {
+	api.refreshPairedMacAgents(ctx, project, false)
+}
+
+func (api *StreamingAPI) refreshPairedMacAgents(ctx context.Context, project string, force bool) {
 	teamOn := readCrewTeamState(project).TeamOn
-	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !teamOn {
+	if !IsLocalMode() {
 		return
 	}
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
@@ -740,10 +774,11 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 	if err != nil {
 		return
 	}
-	// While the Team is on every agent is on the Team's list, new ones too (crew_team_all.go); off, only the ones
-	// public on AgentBridge stay.
-	next, changed := crewTeamRoster(rows, readMacSharedAgents(project), teamOn)
-	if !changed && !macSharedPurposesStale(rows, next) {
+	// Team audience follows the Team switch; the own-person roster remains.
+	next, _ := crewTeamRoster(rows, readMacSharedAgents(project), teamOn)
+	next = ownMacAgentRoster(rows, next)
+	changed := !slices.Equal(next, readMacSharedAgents(project))
+	if !force && !changed && !macSharedPurposesStale(rows, next) {
 		return
 	}
 	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
@@ -912,7 +947,8 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return api.deliverToMemberMacAgent(ctx, c, m, source, dest)
 	}
 	tab := macSharedAgentTab(dest.ID, dest.ChatKey)
-	if _, reason := macSharedAgentForAgent(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
+	agent, reason := macSharedAgentForAgent(dest.ID, tab, source.UserID, dest.UserID)
+	if reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s tab=%q action=message refused reason=%s sender_agent=%s user=%s", dest.ID, tab, reason, source.NamedAgentID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
@@ -930,9 +966,19 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		}
 		return callCrewMacFor(context.Background(), dest.UserID, dest.ID, call, timeout)
 	}
+	own := crewOwnAgentMessage(dest, source)
+	if source.UserID == dest.UserID && !own && agent.Audience == "" && !agent.AgentBridgePublic {
+		return fmt.Errorf("this private agent requires an admitted own-agent message")
+	}
+	if own && !published && agent.ConversationID == "" {
+		return fmt.Errorf("this Mac's agent list needs to refresh before it can receive a message")
+	}
 	teamInbox := ""
 	if t, err := readCrewTeam(dest.ID); err == nil && t.On && t.member(source.UserID) && !published && !standby {
 		teamInbox = c.ID // a Team message goes into the agent's real chat
+	}
+	if own && !published && !standby {
+		teamInbox = c.ID // own messages belong to the existing chat, not a shared thread
 	}
 	read := func(after, wait int) (map[string]any, int) {
 		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID, "team_inbox": teamInbox})
@@ -942,7 +988,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox, "own_agent_message": crewOwnAgentMessage(dest, source)}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox, "own_agent_message": own, "own_conversation_id": agent.ConversationID}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
 	ask := crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
@@ -1199,8 +1245,8 @@ func macSharedAgentDirectoryItems(user string) []map[string]interface{} {
 			}
 			label := shareOwnerLabel(owner)
 			online, _ := row["available"].(bool)
-			items = append(items, map[string]interface{}{"agent_name": label + "/" + agent.Address, "target": "agent:" + label + "/" + agent.Address, "owner": label, "shared": true,
-				"label": agent.Name, "purpose": agent.Purpose, "online": online, "presence": row["presence"], "delivery_mode": "answer"})
+			items = append(items, map[string]interface{}{"agent_name": label + "/" + agent.Address, "target": "agent:" + label + "/" + agent.Address, "owner": label, "shared": owner != user, "yours": owner == user, "published": agent.AgentBridgePublic,
+				"crew_id": project, "crew_name": row["crew_title"], "label": agent.Name, "purpose": agent.Purpose, "online": online, "presence": row["presence"], "delivery_mode": "answer"})
 		}
 	}
 	return items

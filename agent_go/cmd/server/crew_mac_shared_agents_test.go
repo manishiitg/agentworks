@@ -32,7 +32,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", Address: "public-agent", AgentBridgePublic: true}}
+	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", Address: "public-agent", AgentBridgePublic: true}, {Tab: "own01", Name: "Private helper", Address: "own-helper", ConversationID: "own-conversation"}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +46,26 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 			t.Fatalf("own Mac address %q: target=%+v error=%v", tc.address, target, err)
 		}
 	}
+	// PLAT-746-890: the existing directory/address route includes private owned
+	// metadata for the admitted account, never for another account.
+	for _, user := range []string{"owner", "member", "outsider"} {
+		found := false
+		for _, row := range macSharedAgentDirectoryItems(user) {
+			if row["target"] == "agent:owner/own-helper" {
+				found = true
+				if row["published"] != false || row["yours"] != true {
+					t.Fatalf("private metadata incorrectly published: %+v", row)
+				}
+			}
+		}
+		if found != (user == "owner") {
+			t.Fatalf("private directory visibility for %s = %t", user, found)
+		}
+		_, resolved := macSharedAgentByAddress("owner", "own-helper", user)
+		if resolved != (user == "owner") {
+			t.Fatalf("private address access for %s = %t", user, resolved)
+		}
+	}
 	api := &StreamingAPI{}
 	for _, tc := range []struct {
 		name, user, tab      string
@@ -55,7 +75,9 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		// PLAT-856: same-owner Mac relay messages used the hosted-Crew route and were held forever.
 		{"own published Mac send", "owner", "public01", []string{"messages:send"}, true, true, true},
 		{"own published Mac reply read", "owner", "public01", []string{"messages:read"}, true, false, true},
-		{"own unpublished Mac tab", "owner", "team01", []string{"messages:send"}, true, true, false},
+		{"own unpublished Mac tab", "owner", "team01", []string{"messages:send"}, true, true, true},
+		{"own Only-me Mac tab", "owner", "own01", []string{"messages:send"}, true, true, true},
+		{"other account Only-me tab", "member", "own01", []string{"messages:send"}, true, true, false},
 		{"own private Mac tab", "owner", "private01", []string{"messages:read"}, true, false, false},
 		{"own read permission cannot send", "owner", "public01", []string{"messages:read"}, true, true, false},
 		{"team send", "member", "team01", []string{"messages:send"}, true, true, true},
@@ -350,5 +372,30 @@ func TestSharedAgentThreadPerSender(t *testing.T) {
 	}
 	if !hiddenFromTabStrip(a) || isUserViewConversationKey(a) || !isSideChatConversationKey(a) {
 		t.Fatalf("thread %q: hidden=%t userView=%t side=%t", a, hiddenFromTabStrip(a), isUserViewConversationKey(a), isSideChatConversationKey(a))
+	}
+}
+
+// PLAT-746-890: paired metadata keeps private agents, drops deleted tabs, and
+// carries exact conversation identity without changing another person's audience.
+func TestPairedOwnAgentRosterRetainsPrivacyAndDropsDeletedTabs(t *testing.T) {
+	rows := []macAgentRow{{Tab: "own01", Name: "Private", Purpose: "Helps me", ConversationID: "conversation-one"}, {Tab: "public01", Name: "Public", ConversationID: "conversation-two"}}
+	old := []macSharedAgent{{Tab: "public01", Name: "Public", Address: "public", AgentBridgePublic: true}, {Tab: "deleted01", Name: "Deleted", Address: "deleted", AgentBridgePublic: true}}
+	roster := ownMacAgentRoster(rows, old)
+	clean, err := cleanMacSharedAgents(roster, old)
+	if err != nil || len(clean) != 2 {
+		t.Fatalf("owned metadata rejected: %v %+v", err, clean)
+	}
+	if clean[0].Audience != "" || clean[0].AgentBridgePublic || clean[0].ConversationID != "conversation-one" || !clean[1].AgentBridgePublic {
+		t.Fatalf("private metadata changed sharing or identity: %+v", clean)
+	}
+	teamOff, _ := crewTeamRoster(rows, clean, false)
+	if len(teamOff) != 2 {
+		t.Fatal("turning Team off removed the owner's private address")
+	}
+	for _, user := range []string{"owner", "other"} {
+		_, reason := macSharedAudience(clean, "own01", user, "owner", nil, true)
+		if (reason == "") != (user == "owner") {
+			t.Fatalf("private admission for %s: %s", user, reason)
+		}
 	}
 }

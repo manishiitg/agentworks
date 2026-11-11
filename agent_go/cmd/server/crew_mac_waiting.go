@@ -202,7 +202,9 @@ func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewM
 		return false, false
 	}
 	var args struct {
-		SenderID string `json:"sender_id"`
+		SenderID          string `json:"sender_id"`
+		OwnAgentMessage   bool   `json:"own_agent_message"`
+		OwnConversationID string `json:"own_conversation_id"`
 	}
 	if json.Unmarshal(held.Args, &args) != nil || args.SenderID == "" {
 		return false, false
@@ -261,6 +263,12 @@ func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewM
 	}
 	if reason != "" {
 		return false, true
+	}
+	if args.OwnAgentMessage && args.OwnConversationID != "" {
+		current, reason := macSharedAgentForAgent(project, held.Tab, args.SenderID, owner)
+		if args.SenderID != owner || reason != "" || current.ConversationID != args.OwnConversationID {
+			return false, true
+		}
 	}
 	if held.Inbox == "" {
 		return true, false

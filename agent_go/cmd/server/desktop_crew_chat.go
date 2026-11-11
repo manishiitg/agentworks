@@ -449,7 +449,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		NetworkInbox string `json:"network_inbox"`
 		// OwnAgentMessage: the server found, from admitted endpoints, that the sender is this agent's own person on
 		// another computer or login (PLAT-746-852). Only the server sets it.
-		OwnAgentMessage bool `json:"own_agent_message"`
+		OwnAgentMessage   bool   `json:"own_agent_message"`
+		OwnConversationID string `json:"own_conversation_id"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -459,7 +460,14 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	if args.SenderID == "" || !crewMacTabID(call.Tab) {
 		return refuse("bad_request")
 	}
-	networkReply := call.Operation == "network_reply"
+	// Own first-contact messages use the same exact-chat check as replies. The
+	// server supplies this identity from the paired roster; never create a tab.
+	ownContact := args.OwnAgentMessage && args.TeamInbox != "" && args.OwnConversationID != ""
+	if ownContact {
+		args.NetworkInbox = args.TeamInbox
+		call.ConversationID = args.OwnConversationID
+	}
+	networkReply := call.Operation == "network_reply" || ownContact
 	networkKey := ""
 	if networkReply {
 		// An authenticated pair can return mail only to the exact conversation

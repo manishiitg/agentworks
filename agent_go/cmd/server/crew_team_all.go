@@ -99,13 +99,11 @@ func writeCrewTeamState(project string, change func(*crewTeamLocalState)) error 
 
 // crewTeamRoster is this Mac Crew's list on its online copy for the Team's switch: on, every agent is listed for the
 // Team (audience "team"), keeping each entry's other choices, and who sees which is the server's In team / Only me;
-// off, only agents public on AgentBridge stay, with no people audience. It says whether the list changed.
+// off, owned agents stay privately reachable with no people audience. It says whether the list changed.
 func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]macSharedAgent, bool) {
 	next := slices.Clone(current)
 	changed := false
 	if !on {
-		next = slices.DeleteFunc(next, func(agent macSharedAgent) bool { return !agent.AgentBridgePublic })
-		changed = len(next) < len(current)
 		for i := range next {
 			changed = changed || next[i].Audience != ""
 			next[i].Audience = ""

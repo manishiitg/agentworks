@@ -249,6 +249,15 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		return err
 	}
 	log.Printf("[CREW_RELAY] desktop connect connection=%s crews=%d", connectionID, len(crews))
+	// Refresh metadata once per reconnect, only for already admitted pairs.
+	refreshAgents := func(offered []crewRelayCrew) {
+		for _, crew := range offered {
+			if local := localCrewForPeer(crew.Project, crew.Pair); local != "" {
+				api.refreshPairedMacAgents(ctx, local, true)
+			}
+		}
+	}
+	go refreshAgents(crews)
 	desktopRelayLive.Store(connectionID, true)
 	defer desktopRelayLive.Delete(connectionID)
 	var pairsMu sync.Mutex
@@ -315,6 +324,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairsMu.Unlock()
 				if changed {
 					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), AppVersion: os.Getenv("AGENTWORKS_APP_VERSION"), Crews: next})
+					go refreshAgents(next)
 				}
 			case <-states.C:
 				pairsMu.Lock()
