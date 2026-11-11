@@ -1,6 +1,8 @@
 import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
 import { ProductNavigationDescription, ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
-import { Bell } from 'lucide-react'
+import { Bell, BellOff } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { loadNotifySettings, notifyDeviceId, notifyDevicesChangedEvent } from '../../services/notifications'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
@@ -12,6 +14,29 @@ export default function NotificationsControl() {
   const inSettings = useProductSettingsMenu()
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'notifications')
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!user) return
+    let disposed = false
+    let request = 0
+    const refresh = () => {
+      const current = ++request
+      loadNotifySettings().then(settings => {
+        if (!disposed && current === request) setEnabled(settings.devices.some(device => device.id === notifyDeviceId()))
+      }).catch(() => { if (!disposed && current === request) setEnabled(null) })
+    }
+    setEnabled(null)
+    refresh()
+    window.addEventListener(notifyDevicesChangedEvent, refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      disposed = true
+      window.removeEventListener(notifyDevicesChangedEvent, refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [user?.id])
+  const status = enabled === null ? '' : enabled ? 'On' : 'Off'
+  const Icon = enabled === false ? BellOff : Bell
   if (!user) return null
   return (
     <Tooltip>
@@ -21,16 +46,17 @@ export default function NotificationsControl() {
           role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
           onClick={() => openWorkspaceSettings('notifications')}
-          aria-label="Notifications"
+          aria-label={`Notifications${status ? ` · ${status} on this device` : ''}`}
           aria-pressed={active}
           className={`relative rounded-md p-1.5 transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
         >
-          <Bell className="h-4 w-4 shrink-0" />
+          <Icon className={`h-4 w-4 shrink-0 ${enabled ? 'text-foreground' : 'text-muted-foreground'}`} aria-hidden="true" />
           <ProductNavigationLabel>Notifications</ProductNavigationLabel>
+          {status && <span className="ml-auto text-[11px] font-normal text-muted-foreground">{status}</span>}
           <ProductNavigationDescription>When an agent finishes</ProductNavigationDescription>
         </button>
       </TooltipTrigger>
-      <TooltipContent side={sidebar ? 'right' : 'bottom'}>Notifications</TooltipContent>
+      <TooltipContent side={sidebar ? 'right' : 'bottom'}>Notifications{status ? ` · ${status} on this device` : ''}</TooltipContent>
     </Tooltip>
   )
 }
