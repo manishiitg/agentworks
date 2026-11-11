@@ -221,6 +221,9 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
 			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
+				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
+			}
 			if crewOwner == "" || crewOwner == userID {
 				crewMain(main) // Main's purpose is the Crew identity (crew_main_identity.go).
 			}
@@ -241,6 +244,9 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 			name = "Main"
 		}
 		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
+		if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
+			row.Provider, row.ModelID = runtime.Provider, runtime.ModelID
+		}
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			row.Pinned = !own.Unpinned
 		}
