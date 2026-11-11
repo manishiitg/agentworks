@@ -2006,9 +2006,10 @@ func logStreamingChunkTelemetry(sessionID string, event Event) {
 // so an unpaired call is exactly the defect our tests cannot currently catch.
 
 type toolCallTelemetry struct {
-	owner     string
-	name      string
-	startedAt time.Time
+	owner            string
+	name             string
+	startedAt        time.Time
+	nativeCompletion bool
 }
 
 var (
@@ -2018,8 +2019,9 @@ var (
 	// runtime from the provider's own record. Injected rather than imported so
 	// this package stays free of provider knowledge; cmd/server owns the
 	// Claude Code implementation (PLAT-141).
-	toolResultResolver   ToolResultResolver
-	toolResultResolverMu sync.RWMutex
+	toolCompletionAuthority func(sessionID, toolID, name string) bool
+	toolResultResolver      ToolResultResolver
+	toolResultResolverMu    sync.RWMutex
 
 	// settleInFlight stops one turn from scheduling two settle passes. A turn
 	// emits BOTH agent_end and unified_completion, so the handler started a
@@ -2054,11 +2056,15 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 	}
 	switch d := event.Data.Data.(type) {
 	case *events.ToolCallStartEvent:
+		toolResultResolverMu.RLock()
+		authority := toolCompletionAuthority
+		toolResultResolverMu.RUnlock()
+		nativeCompletion := authority != nil && authority(sessionID, d.ToolCallID, d.ToolName)
 		toolCallsMu.Lock()
 		if openToolCall[sessionID] == nil {
 			openToolCall[sessionID] = map[string]*toolCallTelemetry{}
 		}
-		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now()}
+		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now(), nativeCompletion: nativeCompletion}
 		open := len(openToolCall[sessionID])
 		toolCallsMu.Unlock()
 		log.Printf("[TOOL] session=%s START id=%s name=%s args_len=%d open=%d",
@@ -2113,7 +2119,11 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 		toolCallsMu.Lock()
 		pending := make(map[string]*toolCallTelemetry, len(openToolCall[sessionID]))
 		for id, tc := range openToolCall[sessionID] {
-			pending[id] = tc
+			// PLAT-746-891: a Codex command may outlive its answer. Only
+			// its native completion can close it; turn end is not tool end.
+			if !tc.nativeCompletion {
+				pending[id] = tc
+			}
 		}
 		toolCallsMu.Unlock()
 		toolCallsMu.Lock()
@@ -2134,10 +2144,6 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 			log.Printf("[TOOL] session=%s turn ended with %d tool call(s) open -- waiting %s for late results: %s",
 				sessionID, len(pending), toolCallSettleGrace, strings.Join(names, ", "))
 			go es.settleAfterGrace(sessionID, event, pending)
-		} else {
-			toolCallsMu.Lock()
-			delete(openToolCall, sessionID)
-			toolCallsMu.Unlock()
 		}
 	}
 }
@@ -2381,4 +2387,32 @@ func (es *EventStore) Stats(top int) EventStoreStats {
 		stats.Largest = stats.Largest[:top]
 	}
 	return stats
+}
+
+// SetToolCompletionAuthority identifies native commands whose process lifecycle
+// is reported independently of the reply. Install once during server setup.
+func SetToolCompletionAuthority(authority func(sessionID, toolID, name string) bool) {
+	toolResultResolverMu.Lock()
+	toolCompletionAuthority = authority
+	toolResultResolverMu.Unlock()
+}
+
+// CompleteNativeTool closes only a command we observed starting in this chat.
+// Replayed native records and ordinary tools cannot manufacture completions.
+func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time) {
+	toolCallsMu.Lock()
+	tc := openToolCall[sessionID][toolID]
+	if tc == nil || !tc.nativeCompletion {
+		toolCallsMu.Unlock()
+		return
+	}
+	// The normal end-event path removes the entry. Native observers are serial.
+	name, startedAt := tc.name, tc.startedAt
+	toolCallsMu.Unlock()
+	if at.IsZero() {
+		at = time.Now()
+	}
+	es.AddEvent(sessionID, Event{ID: "native-command-end:" + toolID, Type: "tool_call_end", Timestamp: at, SessionID: sessionID,
+		Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: at, SessionID: sessionID,
+			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt)}}})
 }
