@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, GripVertical, MoreHorizontal, Plus, Terminal } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Plus, Terminal } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
@@ -120,7 +120,6 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
     onDrop={dragging && key ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-        {key && <span title="Drag to reorder" className="shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing"><GripVertical aria-hidden="true" className="h-3.5 w-3.5" /></span>}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
