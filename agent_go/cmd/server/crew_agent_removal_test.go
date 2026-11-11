@@ -101,3 +101,28 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 		t.Fatal("linked work was lost, not reassigned, or enabled")
 	}
 }
+
+// Removing a prerequisite exposes the dependent schedule as an explicit choice;
+// reassigning the prerequisite must not remove the dependent schedule.
+func TestAgentRemovalRequiresDependentScheduleChoiceOnlyWhenNeeded(t *testing.T) {
+	plan := crewAgentRemovalPlan{preview: crewAgentRemovalPreview{Confirmation: "current", Dependencies: []crewAgentRemovalDependency{{ID: "parent", Name: "First", CanReassign: true}}, Destinations: []crewAgentRemovalDestination{{Key: "crew:chat:other"}}}, files: []*crewAgentRemovalFile{{path: "schedules.json", collection: "schedules", choices: map[int]string{0: "parent"}, document: map[string]any{"schedules": []any{
+		map[string]any{"id": "first", "name": "First"},
+		map[string]any{"id": "second", "name": "Second", "when": map[string]any{"after": map[string]any{"schedules": []any{"first"}}}},
+	}}}}}
+	plan.addDependentSchedules()
+	if len(plan.preview.Dependencies) != 2 || len(plan.preview.Dependencies[1].WhenRemoved) != 1 {
+		t.Fatal("dependent schedule was omitted")
+	}
+	child := plan.preview.Dependencies[1].ID
+	// Test policy without mutating fixture files.
+	plan.files = nil
+	if err := plan.apply(context.Background(), "current", map[string]string{"parent": "crew:chat:other"}, "crew"); err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.apply(context.Background(), "current", map[string]string{"parent": "remove"}, "crew"); err == nil {
+		t.Fatal("dependent schedule deleted without a choice")
+	}
+	if err := plan.apply(context.Background(), "current", map[string]string{"parent": "remove", child: "remove"}, "crew"); err != nil {
+		t.Fatal(err)
+	}
+}
