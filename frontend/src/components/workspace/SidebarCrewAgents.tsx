@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Terminal } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
+import { useLLMStore } from '../../stores/useLLMStore'
+import { codingProviderName } from '../../utils/codingProviderName'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -66,6 +68,25 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   </div>
 }
 
+const cliIcons: Record<string, string> = {
+  'claude-code': 'claude.ico', 'codex-cli': 'codex.png', 'cursor-cli': 'cursor.svg',
+  'pi-cli': 'pi.svg', 'muse-cli': 'muse.ico', 'agy-cli': 'antigravity.svg',
+}
+
+/** Same server-resolved runtime as the agent hover card, never the Crew default. */
+function AgentCliMark({ tabId }: { tabId: string }) {
+  const provider = useChatStore(state => {
+    const meta = state.chatTabs[tabId]?.metadata
+    return meta?.agentProfileChatProvider || meta?.agentProfileEngine
+  })
+  const manifest = useLLMStore(state => state.providerManifest.find(item => item.id === provider))
+  if (!provider) return null
+  const name = manifest ? codingProviderName(manifest) : provider
+  return <span title={name} aria-label={name} className="hidden shrink-0 items-center group-hover:inline-flex group-focus-within:inline-flex">
+    {cliIcons[provider] ? <img src={`/provider-icons/${cliIcons[provider]}`} alt="" className="h-3.5 w-3.5 object-contain" /> : <Terminal aria-hidden="true" className="h-3.5 w-3.5" />}
+  </span>
+}
+
 function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   const [menu, setMenu] = useState(false)
@@ -91,6 +112,7 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
         <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
         <span className="flex-1" />
+        <AgentCliMark tabId={agent.tabId} />
         {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}
         <AgentMark state={state} asking={agent.asking} />
       </button>
