@@ -1113,12 +1113,9 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
 // Work details off is a status, never a disclosure: old saved expansion state cannot reveal tool payloads.
 // Incoming/outgoing message cards remain independent conversation content.
 const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
-  const failed = pairs.filter(pair => pair.status === 'error' || Boolean(pair.result && formatToolCallResult(pair.result).isError)).length
-  const unfinished = pairs.filter(pair => pair.status === 'running').length
+  const running = live && pairs.some(pair => pair.status === 'running')
   const count = `${toolCount} ${toolCount === 1 ? 'step' : 'steps'}`
-  const label = unfinished
-    ? live ? `Working… · ${count}` : `${count} · unfinished`
-    : failed ? count : `${count} completed`
+  const label = running ? `Working… · ${count}` : count
   return <div data-testid="terminal-work-summary" className="my-1 flex items-center gap-1 py-1 text-[11px] text-muted-foreground">
     <span>{label}</span>
   </div>
