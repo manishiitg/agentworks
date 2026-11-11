@@ -19,6 +19,9 @@ import (
 // Real workspace HTTP and persisted registry/history, with only the paid model
 // turn replaced. Pin the shared-tab decision across native chat and MCP.
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
+	// PLAT-746-820: real workspace preparation exceeded five seconds on the
+	// build host, letting cleanup remove the model stub before delivery reached it.
+	const deliveryTimeout = 30 * time.Second
 	f, _ := newExternalCrewCommandFixture(t)
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
 	const callerRoot = "Crew/calling-team"
@@ -209,7 +212,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 		select {
 		case <-delivered:
-		case <-time.After(5 * time.Second):
+		case <-time.After(deliveryTimeout):
 			t.Fatal("message did not reach existing owner tab")
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
@@ -230,11 +233,11 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	select {
 	case <-delivered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(deliveryTimeout):
 		t.Fatal("hosted Crew did not reach the same existing tab")
 	}
 	var contact agentConversation
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(deliveryTimeout)
 	for time.Now().Before(deadline) {
 		agentMessageMu.Lock()
 		store, err := readAgentMessageStore(ctx)
@@ -335,7 +338,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		if session != coach.SessionID {
 			t.Fatalf("wrong target session: %s", session)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(deliveryTimeout):
 		t.Fatal("Team delivery did not reach target")
 	}
 	inbox := result["inbox_id"].(string)
@@ -348,7 +351,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		if session != callerTab.SessionID {
 			t.Fatalf("reply went to %s instead of original chat", session)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(deliveryTimeout):
 		t.Fatal("reply did not reach original chat")
 	}
 	wrong := caller
