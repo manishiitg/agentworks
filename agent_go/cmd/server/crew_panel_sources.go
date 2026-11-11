@@ -171,8 +171,14 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			if !googleSelected && api.signInAppReady("google") {
 				section.Rows = append(section.Rows, crewPanelRow{ID: "google-account", Label: "Google apps", Detail: "Not connected", Destination: "mcp:gmail"})
 			}
-			if !slackSelected && api.slackSignInReady() {
-				section.Rows = append(section.Rows, crewPanelRow{ID: "slack-account", Label: "Slack as me", Detail: "Not connected", Destination: "mcp:slack-account"})
+			// Slack as me is always listed, like WhatsApp: "Not set up" when this server has no Slack sign-in app yet
+			// (owner, 11 Nov: it was missing on the Mac), so people see it exists and where to set it up.
+			if !slackSelected {
+				detail := "Not connected"
+				if !api.slackSignInReady() {
+					detail = "Not set up"
+				}
+				section.Rows = append(section.Rows, crewPanelRow{ID: "slack-account", Label: "Slack as me", Detail: detail, Destination: "mcp:slack-account"})
 			}
 			section.Detail = "None selected"
 			if mcps > 0 {
