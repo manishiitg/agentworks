@@ -119,7 +119,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			fail(e)
 			return
 		}
-		main, e := api.crewHandoffMain(r.Context(), claims, id)
+		main, e := api.crewHandoffProjectTemplate(r.Context(), claims, id)
 		if e != nil {
 			fail(e)
 			return
