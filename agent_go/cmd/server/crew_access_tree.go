@@ -66,7 +66,7 @@ type crewAccessFacts struct {
 	Member bool
 }
 
-// crewAccessTeamOffTitle is the Team line while the Team is off; the menu's Team row then says Off.
+// crewAccessTeamOffTitle is the Team line while the Team is off; the menu's Team row then shows no count.
 const crewAccessTeamOffTitle = "Team off"
 
 // crewAccessLineGroup puts each line under its menu row: the people who work on the Crew with you and their shared
