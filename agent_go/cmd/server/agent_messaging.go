@@ -1411,6 +1411,12 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		if err != nil {
 			return "", err
 		}
+		api.lastQueryMu.RLock()
+		current, known := api.lastQueryRequests[sessionID]
+		api.lastQueryMu.RUnlock()
+		if !known || desktopAppTurnRestricted(current, userID) {
+			publicAgentDirectoryOnly(out)
+		}
 		raw, err := json.Marshal(out)
 		return string(raw), err
 	}})
