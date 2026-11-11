@@ -2,12 +2,12 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"path"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
@@ -26,6 +26,9 @@ import (
 // A channel reaches its allowed list (default first); a DM reaches the app's
 // targets the matched person can reach with their own access. Codes never
 // answer in channels.
+
+// slackMissingTargetsLogged holds the targets already logged as missing in this process.
+var slackMissingTargetsLogged sync.Map
 
 // slackRoutingHooksFor wires services.SlackRoutingHooks to this server.
 func (api *StreamingAPI) slackRoutingHooksFor() *services.SlackRoutingHooks {
@@ -111,7 +114,6 @@ func slackLoadTargetsRegistry(ctx context.Context) *services.SlackTargetsRegistr
 // set, else the target's name.
 func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegistry, refs []services.SlackTargetRef) []services.SlackTarget {
 	out := make([]services.SlackTarget, 0, len(refs))
-	var gone []services.SlackTargetRef
 	for _, stored := range refs {
 		// A Crew that moved to the shared Crew/ root keeps its old path in a saved bot connection; follow it to the
 		// Crew's current root, so the bot keeps answering for it (the registry entry is still found by the stored ref).
@@ -120,71 +122,18 @@ func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegis
 			ref.WorkspacePath = foldCrewRootForStoredReference(ref.WorkspacePath)
 		}
 		// A target whose workflow or Crew was deleted is not offered; its stale registry entry must not show up as a
-		// button named after a folder.
+		// button named after a folder. The entry is kept: it records which channel went to which product, and a
+		// moved product's routes are re-pointed from it (PLAT-746-848). Logged once per target per process, since
+		// every agent tool build lists the targets.
 		if !slackTargetExists(ctx, ref) {
-			gone = append(gone, stored)
+			if _, seen := slackMissingTargetsLogged.LoadOrStore(ref.WorkspacePath, struct{}{}); !seen {
+				log.Printf("[SLACK_TARGETS] skipped %s: its workflow or Crew no longer exists (entry kept)", ref.WorkspacePath)
+			}
 			continue
 		}
 		out = append(out, slackNamedTargetStored(ctx, registry, ref, stored))
 	}
-	slackForgetGoneTargets(ctx, gone)
 	return out
-}
-
-// slackForgetGoneTargets removes registry entries for targets whose workflow or Crew no longer exists (deleted,
-// converted or moved away), so they are not checked again on every listing. Only a definite "not found" gets here: a
-// read error counts as existing. A target kept elsewhere (a bot's own connection) is only skipped, as before.
-var errSlackNothingToForget = errors.New("no registry entry to remove")
-
-func slackForgetGoneTargets(ctx context.Context, gone []services.SlackTargetRef) {
-	if len(gone) == 0 {
-		return
-	}
-	isGone := func(ref services.SlackTargetRef) bool {
-		for _, g := range gone {
-			if g.Same(ref) {
-				return true
-			}
-		}
-		return false
-	}
-	removed := 0
-	err := services.ModifySlackTargetsRegistry(ctx, func(registry *services.SlackTargetsRegistry) error {
-		targets := registry.Targets[:0]
-		for _, entry := range registry.Targets {
-			if isGone(entry.Ref()) {
-				removed++
-				continue
-			}
-			targets = append(targets, entry)
-		}
-		registry.Targets = targets
-		for channel, entry := range registry.Channels {
-			refs := entry.Targets[:0]
-			for _, ref := range entry.Targets {
-				if isGone(ref) {
-					removed++
-					continue
-				}
-				refs = append(refs, ref)
-			}
-			entry.Targets = refs
-			if entry.Default != nil && isGone(*entry.Default) {
-				entry.Default = nil
-			}
-			registry.Channels[channel] = entry
-		}
-		if removed == 0 {
-			return errSlackNothingToForget // nothing stored here; leave the file untouched
-		}
-		return nil
-	})
-	if errors.Is(err, errSlackNothingToForget) {
-		err = nil
-	}
-	for _, ref := range gone {
-		log.Printf("[SLACK_TARGETS] skipped %s: its workflow or Crew no longer exists (registry entries removed=%d err=%v)", ref.WorkspacePath, removed, err)
-	}
 }
 
 func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegistry, ref services.SlackTargetRef) services.SlackTarget {
