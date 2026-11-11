@@ -75,6 +75,9 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return err
 		}
 	}
+	if m.SenderWebsiteSession != "" && sessionRevoked(m.SenderWebsiteSession) {
+		return admissionRefused("sending login is no longer authorized")
+	}
 	if m.SenderConnectionID != "" {
 		claims, err := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
 		if err != nil && source.External && source.NamedAgentID != "" && source.UserID == dest.UserID && strings.HasPrefix(m.SenderConnectionID, "oauth-") {

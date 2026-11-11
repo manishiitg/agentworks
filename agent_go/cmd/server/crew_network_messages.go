@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-746-772: network addresses retain the originating Crew. Never resolve
@@ -37,97 +35,6 @@ func splitCrewNetworkAddress(raw string) (project, address string, ok bool) {
 	return project, address, ok && project != "" && (strings.HasPrefix(address, "agent:") || strings.HasPrefix(address, "inbox-"))
 }
 
-func crewNetworkAgentRows(ctx context.Context, owner, root string) ([]map[string]interface{}, string) {
-	project := crewProjectIDOfRoot(root)
-	if !IsLocalMode() || project == "" {
-		return nil, ""
-	}
-	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Mode != "relay" || b.Side != "local" {
-		return nil, ""
-	}
-	c, err := desktopConnectionFor(owner, b.ConnectionID)
-	if err != nil {
-		return nil, "The Crew's network connection is unavailable."
-	}
-	var directory struct {
-		Agents []map[string]interface{} `json:"agents"`
-	}
-	read, done := context.WithTimeout(ctx, 8*time.Second)
-	defer done()
-	if err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/agent-directory?view=message", nil, &directory); err != nil {
-		log.Printf("[CREW_NETWORK] event=directory_failed project=%s", project)
-		return nil, "Could not read agents from the Crew's network. Try again."
-	}
-	rows := []map[string]interface{}{}
-	for _, row := range directory.Agents {
-		target, _ := row["target"].(string)
-		if target == "" {
-			target, _ = row["id"].(string)
-		}
-		if !strings.HasPrefix(target, "agent:") {
-			continue
-		}
-		copy := make(map[string]interface{}, len(row)+2)
-		for k, v := range row {
-			copy[k] = v
-		}
-		copy["id"], copy["target"] = "network:"+project+":"+target, "network:"+project+":"+target
-		copy["network"] = c.Server
-		copy["reach"] = "messages action=send(target=<this exact id>, message=…); read replies using the returned inbox_id"
-		rows = append(rows, copy)
-	}
-	log.Printf("[CREW_NETWORK] event=directory project=%s agents=%d", project, len(rows))
-	return rows, ""
-}
-
-func (api *StreamingAPI) crewNetworkMessageFromMac(ctx context.Context, owner string, caller triggerLinkCaller, raw string, in crewNetworkMessage) (map[string]any, error) {
-	project, address, ok := splitCrewNetworkAddress(raw)
-	if !ok || caller.Chat == nil || caller.Stamp.ID != project || caller.Stamp.Type != triggerCallerCrew {
-		return nil, fmt.Errorf("use a network address listed for this Crew")
-	}
-	_, b, c, err := api.desktopCrewChatBinding(ctx, project)
-	if err != nil {
-		return nil, err
-	}
-	records, err := defaultProductConversationRegistryStore().projectChats(ctx, owner, crewProfileID, project)
-	if err != nil {
-		return nil, err
-	}
-	for _, record := range records {
-		if record.SessionID != caller.Chat.SessionID || record.ConversationKey != caller.Chat.Key {
-			continue
-		}
-		in.FromTab = macMainTab
-		if !record.IsMainChat {
-			_, in.FromTab, ok = strings.Cut(record.ConversationKey, codeChatSideMarker)
-			if !ok {
-				return nil, fmt.Errorf("this agent is unavailable")
-			}
-		}
-		in.ConversationID = record.ConversationID
-		break
-	}
-	if in.ConversationID == "" {
-		return nil, fmt.Errorf("this agent's conversation has changed; try again from its current chat")
-	}
-	if strings.HasPrefix(address, "inbox-") {
-		in.Inbox = address
-	} else {
-		in.Target = address
-	}
-	reply, err := desktopCrewSyncCall(ctx, owner, &c, b.PeerProjectID, crewSyncRequest{Action: "network_message", PairID: b.PairID, NetworkMessage: &in})
-	if err != nil {
-		return nil, err
-	}
-	if reply.NetworkMessage == nil {
-		return nil, fmt.Errorf("update the network server to enable Crew agent messaging")
-	}
-	out := reply.NetworkMessage
-	qualifyCrewNetworkReplyAddresses(out, project)
-	return out, nil
-}
-
 // Keep every callable address on the same verified network route. Conversation
 // IDs and message text remain server data, not local mailbox addresses.
 func qualifyCrewNetworkReplyAddresses(out map[string]any, project string) {
@@ -139,7 +46,7 @@ func qualifyCrewNetworkReplyAddresses(out map[string]any, project string) {
 		}
 	}
 	qualify(out)
-	// NetworkMessage has just been decoded from the paired server's JSON.
+	// The response has just been decoded from the selected network's JSON.
 	messages, _ := out["messages"].([]any)
 	for _, item := range messages {
 		if row, ok := item.(map[string]any); ok {
