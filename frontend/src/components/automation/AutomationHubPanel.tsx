@@ -11,6 +11,8 @@ import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { AgentInboxPanel, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import { PageCard, PageTabs } from './AutomationKit'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
+import { runOnlineAutomationAsk } from './runOnlineAutomation'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
 const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
@@ -54,6 +56,7 @@ export function AutomationHubPanel({
   const [childrenError, setChildrenError] = useState('')
   const [childFunctionCounts, setChildFunctionCounts] = useState<Record<string, number>>({})
   const [childWebhookCounts, setChildWebhookCounts] = useState<Record<string, { active: number; paused: number }>>({})
+  const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
   const crewID = entityType === 'product' && productTriggerScope?.profileId === 'work' && canManage !== false ? productTriggerScope.projectId : undefined
   useEffect(() => {
     const controller = new AbortController()
@@ -126,6 +129,8 @@ export function AutomationHubPanel({
   const headerActions = refreshAction ? <WorkspaceViewIconButton label={refreshAction.label} onClick={refreshAction.run} spinning={refreshAction.spinning} /> : undefined
 
   const ask = onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))
+  // Run online (owner, 13 Nov): on a Crew on this Mac, each schedule, webhook and watcher can move to its agent's online agent.
+  const runOnline = crewPage && localMode && canManage !== false ? (name: string) => { void ask(runOnlineAutomationAsk(name)) } : undefined
   const schedulesView = <WorkflowScheduleRunsPanel
     embedded
     active
@@ -137,9 +142,10 @@ export function AutomationHubPanel({
     hideHeader
     refreshToken={schedulesRefreshToken}
     onStatus={setSchedulesStatus}
+    onRunOnline={runOnline}
     onClose={() => {}}
   />
-  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} />
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} onRunOnline={runOnline} canManage={canManage} embedded={crewPage} />
   const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
     embedded
     pageRows={crewPage}
@@ -147,6 +153,7 @@ export function AutomationHubPanel({
     scope={productTriggerScope}
     workspacePath={workspacePath}
     onAsk={onAskAI}
+    onRunOnline={runOnline}
     deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
     hideHeader
     refreshToken={triggersRefreshToken}

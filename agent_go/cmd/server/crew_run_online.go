@@ -20,7 +20,7 @@ import (
 )
 
 // Run online (owner, 12 Nov, PLAT-856-564): a copy, not a move. The agent's chat is forked into a new tab
-// "<name> · online", the message schedules the agent picked are pointed at that tab, and the new tab is published
+// "<name> · online", the automations the agent picked (schedules, webhooks, watchers) are pointed at that tab, and the new tab is published
 // to the server with the existing publish transfer. The original keeps running on this Mac. The copy starts once
 // the source agent's reply has ended, so the fork holds its finished conversation (the handover note included),
 // and the fork is idle when it is published. The person's request (or the Run online button) is the yes.
@@ -60,6 +60,15 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 	if err != nil {
 		return "", err
 	}
+	// One online agent per agent: a second Run online would make another copy, not move more automations.
+	if placements, e := readCrewAgentPlacements(project); e == nil {
+		online := firstNonEmptyTrimmed(identity.Name, "Main") + crewRunOnlineSuffix
+		for _, place := range placements {
+			if place.Name == online && place.Location == "server" {
+				return "", fmt.Errorf("this agent already has its online agent, %q. Moving more automations to an online agent is not built yet; for now set them up on the website for %q", online, online)
+			}
+		}
+	}
 	selection := crewAgentPublishSelection{Tab: tab, AccountID: externalArg(args, "account_id")}
 	if raw, ok := args["paths"].([]any); ok {
 		for _, item := range raw {
@@ -73,15 +82,15 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 	if selection, err = cleanCrewAgentPublishSelection(selection); err != nil {
 		return "", err
 	}
-	var scheduleNames []string
-	if raw, ok := args["schedules"].([]any); ok {
+	var automationNames []string
+	if raw, ok := args["automations"].([]any); ok {
 		for _, item := range raw {
 			if name, ok := item.(string); ok && strings.TrimSpace(name) != "" {
-				scheduleNames = append(scheduleNames, strings.TrimSpace(name))
+				automationNames = append(automationNames, strings.TrimSpace(name))
 			}
 		}
 	}
-	schedules, err := api.crewRunOnlineSchedules(ctx, claims, roots, project, tab, scheduleNames)
+	automations, err := api.crewRunOnlineAutomations(ctx, claims, roots, project, tab, automationNames)
 	if err != nil {
 		return "", err
 	}
@@ -106,13 +115,13 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 		defer crewRunOnlineBusy.Delete(key)
 		background := context.WithoutCancel(ctx)
 		started := time.Now()
-		copyName, note, err := api.runCrewAgentOnline(background, claims, connection, roots, record.SessionID, tab, name, selection, schedules)
+		copyName, note, err := api.runCrewAgentOnline(background, claims, connection, roots, record.SessionID, tab, name, selection, automations)
 		result := "copied"
 		if err != nil {
 			result = "failed"
 		}
-		log.Printf("[CREW_RUN_ONLINE] owner=%s project=%s tab=%s result=%s schedules=%d paths=%d elapsed_ms=%d", claims.UserID, project, tab, result, len(schedules), len(selection.Paths), time.Since(started).Milliseconds())
-		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d schedule(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.%s", name, len(selection.Paths), len(schedules), copyName, note)
+		log.Printf("[CREW_RUN_ONLINE] owner=%s project=%s tab=%s result=%s automations=%d paths=%d elapsed_ms=%d", claims.UserID, project, tab, result, automations.count(), len(selection.Paths), time.Since(started).Milliseconds())
+		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d automation(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.%s", name, len(selection.Paths), automations.count(), copyName, note)
 		if err != nil {
 			message = fmt.Sprintf("[Run online] The online agent for %q was not made: %s. Tell the person in one line what happened and what they can do.", name, err.Error())
 		}
@@ -120,7 +129,7 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 			log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s report=undelivered", project, tab)
 		}
 	}()
-	raw, _ := json.Marshal(map[string]any{"status": "starting", "agent": name, "online_name": name + crewRunOnlineSuffix, "paths": selection.Paths, "schedules": scheduleNames, "next": "The online agent is made when this reply ends; a message arrives in this chat when it runs. The original stays on this Mac. Call it the online agent, never a copy or backup (the backup is the Team's, for when the Mac is off)."})
+	raw, _ := json.Marshal(map[string]any{"status": "starting", "agent": name, "online_name": name + crewRunOnlineSuffix, "paths": selection.Paths, "automations": automationNames, "next": "The online agent is made when this reply ends; a message arrives in this chat when it runs. The original stays on this Mac. Call it the online agent, never a copy or backup (the backup is the Team's, for when the Mac is off)."})
 	return string(raw), nil
 }
 
@@ -177,35 +186,161 @@ func (api *StreamingAPI) crewRunOnlineRecord(ctx context.Context, claims *UserCl
 	return record, identity, nil
 }
 
-// crewRunOnlineSchedules are the IDs of the named message schedules that send work to this agent.
-func (api *StreamingAPI) crewRunOnlineSchedules(ctx context.Context, claims *UserClaims, roots crewroot.Roots, project, tab string, names []string) ([]string, error) {
+// crewRunOnlineAutomations are what the agent picked to go online with it, by name: schedules (on a timer, with or
+// without a watcher condition), webhooks and watchers that send their work to this agent (owner, 13 Nov).
+type crewRunOnlineAutomations struct {
+	Schedules []string // schedule IDs
+	Webhooks  []string // webhook IDs
+	Watchers  []string // watcher (condition caller) schedule IDs
+}
+
+func (a crewRunOnlineAutomations) count() int {
+	return len(a.Schedules) + len(a.Webhooks) + len(a.Watchers)
+}
+
+func (api *StreamingAPI) crewRunOnlineAutomations(ctx context.Context, claims *UserClaims, roots crewroot.Roots, project, tab string, names []string) (crewRunOnlineAutomations, error) {
+	var out crewRunOnlineAutomations
 	if len(names) == 0 {
-		return nil, nil
+		return out, nil
 	}
-	all, err := readProjectSchedules(ctx, roots.Virtual)
+	schedules, err := readProjectSchedules(ctx, roots.Virtual)
 	if err != nil {
-		return nil, err
+		return out, err
+	}
+	hooks, err := readProjectWebhookDefinitions(ctx, roots.Virtual)
+	if err != nil {
+		return out, err
+	}
+	states, err := api.crewMoveDispatcher().loadState(ctx, claims.UserID)
+	if err != nil {
+		return out, err
+	}
+	var watchers []productScheduleJob
+	for _, job := range conditionCallerJobs(claims.UserID, states) {
+		if job.Profile.ID == crewProfileID && job.ProjectID == project {
+			watchers = append(watchers, job)
+		}
 	}
 	main, err := api.crewHandoffProjectTemplate(ctx, claims, project)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	h := crewMoveHeader{AgentTab: tab, SourceID: project, MainKey: main.ConversationKey}
-	var ids []string
 	for _, name := range names {
-		at := slices.IndexFunc(all, func(s projectactions.Schedule) bool { return strings.EqualFold(s.Name, name) })
-		if at < 0 {
-			return nil, fmt.Errorf("no schedule is named %q", name)
+		matched, other := false, false
+		for _, s := range schedules {
+			if strings.EqualFold(s.Name, name) {
+				if crewAgentScheduleMatches(s, h) {
+					out.Schedules, matched = append(out.Schedules, s.ID), true
+				} else {
+					other = true
+				}
+			}
 		}
-		if all[at].Action.Type != "message" || !crewAgentTargetMatches(all[at].Action.Tab, h) {
-			return nil, fmt.Errorf("%q does not send its work to this agent; it stays on this Mac", name)
+		for _, hook := range hooks {
+			if strings.EqualFold(hook.Name, name) {
+				if crewAgentTargetMatches(hook.Action.Tab, h) {
+					out.Webhooks, matched = append(out.Webhooks, hook.ID), true
+				} else {
+					other = true
+				}
+			}
 		}
-		ids = append(ids, all[at].ID)
+		for _, job := range watchers {
+			if strings.EqualFold(job.Schedule.Name, name) {
+				if c := job.Schedule.Condition; c != nil && crewAgentTargetMatches(c.Target.ChatID, h) {
+					out.Watchers, matched = append(out.Watchers, job.Schedule.ID), true
+				} else {
+					other = true
+				}
+			}
+		}
+		if !matched && other {
+			return out, fmt.Errorf("%q sends its work to another agent or a workflow; it stays on this Mac", name)
+		}
+		if !matched {
+			return out, fmt.Errorf("no schedule, webhook or watcher is named %q", name)
+		}
 	}
-	return ids, nil
+	return out, nil
 }
 
-func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserClaims, connection desktopConnection, roots crewroot.Roots, source, tab, name string, selection crewAgentPublishSelection, schedules []string) (string, string, error) {
+// retargetCrewRunOnline points the picked automations at the online agent's tab, so its publish moves them with it and
+// switches them off here. The returned restore puts them back when the publish fails.
+func (api *StreamingAPI) retargetCrewRunOnline(ctx context.Context, owner string, roots crewroot.Roots, picked crewRunOnlineAutomations, to string) (func(), error) {
+	var undo []func() error
+	restore := func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			if e := undo[i](); e != nil {
+				log.Printf("[CREW_RUN_ONLINE] project=%s automations_restored=false reason=%q", roots.ID, e.Error())
+			}
+		}
+	}
+	if len(picked.Schedules) > 0 {
+		all, err := readProjectSchedules(ctx, roots.Virtual)
+		if err != nil {
+			return restore, err
+		}
+		before := slices.Clone(all)
+		for i := range all {
+			if !slices.Contains(picked.Schedules, all[i].ID) {
+				continue
+			}
+			var input scheduleExecutionInput
+			if json.Unmarshal(all[i].Input, &input) == nil && input.Condition != nil {
+				input.Condition.Target.ChatID = to
+				raw, err := json.Marshal(input)
+				if err != nil {
+					return restore, err
+				}
+				all[i].Input = raw
+			} else {
+				all[i].Action.Tab = to
+			}
+		}
+		if err = writeProjectSchedules(ctx, roots.Virtual, all); err != nil {
+			return restore, err
+		}
+		undo = append(undo, func() error { return writeProjectSchedules(ctx, roots.Virtual, before) })
+	}
+	if len(picked.Webhooks) > 0 {
+		hooks, err := readProjectWebhookDefinitions(ctx, roots.Virtual)
+		if err != nil {
+			return restore, err
+		}
+		before := slices.Clone(hooks)
+		for i := range hooks {
+			if slices.Contains(picked.Webhooks, hooks[i].ID) {
+				hooks[i].Action.Tab = to
+			}
+		}
+		if err = writeProjectWebhookDefinitions(ctx, roots.Virtual, hooks); err != nil {
+			return restore, err
+		}
+		undo = append(undo, func() error { return writeProjectWebhookDefinitions(ctx, roots.Virtual, before) })
+	}
+	dispatcher := api.crewMoveDispatcher()
+	for _, id := range picked.Watchers {
+		key, old := projectScheduleStateKey(crewProfileID, roots.ID, id), ""
+		if err := dispatcher.updateStateByKey(ctx, owner, key, func(st *productScheduleUserState) {
+			if st.Watcher != nil && st.Watcher.Schedule.Condition != nil {
+				old, st.Watcher.Schedule.Condition.Target.ChatID = st.Watcher.Schedule.Condition.Target.ChatID, to
+			}
+		}); err != nil {
+			return restore, err
+		}
+		undo = append(undo, func() error {
+			return dispatcher.updateStateByKey(ctx, owner, key, func(st *productScheduleUserState) {
+				if st.Watcher != nil && st.Watcher.Schedule.Condition != nil {
+					st.Watcher.Schedule.Condition.Target.ChatID = old
+				}
+			})
+		})
+	}
+	return restore, nil
+}
+
+func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserClaims, connection desktopConnection, roots crewroot.Roots, source, tab, name string, selection crewAgentPublishSelection, automations crewRunOnlineAutomations) (string, string, error) {
 	deadline := time.Now().Add(crewRunOnlineWait)
 	for api.crewAgentTurnRunning(source) {
 		if time.Now().After(deadline) {
@@ -220,28 +355,12 @@ func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserCla
 		return copyName, "", err
 	}
 	copyName = fork.Name
-	// Point the chosen schedules at the copy: the publish moves them with it and switches them off here.
-	var before []projectactions.Schedule
-	if len(schedules) > 0 {
-		all, e := readProjectSchedules(ctx, roots.Virtual)
-		if e != nil {
-			return copyName, "", e
-		}
-		before = slices.Clone(all)
-		for i := range all {
-			if slices.Contains(schedules, all[i].ID) {
-				all[i].Action.Tab = fork.ChatID
-			}
-		}
-		if e = writeProjectSchedules(ctx, roots.Virtual, all); e != nil {
-			return copyName, "", e
-		}
+	restore, err := api.retargetCrewRunOnline(ctx, claims.UserID, roots, automations, fork.ChatID)
+	if err == nil {
+		err = api.publishCrewRunOnlineCopy(ctx, claims, connection, roots.ID, selection, fork.ChatID)
 	}
-	err = api.publishCrewRunOnlineCopy(ctx, claims, connection, roots.ID, selection, fork.ChatID)
-	if err != nil && before != nil {
-		if e := writeProjectSchedules(ctx, roots.Virtual, before); e != nil {
-			log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s schedules_restored=false reason=%q", roots.ID, tab, e.Error())
-		}
+	if err != nil {
+		restore()
 	}
 	if err != nil {
 		return copyName, "", fmt.Errorf("%s (the tab %q stayed on this Mac; you can delete it)", err.Error(), copyName)

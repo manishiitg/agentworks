@@ -10,6 +10,7 @@ import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useChatStore } from '../../stores/useChatStore'
 import { isWorkSideChatTab, workSideChatKey } from '../../products/work/workTabs'
+import { RUN_ONLINE_AUTOMATION_HINT } from './runOnlineAutomation'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 function messageOf(error: unknown) { return axios.isAxiosError(error) && typeof error.response?.data === 'string' ? error.response.data : error instanceof Error ? error.message : 'Watcher request failed' }
@@ -29,7 +30,7 @@ function targetLabel(t: ConditionTrigger['target'], sideChats: SideChat[] = []) 
   return `${t.name} · trigger ${t.trigger_id}`
 }
 
-export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true, embedded = false }: { embedded?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
+export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, onRunOnline, canManage = true, embedded = false }: { embedded?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; onRunOnline?: (name: string) => void; canManage?: boolean }) {
   const [triggers, setTriggers] = useState<ConditionTrigger[]>([])
   const [history, setHistory] = useState<Record<string, ConditionHistory>>({})
   const [savedChats, setSavedChats] = useState<SideChat[]>([])
@@ -125,6 +126,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
           {!t.completed_at && <button className={buttonClass} disabled={busy} onClick={() => void manage('update', t.id, { enabled: !t.enabled })}>{t.enabled ? 'Pause' : 'Enable'}</button>}
           {!t.github_pr && <button className={buttonClass} disabled={busy || t.check_mode === 'inbox'} onClick={() => void ask(`Configure event wakeups for watcher ${t.id}. Read its current definition with manage_condition_triggers. Check whether my source can send authenticated webhooks; use check_mode event or both with a backup schedule. Select an existing granted secret by name for event_secret_name and include it in secrets. Do not show secret values. Explain how to connect the returned event_path to the source. Preserve the detector, target and one-time choice unless I ask to change them.`)}>{t.event_path ? 'Edit event connection' : 'Connect events in chat'}</button>}
           <button className={buttonClass} disabled={busy} onClick={() => void ask(`Edit watcher ${t.id}. Read its saved definition and read_script using manage_condition_triggers, explain its check and target, then apply the changes I request. Preserve its cursor and history.`)}>Edit in chat</button>
+          {onRunOnline && <button className={buttonClass} disabled={busy} title={RUN_ONLINE_AUTOMATION_HINT} onClick={() => onRunOnline(t.name)}>Run online</button>}
           <button className={buttonClass} disabled={busy} onClick={() => void manage('delete', t.id)}>Remove</button>
         </>}
         <button className={buttonClass} disabled={busy} onClick={() => void inspect(t.id)}>History</button>

@@ -659,7 +659,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 }
 
 // The agent menu's Run online sends this to the agent itself: it picks what its online agent needs (crew_run_online.go).
-const RUN_ONLINE_ASK = 'Run yourself online: make your online agent with manage_crew_sync run_online. Pick the folders and files you work with and the schedules meant for you, and write a short handover note first.'
+const RUN_ONLINE_ASK = 'Run yourself online: make your online agent with manage_crew_sync run_online. Pick the folders and files you work with and the automations meant for you (schedules, webhooks, watchers), and write a short handover note first.'
 const PHONE_PLACE: Record<CloudState, string> ={ mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
