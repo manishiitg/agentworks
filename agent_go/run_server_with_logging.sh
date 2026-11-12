@@ -3,10 +3,15 @@
 # This makes it easier to debug event issues by capturing all output to a log file
 # Terminal output is suppressed as requested.
 
+# Time through the first successful health response (no secret or query data).
+DEV_LAUNCH_STARTED_SECONDS=$SECONDS
+DEV_LAUNCH_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../scripts/dev-logging.sh"
 source "${SCRIPT_DIR}/../scripts/dev-processes.sh"
+source "${SCRIPT_DIR}/../scripts/dev-startup-dependencies.sh"
 
 # Local launches always run every core product, Vault included (owner, 2026-10-26:
 # server products are not optional). Local authentication is unchanged.
@@ -2127,6 +2132,10 @@ wait_for_agent_health() {
         if curl -fsS "$url" >/dev/null 2>&1; then
             AGENT_LISTENER="$(dev_owned_listener "$SERVER_PID" "$AGENT_PORT")"
             echo "✅ Agent server is healthy at: $url"
+            local timing="[STARTUP_TIMING] started=$DEV_LAUNCH_STARTED_AT healthy=$(date -u +%Y-%m-%dT%H:%M:%SZ) elapsed_seconds=$((SECONDS-DEV_LAUNCH_STARTED_SECONDS))"
+            echo "$timing"
+            dev_detail "$timing"
+            start_deferred_dev_setup
             return 0
         fi
         if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -2302,41 +2311,24 @@ if [ "${AGENTWORKS_SKIP_GLOBAL_DEPENDENCY_UPDATES:-false}" = "true" ]; then
 else
     ensure_tmux_for_claude_code
 
-    # Keep the historical developer-runner behavior for the normal instance.
-    # preview_report and every browser-automation tool shell out to
-    # `agent-browser` by name with no PATH check of their own — an install
-    # failure here must not be reported as success, or the first real symptom
-    # is an opaque "exit code 127: agent-browser: not found" deep inside a
-    # tool call.
-    echo "📦 Updating agent-browser to latest..."
-    if ! dev_setup npm install -g agent-browser@latest; then
-        echo "❌ Error: npm install -g agent-browser@latest failed"
-        exit 1
-    fi
-    if ! command -v agent-browser >/dev/null 2>&1; then
-        echo "❌ Error: agent-browser still not on PATH after install"
-        exit 1
-    fi
-    dev_detail "✅ agent-browser updated: $(agent-browser --version 2>&1)"
+    ensure_dev_agent_browser || { echo "❌ agent-browser installation failed"; exit 1; }
 fi
 
-# Serve the same private Playwright fixtures as server releases. Build these
-# from source on every local start so archive contents match this checkout.
-# An explicit override belongs to the caller and must not be overwritten.
+# Fixture downloads are not needed for health or the first chat request.
+# Explicit package overrides remain caller-owned and validated before launch.
+DEV_FIXTURES_PENDING=false
 if [ -z "${AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR:-}" ]; then
     export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR="$SCRIPT_DIR/packages"
-    dev_detail "📦 Building AgentWorks Playwright fixture packages..."
-    if ! dev_setup python3 "$SCRIPT_DIR/../scripts/build-playwright-packages.py" "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR"; then
-        echo "❌ Failed to build Playwright fixture packages; check Python 3 and package sources"
-        exit 1
+    if [ "$UPDATE_MMX_CLI" = true ]; then
+        dev_setup build_dev_playwright_fixtures || exit 1
+    else
+        DEV_FIXTURES_PENDING=true
     fi
+else
+    for fixture_archive in agentworks-playwright.tgz agentworks-playwright-python.zip; do
+        [ -r "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR/$fixture_archive" ] || { echo "❌ Missing Playwright fixture archive: $fixture_archive"; exit 1; }
+    done
 fi
-for fixture_archive in agentworks-playwright.tgz agentworks-playwright-python.zip; do
-    if [ ! -r "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR/$fixture_archive" ]; then
-        echo "❌ Missing Playwright fixture archive: $AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR/$fixture_archive"
-        exit 1
-    fi
-done
 export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR
 
 # Build mcpbridge binary (required for CLI provider MCP bridge)
@@ -2349,8 +2341,7 @@ MCPBRIDGE_BIN_DIR="${SCRIPT_DIR}/.bin"
 mkdir -p "$MCPBRIDGE_BIN_DIR"
 # Use the pinned module from this checkout; never build in another agent's
 # mcpagent checkout or install an unreviewed @latest during isolated testing.
-echo "🔨 Building the pinned mcpbridge dependency..."
-GOWORK=off go build -o "$MCPBRIDGE_BIN_DIR/mcpbridge" github.com/manishiitg/mcpagent/cmd/mcpbridge || exit 1
+ensure_dev_mcpbridge "$MCPBRIDGE_BIN_DIR/mcpbridge" || exit 1
 if [ -x "$MCPBRIDGE_BIN_DIR/mcpbridge" ]; then
     export MCP_BRIDGE_BINARY="$MCPBRIDGE_BIN_DIR/mcpbridge"
 fi
@@ -2535,6 +2526,7 @@ elif [ "$BACKGROUND_MODE" = true ]; then
         fi
     fi
 
+    start_deferred_dev_setup
     echo "🛑 To stop the server, run: kill $SERVER_PID"
     if [ "$WITH_WORKSPACE" = true ]; then
         dev_detail "✅ Native workspace is running in background (PID: $WORKSPACE_PID)"
