@@ -130,6 +130,6 @@ func (api *StreamingAPI) showClaudeWake(sessionID string) {
 		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=%s", sessionID, reason)
 		return
 	}
-	backgroundFollowUps.started(sessionID)
+	api.noteAutomaticFollowUpStarted(sessionID)
 	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=adopted", sessionID)
 }

@@ -4299,7 +4299,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	if idleRun == nil && !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
 		api.clearSessionStopped(sessionID)
-		backgroundFollowUps.personWrote(sessionID)
+		if idleCompactPersonTurn(r, sessionID, req) && req.AgentMessageInbox == "" {
+			if delivered, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{}); len(delivered) == 0 {
+				backgroundFollowUps.personWrote(sessionID)
+			}
+		}
 		// Lift the MCP registry zombie-prevention flag only for that intentional
 		// user resume, otherwise internal recovery can resurrect stopped bridges.
 		mcpagent.ClearHTTPSessionStopped(sessionID)
@@ -5228,6 +5232,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// background agents launched by this turn. Do this before writing the
 	// response so a fast waiter can never observe an unregistered root.
 	req.userID = currentUserID
+	if idleRun == nil {
+		if err := api.saveRestartContinueRequest(r.Context(), currentUserID, sessionID, queryID, queryRequestWithEffectiveRuntime(req, finalProvider, finalModelID)); err != nil {
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=config_write_failed", sessionID, queryID)
+		}
+	}
 	api.trackConversationTurnStart(queryID, sessionID, req)
 	if idleRun == nil {
 		// An idle compaction changes no files; capturing them would show a
