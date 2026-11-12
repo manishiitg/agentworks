@@ -190,7 +190,7 @@ func crewTeamAddressOnMac(raw string) string {
 	return ""
 }
 
-// teamMemberAgentRows lists, on the Mac, each Team member's own agents of this person's Mac Crews, read from the
+// teamMemberAgentRows lists, on the Mac, each Team member's own agents of the given Mac Crews, read from the
 // Crew's online copy through the Mac's sign-in (the server decides what the owner may see). Their id is the
 // send_message target "team:<Crew>:<agent ID>".
 func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]interface{}) []map[string]interface{} {
