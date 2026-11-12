@@ -1128,11 +1128,11 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		position := es.generationPositions[sessionID]
 		unframedBytes := 0
 		if position.remainder != nil {
-		    unframedBytes = position.remainder.complete.Len() + position.remainder.pending.Len()
+			unframedBytes = position.remainder.complete.Len() + position.remainder.pending.Len()
 		}
 		remainderBytes := 0
 		if event.ReplyRemainder != nil {
-		    remainderBytes = len(*event.ReplyRemainder)
+			remainderBytes = len(*event.ReplyRemainder)
 		}
 		log.Printf("[CHAT_GENERATION] session=%s type=%s row=%s generation=%s start_sequence=%d append_sequence=%d reply_blocks_complete=%t block_count=%d native_block_id=%s unframed_bytes=%d remainder_bytes=%d", sessionID, event.Type, event.ID, event.GenerationID, event.GenerationStartSequence, event.Sequence, event.ReplyBlocksComplete, len(position.blocks), position.blockID, unframedBytes, remainderBytes)
 	}

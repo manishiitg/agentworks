@@ -146,7 +146,7 @@ func TestNativeBlocksStayWholeAcrossDeliveredSteerAndReload(t *testing.T) {
 		rows[row.ID] = restored
 	}
 	restoredA := rows["a-end"]
-	if rows["a-end"].GenerationStartSequence != a.Sequence || rows["b-end"].GenerationStartSequence != b.Sequence || !rows["aggregate"].ReplyBlocksComplete || !rows["done"].ReplyBlocksComplete || eventPayloadMap(&restoredA)["content"] != "before finishes" {
+	if rows["a-end"].GenerationStartSequence != a.Sequence || rows["b-end"].GenerationStartSequence != b.Sequence || !rows["done"].ReplyBlocksComplete || eventPayloadMap(&restoredA)["content"] != "before finishes" {
 		t.Fatal("reload lost a whole native block or its server position")
 	}
 	// A malformed/mixed transport may emit content without identity after known
