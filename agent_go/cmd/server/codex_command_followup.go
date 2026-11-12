@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -18,19 +19,58 @@ const codexCommandFinishedMessage = "[Background command finished] A command you
 // on the command's card.
 const codexCommandOutputTail = 2000
 
+// codexFollowUpChainLimit caps automatic follow-ups in a row: a follow-up can
+// start another long command that finishes and asks for another follow-up,
+// and each one is a full turn on the person's account.
+const codexFollowUpChainLimit = 3
+
+// codexFollowUpChain counts follow-up turns started since the person last
+// wrote in each chat.
+type codexFollowUpChain struct {
+	mu    sync.Mutex
+	count map[string]int
+}
+
+var codexFollowUps = &codexFollowUpChain{count: map[string]int{}}
+
+// skipReason says why no follow-up may start now, or "" when one may.
+func (c *codexFollowUpChain) skipReason(sessionID string, stopped, busy bool) string {
+	switch {
+	case stopped:
+		return "stopped_by_person"
+	case busy:
+		return "chat_busy"
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.count[sessionID] >= codexFollowUpChainLimit {
+		return "chain_limit"
+	}
+	return ""
+}
+
+func (c *codexFollowUpChain) started(sessionID string) {
+	c.mu.Lock()
+	c.count[sessionID]++
+	c.mu.Unlock()
+}
+
+// personWrote starts a new chain: called for every message the person sends.
+func (c *codexFollowUpChain) personWrote(sessionID string) {
+	c.mu.Lock()
+	delete(c.count, sessionID)
+	c.mu.Unlock()
+}
+
 // followUpFinishedCodexCommand runs once per command: CompleteNativeTool
 // closes a command only once. It never starts a turn after the person pressed
-// Stop or while another turn holds the chat.
+// Stop, while another turn holds the chat, or past the chain limit.
 func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID string, failed bool, output string) {
 	// Let commands that finish together and the reply's own end settle first;
 	// the first follow-up then carries on and the rest see a busy chat.
 	time.Sleep(3 * time.Second)
-	if api.isSessionMarkedStopped(sessionID) {
-		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=stopped_by_person", sessionID, commandID)
-		return
-	}
-	if api.isSessionBusyForAutoNotification(sessionID) {
-		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=chat_busy", sessionID, commandID)
+	if reason := codexFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID), api.isSessionBusyForAutoNotification(sessionID)); reason != "" {
+		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=%s", sessionID, commandID, reason)
 		return
 	}
 	status := "successfully"
@@ -49,5 +89,6 @@ func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID strin
 		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=turn_not_started", sessionID, commandID)
 		return
 	}
+	codexFollowUps.started(sessionID)
 	log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=started failed=%t output_len=%d", sessionID, commandID, failed, len(output))
 }
