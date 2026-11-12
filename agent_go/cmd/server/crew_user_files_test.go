@@ -85,11 +85,11 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 		t.Fatal("logical listing", listing.Code, listing.Body.String())
 	}
 	for _, name := range []string{"product.json", "workflow.json"} {
-		if _, err := os.Stat(filepath.Join(roots.Private, name)); err != nil {
+		if _, err := os.Stat(filepath.Join(roots.SettingsDir(), name)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(roots.Resources, name)); !os.IsNotExist(err) {
-			t.Fatal("private manifest shadowed", name)
+			t.Fatal("record loose in the Crew folder", name)
 		}
 	}
 	cwd, err := crewCLIWorkingDir(logical, "owner", "managed-session", "codex-cli", false)

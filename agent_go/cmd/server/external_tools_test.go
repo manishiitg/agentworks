@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
 )
@@ -90,7 +91,14 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 				workspacehandlers.GetRawDocument(c)
 				return
 			}
-			data, err := os.ReadFile(filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw")))
+			physical := filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw"))
+			// A Crew's files resolve like the real workspace's (its database is in .agentworks, PLAT-746-924).
+			if strings.HasPrefix(rel, "Crew/") {
+				if resolved, _, err := crewroot.Resolve(f.docs, strings.TrimSuffix(rel, "/raw")); err == nil {
+					physical = resolved
+				}
+			}
+			data, err := os.ReadFile(physical)
 			if err != nil {
 				c.Status(404)
 				return
