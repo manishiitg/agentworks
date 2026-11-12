@@ -14,8 +14,8 @@ import (
 )
 
 // The share reply (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"; 11 Nov: Share split into Team and
-// Online): two options, each with a status: Team (the Team and the People list, the Team page) and Share agents
-// (people ask the viewer's agents, or start actions the owner set up; an Online tab), plus the Slack tab's rules.
+// Online; 12 Nov: Share agents moved into Team › Agents): the Team option with its status, the Agents tab (people ask
+// the viewer's agents, or start actions the owner set up), plus the Slack tab's rules.
 // Dashboards have their own Online tab (crew_dashboards_tab.go). The server writes every line, chip and
 // status and says which controls this viewer may change; the page prints them and sends the person's change to the
 // existing routes (Team save, people, agent-visibility, agent-rule, the Slack bot routes), plus POST action for one
@@ -25,7 +25,7 @@ import (
 // Crew's actions and its workflows, which are needed only while the page is open.
 
 type crewShareOption struct {
-	// Key is team, agents or slack.
+	// Key is team.
 	Key    string   `json:"key"`
 	Title  string   `json:"title"`
 	Line   string   `json:"line"`
@@ -42,7 +42,7 @@ type crewShareOption struct {
 type crewShareAsk struct {
 	On        bool `json:"on"`
 	CanChange bool `json:"can_change"`
-	// Title is the switch's line ("Share coach with your team"); Line is its sub line, for on and off.
+	// Title is the switch's line ("Teammates can ask it"); Line is its sub line, for on and off.
 	Title string `json:"title"`
 	Line  string `json:"line"`
 	// Fixed says why the switch cannot be changed now; Note is one plain line under it.
@@ -86,7 +86,7 @@ type crewShareAction struct {
 	Who string `json:"who"`
 }
 
-// crewShareAgent is one card of Share agents: one of the viewer's own agents, with its Ask part. Actions are not per
+// crewShareAgent is one card of Team › Agents: one of the viewer's own agents, with its Ask part. Actions are not per
 // agent: they are one group below the cards.
 type crewShareAgent struct {
 	Key  string        `json:"key"`
@@ -107,11 +107,10 @@ type crewShareActionsGroup struct {
 	WizardFor string `json:"wizard_for,omitempty"`
 }
 
-// crewSharePage feeds two pages (owner, 11 Nov): the Team page shows the team option, the Online page's Share agents tab
-// the agents option; each prints its option's title and line.
+// crewSharePage feeds the Team page: its team option's title and line, and its Agents tab.
 type crewSharePage struct {
 	Options []crewShareOption `json:"options"`
-	// Share agents: the cards, the line under them ("Who can use these: ..."), and its empty line.
+	// Agents: the cards, the line under them ("Who can use these: ..."), and its empty line.
 	Agents      []crewShareAgent `json:"agents"`
 	AgentsIntro string           `json:"agents_intro"`
 	AgentsEmpty string           `json:"agents_empty,omitempty"`
@@ -334,7 +333,6 @@ const (
 	crewShareActionsIntro     = "Ready-made jobs others can start, like “Review a pull request”. They fill in a few details and get the result back. The job uses your access, but they never get it."
 	crewShareOwnerOnlyActions = "Only the Crew's owner turns actions on or off. Ask the owner to change this action."
 	crewSharePublishedAction  = "This action comes from published source. Change its source and publish again."
-	crewShareTeamOffNote      = "Turn on the Team first. Then people in it can ask this agent."
 )
 
 var crewShareChatOptions = []crewChatShareOption{{crewChatShareLive, "Live"}, {crewChatShareAgent, "Hidden"}}
@@ -591,7 +589,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	page := crewSharePage{Agents: []crewShareAgent{}, AgentsIntro: crewShareActionsIntro,
 		WhoCanUse: crewShareWhoLine(t, everyone, named)}
 
-	// Share agents: the viewer's own agents with Ask, the owner's actions on them, then cards with actions only.
+	// Agents: the viewer's own agents with Ask, then the Crew's actions.
 	canActions := owner && !onMac
 	var groups map[string][]crewShareAction
 	var workflows []crewShareWorkflow
@@ -601,7 +599,6 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		workflows = crewShareWorkflows(ctx, src.workspace)
 		dashWorkspace = src.workspace
 	}
-	sharedAgents, actionsOn := 0, 0
 	for _, a := range tab.Agents {
 		if !a.Mine {
 			continue
@@ -609,7 +606,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
 		locked := a.InTeam && !a.CanUnshare
 		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
-			Title: "Share " + a.Name + " with your team", Line: "Off. Only you can chat with " + a.Name + ".",
+			Title: "Teammates can ask it", Line: "Off: only you use it.",
 			ChangesLabel: "What teammates can do with " + a.Name,
 			ChangesOptions: []crewShareChangeOpt{
 				{Value: false, Label: "Get answers", Line: "They ask, " + a.Name + " answers. " + a.Name + " changes nothing."},
@@ -626,12 +623,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		case onMac:
 			ask.Fixed = crewChangeOnMacLine
 		case !t.On:
-			ask.Note = crewShareTeamOffNote
+			ask.Line, ask.CanChange = "Turn on Team to share", false
 		case locked:
 			ask.Fixed = errCrewTeamLastShared.Error()
-		}
-		if a.InTeam && t.On {
-			sharedAgents++
 		}
 		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
 		page.Agents = append(page.Agents, card)
@@ -671,9 +665,6 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			crews = len(callers)
 		}
 		rows[i].Who = "Who can ask: " + crewSharePeopleWords(t, everyone, named, crews)
-		if rows[i].On {
-			actionsOn++
-		}
 	}
 	page.ActionsGroup = crewShareActionsGroup{Title: "Actions", Line: crewShareActionsIntro, Rows: rows}
 	if len(rows) == 0 {
@@ -708,20 +699,8 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	if t.On {
 		teamStatus = "On"
 	}
-	agentParts := []string{}
-	if sharedAgents > 0 {
-		agentParts = append(agentParts, fmt.Sprintf("%d %s", sharedAgents, plural(sharedAgents, "agent", "agents")))
-	}
-	if actionsOn > 0 {
-		agentParts = append(agentParts, fmt.Sprintf("%d %s", actionsOn, plural(actionsOn, "action", "actions")))
-	}
-	agentStatus := "Off"
-	if len(agentParts) > 0 {
-		agentStatus = "On · " + strings.Join(agentParts, " · ")
-	}
 	page.Options = []crewShareOption{
 		{Key: "team", Title: "Team", Line: "People who work on this Crew with you: the same files and agents, each on their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
-		{Key: "agents", Title: "Share agents", Line: "Let people outside the Team, other Crews and apps ask your agents, or use actions you set up.", Chips: []string{"in the app", "Slack", "Claude, ChatGPT", "other Crews"}, Status: agentStatus, On: len(agentParts) > 0},
 	}
 	anyOpen := false
 	for i := range page.Options {

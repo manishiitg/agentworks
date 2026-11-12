@@ -8,7 +8,7 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
 import { SlackBotChoice } from '../../components/integrations/ProductSlackPanel'
 import { openCrewAccess } from './MacSharedAgents'
-import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewShareOptionKey, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
+import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
@@ -16,13 +16,13 @@ const toMain = (projectId: string, draft: string) => {
 }
 
 /**
- * The Team page and the Online page's Share agents tab (owner, 11 Nov: Share split into Team and Online; 9 Nov approved
- * mocks "Share a Crew" and "Share in Slack"). Each prints its option from the server's /share reply: the title, its
- * one-line explanation, then its setup. Team is the Team (the first-time wizard, People and the folder line); Share
- * agents is Ask and actions per agent. The server writes every line and says what this person may change; the page
- * prints it and sends their change to the existing routes. The same pages for the owner and every teammate.
+ * The Team page (owner, 11 Nov: Share split into Team and Online; 12 Nov: Share agents moved into Team › Agents). It
+ * prints the server's /share reply: the team option's title, line and status, the Team (the first-time wizard,
+ * People, Activity, Sync), and the Agents tab: Ask and actions per agent. With the Team off there are no tabs, so the
+ * agents follow People. The server writes every line and says what this person may change; the page prints it and
+ * sends their change to the existing routes. The same page for the owner and every teammate.
  */
-export function ShareCrew({ option: key, projectId, workspacePath, onBack, onTurnOn }: { option: CrewShareOptionKey; projectId: string; workspacePath?: string; onBack?: () => void; onTurnOn?: () => void }) {
+export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; onBack?: () => void; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
@@ -35,15 +35,16 @@ export function ShareCrew({ option: key, projectId, workspacePath, onBack, onTur
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch (its dashboards are on the
-  // Dashboards tab).
-  if (state.unbound) return key === 'team' ? <TeamTab projectId={projectId} onTurnOn={onTurnOn} /> : <p className="text-xs text-muted-foreground">Turn on Mac online to share your agents.</p>
+  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch.
+  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
   if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
-  const option = page.options.find(item => item.key === key)
+  const option = page.options.find(item => item.key === 'team')
   if (!option) return null
   // With the Team on, the Team page starts with its tabs and the back arrow beside them, like every other side panel
   // page (owner, 11 Nov: "follow what we have everywhere"; YourComputerPanel, 4 Nov: no title row).
-  const teamTabs = key === 'team' && !!state.view?.team.on && !state.view?.new_team
+  const teamOn = !!state.view?.team.on
+  const teamTabs = teamOn && !state.view?.new_team
+  const agents = <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => openCrewAccess(projectId, '', 'team', 'people')} />
   return <div className="space-y-3">
     {!teamTabs && <div className="flex items-start gap-2 px-1">
       {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>}
@@ -54,9 +55,9 @@ export function ShareCrew({ option: key, projectId, workspacePath, onBack, onTur
       <span className={`shrink-0 whitespace-nowrap pt-1 text-xs ${option.on ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{option.status}</span>
     </div>}
     {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
-    {key === 'team' && <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} />}
-    {key === 'agents' && <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => openCrewAccess(projectId, '', 'team')} />}
-    {key === 'team' && state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
+    <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} agents={agents} />
+    {!teamOn && !state.view?.new_team && agents}
+    {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
   </div>
 }
 
@@ -92,25 +93,23 @@ function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
   </div>
 }
 
-/** Share agents: one card per agent (Ask and Actions), then "Who can use these". */
+/** Team › Agents: one card per own agent (Ask), the Crew's actions, teammates' agents, then "Who can use these". */
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
   const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
-    {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents · what you share with others</p>}
+    {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents</p>}
     {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
     {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
     <ShareActions group={page.actions_group} target={target} projectId={projectId} onWizard={setWizard} />
+    {/* Teammates' agents: one row each with who shared it; no switches, they belong to the teammate. */}
     {shared.length > 0 && <>
-      <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Shared with you · agents other people in this Crew share with you</p>
-      {shared.map(person => <div key={person.name + person.role} className="rounded-xl border border-border px-3.5 py-3 text-sm">
-        <p className="text-[15px] font-semibold">{person.name}</p>
-        <p className="text-xs text-muted-foreground">{person.role}</p>
-        {person.items.map(item => <div key={item.name + item.line} className="mt-2 flex items-start gap-3 border-t border-border pt-2">
-          <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block text-xs text-muted-foreground">{item.line}</span></span>
-          <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
-        </div>)}
-      </div>)}
+      <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Teammates' agents</p>
+      {shared.flatMap(person => person.items.map(item => <div key={person.name + item.name + item.line} className="flex items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-sm">
+        <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{person.name.slice(0, 1).toUpperCase()}</span>
+        <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{person.name} · {item.line}</span></span>
+        <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
+      </div>))}
     </>}
     <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
     {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}

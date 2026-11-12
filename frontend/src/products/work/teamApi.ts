@@ -274,7 +274,7 @@ export function teamFolders(target: TeamTarget, query: string): Promise<TeamFold
 /** The Share page (crew_share_page.go, owner 9 Nov mocks): four options with the server's status and chips, the
  * viewer's agents (the share switch with its permissions) and the owner's actions, the who-can-use line and the dashboards
  * count. Every word and every "may change" is the server's; the page prints them and sends the person's change. */
-export type CrewShareOptionKey = 'team' | 'agents'
+export type CrewShareOptionKey = 'team'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean
   title: string; line: string; changes_label: string; changes_options: { value: boolean; label: string; line: string }[]
