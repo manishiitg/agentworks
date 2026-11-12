@@ -1,3 +1,4 @@
+import { create } from 'zustand'
 import api from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
@@ -6,7 +7,21 @@ import type { AgentProfileSideChat } from '../services/api-types'
 
 export const chatForkedEvent = 'agentworks:chat-forked'
 type ForkedChat = AgentProfileSideChat & { engine: string; provider: string; model_id: string; connection_id?: string; reasoning_effort?: string; native_resume: boolean; next: string }
-const pending = new Set<string>()
+type ForkFeedback = { pending: boolean; error?: string }
+// Presentation of the existing request, not a queue or a new admission rule.
+const useForkFeedback = create<{ byTab: Record<string, ForkFeedback> }>(() => ({ byTab: {} }))
+const feedbackKey = (tabId: string) => `${captureChatIdentity()}:${tabId}`
+export function useChatForkFeedback(tabId: string | null) {
+  const key = tabId ? feedbackKey(tabId) : ''
+  return useForkFeedback(state => state.byTab[key])
+}
+export function dismissChatForkFeedback(tabId: string) {
+  const key = feedbackKey(tabId)
+  useForkFeedback.setState(state => {
+    const byTab = { ...state.byTab }; delete byTab[key]
+    return { byTab }
+  })
+}
 
 /** Both the slash command and agent card use the server's independent copy. */
 export async function forkChatTab(tabId: string): Promise<void> {
@@ -17,8 +32,8 @@ export async function forkChatTab(tabId: string): Promise<void> {
   }
   const identity = captureChatIdentity()
   const pendingKey = `${identity}:${tabId}`
-  if (pending.has(pendingKey)) return
-  pending.add(pendingKey)
+  if (useForkFeedback.getState().byTab[pendingKey]?.pending) return
+  useForkFeedback.setState(state => ({ byTab: { ...state.byTab, [pendingKey]: { pending: true } } }))
   try {
     const { data: chat } = await api.post<ForkedChat>('/api/agent-profiles/work/conversation/fork', { conversation_key: source.metadata.agentProfileConversationKey })
     if (!isChatIdentityCurrent(identity)) return
@@ -42,6 +57,14 @@ export async function forkChatTab(tabId: string): Promise<void> {
     if (!isChatIdentityCurrent(identity)) return
     const detail = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
     const message = typeof detail === 'string' ? detail : detail?.message
-    useChatStore.getState().addToast(message || 'Could not fork this chat. Try again.', 'error')
-  } finally { pending.delete(pendingKey) }
+    const error = message || 'Could not fork this chat. Try again.'
+    useForkFeedback.setState(state => ({ byTab: { ...state.byTab, [pendingKey]: { pending: false, error } } }))
+    useChatStore.getState().addToast(error, 'error')
+  } finally {
+    useForkFeedback.setState(state => {
+      if (isChatIdentityCurrent(identity) && state.byTab[pendingKey]?.error) return state
+      const byTab = { ...state.byTab }; delete byTab[pendingKey]
+      return { byTab }
+    })
+  }
 }

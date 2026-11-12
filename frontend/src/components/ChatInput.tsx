@@ -1,3 +1,4 @@
+import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
 import { resolveSlashCommandInput } from '../commands/commandPrompt'
 import { presetDraftChange, type AppliedPreset } from './presetDraft'
@@ -434,6 +435,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const storeActiveTabId = useChatStore(state => state.activeTabId)
   const activeTabId = scopedTabId === null ? null : (scopedTabId ?? storeActiveTabId)
+  const forkFeedback = useChatForkFeedback(activeTabId)
   // Use the scoped tab as the mode source when ChatInput is embedded. The global
   // mode category can lag behind WorkflowLayout, which would otherwise make a
   // workflow builder input behave like product-profile chat.
@@ -2881,6 +2883,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   return (
     <TooltipProvider>
       <ChatComposerBand product={isProductSurface}>
+      {forkFeedback && <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
+        {forkFeedback.pending ? <><Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin" /><span>Forking this chat… The new tab will open when ready.</span></> : <>
+          <span className="min-w-0 flex-1 break-words">{forkFeedback.error}</span>
+          <button type="button" className="shrink-0 rounded px-1 font-medium text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { if (activeTabId) void forkChatTab(activeTabId) }}>Retry</button>
+          <button type="button" aria-label="Dismiss fork error" className="shrink-0 rounded p-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { if (activeTabId) dismissChatForkFeedback(activeTabId) }}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+        </>}
+      </div>}
       {/* Preserve the chat draft while native terminal input owns all typing.
           Commands and uploads remain available through the terminal toolbar. */}
       <div id={terminalComposerId} hidden={nativeTerminalTools} data-testid="message-composer">
