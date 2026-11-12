@@ -235,3 +235,16 @@ frontend/public/runtime-config.js.*
 agent_go/static/dashboard-react.css
 agent_go/cmd/server/static/dashboard-react.css
 agent_go/.native-sync/
+
+# Dashboard and preview runtimes: built from frontend/ sources by the app
+# launcher (prepare:local-assets) and the release build, never edited by hand.
+# Tracking them made every local restart show them as changed files.
+/agent_go/static/report-preview.js
+/agent_go/static/dashboard-react.js
+/agent_go/static/dashboard.css
+/agent_go/cmd/server/static/report-preview.js
+/agent_go/cmd/server/static/dashboard-react.js
+/agent_go/cmd/server/static/dashboard.css
+/frontend/public/report-preview.js
+/frontend/public/dashboard-react.js
+/frontend/public/dashboard.css
