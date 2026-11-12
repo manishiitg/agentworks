@@ -1094,10 +1094,10 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
 const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows'; live?: boolean }> = ({ item, toolLayout, live = false }) => {
   const showTools = useChatDisplayStore(state => state.showTools)
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
-  const rows = toolLayout === 'rows' || showTools
+  const rows = toolLayout === 'rows' && showTools
   const segments = useMemo(() => segmentToolBatch(item.key, pairs, rows), [item.key, pairs, rows])
   if (!rows && segments.length === 1 && segments[0].kind === 'tools') {
-    return <WorkSummary pairs={pairs} toolCount={item.toolCount} live={live} />
+    return showTools ? <ToolCallGroup pairs={pairs} toolCount={item.toolCount} live={live} /> : <WorkSummary pairs={pairs} toolCount={item.toolCount} live={live} />
   }
   return (
     <>
@@ -1106,12 +1106,27 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
         : segment.kind === 'message'
           ? <MessageSentCard key={segment.pair.key} pair={segment.pair} />
           : rows ? <div key={segment.key} data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{segment.pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>
-          : <WorkSummary key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} />)}
+          : showTools ? <ToolCallGroup key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} /> : <WorkSummary key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} />)}
     </>
   )
 }
 
-// Work details off is a status, never a disclosure: old saved expansion state cannot reveal tool payloads.
+// Enabling Tool calls permits inspection; it never expands the transcript.
+// Unmounted when disabled so turning it back on starts closed again.
+const ToolCallGroup: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
+  const [open, setOpen] = React.useState(false)
+  const running = live && pairs.some(pair => pair.status === 'running')
+  return <div className="my-1" data-testid="terminal-tool-call-group">
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+      className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground">
+      <span>{running ? 'Working… · ' : ''}{toolCount} {toolCount === 1 ? 'tool call' : 'tool calls'}</span>
+      {open ? <ChevronDown aria-hidden="true" className="h-3 w-3" /> : <ChevronRight aria-hidden="true" className="h-3 w-3" />}
+    </button>
+    {open && <div className="border-l border-border pl-3">{pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>}
+  </div>
+}
+
+// Tool calls off is a status, never a disclosure: old saved expansion state cannot reveal tool payloads.
 // Incoming/outgoing message cards remain independent conversation content.
 const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, toolCount, live }) => {
   const running = live && pairs.some(pair => pair.status === 'running')
