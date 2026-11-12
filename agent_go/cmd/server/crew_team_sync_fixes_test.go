@@ -653,7 +653,7 @@ func TestCrewTeamMemberMacAgentKnownAfterRestartWhileMacOff(t *testing.T) {
 	saveCrewMacTabs("mac-team", "member", []crewMacTeamTab{tab})
 	crewMacTeamTabsCache.Delete("mac-team\x00member") // a restart: nothing in memory
 	key := crewMacTabRow("mac-team", tab).ConversationKey
-	if person, got, ok := crewMemberMacAgentFor(t.Context(), "mac-team", key, "owner"); !ok || person != "member" || got.Tab != macMainTab {
+	if person, got, ok := crewMemberMacAgentFor(t.Context(), "mac-team", key, "owner", false); !ok || person != "member" || got.Tab != macMainTab {
 		t.Fatalf("the member's agent is unknown while their Mac is off: %q %+v %t", person, got, ok)
 	}
 }

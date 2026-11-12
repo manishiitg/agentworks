@@ -44,21 +44,21 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	if strings.HasPrefix(in.AgentID, "inbox-") {
 		inbox = in.AgentID
 	}
-	var target triggerTarget
-	member := ""
-	if inbox == "" {
-		var ok bool
-		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.AgentID, claims); !ok {
-			return
-		}
-	}
-	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	// The sending agent's conversation key is the one its Mac is listed under, so the answer comes back to that Mac: the
 	// owner's Mac by the project key, a member's Mac by their own key (crewMacTabRow).
 	key := macSharedAgentChatKey(project, in.FromTab)
 	if claims.UserID != ownerOfCrewProjectID(project) {
 		key = crewMacTabRow(project, crewMacTeamTab{Person: claims.UserID, Tab: in.FromTab}).ConversationKey
 	}
+	var target triggerTarget
+	member := ""
+	if inbox == "" {
+		var ok bool
+		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.AgentID, key, claims); !ok {
+			return
+		}
+	}
+	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: project, ProfileID: crewProfileID}, Label: firstNonEmptyTrimmed(in.Agent, "Main"),
 		Chat: &codeChat{OwnerID: claims.UserID, IsMain: in.FromTab == macMainTab, Key: key, ID: in.FromTab, Name: firstNonEmptyTrimmed(in.Agent, "Main"), SessionID: crewChatSessionID(project, in.ConversationID)}}
 	out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, in.Message, inbox, in.SubmissionID)
@@ -71,8 +71,10 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	externalJSON(w, out)
 }
 
-// crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w.
-func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey string, claims *UserClaims) (triggerTarget, string, bool) {
+// crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w. fromKey is the
+// sending agent's own conversation key: one of your agents may message your other In team agents (owner, 12 Nov: an
+// agent and its online copy talk through Team messaging), never itself.
+func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey, fromKey string, claims *UserClaims) (triggerTarget, string, bool) {
 	if !strings.HasPrefix(chatKey, crewTeamAgentIDPrefix) {
 		shape := "other"
 		if strings.Contains(chatKey, codeChatSideMarker) {
@@ -82,10 +84,15 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 		externalError(w, 409, "stale_team_address", "This Team address is out of date. Run messages action=list_agents and use the agent's new id.")
 		return triggerTarget{}, "", false
 	}
-	_, member, lookupErr := crewTeamAgentByID(r.Context(), project, claims.UserID, chatKey)
-	if lookupErr != nil || member == claims.UserID {
-		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team id_shape=registry_id agent_id=%q self=%t", project, chatKey, member == claims.UserID)
+	agent, member, lookupErr := crewTeamAgentByID(r.Context(), project, claims.UserID, chatKey)
+	if lookupErr != nil {
+		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team id_shape=registry_id agent_id=%q", project, chatKey)
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
+		return triggerTarget{}, "", false
+	}
+	if member == claims.UserID && agent.ChatKey == fromKey {
+		log.Printf("[CREW_TEAM] project=%s event=agent_message_refused reason=self agent_id=%q", project, chatKey)
+		externalError(w, 409, "message_self", "An agent can't message itself. Pick another agent from list_agents.")
 		return triggerTarget{}, "", false
 	}
 	ctx := internalBotRequestContext(r.Context(), claims.UserID)
@@ -219,15 +226,18 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 			continue
 		}
 		for _, p := range team.People {
-			if p.You {
-				continue
-			}
 			for _, agent := range p.Agents {
-				if !agent.InTeam || agent.ID == "" {
+				// Your own agents on this Mac are its sibling chats; your own server agents (an agent's online copy, owner
+				// 12 Nov) are reached through the Team like a teammate's.
+				if !agent.InTeam || agent.ID == "" || p.You && agent.Place != "server" {
 					continue
 				}
-				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + agent.ID,
-					"name": p.Name + "'s " + firstNonEmptyTrimmed(agent.Name, "Main"), "owner": p.Name, "crew_name": name, "purpose": agent.Purpose,
+				kind, title := "Team member's agent", p.Name+"'s "+firstNonEmptyTrimmed(agent.Name, "Main")
+				if p.You {
+					kind, title = "Your agent on the server", "Your "+firstNonEmptyTrimmed(agent.Name, "Main")
+				}
+				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": kind, "id": "team:" + id + ":" + agent.ID,
+					"name": title, "owner": p.Name, "crew_name": name, "purpose": agent.Purpose,
 					"presence": firstNonEmptyTrimmed(agent.PlaceLabel, agent.StatusLabel, "Runs when messaged"),
 					"reach":    "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
 			}
