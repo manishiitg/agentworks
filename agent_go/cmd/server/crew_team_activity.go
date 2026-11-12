@@ -41,21 +41,26 @@ const crewActivityStale = 20 * time.Minute
 // crewMacConversationActivity is what this Mac conversation is doing now, from its Mac's reports and relayed events:
 // "running", "waiting" (for its person) or "".
 func crewMacConversationActivity(owner, project, conversation string) string {
+	activity, _ := crewMacConversationActivitySince(owner, project, conversation)
+	return activity
+}
+
+func crewMacConversationActivitySince(owner, project, conversation string) (string, time.Time) {
 	if conversation == "" {
-		return ""
+		return "", time.Time{}
 	}
 	crewRelayStreams.Lock()
 	defer crewRelayStreams.Unlock()
 	stream := crewRelayStreams.streams[owner+"/"+project+"/"+conversation]
 	switch {
 	case stream == nil:
-		return ""
+		return "", time.Time{}
 	case stream.waiting:
-		return "waiting" // until it answers or its Mac goes; a person may take a while
+		return "waiting", stream.since
 	case stream.running && time.Since(stream.since) < crewActivityStale:
-		return "running"
+		return "running", stream.since
 	}
-	return ""
+	return "", time.Time{}
 }
 
 // crewServerChatRunning: a turn is going in this server chat now.
@@ -78,4 +83,13 @@ func crewStandbyServedRunning(owner, project, tab string) bool {
 		}
 	}
 	return false
+}
+
+// One live-state rule for every Team projection. The maker retains their own
+// pending question indefinitely; teammates stop seeing a wait after 30 minutes.
+func crewTeamLiveActivity(activity string, since time.Time, mine bool, now time.Time) string {
+	if activity == "waiting" && !mine && (since.IsZero() || !now.Before(since.Add(30*time.Minute))) {
+		return ""
+	}
+	return activity
 }
