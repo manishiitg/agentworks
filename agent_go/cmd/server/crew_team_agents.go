@@ -187,9 +187,14 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		return nil
 	}
 	now := time.Now()
+	waits := crewTeamMessageWaitStarts(ctx, t.ProjectID, out)
 	for i := range out {
 		for j := range out[i].Agents {
 			agent := &out[i].Agents[j]
+			if since, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" {
+				agent.Activity, agent.waitingSince = "waiting", since
+				agent.StatusLabel = "Waiting for a teammate"
+			}
 			before := agent.Activity
 			agent.Activity = crewTeamLiveActivity(before, agent.waitingSince, out[i].UserID == caller, now)
 			if before == "waiting" && agent.Activity == "" {
