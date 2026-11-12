@@ -77,7 +77,18 @@ esac
 # Build once, deploy everywhere (PLAT-426): helpers for the build host (see deploy/common/build-once.sh).
 # shellcheck disable=SC1091
 # Hosts, ports and addresses are private: the deployments repo's deploy.env (PLAT-719). Environment variables override it.
-DEPLOY_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}/deploy.env"
+DEPLOY_SETTINGS_DIR="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}"
+# Agents push the private settings repository from their own worktrees and nobody updates this checkout, so it fell a month
+# behind and deploys read old server settings. Fast-forward it to its remote first; a checkout with local edits, local commits
+# or no network keeps what it has and says so.
+if git -C "$DEPLOY_SETTINGS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git -C "$DEPLOY_SETTINGS_DIR" pull -q --ff-only >/dev/null 2>&1; then
+    :
+  else
+    echo "Note: could not update the deployment settings in $DEPLOY_SETTINGS_DIR to the latest; using them as they are." >&2
+  fi
+fi
+DEPLOY_ENV_FILE="$DEPLOY_SETTINGS_DIR/deploy.env"
 # shellcheck source=/dev/null
 [[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
 source "$REPO_ROOT/deploy/common/build-once.sh"
