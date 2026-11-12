@@ -6577,7 +6577,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
 					return
 				}
-				if err := api.registerCrewTeamChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.SharedAgentSender); err != nil {
+				teamSourceKey := ""
+				if ask := turnSharedAsk(r.Context(), &req); ask != nil {
+					teamSourceKey = ask.Owner.ConversationKey
+				}
+				if err := api.registerCrewTeamChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.SharedAgentSender, teamSourceKey); err != nil {
 					sendError(fmt.Sprintf("Failed to register Team Sync: %v", err), true)
 					return
 				}

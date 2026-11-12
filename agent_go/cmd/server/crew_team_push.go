@@ -187,6 +187,7 @@ func noteCrewTeamBusy(project string) {
 	local := crewLocalCopyOf(project)
 	livefeed.Default.Publish(livefeed.Sessions, "")
 	if local != "" {
+		dropCrewAccessCache(local, project)
 		publishCrewPanelChanged(local)
 	}
 }

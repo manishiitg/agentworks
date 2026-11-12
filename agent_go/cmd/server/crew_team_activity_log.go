@@ -20,6 +20,7 @@ import (
 const crewTeamActivityMessages = 20
 
 type crewTeamActivityNow struct {
+	Doing  string              `json:"doing,omitempty"`
 	End    crewTeamActivityEnd `json:"end"`
 	Person string              `json:"person"`
 	Agent  string              `json:"agent"`
@@ -61,6 +62,8 @@ type crewTeamActivityOther struct {
 }
 
 type crewTeamActivityView struct {
+	Decisions      []crewTeamActivityPost    `json:"decisions"`
+	Findings       []crewTeamActivityPost    `json:"findings"`
 	Idle           []crewTeamActivityEnd     `json:"idle"`
 	RefreshAfterMS int64                     `json:"refresh_after_ms,omitempty"`
 	NextCursor     string                    `json:"next_cursor,omitempty"`
@@ -84,7 +87,9 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 
 func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
 	out := crewTeamActivityView{Idle: []crewTeamActivityEnd{}, Now: []crewTeamActivityNow{}, Messages: []crewTeamActivityMessage{}, Other: []crewTeamActivityOther{},
-		Foot: "Shows messages between agents only. What a person types to their own agent is never shown here."}
+		Foot: "Shows explicit Team posts and messages between agents. What a person types to their own agent is never shown here."}
+	posts := crewTeamActivityPostsFor(t)
+	out.Decisions, out.Findings = posts.Decisions, posts.Findings
 	onMac := crewRelayTwin(t.ProjectID)
 	// Every name a message endpoint may carry for an agent: its row key, and for the owner's Mac agents the keys the Mac
 	// sends under (macSharedAgentChatKey; the Crew's own id for Main).
@@ -113,7 +118,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 			if state == "" {
 				out.Idle = append(out.Idle, entry.end)
 			} else {
-				out.Now = append(out.Now, crewTeamActivityNow{Person: p.Name, Agent: a.Name, You: p.You, State: state, Line: line, End: entry.end})
+				out.Now = append(out.Now, crewTeamActivityNow{Person: p.Name, Agent: a.Name, You: p.You, State: state, Line: line, End: entry.end, Doing: posts.Doing[a.ID].Line})
 			}
 			keys := []string{a.ChatKey}
 			if p.Owner && a.Place == "mac" {
