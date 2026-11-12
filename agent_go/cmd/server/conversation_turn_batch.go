@@ -20,9 +20,18 @@ func (api *StreamingAPI) queuedBatchEligible(turn queuedConversationTurn) bool {
 	}
 	for _, attachment := range turn.Request.PendingAttachments {
 		item, err := api.pendingChatUpload(pendingAttachmentKey(turn.UserID, turn.SessionID, turn.Request, attachment.Hash))
-		if err != nil || item.Path == "" || item.Error != "" {
+		if err != nil {
 			return false
 		}
+		select {
+		case <-item.Ready:
+			if item.Path == "" || item.Error != "" {
+				return false
+			}
+		default:
+			return false
+		}
+
 	}
 	return true
 }
@@ -47,6 +56,7 @@ func queuedBatchScope(turn queuedConversationTurn) string {
 	request.AgentMessageInbox, request.TriggeredBy, request.TriggeredByLabel = "", "", ""
 	request.IsAutoNotification = false
 	request.DeliveryMode = ""
+	request.DisableLiveInputDelivery = false
 	request.CostSourceID, request.CostSourceLabel, request.CostSourceRunID = "", "", ""
 	raw, err := json.Marshal(struct {
 		User       string
@@ -185,6 +195,9 @@ func (api *StreamingAPI) prepareQueuedBatch(ctx context.Context, turn queuedConv
 	turn.Request.PendingAttachments = nil
 	turn.Request.IsAutoNotification = allAutomatic
 	turn.Request.AgentMessageInbox = inbox
+	if hasPerson {
+		turn.Request.AgentMessageInbox = ""
+	}
 	turn.Principal.DeliveredMessage = map[string]interface{}{"source": "queued_batch", "client_message_id": queuedTurnDisplayID(turn), "combined_client_message_ids": ids, "combined_person_input": hasPerson, "display_content": text.String()}
 	if desktopAppTurnRestricted(turn.Request, turn.UserID) {
 		turn.Principal.DeliveredMessage["app_agent_reply_to"] = turn.Batch[0].Principal.DeliveredMessage["app_agent_reply_to"]

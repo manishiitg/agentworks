@@ -117,6 +117,8 @@ func TestQueuedBatchKeepsPrincipalBoundariesAgentReplyAndAttachments(t *testing.
 	agent.ComposerInput = false
 	agent.Request.Query = "Reply using messages/send inbox_id=inbox-example"
 	agent.Request.AgentMessageInbox = "inbox-example"
+	agent.Request.DisableLiveInputDelivery = true
+	agent.Request.IsAutoNotification = true
 	agent.Principal.DeliveredMessage = map[string]interface{}{"source": "agent_message", "sender_label": "Example agent"}
 	agent.Principal.DeliveredMessageUser, agent.Principal.DeliveredMessageSession = agent.UserID, agent.SessionID
 	base.Request.AgentProfileID = "work"
@@ -141,7 +143,7 @@ func TestQueuedBatchKeepsPrincipalBoundariesAgentReplyAndAttachments(t *testing.
 			t.Fatal("batch lost agent reply instruction, sender or attachment")
 		}
 	}
-	if prepared.Request.AgentMessageInbox != "inbox-example" || len(prepared.Request.PendingAttachments) != 0 {
+	if prepared.Request.IsAutoNotification || len(prepared.Request.PendingAttachments) != 0 {
 		t.Fatal("batch lost agent attendance or left attachments unresolved")
 	}
 }
