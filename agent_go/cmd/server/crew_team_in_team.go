@@ -21,6 +21,9 @@ import (
 // Main is an optional role on the owner's saved physical agent. A bare
 // project address or a deterministic member name must not fabricate that role.
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
+	if person != t.OwnerID {
+		return false
+	}
 	return crewTeamMainAgentWithKey(t, person, key, crewOwnerMainChatKey(t.ProjectID))
 }
 

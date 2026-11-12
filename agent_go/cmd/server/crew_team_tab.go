@@ -320,7 +320,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	if !t.On {
 		// Team off: only AgentBridge is left to choose, on the owner's own agents.
 		if viewer == t.OwnerID {
-			out.Agents = crewTeamSoloAgents(ctx, t, bridges, setups)
+			out.Agents = crewTeamSoloAgents(ctx, t, bridges, setups, mainKey)
 		}
 		return out
 	}
@@ -530,10 +530,10 @@ func crewAgentCopyLine(t crewTeam, a crewTeamAgent) (string, string) {
 
 // crewTeamSoloAgents are the owner's own agents while the Team is off, each with its Public on AgentBridge: a Mac
 // Crew's from the owner's Mac, a Crew on the server's from its tabs here.
-func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges, setups crewTabSetupSource) []crewTeamTabAgent {
+func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges, setups crewTabSetupSource, mainKey string) []crewTeamTabAgent {
+	setups.mainKey = mainKey
 	agents := []crewTeamAgent{}
 	if bridges.twin {
-		mainKey := crewTeamOwnerMainKey(ctx, t)
 		for _, tab := range ownerMacTabsAll(ctx, t.ProjectID) {
 			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, bridges.mac[tab.Tab].Purpose), Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
 			if tab.Tab == macMainTab {
@@ -545,10 +545,10 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 			agents = append(agents, a)
 		}
 	} else {
-		agents = memberTeamAgents(ctx, t, t.OwnerID, t.OwnerID)
+		agents = memberTeamAgentsWithMain(ctx, t, t.OwnerID, t.OwnerID, mainKey)
 	}
 	people := []crewTeamAgentsPerson{{UserID: t.OwnerID, Agents: agents}}
-	if err := assignCrewTeamAgentIDs(t, people); err != nil {
+	if err := assignCrewTeamAgentIDsWithMain(t, people, mainKey); err != nil {
 		return nil
 	}
 	agents = people[0].Agents

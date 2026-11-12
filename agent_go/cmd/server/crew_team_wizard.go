@@ -69,9 +69,10 @@ type crewWizardChoice struct {
 
 // crewWizardAgents are the owner's own agents as the Team tab lists them while the Team is off, Main first.
 func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
+	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	out := []crewWizardAgent{}
-	for _, a := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}) {
-		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, Main: a.Tab == macMainTab || crewTeamMainAgent(t, t.OwnerID, a.WatchKey)})
+	for _, a := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}, mainKey) {
+		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, Main: a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.WatchKey, mainKey)})
 	}
 	slices.SortStableFunc(out, func(a, b crewWizardAgent) int {
 		switch {
