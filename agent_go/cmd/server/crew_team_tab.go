@@ -289,9 +289,10 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 		reply.changeOnMac()
 	}
 	reply.Help, reply.HelpAsk = crewTeamHelp(reply)
-	// Include fast replies too, so rollout logs can prove a latency improvement
-	// rather than treating the absence of slow requests as success.
-	log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), time.Since(started).Milliseconds())
+	// Keep routine fast replies quiet; rollout timing proof is recorded in PLAT-746-901.
+	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
+		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
+	}
 	externalJSON(w, reply)
 }
 
