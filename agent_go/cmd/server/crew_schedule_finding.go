@@ -2,36 +2,39 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync"
 )
 
-// A schedule run's finding reaches Team Activity only when the agent states it:
-// a line of the run's final reply that starts with "Finding:". The server never
-// excerpts the rest of the reply. The post goes through the same trusted writer
-// as Doing and Decision posts, marked with the schedule's name (PLAT-856-564).
-func crewScheduleFindingLine(finalResponse string) string {
-	line := ""
-	for _, l := range strings.Split(finalResponse, "\n") {
-		l = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(l), "*_> -"))
-		if len(l) >= 8 && strings.EqualFold(l[:8], "finding:") {
-			line = strings.TrimSpace(strings.Trim(strings.TrimSpace(l[8:]), "*_"))
-		}
+// A schedule run's finding is an explicit team_sync call (action=finding), like
+// doing and decision (PLAT-856-564). The server accepts it only while a schedule
+// started the session's current turn, and fills in the schedule name and owner
+// from that turn; the model never passes them. Same trusted writer as the rest.
+type crewScheduleTurn struct{ Project, UserID, Name string }
+
+var crewScheduleTurns sync.Map // session ID -> crewScheduleTurn
+
+func beginCrewScheduleTurn(sessionID string, job productScheduleJob) (end func()) {
+	if sessionID == "" || job.ProjectID == "" || job.AutomationKind != "" || job.Profile.ID != crewProfileID || strings.TrimSpace(job.Schedule.Name) == "" {
+		return func() {}
 	}
-	return line
+	crewScheduleTurns.Store(sessionID, crewScheduleTurn{Project: job.ProjectID, UserID: job.UserID, Name: strings.TrimSpace(job.Schedule.Name)})
+	return func() { crewScheduleTurns.Delete(sessionID) }
 }
 
-func postCrewScheduleFinding(ctx context.Context, job productScheduleJob, chatKey, finalResponse string) {
-	line := crewScheduleFindingLine(finalResponse)
-	if line == "" || job.ProjectID == "" || job.AutomationKind != "" || job.Profile.ID != crewProfileID || strings.TrimSpace(job.Schedule.Name) == "" {
-		return
+func (api *StreamingAPI) postCrewTeamFinding(ctx context.Context, caller *UserClaims, localProject, project, sessionID, sourceKey, line string) (string, error) {
+	turn, ok := crewScheduleTurns.Load(sessionID)
+	st, _ := turn.(crewScheduleTurn)
+	if !ok || st.Project != localProject || st.UserID != caller.UserID || project != localProject || IsLocalMode() {
+		return "", fmt.Errorf("Findings come from scheduled runs; use decision or doing instead.")
 	}
-	// The registry decides who the agent is and whether it is In team; a
-	// private agent posts nothing.
-	agent, err := crewTeamSendingAgent(ctx, job.ProjectID, job.UserID, chatKey)
-	if err != nil || agent.ID == "" {
-		return
+	agentID, err := api.crewTeamActivityAgentForSession(ctx, caller, nil, localProject, project, sessionID, sourceKey)
+	if err != nil {
+		return "", err
 	}
-	if _, err := writeCrewTeamActivityPost(ctx, job.ProjectID, job.UserID, agent.ID, "finding", line, "", job.Schedule.Name); err != nil {
-		scheduleLogf("[CREW_TEAM_ACTIVITY] project=%s event=schedule_finding_refused schedule=%s agent_id=%s", job.ProjectID, job.Schedule.ID, agent.ID)
+	if _, err := writeCrewTeamActivityPost(ctx, project, caller.UserID, agentID, "finding", line, "", st.Name); err != nil {
+		return "", fmt.Errorf("Could not post. Use one short line, and only an In team agent can post.")
 	}
+	return "Posted to the Team as a finding from " + st.Name + ".", nil
 }

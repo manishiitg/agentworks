@@ -1555,6 +1555,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 
 	messages := job.Effective().Messages
 	scheduleLogf("[PRODUCT-SCHEDULE] 🚀 %s (%s) for user %s: %d message(s), session %s", job.ID(), job.Schedule.Name, job.UserID, len(messages), sessionID)
+	defer beginCrewScheduleTurn(sessionID, job)()
 	runErr := workflowPreflightErr
 	finalResponse := ""
 	tokenUsage := &workflowtypes.CrewRunTokenUsage{}
@@ -1685,7 +1686,6 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		scheduleLogf("[PRODUCT-SCHEDULE] ❌ %s for %s: %v", job.ID(), job.UserID, runErr)
 		return sessionID, runErr
 	}
-	postCrewScheduleFinding(context.WithoutCancel(runCtx), job, conversation.ConversationKey, finalResponse)
 	scheduleLogf("[PRODUCT-SCHEDULE] ✅ %s for %s completed in %dms", job.ID(), job.UserID, duration)
 	return sessionID, nil
 }

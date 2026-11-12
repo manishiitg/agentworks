@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"path/filepath"
 )
 
@@ -86,8 +88,18 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if _, err := f.api.crewTeamActivityAgentForSession(ctx, &UserClaims{UserID: "owner"}, nil, "team", "team", "session-thread", "team:chat:two"); err == nil {
 		t.Fatal("foreign source record admitted for a shared thread")
 	}
-	if _, err := writeCrewTeamActivityPost(ctx, "team", "owner", own, "finding", "One checked item", "", "Daily report"); err != nil {
-		t.Fatal(err)
+	// PLAT-856-564: a finding is accepted only while a schedule started the
+	// session's turn; the server supplies the schedule name and the agent.
+	if _, err := reg.exec(ctx, map[string]any{"action": "finding", "line": "One checked item"}); err == nil || !strings.Contains(err.Error(), "Findings come from scheduled runs") {
+		t.Fatalf("finding outside a schedule turn was not refused: %v", err)
+	}
+	end := beginCrewScheduleTurn("session-one", productScheduleJob{ProjectID: "team", UserID: "owner", Profile: agentprofiles.Profile{ID: crewProfileID}, Schedule: productschedule.Schedule{Name: "Daily report"}})
+	if _, err := reg.exec(ctx, map[string]any{"action": "finding", "line": "One checked item"}); err != nil {
+		t.Fatalf("finding in a schedule turn was refused: %v", err)
+	}
+	end()
+	if posts, _ := readCrewTeamActivityPosts("team"); len(posts.Findings) != 1 || posts.Findings[0].Schedule != "Daily report" || posts.Findings[0].AgentID != own {
+		t.Fatalf("finding identity: %+v", posts.Findings)
 	}
 	text, err := reg.exec(ctx, map[string]any{"action": "decisions"})
 	if err != nil {
