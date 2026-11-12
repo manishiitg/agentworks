@@ -48,11 +48,12 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
   const [view, setView] = useState<ActivityView>()
   const [error, setError] = useState('')
   const [olderLoading, setOlderLoading] = useState(false)
+  const [olderExhausted, setOlderExhausted] = useState(false)
   const loadRef = useRef<(older?: boolean) => void>(() => {})
   useEffect(() => {
     let active = true, request = 0, current: ActivityView | undefined
     let boundary: ReturnType<typeof setTimeout> | undefined
-    setView(undefined); setError(''); setOlderLoading(false); setLoadedScope(scope)
+    setView(undefined); setError(''); setOlderLoading(false); setOlderExhausted(false); setLoadedScope(scope)
     const load = (older = false) => {
       clearTimeout(boundary)
       const cursor = older ? current?.next_cursor : undefined
@@ -62,6 +63,7 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
       void teamRequest<ActivityView>(target, `/activity${cursor ? `?before=${encodeURIComponent(cursor)}` : ''}`)
         .then(data => {
           if (!active || sequence !== request) return
+          setOlderExhausted(older && !data.next_cursor)
           current = { ...data, feed: older && current ? [...current.feed, ...data.feed] : data.feed }
           setView(current); setError('')
           if (data.refresh_after_ms && data.refresh_after_ms > 0) boundary = setTimeout(() => load(), data.refresh_after_ms)
@@ -76,11 +78,11 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
     const unlive = liveFeed.subscribe(['crew_panel'], null, refresh, projectId)
     return () => { active = false; clearTimeout(boundary); loadRef.current = () => {}; window.removeEventListener('agentworks:team-updated', refresh); unlive() }
   }, [target.project, target.connection, projectId, scope])
-  return { view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, reload: () => loadRef.current(), older: () => loadRef.current(true) }
+  return { view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, olderExhausted: loadedScope === scope && olderExhausted, reload: () => loadRef.current(), older: () => loadRef.current(true) }
 }
 
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {
-  const { view, error, reload, older, olderLoading } = useTeamActivity(target, projectId)
+  const { view, error, reload, older, olderLoading, olderExhausted } = useTeamActivity(target, projectId)
   const [open, setOpen] = useState('')
   const [filter, setFilter] = useState<ActivityItem['kind'] | 'all'>('all')
   if (!view) return error ? <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div> : <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>
@@ -115,6 +117,7 @@ export function TeamActivity({ target, projectId }: { target: TeamTarget; projec
       </Fragment>
     })}
     {view.next_cursor && <button type="button" disabled={olderLoading} onClick={older} className="text-xs text-primary hover:underline disabled:opacity-50">{olderLoading ? 'Loading…' : 'Show older'}</button>}
+    {olderExhausted && <p role="status" className="text-xs text-muted-foreground">No older activity</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" onClick={reload} className="underline">Try again</button></p>}
   </section>
 }
