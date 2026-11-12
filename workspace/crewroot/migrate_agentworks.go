@@ -33,6 +33,17 @@ func regeneratedFile(name string) bool {
 	return name == ".workspace-skills-v1" || strings.HasSuffix(name, ".kb-lock")
 }
 
+// describeCopy names one copy with its size and last change, so a person can choose.
+func describeCopy(path string, info os.FileInfo) string {
+	kind := fmt.Sprintf("%d bytes", info.Size())
+	if info.IsDir() {
+		kind = "a folder"
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		kind = "a link"
+	}
+	return fmt.Sprintf("%s (%s, changed %s)", path, kind, info.ModTime().UTC().Format("2006-01-02 15:04 UTC"))
+}
+
 // sameFile reports two regular files with identical bytes.
 func sameFile(a, b string, ai, bi os.FileInfo) bool {
 	if !ai.Mode().IsRegular() || !bi.Mode().IsRegular() || ai.Size() != bi.Size() {
@@ -98,7 +109,7 @@ func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, er
 			return nil
 		}
 		if !info.IsDir() || !existing.IsDir() || info.Mode()&os.ModeSymlink != 0 || existing.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("both the private root and .agentworks hold %s; keep one and run again", target)
+			return fmt.Errorf("two different copies of the same file: %s and %s. Keep the one you want, move or delete the other, then start again", describeCopy(source, info), describeCopy(target, existing))
 		}
 		entries, err := os.ReadDir(source)
 		if err != nil {

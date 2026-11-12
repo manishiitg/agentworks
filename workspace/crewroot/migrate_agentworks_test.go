@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,8 +56,11 @@ func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 
 	// The same file in both places stops the move before anything changes.
 	write(filepath.Join(crew, ".agentworks/runs/run-1/log.txt"), "other")
+	// The refusal names both copies with their size so a person can choose.
 	if _, _, err := MigrateToAgentworks(docs); err == nil {
 		t.Fatal("conflicting copies were merged")
+	} else if msg := err.Error(); !strings.Contains(msg, filepath.Join(private, "runs/run-1/log.txt")+" (18 bytes") || !strings.Contains(msg, filepath.Join(crew, ".agentworks/runs/run-1/log.txt")+" (5 bytes") {
+		t.Fatalf("refusal does not name both copies: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(private, "product.json")); err != nil {
 		t.Fatalf("a refused move changed files: %v", err)
