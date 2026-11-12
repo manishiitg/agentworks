@@ -289,10 +289,9 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 		reply.changeOnMac()
 	}
 	reply.Help, reply.HelpAsk = crewTeamHelp(reply)
-	// Every screen re-reads this on each crew_panel notice: a slow reply shows here with the Crew and its size.
-	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
-		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
-	}
+	// Include fast replies too, so rollout logs can prove a latency improvement
+	// rather than treating the absence of slow requests as success.
+	log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), time.Since(started).Milliseconds())
 	externalJSON(w, reply)
 }
 
