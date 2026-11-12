@@ -1,4 +1,4 @@
-import { WorkspaceImage } from './WorkspaceImage'
+import { ChatImage } from './ChatImage'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
 import { dashboardWorkspaceLink } from '../../services/dashboardDirectory'
@@ -1346,34 +1346,12 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
           },
           img: ({ src, alt }) => {
             if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
-            const workspacePrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/']
+            const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/', 'db/assets/', 'assets/']
             const workspaceFilepath = resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null)
-            const resolvedSrc = workspaceFilepath
-              ? sharedLink(window.location.origin, 'file', workspaceFilepath)
-              : src
-            console.log(`[IMAGE_RENDER] MarkdownRenderer src="${src}" workspaceFilepath="${workspaceFilepath}" resolvedSrc="${resolvedSrc}"`)
-            const image = workspaceFilepath ? <WorkspaceImage path={workspaceFilepath} alt={alt} className="max-w-full h-auto max-h-[75vh] rounded-lg my-3" /> : (
-              <img
-                src={resolvedSrc}
-                alt={alt}
-                className={compactImages
-                  ? "max-w-full w-auto h-auto max-h-80 rounded-lg shadow-md my-3 border border-gray-200 dark:border-gray-700 cursor-zoom-in"
-                  : "max-w-full h-auto rounded-lg shadow-md my-4 border border-gray-200 dark:border-gray-700"}
-              />
-            )
-            if (!compactImages || !resolvedSrc) return image
-            return (
-              <a
-                href={workspaceFilepath ? sharedLink(window.location.origin, 'file', workspaceFilepath) : resolvedSrc}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block max-w-full"
-                title="Open full-size image"
-                aria-label={`Open full-size image${alt ? `: ${alt}` : ''}`}
-              >
-                {image}
-              </a>
-            )
+            if (!src) return <span className="text-muted-foreground">Image not found</span>
+            return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
+              ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'
+              : 'my-3 max-h-[75vh] max-w-full rounded-lg object-contain'} />
           },
           hr: () => <hr className="my-6 border-gray-300 dark:border-gray-600" />,
           table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,

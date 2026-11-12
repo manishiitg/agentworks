@@ -1,8 +1,8 @@
 ---
 name: chat-visuals
-description: Present useful diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
+description: Present useful images, diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
 metadata:
-  version: 1.2.0
+  version: 1.3.0
   panel-tools: {}
   external-tools: []
 ---
@@ -12,7 +12,12 @@ metadata:
 Choose a visual for the person's explanation, using their observed facts. Use a
 swimlane for who does each step, a sequence for ordered calls/replies, a diagram
 for branches or architecture, and a chart for numbers. Ordinary comparisons
-usually need only a Markdown table.
+usually need only a Markdown table. Show screenshots, designs and other relevant
+visual results inline without waiting for the person to ask for a component.
+For a single image in app chat, prefer `![caption](Crew/example/assets/image.png)`
+using an actual existing workspace path or HTTP(S) URL. No card/title/JSON is
+needed. The app handles authenticated workspace loading, enlarge and download.
+Keep ordinary answers as text; do not turn every reply into a visual.
 
 Read [formats and examples](references/formats.md) before authoring a `chat-ui`
 block. Use the documented json-render SpecStream operations, not the retired

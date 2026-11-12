@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo } from 'react'
 import { defineRegistry, JSONUIProvider, Renderer } from '@json-render/react'
-import { chatVisualCatalog, type ChatElement } from './chatElementSpec'
+import { chatVisualCatalog, workspaceCardImage, type ChatElement } from './chatElementSpec'
 import { ChatChart, ChatDetails, ChatTable, ChatTimeline } from './ChatWidgets'
+import { ChatImage } from './ChatImage'
 import { ChatCards } from './ChatCards'
 import { ChatDiagram } from './ChatDiagram'
 import { ChatSequence, ChatSwimlane } from './ChatProcessDiagram'
@@ -19,6 +20,7 @@ function Cards({ spec }: { spec: Extract<ChatElement, { type: 'cards' }> }) {
 
 const { registry } = defineRegistry(chatVisualCatalog, {
   components: {
+    image: ({ props }) => <figure className="not-prose my-4 max-w-full" data-chat-element="image"><ChatImage src={props.src} alt={props.caption} workspace={workspaceCardImage(props.src)} />{props.caption && <figcaption className="mt-2 text-xs text-muted-foreground">{props.caption}</figcaption>}</figure>,
     table: ({ props }) => <ChatTable spec={{ ...props, type: 'table' }} />,
     chart: ({ props }) => <ChatChart spec={{ ...props, type: 'chart' }} />,
     timeline: ({ props }) => <ChatTimeline spec={{ ...props, type: 'timeline' }} />,
