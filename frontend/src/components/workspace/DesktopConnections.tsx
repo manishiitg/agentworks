@@ -250,7 +250,8 @@ function ExpandableCrew({ projectId, summary, connectionId, selected, initialOpe
   const sessions = (connectionId === getRawActiveWorkspaceId() ? localSessions : activity || [])
     .filter(session => session.crew_project_id === projectId)
   const running = sessions.some(hasActiveSessionWork)
-  const activityLabel = team.view?.live?.summary || summary || (running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined)
+  const ownActivityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
+  const activityLabel = (team.view?.live ? team.view.live.summary : summary) || ownActivityLabel
   // This network's chat changes arrive as live notices; another network's list is checked every minute.
   const here = connectionId === getRawActiveWorkspaceId()
   const [reload, setReload] = useState(0)

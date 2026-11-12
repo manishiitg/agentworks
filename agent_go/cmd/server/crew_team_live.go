@@ -1,6 +1,10 @@
 package server
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"time"
+)
 
 // The sidebar receives only names, identity and the server's live state, never
 // a Doing line, a pending question's text or another chat's contents.
@@ -50,6 +54,56 @@ func crewTeamLiveFor(people []crewTeamAgentsPerson, viewer string) crewTeamLiveV
 		out.Summary = out.Agents[0].Person + " working"
 	} else if len(out.Agents) > 1 {
 		out.Summary = fmt.Sprintf("%d working", len(out.Agents))
+	}
+	return out
+}
+
+// Only metadata from admitted Team-to-Team conversations affects the live line.
+// A reply closes the preceding outstanding question; it is not a new wait.
+func crewTeamMessageWaitStarts(ctx context.Context, project string, people []crewTeamAgentsPerson) map[string]time.Time {
+	out := map[string]time.Time{}
+	allowed := map[string]bool{}
+	for _, person := range people {
+		for _, agent := range person.Agents {
+			if agent.InTeam {
+				allowed[agent.ChatKey] = true
+			}
+		}
+	}
+	store, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		return out
+	}
+	for _, conversation := range store.Conversations {
+		valid := true
+		for _, endpoint := range conversation.Endpoints {
+			if endpoint.Kind != triggerCallerCrew || endpoint.ID != project || endpoint.External || endpoint.NamedAgentID != "" || !allowed[endpoint.ChatKey] {
+				valid = false
+			}
+		}
+		if !valid {
+			continue
+		}
+		from := -1
+		var since time.Time
+		for _, message := range conversation.Messages {
+			if message.Kind == "ping" || message.From < 0 || message.From > 1 {
+				continue
+			}
+			if from >= 0 && from != message.From {
+				from = -1
+				continue
+			}
+			if from < 0 {
+				from, since = message.From, message.SentAt
+			}
+		}
+		if from >= 0 {
+			key := conversation.Endpoints[from].ChatKey
+			if previous, ok := out[key]; !ok || since.Before(previous) {
+				out[key] = since
+			}
+		}
 	}
 	return out
 }
