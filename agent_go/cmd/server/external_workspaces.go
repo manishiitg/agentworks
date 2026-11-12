@@ -337,7 +337,12 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				line := "Shared by " + firstNonEmptyTrimmed(item["owner_name"].(string), "a teammate")
 				if where := crewTeamWhereFor(doc.ID, claims.UserID); where != "" {
 					item["where"] = where
-					line += map[string]string{"mac": " · On your Mac", "web": " · On the web"}[where]
+					suffix := map[string]string{"mac": " · On your Mac", "web": " · On the web"}[where]
+					if where == "mac" && relay != nil {
+						// Another person's Mac Crew: the Mac in this row is theirs, not yours (owner, 12 Nov).
+						suffix = " · On their Mac"
+					}
+					line += suffix
 				}
 				item["shared_line"] = line
 			}

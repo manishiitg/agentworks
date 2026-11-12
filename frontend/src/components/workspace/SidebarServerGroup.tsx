@@ -9,12 +9,14 @@ import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin } from 'lu
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
-export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, personal_agent, shared_line, groupsMenu, stateLine, offline, onMac, shared_agents, showLocation, showIcon = true, pinned, onTogglePin, onOpen, activityLabel, activityTitle, agentsExpanded, onToggleAgents, onMoveUp, onMoveDown, onNewAgent }: { onNewAgent?: () => void; activityTitle?: string; groupsMenu?: ReactNode; shared_line?: string; onMoveUp?: () => void; onMoveDown?: () => void; agentsExpanded?: boolean; onToggleAgents?: () => void; activityLabel?: string; showLocation?: boolean; showIcon?: boolean; pinned?: boolean; onTogglePin?: () => void; personal_agent?: boolean; where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
+export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, personal_agent, shared_line, groupsMenu, stateLine, offline, onMac, shared_agents, showLocation, showIcon = true, pinned, onTogglePin, onOpen, activityLabel, activityTitle, agentsExpanded, onToggleAgents, onMoveUp, onMoveDown, onNewAgent, onRemoveOnlineCopy, owned_by_caller }: { onNewAgent?: () => void; onRemoveOnlineCopy?: () => void; activityTitle?: string; groupsMenu?: ReactNode; shared_line?: string; onMoveUp?: () => void; onMoveDown?: () => void; agentsExpanded?: boolean; onToggleAgents?: () => void; activityLabel?: string; showLocation?: boolean; showIcon?: boolean; pinned?: boolean; onTogglePin?: () => void; personal_agent?: boolean; where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
   const highlight = selected && agentsExpanded !== true
   const sharedDashboard = kind === 'crew' && mode === 'run'
   // A shared Crew shows a small people icon; whose it is (as the server words it) shows on hover (owner, 10 Nov).
   const subline = stateLine || (personal_agent ? 'Your agent' : undefined)
   const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
+  // The laptop badge names whose Mac the Crew lives on: another person's Mac Crew says their Mac (owner, 12 Nov).
+  const macHome = owned_by_caller === false ? 'On their Mac' : 'On your Mac'
   return <div className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
     <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
       className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -25,7 +27,7 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       : activityLabel ? <span role="status" title={activityLabel} aria-label={activityLabel} className="mr-2 h-2 w-2 shrink-0 rounded-full bg-amber-400" /> : null}
     {/* A Crew that lives on its owner's Mac (the server's row says so): a laptop with the Mac's on/off dot. */}
     {shared_agents ? <span title={`${shared_agents} ${shared_agents === 1 ? 'agent' : 'agents'} others can message`} className="mr-1.5 shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">{shared_agents} shared</span> : null}
-    {agentsExpanded !== true && onMac && <span title={onMac === 'on' ? 'On your Mac' : 'On your Mac · Mac off'} aria-label={onMac === 'on' ? 'On your Mac' : 'On your Mac, Mac off'} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
+    {agentsExpanded !== true && onMac && <span title={onMac === 'on' ? macHome : `${macHome} · Mac off`} aria-label={onMac === 'on' ? macHome : `${macHome}, Mac off`} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
       <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
       <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${onMac === 'on' ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
     </span>}
@@ -37,7 +39,7 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       className={`mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100`}>
       <Pin className="h-3.5 w-3.5" fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
     </button>}
-    {(onMoveUp || onMoveDown || onNewAgent || groupsMenu) && <PinnedCrewOrderMenu name={name} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onNewAgent={onNewAgent} groupsMenu={groupsMenu} />}
+    {(onMoveUp || onMoveDown || onNewAgent || groupsMenu || onRemoveOnlineCopy) && <PinnedCrewOrderMenu name={name} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onNewAgent={onNewAgent} groupsMenu={groupsMenu} onRemoveOnlineCopy={onRemoveOnlineCopy} />}
     {/* The caret only closes an open project's agents; opening the project opens them (owner, 10 Nov). */}
     {onToggleAgents && agentsExpanded && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
       className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

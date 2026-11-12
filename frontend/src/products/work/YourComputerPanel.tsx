@@ -53,7 +53,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
 export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'dashboard' | 'public' | 'folder' | 'clash'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
-type PlaceEntry = { place?: CloudState; chatOnly?: boolean; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+type PlaceEntry = { place?: CloudState; chatOnly?: boolean; chatOnlyLine?: string; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -65,14 +65,16 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; chat_only?: boolean; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; chat_only?: boolean; chat_only_line?: string; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
           const asking = data.asking || []
           const chatOnly = data.chat_only === true
-          if (!data.place || (data.place === created.place && chatOnly === Boolean(created.chatOnly) && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
+          const chatOnlyLine = typeof data.chat_only_line === 'string' && data.chat_only_line ? data.chat_only_line : undefined
+          if (!data.place || (data.place === created.place && chatOnly === Boolean(created.chatOnly) && chatOnlyLine === created.chatOnlyLine && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
           created.place = data.place
           created.chatOnly = chatOnly
+          created.chatOnlyLine = chatOnlyLine
           created.shared = shared
           created.asking = asking
           created.listeners.forEach(notify => notify(data.place))
@@ -105,6 +107,17 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
     return watchCrewPlace(projectId, setState)
   }, [enabled, projectId])
   return state
+}
+
+/** The server's one line above the chat of your own Mac copy opened through the server (owner, 12 Nov). */
+export function useCrewChatOnlyLine(projectId?: string): string | undefined {
+  const [line, setLine] = useState<string>()
+  useEffect(() => {
+    setLine(undefined)
+    if (!projectId) return
+    return watchCrewPlace(projectId, () => setLine(placeCache.get(projectId)?.chatOnlyLine))
+  }, [projectId])
+  return line
 }
 
 /** The server's flag: this person reaches their own Mac Crew through the server, so the screen is its chat alone. */

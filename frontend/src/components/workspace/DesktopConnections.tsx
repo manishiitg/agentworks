@@ -132,6 +132,17 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const open = (id: string, path: string) => {
     void window.electronAPI?.openDesktopConnection?.(id, path).catch(() => useConnectedWorkStore.setState({ error: 'Could not open this server. Try again.' }))
   }
+  // The website has no delete for a Mac copy (owner, 12 Nov): its row offers the existing project delete instead.
+  const removeOnlineCopy = (project: typeof rows[number]) => {
+    void agentApi.deleteAgentProfileProject('work', project.id)
+      .then(() => {
+        useChatStore.getState().addToast(`Removed the online copy of “${project.name}”. Your Mac Crew is unchanged.`, 'success')
+        void state.refresh()
+      })
+      .catch(() => {
+        useChatStore.getState().addToast('Could not remove the online copy. Try again.', 'error')
+      })
+  }
   const rows = connections.flatMap(connection => (connection.id === active ? projects : (inventory[connection.id]?.projects || []).filter(project => project.kind === 'crew') as SidebarProject[])
     .map(project => ({ ...project, connection })))
     .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
@@ -160,6 +171,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop && (shortcut || selectedLocations.length > 1)}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
+      onRemoveOnlineCopy={!desktop && crew && where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined}
       groupsMenu={crew ? <ProjectGroupsMenu name={project.name} projectKey={key} inline /> : undefined}
       stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={where === 'mac' && mac?.online === false} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
       onOpen={() => {

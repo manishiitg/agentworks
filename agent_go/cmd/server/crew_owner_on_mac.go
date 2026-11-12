@@ -27,6 +27,20 @@ const (
 	crewMacPairHeader = "X-AgentWorks-Mac-Pair"
 )
 
+// crewChatOnlyLine is the one line above the chat of the owner's Mac Crew opened through the server: which copy
+// this is and what stays on the Mac, plus, while the Mac is off, that replies wait (owner, 12 Nov).
+func crewChatOnlyLine(name, macName string, online bool) string {
+	line := "Online copy of " + name + " from your Mac"
+	if macName != "" {
+		line += " (" + macName + ")"
+	}
+	line += ". Chat here; files, Team and settings stay on your Mac."
+	if !online {
+		line += " Your Mac is off, so replies wait until it is back."
+	}
+	return line
+}
+
 // crewOwnerOnlineOfMacCrew: the caller is the owner of a Crew that lives on their Mac, reaching it through this server
 // rather than from that Mac.
 func crewOwnerOnlineOfMacCrew(r *http.Request, project, user string) bool {

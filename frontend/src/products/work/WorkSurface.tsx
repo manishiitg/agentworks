@@ -49,7 +49,7 @@ import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
-import { useCrewChatOnly } from './YourComputerPanel'
+import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { localFileError } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
@@ -1201,6 +1201,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
+  const chatOnlyLine = useCrewChatOnlyLine(product.profileId === 'work' && chatOnly ? selected?.id : undefined)
   const { private: chatPrivateLine } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
@@ -1663,6 +1664,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chat={<>
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
+                        {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <div className="min-h-0 flex-1">
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
