@@ -3,6 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"log"
+	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,7 +32,7 @@ type crewTeamLiveView struct {
 // Input has already passed current Team membership/In-team admission and the
 // one live wait cutoff in teamAgentsByPersonWithMain. Both open and unopened
 // Crews use this projection; a screen never computes a teammate's state.
-func crewTeamLiveFor(people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
+func crewTeamLiveFor(project string, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}}
 	for _, person := range people {
 		if person.You || person.UserID == viewer {
@@ -55,7 +60,28 @@ func crewTeamLiveFor(people []crewTeamAgentsPerson, viewer string) crewTeamLiveV
 	} else if len(out.Agents) > 1 {
 		out.Summary = fmt.Sprintf("%d working", len(out.Agents))
 	}
+	crewTeamLiveLog(project, viewer, out)
 	return out
+}
+
+// Telemetry only, never reused as activity data: one count summary per minute
+// instead of one log per navigation request. No names or message/task text.
+var crewTeamLiveLogMinutes sync.Map
+
+func crewTeamLiveLog(project, viewer string, live crewTeamLiveView) {
+	value, _ := crewTeamLiveLogMinutes.LoadOrStore(project+"/"+viewer, &atomic.Int64{})
+	minute := time.Now().Unix() / 60
+	previous := value.(*atomic.Int64).Load()
+	if previous == minute || !value.(*atomic.Int64).CompareAndSwap(previous, minute) {
+		return
+	}
+	waiting := 0
+	for _, row := range live.Agents {
+		if row.Activity == "waiting" {
+			waiting++
+		}
+	}
+	log.Printf("[CREW_TEAM_LIVE] project=%s viewer=%s working=%d waiting=%d idle=%d", project, viewer, len(live.Agents)-waiting, waiting, len(live.Idle))
 }
 
 // Only metadata from admitted Team-to-Team conversations affects the live line.
@@ -106,4 +132,43 @@ func crewTeamMessageWaitStarts(ctx context.Context, project string, people []cre
 		}
 	}
 	return out
+}
+
+// Local navigation fetches the same server projection once per saved connection,
+// not once per Crew. This memo lives only for this request, not a busy cache.
+func crewTeamLocalNavigationLive(ctx context.Context, owner, project string, reads map[string]map[string]crewTeamLiveView) *crewTeamLiveView {
+	binding, err := crewroot.ReadSync(project)
+	if err != nil || binding == nil || binding.Side != "local" || binding.ConnectionID == "" || ownerOfCrewProjectID(project) != owner {
+		return nil
+	}
+	connection, err := desktopConnectionFor(owner, binding.ConnectionID)
+	if err != nil {
+		return nil
+	}
+	rows, read := reads[connection.ID]
+	if !read {
+		rows = map[string]crewTeamLiveView{}
+		reads[connection.ID] = rows
+		var reply struct {
+			Workspaces []struct {
+				ID   string            `json:"id"`
+				Live *crewTeamLiveView `json:"team_live"`
+			} `json:"workspaces"`
+		}
+		round, cancel := context.WithTimeout(ctx, 6*time.Second)
+		defer cancel()
+		if err := crewTeamRemoteJSON(round, owner, connection, http.MethodPost, "/api/workspaces", map[string]string{"action": "list"}, &reply); err != nil {
+			log.Printf("[CREW_TEAM_LIVE] project=%s event=navigation_read_failed", project)
+			return nil
+		}
+		for _, row := range reply.Workspaces {
+			if row.Live != nil {
+				rows[row.ID] = *row.Live
+			}
+		}
+	}
+	if live, ok := rows[binding.PeerProjectID]; ok {
+		return &live
+	}
+	return nil
 }

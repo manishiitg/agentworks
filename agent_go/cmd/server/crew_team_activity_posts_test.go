@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -37,6 +38,23 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 		if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath(person), productConversationRegistryDocument{Entries: entries}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Web-only regression: a real pending question makes this registered server
+	// chat waiting without transferring its private prompt into the Team payload.
+	pending := virtualtools.GetHumanFeedbackStore()
+	questionID := t.Name() + "-web-wait"
+	if err := pending.CreatePendingRequest(questionID, "private owner question", "", "session-one", nil, true, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	defer pending.SubmitResponse(questionID, "done")
+	foundWaiting := false
+	for _, agent := range memberTeamAgentsWithMain(ctx, team, "owner", "other", "") {
+		if agent.Tab == "one" {
+			foundWaiting = agent.Activity == "waiting" && !agent.waitingSince.IsZero() && !strings.Contains(agent.StatusLabel, "private owner question")
+		}
+	}
+	if !foundWaiting {
+		t.Fatal("server-only registered chat with a pending owner question did not show waiting")
 	}
 	var own, foreign, private string
 	for _, agent := range team.Agents {
