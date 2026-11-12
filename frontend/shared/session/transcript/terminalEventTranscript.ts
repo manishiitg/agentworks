@@ -927,11 +927,13 @@ function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
   if (pendingOrder) return pendingOrder
   // New generation carriers keep the server's first position, while the
   // append sequence remains untouched for history/SSE cursors. Only compare
-  // server positions when both exist; unsequenced native imports retain their
+  // server positions for the new anchored carriers when both exist; unmarked
+  // legacy/imported pairs can have pre-restart counters and retain their
   // recorded ordering rather than acquiring an invented sequence.
   const aSequence = transcriptServerPosition(a)
   const bSequence = transcriptServerPosition(b)
-  if (aSequence !== undefined && bSequence !== undefined && aSequence !== bSequence) return aSequence - bSequence
+  const anchored = Boolean(a.generation_id || b.generation_id)
+  if (anchored && aSequence !== undefined && bSequence !== undefined && aSequence !== bSequence) return aSequence - bSequence
   const aTime = Date.parse(a.timestamp || '')
   const bTime = Date.parse(b.timestamp || '')
   if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime
