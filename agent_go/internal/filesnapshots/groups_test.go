@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -243,5 +244,44 @@ func TestChatGitStateSplitsCommitsFromUncommitted(t *testing.T) {
 		if unknown.CommitsKnown || len(unknown.Commits) != 0 {
 			t.Fatalf("start %q must list no commits: %+v", bad, unknown)
 		}
+	}
+}
+
+// PLAT-746-876: oversized untracked files were read whole before the 1MiB check.
+func TestWorkingTreePreviewDoesNotAllocateOversizedUntrackedFile(t *testing.T) {
+	root := t.TempDir()
+	cmd := exec.Command("git", "-C", root, "init", "--quiet")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	f, err := os.Create(filepath.Join(root, "large.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(64 << 20); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	f.Close()
+	if err := os.WriteFile(filepath.Join(root, "small.txt"), []byte("one\ntwo\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	files, ok := workingTreeEdits(context.Background(), root, root, "", func(string) bool { return true })
+	runtime.ReadMemStats(&after)
+	if !ok || len(files) != 2 {
+		t.Fatalf("working tree files: %v %v", ok, files)
+	}
+	for _, f := range files {
+		if f.Path == "large.bin" && f.Added != nil {
+			t.Fatal("oversized preview must remain uncounted")
+		}
+		if f.Path == "small.txt" && (f.Added == nil || *f.Added != 2) {
+			t.Fatal("small preview line count changed")
+		}
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 16<<20 {
+		t.Fatalf("preview allocated %d bytes for oversized file", allocated)
 	}
 }
