@@ -611,7 +611,8 @@ export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideC
   const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
   const key = JSON.stringify([workspace, user, 'work', projectId])
   const main = rows.find(row => row.is_main)
-  workAgentLists.set(key, { listed: rows.filter(row => !row.is_main), mainPurpose: main ? main.purpose || '' : undefined })
+  // Main is one of the server's agent rows, listed like every other (PLAT-746-885).
+  workAgentLists.set(key, { listed: rows, mainPurpose: main ? main.purpose || '' : undefined })
 }
 
 // Shared project setup is independent of any agent's browser tab.
@@ -793,7 +794,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         if (cancelled) return
         const main = rows.find(chat => chat.is_main)
         setMainPurpose(main ? main.purpose || '' : undefined)
-        const listed = rows.filter(chat => !chat.is_main)
+        // Main is one of the server's agent rows, listed like every other (PLAT-746-885): a browser tab whose
+        // main-chat mark was lost no longer hides it.
+        const listed = rows
         for (const chat of listed) {
           const state = useChatStore.getState()
           const primary = workProjectChatSeed(projectSession, profileId)
@@ -813,10 +816,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
             // from this strip; the server's list decides which project and product the chat is in.
-            if (existing.metadata?.agentProfileConversationKey !== chat.conversation_key || existing.metadata?.agentProfileIsMainChat || existing.metadata?.agentProfileId !== profileId || existing.metadata?.agentProfileProjectId !== projectId) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id,
+            if (existing.metadata?.agentProfileConversationKey !== chat.conversation_key || !!existing.metadata?.agentProfileIsMainChat !== (chat.is_main === true) || existing.metadata?.agentProfileId !== profileId || existing.metadata?.agentProfileProjectId !== projectId) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id,
             agentProfileTabOwnerName: chat.tab_owner_name,
             agentProfileTabCanWrite: chat.can_write,
-            agentProfileConversationKey: chat.conversation_key, agentProfileIsMainChat: false, agentProfileId: profileId, agentProfileProjectId: projectId })
+            agentProfileConversationKey: chat.conversation_key, agentProfileIsMainChat: chat.is_main === true, agentProfileId: profileId, agentProfileProjectId: projectId })
             if (chat.agent_id) {
               state.setTabMetadata(existing.tabId, { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id })
             }
@@ -829,7 +832,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             ...primary.metadata,
             // A Mac Crew's tabs are the Mac's, like its Main.
             agentProfileChatLocation: chat.chat_location === 'mac' ? 'mac' : undefined,
-            agentProfileIsMainChat: false,
+            agentProfileIsMainChat: chat.is_main === true,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,
             agentProfileTabOwnerName: chat.tab_owner_name,
