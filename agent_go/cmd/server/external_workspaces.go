@@ -326,7 +326,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 					item["team_live"] = live
 				}
 			} else if team, err := readCrewTeam(doc.ID); err == nil && crewTeamAgentsVisible(team, claims.UserID) {
-				item["team_live"] = crewTeamLiveFor(doc.ID, teamAgentsByPerson(r.Context(), team, claims.UserID), claims.UserID)
+				item["team_live"] = crewTeamLiveFor(team, teamAgentsByPerson(r.Context(), team, claims.UserID), claims.UserID)
 			}
 			// A Team member's working copy on this Mac says whose Crew it is (owner, 10 Nov).
 			if IsLocalMode() {

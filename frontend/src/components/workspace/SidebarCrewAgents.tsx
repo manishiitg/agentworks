@@ -8,7 +8,6 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { codingProviderName } from '../../utils/codingProviderName'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
-import { TeamLiveAgents } from './TeamLiveAgents'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
@@ -39,10 +38,6 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {shown.map(row)}
-    <TeamLiveAgents live={team?.live} openFor={live => {
-      const chip = crew.agents.find(agent => teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.id === live.id)
-      return chip ? () => openAgent(chip.tabId) : undefined
-    }} />
     {hiddenCount > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />+{hiddenCount} hidden {hiddenCount === 1 ? 'agent' : 'agents'}
