@@ -18,6 +18,8 @@ export type PollingEvent = PollingEventSchema & {
   execution_kind?: string
   terminal_owner_id?: string
   terminal_id?: string
+  generation_id?: string
+  generation_start_sequence?: number
   sequence?: number
   component?: string
   event_index?: number

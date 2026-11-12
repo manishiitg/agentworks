@@ -1555,3 +1555,17 @@ describe('steered question and one-chunk reply in one batch', () => {
     expect(rows).toEqual(['user_message', 'unified_completion'])
   })
 })
+
+
+it('PLAT-746-928 reload keeps an intact generation at its server start, before the steer, without changing its append cursor', () => {
+  const first = evt({ id: 'first', session_id: 's1', type: 'user_message', sequence: 1, data: { content: 'Start' } as never })
+  const steer = evt({ id: 'steer', session_id: 's1', type: 'user_message', sequence: 10, data: { content: 'Follow-up' } as never })
+  const reply = evt({ id: 'reply', session_id: 's1', type: 'agent_end', sequence: 20, generation_id: 'stream-start', generation_start_sequence: 2,
+    data: { result: '```ts\nconst name = 1\n```', status: 'completed' } as never })
+  const next = evt({ id: 'next', session_id: 's1', type: 'agent_end', sequence: 30, generation_id: 'next-start', generation_start_sequence: 21,
+    data: { result: 'New generation', status: 'completed' } as never })
+  const restored = JSON.parse(JSON.stringify([first, steer, reply, next])) as PollingEvent[]
+  expect(selectTerminalEvents(restored, null).map(event => event.id)).toEqual(['first', 'reply', 'steer', 'next'])
+  expect(restored[2].sequence).toBe(20)
+  expect((restored[2].data as unknown as { result: string }).result).toBe('```ts\nconst name = 1\n```')
+})

@@ -905,6 +905,11 @@ function isOwnTerminalLifecycleStart(event: PollingEvent, terminal: TerminalSnap
   return true
 }
 
+export function transcriptServerPosition(event: PollingEvent): number | undefined {
+  if (event.generation_id && typeof event.generation_start_sequence === 'number' && event.generation_start_sequence > 0) return event.generation_start_sequence
+  return typeof event.sequence === 'number' && event.sequence > 0 ? event.sequence : undefined
+}
+
 function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
   // Pending sends have local timestamps, not a position in the server's
   // transcript yet. Keep them in a stable tail until their durable echoes
@@ -920,10 +925,13 @@ function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
   }
   const pendingOrder = Number(pending(a)) - Number(pending(b))
   if (pendingOrder) return pendingOrder
-  // The main chat survives server restarts; EventStore's per-session sequence
-  // counter does not. Comparing those counters across restored and live events
-  // placed yesterday's replies below today's work. Prefer the event timestamp
-  // here, retaining sequence as a tie-breaker for same-time messages.
+  // New generation carriers keep the server's first position, while the
+  // append sequence remains untouched for history/SSE cursors. Only compare
+  // server positions when both exist; unsequenced native imports retain their
+  // recorded ordering rather than acquiring an invented sequence.
+  const aSequence = transcriptServerPosition(a)
+  const bSequence = transcriptServerPosition(b)
+  if (aSequence !== undefined && bSequence !== undefined && aSequence !== bSequence) return aSequence - bSequence
   const aTime = Date.parse(a.timestamp || '')
   const bTime = Date.parse(b.timestamp || '')
   if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime

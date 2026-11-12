@@ -7,7 +7,6 @@ type generationPosition struct {
 	id          string
 	sequence    int64
 	executionID string
-	turnID      string
 }
 
 // stampGenerationPosition runs under mu, after sequence and owner assignment.
@@ -22,11 +21,7 @@ func (es *EventStore) stampGenerationPosition(sessionID string, event *Event) {
 		if es.generationPositions == nil {
 			es.generationPositions = make(map[string]generationPosition)
 		}
-		turnID := ""
-		if event.Data != nil {
-			turnID = event.Data.TurnID
-		}
-		es.generationPositions[sessionID] = generationPosition{event.ID, event.Sequence, event.ExecutionID, turnID}
+		es.generationPositions[sessionID] = generationPosition{event.ID, event.Sequence, event.ExecutionID}
 	}
 	position, ok := es.generationPositions[sessionID]
 	if !ok {
@@ -35,9 +30,7 @@ func (es *EventStore) stampGenerationPosition(sessionID string, event *Event) {
 	if position.executionID != event.ExecutionID {
 		return
 	}
-	if position.turnID != "" && event.Data != nil && event.Data.TurnID != "" && event.Data.TurnID != position.turnID {
-		return
-	}
+
 	switch event.Type {
 	case "streaming_start", "streaming_chunk", "streaming_end", "llm_generation_end", "agent_end", "unified_completion":
 		event.GenerationID = position.id
