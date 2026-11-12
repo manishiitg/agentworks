@@ -444,7 +444,7 @@ func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.Native
 		}
 	}
 	if record.Provider == "codex-cli" && record.Kind == "tool" && record.Name == "Command" && (record.State == "completed" || record.State == "failed") {
-		o.api.eventStore.CompleteNativeTool(o.snapshot.SessionID, record.ID, record.Timestamp, record.State == "failed")
+		o.api.eventStore.CompleteNativeTool(o.snapshot.SessionID, record.ID, record.Timestamp, record.State == "failed", record.Output)
 	}
 	id := nativeCodingEventID(o.snapshot.SessionID, record)
 	observedAt := time.Now()

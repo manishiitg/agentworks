@@ -2399,7 +2399,9 @@ func SetToolCompletionAuthority(authority func(sessionID, toolID, name string) b
 
 // CompleteNativeTool closes only a command we observed starting in this chat.
 // Replayed native records and ordinary tools cannot manufacture completions.
-func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time, failed bool) {
+// output is the command's own output from its native completion, so a command
+// that outlived its reply still shows what it printed (PLAT-746-899).
+func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time, failed bool, output string) {
 	toolCallsMu.Lock()
 	tc := openToolCall[sessionID][toolID]
 	if tc == nil || !tc.nativeCompletion {
@@ -2414,11 +2416,15 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time,
 	}
 	event := Event{ID: "native-command-end:" + toolID, Type: "tool_call_end", Timestamp: at, SessionID: sessionID,
 		Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: at, SessionID: sessionID,
-			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt)}}}
+			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Result: output}}}
 	if failed {
+		message := "Native command exited unsuccessfully."
+		if output != "" {
+			message += "\n\n" + output
+		}
 		event.Type = "tool_call_error"
 		event.Data.Type = events.EventType("tool_call_error")
-		event.Data.Data = &events.ToolCallErrorEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Error: "Native command exited unsuccessfully."}
+		event.Data.Data = &events.ToolCallErrorEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Error: message}
 	}
 	es.AddEvent(sessionID, event)
 }

@@ -360,17 +360,29 @@ func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
 	if len(ids) != 1 || ids[0] != "ordinary-call" {
 		t.Fatalf("premature native completion: %v", ids)
 	}
-	store.CompleteNativeTool("another-chat", "exec-native", time.Now(), false)
+	store.CompleteNativeTool("another-chat", "exec-native", time.Now(), false, "")
 	if len(toolEndIDs(t, store, session)) != 1 {
 		t.Fatal("another chat completed the command")
 	}
-	store.CompleteNativeTool(session, "exec-native", time.Now(), false)
-	store.CompleteNativeTool(session, "exec-native", time.Now(), false)
+	store.CompleteNativeTool(session, "exec-native", time.Now(), false, "VERIFY: PASSED\n")
+	store.CompleteNativeTool(session, "exec-native", time.Now(), false, "")
 	if ids = toolEndIDs(t, store, session); len(ids) != 2 {
 		t.Fatalf("native completion missing or replayed: %v", ids)
 	}
+	// PLAT-746-899: the late completion carries what the command printed.
+	gotOutput := ""
+	for _, e := range store.GetEvents(session, GetEventsOptions{}).Events {
+		if e.Data != nil {
+			if d, ok := e.Data.Data.(*events.ToolCallEndEvent); ok && d.ToolCallID == "exec-native" {
+				gotOutput = d.Result
+			}
+		}
+	}
+	if gotOutput != "VERIFY: PASSED\n" {
+		t.Fatalf("late native completion lost its output: %q", gotOutput)
+	}
 	store.AddEvent(session, startEvent(session, "exec-failed", "exec_command"))
-	store.CompleteNativeTool(session, "exec-failed", time.Now(), true)
+	store.CompleteNativeTool(session, "exec-failed", time.Now(), true, "exit 1")
 	foundFailure := false
 	for _, e := range store.GetEvents(session, GetEventsOptions{}).Events {
 		if e.Data != nil {
