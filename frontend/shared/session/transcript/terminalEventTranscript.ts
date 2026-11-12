@@ -1211,7 +1211,7 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
 // does), so the command's end arrives after that text, in a later batch with
 // no start, and its card loses its input. Move such an end, by tool_call_id,
 // to the batch that holds its start so the one card shows input, output and
-// status (PLAT-746-894).
+// status (PLAT-746-898).
 function attachLateToolEnds(items: TranscriptItem[]): TranscriptItem[] {
   const startBatch = new Map<string, Extract<TranscriptItem, { kind: 'tools' }>>()
   const out: TranscriptItem[] = []
