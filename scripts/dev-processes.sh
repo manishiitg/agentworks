@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Background services keep their own session, logs and /dev/null stdin. The
+# exec chain preserves $! for the existing owned-process shutdown checks.
+DEV_PROCESS_HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+dev_detached_exec() {
+    exec nohup python3 "$DEV_PROCESS_HELPER_DIR/dev-detached-exec.py" "$@"
+}
+
 # PLAT-856-439: restart the owning launcher, never infer ownership from a port.
 
 dev_process_start() {
