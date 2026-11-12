@@ -850,11 +850,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			if memory, found, e := readFileFromWorkspace(ctx, resources+"/MEMORY.md"); e == nil && found {
 				publishedAgentContext += "\n\nThis agent's saved memory:\n" + memory
 			}
-			if content, found, e := readFileFromWorkspace(ctx, resources+"/"+projectinstructions.FileName); e != nil {
-				return nil, e
-			} else if found {
-				projectInstructions = projectinstructions.Section(content)
-			}
+			// The Crew's PROJECT_INSTRUCTIONS.md is read live from the Crew above, never from a copy made at publish time,
+			// so an edit by anyone in the Team reaches this agent on its next turn (PLAT-856-564). MEMORY.md stays its own.
 		}
 	}
 	rootInstructionKey := ""
