@@ -99,7 +99,7 @@ function usePopover() {
     if (rect) setPosition({ top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 260)), left: Math.max(8, Math.min(alignRight ? rect.right - width : rect.left, window.innerWidth - width - 8)) })
   }
   const render = (label: string, width: string, children: ReactNode) => position && createPortal(
-    <div ref={panel} role="dialog" aria-label={label} style={position} className={`fixed z-[100] ${width} rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg`}>{children}</div>, document.body)
+    <div ref={panel} role="dialog" aria-label={label} style={{ ...position, maxHeight: `calc(100dvh - ${position.top + 8}px)` }} className={`fixed z-[100] max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain ${width} rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg`}>{children}</div>, document.body)
   return { trigger, open: !!position, close: () => setPosition(null), toggle, render }
 }
 
@@ -121,6 +121,7 @@ export type MenuNetwork = { id: string; name: string }
 export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }: { counts: (filter: MenuFilter) => number; networks?: MenuNetwork[]; network?: string; onNetwork?: (id: string) => void }) {
   const { groups, error, filter, pick } = useMenuGroups()
   const popover = usePopover()
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null) // a group id, or "new"
   const label = filter === 'mine' ? 'Mine' : filter === 'shared' ? 'Shared with me' : filter.startsWith('group:') ? groups.find(group => `group:${group.id}` === filter)?.name || 'All projects' : 'All projects'
   const choose = (next: MenuFilter) => { pick(next); popover.close() }
@@ -133,10 +134,14 @@ export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }:
     <span className="min-w-0 flex-1 truncate">{name}</span><span className="text-muted-foreground">{counts(value)}</span>
   </button>
   return <>
+    <div className="flex min-w-0 items-center gap-1">
     <button ref={popover.trigger} type="button" title="Filter projects" aria-label={`Filter projects: ${label}${networks.length > 1 && networkName ? `, ${networkName}` : ''}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(224, false)}
       className="flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="truncate">{label}</span>{networks.length > 1 && networkName && <span className="max-w-24 shrink-0 truncate text-[11px]">· {networkName}</span>}<ListFilter className={`h-3.5 w-3.5 shrink-0 ${filter === 'all' ? '' : 'text-foreground'}`} aria-hidden="true" />
     </button>
+    {filter !== 'all' && <button type="button" aria-label="Clear project filter" title="Clear filter · show all projects" onClick={() => { pick('all'); popover.close() }}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-3 w-3" /></button>}
+    </div>
     {popover.render('Show projects', 'w-56', <>
       {networks.length > 1 && <>
         <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Network</p>
@@ -149,12 +154,21 @@ export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }:
       {option('shared', 'Shared with me')}
       <div className="my-1 h-px bg-border" />
       <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Groups</p>
-      {groups.map(group => editing === group.id
+      {groups.map(group => deleting === group.id
+        ? <div key={group.id} className="rounded-md border border-border p-2">
+          <p className="text-xs font-medium">Delete “{group.name}”?</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Only the group is removed. Its projects and chats stay.</p>
+          <div className="mt-2 flex justify-end gap-2">
+            <button type="button" onClick={() => setDeleting(null)} className="rounded px-2 py-1 text-xs hover:bg-muted">Cancel</button>
+            <button type="button" onClick={() => { setDeleting(null); void saveMenu({ groups: groups.filter(g => g.id !== group.id), ...(filter === `group:${group.id}` ? { filter: 'all' as const } : {}) }) }} className="rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground">Delete group</button>
+          </div>
+        </div>
+        : editing === group.id
         ? <NameInput key={group.id} initial={group.name} placeholder="Group name" onDone={name => { setEditing(null); if (name) void saveGroups(groups.map(g => g.id === group.id ? { ...g, name } : g)) }} />
         : <div key={group.id} className="group/item flex items-center">
           <div className="min-w-0 flex-1">{option(`group:${group.id}`, group.name)}</div>
           <button type="button" aria-label={`Rename ${group.name}`} title="Rename" onClick={() => setEditing(group.id)} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/item:opacity-100 focus-visible:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" /></button>
-          <button type="button" aria-label={`Delete ${group.name}`} title="Delete group (its projects stay)" onClick={() => void saveGroups(groups.filter(g => g.id !== group.id))} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/item:opacity-100 focus-visible:opacity-100"><X className="h-3 w-3" aria-hidden="true" /></button>
+          <button type="button" aria-label={`Delete ${group.name}`} title="Delete group (its projects stay)" onClick={() => { setEditing(null); setDeleting(group.id) }} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/item:opacity-100 focus-visible:opacity-100"><X className="h-3 w-3" aria-hidden="true" /></button>
         </div>)}
       {editing === 'new'
         ? <NameInput placeholder="New group name" onDone={name => { setEditing(null); if (name) void saveGroups([...groups, { id: '', name, projects: [] }]) }} />
