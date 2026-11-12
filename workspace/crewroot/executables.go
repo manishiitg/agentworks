@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const runtimeRootInitialization = "automation storage is not initialized; run python3 scripts/migrate-workflow-to-python.py --docs <workspace> --state <state> --initialize-runtime-roots --apply"
+const runtimeRootInitialization = "this automation was saved before it had its own storage and cannot run; create it again from its Crew's chat"
 
 // ExecutableBinding is private routing state, never read from project files.
 // Workflow/<id> is the execution identity; its authored files live with its Crew.
