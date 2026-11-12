@@ -570,10 +570,14 @@ func crewStandbyCopyLabel(project, person, tab string) (string, string) {
 		return "Not on the server yet · it copies after its next reply", "wait"
 	}
 	if at, err := time.Parse(time.RFC3339, row.CopiedAt); err == nil {
-		return "Always on · copy on the server " + crewAccessAgo(at), "ok"
+		return crewStandbyBackupLine + " · updated " + crewAccessAgo(at), "ok"
 	}
-	return "Always on", "ok"
+	return crewStandbyBackupLine, "ok"
 }
+
+// crewStandbyBackupLine names standby for what it is (owner, 12 Nov): a backup that answers only while the Mac is off;
+// Run online is the separate agent that runs only on the server.
+const crewStandbyBackupLine = "Backup on the server for when the Mac is off"
 
 // crewAlwaysOnAgentsLine is the Agents card's line for the owner of a Mac Crew with the Team on.
 const crewAlwaysOnAgentsLine = "Shared agents are always on: when your Mac is off, they answer teammates from the server. " + crewTeamAgentsLine
