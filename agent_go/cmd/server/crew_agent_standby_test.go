@@ -890,6 +890,16 @@ func TestCrewRelayedEventsSayWhetherAMacAgentIsWorking(t *testing.T) {
 	if _, known := crewRelayBatchRunning(batch("tool_call_start", "tool_call_end")); known {
 		t.Fatal("events with no turn start or end say nothing about the turn")
 	}
+	// A generation can finish before tools and more prose; relay activity uses
+	// the same whole-turn boundaries as the Mac's live and restart state.
+	for _, typ := range []string{"llm_generation_end", "streaming_end", "agent_end"} {
+		if running, known := crewRelayBatchRunning(batch("user_message", typ)); !running || !known {
+			t.Fatalf("%s incorrectly settled the relayed turn", typ)
+		}
+		if _, known := crewRelayBatchRunning(batch(typ)); known {
+			t.Fatalf("%s alone is not a whole-turn verdict", typ)
+		}
+	}
 	key := "owner/team/conversation-x"
 	crewRelayStreams.Lock()
 	crewRelayStreams.streams[key] = &crewRelayStream{running: true, since: time.Now()}
