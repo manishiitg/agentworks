@@ -180,7 +180,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'agents' || saved === 'dashboards' || saved === 'slack') return saved } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'dashboards' || saved === 'slack') return saved } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { setSectionState(next); if (next !== 'team') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
@@ -379,11 +379,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
         turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <ShareCrew option="team" projectId={projectId} workspacePath={workspacePath} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
-    </section>}
-    {/* Share agents (an Online tab): who outside the Team can ask your agents, and actions. */}
-    {!(here && needsServer) && shown === 'agents' && <section role="tabpanel" id={`crew-access-panel-${projectId}-agents`} aria-labelledby={`crew-access-${projectId}-agents`} className="space-y-3">
-      <ShareCrew option="agents" projectId={projectId} workspacePath={workspacePath} />
+      <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
     </section>}
     {/* Slack (owner, 9 Nov: its own Online tab): the Crew's Slack bot and who can talk to it. */}
     {shown === 'slack' && <section role="tabpanel" id={`crew-access-panel-${projectId}-slack`} aria-labelledby={`crew-access-${projectId}-slack`} className="space-y-3">

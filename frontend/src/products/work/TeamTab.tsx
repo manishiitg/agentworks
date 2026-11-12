@@ -75,7 +75,8 @@ function useFolderSize(target: TeamTarget, query?: string) {
  * and says what this person may change, and its /folders reads the Crew's folders where the Crew is; this only shows
  * them and sends the person's choices.
  */
-export function TeamTab({ projectId, onTurnOn, onBack }: { projectId: string; onTurnOn?: () => void; onBack?: () => void }) {
+/** The Team page. agents is the Agents tab's content (ShareCrew's own agents and actions, owner 12 Nov). */
+export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: string; onTurnOn?: () => void; onBack?: () => void; agents?: ReactNode }) {
   const state = useTeamTab(projectId)
   const tabId = useId()
   const [section, setSection] = useState<{ project: string; tab: CrewTeamSection } | undefined>(() => {
@@ -141,36 +142,9 @@ export function TeamTab({ projectId, onTurnOn, onBack }: { projectId: string; on
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}</>}
-      {selected === 'agents' && <><TeamAgentsCard view={view} target={target} projectId={projectId} />{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</>}
+      {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
       {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
-  </div>
-}
-
-function TeamAgentsCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
-  const agents = view.agents || []
-  const shared = agents.filter(agent => agent.in_team).length
-  return <section aria-label="Agents" className="space-y-3">
-    <p className="px-1 text-xs text-muted-foreground">Shared with the Team · {shared} {shared === 1 ? 'agent' : 'agents'}</p>
-    {agents.map(agent => <TeamAgentRow key={agent.id} agent={agent} target={target} projectId={projectId} />)}
-    {!agents.length && <p className="text-xs text-muted-foreground">No shared agents yet.</p>}
-  </section>
-}
-function TeamAgentRow({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
-  const { pending, error, run } = useSave()
-  const [details, setDetails] = useState(false)
-  const change = (inTeam: boolean) => run('sharing', async () => {
-    await teamRequest(target, '/agent-visibility', 'POST', { agent_key: agent.id, in_team: inTeam })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  })
-  return <div className={card}>
-    <div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="font-medium">{agent.name}</p><p className="text-xs text-muted-foreground">{agent.mine ? 'You' : shortName(agent.owner_name).split(/\s+/)[0]}{agent.place_label ? ` · ${agent.place_label}` : ''}</p>{agent.purpose && <p className="mt-1 text-xs text-muted-foreground">{agent.purpose}</p>}</div>
-      {agent.can_change ? <Switch aria-label={`${agent.name}: In team`} checked={agent.in_team} disabled={Boolean(pending) || agent.in_team && !agent.can_unshare} onCheckedChange={on => void change(on)} /> : <span className="text-xs text-muted-foreground">Shared</span>}
-    </div>
-    {agent.fixed && agent.mine && <p className="text-xs text-muted-foreground">{agent.fixed}</p>}
-    <button type="button" onClick={() => setDetails(value => !value)} aria-expanded={details} className="text-xs text-primary hover:underline">{details ? 'Hide details' : 'Details'}</button>
-    {details && <AgentDetails agent={agent} target={target} projectId={projectId} />}
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
 

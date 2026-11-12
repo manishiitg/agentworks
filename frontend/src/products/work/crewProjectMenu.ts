@@ -35,7 +35,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
     // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
-    // Online, how everyone else reaches it (Mac online, Share agents, Slack, Dashboards). Each opens its own page.
+    // Online, how everyone else reaches it (Mac online, Slack, Dashboards); your agents and actions are Team › Agents. Each opens its own page.
     add('mcp', 'Share', 'Team', UsersRound, 'team')
     add('mcp', 'Share', 'Online', Globe, 'online')
     // The Slack bot row opens Online › Slack (owner, 9 Nov; WorkIntegrationsPanel maps its slack-bot target there).

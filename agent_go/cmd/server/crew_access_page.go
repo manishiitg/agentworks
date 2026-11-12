@@ -70,19 +70,18 @@ var crewAccessMacTabs = func() []crewAccessTab {
 }()
 
 // The Crew's Access tabs (owner, 9 Nov: separate tabs for dashboards and for Slack; 11 Nov: Team and Online): Team, the
-// people who work on the Crew with you (crew_share_page.go's team option), alone on the Team page; then the Online
-// page: Share agents (who else can ask your agents, and actions), Slack, the Crew's Slack bot (added by
+// people who work on the Crew with you (crew_share_page.go's team option; its Agents tab holds who can ask your agents
+// and actions, owner 12 Nov), alone on the Team page; then the Online page: Slack, the Crew's Slack bot (added by
 // crewAccessAddSlack only where it is offered), and Dashboards, everything the Crew publishes (crew_dashboards_tab.go).
 // A Crew on a Mac has Mac online first.
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
-	{ID: "agents", Label: "Share agents", Detail: "who else can ask your agents", Group: "online"},
 	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
 }
 
 var crewAccessSlackTab = crewAccessTab{ID: "slack", Label: "Slack", Detail: "talk to this Crew in Slack", Group: "online"}
 
-// crewAccessAddSlack puts the Slack tab between Share agents and Dashboards when the server offers it; a tab not listed falls
+// crewAccessAddSlack puts the Slack tab before Dashboards when the server offers it; a tab not listed falls
 // back to the first one on the page.
 func (api *StreamingAPI) crewAccessAddSlack(r *http.Request, out *crewSyncReply, viewer string) {
 	if len(out.AccessTabs) == 0 || out.AccessView == "summary" || !api.crewSlackTabOffered(r, viewer, out.ProjectID) {
