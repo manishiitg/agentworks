@@ -1044,10 +1044,15 @@ const COMPLETION_ANSWER_TYPES = new Set([
   'background_agent_completed',
 ])
 
-function answerText(event: PollingEvent): string {
+export function assistantReplyText(event: PollingEvent): string {
+  if (typeof event.reply_remainder === 'string') return event.reply_remainder
   const fields = eventFields(event)
+  const metadata = fields.metadata as Record<string, unknown> | undefined
+  if (metadata?.assistant_block_id && typeof fields.content === 'string') return fields.content
   return textField(fields.content) || textField(fields.final_result) || textField(fields.result)
 }
+
+function answerText(event: PollingEvent): string { return assistantReplyText(event) }
 
 function comparableAnswer(text: string): string {
   return text.replace(/\s+/g, ' ').trim().toLowerCase()

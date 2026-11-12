@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
+import { assistantReplyText, pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 
 // The rail is the hierarchy: every agent and sub-agent owns its own terminal.
@@ -1591,8 +1591,13 @@ it('keeps native blocks whole around a delivered steer and hides only the aggreg
     const items = buildTranscriptItems(selected).filter(item => item.kind === 'event')
     expect(items.map(item => item.kind === 'event' ? item.event.id : '')).toEqual(['a-update', 'steer', 'b-update'])
     const a = items[0]
-    expect(a.kind === 'event' && (a.event.data as { data: { content: string } }).data.content).toBe(first)
+    expect(a.kind === 'event' && assistantReplyText(a.event)).toBe(first)
   }
+  const mixed = [...events.slice(0,3), { ...events[3], reply_blocks_complete: false, reply_remainder: 'Only the unframed remainder.' }]
+  const mixedItems = buildTranscriptItems(selectTerminalEvents(mixed, undefined)).filter(item => item.kind === 'event')
+  expect(mixedItems.map(item => item.kind === 'event' ? item.event.id : '')).toEqual(['a-update','steer','b-update','done'])
+  const remainder = mixedItems[3]
+  expect(remainder.kind === 'event' && assistantReplyText(remainder.event)).toBe('Only the unframed remainder.')
   // Identical text in different native blocks is not a duplicate response.
   const twins = [snapshot('same-a', 2, 3, 'a', 'Done.'), snapshot('same-b', 4, 5, 'b', 'Done.')]
   expect(buildTranscriptItems(selectTerminalEvents(twins, undefined)).filter(item => item.kind === 'event')).toHaveLength(2)

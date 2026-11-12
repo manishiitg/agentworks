@@ -143,6 +143,13 @@ func TestNativeBlocksStayWholeAcrossDeliveredSteerAndReload(t *testing.T) {
 	if rows["a-end"].GenerationStartSequence != a.Sequence || rows["b-end"].GenerationStartSequence != b.Sequence || !rows["done"].ReplyBlocksComplete || eventPayloadMap(&restoredA)["content"] != "before finishes" {
 		t.Fatal("reload lost a whole native block or its server position")
 	}
+	// A malformed/mixed transport may emit content without identity after known
+	// blocks. Render only that unframed remainder, not the aggregate twice.
+	appendEvent("mixed-delta", "streaming_chunk", "", "", "unframed remainder")
+	mixed := appendEvent("mixed-done", "unified_completion", "", "", "")
+	if mixed.ReplyBlocksComplete || mixed.ReplyRemainder == nil || *mixed.ReplyRemainder != "unframed remainder" {
+		t.Fatal("mixed content repeats native blocks or disappears")
+	}
 	// Unknown transports remain whole-generation, with no invented framing.
 	legacy := appendEvent("legacy-start", "streaming_start", "", "", "")
 	appendEvent("legacy-chunk", "streaming_chunk", "", "", "legacy reply")
