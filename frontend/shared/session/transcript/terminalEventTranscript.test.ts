@@ -1569,3 +1569,31 @@ it('PLAT-746-928 reload keeps an intact generation at its server start, before t
   expect(restored[2].sequence).toBe(20)
   expect((restored[2].data as unknown as { result: string }).result).toBe('```ts\nconst name = 1\n```')
 })
+
+// PLAT-746-928: block A began before delivery and finishes intact above the
+// question; block B begins afterwards, below it, both live and JSON restored.
+it('keeps native blocks whole around a delivered steer and hides only the aggregate reply', () => {
+  const snapshot = (id: string, start: number, sequence: number, block: string, content: string) => evt({
+    id, session_id: 's1', type: 'streaming_chunk', execution_id: 'main:s1', execution_kind: 'main_agent',
+    generation_id: `start-${block}`, generation_start_sequence: start, sequence,
+    data: { data: { content, source: 'transcript', is_delta: false, metadata: { assistant_block_id: block, assistant_block_phase: 'end' } } } as never,
+  })
+  const first = 'Before delivery.\n\n```ts\nconst value = 1\n```\nThis block finishes intact.'
+  const events = [
+    snapshot('a', 2, 6, 'native-a', first),
+    evt({ id: 'steer', session_id: 's1', type: 'user_message', sequence: 4, data: { data: { content: 'Change direction', metadata: { delivery_status: 'sent_to_cli' } } } as never }),
+    snapshot('b', 7, 9, 'native-b', 'After delivery.'),
+    evt({ id: 'done', session_id: 's1', type: 'unified_completion', sequence: 10, generation_id: 'start-native-b', generation_start_sequence: 7, reply_blocks_complete: true,
+      data: { data: { final_result: `${first}\n\nAfter delivery.`, status: 'completed' } } as never }),
+  ]
+  for (const rows of [events, JSON.parse(JSON.stringify(events)) as PollingEvent[]]) {
+    const selected = selectTerminalEvents(rows, undefined)
+    const items = buildTranscriptItems(selected).filter(item => item.kind === 'event')
+    expect(items.map(item => item.kind === 'event' ? item.event.id : '')).toEqual(['a-update', 'steer', 'b-update'])
+    const a = items[0]
+    expect(a.kind === 'event' && (a.event.data as { data: { content: string } }).data.content).toBe(first)
+  }
+  // Identical text in different native blocks is not a duplicate response.
+  const twins = [snapshot('same-a', 2, 3, 'a', 'Done.'), snapshot('same-b', 4, 5, 'b', 'Done.')]
+  expect(buildTranscriptItems(selectTerminalEvents(twins, undefined)).filter(item => item.kind === 'event')).toHaveLength(2)
+})

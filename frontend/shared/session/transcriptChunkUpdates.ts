@@ -40,7 +40,7 @@ export function intermediateUpdateFromTranscriptChunk(event: PollingEvent): Poll
         content,
         result: content,
         status: 'completed',
-        restored_intermediate_update: metadata.native_continuation !== true,
+        restored_intermediate_update: metadata.native_continuation !== true && metadata.assistant_block_phase !== 'end',
       },
     } as PollingEvent['data'],
   }

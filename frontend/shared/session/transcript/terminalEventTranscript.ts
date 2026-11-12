@@ -643,7 +643,9 @@ function isTranscriptEvent(event: PollingEvent): boolean {
     // the conversation look like a trace log. Retained coding-agent turns in
     // particular emit an empty unified_completion solely to settle the live
     // terminal lifecycle; it is transport state, not a chat message.
-    if (!failed && !answerText(event)) return false
+    // The server confirmed these native blocks are already durable carriers;
+    // retain the aggregate lifecycle event in history, not a second reply.
+    if (!failed && (event.reply_blocks_complete || !answerText(event))) return false
   }
   return true
 }
@@ -1079,7 +1081,7 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
   let turn = 0
   for (const event of events) {
     if (event.type === 'user_message') turn += 1
-    if (!COMPLETION_ANSWER_TYPES.has(event.type || '')) continue
+    if (event.reply_blocks_complete || !COMPLETION_ANSWER_TYPES.has(event.type || '')) continue
     const text = comparableAnswer(answerText(event))
     if (text) {
       const answers = completionAnswersByTurn.get(turn) || []
@@ -1138,6 +1140,10 @@ function dropRepeatedAssistantResponses(events: PollingEvent[]): PollingEvent[] 
       return true
     }
     if (event.type !== 'llm_generation_end' && !COMPLETION_ANSWER_TYPES.has(event.type || '')) return true
+    // Known native blocks can contain identical text. Their server identities,
+    // not string equality, own deduplication.
+    const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+    if (metadata?.assistant_block_id) { previous = null; return true }
     const text = comparableAnswer(answerText(event))
     if (!text) return true
     const execution = lifecycleExecutionID(event)

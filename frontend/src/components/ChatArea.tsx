@@ -276,7 +276,7 @@ function handleLiveStreamingEvent(
       chatStore.clearDelegationStreamingText(scope.id)
     } else if (scope.kind === 'session') {
       chatStore.clearStreamingText(actualSessionId)
-      chatStore.setStreamingGeneration(actualSessionId, event.generation_id, event.generation_start_sequence)
+      chatStore.setStreamingGeneration(actualSessionId, event.generation_id, event.generation_start_sequence, Boolean(metadata?.assistant_block_id))
     } else if (scope.kind === 'workshop' && scope.id) {
       chatStore.clearExecutionStreamingText(scope.id)
     }
@@ -322,7 +322,10 @@ function handleLiveStreamingEvent(
       if (chunkIndex === 0 || chunkIndex === 1) chatStore.clearExecutionStreamingText(scope.id)
       chatStore.appendExecutionStreamingChunk(actualSessionId, scope.id, chunkIndex, content)
     } else if (scope.kind === 'session') {
-      if (event.generation_id) chatStore.setStreamingGeneration(actualSessionId, event.generation_id, event.generation_start_sequence)
+      // A completed native snapshot must not steal the live position of a
+      // newer block when delivery or catch-up arrives out of order.
+      if (intermediateUpdateFromTranscriptChunk(event)) return
+      if (event.generation_id) chatStore.setStreamingGeneration(actualSessionId, event.generation_id, event.generation_start_sequence, Boolean(metadata?.assistant_block_id))
       if (chunkIndex === 0 || chunkIndex === 1) chatStore.clearStreamingText(actualSessionId)
       // A whole-message narration chunk becomes its own durable row (both
       // callers push intermediateUpdateFromTranscriptChunk's result), so it
@@ -330,7 +333,6 @@ function handleLiveStreamingEvent(
       // there newline-joined for the whole turn, and the tail then re-showed
       // every narration of the turn concatenated under the rows that already
       // carried them.
-      if (intermediateUpdateFromTranscriptChunk(event)) return
       chatStore.appendStreamingChunk(actualSessionId, chunkIndex, content, chunkMeta)
     }
     return
@@ -430,7 +432,7 @@ export interface ChatContentRendererProps {
   isStreaming: boolean
   isRestoring: boolean
   streamingText: string
-  streamingGeneration?: { id: string; sequence: number }
+  streamingGeneration?: { id: string; sequence: number; nativeBlock?: boolean }
   streamingChatUIMode?: 'progressive' | 'complete'
   streamingStatus?: string
   hasOlder?: boolean
