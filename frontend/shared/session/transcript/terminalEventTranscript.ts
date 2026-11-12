@@ -1204,7 +1204,51 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
     })
   }
 
-  return items
+  return attachLateToolEnds(items)
+}
+
+// A coding CLI can keep a command running while it writes its reply (Codex
+// does), so the command's end arrives after that text, in a later batch with
+// no start, and its card loses its input. Move such an end, by tool_call_id,
+// to the batch that holds its start so the one card shows input, output and
+// status (PLAT-746-894).
+function attachLateToolEnds(items: TranscriptItem[]): TranscriptItem[] {
+  const startBatch = new Map<string, Extract<TranscriptItem, { kind: 'tools' }>>()
+  const out: TranscriptItem[] = []
+  for (const item of items) {
+    if (item.kind !== 'tools') {
+      out.push(item)
+      continue
+    }
+    const kept: PollingEvent[] = []
+    for (const event of item.events) {
+      const type = event.type || ''
+      const callID = TOOL_CALL_TYPES.has(type) && type !== 'tool_call_start' ? textField(toolCallField(event, 'tool_call_id')) : ''
+      const owner = callID ? startBatch.get(callID) : undefined
+      if (owner) {
+        owner.events = [...owner.events, event]
+        continue
+      }
+      kept.push(event)
+    }
+    let batch: Extract<TranscriptItem, { kind: 'tools' }> | null = item
+    if (kept.length !== item.events.length) {
+      const toolCount = countRealToolCalls(kept)
+      batch = toolCount > 0 ? { ...item, events: kept, toolCount } : null
+      if (!batch) {
+        for (const event of kept) out.push({ kind: 'event', key: event.id || `evt-${out.length}`, event })
+        continue
+      }
+    }
+    for (const event of batch.events) {
+      if (event.type === 'tool_call_start') {
+        const callID = textField(toolCallField(event, 'tool_call_id'))
+        if (callID) startBatch.set(callID, batch)
+      }
+    }
+    out.push(batch)
+  }
+  return out
 }
 
 // A step run or a full-workflow run is the workflow's own headline action, not

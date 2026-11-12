@@ -560,6 +560,22 @@ describe('buildTranscriptItems', () => {
     expect((items[1] as Extract<TranscriptItem, { kind: 'tools' }>).toolCount).toBe(2)
   })
 
+  // PLAT-746-894: Codex wrote its reply while a command was still running;
+  // the command's end landed after the text and its card lost its input.
+  it('attaches a tool end that arrives after reply text to the card holding its start', () => {
+    const call = { tool_call_id: 'exec-1', tool_name: 'exec_command' }
+    const items = buildTranscriptItems([
+      evt({ id: 't1', session_id: 's1', type: 'tool_call_start', data: { data: { ...call, tool_params: { arguments: '{"cmd":"git status"}' } } } }),
+      evt({ id: 'm1', session_id: 's1', type: 'agent_message' }),
+      evt({ id: 't2', session_id: 's1', type: 'tool_call_end', data: { data: { ...call, result: '' } } }),
+    ])
+    expect(items.map(i => i.kind)).toEqual(['tools', 'event'])
+    const pairs = pairToolCalls((items[0] as Extract<TranscriptItem, { kind: 'tools' }>).events)
+    expect(pairs).toHaveLength(1)
+    expect(pairs[0].status).toBe('ok')
+    expect(pairs[0].args).toContain('git status')
+  })
+
   it('folds a tool end whose start was not retained into the batch instead of a standalone card', () => {
     const items = buildTranscriptItems([
       evt({ id: 'm1', session_id: 's1', type: 'agent_message' }),
