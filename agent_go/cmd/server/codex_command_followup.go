@@ -11,8 +11,8 @@ import (
 // started the checks" and ends its turn, and the command finishes later.
 // Codex never starts a turn for that by itself, so the result went unread
 // (PLAT-746-899). Like T3 Code, start one turn when such a command finishes,
-// so the agent reads the result and carries on (owner, 12 Nov 2026). The
-// Claude equivalent is followUpFinishedClaudeTasks (PLAT-746-856).
+// so the agent reads the result and carries on (owner, 12 Nov 2026). Claude
+// wakes itself instead; showClaudeWake shows that turn.
 const codexCommandFinishedMessage = "[Background command finished] A command you started earlier in this chat has finished %s. Check its result and carry on with what you said you would do. If you did not promise anything, give the person a one-line summary.\n\nLast output:\n%s"
 
 // codexCommandOutputTail keeps the follow-up prompt short; the full output is

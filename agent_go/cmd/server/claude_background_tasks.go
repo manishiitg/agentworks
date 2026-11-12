@@ -68,8 +68,8 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 		log.Printf("[SDK_BACKGROUND] list session=%s tasks=%d closed=%s", sessionID, len(update.Tasks), update.Closed)
 		api.observeRuntimeSnapshot(sessionID)
 		api.publishSessionChanged(sessionID)
-		if update.Closed == "finished" {
-			go api.followUpFinishedClaudeTasks(sessionID)
+		if update.Wake {
+			go api.showClaudeWake(sessionID)
 		}
 	})
 }
@@ -104,31 +104,32 @@ func stopClaudeTaskBackgroundWork(sessionID, execID string) bool {
 }
 
 // claudeTasksStoppedByPerson remembers when the person stopped a chat's Claude task from the background-work list: the
-// empty list that follows is not work that finished, so no follow-up turn reports on it.
+// turn Claude starts on its own about that is not shown.
 var claudeTasksStoppedByPerson sync.Map // sessionID -> time.Time
 
-// claudeTasksFinishedMessage is the follow-up turn's prompt after Claude's own background work ended between turns.
-const claudeTasksFinishedMessage = "[Background work finished] The background work you started earlier in this chat has finished. Check its result now and tell the person what happened, as you said you would. If you did not promise a report, give a one-line summary."
+// claudeWakeMessage is what the chat shows for a turn Claude started on its own; Claude does not receive it.
+const claudeWakeMessage = "[Background work finished] Claude is following up on work it started earlier in this chat."
 
-// followUpFinishedClaudeTasks starts one turn when the last of Claude's own background tasks (a build, a test run) ends
-// while no turn holds the chat. Claude keeps no turn open for it, so "I'll report when it finishes" never happened: a
-// chat stayed silent from the build's end at 11:07 until the person wrote at 11:16 (PLAT-746-856).
-func (api *StreamingAPI) followUpFinishedClaudeTasks(sessionID string) {
+// showClaudeWake shows the turn Claude starts on its own when its background work (a build, a test run) finishes
+// between turns. Claude wakes itself like this; the kept session used to drop that turn and the app sent its own
+// "background work finished" message instead (PLAT-746-856). Now a chat turn adopts Claude's own turn, the way T3
+// Code does (PLAT-746-899). Not after Stop, while another turn holds the chat or past the follow-up limit: that
+// turn is then not shown, and a session with none of Claude's tasks left closes.
+func (api *StreamingAPI) showClaudeWake(sessionID string) {
+	reason := ""
 	if at, ok := claudeTasksStoppedByPerson.LoadAndDelete(sessionID); ok && time.Since(at.(time.Time)) < 2*time.Minute {
-		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=stopped_by_person", sessionID)
-		return
+		reason = "stopped_by_person"
+	} else {
+		reason = backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID), api.isSessionBusyForAutoNotification(sessionID))
 	}
-	// The kept Claude process is shutting down (it gets up to 15 s); the follow-up resumes the conversation after it.
-	time.Sleep(20 * time.Second)
-	// chat_busy: the running turn carries on with the results.
-	if reason := backgroundFollowUps.skipReason(sessionID, false, api.isSessionBusyForAutoNotification(sessionID)); reason != "" {
+	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, claudeWakeMessage, "", nil, llmtypes.WithCodingProviderAdoptWake) {
+		reason = "turn_not_started"
+	}
+	if reason != "" {
+		claudecode.DismissClaudeSDKWake(sessionID, reason)
 		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=%s", sessionID, reason)
 		return
 	}
-	if !api.executeSyntheticTurn(sessionID, claudeTasksFinishedMessage) {
-		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=turn_not_started", sessionID)
-		return
-	}
 	backgroundFollowUps.started(sessionID)
-	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=started", sessionID)
+	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=adopted", sessionID)
 }

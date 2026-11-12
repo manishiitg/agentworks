@@ -2671,6 +2671,13 @@ func (api *StreamingAPI) executeSyntheticTurn(sessionID, syntheticMsg string, pa
 // only that the turn started; durable notification delivery must be committed
 // by onComplete after it receives nil.
 func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg, parentExecutionID string, onComplete func(error)) bool {
+	return api.executeSyntheticTurnWithContext(sessionID, syntheticMsg, parentExecutionID, onComplete, nil)
+}
+
+// executeSyntheticTurnWithContext runs a synthetic turn whose context is first
+// passed through withContext, for example to adopt a turn the coding CLI
+// started on its own.
+func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg, parentExecutionID string, onComplete func(error), withContext func(context.Context) context.Context) bool {
 	if api.autoNotificationSessionUnreachable(sessionID) {
 		log.Printf("[BG AGENT] Session %s is stopped/inactive, suppressing synthetic turn", sessionID)
 		return false
@@ -2748,6 +2755,9 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		agentCtx = logCtx.Context(agentCtx)
 	}
 	agentCtx = withConversationTurnExecutionID(agentCtx, syntheticExecutionID)
+	if withContext != nil {
+		agentCtx = withContext(agentCtx)
+	}
 
 	// Inject user ID into context
 	if hasReq && req.userID != "" {
