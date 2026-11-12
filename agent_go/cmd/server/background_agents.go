@@ -2782,6 +2782,12 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 
 	log.Printf("[BG AGENT] Executing synthetic turn for session %s via stored agent", sessionID)
 
+	if hasReq {
+		if err := api.saveRestartContinueRequest(agentCtx, req.userID, sessionID, syntheticExecutionID, req); err != nil {
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=config_write_failed", sessionID, syntheticExecutionID)
+		}
+	}
+
 	// Start the stream synchronously so setup errors can undo the busy/synthetic
 	// state before returning. A nil setup error is not delivery success: the
 	// Session.Run result arrives later on outcomeChan, and notification callers

@@ -90,6 +90,6 @@ func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID strin
 		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=turn_not_started", sessionID, commandID)
 		return
 	}
-	backgroundFollowUps.started(sessionID)
+	api.noteAutomaticFollowUpStarted(sessionID)
 	log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=started failed=%t output_len=%d", sessionID, commandID, failed, len(output))
 }

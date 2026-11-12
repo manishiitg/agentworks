@@ -808,7 +808,7 @@ func (api *StreamingAPI) emitInterruptedTurnEnd(sessionID, source string) {
 	completion.Metadata["scope"] = "main_agent"
 	completion.Metadata[mcpagent.RetainedTurnOutcomeMetadataKey] = "interrupted"
 	completion.Metadata["final_response_missing"] = true
-	completion.Metadata["stopped"] = true
+	completion.Metadata["stopped"] = source != "app_restart"
 	// Preserve only the platform's current main-chat stream, never CLI transcript
 	// recovery or terminal screenshots. Incomplete/pruned prefixes stay unavailable.
 	prefix, _ := api.eventStore.StreamingPrefix(sessionID)

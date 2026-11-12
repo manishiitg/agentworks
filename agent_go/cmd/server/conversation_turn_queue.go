@@ -330,6 +330,14 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			continue // One caller's unreadable document must not block others.
 		}
 		api.noteConversationQueueReadState(sessionID, owner, nil)
+		if pruned, changed := api.pruneRestartContinues(turns); changed {
+			if err := api.writeConversationTurnQueue(ctx, owner, pruned); err != nil {
+				lock.Unlock()
+				return queuedConversationTurn{}, false, err
+			}
+			turns = pruned
+		}
+
 		head := conversationQueueHead(turns, owner, sessionID, time.Now())
 		if head.ID == "" {
 			// Keep the file lock through index cleanup: a concurrent enqueue
@@ -991,11 +999,19 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		lock := productConversationRegistryMutex(path)
 		lock.Lock()
 		turns, err := api.readConversationTurnQueue(ctx, userID)
-		if err != nil || len(turns) == 0 {
+		if err != nil {
 			lock.Unlock()
 			continue
 		}
 		turns = dropStaleWaitingTurns(turns, time.Now().UTC())
+		turns, err = api.prepareRestartContinues(ctx, userID, turns)
+		if err != nil {
+			lock.Unlock()
+			logTurnQueue("cannot recover interrupted chats for %s: %v", userID, err)
+			continue
+		}
+
+		turns, _ = api.pruneRestartContinues(turns)
 		for i := range turns {
 			if turns[i].Steering || (turns[i].LimitRetried && turns[i].StartedAt != nil) {
 				// An interrupted steer may have reached the CLI. Never replay it blindly.
@@ -1029,7 +1045,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 const staleWaitingTurnAge = 30 * time.Minute
 
 // dropStaleWaitingTurns removes turns that never started and are older than staleWaitingTurnAge.
-// Turns that had started (they were running when the server stopped) are kept and run again.
+// Started rows are handled separately by restart continuation and never replayed.
 func dropStaleWaitingTurns(turns []queuedConversationTurn, now time.Time) []queuedConversationTurn {
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
