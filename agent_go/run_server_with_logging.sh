@@ -1953,12 +1953,18 @@ start_native_workspace() {
     # Bind to localhost as defense in depth. Process-execution routes also
     # require the server-only WORKSPACE_API_TOKEN generated above.
     WORKSPACE_BIND_HOST="${WORKSPACE_BIND_HOST:-127.0.0.1}"
+    # Toolchain download and compilation must finish before the 90s
+    # service-health budget starts (PLAT-746-935).
+    local workspace_binary="$SCRIPT_DIR/.bin/native-workspace-dev"
+    mkdir -p "$SCRIPT_DIR/.bin" || return 1
+    echo "🔨 Building the native workspace (including any Go toolchain download)..."
+    (cd "$WORKSPACE_DIR" && go build -o "$workspace_binary" .) || return 1
     if [ "$BACKGROUND_MODE" = true ]; then
-        nohup bash -lc "cd \"$WORKSPACE_DIR\" && exec go run . server --debug --host \"$WORKSPACE_BIND_HOST\" --port \"$WORKSPACE_PORT\" --docs-dir \"$WORKSPACE_DOCS_PATH\"" >> "$WORKSPACE_LOG_PATH" 2>&1 &
+        nohup bash -lc 'cd "$1" && shift && exec "$@"' bash "$WORKSPACE_DIR" "$workspace_binary" server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH" >> "$WORKSPACE_LOG_PATH" 2>&1 &
     else
         (
             cd "$WORKSPACE_DIR" || exit 1
-            exec go run . server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH"
+            exec "$workspace_binary" server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH"
         ) >> "$WORKSPACE_LOG_PATH" 2>&1 &
     fi
 
@@ -2469,6 +2475,14 @@ else
     unset AGENTWORKS_DESKTOP_SOCKET
 fi
 
+# Direct launches must also compile before their health timer, just like
+# Electron's existing prebuild. Keep the same flags and service arguments.
+if [ "$WITH_FRONTEND" != true ] || [ "$WITHOUT_ELECTRON" = true ]; then
+    AGENT_DIRECT_BINARY="$SCRIPT_DIR/.bin/agent-server-dev"
+    echo "🔨 Building the local backend (including any Go toolchain download)..."
+    go build -ldflags "$GO_LDFLAGS" -o "$AGENT_DIRECT_BINARY" main.go || exit 1
+fi
+
 if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
     # go run does not preserve fd 3 for its compiled child. Build once, then let
     # Electron own the backend exactly as the packaged app does.
@@ -2489,7 +2503,7 @@ if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
 elif [ "$BACKGROUND_MODE" = true ]; then
     # Background mode: run in background and capture PID
     dev_detail "🔄 Starting server in background mode..."
-    nohup go run -ldflags "$GO_LDFLAGS" main.go server \
+    nohup "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2547,7 +2561,7 @@ elif [ "$WITH_FRONTEND" = true ]; then
     # then tail the server log so the user still sees server output.
     dev_detail "🔄 Starting server in foreground mode (with frontend)..."
     echo "   Agent API URL: $MCP_AGENT_SERVER_URL"
-    nohup go run -ldflags "$GO_LDFLAGS" main.go server \
+    nohup "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2580,7 +2594,7 @@ else
     echo "   Agent API URL: $MCP_AGENT_SERVER_URL"
     echo ""
 
-    go run -ldflags "$GO_LDFLAGS" main.go server \
+    "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2591,8 +2605,7 @@ else
         --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 &
 
     SERVER_PID=$!
-    # Records the compiled child listening on the port (AGENT_LISTENER): go run can exit before it on Ctrl+C,
-    # and cleanup then stops it by that record (PLAT-856-439).
+    # Record the owned listener for the same cleanup path (PLAT-856-439).
     wait_for_agent_health || exit 1
     wait "$SERVER_PID"
     EXIT_CODE=$?
