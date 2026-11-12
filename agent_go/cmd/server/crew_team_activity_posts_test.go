@@ -56,6 +56,14 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if !foundWaiting {
 		t.Fatal("server-only registered chat with a pending owner question did not show waiting")
 	}
+	// PLAT-746-909: a server-only Crew with Team off still returns array-valued
+	// live lists. Null lists crashed the website sidebar after the initial rollout.
+	off := team
+	off.On = false
+	offView := crewTeamTabFor(ctx, off, "owner")
+	if offView.Live.Agents == nil || offView.Live.Idle == nil {
+		t.Fatal("off-Team live lists must be empty arrays, not null")
+	}
 	var own, foreign, private string
 	for _, agent := range team.Agents {
 		switch {
