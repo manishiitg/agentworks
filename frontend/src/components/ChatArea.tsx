@@ -1,7 +1,6 @@
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
-import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import { sessionStreamingState, type SessionActivitySnapshot } from '../utils/sessionStreamingState'
@@ -1780,7 +1779,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       chatStore.patchTabEvents(actualSessionId, events => applyLiveInputConfirmations(events, confirmations))
     }
     const newEvents: PollingEvent[] = []
-    let hasCompletionEvent = false
     // Check if we already have frontend-created user messages for this session.
     // We only want to suppress the backend echo for the exact same submitted text.
     // Other backend user_message events, like steer pickup notifications injected
@@ -1872,10 +1870,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           transferSuppressedEchoIdentity(event, msgContent)
           continue
         }
-      }
-
-      if (isForegroundTurnCompletion(event)) {
-        hasCompletionEvent = true
       }
 
       if (event.type === 'delegation_end') {
@@ -2009,23 +2003,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     // Pulse, secrets). The right pane gets its state from the server via its
     // own fetches and the live feed; the agent may only change it through an
     // explicit ui-control command.
-    // A foreground terminal event is the per-turn completion contract. Settle
-    // the chat immediately instead of waiting for a later activity-cache poll;
-    // the retained tmux/session may stay alive for the next user message.
-    if (hasCompletionEvent && tab) {
-      const hasBgAgents = response.has_running_background_agents ?? tab.hasRunningBgAgents
-      chatStore.setTabStreaming(tab.tabId, false)
-      chatStore.setTabCompleted(tab.tabId, !hasBgAgents)
-      chatStore.clearStreamingText(actualSessionId)
-      if (sessionOwnsGlobalChatIndicators(actualSessionId, activeSessionIdRef.current)) {
-        setIsStreaming(false)
-        setIsCompleted(!hasBgAgents)
-        setHasActiveChat(hasBgAgents)
-      }
-      void chatStore.getActiveSessions(true).catch(error => {
-        logger.warn('ChatArea', 'Failed to refresh activity after foreground completion', error)
-      })
-    }
+    // Lifecycle is projected from the server status above, never from reply,
+    // generation or tool events. The SSE status tick also settles a quiet turn.
 
     // Process workflow events — only for the ACTIVE preset's tabs
     // Background workflow tabs (different preset) still receive and store events via SSE,
