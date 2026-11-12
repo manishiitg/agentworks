@@ -156,13 +156,20 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 		return
 	}
 	var body struct {
-		Kind    string `json:"kind"`
-		AgentID string `json:"agent_id"`
-		Line    string `json:"line"`
-		Why     string `json:"why"`
+		Kind     string `json:"kind"`
+		AgentID  string `json:"agent_id"`
+		Line     string `json:"line"`
+		Why      string `json:"why"`
+		Schedule string `json:"schedule"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body) != nil || (body.Kind != "doing" && body.Kind != "decision") {
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body) != nil || (body.Kind != "doing" && body.Kind != "decision" && body.Kind != "finding") {
 		externalError(w, 400, "invalid_activity", "Choose doing or decision and give one short line")
+		return
+	}
+	// A finding comes from a schedule run on the owner's Mac: only that Mac's own call (the Crew's pair header) may post one,
+	// and the schedule name is the one it sends. Any other caller gets the refusal line.
+	if body.Kind == "finding" && (claims.UserID != team.OwnerID || !crewMacPairSent(r, team.ProjectID)) {
+		externalError(w, 403, "activity_forbidden", crewFindingRefusal)
 		return
 	}
 	// Resolve a current admitted registry identity, not an address alias or a
@@ -172,7 +179,7 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 		externalError(w, 403, "activity_forbidden", "Only an In team agent can post its own Team activity")
 		return
 	}
-	post, err := writeCrewTeamActivityPost(r.Context(), team.ProjectID, claims.UserID, agent.ID, body.Kind, body.Line, body.Why, "")
+	post, err := writeCrewTeamActivityPost(r.Context(), team.ProjectID, claims.UserID, agent.ID, body.Kind, body.Line, body.Why, activitySchedule(body.Kind, body.Schedule))
 	if err != nil {
 		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=post_failed agent_id=%s", team.ProjectID, agent.ID)
 		externalError(w, 400, "activity_failed", "Could not post. Use one short line and give a short reason for a decision.")
@@ -205,4 +212,12 @@ func pushCrewTeamActivityChanged(team crewTeam) {
 		}
 	}
 	log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=notice_pushed macs=%d", team.ProjectID, sent)
+}
+
+// Only a finding carries a schedule name; a Doing or Decision post never does, whatever the caller sent.
+func activitySchedule(kind, schedule string) string {
+	if kind == "finding" {
+		return schedule
+	}
+	return ""
 }
