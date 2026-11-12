@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronRight, FileDiff, GitBranch } from 'lucide-react'
+import { ChevronRight, Github, GitBranch } from 'lucide-react'
 import type { CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
@@ -29,12 +29,12 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
   })
   return <div>
     <div className="flex items-center">
-      <button type="button" aria-expanded={open} aria-label={open ? 'Hide repositories with uncommitted files' : 'Show repositories with uncommitted files'} onClick={() => setState(open ? 'closed' : 'open')}
-        className="flex h-6 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <button type="button" aria-expanded={open} aria-label={open ? 'Collapse changed repositories' : 'Expand changed repositories'} onClick={() => setState(open ? 'closed' : 'open')}
+        className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
       </button>
       <div className="min-w-0 flex-1">
-        <WorkspaceContextRow icon={FileDiff} hint="Files not committed yet in this project's Git repositories, whoever changed them. Committing clears them; Branch / PR shows committed work, and each reply shows its own changes." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>{section.title}</WorkspaceContextRow>
+        <WorkspaceContextRow icon={Github} hint="Open file changes and diffs. Shows current uncommitted files across this project’s repositories, whoever changed them." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>Changes</WorkspaceContextRow>
       </div>
     </div>
     {open && rows.length > 0 && <div className="mt-0.5 pl-4">{rows}</div>}
