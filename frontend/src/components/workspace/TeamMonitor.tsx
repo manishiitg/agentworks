@@ -11,8 +11,8 @@ import { openCrewAccess } from '../../products/work/MacSharedAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { key: string; personKey: string; person: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
-type Face = { key: string; name: string; online: boolean; line: string; working: number; waiting: number }
+type Row = { key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
+type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number }
 
 const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200', 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200',
   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200', 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-200',
@@ -20,7 +20,7 @@ const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200
 const tone = (key: string) => tones[[...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % tones.length]
 
 /** Every Crew in the person's menu, on this network and each connected one, with its Team as the server words it. */
-function useTeamCrews(): { connectionId: string; crews: Crew[] }[] {
+function useTeamCrews(): { connectionId: string; network: string; crews: Crew[] }[] {
   const user = useAuthStore(state => state.user?.id || '')
   const active = getRawActiveWorkspaceId()
   const desktop = hasDesktopConnections()
@@ -40,9 +40,10 @@ function useTeamCrews(): { connectionId: string; crews: Crew[] }[] {
   useConnectedWorkPolling(desktop)
   const store = useConnectedWorkStore()
   const others = desktop && isChatIdentityCurrent(store.identity)
-    ? connectedLocations(store).filter(connection => connection.id !== active).map(connection => ({ connectionId: connection.id, crews: (store.inventory[connection.id]?.projects || []).filter(project => project.kind === 'crew') }))
+    ? connectedLocations(store).filter(connection => connection.id !== active).map(connection => ({ connectionId: connection.id, network: connection.name, crews: (store.inventory[connection.id]?.projects || []).filter(project => project.kind === 'crew') }))
     : []
-  return [{ connectionId: active, crews: here.scope === `${active}:${user}` ? here.crews : [] }, ...others]
+  const activeName = store.connections.find(connection => connection.id === active)?.name || 'Local'
+  return [{ connectionId: active, network: activeName, crews: here.scope === `${active}:${user}` ? here.crews : [] }, ...others]
 }
 
 function openCrewTeam(connectionId: string, crewId: string) {
@@ -61,24 +62,24 @@ export function TeamMonitor() {
     const faces = new Map<string, Face>()
     const rows: Row[] = []
     const crews = new Set<string>()
-    for (const { connectionId, crews: list } of sources) {
+    for (const { connectionId, network, crews: list } of sources) {
       for (const crew of list) {
         const live = crew.team_live
         if (!live) continue
         for (const person of live.people || []) {
           const key = `${connectionId}:${person.user_id}`
-          const face = faces.get(key) || { key, name: person.name, online: false, line: person.line, working: 0, waiting: 0 }
+          const face = faces.get(key) || { key, name: person.name, network, online: false, line: person.line, working: 0, waiting: 0 }
           if (person.online && !face.online) { face.online = true; face.line = person.line }
           faces.set(key, face)
         }
         for (const agent of live.agents) {
           const personKey = `${connectionId}:${agent.owner_id}`
-          const face = faces.get(personKey) || { key: personKey, name: agent.person, online: true, line: '', working: 0, waiting: 0 }
+          const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0 }
           if (agent.activity === 'waiting') face.waiting += 1
           else face.working += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
-          rows.push({ key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
+          rows.push({ key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
         }
       }
     }
@@ -116,7 +117,11 @@ export function TeamMonitor() {
   const working = faces.filter(face => face.working).length
   const online = faces.filter(face => face.online).length
   const label = working ? `${working} working` : `${online} online`
-  const title = shown.map(face => `${face.name} · ${face.working ? `${face.working} working` : face.waiting ? 'waiting' : face.line || 'online'}`).join('\n')
+  // With more than one network every person and Crew names its network (owner, 12 Nov: "for more than one network we
+  // need some identification").
+  const networks = [...new Set(faces.map(face => face.network))]
+  const multi = networks.length > 1
+  const title = shown.map(face => `${face.name}${multi ? ` (${face.network})` : ''} · ${face.working ? `${face.working} working` : face.waiting ? 'waiting' : face.line || 'online'}`).join('\n')
   const avatar = (face: Face, size: string) => <span className={`relative grid shrink-0 place-items-center rounded-full font-semibold ${size} ${tone(face.key)} ${face.working ? 'ring-2 ring-blue-500' : face.waiting ? 'ring-2 ring-amber-500' : ''} ${face.online || face.working || face.waiting ? '' : 'opacity-40'}`}>
     {face.name.slice(0, 1).toUpperCase()}
     {face.online && <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background bg-emerald-500" />}
@@ -130,12 +135,16 @@ export function TeamMonitor() {
     return <button key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span><span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{row.crew}</span></span>
+        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span><span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span></span>
         <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.doing || (row.activity === 'waiting' ? 'Waiting' : 'Working')}</span>
       </span>
     </button>
   }
 
+  const chip = (face: Face) => <button key={face.key} type="button" title={face.line} onClick={() => setOnly(current => current === face.key ? '' : face.key)}
+          className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${only === face.key ? 'border-primary text-foreground' : 'border-border text-muted-foreground'} ${face.online || face.working || face.waiting ? '' : 'opacity-60'}`}>
+          {avatar(face, 'h-5 w-5 text-[9px]')}{face.name}<span className="text-muted-foreground">{face.working || face.waiting ? face.working + face.waiting : face.online ? '' : face.line.replace(/^Last seen /, '')}</span>
+  </button>
   return <div ref={rootRef} className="relative">
     <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`Team: ${label}. Open to see who is working.`} title={title}
       className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-border px-1.5 text-xs text-muted-foreground hover:bg-muted md:pr-2.5">
@@ -146,15 +155,16 @@ export function TeamMonitor() {
       <span className="hidden whitespace-nowrap md:inline">Team · <span className={working ? 'font-medium text-blue-600 dark:text-blue-400' : ''}>{label}</span></span>
     </button>
     {open && createPortal(<div ref={panelRef} role="menu" aria-label="Team" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
-      <div className="px-3 pt-3 text-sm font-semibold text-foreground">Team</div>
-      <div className="px-3 pb-2 text-xs text-muted-foreground">{rows.length ? `${rows.length - waiting} agent${rows.length - waiting === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}` : 'Nobody on your Team is working right now'}</div>
+      <div className="px-3 pb-1.5 pt-3 text-sm font-semibold text-foreground">Team</div>
+      {rows.length > 0 && <div className="px-3 pb-2 text-xs text-muted-foreground">{`${rows.length - waiting} agent${rows.length - waiting === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}`}</div>}
       <div className="flex flex-wrap gap-1.5 px-3 pb-2">
         <button type="button" onClick={() => setOnly('')} className={`rounded-full border px-2.5 py-0.5 text-xs ${only ? 'border-border text-muted-foreground' : 'border-primary text-foreground'}`}>Everyone</button>
-        {faces.map(face => <button key={face.key} type="button" title={face.line} onClick={() => setOnly(current => current === face.key ? '' : face.key)}
-          className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${only === face.key ? 'border-primary text-foreground' : 'border-border text-muted-foreground'} ${face.online || face.working || face.waiting ? '' : 'opacity-60'}`}>
-          {avatar(face, 'h-5 w-5 text-[9px]')}{face.name}<span className="text-muted-foreground">{face.working || face.waiting ? face.working + face.waiting : face.online ? '' : face.line.replace(/^Last seen /, '')}</span>
-        </button>)}
+        {!multi && faces.map(chip)}
       </div>
+      {multi && networks.map(network => <div key={network} className="px-3 pb-2">
+        <div className="pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{network}</div>
+        <div className="flex flex-wrap gap-1.5">{faces.filter(face => face.network === network).map(chip)}</div>
+      </div>)}
       <div className="min-h-0 overflow-y-auto px-1 pb-2">
         {workingRows.length > 0 && <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Working now</div>}
         {workingRows.map(rowView)}
