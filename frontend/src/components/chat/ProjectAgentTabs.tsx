@@ -15,13 +15,13 @@ import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
-import { teamAgentForTab, useTeamTab, type TeamTabPresence } from '../../products/work/teamApi'
+import { teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { fillAgentPurposeDraft, fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
+import { fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -179,23 +179,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const menuPeople = [...new Set(tabs.map(tabOwnerId))].sort(byName)
   const menuGrouped = menuPeople.length > 1 || menuPeople[0] !== ''
   const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerId(tab) === person) }))
-  // In a Crew's strip each other person is one chip after your own tabs (owner, 6 Nov, approved mockup); their agents
-  // and the server's status words open from it. Other products keep their tabs.
-  const personChips = surface === 'work'
-  const stripTabs = personChips ? visibleTabs.filter(tab => tabOwnerId(tab) === '') : visibleTabs
+  // A Crew's strip shows only your own tabs; teammates are in the ⌄ menu and the header's Team button (owner, 12 Nov:
+  // one Team chip, not two).
+  const stripTabs = surface === 'work' ? visibleTabs.filter(tab => tabOwnerId(tab) === '') : visibleTabs
   // Another person's agent working or waiting for them, as the server reads it from their Mac (crew_team_activity.go).
   const serverActivity = (tab: ChatTab) => {
     const activity = teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)?.activity
     return activity === 'running' || activity === 'waiting' ? activity : undefined
   }
-  const chipAgent = (tab: ChatTab) => {
-    const row = teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)
-    return { tabId: tab.tabId, name: tabLabel(tab), status: row?.place_label || row?.status_label || '', tone: row?.place_label ? row.place_tone : undefined, activity: serverActivity(tab) }
-  }
-  const chipPeople = personChips ? menuGroups.filter(group => group.person !== '').map(group => {
-    const agents = group.tabs.filter(isAgentTab).map(chipAgent)
-    return { person: group.person, agents, watching: agents.find(agent => agent.tabId === activeTabId) }
-  }).filter(group => group.agents.length > 0) : []
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   // Your own agent In team, from the Team tab's server reading (the same rows in the Mac app and on the website).
   // Answer only / Make changes is the same row's server answer (When others ask).
@@ -568,10 +559,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
           )}
         </div>
       )
-  const moreBeforePeople = chipPeople.length > 0 && !menuMode
-  const personChipList = chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)} activity={team?.people.find(person => person.user_id === group.person)?.activity}
-    agents={group.agents} watching={group.watching} onPick={selectTab} help={teamState.view?.help}
-    onAskHelp={placeProject && teamState.view?.help_ask ? () => { fillMainDraft(placeProject, teamState.view?.help_ask || '') } : undefined} />)
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -612,16 +599,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
-      {moreBeforePeople && moreMenu}
-      {!menuMode && chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
-      {!menuMode && personChipList}
       </div>
-      {!moreBeforePeople && moreMenu}
+      {moreMenu}
 
       {newTabForm}
-      {/* With the left menu your own agents are there; the Team stays in the header after ⌄ and +, past a divider
-          (owner, 10 Nov). */}
-      {menuMode && chipPeople.length > 0 && <div className="hidden min-w-0 items-center gap-1 md:flex"><span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />{personChipList}</div>}
       {addMode && createPortal(
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking && !opening) setAddMode(null) }}>
           <div role="dialog" aria-modal="true" aria-label={addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
@@ -675,100 +656,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   )
 }
 
-type PersonChipAgent = { tabId: string; name: string; status: string; tone?: string; activity?: 'running' | 'waiting' }
-
-/** Another person's agent: the server's working or waiting for them (their Mac's report, or its own queue) shows
- * even when this browser holds no live turn for it; this browser's own signal (needs you, failed, a reply to read)
- * wins. */
-function useAgentMenuStateOrServer(tabId: string, activity?: 'running' | 'waiting') {
-  const own = useAgentMenuState(tabId)
-  return own ?? activity ?? null
-}
-function PersonAgentMark({ tabId, activity }: { tabId: string; activity?: 'running' | 'waiting' }) { return <AgentMark state={useAgentMenuStateOrServer(tabId, activity)} /> }
-function PersonAgentWord({ tabId, activity }: { tabId: string; activity?: 'running' | 'waiting' }) {
-  const own = useAgentMenuState(tabId)
-  const state = own ?? activity ?? null
-  // Waiting from the server means it waits for its own person, not for you.
-  const word = !own && state === 'waiting' ? 'Waiting' : state ? AGENT_STATE_WORD[state] : ''
-  return word ? <span className="ml-auto shrink-0 pl-2 text-[10px] font-normal text-muted-foreground">{word}</span> : null
-}
 // The agent menu's Run online sends this to the agent itself: it picks what its online copy needs (crew_run_online.go).
 const RUN_ONLINE_ASK = 'Run yourself online: make your online copy with manage_crew_sync run_online. Pick the folders and files you work with and the schedules meant for you, and write a short handover note first.'
-const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-emerald-400', wait: 'text-amber-600 dark:text-amber-400', server: 'text-sky-600 dark:text-sky-400' }
-
-/** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many
- * of their agents are here and the dot for their Mac; it opens their agents with the server's status words (the Team
- * tab reading). While one of theirs is open, the chip names it. */
-function PersonChip({ name, presence, activity, agents, watching, onPick, help, onAskHelp }: {
-  name: string; presence?: TeamTabPresence; activity?: 'running' | 'waiting'; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
-  help?: { title: string; text: string }[]; onAskHelp?: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  // "How this works": the server's help lines in place of the agents; a second click or Esc closes it.
-  const [helpOpen, setHelpOpen] = useState(false)
-  useEffect(() => { if (!open) setHelpOpen(false) }, [open])
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  useLayoutEffect(() => {
-    if (!open) return
-    const rect = buttonRef.current?.getBoundingClientRect()
-    if (rect) setPosition({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(300, window.innerWidth - 16) - 8)) })
-    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
-    const close = (event: MouseEvent) => { if (!buttonRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { if (helpOpen) setHelpOpen(false); else { setOpen(false); buttonRef.current?.focus() } } }
-    const shut = () => setOpen(false)
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    window.addEventListener('resize', shut)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape); window.removeEventListener('resize', shut) }
-  }, [open, helpOpen])
-  const avatar = (size: string) => <span aria-hidden="true" className={`relative grid ${size} shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary`}>
-    {name.trim().charAt(0).toUpperCase() || '?'}
-    {activity && <span title={activity === 'running' ? 'Working' : 'Waiting'} className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-background p-[1.5px]"><span className={`h-2 w-2 rounded-full ${activity === 'running' ? 'bg-emerald-500' : 'bg-amber-500'}`} /></span>}
-  </span>
-  return <>
-    <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open}
-      aria-label={`${name}'s agents (${agents.length})${activity ? ` · ${activity === 'running' ? 'Working' : 'Waiting'}` : ''}`} title={`${name}'s agents${activity ? ` · ${activity === 'running' ? 'Working' : 'Waiting'}` : ''}`}
-      data-person-chip={name} data-tab-active={watching ? 'true' : undefined}
-      className={`inline-flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching ? 'border-primary text-foreground' : 'border-border text-foreground/85'}`}>
-      {avatar('h-5 w-5')}
-      <span className="min-w-0 truncate">{name}{watching && <> · <b className="font-semibold">{watching.name}</b></>}</span>
-      {/* What their agents are doing now (owner, 6 Nov: "when their agent is online/offline/working/loading I want to see
-          that"): one mark each, only while it is working, needs them, failed or has a reply not read yet. */}
-      <span className="flex shrink-0 items-center gap-0.5">{agents.map(agent => <PersonAgentMark key={agent.tabId} tabId={agent.tabId} activity={agent.activity} />)}</span>
-      <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
-    </button>
-    {open && createPortal(
-      <div ref={menuRef} style={position} role="menu" aria-label={`${name}'s agents`} className="fixed z-[100] w-[300px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-popover p-1.5 shadow-lg">
-        <div className="flex items-start gap-2 px-2 pb-1.5 pt-1">
-          {avatar('h-5 w-5')}
-          <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}'s agents</span>{presence && <span className="block">{presence.line}</span>}</p>
-        </div>
-        {helpOpen && help ? <div className="px-2 pb-1 pt-1" data-testid="agent-menu-help">
-          <p className="pb-1 text-[13px] font-semibold">How this works</p>
-          {help.map(line => <div key={line.title} className="border-t border-border py-2">
-            <b className="block text-[13px] font-semibold text-foreground">{line.title}</b>
-            <p className="text-[12px] text-muted-foreground">{line.text}</p>
-          </div>)}
-          {onAskHelp && <button type="button" onClick={() => { setOpen(false); onAskHelp() }} className="mt-1 rounded-full border border-primary px-3 py-0.5 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask the Crew to change this</button>}
-        </div> : agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
-          className={`flex min-h-9 w-full min-w-0 items-start gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70' : ''}`}>
-          <span className="mt-1 flex w-3 shrink-0 justify-center"><PersonAgentMark tabId={agent.tabId} activity={agent.activity} /></span>
-          {/* The name keeps its own full line; the server's status sits smaller underneath (owner, 6 Nov: names were cut to "t.." by the status). */}
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate ${watching?.tabId === agent.tabId ? 'font-semibold' : ''}`}>{agent.name}</span>
-            {agent.status && <span className={`block text-[11px] font-normal leading-snug ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
-          </span>
-          {watching?.tabId === agent.tabId && <span className="mt-0.5 shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
-          <span className="mt-0.5 flex shrink-0 items-center"><PersonAgentWord tabId={agent.tabId} activity={agent.activity} /></span>
-        </button>)}
-        {help && help.length > 0 && <button type="button" aria-expanded={helpOpen} onClick={() => setHelpOpen(value => !value)} className="mt-1 flex w-full items-center gap-2 border-t border-border px-2.5 pb-1 pt-2 text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span aria-hidden="true" className="grid h-5 w-5 place-items-center rounded-full border border-muted-foreground text-[11px]">?</span>How this works</button>}
-      </div>, document.body
-    )}
-  </>
-}
-
 const PHONE_PLACE: Record<CloudState, string> ={ mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
