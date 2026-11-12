@@ -960,6 +960,9 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 							if deliveryErr != nil {
 								m.Delivery = "undeliverable"
 								m.Error = deliveryErr.Error()
+								if errors.Is(deliveryErr, errAgentMessageSteerUnconfirmed) {
+									m.Delivery = "unconfirmed"
+								}
 								if hold {
 									m.Delivery = "pending"
 									m.Error = ""
@@ -1025,20 +1028,38 @@ func (api *StreamingAPI) steerAgentMessageReply(ctx context.Context, c agentConv
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
 		SessionID: dest.Session, Message: text, Intent: mcpagent.UserMessageDeliveryIntentLiveInput, MessageID: messageID,
 	})
-	if err != nil || delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusSentToCLI {
-		log.Printf("[AGENT-MESSAGE] steer %s into %s not confirmed (status=%s err=%v); it waits for its own turn", m.ID, dest.Session, delivery.DeliveryStatus, err)
+	if delivery.Provider == "" {
+		delivery.Provider = mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider
+	}
+	return api.finishAgentMessageSteer(ctx, c, m, messageID, text, delivery, err)
+}
+
+var errAgentMessageSteerUnconfirmed = errors.New("Delivery unconfirmed. It will not be sent again automatically; check the receiving chat before sending it again.")
+
+// Only a proven pre-send miss can reopen mail. A timeout, queued/injection
+// acknowledgement or unknown result may have reached the CLI already.
+func (api *StreamingAPI) finishAgentMessageSteer(ctx context.Context, c agentConversation, m agentMessage, messageID, text string, delivery mcpagent.UserMessageDeliveryResult, err error) (bool, error) {
+	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
+	if liveInputErrorProvesNoTarget(err) {
+		log.Printf("[AGENT-MESSAGE] steer %s into %s not sent: no live target; waiting for its own turn", m.ID, dest.Session)
 		return false, nil
 	}
-	provider := string(delivery.Provider)
-	if provider == "" {
-		provider = string(mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider)
+	status := string(delivery.DeliveryStatus)
+	unconfirmed := err != nil || delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusSentToCLI
+	if unconfirmed {
+		status = "unconfirmed"
 	}
+	provider := string(delivery.Provider)
 	label, senderAgent, senderChannel := agentMessageSender(ctx, source, dest.UserID)
-	api.recordAttributedCodingAgentUserMessage(dest.Session, text, provider, messageID, string(delivery.DeliveryStatus), "", map[string]interface{}{
+	api.recordAttributedCodingAgentUserMessage(dest.Session, text, provider, messageID, status, "", map[string]interface{}{
 		"source": "agent_message", "sender_label": label, "sender_agent": senderAgent, "sender_channel": senderChannel,
 		"sender_kind": agentMessageSenderKindIn(ctx, source), "sender_user_id": source.UserID, "agent_message_inbox": c.ID,
 		"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
 	})
+	if unconfirmed {
+		log.Printf("[AGENT-MESSAGE] steer %s into %s unconfirmed; held without automatic resend", m.ID, dest.Session)
+		return true, errAgentMessageSteerUnconfirmed
+	}
 	log.Printf("[AGENT-MESSAGE] steered reply %s from %s into running turn of %s", m.ID, c.ID, dest.Session)
 	return true, nil
 }
