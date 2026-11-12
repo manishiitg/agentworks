@@ -372,3 +372,61 @@ func TestDesktopMemberCrewResolvesOnlyOwnActiveCopy(t *testing.T) {
 		t.Fatalf("web copy redirected to Mac: %s", got)
 	}
 }
+
+// PLAT-746-905: the quick switcher shows one row per Crew. A server Crew that
+// is the online copy of one of this person's own paired Mac Crews is skipped.
+func TestDesktopInventorySkipsOwnOnlineCopy(t *testing.T) {
+	desktopTestEnvironment(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "false")
+	const macLocal, online, other, owner = "own-mac-crew", "online-copy", "other-crew", "owner"
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: macLocal, ProjectID: macLocal, OwnerID: owner}); err != nil {
+		t.Fatal(err)
+	}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/api/workspaces") {
+			_, _ = io.WriteString(w, `{"workspaces":[{"id":"`+online+`","name":"My Crew"},{"id":"`+other+`","name":"Other Crew"}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"workflows":[]}`)
+	}))
+	defer remote.Close()
+	if err := writeDesktopConnections(owner, []desktopConnection{{ID: "saved", Server: remote.URL, Token: "remote-session"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync(macLocal, crewroot.SyncBinding{Mode: "relay", PairID: "own-pair", Side: "local", Editing: "local", ConnectionID: "saved", PeerProjectID: online}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := crewroot.ReadSync(macLocal); err != nil || got == nil {
+		t.Fatalf("own pairing fixture unreadable: %v", err)
+	}
+	api := &StreamingAPI{}
+	r := desktopTestRequest("GET", "/api/desktop-connections/saved/inventory", "", owner)
+	r = mux.SetURLVars(r, map[string]string{"connection": "saved"})
+	w := httptest.NewRecorder()
+	api.handleDesktopConnectionInventory(w, r)
+	if w.Code != 200 {
+		t.Fatalf("inventory: %d %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Projects []desktopProject `json:"projects"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range got.Projects {
+		if p.ID == online {
+			t.Fatalf("online copy listed alongside own Mac Crew: %s", w.Body.String())
+		}
+	}
+	found := false
+	for _, p := range got.Projects {
+		if p.ID == other {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("unpaired Crew missing: %s", w.Body.String())
+	}
+}

@@ -577,9 +577,18 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 				return
 			}
 			projects := []desktopProject{}
+			user := GetUserFromContext(r.Context()).UserID
 			for _, p := range inventory.Workspaces {
-				if id != "local" && desktopMemberCrew(GetUserFromContext(r.Context()).UserID, id, p.ID) != "" {
+				if id != "local" && desktopMemberCrew(user, id, p.ID) != "" {
 					continue
+				}
+				// One row per Crew: skip the online copy of one of this person's own Mac Crews paired with this connection.
+				if id != "local" {
+					if local := crewLocalCopyOf(p.ID); local != "" && ownerOfCrewProjectID(local) == user {
+						if b, err := crewroot.ReadSync(local); err == nil && b != nil && b.Side == "local" && b.ConnectionID == id {
+							continue
+						}
+					}
 				}
 				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent})
 			}
