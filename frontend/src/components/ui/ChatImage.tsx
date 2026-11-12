@@ -9,7 +9,7 @@ function ImagePreview({ src, alt, className }: { src: string; alt: string; class
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => { if (open) dialog.current?.showModal() }, [open])
-  return <>
+  return <span className="inline-flex min-w-0 max-w-full flex-col align-middle">
     {!loaded && !failed && <span role="status" className="inline-flex items-center gap-2 p-3 text-xs text-muted-foreground"><Loader2 aria-hidden className="h-4 w-4 animate-spin" />Loading image…</span>}
     {failed ? <span role="status" className="inline-block p-3 text-xs text-muted-foreground">Image could not be loaded</span> :
       <button type="button" disabled={!loaded} className="inline-block max-w-full cursor-zoom-in align-middle" aria-label={`Enlarge image${alt ? `: ${alt}` : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(true) }}>
@@ -25,7 +25,7 @@ function ImagePreview({ src, alt, className }: { src: string; alt: string; class
       </div>
       <img src={src} alt={alt} referrerPolicy="no-referrer" className="max-h-[80dvh] max-w-full object-contain" />
     </dialog></ModalPortal>}
-  </>
+  </span>
 }
 
 // The caller resolves workspace paths; the existing file endpoint still decides access.

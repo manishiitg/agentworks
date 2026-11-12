@@ -5,6 +5,7 @@ import { dashboardWorkspaceLink } from '../../services/dashboardDirectory'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { remarkImageGallery } from './remarkImageGallery'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -1203,9 +1204,16 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
         // Single-tilde strikethrough off: chat/model text uses ~ for
         // "approximately" (~2.37L), and pairing those into <del> spans
         // strikes whole paragraphs. ~~ still strikethroughs, like GitHub.
-        remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkImageGallery]}
         components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0 text-sm leading-6 text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere">{children}</p>,
+          p: ({ node, children }) => {
+            const imageCount = node?.children.filter(child => child.type === 'element' && child.tagName === 'img').length ?? 0
+            const gallery = !untrustedContent && imageCount > 1 && node?.children.every(child =>
+              child.type === 'element' && child.tagName === 'img' || child.type === 'text' && !child.value.trim())
+            return gallery
+              ? <p role="group" aria-label={`Image gallery · ${imageCount} images`} data-image-gallery className={`not-prose my-3 grid max-w-3xl grid-cols-2 items-start gap-3 [&_img]:!my-0 [&_img]:max-h-48 ${imageCount > 2 ? 'sm:grid-cols-3' : ''}`}>{children}</p>
+              : <p className="mb-2 last:mb-0 text-sm leading-6 text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere">{children}</p>
+          },
           h1: ({ children }) => <h1 className="text-2xl font-bold mb-2 mt-4 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere border-b border-gray-200 dark:border-gray-700 pb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-xl font-semibold mb-2 mt-3 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h2>,
           h3: ({ children }) => <h3 className="text-lg font-semibold mb-1.5 mt-2 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h3>,
