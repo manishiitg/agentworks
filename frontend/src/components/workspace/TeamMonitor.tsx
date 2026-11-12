@@ -162,7 +162,6 @@ export function TeamMonitor() {
         {waitingRows.map(rowView)}
         {!listed.length && rows.length > 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No agent of theirs is working right now.</p>}
       </div>
-      <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">Each Crew&apos;s decisions and messages are in its Team › Activity.</div>
     </div>, document.body)}
   </div>
 }
