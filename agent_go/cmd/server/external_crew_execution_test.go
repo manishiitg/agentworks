@@ -104,7 +104,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	}
 	call("query", map[string]any{"sql": "SELECT value FROM example WHERE id=2"})
 
-	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewState, "workflows", "saved", "db", "db.sqlite"))
+	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewAutomation, "workflows", "saved", "db", "db.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -53,8 +53,7 @@ func TestAdoptedDashboardHTTPKeepsShortLinkAndRefusesOtherPeople(t *testing.T) {
 	f.write(t, dashboardQuestionRegistryPath, string(raw))
 	// The converter's trusted same-ID binding and database move. Deliberately
 	// retain its old render-source placement so the repair must correct both.
-	private := filepath.Join(f.docs, externalCommandCrewState)
-	runtime := filepath.Join(private, "workflows", identity)
+	runtime := filepath.Join(f.docs, externalCommandCrewAutomation, "workflows", identity)
 	if err := os.MkdirAll(filepath.Dir(runtime), 0700); err != nil {
 		t.Fatal(err)
 	}

@@ -131,10 +131,20 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	if sync != nil && sync.Side == "server" && sync.SplitFiles {
 		files = filepath.Join(files, FilesSegment)
 	}
-	for _, dir := range []string{files, resources, private} {
+	for _, dir := range []string{files, resources} {
 		if err := unchangedDirectory(dir, allowMissing); err != nil {
 			return Roots{}, err
 		}
+	}
+	// The private root holds only chats and program runtime (PLAT-746-924), so a
+	// Crew may not have one yet: it is made on first use, like .agentworks.
+	if _, statErr := os.Lstat(private); os.IsNotExist(statErr) && !allowMissing {
+		if _, err := EnsurePrivateRoot(realDocs, r.ID, files); err != nil {
+			return Roots{}, err
+		}
+	}
+	if err := unchangedDirectory(private, allowMissing); err != nil {
+		return Roots{}, err
 	}
 	if r.DatabaseRoot != "" {
 		parts := strings.Split(r.DatabaseRoot, "/")
