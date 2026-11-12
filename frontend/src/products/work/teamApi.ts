@@ -1,3 +1,4 @@
+import type { TeamLiveView } from '../../components/workspace/TeamLiveAgents'
 import { useEffect, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
@@ -89,7 +90,7 @@ export type TeamTabAgent = { id: string; key: string; name: string; detail: stri
 export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamTabView = {
-  team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
+  team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
   can_choose: boolean; can_add_folder: boolean; can_remove_folder: boolean
   // The cards' Ask messages, written by the server and sent as given (crew_team_tab.go crewTeamAskPrompts).
