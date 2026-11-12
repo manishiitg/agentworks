@@ -1,9 +1,8 @@
 import { LocationFilter } from './workspace/LocationFilter'
-import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useLLMStore } from '../stores/useLLMStore'
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Activity, AlertCircle, Bot, CalendarClock, ChevronDown, Clock, Loader2, MessageSquare, Pause, Play, Webhook } from 'lucide-react'
+import { AlertCircle, Bot, CalendarClock, Clock, Loader2, MessageSquare, Pause, Play, Webhook } from 'lucide-react'
 import type { ActiveSessionInfo, RunningWorkflowInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useModeStore } from '../stores/useModeStore'
@@ -199,7 +198,11 @@ function workflowPresetForActivity(
 }
 
 const noRepresentedSessions: readonly string[] = []
-export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly string[] }> = ({ representedSessionIds = noRepresentedSessions }) => {
+/** Your own running work, as the "You" part of the header's Team panel (owner, 12 Nov: one header button for your work
+ * and the Team). It stays mounted for the dock count and reports its summary; its list renders into the panel's slot
+ * while the panel is open. */
+export type OwnActivitySummary = { working: number; needsInput: number }
+export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly string[]; slot: HTMLElement | null; onSummary: (summary: OwnActivitySummary) => void; onClose: () => void }> = ({ representedSessionIds = noRepresentedSessions, slot, onSummary, onClose }) => {
   const desktop = hasDesktopConnections()
   const activeLocation = getRawActiveWorkspaceId()
   const connections = useConnectedWorkStore(connectedLocations)
@@ -209,9 +212,6 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   const locationName = connections.find(connection => connection.id === activeLocation)?.name || (activeLocation === 'local' ? 'Local' : 'Server')
   useEffect(() => { if (desktop) void restoreConnectedActivity() }, [desktop, activeLocation])
   useConnectedWorkPolling(desktop)
-  const sidebar = useProductNavigationSidebar()
-  const panelRef = useRef<HTMLDivElement>(null)
-  const [panelPosition, setPanelPosition] = useState<{ left: number; top: number; maxHeight?: number }>({ left: 0, top: 0 })
   const activeSessionsCache = useChatStore(state => state.activeSessionsCache)
   const getActiveSessions = useChatStore(state => state.getActiveSessions)
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -374,27 +374,6 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
     })
   }, [workflowPresets])
 
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node
-      if (target instanceof Element && target.closest('[data-location-filter-menu]')) return
-      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open ])
-
   const aggregate = useMemo(() => {
     let needsInput = 0
     let working = 0
@@ -412,97 +391,31 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
   }, [activityItems])
 
   const hasActiveWork = aggregate.working > 0 || aggregate.needsInput > 0
-  // A completed run closes its panel so the next run starts with a closed monitor.
-  useEffect(() => { if (!hasActiveWork) setOpen(false) }, [hasActiveWork])
+  useEffect(() => { onSummary(aggregate) }, [aggregate, onSummary])
 
   const selectSession = useCallback((session: ActiveSessionInfo) => {
-    setOpen(false)
+    onClose()
     void handleOpenSession(session)
-  }, [handleOpenSession])
+  }, [handleOpenSession, onClose])
 
   const selectBuilderTab = useCallback((tabId: string) => {
-    setOpen(false)
+    onClose()
     openGlobalTab(tabId)
-  }, [])
+  }, [onClose])
 
   const showQuickSwitcher = useCallback(() => {
-    setOpen(false)
+    onClose()
     openActiveWorkInQuickSwitcher()
-  }, [openActiveWorkInQuickSwitcher])
+  }, [openActiveWorkInQuickSwitcher, onClose])
 
-  useLayoutEffect(() => {
-    if (!open) return
-    const reposition = () => {
-      const trigger = rootRef.current?.getBoundingClientRect()
-      const panel = panelRef.current?.getBoundingClientRect()
-      if (!trigger || !panel) return
-      const viewport = window.visualViewport
-      const visibleTop = viewport?.offsetTop ?? 0
-      const height = viewport?.height ?? window.innerHeight
-      const maxHeight = Math.max(0, height - 24)
-      setPanelPosition({
-        left: Math.max(12, Math.min(sidebar ? trigger.right + 12 : trigger.right - panel.width, window.innerWidth - panel.width - 12)),
-        top: Math.max(visibleTop + 12, Math.min(sidebar ? trigger.bottom - panel.height : trigger.bottom + 8, visibleTop + height - Math.min(panel.height, maxHeight) - 12)),
-        maxHeight,
-      })
-    }
-    reposition()
-    window.addEventListener('resize', reposition)
-    document.addEventListener('scroll', reposition, true)
-    window.visualViewport?.addEventListener('resize', reposition)
-    window.visualViewport?.addEventListener('scroll', reposition)
-    return () => {
-      window.removeEventListener('resize', reposition)
-      document.removeEventListener('scroll', reposition, true)
-      window.visualViewport?.removeEventListener('resize', reposition)
-      window.visualViewport?.removeEventListener('scroll', reposition)
-    }
-  }, [sidebar, open, activityItems.length])
-
-  if (!hasActiveWork) return null
+  if (!hasActiveWork || !slot) return null
 
   const count = activityItems.length
   const checkingActivity = desktop && connections.some(connection => !remoteActivity[connection.id])
-  // End user only cares about two states: is it working, or is it waiting for me?
-  const buttonLabel = aggregate.needsInput > 0
-    ? `${aggregate.needsInput} need${aggregate.needsInput === 1 ? 's' : ''} input`
-    : `${aggregate.working} running`
-  const dotClasses = aggregate.needsInput > 0
-    ? 'bg-amber-500 dark:bg-amber-400'
-    : aggregate.working > 0
-      ? 'bg-blue-500 dark:bg-blue-400'
-      : 'bg-gray-400 dark:bg-gray-500'
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        data-tour="active-work-switcher"
-        data-testid="tour-active-work-switcher"
-        onClick={() => setOpen(current => !current)}
-        aria-expanded={open}
-        aria-label={`Active work: ${buttonLabel}. Activate to switch.`}
-        title={`Active work · ${buttonLabel}`}
-        className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors ${sidebar ? 'relative h-9 w-full justify-center border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60' : 'h-10 shrink-0 justify-center border-transparent text-muted-foreground hover:bg-muted md:h-auto md:border-blue-200 md:bg-blue-50 md:text-blue-700 md:hover:bg-blue-100 dark:md:border-blue-800/60 dark:md:bg-blue-950/40 dark:md:text-blue-300 dark:md:hover:bg-blue-950/60'}`}
-      >
-        {sidebar && <Activity className="h-4 w-4" aria-hidden="true" />}
-        <span className={`${sidebar ? 'absolute right-1.5 top-1.5' : ''} h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${dotClasses}`} />
-        {!sidebar && <span aria-hidden="true" className="tabular-nums md:hidden">{count}</span>}
-        <span className={sidebar ? 'sr-only' : 'hidden whitespace-nowrap md:inline'}>{buttonLabel}</span>
-        <ChevronDown className={`${sidebar ? 'hidden' : 'hidden md:block'} w-3.5 h-3.5 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {/* Escape toolbar/sidebar stacking contexts so the split divider cannot cross the menu. */}
-      {open && createPortal(
-        <div
-          ref={panelRef}
-          role="menu"
-          aria-label="Active work"
-          style={panelPosition}
-          className="fixed z-50 flex max-h-[75vh] w-80 max-w-[calc(100vw-5rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
-        >
-          <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
-            <span>Active work · {count}</span>
+  return createPortal(
+        <div data-testid="own-activity">
+          <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span>You · {count}</span>
             {desktop && <LocationFilter label="Activity location" value={locationFilter} onChange={setLocationFilter} connections={connections} />}
           </div>
           <div className="min-h-0 max-h-96 overflow-y-auto pb-1">
@@ -556,7 +469,7 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
                   key={item.id}
                   type="button"
                   role="menuitem"
-                  onClick={() => { if (item.locationId === activeLocation) selectSession(session); else { setOpen(false); void openConnectedActivity(item.locationId, session.session_id) } }}
+                  onClick={() => { if (item.locationId === activeLocation) selectSession(session); else { onClose(); void openConnectedActivity(item.locationId, session.session_id) } }}
                   title={`${title} · ${origin} · ${statusLabel}${waitingTitle}`}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
@@ -590,13 +503,11 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
           <button
             type="button"
             onClick={showQuickSwitcher}
-            className="w-full shrink-0 border-t border-gray-200 px-3 py-2 text-center text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+            className="w-full px-3 py-1.5 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
           >
             {desktop ? `Search ${locationName} in Ctrl+K` : 'Show all in Ctrl+K'}
           </button>
         </div>,
-        document.body,
-      )}
-    </div>
+        slot,
   )
 }
