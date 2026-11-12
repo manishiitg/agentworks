@@ -263,7 +263,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : canControl(tab) ? undefined : serverActivity(tab), actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the left menu's Closed agents list.
-  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
+  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, pinned: chat.pinned,
