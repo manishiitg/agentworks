@@ -183,9 +183,17 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			agents = append(agents, row)
 		}
 	}
-	// On this Mac: the Team members' own agents of each Crew whose Team is on, from its online copy (owner, 5 Nov).
-	if IsLocalMode() {
-		agents = append(agents, teamMemberAgentRows(ctx, claims.UserID, crews)...)
+	// On this Mac: the Team members' own agents of the asking chat's Crew, from its online copy (owner, 5 Nov). Only that
+	// Crew's: a send to a Team member's agent is accepted only from an agent of the same Crew (sendTeamMessageFromMac), so
+	// listing other Crews' teammates offered targets that were then refused as other_crew (PLAT-746).
+	if IsLocalMode() && here != "" {
+		mine := []map[string]interface{}{}
+		for _, crew := range crews {
+			if p, _ := crew["workspace_path"].(string); p != "" && canonicalCrewWorkspaceRoot(p) == canonicalCrewWorkspaceRoot(here) {
+				mine = append(mine, crew)
+			}
+		}
+		agents = append(agents, teamMemberAgentRows(ctx, claims.UserID, mine)...)
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
