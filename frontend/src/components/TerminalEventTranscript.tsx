@@ -505,7 +505,6 @@ const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone
 // The row already supplies horizontal padding, so a second full padding step
 // made every assistant turn look unnecessarily inset.
 const AGENT_BLOCK_CLASS = 'pl-1 pr-1'
-const AGENT_REPLY_TO_AGENT_CLASS = 'ml-6 border-l-2 border-border pl-3 max-md:ml-3'
 
 const SearchMatchContext = createContext<string | null>(null)
 const DisclosureContext = createContext<Map<string, boolean> | null>(null)
@@ -527,7 +526,7 @@ function useDisclosure(key: string, initial = false) {
 // Where an item sits in its agent turn. A turn is everything between two user
 // messages: tool batches, thoughts, replies, presentation and activity rows.
 type TurnDone = { key: string; durationNs: number; at: string }
-type TurnSlot = { widgetScope?: string; agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone; toAgent?: boolean }
+type TurnSlot = { widgetScope?: string; agent: boolean; first: boolean; last: boolean; header?: PollingEvent; showTime: boolean; done?: TurnDone }
 
 // Agent turns share one clock: the first turn, and any turn more than this
 // long after the previous labelled one. User rows always carry their own
@@ -544,12 +543,6 @@ function itemTime(item: TranscriptRenderItem | undefined): number {
 
 function isUserItem(item: TranscriptRenderItem | undefined): boolean {
   return item?.kind === 'event' && item.event.type === 'user_message'
-}
-
-/** Only the backend's exact turn/input link identifies a reply to an agent. */
-function isConfirmedAgentReply(item: TranscriptRenderItem): boolean {
-  const events = item.kind === 'event' ? [item.event] : item.kind === 'live' ? [] : item.events
-  return events.length > 0 && events.every(event => Boolean(event.reply_to_agent_message_id))
 }
 
 function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
@@ -583,7 +576,7 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
     const widgetScope = `${userKey}:reply:${replyIndex}`
     if (item.kind === 'event' && isAgentResponseEvent(item.event)) replyIndex++
     const next = data[index + 1]
-    slots.push({ widgetScope, agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item), toAgent: isConfirmedAgentReply(item) })
+    slots.push({ widgetScope, agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item) })
   })
   // The header carries the turn's reply metadata (turn, duration, time): the
   // turn's first reply, or its first event while there is no reply yet.
@@ -1477,8 +1470,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           // tool batch, thought and reply of that turn on the same rail.
           return (
             <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
-              {/* Indent only an exact server-confirmed agent reply, never from row proximity. */}
-              <div className={`${AGENT_BLOCK_CLASS} ${slot.toAgent ? AGENT_REPLY_TO_AGENT_CLASS : ''} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
+              <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
                 <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
                   {displayedBody}
