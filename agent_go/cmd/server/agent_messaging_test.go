@@ -21,6 +21,24 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Optional Main no longer creates an implicit destination. Select a real
+	// named chat so this regression reaches message/reply admission itself.
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := resolveProductConversationBinding(ctx, "owner", profile, "beta:chat:recipient")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err = env.api.resolveAgentChatTarget(ctx, target, record.ConversationKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: "owner"}, Label: "External agent"}
 	old := agentMessageTurn
 	agentMessageTurn = func(api *StreamingAPI, turnCtx context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
