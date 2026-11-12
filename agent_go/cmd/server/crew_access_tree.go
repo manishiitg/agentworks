@@ -107,32 +107,9 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
 	names := []string{}
+	// The card is what the Team did, not your own agents' work (the left menu shows that; owner, 12 Nov): recent
+	// decisions and schedule findings first, then teammates' agents working or waiting now.
 	live := []crewAccessLine{}
-	for _, person := range f.People {
-		mine := person.You || person.UserID == f.Viewer
-		name := crewTeamFirstName(person.Name)
-		if !mine {
-			names = append(names, name)
-		}
-		for _, agent := range person.Agents {
-			// Activity must never reveal an Only me agent, including the viewer's.
-			if f.SuppressLive || !agent.InTeam || (agent.Activity != "running" && agent.Activity != "waiting") {
-				continue
-			}
-			label := name + "'s " + agent.Name
-			if mine {
-				label = "Your " + agent.Name
-			}
-			detail := "Working"
-			if doing, ok := f.Posts.Doing[agent.ID]; ok {
-				detail = doing.Line
-			}
-			if agent.Activity == "waiting" {
-				detail = firstNonEmptyTrimmed(agent.StatusLabel, "Waiting for its owner")
-			}
-			live = append(live, crewAccessLine{Kind: "team_live", Title: label, Detail: detail, Tag: agent.Activity, Target: "activity"})
-		}
-	}
 	if !f.SuppressLive {
 		recent := append(slices.Clone(f.Posts.Decisions), f.Posts.Findings...)
 		slices.SortFunc(recent, func(a, b crewTeamActivityPost) int { return b.At.Compare(a.At) })
@@ -141,12 +118,36 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 				continue
 			}
 			title := post.Person + "'s " + post.Agent + " decided"
+			if post.OwnerID == f.Viewer {
+				title = "Your " + post.Agent + " decided"
+			}
 			detail := post.Line
 			if post.Kind == "finding" {
 				title = post.Agent
 				detail = post.Schedule + ": " + post.Line
 			}
 			live = append(live, crewAccessLine{Kind: "team_live", Title: title, Detail: detail, Tag: post.Kind, Target: "activity"})
+		}
+	}
+	for _, person := range f.People {
+		if person.You || person.UserID == f.Viewer {
+			continue
+		}
+		name := crewTeamFirstName(person.Name)
+		names = append(names, name)
+		for _, agent := range person.Agents {
+			// Activity must never reveal an Only me agent.
+			if f.SuppressLive || !agent.InTeam || (agent.Activity != "running" && agent.Activity != "waiting") {
+				continue
+			}
+			detail := "Working"
+			if doing, ok := f.Posts.Doing[agent.ID]; ok {
+				detail = doing.Line
+			}
+			if agent.Activity == "waiting" {
+				detail = firstNonEmptyTrimmed(agent.StatusLabel, "Waiting for its owner")
+			}
+			live = append(live, crewAccessLine{Kind: "team_live", Title: name + "'s " + agent.Name, Detail: detail, Tag: agent.Activity, Target: "activity"})
 		}
 	}
 	title := "Team · You"
