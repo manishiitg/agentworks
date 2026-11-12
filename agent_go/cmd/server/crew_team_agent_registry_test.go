@@ -118,7 +118,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	f, _ := newExternalCrewCommandFixture(t)
 	ctx := context.Background()
 	key := "team:chat:root-example"
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
 	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: "imported-session"}
 	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
 		t.Fatal(err)
@@ -236,7 +236,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: ownerEntries}); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+secondKey+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+secondKey+`"}`)
 	if crewTeamOwnerMainKey(ctx, afterConflict) != secondKey || crewTeamMainAgent(afterConflict, "owner", key) || !crewTeamMainAgent(afterConflict, "owner", secondKey) {
 		t.Fatal("Main did not follow its manifest pointer")
 	}
@@ -280,7 +280,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 			}
 		}
 	}
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
 	// Retain the separate malformed-persisted-registry refusal below.
 	if err := writeCrewTeamAgentFixture(saved); err != nil {
 		t.Fatal(err)
@@ -317,9 +317,9 @@ func TestCrewTeamMainLookupSkipsRuntimeActions(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	ctx := context.Background()
 	key := "team:chat:root-example"
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
 	for _, name := range []string{"workflow.json", "schedules.json", "functions.json", "webhooks.json"} {
-		f.write(t, externalCommandCrewState+"/"+name, "invalid unrelated runtime data")
+		f.write(t, externalCommandCrewSettings+"/"+name, "invalid unrelated runtime data")
 	}
 	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: "main-session"}
 	store := defaultProductConversationRegistryStore()

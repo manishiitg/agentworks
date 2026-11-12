@@ -18,7 +18,7 @@ func TestCrewTeamActivityHidesTextOfHiddenChatsAndMarksAnswers(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	// Main is optional and must be an actual owner registry record (746-885).
 	const mainKey = "team:chat:root-owner"
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+mainKey+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+mainKey+`"}`)
 	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
 		productConversationRegistryEntryKey(crewProfileID, mainKey): {ProfileID: crewProfileID, ConversationKey: mainKey, WorkspacePath: externalCommandCrewRoot, SessionID: "owner-main"},
 	}}); err != nil {

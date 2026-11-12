@@ -256,7 +256,7 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	f.api.logger = loggerv2.NewNoop()
 	// Diagnostics now reads central Vault, never the retired personal store
 	// or its tool cache. Only the selected account's metadata is shared.
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"],"chosen_vault_apps_only":true}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"],"chosen_vault_apps_only":true}}`)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/admin/runtime/servers" || r.Header.Get("X-CapLayer-Actor") != "owner" {
 			w.WriteHeader(403)

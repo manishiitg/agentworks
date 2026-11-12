@@ -31,7 +31,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	// The watched Main tab uses its physical key, not the AgentBridge address.
 	mainKey := originalMainChatKey("team", "main-conversation")
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+mainKey+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+mainKey+`"}`)
 	registry := defaultProductConversationRegistryStore()
 	document, err := registry.loadDocument(t.Context(), productConversationRegistryPath("owner"))
 	if err != nil {
@@ -73,7 +73,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		t.Fatal(err)
 	}
 	for _, pointer := range []string{promotedKey, originalMainChatKey("team", "another-owner"), mainKey} {
-		f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+pointer+`"}`)
+		f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+pointer+`"}`)
 		for name, route := range map[string]func(string, string) string{"standby": crewStandbyTabForKey, "shared": macSharedAgentTab} {
 			if got := route("team", promotedKey); (got == macMainTab) != (pointer == promotedKey) {
 				t.Fatalf("%s promoted chat with pointer %q routed as %q", name, pointer, got)

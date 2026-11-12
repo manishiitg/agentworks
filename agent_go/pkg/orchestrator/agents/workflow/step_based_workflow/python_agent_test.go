@@ -307,7 +307,7 @@ for line in sys.stdin:
 	}
 	if slotProof {
 		clisecurity.ResolveWorkflowPolicy = func(_ context.Context, session, provider, cwd string) (*llmtypes.CLISecurityPolicy, error) {
-			host := clisecurity.Host{WorkflowExecution: true, DocsRoot: docs,
+			host := clisecurity.Host{DocsRoot: docs,
 				ResolvePath:    func(path string) string { return workflowAbsPath(path) },
 				LookupRoots:    func(string) (crewroot.Roots, bool, error) { return crewroot.Roots{}, false, nil },
 				LandlockRunner: func() (string, bool) { runner := os.Getenv("AGENTWORKS_LANDLOCK_RUNNER"); return runner, runner != "" },

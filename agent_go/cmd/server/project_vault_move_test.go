@@ -28,7 +28,7 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 	ctx := context.Background()
 	const goal = "Workflow/renewals"
 	f.write(t, goal+"/workflow.json", `{"id":"renewals","label":"Renewals","created_by":"owner","access":{"owners":["owner"],"editors":["e2"]},"capabilities":{"selected_secrets":["TOKEN"],"selected_global_secret_names":["TOKEN"]}}`)
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_secrets":["TOKEN","API_KEY"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_secrets":["TOKEN","API_KEY"]}}`)
 	registerWorkflowOwner(goal, "owner")
 	// The owner's own Vault already holds TOKEN with the Goal's value; the Crew holds a different one.
 	vault.seed(t, f.api, "owner", "", "TOKEN", "goal-value-1")
