@@ -19,22 +19,23 @@ const codexCommandFinishedMessage = "[Background command finished] A command you
 // on the command's card.
 const codexCommandOutputTail = 2000
 
-// codexFollowUpChainLimit caps automatic follow-ups in a row: a follow-up can
-// start another long command that finishes and asks for another follow-up,
-// and each one is a full turn on the person's account.
-const codexFollowUpChainLimit = 3
+// backgroundFollowUpChainLimit caps automatic follow-ups in a row, for Codex
+// commands and Claude's own background tasks alike: a follow-up can start
+// more background work that finishes and asks for another follow-up, and
+// each one is a full turn on the person's account.
+const backgroundFollowUpChainLimit = 3
 
-// codexFollowUpChain counts follow-up turns started since the person last
+// backgroundFollowUpChain counts follow-up turns started since the person last
 // wrote in each chat.
-type codexFollowUpChain struct {
+type backgroundFollowUpChain struct {
 	mu    sync.Mutex
 	count map[string]int
 }
 
-var codexFollowUps = &codexFollowUpChain{count: map[string]int{}}
+var backgroundFollowUps = &backgroundFollowUpChain{count: map[string]int{}}
 
 // skipReason says why no follow-up may start now, or "" when one may.
-func (c *codexFollowUpChain) skipReason(sessionID string, stopped, busy bool) string {
+func (c *backgroundFollowUpChain) skipReason(sessionID string, stopped, busy bool) string {
 	switch {
 	case stopped:
 		return "stopped_by_person"
@@ -43,20 +44,20 @@ func (c *codexFollowUpChain) skipReason(sessionID string, stopped, busy bool) st
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.count[sessionID] >= codexFollowUpChainLimit {
+	if c.count[sessionID] >= backgroundFollowUpChainLimit {
 		return "chain_limit"
 	}
 	return ""
 }
 
-func (c *codexFollowUpChain) started(sessionID string) {
+func (c *backgroundFollowUpChain) started(sessionID string) {
 	c.mu.Lock()
 	c.count[sessionID]++
 	c.mu.Unlock()
 }
 
 // personWrote starts a new chain: called for every message the person sends.
-func (c *codexFollowUpChain) personWrote(sessionID string) {
+func (c *backgroundFollowUpChain) personWrote(sessionID string) {
 	c.mu.Lock()
 	delete(c.count, sessionID)
 	c.mu.Unlock()
@@ -69,7 +70,7 @@ func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID strin
 	// Let commands that finish together and the reply's own end settle first;
 	// the first follow-up then carries on and the rest see a busy chat.
 	time.Sleep(3 * time.Second)
-	if reason := codexFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID), api.isSessionBusyForAutoNotification(sessionID)); reason != "" {
+	if reason := backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID), api.isSessionBusyForAutoNotification(sessionID)); reason != "" {
 		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=%s", sessionID, commandID, reason)
 		return
 	}
@@ -89,6 +90,6 @@ func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID strin
 		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=turn_not_started", sessionID, commandID)
 		return
 	}
-	codexFollowUps.started(sessionID)
+	backgroundFollowUps.started(sessionID)
 	log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=started failed=%t output_len=%d", sessionID, commandID, failed, len(output))
 }

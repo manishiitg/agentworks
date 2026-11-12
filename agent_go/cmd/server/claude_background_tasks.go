@@ -120,13 +120,15 @@ func (api *StreamingAPI) followUpFinishedClaudeTasks(sessionID string) {
 	}
 	// The kept Claude process is shutting down (it gets up to 15 s); the follow-up resumes the conversation after it.
 	time.Sleep(20 * time.Second)
-	if api.isSessionBusyForAutoNotification(sessionID) {
-		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=chat_busy", sessionID)
-		return // the running turn carries on with the results
+	// chat_busy: the running turn carries on with the results.
+	if reason := backgroundFollowUps.skipReason(sessionID, false, api.isSessionBusyForAutoNotification(sessionID)); reason != "" {
+		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=%s", sessionID, reason)
+		return
 	}
 	if !api.executeSyntheticTurn(sessionID, claudeTasksFinishedMessage) {
 		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=turn_not_started", sessionID)
 		return
 	}
+	backgroundFollowUps.started(sessionID)
 	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=started", sessionID)
 }
