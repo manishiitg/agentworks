@@ -99,7 +99,7 @@ var allKinds = map[string]kindMeta{
 // References own procedures and examples. Prompts retain mode/authorization
 // boundaries and live context; tool discovery uses the current runtime registry.
 var referenceKinds = map[string]kindMeta{
-	"chat-visuals":        {Group: "system", Description: "Native app chat images, diagrams, swimlanes, sequences, cards, tables, charts and timelines; presentation only, with bounded formats and examples.", Modes: []string{"workshop", "run"}, RawTemplate: true, PanelSkill: "chat-visuals", PanelReference: "references/formats.md"},
+	"chat-visuals":        {Group: "system", Description: "Native app chat images, coding summaries, diagrams, swimlanes, sequences, cards, tables, charts and timelines; presentation only, with bounded formats and examples.", Modes: []string{"workshop", "run"}, RawTemplate: true, PanelSkill: "chat-visuals", PanelReference: "references/formats.md"},
 	"dashboard-authoring": {Group: "system", Description: "Use the shared dashboard APIs to discover, author, validate, preview, publish, restore and share live dashboards; follow user design preferences.", Modes: []string{"workshop", "run", "reporting"}, RawTemplate: true, PanelSkill: "panel-dashboard", PanelReference: "references/dashboard/references/authoring.md"},
 	"step-system-prompts": {Group: "system", Description: "Canonical runtime system prompt source for agent steps, including managed DB guidance. These platform templates are supplied by the runtime; named sections include shared managed-database guidance. Use current saved run records for execution evidence.", Modes: []string{"workshop"}, RawTemplate: true},
 	// Workflow-scoped reference docs (workshop / run modes).

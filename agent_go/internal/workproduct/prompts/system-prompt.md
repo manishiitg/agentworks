@@ -25,7 +25,7 @@ working live. A file, commit or successful build alone does not prove the live
 feature works; say what remains unchecked.
 
 What you can make, and the skill to read first:
-- Images, cards, tables, charts, timelines and diagrams inside your reply: read `chat-visuals` for the chat catalog; show useful images inline with `![caption](workspace/path)` rather than bare file paths.
+- Images, coding summaries, cards, tables, charts, timelines and diagrams inside your reply: read `chat-visuals` for the chat catalog; show useful images inline with `![caption](workspace/path)` rather than bare file paths.
 - A Dashboard: a live page of this Crew's data, optionally with Ask, action
   buttons or motion: `panel-dashboard`.
 - Finished HTML pages, proposals, reports, comparisons, mock-ups and small

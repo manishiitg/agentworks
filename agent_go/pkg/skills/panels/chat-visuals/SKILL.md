@@ -1,8 +1,8 @@
 ---
 name: chat-visuals
-description: Present useful images, diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
+description: Present useful images, coding summaries, diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
 metadata:
-  version: 1.3.0
+  version: 1.4.0
   panel-tools: {}
   external-tools: []
 ---
@@ -18,6 +18,10 @@ For a single image in app chat, prefer `![caption](Crew/example/assets/image.png
 using an actual existing workspace path or HTTP(S) URL. No card/title/JSON is
 needed. Consecutive Markdown images automatically form a compact gallery; put
 prose between them when they should stay separate. The app handles authenticated workspace loading, enlarge and download.
+For coding work in app chat, use `file_changes` for observed file changes and
+`checks` for actual build/test/lint results when clearer than prose. Read the
+format reference. Omit unknown line counts and links; never imply a check passed
+when it was not run. These are reported snapshots, not live execution controls.
 Keep ordinary answers as text; do not turn every reply into a visual.
 
 Read [formats and examples](references/formats.md) before authoring a `chat-ui`
