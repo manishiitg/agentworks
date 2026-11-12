@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, ChevronDown } from 'lucide-react'
 import { shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview } from '../utils/terminalEventTranscript'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
@@ -17,26 +17,36 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
-// A message another agent sent into this chat (owner, 5 Nov): shown like a typed message, a bubble on the right, with
-// who sent it and the time in small text under it.
+// Keep the server-attributed sender intact: display labels are not a protocol
+// for guessing Crew, person, channel or agent identity. Details stay optional.
 export function AgentInboxMessage({ message, timestamp, artifact = null, queueStatus }: { queueStatus?: ReactNode; message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
   const [expanded, setExpanded] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const hasDetails = !!(message.kind || message.inboxID || message.instructions)
   const collapsible = shouldCollapseTranscriptUserMessage(body)
   const shown = collapsible && !expanded ? transcriptUserMessagePreview(body) : body
   const needsLoad = artifact && message.bodyTruncated !== false && !full.text
   return (
-    <article data-testid="agent-inbox-message" className="mb-3 mt-3 w-[min(100%,52rem)] overflow-hidden rounded-xl border border-border bg-muted/20 text-left">
-      <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
-        <Bot aria-hidden="true" className="h-4 w-4 shrink-0" />
-        <span className="min-w-0 break-words font-medium text-foreground">{message.sender}</span>
-        {/* The label often ends with the channel already ("… · AgentBridge"): show it once. */}
-        {message.kind && !message.sender.endsWith(message.kind) && <span>{message.kind}</span>}
+    <article data-testid="agent-inbox-message" className="my-2 w-[min(100%,52rem)] overflow-hidden rounded-lg border border-border bg-muted/20 text-left">
+      <header className="flex items-start gap-2 border-b border-border/60 px-3 py-1.5 text-xs text-muted-foreground">
+        <Bot aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium text-foreground">{message.sender}</span>
         {queueStatus}
-        {timestamp && <time className="ml-auto tabular-nums">{timestamp}</time>}
+        {timestamp && <time className="shrink-0 pt-0.5 text-[10px] tabular-nums">{timestamp}</time>}
+        {hasDetails && <button type="button" aria-label="Message details" aria-expanded={detailsOpen}
+          className="-m-0.5 shrink-0 rounded p-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setDetailsOpen(value => !value)}>
+          <ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
+        </button>}
       </header>
-      <div data-testid="agent-inbox-body" className="agent-inbox-prose min-w-0 max-w-full break-words [overflow-wrap:anywhere] px-4 py-3 text-left text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
+      {detailsOpen && <div className="space-y-1 border-b border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+        {message.kind && <p>Source: {message.kind}</p>}
+        {message.inboxID && <p className="break-all">Reply address: {message.inboxID}</p>}
+        {message.instructions && <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.instructions}</p>}
+      </div>}
+      <div data-testid="agent-inbox-body" className="agent-inbox-prose min-w-0 max-w-full break-words [overflow-wrap:anywhere] px-3 py-2 text-left text-[length:calc(12.5px*var(--chat-scale,1))] leading-[calc(19px*var(--chat-scale,1))] text-foreground">
         <ConversationMarkdownRenderer content={shown} framed={false} maxHeight="none" copyableCode />
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}
@@ -46,11 +56,6 @@ export function AgentInboxMessage({ message, timestamp, artifact = null, queueSt
           {expanded ? 'Show less' : 'Show full message'}
         </button>}
       </div>
-      {(message.inboxID || message.instructions) && <details className="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
-        <summary className="cursor-pointer">Message details</summary>
-        {message.inboxID && <p className="mt-2 break-all">Reply address: {message.inboxID}</p>}
-        {message.instructions && <p className="mt-2 whitespace-pre-wrap break-words">{message.instructions}</p>}
-      </details>}
     </article>
   )
 }
