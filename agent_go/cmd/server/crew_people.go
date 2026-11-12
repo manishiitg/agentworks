@@ -82,8 +82,6 @@ type crewPeopleView struct {
 	Intro  string `json:"intro"`
 	// Blocked is the one line of a Crew that was never online: the card greys the list.
 	Blocked string `json:"blocked,omitempty"`
-	// PutOnline is shown beside "Dashboards only" on a Crew that lives on a Mac.
-	PutOnline string `json:"put_online,omitempty"`
 	// AddEveryone is the label of the "everyone on this server" choice, offered to the owner of a server Crew that is not
 	// open to everyone yet (add it with person=everyone, level=dashboards).
 	AddEveryone string `json:"add_everyone,omitempty"`
@@ -242,8 +240,6 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 	switch kind {
 	case crewKindMacNever:
 		view.Blocked = crewPeopleNeverOnlineLine
-	case crewKindMacOnline:
-		view.PutOnline = crewPeoplePutOnlineLine
 	}
 	if owner && kind == crewKindServer && !everyone {
 		view.AddEveryone = crewPeopleEveryoneName

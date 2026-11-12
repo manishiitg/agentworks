@@ -110,7 +110,7 @@ func (out *crewTeamTabReply) changeOnMac() {
 
 // changeOnMac is the same for the People list.
 func (view *crewPeopleView) changeOnMac() {
-	view.ChangeOnMac, view.CanAdd, view.CanShare, view.AddEveryone, view.PutOnline = crewChangeOnMacLine, false, false, "", ""
+	view.ChangeOnMac, view.CanAdd, view.CanShare, view.AddEveryone = crewChangeOnMacLine, false, false, ""
 	for i := range view.People {
 		view.People[i].Moves = nil
 	}

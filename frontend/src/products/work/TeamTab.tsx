@@ -341,8 +341,6 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
       <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
       {people.more_dashboards && <button type="button" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'dashboards')} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
-      {people.put_online && <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{people.put_online}</span>
-        <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'mac')}>Put it online</Button></div>}
       {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
       {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">What each level gets</summary>
