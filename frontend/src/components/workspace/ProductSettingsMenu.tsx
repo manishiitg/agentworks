@@ -60,7 +60,7 @@ export function ProductSettingsMenu({ children, activity, accountTrigger, aboveT
     <button ref={trigger} data-product-settings-trigger type="button" aria-label={menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
       onClick={() => { window.dispatchEvent(new Event('close-workspace-picker')); setOpen(value => !value) }}
       onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); focusFirst() } }}
-      title={accountMenu ? 'Account & settings' : sidebarTarget ? 'AI accounts, connected tools and access' : 'Settings'} className={`${sidebarTarget ? `${accountMenu ? 'min-h-12' : 'h-10'} w-full justify-start gap-2.5 px-3 py-1.5` : 'h-8 w-8 justify-center'} flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
+      title={accountMenu ? 'Account & settings' : sidebarTarget ? 'AI accounts, connected tools and access' : 'Settings'} className={`${sidebarTarget ? `${accountMenu ? 'h-8' : 'h-10'} w-full justify-start gap-2.5 px-3 py-1.5` : 'h-8 w-8 justify-center'} flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
       {accountMenu ? sidebarTarget ? accountTrigger : <UserRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
       {sidebarTarget && <>{!accountMenu && <span className="flex-1 text-left">Setup</span>}<ChevronUp className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" /></>}
     </button>

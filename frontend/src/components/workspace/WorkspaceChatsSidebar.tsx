@@ -57,12 +57,12 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       <a href="/home" onClick={followAppLink} aria-label="Home" title="Home" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
       {toggle}
     </div>
-    <div className="shrink-0 space-y-0.5 px-2 pb-2">
+    <div className="flex shrink-0 items-center gap-1 px-2 pb-2">
       <button type="button" aria-label="Search all chats (Ctrl+K or Command+K)" title="Search all chats · ⌘K / Ctrl+K" onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}
-        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Search className="h-3.5 w-3.5" /><span className="flex-1">Search</span><kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd>
       </button>
-      <NewProjectMenu />
+      <div className="shrink-0 [&>button]:h-8 [&>button]:w-auto [&>button]:gap-1.5"><NewProjectMenu /></div>
     </div>
     <DesktopConnections projects={projects.map(project => ({ ...project,
       selected: !globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
