@@ -81,10 +81,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
   ], (key, section) => {
     if (key === 'context') { onViewChange('context'); return }
     const raw = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
-    // Where it lives and Connected agents are the Online row now; Sharing is Team (owner, 11 Nov).
-    const legacy = raw === 'mcp:share' ? 'mcp:team' : ['mcp:access', 'mcp:computer', 'mcp:agentbridge'].includes(raw) ? 'mcp:online' : raw
     const current = useAuthStore.getState().user
-    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
+    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === raw)
     if (!item || current?.id !== user?.id) return
     useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
     if (item.external) { openProductWorkspace(item.external); return }
