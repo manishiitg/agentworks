@@ -58,6 +58,8 @@ function useWorkHistory(projects: SidebarProject[]) {
   return { pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
+  const creationProjectId = useCrewAgentsStore(state => state.projectId)
+  const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const crews = projects.filter(project => project.kind === 'crew')
   // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
   const invites = useTeamInviteRows()
@@ -157,7 +159,8 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       selected={here && project.selected}
       location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop && (shortcut || selectedLocations.length > 1)}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
-      groupsMenu={crew ? <ProjectGroupsMenu name={project.name} projectKey={key} /> : undefined}
+      onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
+      groupsMenu={crew ? <ProjectGroupsMenu name={project.name} projectKey={key} inline /> : undefined}
       stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={where === 'mac' && mac?.online === false} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
       onOpen={() => {
         // Opening a project shows its agents here too, wherever it lives (owner, 10 Nov).
