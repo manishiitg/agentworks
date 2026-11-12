@@ -5,11 +5,12 @@ import (
 	"testing"
 )
 
-// PLAT-746-904: a quiet Team is one header, not a repeated people/agent/sync inventory.
+// PLAT-746-904: a quiet Team is one header, not a repeated people/agent/sync inventory. Your own working agents are
+// not Team news (the left menu shows them), so they never fill the card.
 func TestCrewTeamCardShowsOnlyLiveSharedAgentsAndProblems(t *testing.T) {
 	team := crewTeam{On: true, Folder: crewTeamFolder{Whole: true}}
 	facts := crewAccessFacts{ServerCrew: true, TeamKnown: true, Team: &team, Viewer: "owner", People: []crewTeamAgentsPerson{
-		{UserID: "owner", You: true, Name: "Example Owner", Agents: []crewTeamAgent{{Name: "Private agent", Activity: "running", InTeam: false}}},
+		{UserID: "owner", You: true, Name: "Example Owner", Agents: []crewTeamAgent{{Name: "Private agent", Activity: "running", InTeam: false}, {Name: "Own shared", Activity: "running", InTeam: true}}},
 		{UserID: "member", Name: "Example Member", Agents: []crewTeamAgent{{Name: "Research", InTeam: true}}},
 	}}
 	lines := crewAccessTree(facts)
@@ -25,8 +26,8 @@ func TestCrewTeamCardShowsOnlyLiveSharedAgentsAndProblems(t *testing.T) {
 	lines = crewAccessTree(facts)
 	live, problems := 0, 0
 	for _, line := range lines {
-		if strings.Contains(line.Title, "Private agent") {
-			t.Fatal("Only me activity leaked into Team card")
+		if strings.Contains(line.Title, "Private agent") || strings.Contains(line.Title, "Own shared") {
+			t.Fatal("Only me activity or your own agent's work filled the Team card")
 		}
 		if line.Kind == "team_live" {
 			live++
