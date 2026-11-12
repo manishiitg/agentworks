@@ -113,7 +113,12 @@ func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, er
 			return nil
 		}
 		if !info.IsDir() || !existing.IsDir() || info.Mode()&os.ModeSymlink != 0 || existing.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("two different copies of the same file: %s and %s. Keep the one you want, move or delete the other, then start again", describeCopy(source, info), describeCopy(held, existing))
+			// Before this move the app read records, runs and the database from the private storage.
+			used := ""
+			if Within(r.Private, source) || Within(r.Private, held) {
+				used = " The copy in the private storage (" + r.Private + ") is the one the app has been using."
+			}
+			return fmt.Errorf("two different copies of the same file: %s and %s.%s Keep the one you want, move or delete the other, then start again", describeCopy(source, info), describeCopy(held, existing), used)
 		}
 		entries, err := os.ReadDir(source)
 		if err != nil {
