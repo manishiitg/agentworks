@@ -2,6 +2,7 @@ package clisecurity
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -173,7 +174,27 @@ func (h Host) Grants(sessionID, provider, workingDir string, base *llmtypes.CLIS
 		}
 	}
 	policy.WorkspaceWritePaths = crewroot.SyncWriteGrants(h.DocsRoot, policy.WorkspaceWritePaths)
+	policy.BlockedPaths = withoutMissingDatabaseFiles(policy.BlockedPaths)
 	return policy
+}
+
+// withoutMissingDatabaseFiles leaves out a raw SQLite file (or its -wal, -shm,
+// -journal) that does not exist. On Linux a blocked path that exists is mounted
+// over, but a missing one splits its grant, and the database sits in the Crew's
+// .agentworks: the CLI could no longer create files anywhere in the Crew folder
+// (PLAT-746-924). The Builder already writes the database through its tool, and
+// a Run turn has no write grant there, so leaving a missing one out adds nothing.
+func withoutMissingDatabaseFiles(paths []string) []string {
+	out := paths[:0:0]
+	for _, path := range paths {
+		if strings.HasPrefix(filepath.Base(path), "db.sqlite") {
+			if _, err := os.Lstat(path); os.IsNotExist(err) {
+				continue
+			}
+		}
+		out = append(out, path)
+	}
+	return out
 }
 
 func HomeName(provider string) string {
