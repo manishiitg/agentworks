@@ -16,7 +16,8 @@ import (
 
 // A Team works with one Crew setup (owner, 5 Nov): the Crew's chat instructions and selected skills travel in
 // team-setup.json at the Crew folder's top, and its own skills in skills/. Both are always part of what a Team shares,
-// whatever folders it chose, so every copy has them and edits by anyone sync both ways with the store's history and
+// PROJECT_INSTRUCTIONS.md is also always shared; MEMORY.md and memory/ stay personal.
+// Whatever folders it chose, every copy has them and edits by anyone sync both ways with the store's history and
 // clash handling. Each copy (the owner's Mac, a member's Mac, a web member's server copy) writes the file when its
 // Crew's setup changes and applies it when someone else's edit arrives, so a web member's edit reaches the owner's Mac.
 // The model, apps and secrets stay as they are (the owner's, lent to the Team).
@@ -30,7 +31,7 @@ type crewTeamSetup struct {
 
 // crewTeamSetupPath: always shared with the Team (crewTeamFolder.holds).
 func crewTeamSetupPath(rel string) bool {
-	return rel == crewTeamSetupFile || rel == "skills" || strings.HasPrefix(rel, "skills/")
+	return rel == "PROJECT_INSTRUCTIONS.md" || rel == crewTeamSetupFile || rel == "skills" || strings.HasPrefix(rel, "skills/")
 }
 
 func (s crewTeamSetup) encode() []byte {

@@ -70,6 +70,9 @@ func (f crewTeamFolder) shared() bool { return f.Whole || len(f.Folders) > 0 }
 // holds: the path (relative to the Crew) is inside what the Team shares. Whole Crew leaves out each person's own
 // memory as well as everything crewTeamAllowed always keeps private.
 func (f crewTeamFolder) holds(rel string) bool {
+	if rel == "MEMORY.md" || rel == "memory" || strings.HasPrefix(rel, "memory/") {
+		return false // personal in every sharing choice, even a selected folder
+	}
 	if rel == crewroot.TeamCopiesFolder || strings.HasPrefix(rel, crewroot.TeamCopiesFolder+"/") {
 		return false // each member's own copy (crew_team_member_copy.go), never shared, Whole Crew included
 	}
@@ -77,7 +80,7 @@ func (f crewTeamFolder) holds(rel string) bool {
 		return f.shared() // the Crew's setup is always part of what a Team shares (crew_team_setup.go)
 	}
 	if f.Whole {
-		return rel != "MEMORY.md" && rel != "memory" && !strings.HasPrefix(rel, "memory/")
+		return true
 	}
 	for _, folder := range f.Folders {
 		if rel == folder || strings.HasPrefix(rel, folder+"/") {
