@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { agentApi } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -9,6 +9,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { openSidebarProject } from './SidebarServerGroup'
 import { openCrewAccess } from '../../products/work/MacSharedAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
+import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
 type Row = { key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
@@ -56,7 +57,7 @@ function openCrewTeam(connectionId: string, crewId: string) {
 /** The header's Team (owner, 12 Nov, mockup "Monitor with Team" v4): the faces of teammates across every Crew, a
  * ring on those whose agents work or wait, and a panel of who is working where. The server decides every state and
  * word; this only gathers each Crew's reply. The left menu keeps only the person's own agents (PLAT-746-926). */
-export function TeamMonitor() {
+export function TeamMonitor({ representedSessionIds }: { representedSessionIds?: readonly string[] } = {}) {
   const sources = useTeamCrews()
   const { faces, rows, crewCount } = useMemo(() => {
     const faces = new Map<string, Face>()
@@ -87,13 +88,17 @@ export function TeamMonitor() {
     return { faces: [...faces.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)), rows, crewCount: crews.size }
   }, [sources])
   const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
+  // Your own running work (the former Active work button), shown as the panel's You part (owner, 12 Nov: option 2).
+  const [mine, setMine] = useState<OwnActivitySummary>({ working: 0, needsInput: 0 })
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   const [only, setOnly] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: 0, top: 0 })
   useEffect(() => {
     if (!open) return
-    const close = (event: PointerEvent) => { const target = event.target as Node; if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false) }
+    const close = (event: PointerEvent) => { const target = event.target as Node; if (target instanceof Element && target.closest('[data-location-filter-menu]')) return; if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false) }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', escape)
@@ -110,10 +115,13 @@ export function TeamMonitor() {
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [open, rows.length])
+  }, [open, rows.length, mine.working, mine.needsInput])
 
   const shown = faces.filter(face => face.online || face.working || face.waiting)
-  if (!shown.length) return null
+  const mineActive = mine.working > 0 || mine.needsInput > 0
+  const own = <GlobalActivityMonitor representedSessionIds={representedSessionIds} slot={open && mineActive ? slot : null} onSummary={setMine} onClose={close} />
+  if (!shown.length && !mineActive) return <div ref={rootRef} className="relative">{own}</div>
+  const mineLabel = mine.needsInput ? `${mine.needsInput} need${mine.needsInput === 1 ? 's' : ''} you` : mine.working ? `${mine.working} running` : ''
   const working = faces.filter(face => face.working).length
   const online = faces.filter(face => face.online).length
   const label = working ? `${working} working` : `${online} online`
@@ -145,33 +153,46 @@ export function TeamMonitor() {
           className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${only === face.key ? 'border-primary text-foreground' : 'border-border text-muted-foreground'} ${face.online || face.working || face.waiting ? '' : 'opacity-60'}`}>
           {avatar(face, 'h-5 w-5 text-[9px]')}{face.name}<span className="text-muted-foreground">{face.working || face.waiting ? face.working + face.waiting : face.online ? '' : face.line.replace(/^Last seen /, '')}</span>
   </button>
+  const team = shown.length > 0
+  const parts = [mineLabel, team ? `Team · ${label}` : ''].filter(Boolean)
   return <div ref={rootRef} className="relative">
-    <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`Team: ${label}. Open to see who is working.`} title={title}
+    {own}
+    <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`${parts.join(', ')}. Open to see what is running and who is working.`} title={[mineLabel && `You · ${mineLabel}`, title].filter(Boolean).join('\n')}
       className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-border px-1.5 text-xs text-muted-foreground hover:bg-muted md:pr-2.5">
-      <span className="flex -space-x-1.5">
-        {shown.slice(0, 4).map((face, index) => <span key={face.key} className={index >= 2 ? 'hidden md:block' : ''}>{avatar(face, 'h-5 w-5 text-[9px] border-2 border-background')}</span>)}
-      </span>
-      {shown.length > 2 && <span className="text-[10px] md:hidden">+{shown.length - 2}</span>}
-      <span className="hidden whitespace-nowrap md:inline">Team · <span className={working ? 'font-medium text-blue-600 dark:text-blue-400' : ''}>{label}</span></span>
+      {mineActive && <span className="flex items-center gap-1.5 pl-1">
+        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${mine.needsInput ? 'bg-amber-500' : 'bg-blue-500'}`} />
+        <span className={`hidden whitespace-nowrap font-medium md:inline ${mine.needsInput ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>{mineLabel}</span>
+      </span>}
+      {mineActive && team && <span aria-hidden="true" className="hidden h-3.5 w-px bg-border md:block" />}
+      {team && <>
+        <span className="flex -space-x-1.5">
+          {shown.slice(0, 4).map((face, index) => <span key={face.key} className={index >= 2 ? 'hidden md:block' : ''}>{avatar(face, 'h-5 w-5 text-[9px] border-2 border-background')}</span>)}
+        </span>
+        {shown.length > 2 && <span className="text-[10px] md:hidden">+{shown.length - 2}</span>}
+        <span className="hidden whitespace-nowrap md:inline">Team · <span className={working ? 'font-medium text-blue-600 dark:text-blue-400' : ''}>{label}</span></span>
+      </>}
     </button>
-    {open && createPortal(<div ref={panelRef} role="menu" aria-label="Team" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
-      <div className="px-3 pb-1.5 pt-3 text-sm font-semibold text-foreground">Team</div>
-      {rows.length > 0 && <div className="px-3 pb-2 text-xs text-muted-foreground">{`${rows.length - waiting} agent${rows.length - waiting === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}`}</div>}
-      <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-        <button type="button" onClick={() => setOnly('')} className={`rounded-full border px-2.5 py-0.5 text-xs ${only ? 'border-border text-muted-foreground' : 'border-primary text-foreground'}`}>Everyone</button>
-        {!multi && faces.map(chip)}
-      </div>
-      {multi && networks.map(network => <div key={network} className="px-3 pb-2">
-        <div className="pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{network}</div>
-        <div className="flex flex-wrap gap-1.5">{faces.filter(face => face.network === network).map(chip)}</div>
-      </div>)}
-      <div className="min-h-0 overflow-y-auto px-1 pb-2">
-        {workingRows.length > 0 && <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Working now</div>}
-        {workingRows.map(rowView)}
-        {waitingRows.length > 0 && <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Waiting</div>}
-        {waitingRows.map(rowView)}
-        {!listed.length && rows.length > 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No agent of theirs is working right now.</p>}
-      </div>
+    {open && createPortal(<div ref={panelRef} role="menu" aria-label="Running work and Team" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+      {mineActive && <div ref={setSlot} className={`pt-2 ${team ? 'border-b border-border pb-1' : 'pb-1'}`} />}
+      {team && <>
+        <div className="px-3 pb-1.5 pt-3 text-sm font-semibold text-foreground">Team</div>
+        {rows.length > 0 && <div className="px-3 pb-2 text-xs text-muted-foreground">{`${rows.length - waiting} agent${rows.length - waiting === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}`}</div>}
+        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+          <button type="button" onClick={() => setOnly('')} className={`rounded-full border px-2.5 py-0.5 text-xs ${only ? 'border-border text-muted-foreground' : 'border-primary text-foreground'}`}>Everyone</button>
+          {!multi && faces.map(chip)}
+        </div>
+        {multi && networks.map(network => <div key={network} className="px-3 pb-2">
+          <div className="pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{network}</div>
+          <div className="flex flex-wrap gap-1.5">{faces.filter(face => face.network === network).map(chip)}</div>
+        </div>)}
+        <div className="px-1 pb-2">
+          {workingRows.length > 0 && <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Working now</div>}
+          {workingRows.map(rowView)}
+          {waitingRows.length > 0 && <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Waiting</div>}
+          {waitingRows.map(rowView)}
+          {!listed.length && rows.length > 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No agent of theirs is working right now.</p>}
+        </div>
+      </>}
     </div>, document.body)}
   </div>
 }

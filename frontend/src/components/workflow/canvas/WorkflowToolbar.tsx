@@ -13,7 +13,6 @@ import type { VariablesManifest } from '../../../services/api-types'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
 import type { ExecutionOptions } from '../../../services/api-types'
 import { TooltipProvider } from '../../ui/tooltip'
-import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { TeamMonitor } from '../../workspace/TeamMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
@@ -243,7 +242,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       {/* Right side - View controls */}
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
-          {workflowMode && !globalPageOpen && !providersOpen && <><TeamMonitor /><GlobalActivityMonitor /></>}
+          {workflowMode && !globalPageOpen && !providersOpen && <TeamMonitor />}
 
         </TooltipProvider>
       </div>
