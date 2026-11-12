@@ -93,7 +93,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 	// Skipped files, minus the ones synced on purpose; only single files can be chosen (exact paths, never folders).
 	op := b.onPurpose()
 	skipped, choosable := []string{}, []string{}
-	for _, rel := range crewTeamSkipped(b.Root) {
+	for _, rel := range crewTeamSkipped(b.Root, t.Folder) {
 		if op[rel] {
 			continue
 		}
@@ -110,7 +110,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 	}
 	// The Sync line, worded like the website's (crewTeamCopyLine), so both apps show one line for a copy.
 	progress := crewTeamRoundFor(dir)
-	line, problem := crewTeamCopyLine(b)
+	line, problem := crewTeamCopyLine(b, t.Folder)
 	switch {
 	case progress != nil:
 		line, problem = crewAccessProgressLine(*progress), false
@@ -148,7 +148,7 @@ func setCrewTeamSyncAnyway(ctx context.Context, dir, rel string, on bool) error 
 	}
 	if on {
 		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
-		if err != nil || !info.Mode().IsRegular() || !slices.Contains(crewTeamSkipped(b.Root), rel) || !crewTeamAllowed(rel, crewTeamOnPurpose{rel: true}) {
+		if err != nil || !info.Mode().IsRegular() || !publication.CredentialPath(rel) || !crewTeamAllowed(rel, crewTeamOnPurpose{rel: true}) {
 			return fmt.Errorf("choose one of the skipped files in this shared folder")
 		}
 		if !slices.Contains(b.SyncAnyway, rel) {
@@ -220,7 +220,7 @@ func (api *StreamingAPI) crewTeamLocalDirFor(ctx context.Context, owner, connect
 }
 
 // Names only: excluded bytes never enter shared content or diagnostics.
-func crewTeamSkipped(root string) []string {
+func crewTeamSkipped(root string, folder crewTeamFolder) []string {
 	out := []string{}
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
 		if e != nil {
@@ -232,6 +232,13 @@ func crewTeamSkipped(root string) []string {
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
 		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		// Only what the Team shares: a Crew sharing team/ never lists the rest of the Crew (owner, 12 Nov).
+		if d.IsDir() && !folder.walks(rel) {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && !folder.holds(rel) {
 			return nil
 		}
 		if publication.CredentialPath(rel) {
