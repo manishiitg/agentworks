@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
 const restartContinueMessage = "[App restarted] The app restarted while you were working on this. Check what you already did, then continue the task."
@@ -256,8 +254,13 @@ func (api *StreamingAPI) restartContinueSuperseded(sessionID string) bool {
 		switch rows[i].Type {
 		case "unified_completion":
 			if rows[i].Data != nil {
-				if data, ok := rows[i].Data.Data.(*unifiedevents.UnifiedCompletionEvent); ok {
-					return data.Metadata["source"] != "app_restart"
+				// Journal replay restores typed payloads as GenericEventData.
+				var payload struct {
+					Metadata map[string]interface{} `json:"metadata"`
+				}
+				raw, err := json.Marshal(rows[i].Data.Data)
+				if err == nil && json.Unmarshal(raw, &payload) == nil {
+					return payload.Metadata["source"] != "app_restart"
 				}
 			}
 			return true
@@ -278,4 +281,19 @@ func (api *StreamingAPI) pruneRestartContinues(turns []queuedConversationTurn) (
 		kept = append(kept, turn)
 	}
 	return kept, len(kept) != len(turns)
+}
+
+// Retained live input bypasses handleQuery's full bootstrap. Accepted person
+// input still resets the shared chain and refreshes the restart identity.
+func (api *StreamingAPI) noteRestartLivePersonInput(sessionID, messageID string) {
+	api.lastQueryMu.RLock()
+	req, known := api.lastQueryRequests[sessionID]
+	api.lastQueryMu.RUnlock()
+	if !known || req.userID == "" {
+		return
+	}
+	backgroundFollowUps.personWrote(sessionID)
+	if err := api.saveRestartContinueRequest(context.Background(), req.userID, sessionID, messageID, req); err != nil {
+		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=live_config_write_failed", sessionID, messageID)
+	}
 }

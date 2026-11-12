@@ -11246,6 +11246,9 @@ func (api *StreamingAPI) recordAttributedCodingAgentUserMessage(sessionID, messa
 	// the CLI took the message, the row is recorded at that point so it sits
 	// after any answer the CLI was still writing when the message was sent.
 	if deliveryStatus == string(mcpagent.UserMessageDeliveryStatusSentToCLI) {
+		if clientMessageID != "" && attribution["source"] != "agent_message" {
+			api.noteRestartLivePersonInput(sessionID, messageID)
+		}
 		if liveInputHasDurableAck(provider) {
 			api.watchLiveInputDurableRecording(sessionID, provider, messageID, message, clientMessageID, &event)
 			return

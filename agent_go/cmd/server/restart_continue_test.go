@@ -113,6 +113,9 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 			if !expected {
 				return
 			}
+			if _, changed := restarted.pruneRestartContinues(got); changed {
+				t.Fatal("journal-replayed app_restart settlement dropped its own continuation")
+			}
 			// Two more process losses preserve the shared count; the fourth note is refused.
 			for cycle := 2; cycle <= 4; cycle++ {
 				fresh := newAPI()
