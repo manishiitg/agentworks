@@ -39,6 +39,7 @@ import {
   transcriptUserMessagePreview,
   type PairedToolCall,
   selectTerminalEvents,
+  assistantReplyText,
   type TranscriptItem,
 } from '../utils/terminalEventTranscript'
 import { withToolCallVisibility } from '../utils/toolCallVisibility'
@@ -216,11 +217,7 @@ function transcriptEventPayload(event: PollingEvent): Record<string, unknown> {
 
 function assistantResponseText(event: PollingEvent): string {
   if (!AGENT_RESPONSE_EVENT_TYPES.has(event.type || '')) return ''
-  const payload = transcriptEventPayload(event)
-  const content = typeof payload.content === 'string' ? payload.content.trim() : ''
-  const finalResult = typeof payload.final_result === 'string' ? payload.final_result.trim() : ''
-  const result = typeof payload.result === 'string' ? payload.result.trim() : ''
-  return content || finalResult || result
+  return assistantReplyText(event)
 }
 
 // The streamed text stays on screen for a moment after the turn ends, and the finished reply is
@@ -330,9 +327,7 @@ const TranscriptEvent: React.FC<{
   // Different runtime transports carry a completed agent answer in different
   // fields.  They are all agent responses, so render them with one component
   // and one type scale instead of falling through to several event cards.
-  const finalResult = typeof payload.final_result === 'string' ? payload.final_result.trim() : ''
-  const result = typeof payload.result === 'string' ? payload.result.trim() : ''
-  const responseContent = content || finalResult || result
+  const responseContent = assistantResponseText(event)
   if (AGENT_RESPONSE_EVENT_TYPES.has(event.type || '') && responseContent) {
     return <AssistantTranscriptMessage event={event} content={responseContent} timestamp={timestamp} framed={!inTurn} label={assistantLabel} icon={assistantIcon} />
   }
@@ -617,7 +612,7 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
 const ASSISTANT_ARTIFACT_KEYS = ['content', 'final_result', 'result'] as const
 
 const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: string; timestamp: string; label?: string; icon?: React.ReactNode; framed?: boolean }> = ({ event, content, timestamp, label = 'Agent', icon, framed = true }) => {
-  const artifact = useMemo(() => chatArtifactRef(event), [event])
+  const artifact = useMemo(() => typeof event.reply_remainder === 'string' ? undefined : chatArtifactRef(event), [event])
   const nativeBlock = Boolean((transcriptEventPayload(event).metadata as Record<string, unknown> | undefined)?.assistant_block_id)
   const full = useChatArtifactText(artifact, ASSISTANT_ARTIFACT_KEYS)
   return (

@@ -268,6 +268,7 @@ func pruneEventsForRetention(events []Event, maxEvents int) ([]Event, int) {
 // Event represents a generic event that can be stored and retrieved
 // Both MCP agent and orchestrator events now use the same AgentEvent structure
 type Event struct {
+	ReplyRemainder          *string            `json:"reply_remainder,omitempty"`
 	ReplyBlocksComplete     bool               `json:"reply_blocks_complete,omitempty"`
 	GenerationID            string             `json:"generation_id,omitempty"`
 	GenerationStartSequence int64              `json:"generation_start_sequence,omitempty"`
@@ -328,6 +329,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 		"session_id": e.SessionID,
 	}
 
+	if e.ReplyRemainder != nil {
+		result["reply_remainder"] = *e.ReplyRemainder
+	}
 	if e.ReplyBlocksComplete {
 		result["reply_blocks_complete"] = true
 	}
