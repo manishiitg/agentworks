@@ -34,7 +34,8 @@ export function getDisplaySafeUserMessageContent(content: string): string {
     .filter(index => index >= 0)
   const end = markerIndexes.length > 0 ? Math.min(...markerIndexes) : content.length
   const text = content.slice(0, end).trim()
-  const reply = /^<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>$/.exec(text)
+  // Text after the block is the server's note to the agent, not the person's answer.
+  const reply = /^<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>/.exec(text)
   if (reply) {
     try {
       const answers: unknown = JSON.parse(reply[1])
