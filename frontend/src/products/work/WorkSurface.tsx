@@ -1,6 +1,6 @@
 import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
-import { workConversationKey } from '../../utils/workConversationKey'
+import { workConversationKey, workOpeningAgentKey } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
@@ -458,7 +458,7 @@ export function useWorkChatTab(
         const savedSkills = target.selectedSkills
         const conversation = await agentApi.resolveAgentProfileConversation(product.profileId, {
           conversation_key: target.id,
-          requested_agent: currentProductRoute()?.agent && currentProductRoute()?.agent !== 'main' ? workConversationKey(target.id, currentProductRoute()!.agent!) : undefined,
+          requested_agent: workOpeningAgentKey(product.profileId, target.id, currentProductRoute()),
         })
         if (cancelled) return
 
@@ -527,7 +527,9 @@ export function useWorkChatTab(
         if (cancelled) return
         setFailure(current => current?.projectId === target.id ? null : current)
       } catch (cause) {
-        if (!cancelled) setFailure({ projectId: target.id, message: cause instanceof Error ? cause.message : `Could not open ${product.noun}.` })
+        const detail = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
+        const message = typeof detail === 'string' ? detail : detail?.message
+        if (!cancelled) setFailure({ projectId: target.id, message: message || (cause instanceof Error ? cause.message : `Could not open ${product.noun}.`) })
       }
     }
     void prepare()
