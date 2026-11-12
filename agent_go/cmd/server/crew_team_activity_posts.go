@@ -17,8 +17,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
+// crewTeamActivityKept is how many decisions, and separately findings, the Team record keeps.
+const crewTeamActivityKept = 200
+
 // Explicit Team posts, not excerpts of a person's private conversation. One
-// Doing line per registry agent; decisions/findings remain in the Team record.
+// Doing line per registry agent; the newest decisions/findings remain in the Team record.
 type crewTeamActivityPost struct {
 	ID       string    `json:"id"`
 	Kind     string    `json:"kind"`
@@ -99,6 +102,9 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 	case "finding":
 		posts.Findings = append(posts.Findings, post)
 	}
+	// The record keeps the newest posts only; the Team card shows far fewer.
+	posts.Decisions = posts.Decisions[max(0, len(posts.Decisions)-crewTeamActivityKept):]
+	posts.Findings = posts.Findings[max(0, len(posts.Findings)-crewTeamActivityKept):]
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "activity.json"), posts, 0600); err != nil {
 		return empty, err
 	}
