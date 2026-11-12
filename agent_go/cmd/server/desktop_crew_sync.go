@@ -46,11 +46,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var input struct {
-		Action       string                     `json:"action"`
-		PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
-		TransferID   string                     `json:"transfer_id,omitempty"`
-		Agents       []macSharedAgent           `json:"agents"`
-		Key          string                     `json:"key,omitempty"`
+		Action string           `json:"action"`
+		Agents []macSharedAgent `json:"agents"`
+		Key    string           `json:"key,omitempty"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -59,10 +57,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := mux.Vars(r)["project"]
-	if input.Action == "publish_preview" || input.Action == "publish_agent" || input.Action == "publish_agents" {
-		api.runDesktopCrewAgentPublish(w, r, connection, id, input.Action, input.TransferID, input.PublishAgent)
-		return
-	}
 	switch input.Action {
 	case "status", "server", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "lent", "lent_copy", "lent_move":
 	default:
