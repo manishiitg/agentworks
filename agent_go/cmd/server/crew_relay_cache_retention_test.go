@@ -20,6 +20,11 @@ func TestRelayCacheCapReleasesDroppedPayloads(t *testing.T) {
 				set.append("owner", "project", "chat", crewRelayBatch{Kind: "data", Seq: i, Body: make(json.RawMessage, tc.size)})
 			}
 			stream := set.streams["owner/project/chat"]
+			// Keep append in the same backing array so this observes the
+			// evicted slot, rather than an unrelated array retired by append.
+			backing := make([]crewRelayBatch, len(stream.batches), len(stream.batches)+1)
+			copy(backing, stream.batches)
+			stream.batches = backing
 			old := stream.batches
 			set.append("owner", "project", "chat", crewRelayBatch{Kind: "data", Seq: tc.count, Body: make(json.RawMessage, tc.size)})
 			if old[0].Body != nil {
