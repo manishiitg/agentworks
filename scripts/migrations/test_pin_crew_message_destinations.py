@@ -21,7 +21,7 @@ class PinDestinationsTest(unittest.TestCase):
             registry = root / "registry.json"
             registry.write_text(json.dumps({"entries": {"work/" + key: {
                 "profile_id": "work", "conversation_key": key,
-                "session_id": "session", "workspace_path": str(crew)}}}))
+                "session_id": "session", "workspace_path": str(crew.resolve())}}}))
             rows = []
             for identity, action, inputs in [
                 ("default", {"type": "message"}, {"messages": ["hello"]}),
@@ -39,16 +39,36 @@ class PinDestinationsTest(unittest.TestCase):
             script_file = executable / "workflow.json"
             script_original = json.dumps({"schedules": [{"chat_id": "main", "enabled": False}, {"chat_id": ""}]})
             script_file.write_text(script_original)
-            changes = pin.inspect(crew, registry, executable_roots=[executable])
+            # Real client failure: canonical script function has no workflow.json.
+            canonical = root / "canonical-script"
+            canonical.mkdir()
+            function_file = canonical / "functions.json"
+            function_rows = [
+                {"id": "invocation", "enabled": True, "action": {"type": "run", "tab": "main"}},
+                {"id": "chosen", "enabled": False, "action": {"type": "run", "tab": "example:chat:chosen"}},
+                {"id": "blank", "action": {"type": "run"}},
+                {"id": "other", "action": {"type": "message", "tab": "main"}},
+            ]
+            function_original = json.dumps({"functions": function_rows})
+            function_file.write_text(function_original)
+            timer_file = canonical / "schedules.json"
+            timer_file.write_text(json.dumps({"schedules": [function_rows[0]]}))
+            changes = pin.inspect(crew, registry, executable_roots=[executable, canonical])
             pin.apply(changes, root / "backup")
-            self.assertEqual((root / "backup/schedules.json").read_text(), original)
+            backups = json.loads((root / "backup/files.json").read_text())
+            self.assertEqual((root / "backup" / backups[str(file)]).read_text(), original)
             saved = json.loads(file.read_text())["schedules"]
             self.assertEqual(saved[0]["action"]["tab"], key)
             self.assertEqual(saved[0]["input"], rows[0]["input"])
             self.assertEqual(saved[1:4], rows[1:4])
             self.assertEqual(saved[4]["input"]["condition"]["target"]["chat_id"], "original")
             self.assertTrue(all(not row["enabled"] for row in saved))
-            self.assertEqual(pin.inspect(crew, registry, executable_roots=[executable]), [])
+            self.assertEqual(pin.inspect(crew, registry, executable_roots=[executable, canonical]), [])
+            self.assertEqual((root / "backup/functions.json").read_text(), function_original)
+            functions = json.loads(function_file.read_text())["functions"]
+            self.assertEqual(functions[0], {**function_rows[0], "action": {"type": "run", "tab": key}})
+            self.assertEqual(functions[1:], function_rows[1:])
+            self.assertEqual(json.loads(timer_file.read_text())["schedules"][0]["action"]["tab"], key)
             self.assertEqual((root / "backup/workflow.json").read_text(), script_original)
             self.assertEqual(json.loads(script_file.read_text())["schedules"], [{"chat_id":key,"enabled":False},{"chat_id":""}])
             registry.write_text('{"entries":{}}')

@@ -3,9 +3,9 @@
 
 One-off operator tool, not a startup migration. Stop the app before applying.
 Use the Crew's private data folder and its owner's conversation registry JSON.
-No database, transcript, secret, function tab, or project identity is rewritten.
+No database, transcript, secret, or project identity is rewritten.
 Run separately for each Crew on each authorized server/laptop. Remove this tool
-when the rollout is complete. Explicit executable roots also convert saved chat_id destinations.
+when the rollout is complete. Explicit executable roots convert saved chat_id and canonical run destinations.
 """
 import argparse
 import copy
@@ -73,15 +73,30 @@ def inspect(crew, registry_file, registry_workspace=None, executable_roots=()):
             changes.append((file, after))
     for executable in executable_roots:
         file = executable / "workflow.json"
-        before = read_json(file)
-        after = copy.deepcopy(before)
-        for schedule in after.get("schedules", []):
-            # Blank script destinations no longer need a conversation. Only
-            # an explicitly saved Main role is pinned to its physical agent.
-            if schedule.get("chat_id", "").strip() in ("main", project):
-                schedule["chat_id"] = main
-        if before != after:
-            changes.append((file, after))
+        if file.exists():
+            before = read_json(file)
+            after = copy.deepcopy(before)
+            for schedule in after.get("schedules") or []:
+                # Blank script destinations no longer need a conversation.
+                if schedule.get("chat_id", "").strip() in ("main", project):
+                    schedule["chat_id"] = main
+            if before != after:
+                changes.append((file, after))
+        # Saved scripts derive their execution view from these canonical files;
+        # they need not have a workflow.json. PLAT-746-885: a function's saved
+        # Main role otherwise fails scheduler admission after Main removal.
+        for collection in ("functions", "schedules"):
+            file = executable / (collection + ".json")
+            if not file.exists():
+                continue
+            before = read_json(file)
+            after = copy.deepcopy(before)
+            for record in after.get(collection) or []:
+                action = record.get("action", {})
+                if action.get("type") == "run" and action.get("tab") == "main":
+                    action["tab"] = main
+            if before != after:
+                changes.append((file, after))
     return changes
 
 
