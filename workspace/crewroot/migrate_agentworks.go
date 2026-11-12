@@ -69,15 +69,19 @@ type agentworksJournal struct {
 func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, error) {
 	var moves []agentworksMove
 	planned := map[string]string{} // target -> source of an earlier planned move
-	// destination is what target will be once the earlier planned moves are done.
-	destination := func(target string) (os.FileInfo, error) {
+	// destination is what target will be once the earlier planned moves are
+	// done, and the path that holds it now (an earlier planned source or target).
+	destination := func(target string) (os.FileInfo, string, error) {
 		for dir := target; ; dir = filepath.Dir(dir) {
 			if source, ok := planned[dir]; ok {
 				rel, _ := filepath.Rel(dir, target)
-				return os.Lstat(filepath.Join(source, rel))
+				held := filepath.Join(source, rel)
+				info, err := os.Lstat(held)
+				return info, held, err
 			}
 			if dir == filepath.Dir(dir) {
-				return os.Lstat(target)
+				info, err := os.Lstat(target)
+				return info, target, err
 			}
 		}
 	}
@@ -95,7 +99,7 @@ func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, er
 		if err != nil {
 			return err
 		}
-		existing, err := destination(target)
+		existing, held, err := destination(target)
 		if os.IsNotExist(err) {
 			moves = append(moves, agentworksMove{Source: source, Target: target})
 			planned[target] = source
@@ -109,7 +113,7 @@ func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, er
 			return nil
 		}
 		if !info.IsDir() || !existing.IsDir() || info.Mode()&os.ModeSymlink != 0 || existing.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("two different copies of the same file: %s and %s. Keep the one you want, move or delete the other, then start again", describeCopy(source, info), describeCopy(target, existing))
+			return fmt.Errorf("two different copies of the same file: %s and %s. Keep the one you want, move or delete the other, then start again", describeCopy(source, info), describeCopy(held, existing))
 		}
 		entries, err := os.ReadDir(source)
 		if err != nil {
