@@ -118,3 +118,24 @@ func TestCrewTeamActivityPagesByMessageID(t *testing.T) {
 		t.Fatalf("cursor shifted after a new question: %+v %q", second, next)
 	}
 }
+
+// PLAT-746-909: a teammate's abandoned wait is not a live activity claim;
+// the maker still sees their own pending question after the same deadline.
+func TestCrewTeamLiveWaitExpiresOnlyForTeammates(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		activity string
+		age      time.Duration
+		mine     bool
+		want     string
+	}{
+		{"waiting", 29 * time.Minute, false, "waiting"},
+		{"waiting", 30 * time.Minute, false, ""},
+		{"waiting", 31 * time.Minute, true, "waiting"},
+		{"running", 31 * time.Minute, false, "running"},
+	} {
+		if got := crewTeamLiveActivity(c.activity, now.Add(-c.age), c.mine, now); got != c.want {
+			t.Fatalf("activity=%s age=%s mine=%v: got %q want %q", c.activity, c.age, c.mine, got, c.want)
+		}
+	}
+}

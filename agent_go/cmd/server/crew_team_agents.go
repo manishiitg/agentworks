@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"log"
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -35,7 +37,8 @@ type crewTeamAgent struct {
 	InTeam bool `json:"in_team"`
 	// Activity is "running" while a turn is going in it, "waiting" while it waits for its person (crew_team_activity.go),
 	// "" otherwise.
-	Activity string `json:"activity,omitempty"`
+	Activity     string `json:"activity,omitempty"`
+	waitingSince time.Time
 	// Address is how another agent messages it (send_message target), written here so no screen builds it.
 	Address string `json:"address,omitempty"`
 }
@@ -131,8 +134,8 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			}
 		}
 		if place == "mac" {
-			if activity := crewMacConversationActivity(t.OwnerID, t.ProjectID, ownerConversations[agent.Tab]); owner.MacOn && activity != "" {
-				row.Activity = activity
+			if activity, since := crewMacConversationActivitySince(t.OwnerID, t.ProjectID, ownerConversations[agent.Tab]); owner.MacOn && activity != "" {
+				row.Activity, row.waitingSince = activity, since
 				if activity == "waiting" {
 					row.StatusLabel = crewTeamWaitingLabel(owner.Name, owner.You)
 				}
@@ -165,8 +168,8 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				row.PlaceServer = row.PlaceTone == "server"
 				if !person.MacOn && !row.PlaceServer {
 					row.StatusLabel = "Mac off"
-				} else if activity := crewMacConversationActivity(p.UserID, t.ProjectID, tab.ConversationID); person.MacOn && activity != "" {
-					row.Activity = activity
+				} else if activity, since := crewMacConversationActivitySince(p.UserID, t.ProjectID, tab.ConversationID); person.MacOn && activity != "" {
+					row.Activity, row.waitingSince = activity, since
 					if activity == "waiting" {
 						row.StatusLabel = crewTeamWaitingLabel(person.Name, person.You)
 					}
@@ -183,7 +186,16 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
 	}
+	now := time.Now()
 	for i := range out {
+		for j := range out[i].Agents {
+			agent := &out[i].Agents[j]
+			before := agent.Activity
+			agent.Activity = crewTeamLiveActivity(before, agent.waitingSince, out[i].UserID == caller, now)
+			if before == "waiting" && agent.Activity == "" {
+				agent.StatusLabel = ""
+			}
+		}
 		if out[i].UserID != caller {
 			out[i].Agents = slices.DeleteFunc(out[i].Agents, func(a crewTeamAgent) bool { return !a.InTeam })
 		}
@@ -214,6 +226,14 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 	if member == t.OwnerID {
 		mainKey = ownerMainKey
 	}
+	// Read the existing authoritative queue once for these registered chats;
+	// never transfer the question text or options into Team activity.
+	pending := map[string]time.Time{}
+	for _, request := range virtualtools.GetHumanFeedbackStore().ListPending(time.Now()) {
+		if previous, ok := pending[request.SessionID]; !ok || request.CreatedAt.Before(previous) {
+			pending[request.SessionID] = request.CreatedAt
+		}
+	}
 	prefix := productConversationRegistryEntryKey(crewProfileID, project) + codeChatSideMarker
 	for entryKey, record := range doc.Entries {
 		if !strings.HasPrefix(entryKey, prefix) || strings.Contains(strings.TrimPrefix(entryKey, prefix), ":") {
@@ -237,7 +257,12 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 		if crewServerChatRunning(record.SessionID) {
 			activity = "running"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, PlaceLabel: crewServerAgentPlaceLabel})
+		since, waiting := pending[record.SessionID]
+		label := ""
+		if waiting {
+			activity, label = "waiting", crewTeamWaitingLabel(crewPersonShortName(member), member == caller)
+		}
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
 }
