@@ -27,6 +27,8 @@ type ExecutableLayout struct {
 	Binding                    ExecutableBinding
 	Crew                       Roots
 	Definitions, Code, Runtime string
+	// Settings holds this automation's records (schedules, publish, config).
+	Settings string
 }
 
 func (q *Resolver) executable(virtual string) (ExecutableLayout, bool, error) {
@@ -64,15 +66,16 @@ func (q *Resolver) executable(virtual string) (ExecutableLayout, bool, error) {
 	if !found || r.ID != b.CrewID || r.Virtual != b.CrewRoot {
 		return ExecutableLayout{}, true, fmt.Errorf("executable's owning Crew is unavailable")
 	}
-	automation := filepath.Join(r.Files, ".agentworks")
 	if b.RuntimeRoot == "" {
 		return ExecutableLayout{}, true, fmt.Errorf("%s", runtimeRootInitialization)
 	}
 	if !validRuntimeRoot(b.RuntimeRoot, b.ID) {
 		return ExecutableLayout{}, true, fmt.Errorf("invalid automation runtime root")
 	}
-	runtime := filepath.Join(r.Private, filepath.FromSlash(b.RuntimeRoot))
-	return ExecutableLayout{b, r, filepath.Join(automation, "workflows", b.ID), filepath.Join(automation, "code", b.ID), runtime}, true, nil
+	// A workflow's runs and data sit next to its definition (PLAT-746-924).
+	runtime := filepath.Join(r.Automation, filepath.FromSlash(b.RuntimeRoot))
+	settings := filepath.Join(r.SettingsDir(), filepath.FromSlash(b.RuntimeRoot))
+	return ExecutableLayout{b, r, filepath.Join(r.Automation, "workflows", b.ID), filepath.Join(r.Automation, "code", b.ID), runtime, settings}, true, nil
 }
 
 // LookupExecutable is shared by file routes, native execution and discovery.
@@ -86,13 +89,12 @@ func LookupExecutable(docs, virtual string) (ExecutableLayout, bool, error) {
 
 func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) {
 	switch {
+	case executableSettingsPath(l.Binding.Kind, rel):
+		return l.Settings, rel, l.Binding.Kind == "workflow" || l.Binding.Kind == "script"
 	case l.Binding.Kind == "script" && l.Crew.DatabaseRoot == "" && (rel == "db" || strings.HasPrefix(rel, "db/")):
-		if privatePath(rel) {
-			return l.Crew.Private, rel, true
-		}
-		return l.Crew.Resources, rel, true
+		return l.Crew.Automation, rel, true
 	case l.Crew.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")):
-		return l.Crew.Private, filepath.Join(l.Crew.DatabaseRoot, strings.TrimPrefix(strings.TrimPrefix(rel, "db"), "/")), true
+		return l.Crew.Automation, filepath.Join(l.Crew.DatabaseRoot, strings.TrimPrefix(strings.TrimPrefix(rel, "db"), "/")), true
 	case rel == "planning/changelog" || strings.HasPrefix(rel, "planning/changelog/") || rel == "planning/revisions" || strings.HasPrefix(rel, "planning/revisions/"):
 		return l.Runtime, rel, l.Binding.Kind == "workflow" || l.Binding.Kind == "script"
 	case rel == "code" || strings.HasPrefix(rel, "code/"):
@@ -119,9 +121,6 @@ func (q *Resolver) resolveExecutable(virtual string) (string, bool, error) {
 	// automation directories; a planted symlink cannot escape the project.
 	target := filepath.Join(root, filepath.FromSlash(suffix))
 	storage := l.Crew.Files
-	if Within(l.Crew.Private, target) {
-		storage = l.Crew.Private
-	}
 	projectRel, err := filepath.Rel(storage, target)
 	if err != nil {
 		return "", true, err

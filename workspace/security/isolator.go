@@ -287,9 +287,11 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		return nil, nil, err
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
-	var crewBlocked []string
-	local.ReadPaths, local.WritePaths, crewBlocked = crewroot.NativeGrants(iso.getBaseDir(), local.ReadPaths, local.WritePaths)
+	var crewBlocked, crewBlockedWrites []string
+	local.ReadPaths, local.WritePaths, crewBlocked, crewBlockedWrites = crewroot.NativeGrants(iso.getBaseDir(), local.ReadPaths, local.WritePaths)
 	local.BlockedPaths = append(append([]string{}, local.BlockedPaths...), crewBlocked...)
+	// A Crew's automation records are read-only to its shells (PLAT-746-924).
+	local.BlockedWritePaths = append(append([]string{}, local.BlockedWritePaths...), crewBlockedWrites...)
 	for _, grant := range local.WritePaths {
 		if filepath.Base(grant) == SandboxPersistentDirName && filepath.IsAbs(grant) {
 			if _, roots, found, err := crewroot.Reverse(iso.getBaseDir(), grant); err == nil && found && crewroot.Within(roots.Private, grant) {

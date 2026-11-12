@@ -40,9 +40,8 @@ func pythonCrewFileReader(workspace string) func(context.Context, map[string]int
 			return "", fmt.Errorf("This file is not available here. Choose a file from this Crew's Files.")
 		}
 		scope, _, err := crewroot.ScopeRoot(docs, root, name)
-		// Knowledge is a managed public resource stored privately. Other
-		// platform settings, run/chat records and database files stay private.
-		if err != nil || crewroot.Within(layout.Crew.Private, scope) && !strings.HasPrefix(p, "knowledgebase/") {
+		// Chats and the automation records are not Crew files (wf.Private already refuses the database).
+		if err != nil || crewroot.Within(layout.Crew.Private, scope) || crewroot.Within(layout.Crew.SettingsDir(), scope) {
 			return "", fmt.Errorf("This file is private. Choose a document, note, skill or knowledge file from this Crew's Files instead.")
 		}
 		opened, relative, err := wf.OpenWorkflowDirectory(docs, root, name)

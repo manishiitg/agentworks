@@ -28,14 +28,12 @@ const (
 // by Crew chats and workflow execution agents.
 type Host struct {
 	PersonalMac, PersonalWindows bool
-	// Execution guards explicitly grant their run/output areas, including Crew private runs.
-	WorkflowExecution         bool
-	SeatbeltAvailable         bool
-	LandlockRunner            func() (string, bool)
-	ResolvePath               func(string) string
-	LookupRoots               func(string) (crewroot.Roots, bool, error)
-	ProtectedRoots            []string
-	DownloadsFolder, DocsRoot string
+	SeatbeltAvailable            bool
+	LandlockRunner               func() (string, bool)
+	ResolvePath                  func(string) string
+	LookupRoots                  func(string) (crewroot.Roots, bool, error)
+	ProtectedRoots               []string
+	DownloadsFolder, DocsRoot    string
 }
 
 func (h Host) Decide(workingDir string) (Decision, string, string) {
@@ -128,10 +126,15 @@ func (h Host) Grants(sessionID, provider, workingDir string, base *llmtypes.CLIS
 			if path := h.ResolvePath(rel); path != "" {
 				policy.WorkspaceReadPaths = appendUnique(policy.WorkspaceReadPaths, path)
 			}
-			if roots, found, err := h.LookupRoots(strings.TrimSuffix(rel, "/")); err == nil && found && strings.TrimSuffix(rel, "/") == roots.Virtual {
-				policy.WorkspaceReadPaths = appendUnique(policy.WorkspaceReadPaths, roots.Private)
-				for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "db.sqlite-journal"} {
-					policy.BlockedPaths = appendUnique(policy.BlockedPaths, filepath.Join(roots.Private, "db", name))
+			if roots, found, err := h.LookupRoots(strings.TrimSuffix(rel, "/")); err == nil && found {
+				// A Crew's automation records are read-only to programs: they change only through their tools (PLAT-746-924).
+				if settings := roots.SettingsDir(); settings != "" {
+					policy.BlockedWritePaths = appendUnique(policy.BlockedWritePaths, settings)
+				}
+				if strings.TrimSuffix(rel, "/") == roots.Virtual {
+					for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "db.sqlite-journal"} {
+						policy.BlockedPaths = appendUnique(policy.BlockedPaths, filepath.Join(roots.Automation, "db", name))
+					}
 				}
 			}
 		}
@@ -141,9 +144,11 @@ func (h Host) Grants(sessionID, provider, workingDir string, base *llmtypes.CLIS
 				// dedicated run/output grants in separated Crew storage.
 				if roots, found, err := h.LookupRoots(strings.TrimSuffix(rel, "/")); err == nil && found {
 					suffix := strings.TrimPrefix(strings.TrimPrefix(rel, roots.Virtual), "/")
-					if !h.WorkflowExecution && roots.ResourcePathRoot(suffix) == roots.Private {
+					// Chats stay private and records change only through their tools.
+					if root := roots.ResourcePathRoot(suffix); root == roots.Private || root == roots.SettingsDir() {
 						continue
 					}
+					policy.BlockedWritePaths = appendUnique(policy.BlockedWritePaths, roots.SettingsDir())
 				}
 				if path := h.ResolvePath(rel); path != "" {
 					policy.WorkspaceWritePaths = appendUnique(policy.WorkspaceWritePaths, path)

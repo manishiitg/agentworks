@@ -30,28 +30,29 @@ func TestSharedCrewRootNeedsAGrantForTheSameCrew(t *testing.T) {
 }
 
 // A Team member's workflow run in the owner's Crew was refused before its script started: it ran as the member's slot
-// in the Crew's private storage ("working folder: ... permission denied", PLAT-746-355). The private root is found
-// only when the guard grants a folder in that very Crew's private storage that holds the working folder.
-func TestCrewPrivateRootNeedsAGrantInTheSameCrew(t *testing.T) {
+// ("working folder: ... permission denied", PLAT-746-355). Its grant names the run folder, which lives in the Crew's
+// .agentworks (PLAT-746-924); the Crew is found only when the guard grants a folder in that very Crew that holds the
+// working folder.
+func TestCrewWorkflowRunNeedsAGrantInTheSameCrew(t *testing.T) {
 	docs := t.TempDir()
-	root := filepath.Join(docs, "_system", "crew-data", "f35eea54-0000-0000-0000-000000000000")
-	run := filepath.Join(root, "workflows", "wf_1", "runs", "run-1", "execution", "wf_1", "code")
-	granted := &models.FolderGuardConfig{Enabled: true, WritePaths: []string{filepath.Join(root, "workflows", "wf_1", "runs", "run-1")}}
-	if got := crewPrivateDirForCommand(docs, run, granted); got != root {
+	root := filepath.Join(docs, "Crew", "automation-testing-f35eea54")
+	run := filepath.Join(root, ".agentworks", "workflows", "wf_1", "runs", "run-1")
+	work := filepath.Join(run, "execution", "wf_1", "code")
+	granted := &models.FolderGuardConfig{Enabled: true, WritePaths: []string{run}}
+	if got := sharedCrewDirForCommand(docs, work, granted); got != root {
 		t.Fatalf("granted Crew run folder = %q, want %q", got, root)
 	}
-	other := filepath.Join(docs, "_system", "crew-data", "other-crew", "workflows", "wf_2", "runs", "run-2")
+	other := filepath.Join(docs, "Crew", "other-0000aaaa", ".agentworks", "workflows", "wf_2", "runs", "run-2")
 	for name, c := range map[string]struct {
 		dir   string
 		guard *models.FolderGuardConfig
 	}{
-		"guard off":             {run, &models.FolderGuardConfig{WritePaths: granted.WritePaths}},
+		"guard off":             {work, &models.FolderGuardConfig{WritePaths: granted.WritePaths}},
 		"another Crew":          {other, granted},
-		"outside the grant":     {filepath.Join(root, "workflows", "wf_1", "runs", "run-9"), granted},
-		"the private dir root":  {filepath.Join(docs, "_system", "crew-data"), granted},
-		"grant in another Crew": {run, &models.FolderGuardConfig{Enabled: true, WritePaths: []string{filepath.Dir(other)}}},
+		"outside the grant":     {filepath.Join(root, ".agentworks", "workflows", "wf_1", "runs", "run-9"), granted},
+		"grant in another Crew": {work, &models.FolderGuardConfig{Enabled: true, WritePaths: []string{filepath.Dir(other)}}},
 	} {
-		if got := crewPrivateDirForCommand(docs, c.dir, c.guard); got != "" {
+		if got := sharedCrewDirForCommand(docs, c.dir, c.guard); got != "" {
 			t.Fatalf("%s must keep the caller's slot, got %q", name, got)
 		}
 	}

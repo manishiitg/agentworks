@@ -42,7 +42,7 @@ func OpenWorkflowDirectory(docs, virtual, relative string) (*os.Root, string, er
 			return nil, "", e
 		}
 		anchor = crew.Files
-		for _, root := range []string{crew.Resources, crew.Private} {
+		for _, root := range []string{crew.Resources, crew.Automation, crew.SettingsDir(), crew.Private} {
 			if crewroot.Within(root, scope) && (!crewroot.Within(anchor, scope) || len(root) > len(anchor)) {
 				anchor = root
 			}

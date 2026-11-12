@@ -182,7 +182,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		definition.Close()
 	}
 	if localBound {
-		private, openErr := os.OpenRoot(localRoots.Private)
+		private, openErr := os.OpenRoot(localRoots.SettingsDir())
 		if openErr != nil {
 			return wf.Result{}, openErr
 		}
