@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/manishiitg/mcpagent/events"
 )
@@ -2389,6 +2390,21 @@ func (es *EventStore) Stats(top int) EventStoreStats {
 	return stats
 }
 
+// nativeCommandOutputTail keeps a long command output (a build log) from
+// becoming a multi-MB chat event: it keeps the last liveArtifactSummaryBytes,
+// the same bound a spilled chat row keeps, because a command's result is at
+// its end.
+func nativeCommandOutputTail(output string) string {
+	if len(output) <= liveArtifactSummaryBytes {
+		return output
+	}
+	tail := output[len(output)-liveArtifactSummaryBytes:]
+	for len(tail) > 0 && !utf8.RuneStart(tail[0]) {
+		tail = tail[1:]
+	}
+	return "[earlier output cut]\n" + tail
+}
+
 // SetToolCompletionAuthority identifies native commands whose process lifecycle
 // is reported independently of the reply. Install once during server setup.
 func SetToolCompletionAuthority(authority func(sessionID, toolID, name string) bool) {
@@ -2415,6 +2431,7 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time,
 	if at.IsZero() {
 		at = time.Now()
 	}
+	output = nativeCommandOutputTail(output)
 	event := Event{ID: "native-command-end:" + toolID, Type: "tool_call_end", Timestamp: at, SessionID: sessionID,
 		Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: at, SessionID: sessionID,
 			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Result: output}}}

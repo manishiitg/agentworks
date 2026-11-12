@@ -2,6 +2,7 @@ package events
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -364,8 +365,14 @@ func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
 	if len(toolEndIDs(t, store, session)) != 1 {
 		t.Fatal("another chat completed the command")
 	}
-	store.CompleteNativeTool(session, "exec-native", time.Now(), false, "VERIFY: PASSED\n")
-	store.CompleteNativeTool(session, "exec-native", time.Now(), false, "")
+	// The follow-up turn starts only when this reports true, so it must do so
+	// exactly once per command.
+	if !store.CompleteNativeTool(session, "exec-native", time.Now(), false, "VERIFY: PASSED\n") {
+		t.Fatal("native completion did not report closing the command")
+	}
+	if store.CompleteNativeTool(session, "exec-native", time.Now(), false, "") {
+		t.Fatal("a replayed completion would start a second follow-up")
+	}
 	if ids = toolEndIDs(t, store, session); len(ids) != 2 {
 		t.Fatalf("native completion missing or replayed: %v", ids)
 	}
@@ -382,12 +389,16 @@ func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
 		t.Fatalf("late native completion lost its output: %q", gotOutput)
 	}
 	store.AddEvent(session, startEvent(session, "exec-failed", "exec_command"))
-	store.CompleteNativeTool(session, "exec-failed", time.Now(), true, "exit 1")
+	// A long build log is cut to its end, not stored whole in the chat event.
+	store.CompleteNativeTool(session, "exec-failed", time.Now(), true, strings.Repeat("x", 1<<20)+"exit 1")
 	foundFailure := false
 	for _, e := range store.GetEvents(session, GetEventsOptions{}).Events {
 		if e.Data != nil {
 			if d, ok := e.Data.Data.(*events.ToolCallErrorEvent); ok && d.ToolCallID == "exec-failed" {
 				foundFailure = true
+				if len(d.Error) > 20*1024 || !strings.HasSuffix(d.Error, "exit 1") {
+					t.Fatalf("long output not cut to its end: %d bytes", len(d.Error))
+				}
 			}
 		}
 	}
