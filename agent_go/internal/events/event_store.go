@@ -1125,7 +1125,16 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	}
 
 	if event.GenerationID != "" && (event.Type == "streaming_start" || event.Type == "llm_generation_end" || event.Type == "agent_end" || event.Type == "unified_completion") {
-		log.Printf("[CHAT_GENERATION] session=%s type=%s row=%s generation=%s start_sequence=%d append_sequence=%d", sessionID, event.Type, event.ID, event.GenerationID, event.GenerationStartSequence, event.Sequence)
+		position := es.generationPositions[sessionID]
+		unframedBytes := 0
+		if position.remainder != nil {
+		    unframedBytes = position.remainder.complete.Len() + position.remainder.pending.Len()
+		}
+		remainderBytes := 0
+		if event.ReplyRemainder != nil {
+		    remainderBytes = len(*event.ReplyRemainder)
+		}
+		log.Printf("[CHAT_GENERATION] session=%s type=%s row=%s generation=%s start_sequence=%d append_sequence=%d reply_blocks_complete=%t block_count=%d native_block_id=%s unframed_bytes=%d remainder_bytes=%d", sessionID, event.Type, event.ID, event.GenerationID, event.GenerationStartSequence, event.Sequence, event.ReplyBlocksComplete, len(position.blocks), position.blockID, unframedBytes, remainderBytes)
 	}
 
 	// A replacing terminal snapshot supersedes the previous one of its terminal (event_memory.go).

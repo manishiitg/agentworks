@@ -103,6 +103,8 @@ func TestNativeBlocksStayWholeAcrossDeliveredSteerAndReload(t *testing.T) {
 			user := pkgevents.NewUserMessageEvent(0, "Change direction", "user")
 			user.Metadata = map[string]interface{}{"delivery_status": "sent_to_cli"}
 			data = user
+		case "llm_generation_end":
+			data = pkgevents.NewLLMGenerationEndEvent(0, "before finishes\nafter steer", 0, time.Second, pkgevents.UsageMetrics{})
 		case "unified_completion":
 			data = pkgevents.NewUnifiedCompletionEvent("coding_agent", "simple", "", "before finishes\nafter steer", "completed", time.Second, 1)
 		}
@@ -122,6 +124,10 @@ func TestNativeBlocksStayWholeAcrossDeliveredSteerAndReload(t *testing.T) {
 	b := appendEvent("b-start", "streaming_start", "b", "start", "")
 	appendEvent("b-delta", "streaming_chunk", "b", "", "after steer")
 	bEnd := appendEvent("b-end", "streaming_chunk", "b", "end", "after steer")
+	aggregate := appendEvent("aggregate", "llm_generation_end", "", "", "")
+	if !aggregate.ReplyBlocksComplete {
+		t.Fatal("full generation aggregate duplicates the native blocks")
+	}
 	end := appendEvent("done", "unified_completion", "", "", "")
 	if aEnd.GenerationStartSequence != a.Sequence || aEnd.GenerationStartSequence >= steer.Sequence || bEnd.GenerationStartSequence != b.Sequence || bEnd.GenerationStartSequence <= steer.Sequence || !end.ReplyBlocksComplete {
 		t.Fatalf("wrong live positions: a=%+v steer=%+v b=%+v done=%+v", aEnd, steer, bEnd, end)
@@ -140,13 +146,17 @@ func TestNativeBlocksStayWholeAcrossDeliveredSteerAndReload(t *testing.T) {
 		rows[row.ID] = restored
 	}
 	restoredA := rows["a-end"]
-	if rows["a-end"].GenerationStartSequence != a.Sequence || rows["b-end"].GenerationStartSequence != b.Sequence || !rows["done"].ReplyBlocksComplete || eventPayloadMap(&restoredA)["content"] != "before finishes" {
+	if rows["a-end"].GenerationStartSequence != a.Sequence || rows["b-end"].GenerationStartSequence != b.Sequence || !rows["aggregate"].ReplyBlocksComplete || !rows["done"].ReplyBlocksComplete || eventPayloadMap(&restoredA)["content"] != "before finishes" {
 		t.Fatal("reload lost a whole native block or its server position")
 	}
 	// A malformed/mixed transport may emit content without identity after known
 	// blocks. Render only that unframed remainder, not the aggregate twice.
 	appendEvent("mixed-delta", "streaming_chunk", "", "", "unframed remainder")
 	appendEvent("mixed-snapshot", "streaming_chunk", "", "end", "unframed remainder")
+	mixedAggregate := appendEvent("mixed-aggregate", "llm_generation_end", "", "", "")
+	if mixedAggregate.ReplyRemainder == nil || *mixedAggregate.ReplyRemainder != "unframed remainder" {
+		t.Fatal("generation aggregate repeats mixed native content")
+	}
 	mixed := appendEvent("mixed-done", "unified_completion", "", "", "")
 	if mixed.ReplyBlocksComplete || mixed.ReplyRemainder == nil || *mixed.ReplyRemainder != "unframed remainder" {
 		t.Fatal("mixed content repeats native blocks or disappears")

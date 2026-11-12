@@ -123,7 +123,7 @@ func (es *EventStore) stampGenerationPosition(sessionID string, event *Event) {
 		es.generationPositions[sessionID] = position
 	}
 	switch event.Type {
-	case "agent_end", "unified_completion":
+	case "llm_generation_end", "agent_end", "unified_completion":
 		complete, text := len(position.blocks) > 0, false
 		for _, block := range position.blocks {
 			complete = complete && block.complete
@@ -136,7 +136,7 @@ func (es *EventStore) stampGenerationPosition(sessionID string, event *Event) {
 			event.ReplyRemainder = &remainder
 		}
 		fallthrough
-	case "streaming_start", "streaming_chunk", "streaming_end", "llm_generation_end":
+	case "streaming_start", "streaming_chunk", "streaming_end":
 		event.GenerationID = carrier.id
 		event.GenerationStartSequence = carrier.sequence
 	case "conversation_end", "conversation_error":
