@@ -87,6 +87,8 @@ export interface GetEventsResponse {
 }
 
 export interface PendingQueuedMessage {
+  /** Present only when the server says this pending row has waited at least 15 minutes. */
+  waiting_since?: string
   attachment_paths?: string[]
   attachment_pending?: boolean
   display_metadata?: Record<string, unknown>

@@ -144,6 +144,8 @@ type queuedConversationPrincipal struct {
 }
 
 type queuedConversationTurn struct {
+	BatchID       string                      `json:"batch_id,omitempty"`
+	Batch         []queuedConversationTurn    `json:"-"`
 	RetryAt       *time.Time                  `json:"retry_at,omitempty"`
 	LimitRetried  bool                        `json:"limit_retried,omitempty"`
 	ID            string                      `json:"id"`
@@ -318,6 +320,7 @@ func (api *StreamingAPI) conversationQueueOwners(sessionID string) []string {
 // callers. Documents and delayed principals remain isolated per caller.
 func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessionID string) (queuedConversationTurn, bool, error) {
 	var oldest queuedConversationTurn
+	var heads []queuedConversationTurn
 	var readErr error
 	for _, owner := range api.conversationQueueOwners(sessionID) {
 		lock := productConversationRegistryMutex(conversationTurnQueuePath(owner))
@@ -339,6 +342,9 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 		}
 
 		head := conversationQueueHead(turns, owner, sessionID, time.Now())
+		if head.ID != "" {
+			heads = append(heads, head)
+		}
 		if head.ID == "" {
 			// Keep the file lock through index cleanup: a concurrent enqueue
 			// must register again after we remove this empty membership.
@@ -366,18 +372,21 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 		api.noteConversationQueueReadState(sessionID, oldest.UserID, err)
 		return queuedConversationTurn{}, false, err
 	}
-	for i := range turns {
-		if turns[i].ID == oldest.ID && turns[i].UserID == oldest.UserID && turns[i].SessionID == sessionID && turns[i].StartedAt == nil && turns[i].DeliveryError == "" && (turns[i].RetryAt == nil || !time.Now().Before(*turns[i].RetryAt)) {
-			now := time.Now().UTC()
-			turns[i].StartedAt = &now
-			turns[i].RetryAt = nil
-			if err := api.writeConversationTurnQueue(ctx, oldest.UserID, turns); err != nil {
-				logTurnQueue("cannot persist queue claim for session %s: %v", sessionID, err)
-				return queuedConversationTurn{}, false, err
-			}
-			return turns[i], true, nil
+	var other *queuedConversationTurn
+	for i := range heads {
+		if heads[i].UserID != oldest.UserID && (other == nil || heads[i].CreatedAt.Before(other.CreatedAt)) {
+			other = &heads[i]
 		}
 	}
+	claimed, updated := api.claimQueuedBatch(turns, oldest, other, time.Now().UTC())
+	if claimed.ID != "" {
+		if err := api.writeConversationTurnQueue(ctx, oldest.UserID, updated); err != nil {
+			return queuedConversationTurn{}, false, err
+		}
+		logTurnQueue("claimed batch session=%s head=%s messages=%d", sessionID, claimed.ID, len(queuedBatchMembers(claimed)))
+		return claimed, true, nil
+	}
+
 	// An explicit owner action took the selected head. Re-evaluate heads.
 	return queuedConversationTurn{}, false, nil
 }
@@ -791,21 +800,40 @@ func (api *StreamingAPI) endIdleTurnForRuntimeChange(sessionID, occupant string,
 }
 
 func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTurn) {
-	reqMap, err := queryRequestToMap(turn.Request)
+	members := queuedBatchMembers(turn)
+	prepared, err := api.prepareQueuedBatch(context.Background(), turn, time.Now())
 	var result internalSessionTurnResult
-	var callback func(event *unifiedevents.AgentEvent)
-	api.conversationTurnQueueMu.Lock()
-	callback = api.conversationTurnQueueCallbacks[turn.ID]
-	api.conversationTurnQueueMu.Unlock()
 	if err == nil {
-		ctx, principalErr := api.queuedConversationTurnContext(turn, reqMap)
-		if principalErr != nil {
+		reqMap, mapErr := queryRequestToMap(prepared.Request)
+		err = mapErr
+		if err == nil {
+			ctx, principalErr := api.queuedConversationTurnContext(prepared, reqMap)
 			err = principalErr
-		} else {
-			ctx = withConversationTurnQueueExecution(ctx)
-			result, err = api.startSessionInternalWithResult(ctx, reqMap, turn.SessionID, turn.UserID, callback)
+			if err == nil {
+				callback := func(event *unifiedevents.AgentEvent) {
+					for _, member := range members {
+						api.conversationTurnQueueMu.Lock()
+						cb := api.conversationTurnQueueCallbacks[member.ID]
+						api.conversationTurnQueueMu.Unlock()
+						if cb != nil {
+							cb(event)
+						}
+					}
+				}
+				result, err = api.startSessionInternalWithResult(withConversationTurnQueueExecution(ctx), reqMap, turn.SessionID, turn.UserID, callback)
+			}
 		}
 	}
+	for _, member := range members {
+		api.finishQueuedConversationTurn(member, result, err)
+	}
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, turn.SessionID)
+	api.conversationTurnQueueMu.Unlock()
+	api.kickConversationTurnQueue(turn.SessionID)
+}
+
+func (api *StreamingAPI) finishQueuedConversationTurn(turn queuedConversationTurn, result internalSessionTurnResult, err error) {
 	outcome, proof := "confirmed", "conversation_turn_completed"
 	if err != nil {
 		outcome, proof = "failed", "conversation_turn_failed"
@@ -844,13 +872,11 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 	waiter := api.conversationTurnQueueWaiters[turn.ID]
 	delete(api.conversationTurnQueueWaiters, turn.ID)
 	delete(api.conversationTurnQueueCallbacks, turn.ID)
-	delete(api.conversationTurnQueueDraining, turn.SessionID)
 	api.conversationTurnQueueMu.Unlock()
 	if waiter != nil {
 		waiter <- queuedConversationTurnResult{Result: result, Err: err}
 		close(waiter)
 	}
-	api.kickConversationTurnQueue(turn.SessionID)
 }
 
 const queuedTurnFailureMessage = "This queued message could not be completed. Check the chat before retrying."
@@ -1064,6 +1090,7 @@ func logTurnQueue(format string, args ...interface{}) {
 
 // PendingQueuedMessage is a keyed message waiting in the durable turn queue.
 type PendingQueuedMessage struct {
+	WaitingSince      *time.Time             `json:"waiting_since,omitempty"`
 	AttachmentPaths   []string               `json:"attachment_paths,omitempty"`
 	AttachmentPending bool                   `json:"attachment_pending,omitempty"`
 	MessageID         string                 `json:"message_id"`
@@ -1127,6 +1154,9 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 }
 
 func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sessionID string) []PendingQueuedMessage {
+	return pendingQueuedMessagesFromTurnsAt(turns, userID, sessionID, time.Now())
+}
+func pendingQueuedMessagesFromTurnsAt(turns []queuedConversationTurn, userID, sessionID string, now time.Time) []PendingQueuedMessage {
 	var pending []PendingQueuedMessage
 	waiting := 0
 	for _, turn := range turns {
@@ -1148,6 +1178,10 @@ func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sess
 			Content:         turn.Request.Query,
 			QueuedAt:        turn.CreatedAt,
 			Started:         turn.StartedAt != nil && !turn.Steering,
+		}
+		if !message.Started && !message.Steering && message.DeliveryError == "" && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) >= 15*time.Minute {
+			since := turn.CreatedAt
+			message.WaitingSince = &since
 		}
 		if !message.Started {
 			waiting++
