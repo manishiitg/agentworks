@@ -100,6 +100,9 @@ func (view *crewPeopleView) changeOnMac() {
 	for i := range view.People {
 		view.People[i].Moves = nil
 	}
+	for i := range view.DashboardPeople {
+		view.DashboardPeople[i].Moves = nil
+	}
 }
 
 // setCrewMacPair marks one of the Mac's calls about its own Crew's Team (route "/api/crew-teams/<peer>…"), and leaves any

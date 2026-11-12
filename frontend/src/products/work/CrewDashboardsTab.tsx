@@ -3,13 +3,13 @@ import { FileText, Film, LayoutDashboard, type LucideIcon } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { PublicLinkControl } from '../../components/workflow/PublicLinkControl'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
-import { teamCard } from './TeamTab'
+import { DashboardPeopleCard, teamCard } from './TeamTab'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 import { crewDashboardsTab, teamFailure, teamPublicLink, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
 
 const kindIcon: Record<string, LucideIcon> = { dashboard: LayoutDashboard, artifact: FileText, motion: Film }
-const openAccess = (projectId: string, section: 'mac' | 'team') => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section } }))
+const openAccess = (projectId: string, section: 'mac') => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section } }))
 
 /** The Online page's Dashboards tab (owner, 6 Nov mockup; its own tab again 9 Nov): everything this
  * Crew publishes (dashboards, artifacts, motion), each with who can open it and, on a server Crew, its public link. The server's
@@ -32,7 +32,8 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [where?.project, where?.connection, kind]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading dashboards…</p>
-  return <section aria-label="Dashboards" className={teamCard}>
+  return <div className="space-y-3">
+  <section aria-label="Dashboards" className={teamCard}>
     <h3 className="font-semibold">Dashboards</h3>
     {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
     {tab.filters.length > 1 && <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
@@ -70,11 +71,12 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
           </div>
           <div className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
             <span className="min-w-0 flex-1">Who can open it: <span className="text-foreground">{item.who}</span></span>
-            {tab.can_change && !tab.on_mac && <button type="button" onClick={() => openAccess(projectId, 'team')} className="shrink-0 text-primary hover:underline">Change</button>}
           </div>
           {item.public_link && <div className="pl-6"><PublicLinkControl link={item.public_link} change={mode => teamPublicLink(where, item.id, mode)} /></div>}
         </div>
       })}
     </div>
   </section>
+  <DashboardPeopleCard target={where} />
+  </div>
 }

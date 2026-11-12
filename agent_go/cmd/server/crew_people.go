@@ -90,12 +90,16 @@ type crewPeopleView struct {
 	// ChangeOnMac: the viewer is the owner of a Mac Crew reaching it through the server, so the list is read only.
 	ChangeOnMac string `json:"change_on_mac,omitempty"`
 	// CanAdd: this viewer may add people to Works with me; CanShare: the owner alone may give dashboards only.
-	CanAdd   bool               `json:"can_add"`
-	CanShare bool               `json:"can_share"`
-	Owner    crewPeoplePerson   `json:"owner"`
-	People   []crewPeoplePerson `json:"people"`
-	Levels   []crewPeopleLevel  `json:"levels"`
-	Gets     []crewPeopleGets   `json:"gets"`
+	CanAdd   bool             `json:"can_add"`
+	CanShare bool             `json:"can_share"`
+	Owner    crewPeoplePerson `json:"owner"`
+	// People are the Team members only (Works with me). Dashboards only people are the Crew's Share, so they are listed
+	// under Online > Dashboards: DashboardPeople, and the one line Team shows about them (owner's Team Module Manager, 12 Nov).
+	People          []crewPeoplePerson `json:"people"`
+	DashboardPeople []crewPeoplePerson `json:"dashboard_people"`
+	MoreDashboards  string             `json:"more_dashboards,omitempty"`
+	Levels          []crewPeopleLevel  `json:"levels"`
+	Gets            []crewPeopleGets   `json:"gets"`
 }
 
 // crewPeopleKind says what kind of Crew this is, as the People list needs it: a server Crew (both levels), a Mac Crew
@@ -233,7 +237,7 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 		}
 		return ""
 	}
-	view := crewPeopleView{Kind: kind, TeamOn: t.On, Levels: crewPeopleLevels(kind), Gets: crewPeopleGetsTable(), CanAdd: kind != crewKindMacNever && crewTeamCanManage(t, claims.UserID), CanShare: owner && kind == crewKindServer, People: []crewPeoplePerson{}}
+	view := crewPeopleView{Kind: kind, TeamOn: t.On, Levels: crewPeopleLevels(kind), Gets: crewPeopleGetsTable(), CanAdd: kind != crewKindMacNever && crewTeamCanManage(t, claims.UserID), CanShare: owner && kind == crewKindServer, People: []crewPeoplePerson{}, DashboardPeople: []crewPeoplePerson{}}
 	switch kind {
 	case crewKindMacNever:
 		view.Blocked = crewPeopleNeverOnlineLine
@@ -245,8 +249,13 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 	}
 	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Owner: true, You: owner}
 	add := func(id string, invited bool, level string) {
-		view.People = append(view.People, crewPeoplePerson{UserID: id, Name: crewPersonShortName(id), Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
-			Note: crewPeopleNote(invited), Invited: invited, You: id == claims.UserID, Moves: crewPeopleMoves(kind, level, owner)})
+		person := crewPeoplePerson{UserID: id, Name: crewPersonShortName(id), Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
+			Note: crewPeopleNote(invited), Invited: invited, You: id == claims.UserID, Moves: crewPeopleMoves(kind, level, owner)}
+		if level == crewPeopleDashboards {
+			view.DashboardPeople = append(view.DashboardPeople, person)
+		} else {
+			view.People = append(view.People, person)
+		}
 	}
 	for _, p := range t.People {
 		if crewTeamAccountActive(p.UserID) {
@@ -263,9 +272,23 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 		if owner {
 			row.Moves = []string{crewPeopleNone}
 		}
-		view.People = append([]crewPeoplePerson{row}, view.People...)
+		view.DashboardPeople = append([]crewPeoplePerson{row}, view.DashboardPeople...)
 	}
+	view.MoreDashboards = crewPeopleMoreDashboards(everyone && kind == crewKindServer, len(view.DashboardPeople))
 	return view
+}
+
+// crewPeopleMoreDashboards is the one line under Team > People about the people who only use the dashboards.
+func crewPeopleMoreDashboards(everyone bool, n int) string {
+	switch {
+	case everyone:
+		return "Everyone on this server uses its dashboard"
+	case n == 1:
+		return "1 more uses its dashboard"
+	case n > 1:
+		return fmt.Sprintf("%d more use its dashboard", n)
+	}
+	return ""
 }
 
 // handleCrewPeopleView is GET /crew-teams/{project}/people: the one People list, for the owner and the Team.

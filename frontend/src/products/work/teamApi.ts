@@ -190,7 +190,7 @@ export type CrewPeoplePerson = { user_id: string; name: string; email?: string; 
 export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
 export type CrewPeopleView = {
   kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; add_everyone?: string
-  can_add: boolean; can_share: boolean; owner: CrewPeoplePerson; people: CrewPeoplePerson[]; levels: CrewPeopleLevel[]
+  can_add: boolean; can_share: boolean; owner: CrewPeoplePerson; people: CrewPeoplePerson[]; dashboard_people: CrewPeoplePerson[]; more_dashboards?: string; levels: CrewPeopleLevel[]
   gets: { title: string; tagline: string; items: { text: string; yes: boolean }[] }[]
 }
 export type CrewPeoplePreview = { person: string; from: string; to: string; summary: string; gains: string[]; loses: string[]; notes: string[] }
