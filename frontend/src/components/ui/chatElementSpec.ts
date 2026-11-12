@@ -11,6 +11,7 @@ export type DiagramParticipant = { id: string; title: string }
 export type SequenceMessage = { from: string; to: string; label: string; reply?: boolean }
 
 export type ChatElement =
+  | { type: 'image'; src: string; caption?: string }
   | { type: 'table'; title: string; headers: string[]; rows: (string | number)[][] }
   | { type: 'chart'; title: string; style: 'line' | 'bar'; unit?: string; data: { label: string; value: number }[] }
   | { type: 'timeline'; title: string; items: { when: string; title: string; detail?: string }[] }
@@ -35,6 +36,7 @@ const unique = (items: { id: string }[]) => new Set(items.map(item => item.id)).
 const actors = z.array(actor).min(1).max(6).refine(unique)
 
 export const chatWidgetSchemas = {
+  image: z.strictObject({ src: z.union([webURL, text(2048).refine(workspaceCardImage)]), caption: text(1000).optional() }),
   table: z.strictObject({ title: text(160), headers: z.array(text(80)).min(1).max(20),
     rows: z.array(z.array(z.union([z.string().max(2000), z.number().finite()])).max(20)).min(1).max(100),
   }).refine(value => value.rows.every(row => row.length === value.headers.length)),
@@ -64,6 +66,7 @@ export const chatWidgetSchemas = {
 // presentation. No executable actions, bindings, arbitrary markup or page layouts.
 export const chatVisualCatalog = defineCatalog(schema, {
   components: {
+    image: { props: chatWidgetSchemas.image, slots: [], description: 'An inline image from an authorized workspace file or HTTP(S), with optional caption.' },
     table: { props: chatWidgetSchemas.table, slots: [], description: 'A compact table of saved values with named columns.' },
     chart: { props: chatWidgetSchemas.chart, slots: [], description: 'A compact line or bar chart of observed numbers.' },
     timeline: { props: chatWidgetSchemas.timeline, slots: [], description: 'Saved events in supplied order.' },

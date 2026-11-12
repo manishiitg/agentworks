@@ -2,6 +2,23 @@
 
 
 Use a visual only when it helps explain the answer. Supported formats:
+- **An image in app chat:** prefer ordinary Markdown `![caption](Crew/example/assets/image.png)`.
+  Use an actual existing workspace path or HTTP(S) URL, never an absolute computer
+  path, invented URL, account token or data URL. Spaces in Markdown paths may use
+  angle brackets: `![caption](<Crew/example/assets/my image.png>)`. Images keep their
+  proportions; click to enlarge and download. Several images can appear in sequence;
+  use grid cards for a titled collection. Workspace file permissions still apply.
+  The app-only `image` widget below is an alternative, not required for Markdown:
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"image","props":{"src":"Crew/example/assets/image.png","caption":"An optional caption"},"children":[]}}
+```
+
+The `image` widget requires only `src`; `caption` is optional (up to 1000 characters).
+For Slack, use the existing cards format and follow the Slack reference, not the
+app-only image widget. Cards still require a top-level `title` as well as item titles.
+
 - **Compare options:** a concise Markdown table.
 - **Who does each step:** a native `swimlane`, with one row per person, agent or app. Steps connect in supplied order, left to right. Use `diagram` for branching.
 - **Calls and replies in order:** a native `sequence`, with named participants, chronological messages and optional dashed replies.
