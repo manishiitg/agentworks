@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,5 +247,65 @@ func TestOnlySamePersonAgentMessagesSteerIntoOwnerTurn(t *testing.T) {
 		if got := agentMessageMaySteer(tc.c, tc.m); got != tc.want {
 			t.Errorf("%s: steerable=%v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// PLAT-746: an unconfirmed native write used to reopen the same message,
+// allowing the worker to send it again. Only a proven no-target may reopen.
+func TestAgentSteerUnconfirmedNeverReopensForAutomaticResend(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		status          mcpagent.UserMessageDeliveryStatus
+		err             error
+		wantReopen      bool
+		wantUnconfirmed bool
+	}{
+		{"confirmed", mcpagent.UserMessageDeliveryStatusSentToCLI, nil, false, false},
+		{"no target", "", &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession}, true, false},
+		{"timeout", "", context.DeadlineExceeded, false, true},
+		{"queued injection", mcpagent.UserMessageDeliveryStatusQueuedForInjection, nil, false, true},
+		{"unknown result", "", nil, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &StreamingAPI{eventStore: openClientIdentityTestStore(t, "uncertain-steer")}
+			const session = "recipient"
+			if err := api.eventStore.SetSessionPersistenceClass(session, internalevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			c := agentConversation{ID: "inbox-test", Endpoints: [2]agentMessageEndpoint{
+				{UserID: "owner", Kind: triggerCallerCrew, Session: session, Mode: "builder"},
+				{UserID: "owner", Kind: triggerCallerUser, External: true},
+			}}
+			m := agentMessage{ID: "mail-test", From: 1, Text: "review update", SentAt: time.Now().UTC()}
+			handled, err := api.finishAgentMessageSteer(context.Background(), c, m, "native-message", m.Text,
+				mcpagent.UserMessageDeliveryResult{DeliveryStatus: tc.status}, tc.err)
+			if reopen := !handled && err == nil; reopen != tc.wantReopen {
+				t.Fatalf("worker reopen=%t want %t", reopen, tc.wantReopen)
+			}
+			if errors.Is(err, errAgentMessageSteerUnconfirmed) != tc.wantUnconfirmed {
+				t.Fatalf("unconfirmed=%v err=%v", tc.wantUnconfirmed, err)
+			}
+			rows := api.eventStore.GetAllEventsRaw(session)
+			if tc.wantReopen {
+				if len(rows) != 0 {
+					t.Fatal("unsent message was recorded as delivered")
+				}
+				return
+			}
+			if len(rows) != 1 {
+				t.Fatalf("message rows=%d want one", len(rows))
+			}
+			raw, _ := json.Marshal(rows[0])
+			if tc.wantUnconfirmed && !strings.Contains(string(raw), `"delivery_status":"unconfirmed"`) {
+				t.Fatalf("missing durable unconfirmed receipt: %s", raw)
+			}
+			if tc.wantUnconfirmed {
+				m.Delivery = "unconfirmed"
+				c.Messages = []agentMessage{m}
+				if pendingInternalAgentMessage(c) {
+					t.Fatal("restart would resend unconfirmed mail")
+				}
+			}
+		})
 	}
 }

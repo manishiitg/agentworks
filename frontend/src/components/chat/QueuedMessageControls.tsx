@@ -58,7 +58,7 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
 export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
-  if (!message) return null
+  if (!message) return metadata?.delivery_status === 'unconfirmed' ? <p className="mt-0.5 text-[11px] text-amber-500">Delivery unconfirmed. It will not be sent again automatically.</p> : null
   const text = message.delivery_error ? `Delivery unconfirmed. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : message.refreshing ? "Sends after the chat restarts with the Crew's latest setup." : ''
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
@@ -67,7 +67,7 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
 export const QueuedInboxStatus: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
-  if (!message) return null
+  if (!message) return metadata?.delivery_status === 'unconfirmed' ? <span title="Delivery unconfirmed" aria-label="Delivery unconfirmed" className="inline-flex items-center gap-1 text-amber-500"><CircleAlert aria-hidden="true" className="h-3.5 w-3.5" /></span> : null
   const reason = message.delivery_error || message.queue_detail || 'Waiting for the current reply'
   const Icon = message.delivery_error ? CircleAlert : Clock
   return <span title={reason} aria-label={reason} className="inline-flex items-center gap-1 text-amber-500"><Icon aria-hidden="true" className="h-3.5 w-3.5" /><QueuedWaitingAge since={message.waiting_since} /></span>
