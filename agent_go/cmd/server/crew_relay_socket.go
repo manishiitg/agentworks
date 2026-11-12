@@ -223,6 +223,9 @@ func crewMacAppVersion(v string) string {
 // crewMacSocketServing is the name of another live connection of this Mac's owner, from a different computer, that
 // already serves this Crew pair ("" when none).
 func crewMacSocketServing(sock *crewMacSocket, project, pair string) string {
+	if pair == "" {
+		return ""
+	}
 	crewMacSockets.Lock()
 	defer crewMacSockets.Unlock()
 	for _, other := range crewMacSockets.byDevice {
@@ -240,8 +243,13 @@ func crewMacSocketServing(sock *crewMacSocket, project, pair string) string {
 }
 
 // crewMacSocketFor routes a twin's commands only to a connection of its owner
-// that offered this pair.
+// that offered this pair. An old link without a pair is never live: without
+// this, an unoffered project ("") matches any live socket of the owner and a
+// leftover copy looks on (owner, 12 Nov).
 func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
+	if pair == "" {
+		return nil
+	}
 	crewMacSockets.Lock()
 	defer crewMacSockets.Unlock()
 	var best *crewMacSocket

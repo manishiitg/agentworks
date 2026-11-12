@@ -63,7 +63,9 @@ type crewSyncReply struct {
 	AccessView string `json:"access_view,omitempty"`
 	// ChatOnly: the owner reaches this Mac Crew through the server, so the screen shows its chat and no side panel (owner,
 	// 6 Nov: "mac online.. just reach my agent.. from phone"; crew_owner_on_mac.go).
-	ChatOnly           bool                          `json:"chat_only,omitempty"`
+	ChatOnly bool `json:"chat_only,omitempty"`
+	// ChatOnlyLine is the one line above that chat: which copy this is and what stays on the Mac (owner, 12 Nov).
+	ChatOnlyLine       string                        `json:"chat_only_line,omitempty"`
 	Role               string                        `json:"role,omitempty"`
 	OnServer           []crewServerCopy              `json:"on_server,omitempty"`
 	Publish            *crewAgentPublishPreview      `json:"publish,omitempty"`
@@ -312,6 +314,19 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		}
 		crewAccessPage(&out)
 		api.crewAccessAddSlack(r, &out, GetUserIDFromContext(r.Context()))
+		if out.ChatOnly {
+			name := out.ProjectID
+			if _, doc, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), "work:"+out.ProjectID); ok {
+				if title := doc.displayTitle(); title != "" {
+					name = title
+				}
+			}
+			mac := ""
+			if out.Binding != nil {
+				mac = out.Binding.MacName
+			}
+			out.ChatOnlyLine = crewChatOnlyLine(name, mac, out.Place == "mac")
+		}
 		// The person's own AgentWorks project is never shared: its Access page is one line, no tabs.
 		if agentWorksPrivateProject(r.Context(), out.ProjectID) {
 			out.AccessView, out.AccessSummary, out.AccessTabs, out.AccessMac, out.AccessPublish, out.AccessLaptop = "summary", agentWorksPrivateLine, nil, nil, nil, false

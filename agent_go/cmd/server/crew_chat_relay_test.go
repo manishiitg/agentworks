@@ -511,3 +511,41 @@ func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
 		t.Fatalf("status created a conversation: %v", err)
 	}
 }
+
+// PLAT-746-915: an old link without a pair is never live. A lookup for a
+// project the Mac never offered returns "" from the twins map, which equaled
+// the empty pair of a stale binding, so any live socket of the owner made the
+// leftover copy look on. Empty pairs must match nothing.
+func TestCrewMacSocketIgnoresEmptyPair(t *testing.T) {
+	owner := "empty-pair-owner"
+	crewMacSockets.Lock()
+	sock := &crewMacSocket{owner: owner, device: "mac", name: "Mac", twins: map[string]string{"served": "pair-1"}, lastSeen: time.Now()}
+	other := &crewMacSocket{owner: owner, device: "other-mac", name: "Other", twins: map[string]string{"served": "pair-1"}, lastSeen: time.Now()}
+	crewMacSockets.byDevice[owner+"/mac"] = sock
+	crewMacSockets.byDevice[owner+"/other-mac"] = other
+	crewMacSockets.Unlock()
+	t.Cleanup(func() {
+		crewMacSockets.Lock()
+		delete(crewMacSockets.byDevice, owner+"/mac")
+		delete(crewMacSockets.byDevice, owner+"/other-mac")
+		crewMacSockets.Unlock()
+	})
+	if got := crewMacSocketFor(owner, "served", "pair-1"); got == nil {
+		t.Fatal("live socket offering the pair was not routed")
+	}
+	if got := crewMacSocketFor(owner, "served", ""); got != nil {
+		t.Fatal("empty pair matched a served project")
+	}
+	if got := crewMacSocketFor(owner, "never-offered", ""); got != nil {
+		t.Fatal("stale link without a pair looked live")
+	}
+	if got := crewMacSocketFor(owner, "never-offered", "pair-1"); got != nil {
+		t.Fatal("unoffered project matched another project's pair")
+	}
+	if got := crewMacSocketServing(sock, "never-offered", ""); got != "" {
+		t.Fatalf("stale link looked served by another Mac: %q", got)
+	}
+	if got := crewMacLastSeen(owner, "never-offered", ""); !got.IsZero() {
+		t.Fatalf("stale link had a last-seen time: %v", got)
+	}
+}
