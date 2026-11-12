@@ -227,6 +227,15 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	}
 	networkRows, networkError := desktopAgentNetworkRows(ctx, claims.UserID)
 	agents = append(agents, networkRows...)
+	// Hiding is the caller's preference, not the agent owner's sharing policy.
+	registryPath := productConversationRegistryPath(claims.UserID)
+	registryMu := productConversationRegistryMutex(registryPath)
+	registryMu.Lock()
+	preferences, preferenceErr := defaultProductConversationRegistryStore().loadDocument(ctx, registryPath)
+	registryMu.Unlock()
+	if preferenceErr == nil {
+		annotateDirectoryHiddenAgents(agents, preferences, desktopMachineID())
+	}
 	sort.SliceStable(agents, func(i, j int) bool {
 		rank := func(row map[string]interface{}) int {
 			relation, _ := row["relation"].(string)
@@ -240,7 +249,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}
 	if networkError != "" {
 		out["network_error"] = networkError
@@ -367,4 +376,40 @@ func crewDirectoryChatName(tab crewOwnerChat) string {
 		return "Main"
 	}
 	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")
+}
+
+// Only the viewing person's saved preferences are supplied here. Do not copy
+// another owner's pin setting onto shared or remote agents.
+func annotateDirectoryHiddenAgents(rows []map[string]interface{}, preferences productConversationRegistryDocument, device string) {
+	hiddenChats := map[string]bool{}
+	hiddenApps := map[string]bool{}
+	for key, identity := range preferences.Agents {
+		if !identity.Unpinned {
+			continue
+		}
+		hiddenChats[strings.TrimPrefix(key, crewProfileID+"/")] = true
+		if record, ok := preferences.Entries[key]; ok && device != "" && record.ConversationID != "" {
+			hiddenApps[desktopAppAgentName(device, record.ConversationID)] = true
+		}
+	}
+	mark := func(row map[string]interface{}) {
+		row["hidden"] = true
+		row["usage_note"] = "Hidden by you — used less often. Still available for messages and scheduled work."
+	}
+	for _, row := range rows {
+		chat, _ := row["chat_id"].(string)
+		name, _ := row["agent_name"].(string)
+		yours, _ := row["yours"].(bool)
+		if hiddenChats[chat] || (yours && hiddenApps[name]) {
+			mark(row)
+		}
+		if chats, ok := row["chats"].([]map[string]interface{}); ok {
+			for _, child := range chats {
+				chat, _ := child["chat_id"].(string)
+				if hiddenChats[chat] {
+					mark(child)
+				}
+			}
+		}
+	}
 }
