@@ -65,3 +65,36 @@ wait "$worker"
 [ -f "$scratch/fixtures-built" ]
 grep -q 'playwright=completed' "$DEV_STARTUP_LOG"
 echo 'PASS: fixture setup is deferred until health (stub tools only)'
+
+# PLAT-746-935: exercise the actual workspace launch function with a slow
+# fake Go build. No real Go build, service, health request or app restart.
+eval "$(sed -n '/^start_native_workspace() {/,/^}/p' "$root/agent_go/run_server_with_logging.sh")"
+SCRIPT_DIR="$scratch/agent_go"
+WORKSPACE_DIR="$scratch"
+WORKSPACE_LOG_PATH="$scratch/workspace.log"
+WORKSPACE_API_URL=http://example.com
+WORKSPACE_PORT=12345
+WORKSPACE_DOCS_PATH="$scratch/docs"
+WITH_WORKSPACE=true
+BACKGROUND_MODE=false
+port_in_use() { return 1; }
+wait_for_workspace_health() {
+    [ -f "$scratch/build-finished" ] || { echo 'health budget began during build' >&2; return 1; }
+    touch "$scratch/health-checked"
+}
+go() {
+    [ ! -f "$scratch/health-checked" ] || return 1
+    command sleep 0.05
+    [ "${FAIL_BUILD:-false}" != true ] || return 1
+    printf '#!/bin/bash\nexit 0\n' > "$3"
+    chmod +x "$3"
+    touch "$scratch/build-finished"
+}
+start_native_workspace
+wait "$WORKSPACE_PID"
+[ -f "$scratch/health-checked" ]
+rm "$scratch/build-finished" "$scratch/health-checked"
+FAIL_BUILD=true
+if start_native_workspace; then echo 'failed build must fail launch' >&2; exit 1; fi
+[ ! -f "$scratch/health-checked" ]
+echo 'PASS: slow workspace build precedes health; failed build never waits for health'
