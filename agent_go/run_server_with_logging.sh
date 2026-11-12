@@ -505,13 +505,13 @@ launch_gateway_process() {
         fi
         prepare_gateway_product_credentials || return 1
         if [ "$BACKGROUND_MODE" = true ]; then
-            nohup env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            dev_detached_exec env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 < /dev/null &
         else
             env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
         fi
     else
         if [ "$BACKGROUND_MODE" = true ]; then
-            nohup bash -lc 'cd "$1" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc 'cd "$1" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 < /dev/null &
         else
             (cd "$GATEWAY_DIR" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server) >> "$GATEWAY_LOG_PATH" 2>&1 &
         fi
@@ -788,11 +788,11 @@ EOF
     fi
     if [ "$BACKGROUND_MODE" = true ]; then
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         elif [ -n "$FRONTEND_HOST" ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         else
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         fi
     else
         (
@@ -860,7 +860,7 @@ EOF
         fi
         if [ "$BACKGROUND_MODE" = true ]; then
             # shellcheck disable=SC2086
-            nohup bash -lc "cd \"$DESKTOP_DIR\" && DEV_URL=\"$FRONTEND_URL\" exec \"$ELECTRON_BIN\" . $ELECTRON_EXTRA_ARGS" >> "$ELECTRON_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$DESKTOP_DIR\" && DEV_URL=\"$FRONTEND_URL\" exec \"$ELECTRON_BIN\" . $ELECTRON_EXTRA_ARGS" >> "$ELECTRON_LOG_PATH" 2>&1 < /dev/null &
         else
             (
                 cd "$DESKTOP_DIR" || exit 1
@@ -1960,7 +1960,7 @@ start_native_workspace() {
     echo "🔨 Building the native workspace (including any Go toolchain download)..."
     (cd "$WORKSPACE_DIR" && go build -o "$workspace_binary" .) || return 1
     if [ "$BACKGROUND_MODE" = true ]; then
-        nohup bash -lc 'cd "$1" && shift && exec "$@"' bash "$WORKSPACE_DIR" "$workspace_binary" server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH" >> "$WORKSPACE_LOG_PATH" 2>&1 &
+        dev_detached_exec bash -lc 'cd "$1" && shift && exec "$@"' bash "$WORKSPACE_DIR" "$workspace_binary" server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH" >> "$WORKSPACE_LOG_PATH" 2>&1 < /dev/null &
     else
         (
             cd "$WORKSPACE_DIR" || exit 1
@@ -2107,11 +2107,11 @@ start_frontend_dev() {
 
     if [ "$BACKGROUND_MODE" = true ]; then
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         elif [ -n "$FRONTEND_HOST" ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         else
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         fi
     else
         (
@@ -2195,8 +2195,18 @@ start_electron() {
     echo "- DEV_URL: $dev_url" >> "$ELECTRON_LOG_PATH"
     echo "=========================================" >> "$ELECTRON_LOG_PATH"
 
+    if [ "$BACKGROUND_MODE" = true ]; then
+        dev_detached_exec bash -c '
+            cd "$1" || exit 1
+            if [ -n "${AGENTWORKS_DEV_AGENT_BINARY:-}" ]; then
+                # Keep the existing private stdin bootstrap; never put it in argv.
+                printf "%s" "$AUTH_SECRET" | env -u AUTH_SECRET DEV_URL="$2" "$3" .
+            else
+                exec env -u AUTH_SECRET DEV_URL="$2" "$3" .
+            fi
+        ' bash "$DESKTOP_DIR" "$dev_url" "$ELECTRON_BIN" >> "$ELECTRON_LOG_PATH" 2>&1 < /dev/null &
+    else
     (
-        [ "$BACKGROUND_MODE" != true ] || trap '' HUP
         cd "$DESKTOP_DIR" || exit 1
         if [ -n "${AGENTWORKS_DEV_AGENT_BINARY:-}" ]; then
             # printf is a shell builtin: the value never becomes a process arg.
@@ -2205,6 +2215,7 @@ start_electron() {
             exec env -u AUTH_SECRET DEV_URL="$dev_url" "$ELECTRON_BIN" .
         fi
     ) >> "$ELECTRON_LOG_PATH" 2>&1 &
+    fi
 
     ELECTRON_PID=$!
     dev_detail "✅ Electron process started (PID: $ELECTRON_PID)"
@@ -2503,7 +2514,7 @@ if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
 elif [ "$BACKGROUND_MODE" = true ]; then
     # Background mode: run in background and capture PID
     dev_detail "🔄 Starting server in background mode..."
-    nohup "$AGENT_DIRECT_BINARY" server \
+    dev_detached_exec "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2511,7 +2522,7 @@ elif [ "$BACKGROUND_MODE" = true ]; then
         --model "$DEEP_SEARCH_MAIN_LLM_MODEL" \
         --temperature "$DEEP_SEARCH_MAIN_LLM_TEMPERATURE" \
         --max-turns 500 \
-        --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 &
+        --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 < /dev/null &
     
     SERVER_PID=$!
     dev_detail "✅ Server started in background (PID: $SERVER_PID)"
