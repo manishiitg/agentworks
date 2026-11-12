@@ -42,6 +42,10 @@ func crewTeamRecordMutex(dir string) *sync.Mutex {
 // Team people, agent identities and agent settings live in the same record.
 // Native agent discovery fills metadata; only an agent's person changes its rule.
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
+	return assignCrewTeamAgentIDsWithMain(t, people, crewOwnerMainChatKey(t.ProjectID))
+}
+
+func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, ownerMainKey string) error {
 	dir, err := crewTeamDir(t.ProjectID)
 	if err != nil {
 		return err
@@ -82,7 +86,6 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 		bySource[source] = id
 		byChat[chat] = id
 	}
-	ownerMainKey := crewOwnerMainChatKey(t.ProjectID)
 	for i := range people {
 		if !current.member(people[i].UserID) {
 			people[i].Agents = nil
@@ -92,7 +95,7 @@ func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 		for _, discovered := range people[i].Agents {
 			a := &discovered
 			tab := a.Tab
-			if crewTeamMainAgent(current, people[i].UserID, a.ChatKey) || tab == macMainTab {
+			if crewTeamMainAgentWithKey(current, people[i].UserID, a.ChatKey, ownerMainKey) || tab == macMainTab {
 				tab = macMainTab
 			}
 			source := people[i].UserID + "/" + tab
@@ -164,8 +167,17 @@ func (t crewTeam) registeredAgent(person, key string) (crewTeamRegisteredAgent, 
 		}
 	}
 	for _, a := range t.Agents {
-		if a.OwnerID == person && (a.Tab == key || crewTeamMainAgent(t, person, key) && a.Tab == macMainTab) {
+		if a.OwnerID == person && a.Tab == key {
 			return a, true
+		}
+	}
+	// Only an unresolved owner binding can need the Main role alias. Ordinary
+	// registry IDs, exact chats and physical tabs above require no manifest read.
+	if person == t.OwnerID {
+		for _, a := range t.Agents {
+			if a.OwnerID == person && a.Tab == macMainTab && crewTeamMainAgent(t, person, key) {
+				return a, true
+			}
 		}
 	}
 	return crewTeamRegisteredAgent{}, false
@@ -252,12 +264,13 @@ func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) 
 	if err != nil || !crewTeamAgentsVisible(t, person) {
 		return crewTeamAgent{}, fmt.Errorf("This Crew's Team is not available to you")
 	}
-	for _, p := range teamAgentsByPerson(ctx, t, person) {
+	mainKey := crewOwnerMainChatKey(project)
+	for _, p := range teamAgentsByPersonWithMain(ctx, t, person, mainKey) {
 		if p.UserID != person {
 			continue
 		}
 		for _, a := range p.Agents {
-			if a.InTeam && (a.ChatKey == chatKey || crewTeamNativeChatKey(project, person, a) == chatKey || crewTeamMainAgent(t, person, chatKey) && crewTeamMainAgent(t, person, a.ChatKey)) {
+			if a.InTeam && (a.ChatKey == chatKey || crewTeamNativeChatKey(project, person, a) == chatKey || crewTeamMainAgentWithKey(t, person, chatKey, mainKey) && crewTeamMainAgentWithKey(t, person, a.ChatKey, mainKey)) {
 				return a, nil
 			}
 		}

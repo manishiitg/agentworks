@@ -129,6 +129,7 @@ func crewTabUntil(at time.Time) string {
 
 // crewTabSetupSource is what the Team tab reads once per reply to word every row's setup.
 type crewTabSetupSource struct {
+	mainKey     string // validated once by the request builder
 	automations []crewTabAutomation
 	macOn       bool // the owner's Mac answers now (a Mac Crew); a Crew on the server is always online
 }
@@ -176,7 +177,7 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer 
 		out.Reach = "team"
 	}
 	if person == t.OwnerID {
-		main := a.Tab == macMainTab || crewTeamMainAgent(t, t.OwnerID, a.ChatKey)
+		main := a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.ChatKey, src.mainKey)
 		for _, item := range src.automations {
 			if item.Tab == a.Tab || (item.Tab == macMainTab && main) {
 				out.Automations = append(out.Automations, item)

@@ -297,6 +297,7 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 }
 
 func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabReply {
+	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	view := t.view(viewer)
 	view.Lent = crewTeamLentNow(ctx, t, viewer)
 	twin := crewRelayTwin(t.ProjectID)
@@ -311,6 +312,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	bridges := crewTeamBridgesFor(t)
 	setups := crewTabSetupSourceFor(ctx, t, twin)
+	setups.mainKey = mainKey
 	if viewer == t.OwnerID && twin {
 		out.AgentsLine = crewAlwaysOnAgentsLine
 	}
@@ -322,14 +324,13 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		return out
 	}
-	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	for _, a := range t.Agents {
 		if a.OwnerID == t.OwnerID && a.ChatKey == mainKey && !a.InTeam {
 			out.Intro += " Main is not shared with the Team."
 			break
 		}
 	}
-	byPerson := teamAgentsByPerson(ctx, t, viewer)
+	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p
