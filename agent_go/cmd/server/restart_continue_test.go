@@ -16,7 +16,7 @@ import (
 // PLAT-746-919: reconstruct the API/store from durable events and queue JSON;
 // nothing executes a model, and an already-started original is never replayed.
 func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.T) {
-	for _, scenario := range []string{"started", "agent_message", "schedule", "stopped", "finished", "error", "person_queued"} {
+	for _, scenario := range []string{"started", "agent_message", "schedule", "stopped", "finished", "error", "person_queued", "graceful_shutdown", "stopped_then_shutdown", "finished_during_shutdown"} {
 		t.Run(scenario, func(t *testing.T) {
 			const user, sid = "owner", "restart-chat"
 			backgroundFollowUps.personWrote(sid)
@@ -63,6 +63,32 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 			if scenario == "person_queued" {
 				turns = append(turns, queuedConversationTurn{ID: "person-next", UserID: user, SessionID: sid, SubmissionID: "typed-next", ComposerInput: true, Request: QueryRequest{Query: "next task", AgentMode: "multi-agent"}})
 			}
+			if strings.Contains(scenario, "shutdown") {
+				turnCtx, cancel := context.WithCancelCause(ctx)
+				api.shutdownTurnCancels.Store(sid, cancel)
+				api.agentCancelFuncs = map[string]context.CancelFunc{sid: func() { cancel(context.Canceled) }}
+				if scenario == "stopped_then_shutdown" {
+					cancel(context.Canceled) // person's Stop wins before the app quits
+				}
+				api.cancelActiveWorkForShutdown()
+				observer := &restartAwareEventObserver{EventObserver: storeevents.NewEventObserver(api.eventStore, sid)}
+				if scenario != "finished_during_shutdown" {
+					if err := observer.HandleEvent(turnCtx, unifiedevents.NewAgentEvent(unifiedevents.NewContextCancelledEvent(1, "context canceled", time.Second))); err != nil {
+						t.Fatal(err)
+					}
+				}
+				status := "error"
+				if scenario == "finished_during_shutdown" {
+					status = "completed"
+				}
+				completion := unifiedevents.NewUnifiedCompletionEvent("session", "simple", "", "", status, time.Second, 1)
+				if err := observer.HandleEvent(turnCtx, unifiedevents.NewAgentEvent(completion)); err != nil {
+					t.Fatal(err)
+				}
+				if api.eventStore.PersistedTurnOpen(sid) {
+					t.Fatal("graceful shutdown terminal markers should remain closed")
+				}
+			}
 			switch scenario {
 			case "stopped":
 				api.emitInterruptedTurnEnd(sid, "stop_after_restart")
@@ -76,7 +102,7 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected := scenario == "started" || scenario == "agent_message" || scenario == "schedule"
+			expected := scenario == "started" || scenario == "agent_message" || scenario == "schedule" || scenario == "graceful_shutdown"
 			notes := 0
 			for _, turn := range got {
 				if turn.Request.Query == "original task" || turn.ID == "original-queue-row" {
