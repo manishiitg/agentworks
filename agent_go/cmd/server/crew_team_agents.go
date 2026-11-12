@@ -90,7 +90,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 }
 
 func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey string) []crewTeamAgentsPerson {
-	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
+	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: crewTeamFirstName(crewPersonShortName(t.OwnerID)), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
 	onMac := crewRelayTwin(t.ProjectID)
 	// Website tabs use the Main conversation's physical key, while AgentBridge
 	// addresses it by project. Return the actual tab identity to the browser.
@@ -152,7 +152,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			continue
 		}
 		// Mac on only from their Mac's own connection: the server copy's sync is not the person being there.
-		person := crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller}
+		person := crewTeamAgentsPerson{UserID: p.UserID, Name: crewTeamFirstName(crewPersonShortName(p.UserID)), You: p.UserID == caller}
 		if pair, onMac := t.memberMac(p.UserID); onMac {
 			// Their agents here work on their Mac (crew_team_where.go): listed from it, marked when it is off.
 			person.MacOn, person.AppVersion = crewMacSocketOnline(p.UserID, t.ProjectID, pair)

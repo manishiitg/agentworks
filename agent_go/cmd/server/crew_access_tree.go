@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -174,13 +175,22 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 	return lines
 }
 
-// crewTeamFirstName uses a supplied first name; account usernames remain the fallback.
+// crewTeamFirstName uses the saved first name or derives it from a login.
 func crewTeamFirstName(name string) string {
 	words := strings.Fields(strings.SplitN(strings.TrimSpace(name), "@", 2)[0])
 	if len(words) == 0 {
 		return "Teammate"
 	}
-	return words[0]
+	first := words[0]
+	if cut := strings.IndexFunc(first, func(r rune) bool { return r == '.' || r == '_' || unicode.IsDigit(r) }); cut >= 0 {
+		first = first[:cut]
+	}
+	if first == "" {
+		return "Teammate"
+	}
+	runes := []rune(first)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 // crewAccessDashboardLine is the Crew's dashboards in the Online tree (owner, 5 Nov: one place for Share and the

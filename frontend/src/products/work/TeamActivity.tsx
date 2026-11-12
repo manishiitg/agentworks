@@ -7,7 +7,6 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { workConversationAgent } from '../../utils/workConversationKey'
-import { openCrewAccess } from './MacSharedAgents'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
@@ -15,12 +14,6 @@ type ActivityMessage = { id: string; sentence: string; topic?: string; from: Act
 type ActivityPost = { id: string; person: string; agent: string; line: string; why?: string; schedule?: string; at: string }
 type ActivityView = { decisions: ActivityPost[]; findings: ActivityPost[]; now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting'; line: string; doing?: string; end: ActivityEnd }[]; idle: ActivityEnd[]; messages: ActivityMessage[]; other: { kind: string; path: string; line: string }[]; next_cursor?: string; refresh_after_ms?: number; foot: string }
 
-const pill: Record<ActivityMessage['status'], string> = {
-  answered: 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300',
-  waiting: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  no_answer: 'border-destructive/30 bg-destructive/10 text-destructive',
-  mac_off: 'border-border bg-muted text-muted-foreground',
-}
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 function day(at: string) {
   const date = new Date(at), today = new Date(), yesterday = new Date()
@@ -91,48 +84,42 @@ export function TeamActivity({ target, projectId }: { target: TeamTarget; projec
   const [open, setOpen] = useState('')
   if (!view) return error ? <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div> : <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>
   const heading = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
-  const agentOpen = (end: ActivityEnd) => <button type="button" onClick={() => openAgent(projectId, end)} className="shrink-0 text-xs text-primary hover:underline">Open →</button>
-  return <section aria-label="Activity" className="space-y-4 rounded-xl border border-border px-4 py-3 text-sm">
-    {view.other.length > 0 && <section aria-label="Needs attention" className="space-y-2">
-      <h3 className={`${heading} text-amber-600`}>Needs attention</h3>
-      {view.other.map(item => <div key={item.path} className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-        <p className="min-w-0 flex-1 break-words text-[13px]">{item.line}</p>
-        <button type="button" onClick={() => openCrewAccess(projectId, '', 'team', 'sync')} className="shrink-0 text-xs text-primary hover:underline">Pick a copy →</button>
-      </div>)}
-    </section>}
-    <section aria-label="Working now" className="space-y-2">
-      <h3 className={heading}>Working now</h3>
-      {view.now.length === 0 && <p className="text-xs text-muted-foreground">No agent is working right now.</p>}
-      {view.now.map(agent => <div key={agent.end.chat_key} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${agent.state === 'running' ? 'motion-safe:animate-pulse bg-emerald-500' : 'bg-amber-500'}`} />
-        <div className="min-w-0 flex-1"><p className="font-medium">{agent.end.label}</p><p className="text-xs text-muted-foreground">{agent.doing || agent.line}{agent.doing && agent.state === 'waiting' ? ` · ${agent.line}` : ''}</p></div>{agentOpen(agent.end)}
-      </div>)}
-      {!!view.idle?.length && <details><summary className="cursor-pointer text-xs text-muted-foreground">{view.idle.length} others idle</summary><div className="mt-2 space-y-1">{view.idle.map(agent => <div key={agent.chat_key} className="flex items-center justify-between gap-2 px-3 py-1 text-xs text-muted-foreground"><span>{agent.label}</span>{agentOpen(agent)}</div>)}</div></details>}
-    </section>
-    {!!view.decisions?.length && <section aria-label="Decisions" className="space-y-2"><h3 className={heading}>Decisions</h3>{view.decisions.map(post => <div key={post.id} className="rounded-lg border border-border px-3 py-2"><p className="text-xs text-muted-foreground">{post.person}'s {post.agent} · {clock(post.at)}</p><p className="mt-1 text-[13px] font-medium">{post.line}</p>{post.why && <p className="mt-1 text-xs text-muted-foreground">Why: {post.why}</p>}</div>)}</section>}
-    {!!view.findings?.length && <section aria-label="Schedule findings" className="space-y-2"><h3 className={heading}>Schedule findings</h3>{view.findings.map(post => <div key={post.id} className="rounded-lg border border-border px-3 py-2"><p className="text-xs text-muted-foreground">{post.schedule} · {post.person}'s {post.agent} · {clock(post.at)}</p><p className="mt-1 text-[13px]">{post.line}</p></div>)}</section>}
-    <section aria-label="Agents asking each other" className="space-y-2">
-      <h3 className={heading}>Agents asking each other</h3>
-      {view.messages.length === 0 && <p className="text-xs text-muted-foreground">No messages between the Team's agents yet.</p>}
-      {view.messages.map((message, index) => {
-        const readable = Boolean(message.question), isOpen = readable && open === message.id
-        const group = day(message.sent_at)
-        return <Fragment key={message.id}>
-          {(index === 0 || day(view.messages[index - 1].sent_at) !== group) && <p className="pt-2 text-xs font-medium text-muted-foreground">{group}</p>}
-          <div className="rounded-lg border border-border">
-            <button type="button" disabled={!readable} aria-expanded={readable ? isOpen : undefined} onClick={() => setOpen(isOpen ? '' : message.id)} className="flex w-full items-start gap-2 px-3 py-2 text-left enabled:hover:bg-muted/40">
-              <ChevronRight aria-hidden="true" className={`mt-1 h-3 w-3 shrink-0 text-muted-foreground ${readable ? '' : 'invisible'} ${isOpen ? 'rotate-90' : ''}`} />
-              <span className="min-w-0 flex-1"><span className="block text-[13px]">{message.sentence}</span>{message.topic && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{message.topic}</span>}</span>
-              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${pill[message.status]}`}>{message.status_line}</span><span className="text-[11px] text-muted-foreground">{clock(message.sent_at)}</span>
-            </button>
-            {message.hidden_line && <p className="flex items-center gap-1.5 px-3 pb-2 pl-8 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3 shrink-0" />{message.hidden_line}</p>}
-            {isOpen && <div className="space-y-2 px-3 pb-3 pl-8 text-[13px]"><p className="whitespace-pre-wrap rounded-lg bg-muted/40 p-2">{message.question}</p>{message.answer && <p className="ml-4 whitespace-pre-wrap rounded-lg border border-border p-2">{message.answer}</p>}{agentOpen(message.to)}</div>}
+  const items = [
+    ...(view.decisions || []).map(post => ({ kind: 'decision' as const, id: post.id, at: post.at, post })),
+    ...(view.findings || []).map(post => ({ kind: 'finding' as const, id: post.id, at: post.at, post })),
+    ...view.messages.map(message => ({ kind: 'message' as const, id: message.id, at: message.sent_at, message })),
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+  return <section aria-label="Activity" className="space-y-3 text-sm">
+    {items.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Decisions, schedule findings and agent questions show here.</p>}
+    {items.map((item, index) => {
+      const group = day(item.at)
+      const message = item.kind === 'message' ? item.message : undefined
+      const post = item.kind !== 'message' ? item.post : undefined
+      const readable = Boolean(message?.question), isOpen = readable && open === item.id
+      const title = message ? `${message.from.label} → ${message.to.label}` : item.kind === 'finding' ? post?.schedule : post?.line
+      const person = message?.from.person || post?.person || 'Team'
+      return <Fragment key={`${item.kind}:${item.id}`}>
+        {(index === 0 || day(items[index - 1].at) !== group) && <h3 className={`${heading} pt-2`}>{group}</h3>}
+        <div className="flex items-start gap-2 py-2">
+          <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium">{person.slice(0, 1).toUpperCase()}</span>
+          <div className="min-w-0 flex-1">
+            {message ? <button type="button" disabled={!readable} aria-expanded={readable ? isOpen : undefined} onClick={() => setOpen(isOpen ? '' : item.id)} className="flex w-full items-start gap-1 text-left enabled:hover:text-primary">
+              <span className="min-w-0 flex-1 text-[13px]">{title}</span>
+              {readable && <ChevronRight aria-hidden="true" className={`mt-1 h-3 w-3 shrink-0 text-muted-foreground ${isOpen ? 'rotate-90' : ''}`} />}
+            </button> : <p className="text-[13px] font-medium">{title}</p>}
+            {post && <p className="text-xs text-muted-foreground">{post.person}'s {post.agent}</p>}
+            {item.kind === 'finding' && post && <p className="mt-0.5 text-[13px]">{post.line}</p>}
+            {post?.why && <p className="mt-0.5 text-xs text-muted-foreground">{post.why}</p>}
+            {message?.topic && <p className="mt-0.5 truncate text-xs text-muted-foreground">{message.topic}</p>}
+            {message && <p className="mt-0.5 text-xs text-muted-foreground">{message.status_line}</p>}
+            {message?.hidden_line && <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3 shrink-0" />{message.hidden_line}</p>}
+            {isOpen && message && <div className="mt-2 space-y-2 text-[13px]"><p className="whitespace-pre-wrap">{message.question}</p>{message.answer && <p className="whitespace-pre-wrap text-muted-foreground">{message.answer}</p>}<button type="button" onClick={() => openAgent(projectId, message.to)} className="text-xs text-primary hover:underline">Open →</button></div>}
           </div>
-        </Fragment>
-      })}
-      {view.next_cursor && <button type="button" disabled={olderLoading} onClick={older} className="text-xs text-primary hover:underline disabled:opacity-50">{olderLoading ? 'Loading…' : 'Show older'}</button>}
-    </section>
+          <time dateTime={item.at} className="shrink-0 text-[11px] text-muted-foreground">{clock(item.at)}</time>
+        </div>
+      </Fragment>
+    })}
+    {view.next_cursor && <button type="button" disabled={olderLoading} onClick={older} className="text-xs text-primary hover:underline disabled:opacity-50">{olderLoading ? 'Loading…' : 'Show older'}</button>}
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" onClick={reload} className="underline">Try again</button></p>}
-    <p className="text-xs text-muted-foreground">{view.foot}</p>
   </section>
 }

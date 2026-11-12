@@ -339,7 +339,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	person := func(id, note string, removable bool) {
 		p := seen[id]
-		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: crewPersonShortName(id), Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
+		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: crewTeamFirstName(crewPersonShortName(id)), Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
 			CanRemove: removable && view.CanManage && id != viewer, You: id == viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
 	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
