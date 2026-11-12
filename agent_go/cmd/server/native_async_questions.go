@@ -167,5 +167,10 @@ func nativeAsyncQuestionReply(questions []unifiedevents.CodingAgentQuestionPromp
 		items = append(items, reply{answer.ID, questions[i].Question, strings.Join(parts, ", ")})
 	}
 	data, _ := json.Marshal(items)
-	return "<send_user_message_question_reply>\n" + string(data) + "\n</send_user_message_question_reply>"
+	return "<send_user_message_question_reply>\n" + string(data) + "\n</send_user_message_question_reply>\n\n" + nativeAsyncQuestionContinue
 }
+
+// nativeAsyncQuestionContinue follows the answers. The question ended the agent's turn, so the answer starts a new
+// one; Codex took it as something to acknowledge and ended again ("I'll trace the logs", nothing run) (PLAT-746-899).
+// The chat shows only the answers.
+const nativeAsyncQuestionContinue = "Carry on with the task you asked this for, using the answer above. Do not stop at acknowledging it."
