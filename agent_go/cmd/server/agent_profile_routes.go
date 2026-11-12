@@ -61,6 +61,8 @@ type AgentProfileChatRequest struct {
 }
 
 type AgentProfileConversationRequest struct {
+	// RequestedAgent is an opening hint for a bare Crew, never a message destination.
+	RequestedAgent      string            `json:"requested_agent,omitempty"`
 	PreviewRemoval      bool              `json:"preview_removal,omitempty"`
 	RemovalConfirmation string            `json:"removal_confirmation,omitempty"`
 	RemovalChoices      map[string]string `json:"removal_choices,omitempty"`
@@ -89,6 +91,7 @@ func agentProfileResumeConversationKey(profileID string, input AgentProfileConve
 }
 
 type AgentProfileConversationResponse struct {
+	ChooseAgent     bool   `json:"choose_agent,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
@@ -590,6 +593,18 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "resolve", Name: input.Name, Source: "conversation-route"}) {
 		return
+	}
+	if profile.ID == crewProfileID && strings.TrimSpace(input.ConversationKey) != "" && !strings.Contains(input.ConversationKey, ":") {
+		key, openErr := api.crewOpeningAgent(r, profile, input.ConversationKey, input.RequestedAgent)
+		if openErr != nil {
+			writeAgentProfileError(w, http.StatusUnprocessableEntity, openErr.Error())
+			return
+		}
+		if key == "" {
+			writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{ChooseAgent: true})
+			return
+		}
+		input.ConversationKey = key
 	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, input.Name)
 	if err != nil {
