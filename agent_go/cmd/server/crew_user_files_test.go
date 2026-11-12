@@ -69,7 +69,12 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatalf("write %s: %d %s", rel, w.Code, w.Body.String())
 		}
-		raw, err := os.ReadFile(filepath.Join(roots.Resources, rel))
+		// The shared database folder lives in .agentworks (PLAT-746-924).
+		root := roots.Resources
+		if strings.HasPrefix(rel, "db/") {
+			root = roots.Automation
+		}
+		raw, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil || string(raw) != "person content" {
 			t.Fatal(rel, string(raw), err)
 		}

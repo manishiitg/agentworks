@@ -203,7 +203,7 @@ if (typeof FutureBrowserAPI !== 'undefined') new FutureBrowserAPI();
 	if err := registry.SetRunPeople("work", "dashboard-team", []string{"reader"}); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, crewroot.PrivateDirectory+"/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
+	f.write(t, "Crew/dashboard-team/.agentworks/settings/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
 	crewCreated := call("dashboard", map[string]any{"action": "create", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})
 	crewRevision := crewCreated["dashboard"].(map[string]any)["revision"].(string)
 	call("dashboard", map[string]any{"action": "publish", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision})

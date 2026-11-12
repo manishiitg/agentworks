@@ -88,7 +88,7 @@ func removeLocalCrew(folder string) error {
 	}
 	err = copyTree(roots.Resources, "resources")
 	if err == nil {
-		err = copyTree(roots.Private, "settings")
+		err = copyTree(roots.Private, "private")
 	}
 	for _, close := range []func() error{tw.Close, gz.Close, file.Close} {
 		if e := close(); err == nil {
