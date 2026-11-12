@@ -190,7 +190,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
       {/* Your own Crews that live on a Mac and are reached through this server, under that Mac. */}
       {macs.map(({ mac, rows: macRows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
         <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-          <span className="shrink-0">On your Mac</span>
+          <span className="shrink-0">{macs.length > 1 ? `On your Mac · ${mac.name}` : 'On your Mac'}</span>
           <span role="img" aria-label={`${mac.name} · ${macStatusText(mac)}`} title={`${mac.name} · ${macStatusText(mac)}`} className={`h-1.5 w-1.5 shrink-0 rounded-full ${mac.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
         </h2>
         {macRows.map(project => renderProject(project))}
