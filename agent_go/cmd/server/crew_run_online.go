@@ -121,7 +121,7 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 			result = "failed"
 		}
 		log.Printf("[CREW_RUN_ONLINE] owner=%s project=%s tab=%s result=%s automations=%d paths=%d elapsed_ms=%d", claims.UserID, project, tab, result, automations.count(), len(selection.Paths), time.Since(started).Milliseconds())
-		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d automation(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.%s", name, len(selection.Paths), automations.count(), copyName, note)
+		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d automation(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.%s", name, len(selection.Paths), automations.count(), copyName, note+crewRunOnlineWebhookNote(automations))
 		if err != nil {
 			message = fmt.Sprintf("[Run online] The online agent for %q was not made: %s. Tell the person in one line what happened and what they can do.", name, err.Error())
 		}
@@ -239,7 +239,7 @@ func (api *StreamingAPI) crewRunOnlineAutomations(ctx context.Context, claims *U
 		}
 		for _, hook := range hooks {
 			if strings.EqualFold(hook.Name, name) {
-				if crewAgentTargetMatches(hook.Action.Tab, h) {
+				if hook.Action.Type == "message" && crewAgentTargetMatches(hook.Action.Tab, h) {
 					out.Webhooks, matched = append(out.Webhooks, hook.ID), true
 				} else {
 					other = true
@@ -454,4 +454,12 @@ func (api *StreamingAPI) publishCrewRunOnlineCopy(ctx context.Context, claims *U
 	selection.AccountID = preview.Publish.Selection.AccountID
 	_, err = step("publish_agent", preview.Publish.TransferID)
 	return err
+}
+
+// crewRunOnlineWebhookNote: a webhook gets a new address and signing secret on the server, so its sender needs updating.
+func crewRunOnlineWebhookNote(a crewRunOnlineAutomations) string {
+	if len(a.Webhooks) == 0 {
+		return ""
+	}
+	return " Its webhooks have new addresses and secrets on the server: tell the person to update the apps that call them (Automations > Webhooks on the website)."
 }
