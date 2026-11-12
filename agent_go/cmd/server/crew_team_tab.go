@@ -136,6 +136,7 @@ type crewTeamTabReply struct {
 	Team   crewTeam            `json:"team"`
 	Intro  string              `json:"intro"`
 	People []crewTeamTabPerson `json:"people"`
+	Live   crewTeamLiveView    `json:"live"`
 	Agents []crewTeamTabAgent  `json:"agents"`
 	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
 	// The Team's settings are the server's record, changed from the website, the Mac app, chat or MCP; the owner's Mac
@@ -331,6 +332,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
+	out.Live = crewTeamLiveFor(byPerson, viewer)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p
