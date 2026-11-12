@@ -2401,12 +2401,13 @@ func SetToolCompletionAuthority(authority func(sessionID, toolID, name string) b
 // Replayed native records and ordinary tools cannot manufacture completions.
 // output is the command's own output from its native completion, so a command
 // that outlived its reply still shows what it printed (PLAT-746-899).
-func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time, failed bool, output string) {
+// It reports whether it closed a command, so the caller can follow up once.
+func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time, failed bool, output string) bool {
 	toolCallsMu.Lock()
 	tc := openToolCall[sessionID][toolID]
 	if tc == nil || !tc.nativeCompletion {
 		toolCallsMu.Unlock()
-		return
+		return false
 	}
 	// The normal end-event path removes the entry. Native observers are serial.
 	name, startedAt := tc.name, tc.startedAt
@@ -2427,6 +2428,7 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time,
 		event.Data.Data = &events.ToolCallErrorEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Error: message}
 	}
 	es.AddEvent(sessionID, event)
+	return true
 }
 
 // EndNativeCommandsWithoutResult is called only when the owning runtime has
