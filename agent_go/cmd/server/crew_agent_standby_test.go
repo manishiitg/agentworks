@@ -181,7 +181,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if api.crewStandbyRoute(t.Context(), "owner", "team", helper, "other", true) || len(imported) != 0 {
 		t.Fatalf("with the Mac on, the server took the agent (imported %v)", imported)
 	}
-	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); !strings.HasPrefix(label, "Always on") || tone != "ok" {
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); !strings.HasPrefix(label, crewStandbyBackupLine) || tone != "ok" {
 		t.Fatalf("Mac on label: %q %q", label, tone)
 	}
 
