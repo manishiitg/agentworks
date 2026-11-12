@@ -71,7 +71,7 @@ func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 	write(filepath.Join(crew, "db/db.sqlite"), "other db")
 	if _, _, err := MigrateToAgentworks(docs); err == nil {
 		t.Fatal("two different databases were merged")
-	} else if msg := err.Error(); !strings.Contains(msg, filepath.Join(private, "db/db.sqlite")+" (12 bytes") || !strings.Contains(msg, filepath.Join(crew, "db/db.sqlite")+" (8 bytes") || strings.Contains(msg, ".agentworks/db/db.sqlite") {
+	} else if msg := err.Error(); !strings.Contains(msg, filepath.Join(private, "db/db.sqlite")+" (12 bytes") || !strings.Contains(msg, filepath.Join(crew, "db/db.sqlite")+" (8 bytes") || strings.Contains(msg, ".agentworks/db/db.sqlite") || !strings.Contains(msg, "the one the app has been using") {
 		t.Fatalf("refusal does not name both real database files: %v", err)
 	}
 	os.Remove(filepath.Join(crew, "db/db.sqlite"))
