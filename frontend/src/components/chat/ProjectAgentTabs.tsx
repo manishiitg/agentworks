@@ -226,6 +226,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         activity: tab.tabId === canonicalTabId ? projectActivity : undefined,
         setup: setupOf(tab),
         onAutomations: automationsAsk ? () => { sendToTab(tab.tabId, automationsAsk) } : undefined,
+        // The same Run online as the agent menu's (owner, 12 Nov: "where is option to run online").
+        onRunOnline: localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       },
     }
   }
@@ -282,7 +284,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
   if (openTab && !watchingOther) lastOwnTab.current = openTab.tabId
   const headerTab = watchingOther ? (tabs.some(tab => tab.tabId === lastOwnTab.current) ? lastOwnTab.current : canonicalTabId) : openTab?.tabId
-  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${openInfo?.onRunOnline ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps

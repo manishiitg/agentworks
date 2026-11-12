@@ -29,6 +29,8 @@ export interface AgentCardInfo {
   onRemove?: () => void
   /** Opens Access at this agent; only where sharing can be set from here. */
   onSharing?: () => void
+  /** Run online: asks this agent to make its online copy; your own agent in a Crew on this Mac only. */
+  onRunOnline?: () => void
   /** Its tab, for the Now row (the same state as the mark left of its name); activity is a Crew Main's own. */
   tabId?: string
   activity?: 'running' | 'waiting' | null
@@ -181,6 +183,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         {info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
         {info.onAutomations && <button type="button" onClick={() => finish(info.onAutomations!)} className="text-primary hover:underline">Automations…</button>}
+        {info.onRunOnline && <button type="button" title="Makes a copy of this agent that runs on the server, even when your Mac is off. This agent stays here." onClick={() => finish(info.onRunOnline!)} className="text-primary hover:underline">Run online…</button>}
       </div>
       {info.onRemove && <div className="mt-2 border-t border-border pt-1.5">
         <button type="button" onClick={() => confirmRemoveAgent(info.name, () => finish(info.onRemove!))} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>
