@@ -69,18 +69,23 @@ type workspaceGitFile struct {
 type workspaceGitRepo struct {
 	// Root is the repo folder relative to the requested workspace_path ("" for
 	// the workspace itself).
-	Root      string             `json:"root"`
-	Branch    string             `json:"branch"`
-	Detached  bool               `json:"detached,omitempty"`
-	Upstream  string             `json:"upstream,omitempty"`
-	Ahead     int                `json:"ahead"`
-	Behind    int                `json:"behind"`
+	Root     string `json:"root"`
+	Branch   string `json:"branch"`
+	Detached bool   `json:"detached,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+	Ahead    int    `json:"ahead"`
+	Behind   int    `json:"behind"`
+	// Unpushed counts the commits ahead of the upstream whose change is not
+	// on it yet: a commit that landed through a rebase merge has a new ID
+	// upstream and counts in Ahead, but not here.
+	Unpushed  int                `json:"unpushed"`
 	Files     []workspaceGitFile `json:"files"`
 	Truncated bool               `json:"truncated,omitempty"`
 	// Repository names the repository this checkout belongs to: its main
 	// checkout's folder. Worktree marks a linked worktree of that repository.
 	Repository string `json:"repository,omitempty"`
 	Worktree   bool   `json:"worktree,omitempty"`
+	oid        string // HEAD commit, for the Unpushed cache.
 }
 
 type workspaceGitBranch struct {
@@ -327,6 +332,8 @@ func parseWorkspaceGitStatus(out []byte) workspaceGitRepo {
 			continue
 		}
 		switch {
+		case strings.HasPrefix(line, "# branch.oid "):
+			repo.oid = strings.TrimPrefix(line, "# branch.oid ")
 		case strings.HasPrefix(line, "# branch.head "):
 			repo.Branch = strings.TrimPrefix(line, "# branch.head ")
 			if repo.Branch == "(detached)" {
@@ -413,7 +420,34 @@ func workspaceGitStatus(ctx context.Context, repoDir string) (workspaceGitRepo, 
 	if err != nil {
 		return workspaceGitRepo{}, err
 	}
-	return parseWorkspaceGitStatus(out), nil
+	repo := parseWorkspaceGitStatus(out)
+	repo.Unpushed = workspaceGitUnpushed(ctx, repoDir, repo)
+	return repo, nil
+}
+
+// workspaceGitUnpushedCache keeps each checkout's Unpushed count until its
+// HEAD, upstream or ahead/behind counts move: comparing patches takes up to
+// a second per stale worktree and the Changes row reads every checkout often.
+var workspaceGitUnpushedCache sync.Map
+
+func workspaceGitUnpushed(ctx context.Context, repoDir string, repo workspaceGitRepo) int {
+	if repo.Ahead == 0 || repo.Upstream == "" || repo.oid == "" {
+		return repo.Ahead
+	}
+	key := strings.Join([]string{repoDir, repo.oid, repo.Upstream, strconv.Itoa(repo.Ahead), strconv.Itoa(repo.Behind)}, "\x00")
+	if n, ok := workspaceGitUnpushedCache.Load(key); ok {
+		return n.(int)
+	}
+	out, err := workspaceGitCommand(ctx, repoDir, "rev-list", "--count", "--no-merges", "--cherry-pick", "--right-only", "@{upstream}...HEAD").Output()
+	if err != nil {
+		return repo.Ahead
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return repo.Ahead
+	}
+	workspaceGitUnpushedCache.Store(key, n)
+	return n
 }
 
 // workspaceGitRelFile validates a repo-relative file argument.

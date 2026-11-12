@@ -44,7 +44,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			// main checkout first, then its worktrees. Every other checkout
 			// follows as a quiet row the browser folds under "N with no changes"
 			// (owner, 12 Nov: show clean folders and worktrees too).
-			busy := func(repo workspaceGitRepo) bool { return len(repo.Files) > 0 || repo.Ahead > 0 }
+			busy := func(repo workspaceGitRepo) bool { return len(repo.Files) > 0 || repo.Unpushed > 0 }
 			dirty := map[string]int{}
 			for _, repo := range data.Repos {
 				if busy(repo) {
@@ -80,8 +80,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					}
 					parts = append(parts, changed)
 				}
-				if repo.Ahead > 0 {
-					parts = append(parts, fmt.Sprintf("%d not pushed", repo.Ahead))
+				if repo.Unpushed > 0 {
+					parts = append(parts, fmt.Sprintf("%d not pushed", repo.Unpushed))
 				}
 				row.Count = strings.Join(parts, " · ")
 				if repo.Repository != "" && dirty[repo.Repository] > 1 {
