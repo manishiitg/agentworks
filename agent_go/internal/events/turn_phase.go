@@ -40,6 +40,7 @@ const (
 type turnPhaseState struct {
 	phase    string
 	label    string // "Muse", "Claude" or "the agent"
+	provider string // runtime-issued provider identity, for content-free lifecycle logs
 	reason   string
 	attempt  int
 	total    int
@@ -56,14 +57,14 @@ var (
 
 // Only a current server-issued label identifies the CLI. A model family is
 // not an agent identity: Cursor and Pi can run Claude models too.
-func turnPhaseEventLabel(event Event) string {
+func turnPhaseEventMetadata(event Event, key string) string {
 	if event.Data == nil || event.Data.Data == nil {
 		return ""
 	}
 	if data, ok := event.Data.Data.(interface{ GetBaseEventData() *events.BaseEventData }); ok {
 		if base := data.GetBaseEventData(); base != nil {
-			label, _ := base.Metadata["agent_label"].(string)
-			return strings.TrimSpace(label)
+			value, _ := base.Metadata[key].(string)
+			return strings.TrimSpace(value)
 		}
 	}
 	return ""
@@ -211,7 +212,13 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 		st.phase, st.updated = phase, now
 	}
-	ended := IsTurnEndType(event.Type) && st != nil
+	provider := turnPhaseEventMetadata(event, "provider")
+	if st != nil {
+		if provider == "" {
+			provider = st.provider
+		}
+		st.provider = provider
+	}
 	if IsTurnEndType(event.Type) {
 		delete(turnPhases, sessionID)
 		st = nil
@@ -265,7 +272,8 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 	}
 	if st != nil {
-		if label := turnPhaseEventLabel(event); label != "" {
+		st.provider = provider
+		if label := turnPhaseEventMetadata(event, "agent_label"); label != "" {
 			st.label = label
 		}
 		sig := fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)
@@ -276,12 +284,12 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 	}
 	turnPhasesMu.Unlock()
-	if announce != nil || ended {
+	if announce != nil || IsTurnEndType(event.Type) {
 		phase := "ended"
 		if announce != nil {
 			phase = announce.phase
 		}
-		log.Printf("[CHAT_TURN_PHASE] session=%s execution=%s event=%s phase=%s", sessionID, event.ExecutionID, event.Type, phase)
+		log.Printf("[CHAT_TURN_PHASE] session=%s execution=%s provider=%s event=%s phase=%s", sessionID, event.ExecutionID, provider, event.Type, phase)
 	}
 	es.announceTurnPhase(sessionID, announce, now)
 }
