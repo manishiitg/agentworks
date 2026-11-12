@@ -26,6 +26,10 @@ func pythonCrewFileReader(workspace string) func(context.Context, map[string]int
 		if !ok || len(args) != 1 || err != nil || clean != p || p == "." || wf.Private(p) || publication.CredentialPath(p) || strings.HasPrefix(p, "Crew/") || strings.HasPrefix(p, "Workflow/") || strings.HasPrefix(p, "_users/") {
 			return "", fmt.Errorf("Choose a relative file in this Crew, such as knowledgebase/notes/example.md. Private files and other Crews are not available here.")
 		}
+		// Only the exact knowledgebase/ name: a case variant would reach the same folder past the Brain check.
+		if first, _, _ := strings.Cut(p, "/"); strings.EqualFold(first, "knowledgebase") && first != "knowledgebase" {
+			return "", fmt.Errorf("Choose a relative file in this Crew, such as knowledgebase/notes/example.md. Private files and other Crews are not available here.")
+		}
 		docs := GetPromptDocsRoot()
 		layout, found, err := crewroot.LookupExecutable(docs, workspace)
 		if err != nil || !found {
