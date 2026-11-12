@@ -1685,6 +1685,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		scheduleLogf("[PRODUCT-SCHEDULE] ❌ %s for %s: %v", job.ID(), job.UserID, runErr)
 		return sessionID, runErr
 	}
+	postCrewScheduleFinding(context.WithoutCancel(runCtx), job, conversation.ConversationKey, finalResponse)
 	scheduleLogf("[PRODUCT-SCHEDULE] ✅ %s for %s completed in %dms", job.ID(), job.UserID, duration)
 	return sessionID, nil
 }
