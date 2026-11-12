@@ -403,7 +403,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	// one else reads "your team" when the Team has other people, matching the Dashboards tab's "Who can open it".
 	team := false
 	for _, line := range access.Tree {
-		if line.Kind == "team" && len(line.People) > 0 {
+		if line.Kind == "team" && line.Count > 0 {
 			team = true
 		}
 	}
