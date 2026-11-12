@@ -512,7 +512,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				return nil, fmt.Errorf("this agent is still being copied to the server; try again in a moment")
 			}
 			if place != nil && IsLocalMode() {
-				return nil, fmt.Errorf("this is the online copy: it runs on the server, so chat with it on the website")
+				return nil, fmt.Errorf("this is the online agent: it runs only on the server, so chat with it on the website")
 			}
 		}
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so

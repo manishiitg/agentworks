@@ -269,7 +269,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
   }, [onBack])
-  if (step) return <PublishCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
+  if (step) return <MoveCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
   const pairedConnection = connections.find(item => item.id === binding?.connection_id)
@@ -368,13 +368,13 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
         <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>
-          <p className="text-[12.5px] text-muted-foreground">{online ? `Runs on ${network}. Your Mac keeps a backup copy.` : `Moves this Crew to ${network} for good: all its agents, chats, memory, skills, files and schedules. It then runs there with your Mac on or off; your Mac keeps a backup copy.`}</p>
-          {!online && tooBig && <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p>}
+          <p className="text-[12.5px] text-muted-foreground">{online ? `Runs on ${network}. Your Mac keeps a copy of its folder.` : `Moves this Crew to ${network} for good: all its agents, chats, memory, skills, files and schedules. It then runs there with your Mac on or off; your Mac keeps a copy of its folder.`}</p>
+          {!online && tooBig && <p className="text-xs text-amber-600">This Crew is too large to move online. Move large folders out first.</p>}
         </div>
-        {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
+        {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Move online</Button>}
       </div>
       {!online && binding?.connection_id && <div className="rounded-xl border border-border p-3"><p className="font-semibold">One agent</p>
-        <p className="text-[12.5px] text-muted-foreground">Open the agent's menu and choose Run online. It makes a copy that runs on {network} with your Mac on or off; the agent itself stays on this Mac.</p></div>}
+        <p className="text-[12.5px] text-muted-foreground">Open the agent's menu and choose Run online. It makes a separate online agent, named with · online, that runs only on {network}; the agent itself stays on this Mac.</p></div>}
     </section>}
     {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
         turns the Team on through the Mac while Mac online is off. */}
@@ -412,12 +412,12 @@ type MoveStep = 'confirm' | 'moving' | 'done'
 
 /** Move online, as one full-page step (owner, 3 Nov mockup): what moves and what stays, size and time, then progress
  * from the move's own report, then done. One-way, no extra gates. */
-function PublishCrewScreen({ step, name, facts, tooBig, status, backup, error, onCancel, onMove, onOpen }: { step: MoveStep; name: string; facts?: { size: string; time: string }; tooBig: boolean; status: SyncStatus | null; backup?: string; error: string; onCancel: () => void; onMove: () => void; onOpen: () => void }) {
+function MoveCrewScreen({ step, name, facts, tooBig, status, backup, error, onCancel, onMove, onOpen }: { step: MoveStep; name: string; facts?: { size: string; time: string }; tooBig: boolean; status: SyncStatus | null; backup?: string; error: string; onCancel: () => void; onMove: () => void; onOpen: () => void }) {
   const box = (title: string, items: string[]) => <div className="flex-1 rounded-2xl border border-border p-3"><p className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</p><ul className="space-y-1 text-[13px]">{items.map(item => <li key={item}>{item}</li>)}</ul></div>
-  if (step === 'done') return <section aria-label="Crew published" className="flex flex-col items-center gap-3 py-10 text-center text-sm">
+  if (step === 'done') return <section aria-label="Crew moved online" className="flex flex-col items-center gap-3 py-10 text-center text-sm">
     <Cloud className="h-10 w-10 text-primary" aria-hidden="true" />
     <p className="text-base font-semibold">"{name}" is online</p>
-    <p className="max-w-sm text-[13px] text-muted-foreground">It works even when your Mac is off.{backup ? ` This Mac keeps a backup copy in "${backup.split('/').pop()}".` : ''}</p>
+    <p className="max-w-sm text-[13px] text-muted-foreground">It works even when your Mac is off.{backup ? ` This Mac keeps a copy of its folder in "${backup.split('/').pop()}".` : ''}</p>
     <Button className="rounded-full px-3.5" onClick={onOpen}>Open it</Button>
   </section>
   if (step === 'moving') {
@@ -426,30 +426,30 @@ function PublishCrewScreen({ step, name, facts, tooBig, status, backup, error, o
     const at = status?.phase ? MOVE_PHASES.indexOf(status.phase) : total > 0 && done >= total ? 2 : 0
     const state = (first: number, last: number): 'done' | 'now' | 'next' => at > last ? 'done' : at >= first ? 'now' : 'next'
     const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', state(0, 1)], ['Chats and agents', state(2, 2)], ['Schedules, watchers, artifacts', state(3, 4)], ['Ready online', state(5, 6)]]
-    return <section aria-label="Publishing Crew" className="space-y-4 py-4 text-sm">
-      <p className="text-base font-semibold">Publishing "{name}"…</p>
+    return <section aria-label="Moving Crew online" className="space-y-4 py-4 text-sm">
+      <p className="text-base font-semibold">Moving "{name}" online…</p>
       <p className="text-[13px] text-muted-foreground">If it's interrupted, it picks up where it left off.</p>
       <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${total ? Math.min(100, Math.round(done * 100 / total)) : 5}%` }} /></div>
       {total > 0 && <p className="text-[13px] tabular-nums">{sizeLabel(done)} <span className="text-muted-foreground">of {sizeLabel(total)}</span></p>}
       <ul className="space-y-1 text-[13px]">{steps.map(([label, state]) => <li key={label} className={state === 'next' ? 'text-muted-foreground' : ''}>{state === 'done' ? '✓' : state === 'now' ? '●' : '○'} {label}</li>)}</ul>
       {status?.schedules_paused && <p className="text-[13px] text-muted-foreground">{status.message || 'Its schedules wait until the move finishes.'}</p>}
-      {error && <p className="text-[13px] text-amber-600">It stopped. Your work is kept. <button type="button" className="underline" onClick={onMove}>Retry Publish Crew</button></p>}
+      {error && <p className="text-[13px] text-amber-600">It stopped. Your work is kept. <button type="button" className="underline" onClick={onMove}>Retry Move online</button></p>}
     </section>
   }
-  return <section aria-label={`Publish ${name}`} className="space-y-4 py-2 text-sm">
-    <div><p className="text-base font-semibold">Publish "{name}"</p><p className="text-[13px] text-muted-foreground">It will live online from now on, and work even when your Mac is off.</p></div>
+  return <section aria-label={`Move ${name} online`} className="space-y-4 py-2 text-sm">
+    <div><p className="text-base font-semibold">Move "{name}" online</p><p className="text-[13px] text-muted-foreground">It will live online from now on, and work even when your Mac is off.</p></div>
     <div className="flex items-center justify-center gap-4 py-2 text-center text-xs text-muted-foreground">
       <span className="flex flex-col items-center gap-1"><Laptop className="h-7 w-7 text-foreground" aria-hidden="true" />On this Mac<span>now</span></span>
       <span aria-hidden="true" className="text-lg">→</span>
       <span className="flex flex-col items-center gap-1"><Cloud className="h-7 w-7 text-primary" aria-hidden="true" />Online<span>after the move</span></span>
     </div>
     {tooBig ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p> : <>
-      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Artifacts and functions'])}{box('Stays on this Mac', ['A backup copy of the folder', 'Apps and sign-ins installed only here'])}</div>
+      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Artifacts and functions'])}{box('Stays on this Mac', ['A copy of its folder', 'Apps and sign-ins installed only here'])}</div>
       <MoveFacts facts={facts} />
       <p className="text-[13px] text-amber-600">You can't move it back to this Mac. Afterwards you open it from Online, like any online Crew.</p>
     </>}
     {error && <p className="text-[13px] text-amber-600">{error}</p>}
-    <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" disabled={tooBig || !facts} onClick={onMove}>Publish Crew</Button></div>
+    <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
   </section>
 }
 

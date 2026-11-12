@@ -35,7 +35,7 @@ var crewRunOnlineWait = 30 * time.Minute
 func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *UserClaims, project, sessionID string, args map[string]any) (string, error) {
 	binding, err := crewroot.ReadSync(project)
 	if err != nil || binding == nil || binding.Side != "local" {
-		return "", fmt.Errorf("turn on Use from phone and web first; the online copy runs on that server")
+		return "", fmt.Errorf("turn on Use from phone and web first; the online agent runs on that server")
 	}
 	connection, err := desktopConnectionFor(claims.UserID, binding.ConnectionID)
 	if err != nil {
@@ -54,7 +54,7 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 		return "", err
 	}
 	if place, e := crewPublishedAgent(project, tab); e != nil || place != nil {
-		return "", fmt.Errorf("this agent is already the online copy; make the copy from the original on this Mac")
+		return "", fmt.Errorf("this is already the online agent; run online from the original on this Mac")
 	}
 	record, identity, err := api.crewRunOnlineRecord(ctx, claims, roots, tab)
 	if err != nil {
@@ -99,7 +99,7 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 	selection.AccountID = remote.Publish.Selection.AccountID
 	key := project + "/" + tab
 	if _, busy := crewRunOnlineBusy.LoadOrStore(key, struct{}{}); busy {
-		return "", fmt.Errorf("an online copy of this agent is already being made")
+		return "", fmt.Errorf("the online agent for this agent is already being made")
 	}
 	name := firstNonEmptyTrimmed(identity.Name, "Main")
 	go func() {
@@ -114,13 +114,13 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 		log.Printf("[CREW_RUN_ONLINE] owner=%s project=%s tab=%s result=%s schedules=%d paths=%d elapsed_ms=%d", claims.UserID, project, tab, result, len(schedules), len(selection.Paths), time.Since(started).Milliseconds())
 		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d schedule(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.%s", name, len(selection.Paths), len(schedules), copyName, note)
 		if err != nil {
-			message = fmt.Sprintf("[Run online] The online copy of %q did not finish: %s. Tell the person in one line what happened and what they can do.", name, err.Error())
+			message = fmt.Sprintf("[Run online] The online agent for %q was not made: %s. Tell the person in one line what happened and what they can do.", name, err.Error())
 		}
 		if !api.executeSyntheticTurn(record.SessionID, message) {
 			log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s report=undelivered", project, tab)
 		}
 	}()
-	raw, _ := json.Marshal(map[string]any{"status": "starting", "agent": name, "online_name": name + crewRunOnlineSuffix, "paths": selection.Paths, "schedules": scheduleNames, "next": "The copy starts when this reply ends; a message arrives in this chat when it runs online. The original stays on this Mac."})
+	raw, _ := json.Marshal(map[string]any{"status": "starting", "agent": name, "online_name": name + crewRunOnlineSuffix, "paths": selection.Paths, "schedules": scheduleNames, "next": "The online agent is made when this reply ends; a message arrives in this chat when it runs. The original stays on this Mac. Call it the online agent, never a copy or backup (the backup is the Team's, for when the Mac is off)."})
 	return string(raw), nil
 }
 
@@ -300,7 +300,7 @@ func (api *StreamingAPI) forkCrewTab(ctx context.Context, conversationKey, name 
 		return out, fmt.Errorf("%s", laptopActionErrorText(response.Body.String()))
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &out); err != nil || !crewMacTabID(out.ChatID) {
-		return out, fmt.Errorf("the copy's chat could not be made")
+		return out, fmt.Errorf("the online agent's chat could not be made")
 	}
 	return out, nil
 }

@@ -183,7 +183,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         {info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
         {info.onAutomations && <button type="button" onClick={() => finish(info.onAutomations!)} className="text-primary hover:underline">Automations…</button>}
-        {info.onRunOnline && <button type="button" title="Makes a copy of this agent that runs on the server, even when your Mac is off. This agent stays here." onClick={() => finish(info.onRunOnline!)} className="text-primary hover:underline">Run online…</button>}
+        {info.onRunOnline && <button type="button" title="Makes a separate agent, named with · online, that runs only on the server. This agent stays on your Mac." onClick={() => finish(info.onRunOnline!)} className="text-primary hover:underline">Run online…</button>}
       </div>
       {info.onRemove && <div className="mt-2 border-t border-border pt-1.5">
         <button type="button" onClick={() => confirmRemoveAgent(info.name, () => finish(info.onRemove!))} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>
@@ -240,7 +240,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
       setForking(true)
       try { await actions.fork!() } finally { setForking(false); onDone() }
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
-    {actions.runOnline && <button type="button" role="menuitem" className={item} title="Makes a copy of this agent that runs on the server, even when your Mac is off. This agent stays here." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
+    {actions.runOnline && <button type="button" role="menuitem" className={item} title="Makes a separate agent, named with · online, that runs only on the server. This agent stays on your Mac." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
