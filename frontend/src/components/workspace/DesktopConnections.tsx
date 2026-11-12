@@ -58,8 +58,6 @@ function useWorkHistory(projects: SidebarProject[]) {
   return { pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
-  const creationProjectId = useCrewAgentsStore(state => state.projectId)
-  const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const crews = projects.filter(project => project.kind === 'crew')
   // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
   const invites = useTeamInviteRows()
@@ -98,6 +96,8 @@ function AllProjects({ children, hasPins, counts, networks, network, onNetwork }
  * it is the same menu with this server as its only network. The current network's Crews come from the navigation list
  * the sidebar loads; other networks' from the desktop app's inventory. */
 function ProjectMenu({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
+  const creationProjectId = useCrewAgentsStore(state => state.projectId)
+  const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const desktop = hasDesktopConnections()
   const active = getRawActiveWorkspaceId()
   const state = useConnectedWorkStore()
