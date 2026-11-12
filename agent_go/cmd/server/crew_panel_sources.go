@@ -92,7 +92,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return section, err
 		}},
-		{id: "dashboards", title: "Dashboards", allowed: dashboardScopeAllowed(claims, "list"), read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "dashboards", title: "Artifacts", allowed: dashboardScopeAllowed(claims, "list"), read: func(ctx context.Context) (crewPanelSection, error) {
 			section := crewPanelSection{}
 			// The native catalog already includes both authored HTML and managed dashboards.
 			for offset := 0; ; {

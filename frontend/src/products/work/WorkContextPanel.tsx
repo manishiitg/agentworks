@@ -183,7 +183,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{accessRow(item)}{item.id === 'mcp:team' ? teamTree : item.id === 'mcp:online' ? asksTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
-      <p>Dashboards work once this Crew is online. Move it online from your Mac.</p>
+      <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
     {/* With an Online row the dashboards are a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}

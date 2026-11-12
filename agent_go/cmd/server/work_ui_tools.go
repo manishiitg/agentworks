@@ -11,7 +11,7 @@ import (
 var workUIControlContract = uiContract{
 	Version: uiControlContract.Version,
 	Product: "work",
-	Views:   []uiViewCapability{{ID: "report", Label: "Dashboard", Actions: []string{"open", "refresh"}}},
+	Views:   []uiViewCapability{{ID: "report", Label: "Artifacts", Actions: []string{"open", "refresh"}}},
 }
 
 // projectUIControlContract returns the UI contract for a project workspace. Builders and Run people get the same

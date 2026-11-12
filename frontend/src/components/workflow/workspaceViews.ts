@@ -60,7 +60,7 @@ export type WorkspaceViewDef = {
 const VIEWS = [
   { id: 'context', kind: 'inspector', label: 'Project menu', icon: Settings2, pane: true },
   // -- canvas / preview (dispatched by WorkspaceViewHost) ------------------
-  { id: 'report', kind: 'preview', label: 'Dashboard', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
+  { id: 'report', kind: 'preview', label: 'Artifacts', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
   // -- inspectors (toolbar "views" cluster, in button order) ---------------
   { id: 'costs', kind: 'inspector', label: 'Costs and usage', icon: DollarSign, toolbarGroup: 'views', pane: true },
   { id: 'execution-logs', kind: 'inspector', label: 'Run logs', icon: FileText, toolbarGroup: 'views', pane: true },

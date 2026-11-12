@@ -88,7 +88,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const menuItems = workflowProjectMenuItems(menuOptions)
   const panelSwitcherPanels: PanelSwitcherPanel[] = canWrite
     ? [{ id: 'context', label: 'Project menu' }, ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group }))]
-    : [{ id: 'report', label: 'Dashboard', group: 'Build' }]
+    : [{ id: 'report', label: 'Artifacts', group: 'Build' }]
   useRegisterPanelSwitcher(workspacePath ? ('agentworks') : null, panelSwitcherPanels, (key, section) => {
     const current = useAuthStore.getState().user
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return

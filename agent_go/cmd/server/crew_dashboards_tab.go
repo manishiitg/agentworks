@@ -194,8 +194,8 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
 		if owner {
 			// The Dashboards tab (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboard yet", Line: "Ask the Crew to make one from its results.",
-				Ask: "Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."}
+			tab.Empty = &crewDashboardsTabEmpty{Title: "No artifacts yet", Line: "Ask the Crew to make a report, proposal, demo or dashboard.",
+				Ask: "Make an artifact for this Crew from its results. Show me before you publish it."}
 		}
 	}
 	return tab, true
