@@ -1,8 +1,23 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { CircleAlert, Clock, Loader2 } from 'lucide-react'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
+
+/** The server decides whether age is shown; this component only formats it. */
+export function QueuedWaitingAge({ since }: { since?: string }) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!since) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [since])
+  const started = Date.parse(since || '')
+  if (!since || !Number.isFinite(started)) return null
+  const minutes = Math.max(0, Math.floor((now - started) / 60_000))
+  return <span className="text-amber-500">Waiting {minutes} min</span>
+}
 
 /** Edit, Steer now, Retry and remove on a message that is waiting in the server queue, next to its clock and time. */
 export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
@@ -33,6 +48,7 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   return (
     <span data-testid="queued-message-controls" title={reason} className="inline-flex flex-wrap items-center gap-x-1.5 text-[11px]" aria-live="polite">
       {position && <span className="text-amber-500">{position}</span>}
+      <QueuedWaitingAge since={message.waiting_since} />
       {parts.map((part, i) => <React.Fragment key={i}>{i > 0 && <span aria-hidden="true" className="text-border">·</span>}{part}</React.Fragment>)}
     </span>
   )
@@ -54,5 +70,5 @@ export const QueuedInboxStatus: React.FC<{ sessionId?: string; metadata?: Record
   if (!message) return null
   const reason = message.delivery_error || message.queue_detail || 'Waiting for the current reply'
   const Icon = message.delivery_error ? CircleAlert : Clock
-  return <span title={reason} aria-label={reason} className="inline-flex text-amber-500"><Icon aria-hidden="true" className="h-3.5 w-3.5" /></span>
+  return <span title={reason} aria-label={reason} className="inline-flex items-center gap-1 text-amber-500"><Icon aria-hidden="true" className="h-3.5 w-3.5" /><QueuedWaitingAge since={message.waiting_since} /></span>
 }

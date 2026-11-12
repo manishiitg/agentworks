@@ -4299,10 +4299,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	if idleRun == nil && !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
 		api.clearSessionStopped(sessionID)
-		if idleCompactPersonTurn(r, sessionID, req) && req.AgentMessageInbox == "" {
-			if delivered, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{}); len(delivered) == 0 {
-				backgroundFollowUps.personWrote(sessionID)
-			}
+		delivered, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
+		combinedPerson := delivered["source"] == "queued_batch" && delivered["combined_person_input"] == true
+		if combinedPerson || (idleCompactPersonTurn(r, sessionID, req) && req.AgentMessageInbox == "" && len(delivered) == 0) {
+			backgroundFollowUps.personWrote(sessionID)
 		}
 		// Lift the MCP registry zombie-prevention flag only for that intentional
 		// user resume, otherwise internal recovery can resurrect stopped bridges.
