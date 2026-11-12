@@ -62,15 +62,16 @@ type crewTeamActivityOther struct {
 }
 
 type crewTeamActivityView struct {
-	Decisions      []crewTeamActivityPost    `json:"decisions"`
-	Findings       []crewTeamActivityPost    `json:"findings"`
-	Idle           []crewTeamActivityEnd     `json:"idle"`
+	Feed           []crewTeamFeedItem        `json:"feed"`
+	Decisions      []crewTeamActivityPost    `json:"-"`
+	Findings       []crewTeamActivityPost    `json:"-"`
+	Idle           []crewTeamActivityEnd     `json:"-"`
 	RefreshAfterMS int64                     `json:"refresh_after_ms,omitempty"`
 	NextCursor     string                    `json:"next_cursor,omitempty"`
-	Now            []crewTeamActivityNow     `json:"now"`
-	Messages       []crewTeamActivityMessage `json:"messages"`
-	Other          []crewTeamActivityOther   `json:"other"`
-	Foot           string                    `json:"foot"`
+	Now            []crewTeamActivityNow     `json:"-"`
+	Messages       []crewTeamActivityMessage `json:"-"`
+	Other          []crewTeamActivityOther   `json:"-"`
+	Foot           string                    `json:"-"`
 }
 
 // crewTeamActivityAgent is one Team agent with its person, for placing a message's ends.
@@ -95,7 +96,6 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 	// sends under (macSharedAgentChatKey; the Crew's own id for Main).
 	byKey := map[string]*crewTeamActivityAgent{}
 	for _, p := range teamAgentsByPerson(ctx, t, caller) {
-		p.Name = crewTeamFirstName(p.Name)
 		for _, a := range p.Agents {
 			if !a.InTeam {
 				continue
@@ -132,7 +132,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 		}
 	}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
-		out.Messages, out.NextCursor = crewTeamActivityMessagePage(crewTeamActivityMessagesFrom(ctx, t, caller, store, byKey), before)
+		out.Messages = crewTeamActivityMessagesFrom(ctx, t, caller, store, byKey)
 	}
 	// One server-directed read when a waiting question crosses the decided
 	// 30-minute boundary; once no answer, no timer is returned.
@@ -151,6 +151,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 			}
 		}
 	}
+	out.Feed, out.NextCursor = crewTeamFeedPage(crewTeamActivityFeed(out, caller), before)
 	return out
 }
 
@@ -232,21 +233,6 @@ func crewTeamActivityMessagesFrom(ctx context.Context, t crewTeam, caller string
 		return strings.Compare(b.ID, a.ID)
 	})
 	return out
-}
-
-// Stable message-ID cursor: new messages do not shift the next older page.
-func crewTeamActivityMessagePage(rows []crewTeamActivityMessage, before string) ([]crewTeamActivityMessage, string) {
-	if before != "" {
-		index := slices.IndexFunc(rows, func(row crewTeamActivityMessage) bool { return row.ID == before })
-		if index < 0 {
-			return []crewTeamActivityMessage{}, ""
-		}
-		rows = rows[index+1:]
-	}
-	if len(rows) > crewTeamActivityMessages {
-		return rows[:crewTeamActivityMessages], rows[crewTeamActivityMessages-1].ID
-	}
-	return rows, ""
 }
 
 // crewTeamAnsweredIn is how long an answer took, in plain words: "30 s", "2 min", "3 h".

@@ -42,7 +42,7 @@ func crewTeamLiveFor(project string, people []crewTeamAgentsPerson, viewer strin
 			if !agent.InTeam {
 				continue
 			}
-			row := crewTeamLiveAgent{ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: crewTeamFirstName(person.Name), Activity: agent.Activity}
+			row := crewTeamLiveAgent{ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
 			row.Label = row.Person + " · " + row.Name
 			if row.Activity == "running" {
 				row.Label += " working"

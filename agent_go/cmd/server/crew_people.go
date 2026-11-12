@@ -223,6 +223,7 @@ func crewPeopleMoves(kind, level string, owner bool) []string {
 }
 
 func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewPeopleView {
+	labels := crewTeamPersonLabels(t)
 	project := t.ProjectID
 	kind := crewPeopleKind(project)
 	owner := claims.UserID == t.OwnerID
@@ -247,9 +248,9 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 	if owner && kind == crewKindServer && !everyone {
 		view.AddEveryone = crewPeopleEveryoneName
 	}
-	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: crewTeamFirstName(crewPersonShortName(t.OwnerID)), Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Owner: true, You: owner}
+	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: labels[t.OwnerID], Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Owner: true, You: owner}
 	add := func(id string, invited bool, level string) {
-		person := crewPeoplePerson{UserID: id, Name: crewTeamFirstName(crewPersonShortName(id)), Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
+		person := crewPeoplePerson{UserID: id, Name: labels[id], Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
 			Note: crewPeopleNote(invited), Invited: invited, You: id == claims.UserID, Moves: crewPeopleMoves(kind, level, owner)}
 		if level == crewPeopleDashboards {
 			view.DashboardPeople = append(view.DashboardPeople, person)

@@ -139,11 +139,12 @@ func crewTeamActivityPostsFor(team crewTeam) crewTeamActivityPosts {
 	}
 	posts.Decisions = slices.DeleteFunc(posts.Decisions, func(post crewTeamActivityPost) bool { return !visible(post) })
 	posts.Findings = slices.DeleteFunc(posts.Findings, func(post crewTeamActivityPost) bool { return !visible(post) })
+	labels := crewTeamPersonLabels(team)
 	for i := range posts.Decisions {
-		posts.Decisions[i].Person = crewTeamFirstName(posts.Decisions[i].Person)
+		posts.Decisions[i].Person = labels[posts.Decisions[i].OwnerID]
 	}
 	for i := range posts.Findings {
-		posts.Findings[i].Person = crewTeamFirstName(posts.Findings[i].Person)
+		posts.Findings[i].Person = labels[posts.Findings[i].OwnerID]
 	}
 	newest := func(a, b crewTeamActivityPost) int { return b.At.Compare(a.At) }
 	slices.SortFunc(posts.Decisions, newest)

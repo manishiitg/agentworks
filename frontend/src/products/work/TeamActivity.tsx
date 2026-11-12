@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ChevronRight, Lock } from 'lucide-react'
+import { ChevronRight, Clock, Lock } from 'lucide-react'
 import { liveFeed } from '../../services/liveFeed'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -11,8 +11,8 @@ import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
 type ActivityMessage = { id: string; sentence: string; topic?: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'no_answer' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityPost = { id: string; person: string; agent: string; line: string; why?: string; schedule?: string; at: string }
-type ActivityView = { decisions: ActivityPost[]; findings: ActivityPost[]; now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting'; line: string; doing?: string; end: ActivityEnd }[]; idle: ActivityEnd[]; messages: ActivityMessage[]; other: { kind: string; path: string; line: string }[]; next_cursor?: string; refresh_after_ms?: number; foot: string }
+type ActivityItem = { id: string; kind: 'decision' | 'finding' | 'question'; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
+type ActivityView = { feed: ActivityItem[]; next_cursor?: string; refresh_after_ms?: number }
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 function day(at: string) {
@@ -62,7 +62,7 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
       void teamRequest<ActivityView>(target, `/activity${cursor ? `?before=${encodeURIComponent(cursor)}` : ''}`)
         .then(data => {
           if (!active || sequence !== request) return
-          current = { ...data, messages: older && current ? [...current.messages, ...data.messages] : data.messages }
+          current = { ...data, feed: older && current ? [...current.feed, ...data.feed] : data.feed }
           setView(current); setError('')
           if (data.refresh_after_ms && data.refresh_after_ms > 0) boundary = setTimeout(() => load(), data.refresh_after_ms)
         })
@@ -82,36 +82,31 @@ function useTeamActivity(target: TeamTarget, projectId: string) {
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {
   const { view, error, reload, older, olderLoading } = useTeamActivity(target, projectId)
   const [open, setOpen] = useState('')
+  const [filter, setFilter] = useState<ActivityItem['kind'] | 'all'>('all')
   if (!view) return error ? <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div> : <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>
   const heading = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
-  const items = [
-    ...(view.decisions || []).map(post => ({ kind: 'decision' as const, id: post.id, at: post.at, post })),
-    ...(view.findings || []).map(post => ({ kind: 'finding' as const, id: post.id, at: post.at, post })),
-    ...view.messages.map(message => ({ kind: 'message' as const, id: message.id, at: message.sent_at, message })),
-  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+  const items = view.feed.filter(item => filter === 'all' || item.kind === filter)
   return <section aria-label="Activity" className="space-y-3 text-sm">
+    <div role="group" aria-label="Filter activity" className="flex gap-1 text-xs">
+      {([['all', 'All'], ['decision', 'Decisions'], ['question', 'Questions'], ['finding', 'Findings']] as const).map(([kind, label]) => <button key={kind} type="button" aria-pressed={filter === kind} onClick={() => setFilter(kind)} className={`rounded-md px-2 py-1 ${filter === kind ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/50'}`}>{label}</button>)}
+    </div>
     {items.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Decisions, schedule findings and agent questions show here.</p>}
     {items.map((item, index) => {
       const group = day(item.at)
-      const message = item.kind === 'message' ? item.message : undefined
-      const post = item.kind !== 'message' ? item.post : undefined
+      const message = item.message
       const readable = Boolean(message?.question), isOpen = readable && open === item.id
-      const title = message ? `${message.from.label} → ${message.to.label}` : item.kind === 'finding' ? post?.schedule : post?.line
-      const person = message?.from.person || post?.person || 'Team'
       return <Fragment key={`${item.kind}:${item.id}`}>
         {(index === 0 || day(items[index - 1].at) !== group) && <h3 className={`${heading} pt-2`}>{group}</h3>}
         <div className="flex items-start gap-2 py-2">
-          <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium">{person.slice(0, 1).toUpperCase()}</span>
+          <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium">{item.kind === 'finding' ? <Clock className="h-3.5 w-3.5" /> : item.person.slice(0, 1).toUpperCase()}</span>
           <div className="min-w-0 flex-1">
             {message ? <button type="button" disabled={!readable} aria-expanded={readable ? isOpen : undefined} onClick={() => setOpen(isOpen ? '' : item.id)} className="flex w-full items-start gap-1 text-left enabled:hover:text-primary">
-              <span className="min-w-0 flex-1 text-[13px]">{title}</span>
+              <span className="min-w-0 flex-1 text-[13px]"><strong className="font-semibold">{item.title}</strong> <span className="text-muted-foreground">{item.verb}</span></span>
               {readable && <ChevronRight aria-hidden="true" className={`mt-1 h-3 w-3 shrink-0 text-muted-foreground ${isOpen ? 'rotate-90' : ''}`} />}
-            </button> : <p className="text-[13px] font-medium">{title}</p>}
-            {post && <p className="text-xs text-muted-foreground">{post.person}'s {post.agent}</p>}
-            {item.kind === 'finding' && post && <p className="mt-0.5 text-[13px]">{post.line}</p>}
-            {post?.why && <p className="mt-0.5 text-xs text-muted-foreground">{post.why}</p>}
-            {message?.topic && <p className="mt-0.5 truncate text-xs text-muted-foreground">{message.topic}</p>}
-            {message && <p className="mt-0.5 text-xs text-muted-foreground">{message.status_line}</p>}
+            </button> : <p className="text-[13px]"><strong className="font-semibold">{item.title}</strong> <span className="text-muted-foreground">{item.verb}</span></p>}
+            {item.line && <p className="mt-0.5 truncate text-[13px]">{item.line}</p>}
+            {item.why && <p className="mt-0.5 text-xs text-muted-foreground">{item.why}</p>}
+            {message && <p className={`mt-0.5 text-xs ${item.state === 'waiting' || item.state === 'no_answer' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{item.state_line}</p>}
             {message?.hidden_line && <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3 shrink-0" />{message.hidden_line}</p>}
             {isOpen && message && <div className="mt-2 space-y-2 text-[13px]"><p className="whitespace-pre-wrap">{message.question}</p>{message.answer && <p className="whitespace-pre-wrap text-muted-foreground">{message.answer}</p>}<button type="button" onClick={() => openAgent(projectId, message.to)} className="text-xs text-primary hover:underline">Open →</button></div>}
           </div>

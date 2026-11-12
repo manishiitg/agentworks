@@ -58,7 +58,7 @@ async function teamTarget(project: string, workspace = getRawActiveWorkspaceId()
 
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
-export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; you?: boolean; presence?: TeamTabPresence }
+export type TeamTabPerson = { activity?: 'running' | 'waiting'; user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; you?: boolean; presence?: TeamTabPresence }
 // A teammate's Mac, as the server words it (crew_team_tab.go); absent when their agents work on the server.
 // tone picks the dot's colour: on (Mac on), server (Mac off, shared agents answer from the server), away (they wait).
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }

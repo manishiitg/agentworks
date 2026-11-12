@@ -134,7 +134,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		if person.You || person.UserID == f.Viewer {
 			continue
 		}
-		name := crewTeamFirstName(person.Name)
+		name := person.Name
 		names = append(names, name)
 		for _, agent := range person.Agents {
 			// Activity must never reveal an Only me agent.

@@ -15,8 +15,9 @@ import (
 // viewer may change; the screen only shows it. People are grouped by account, never by a name.
 
 type crewTeamTabPerson struct {
-	UserID string `json:"user_id"`
-	Name   string `json:"name"`
+	Activity string `json:"activity,omitempty"`
+	UserID   string `json:"user_id"`
+	Name     string `json:"name"`
 	// Note is the muted word after the name: owner, you or invited.
 	Note        string `json:"note,omitempty"`
 	Active      bool   `json:"active"`
@@ -298,6 +299,7 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 }
 
 func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabReply {
+	labels := crewTeamPersonLabels(t)
 	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	view := t.view(viewer)
 	view.Lent = crewTeamLentNow(ctx, t, viewer)
@@ -339,7 +341,20 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	person := func(id, note string, removable bool) {
 		p := seen[id]
-		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: crewTeamFirstName(crewPersonShortName(id)), Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
+		activity := ""
+		for _, a := range p.Agents {
+			if !a.InTeam {
+				continue
+			}
+			if a.Activity == "running" {
+				activity = "running"
+				break
+			}
+			if a.Activity == "waiting" {
+				activity = "waiting"
+			}
+		}
+		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: labels[id], Activity: activity, Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
 			CanRemove: removable && view.CanManage && id != viewer, You: id == viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
 	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
