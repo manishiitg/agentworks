@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
-import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { TeamActivity } from './TeamActivity'
 import { CrewWhereRow } from './CrewWorksElsewhere'
@@ -199,41 +199,16 @@ function PeopleChangeDialog({ ask, saving, error, onCancel, onConfirm }: { ask: 
   </ModalPortal>
 }
 
-/** The People card (owner, 6 Nov, approved mockup): the Team switch, and one list of everyone with their level, as the
- * server's /people writes it (Works with me is the Team, Dashboards only is the Crew's Share). Adding someone or moving
- * them between levels always asks first with what they gain or lose; the server keeps both records and every line. */
-function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
-  const { team } = view
-  const [people, setPeople] = useState<CrewPeopleView>()
-  const [directory, setDirectory] = useState<Person[]>([])
-  const [adding, setAdding] = useState(false)
-  const [search, setSearch] = useState('')
-  const [chosen, setChosen] = useState<Person>()
-  const [level, setLevel] = useState<CrewPeopleLevelKey>('works')
+type PeopleAsk = { person: string; name: string; level: CrewPeopleChange['level']; preview: CrewPeoplePreview; needsDashboard?: string }
+
+/** One People change, shared by the Team's People card and the Dashboards tab's list (owner's Team Module Manager,
+ * 12 Nov): first the server says what the person gains and loses; only a yes in the box saves it. */
+function usePeopleChange(target: TeamTarget, onApplied: () => void) {
   const [note, setNote] = useState('')
-  const [ask, setAsk] = useState<{ person: string; name: string; level: CrewPeopleChange['level']; preview: CrewPeoplePreview; needsDashboard?: string }>()
+  const [ask, setAsk] = useState<PeopleAsk>()
   const [askError, setAskError] = useState('')
-  const { pending, error, setError, run } = useSave()
-  useEffect(() => {
-    let active = true
-    const load = () => void crewPeople(target).then(data => { if (active) setPeople(data) }).catch(e => { if (active) setError(teamFailure(e).message) })
-    load()
-    window.addEventListener('agentworks:team-updated', load)
-    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
-  }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!adding) return
-    let active = true
-    const read = async () => {
-      if (!target.connection) return (await api.get<{ users: Person[] }>('/api/users/directory', { skipSessionContext: true })).data
-      const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}/api/users/directory`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
-      if (!response.ok) throw new Error('The company directory is unavailable.')
-      return response.json() as Promise<{ users: Person[] }>
-    }
-    void read().then(data => { if (active) setDirectory(data.users || []) }).catch(e => { if (active) setError(teamError(e)) })
-    return () => { active = false }
-  }, [adding, target.connection, target.project]) // eslint-disable-line react-hooks/exhaustive-deps
-  // One change: first the server says what the person gains and loses; only a yes in the box saves it.
+  const saving = useSave()
+  const { run } = saving
   const propose = (person: string, name: string, to: CrewPeopleChange['level']) => run(`change:${person}`, async () => {
     setNote(''); setAskError('')
     const reply = await changeCrewPerson(target, { person, level: to })
@@ -245,12 +220,97 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     setAskError('')
     try {
       const reply = await changeCrewPerson(target, { person: ask.person, level: ask.level, confirm: true, create_dashboard: createDashboard })
-      setAsk(undefined); setChosen(undefined); setAdding(false); setSearch(''); setNote(reply.note || '')
+      setAsk(undefined); setNote(reply.note || ''); onApplied()
     } catch (cause) {
       const failure = teamFailure(cause)
       if (failure.code === 'dashboard_needed') setAsk({ ...ask, needsDashboard: failure.message }); else setAskError(failure.message)
     }
   })
+  const cancel = () => { setAsk(undefined); setAskError('') }
+  return { ...saving, note, setNote, ask, askError, propose, apply, cancel }
+}
+
+/** The People list the server writes, re-read whenever the Team changes. */
+function usePeopleView(target: TeamTarget, onError: (message: string) => void) {
+  const [people, setPeople] = useState<CrewPeopleView>()
+  useEffect(() => {
+    let active = true
+    const load = () => void crewPeople(target).then(data => { if (active) setPeople(data) }).catch(e => { if (active) onError(teamFailure(e).message) })
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  return people
+}
+
+/** The company's people, read once the "Add a person" box opens. */
+function useCompanyDirectory(target: TeamTarget, open: boolean, onError: (message: string) => void) {
+  const [directory, setDirectory] = useState<Person[]>([])
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    const read = async () => {
+      if (!target.connection) return (await api.get<{ users: Person[] }>('/api/users/directory', { skipSessionContext: true })).data
+      const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}/api/users/directory`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+      if (!response.ok) throw new Error('The company directory is unavailable.')
+      return response.json() as Promise<{ users: Person[] }>
+    }
+    void read().then(data => { if (active) setDirectory(data.users || []) }).catch(e => { if (active) onError(teamError(e)) })
+    return () => { active = false }
+  }, [open, target.connection, target.project]) // eslint-disable-line react-hooks/exhaustive-deps
+  return directory
+}
+
+/** One person: name, note, whether they are active, and how they use this Crew (a choice only where the server offers one). */
+function PersonLine({ person, people, activity, pending, closed, onMove }: { person: CrewPeoplePerson; people: CrewPeopleView; activity?: TeamTabPerson; pending: string; closed: boolean; onMove: (to: CrewPeopleChange['level']) => void }) {
+  const levelOf = (key: CrewPeopleLevelKey) => people.levels.find(item => item.key === key)
+  const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
+  const saving = pending === `change:${person.user_id}`
+  return <div className={`flex items-center gap-2 py-2 ${saving ? 'opacity-60' : ''}`}>
+    <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
+      {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
+    </span>
+    {activity && <span className="flex shrink-0 items-center" title={activity.active_label || undefined}><Dot on={activity.active} /></span>}
+    {options.length > 0 && !closed
+      ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={saving}>{null}</Saving>
+        <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) onMove(next) }}
+          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+          <option value={person.level}>{person.level_label}</option>
+          {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
+        </select></span>
+      : !person.owner && <span className="shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
+  </div>
+}
+
+/** The "Add a person" box: find someone in the company (and, where the server offers it, "everyone on this server"), then ask. */
+function AddPerson({ target, pending, known, onPick, everyone }: { target: TeamTarget; pending: string; known: Set<string>; onPick: (id: string, name: string) => void; everyone?: { label: string; onPick: () => void } }) {
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+  const [failure, setFailure] = useState('')
+  const directory = useCompanyDirectory(target, adding, setFailure)
+  const pick = (id: string, name: string) => { setAdding(false); setSearch(''); onPick(id, name) }
+  return <>
+    <span className="inline-flex items-center gap-2"><button type="button" disabled={Boolean(pending)} onClick={() => setAdding(!adding)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a person</button></span>
+    {adding && <div className="rounded-xl border border-border bg-popover">
+      <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+      {everyone && everyone.label.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(false); setSearch(''); everyone.onPick() }} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{everyone.label}</button>}
+      <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => pick(p.id, shortName(p.username))} className="block w-full px-3 py-2 text-left text-xs hover:bg-muted">{shortName(p.username)}</button>)}</div>
+      {failure && <p role="alert" className="px-3 py-2 text-xs text-destructive">{failure}</p>}
+    </div>}
+  </>
+}
+
+/** The People card (owner, 6 Nov, approved mockup): the Team switch and the Team's members, as the server's /people
+ * writes them (Works with me is the Team). People who only open the dashboards are not listed here: one line says how many,
+ * and opens Online > Dashboards, where they are listed (owner's Team Module Manager, 12 Nov). Adding someone or moving
+ * them always asks first with what they gain or lose; the server keeps both records and every line. */
+function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
+  const { team } = view
+  const change = usePeopleChange(target, () => undefined)
+  const { pending, error, setError, run, note, setNote, ask, askError, propose, apply, cancel } = change
+  const people = usePeopleView(target, setError)
   const turn = (on: boolean) => run('team', async () => {
     setNote('')
     // The owner's own Mac app switches through its Mac, which applies the record at once.
@@ -258,30 +318,9 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     setNote(result.folder_created ? 'Made an empty team/ folder to share.' : '')
   })
   const everyone = people ? [people.owner, ...people.people] : []
-  const known = new Set(everyone.map(person => person.user_id))
-  const levelOf = (key: CrewPeopleLevelKey) => people?.levels.find(item => item.key === key)
+  const known = new Set([...everyone, ...(people?.dashboard_people || [])].map(person => person.user_id))
   const live = (id: string) => view.people.find(person => person.user_id === id)
   const closed = Boolean(people?.blocked)
-  const personRow = (person: CrewPeoplePerson) => {
-    const activity = live(person.user_id)
-    const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
-    return <div key={person.user_id} className={`flex items-center gap-2 py-2 ${pending === `change:${person.user_id}` ? 'opacity-60' : ''}`}>
-      <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
-        {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
-      </span>
-      {activity && <span className="flex shrink-0 items-center" title={activity.active_label || undefined}><Dot on={activity.active} /></span>}
-      {options.length > 0 && !closed
-        ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={pending === `change:${person.user_id}`}>{null}</Saving>
-          <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) void propose(person.user_id, person.name, next) }}
-            className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-            <option value={person.level}>{person.level_label}</option>
-            {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
-          </select></span>
-        : !person.owner && <span className="shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
-    </div>
-  }
   return <section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">People</h3>
@@ -293,28 +332,11 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     {people && <>
       {people.intro && <p className="text-xs text-muted-foreground">{people.intro}</p>}
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
-      <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(personRow)}</div>
+      <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
+      {people.more_dashboards && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section: 'dashboards' } }))} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
       {people.put_online && <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{people.put_online}</span>
         <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section: 'mac' } }))}>Put it online</Button></div>}
-      {people.can_add && !closed && <>
-        <span className="inline-flex items-center gap-2"><button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(!adding); setChosen(undefined) }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a person</button></span>
-        {adding && !chosen && <div className="rounded-xl border border-border bg-popover">
-          <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
-          {people.add_everyone && people.add_everyone.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => void propose('everyone', people.add_everyone || '', 'dashboards')} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{people.add_everyone}</button>}
-          <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => { setChosen(p); setLevel(levelOf('works')?.available ? 'works' : 'dashboards') }} className="block w-full px-3 py-2 text-left text-xs hover:bg-muted">{shortName(p.username)}</button>)}</div>
-        </div>}
-        {adding && chosen && <div role="radiogroup" aria-label={`How ${shortName(chosen.username)} uses this Crew`} className="space-y-2 rounded-xl border border-border p-3 text-xs">
-          <p className="font-medium">How should {shortName(chosen.username)} use this Crew?</p>
-          {people.levels.map(item => <label key={item.key} className={`flex items-start gap-2 ${item.available ? '' : 'opacity-60'}`}>
-            <input type="radio" name={`level-${projectId}`} checked={level === item.key} disabled={!item.available || Boolean(pending)} onChange={() => setLevel(item.key)} className="mt-0.5" />
-            <span><span className="block font-medium">{item.label}</span><span className="block text-muted-foreground">{item.available ? item.line : item.why}</span></span>
-          </label>)}
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" disabled={Boolean(pending)} onClick={() => setChosen(undefined)}>Back</Button>
-            <Button size="sm" disabled={Boolean(pending) || !levelOf(level)?.available} onClick={() => void propose(chosen.id, shortName(chosen.username), level)}><Saving on={pending === `change:${chosen.id}`}>{null}</Saving>Continue</Button>
-          </div>
-        </div>}
-      </>}
+      {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
       {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">What each level gets</summary>
         <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
@@ -330,7 +352,30 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       </details>}
     </>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={() => { setAsk(undefined); setAskError('') }} onConfirm={createDashboard => void apply(createDashboard)} />}
+    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}
+  </section>
+}
+
+/** The people who only open this Crew's dashboards and ask it (the Crew's Share to chosen people), listed on the Online
+ * page's Dashboards tab (owner's Team Module Manager, 12 Nov). The server's /people writes every line and what each
+ * person may be moved to (only the owner changes it); a Crew that is not online yet shows nothing. */
+export function DashboardPeopleCard({ target }: { target: TeamTarget }) {
+  const change = usePeopleChange(target, () => undefined)
+  const { pending, error, setError, note, ask, askError, propose, apply, cancel } = change
+  const people = usePeopleView(target, setError)
+  if (!people || people.kind !== 'server') return error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null
+  const known = new Set([people.owner, ...people.people, ...people.dashboard_people].map(person => person.user_id))
+  const everyone = people.add_everyone ? { label: people.add_everyone, onPick: () => void propose('everyone', people.add_everyone || '', 'dashboards') } : undefined
+  return <section aria-label="Who can open the dashboards" className={card}>
+    <h3 className="font-semibold">Who can open the dashboards</h3>
+    <p className="text-xs text-muted-foreground">People here open all this Crew's dashboards and can ask it. They see no files. People who work in the Crew with you are under Team.</p>
+    {note && <p className="text-xs text-muted-foreground">{note}</p>}
+    {people.dashboard_people.length === 0
+      ? <p className="text-xs text-muted-foreground">No one yet.</p>
+      : <div className="divide-y divide-border">{people.dashboard_people.map(person => <PersonLine key={person.user_id} person={person} people={people} pending={pending} closed={false} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>}
+    {people.can_share && <AddPerson target={target} pending={pending} known={known} everyone={everyone} onPick={(id, name) => void propose(id, name, 'dashboards')} />}
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}
   </section>
 }
 
