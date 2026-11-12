@@ -103,7 +103,7 @@ func TestAgentReplyRequiresExactDeliveredTurnAndClearsForHumanSteer(t *testing.T
 	store.AddEvent(session, input)
 	check := func(id, turn, want string) {
 		t.Helper()
-		reply := Event{ID: id, Type: "agent_response", Data: pkgevents.NewAgentEvent(NewGenericEventData("agent_response", map[string]interface{}{"content": "reply"}))}
+		reply := Event{ID: id, Type: "unified_completion", Data: pkgevents.NewAgentEvent(NewGenericEventData("unified_completion", map[string]interface{}{"final_result": "reply", "status": "completed"}))}
 		reply.Data.TurnID = turn
 		store.AddEvent(session, reply)
 		rows := durableRows(t, store, session)
