@@ -1586,7 +1586,11 @@ it('keeps native blocks whole around a delivered steer and hides only the aggreg
     evt({ id: 'done', session_id: 's1', type: 'unified_completion', sequence: 10, generation_id: 'start-native-b', generation_start_sequence: 7, reply_blocks_complete: true,
       data: { data: { final_result: `${first}\n\nAfter delivery.`, status: 'completed' } } as never }),
   ]
-  for (const rows of [events, JSON.parse(JSON.stringify(events)) as PollingEvent[]]) {
+  const aggregate = evt({ id: 'aggregate', session_id: 's1', type: 'llm_generation_end', sequence: 9.5,
+    generation_id: 'start-native-b', generation_start_sequence: 7, reply_blocks_complete: true,
+    data: { data: { content: `${first}\n\nAfter delivery.` } } as never })
+  const realEnvelope = [...events.slice(0, 3), aggregate, events[3]]
+  for (const rows of [realEnvelope, JSON.parse(JSON.stringify(realEnvelope)) as PollingEvent[]]) {
     const selected = selectTerminalEvents(rows, undefined)
     const items = buildTranscriptItems(selected).filter(item => item.kind === 'event')
     expect(items.map(item => item.kind === 'event' ? item.event.id : '')).toEqual(['a-update', 'steer', 'b-update'])

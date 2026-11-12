@@ -635,6 +635,7 @@ function isTranscriptEvent(event: PollingEvent): boolean {
   if (isRunToolEnd(event)) return false
   if (isContainerTranscriptNoise(event)) return false
   if (isAgentItemWrapperEvent(event)) return false
+  if (event.type === 'llm_generation_end' && event.reply_blocks_complete) return false
   if (event.type === 'agent_end' || event.type === 'unified_completion') {
     const fields = eventFields(event)
     const failed = fields.success === false || Boolean(textField(fields.error)) || Boolean(interruptedCompletionMessage(fields.metadata))
