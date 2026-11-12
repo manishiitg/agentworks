@@ -73,8 +73,15 @@ func runServer(cmd *cobra.Command, args []string) {
 		return
 	}
 	// One place for a Crew's files (PLAT-746-924): moved once, before any traffic.
+	// A failed move stops the workspace (servers and laptops alike) and says what
+	// failed and how to put the files back.
 	if count, journal, err := crewroot.MigrateToAgentworks(docsDir); err != nil {
-		fmt.Printf("[CREW_AGENTWORKS_MIGRATION] failed after %d moves: %v; journal=%s\n", count, err, journal)
+		fmt.Printf("[CREW_AGENTWORKS_MIGRATION] Moving Crew files into each Crew's .agentworks folder failed, so the workspace did not start: %v\n", err)
+		if journal != "" {
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] %d moves were done before it failed and are listed in %s. Fix the cause and start again to finish the move, or put those files back by running the workspace once with --restore-crew-agentworks %s\n", count, journal, journal)
+		} else {
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] No files were moved. Fix the cause and start again.\n")
+		}
 		os.Exit(1)
 	}
 
