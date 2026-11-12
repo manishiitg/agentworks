@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,7 @@ type crewAccessFacts struct {
 	// PeopleUnknown: the Team is on but its people could not be read yet; the line names no count rather than 0.
 	PeopleUnknown bool
 	SuppressLive  bool // kept people labels are not a fresh activity claim
+	Posts         crewTeamActivityPosts
 	Team          *crewTeam
 	People        []crewTeamAgentsPerson // everyone in the Team with their in-team agents (crew_team_agents.go)
 	Agents        []macSharedAgent
@@ -122,10 +124,29 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 				label = "Your " + agent.Name
 			}
 			detail := "Working"
+			if doing, ok := f.Posts.Doing[agent.ID]; ok {
+				detail = doing.Line
+			}
 			if agent.Activity == "waiting" {
 				detail = firstNonEmptyTrimmed(agent.StatusLabel, "Waiting for its owner")
 			}
 			live = append(live, crewAccessLine{Kind: "team_live", Title: label, Detail: detail, Tag: agent.Activity, Target: "activity"})
+		}
+	}
+	if !f.SuppressLive {
+		recent := append(slices.Clone(f.Posts.Decisions), f.Posts.Findings...)
+		slices.SortFunc(recent, func(a, b crewTeamActivityPost) int { return b.At.Compare(a.At) })
+		for _, post := range recent {
+			if time.Since(post.At) > 24*time.Hour {
+				continue
+			}
+			title := post.Person + "'s " + post.Agent + " decided"
+			detail := post.Line
+			if post.Kind == "finding" {
+				title = post.Agent
+				detail = post.Schedule + ": " + post.Line
+			}
+			live = append(live, crewAccessLine{Kind: "team_live", Title: title, Detail: detail, Tag: post.Kind, Target: "activity"})
 		}
 	}
 	title := "Team · You"
@@ -268,6 +289,7 @@ type crewAccessRemote struct {
 	// peopleRead: people came from a good /agents read (this one or an earlier one); without it the count is unknown.
 	peopleRead bool
 	liveRead   bool // current /agents attempt succeeded (not just kept labels)
+	posts      crewTeamActivityPosts
 }
 
 // crewAccessTreeFor builds the tree where this server stands, like crewAccessSummaryFor.
@@ -284,6 +306,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 			f.Member = t.OwnerID != owner
 			if t.On {
 				f.People = teamAgentsByPerson(ctx, t, owner)
+				f.Posts = crewTeamActivityPostsFor(t)
 			}
 			// A teammate on the website has their own copy of the shared folder here (crew_team_server_copy.go).
 			if _, onMac := t.memberMac(owner); f.Member && !onMac && t.Folder.ID != "" && crewRelayTwin(project) {
@@ -323,6 +346,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		f.TeamKnown, f.Team, f.People, f.Clashes, f.LastChange = true, remote.team, remote.people, remote.clashes, remote.last
 		f.PeopleUnknown = remote.team.On && !remote.peopleRead
 		f.SuppressLive = !remote.liveRead
+		f.Posts = remote.posts
 		if dir, err := crewTeamLocalDir(owner, c, b.PeerProjectID, remote.team.Folder.ID); err == nil {
 			f.Progress = crewTeamRoundFor(dir)
 			if local, err := readCrewTeamLocal(dir); err == nil {
@@ -370,6 +394,12 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 		}
 		if read("agents", route+"/agents", &agents) {
 			out.people, out.peopleRead, out.liveRead = agents.People, true, true
+		}
+	}
+	if t.On {
+		var posts crewTeamActivityPosts
+		if read("activity", route+"/activity-posts", &posts) {
+			out.posts = posts
 		}
 	}
 	if t.FolderAccess && t.Folder.ID != "" {

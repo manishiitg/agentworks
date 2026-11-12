@@ -12,7 +12,8 @@ import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
 type ActivityMessage = { id: string; sentence: string; topic?: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'no_answer' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityView = { now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting'; line: string; end: ActivityEnd }[]; idle: ActivityEnd[]; messages: ActivityMessage[]; other: { kind: string; path: string; line: string }[]; next_cursor?: string; refresh_after_ms?: number; foot: string }
+type ActivityPost = { id: string; person: string; agent: string; line: string; why?: string; schedule?: string; at: string }
+type ActivityView = { decisions: ActivityPost[]; findings: ActivityPost[]; now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting'; line: string; doing?: string; end: ActivityEnd }[]; idle: ActivityEnd[]; messages: ActivityMessage[]; other: { kind: string; path: string; line: string }[]; next_cursor?: string; refresh_after_ms?: number; foot: string }
 
 const pill: Record<ActivityMessage['status'], string> = {
   answered: 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300',
@@ -104,10 +105,12 @@ export function TeamActivity({ target, projectId }: { target: TeamTarget; projec
       {view.now.length === 0 && <p className="text-xs text-muted-foreground">No agent is working right now.</p>}
       {view.now.map(agent => <div key={agent.end.chat_key} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
         <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${agent.state === 'running' ? 'motion-safe:animate-pulse bg-emerald-500' : 'bg-amber-500'}`} />
-        <div className="min-w-0 flex-1"><p className="font-medium">{agent.end.label}</p><p className="text-xs text-muted-foreground">{agent.line}</p></div>{agentOpen(agent.end)}
+        <div className="min-w-0 flex-1"><p className="font-medium">{agent.end.label}</p><p className="text-xs text-muted-foreground">{agent.doing || agent.line}{agent.doing && agent.state === 'waiting' ? ` · ${agent.line}` : ''}</p></div>{agentOpen(agent.end)}
       </div>)}
       {!!view.idle?.length && <details><summary className="cursor-pointer text-xs text-muted-foreground">{view.idle.length} others idle</summary><div className="mt-2 space-y-1">{view.idle.map(agent => <div key={agent.chat_key} className="flex items-center justify-between gap-2 px-3 py-1 text-xs text-muted-foreground"><span>{agent.label}</span>{agentOpen(agent)}</div>)}</div></details>}
     </section>
+    {!!view.decisions?.length && <section aria-label="Decisions" className="space-y-2"><h3 className={heading}>Decisions</h3>{view.decisions.map(post => <div key={post.id} className="rounded-lg border border-border px-3 py-2"><p className="text-xs text-muted-foreground">{post.person}'s {post.agent} · {clock(post.at)}</p><p className="mt-1 text-[13px] font-medium">{post.line}</p>{post.why && <p className="mt-1 text-xs text-muted-foreground">Why: {post.why}</p>}</div>)}</section>}
+    {!!view.findings?.length && <section aria-label="Schedule findings" className="space-y-2"><h3 className={heading}>Schedule findings</h3>{view.findings.map(post => <div key={post.id} className="rounded-lg border border-border px-3 py-2"><p className="text-xs text-muted-foreground">{post.schedule} · {post.person}'s {post.agent} · {clock(post.at)}</p><p className="mt-1 text-[13px]">{post.line}</p></div>)}</section>}
     <section aria-label="Agents asking each other" className="space-y-2">
       <h3 className={heading}>Agents asking each other</h3>
       {view.messages.length === 0 && <p className="text-xs text-muted-foreground">No messages between the Team's agents yet.</p>}
