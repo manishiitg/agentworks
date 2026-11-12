@@ -1,6 +1,7 @@
 package crewroot
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,26 @@ const agentworksMigrationMarker = "crew-agentworks-v1.json"
 type agentworksMove struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
+	// Drop: the target already holds this file, so the source is removed (restore copies it back).
+	Drop bool `json:"drop,omitempty"`
+}
+
+// regeneratedFile names a marker or lock the platform writes again on use.
+func regeneratedFile(name string) bool {
+	return name == ".workspace-skills-v1" || strings.HasSuffix(name, ".kb-lock")
+}
+
+// sameFile reports two regular files with identical bytes.
+func sameFile(a, b string, ai, bi os.FileInfo) bool {
+	if !ai.Mode().IsRegular() || !bi.Mode().IsRegular() || ai.Size() != bi.Size() {
+		return false
+	}
+	x, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	y, err := os.ReadFile(b)
+	return err == nil && bytes.Equal(x, y)
 }
 
 type agentworksJournal struct {
@@ -31,8 +52,9 @@ type agentworksJournal struct {
 }
 
 // planAgentworksMoves lists the leaf moves for one Crew. A destination folder
-// that already exists is merged child by child; an existing file stops the
-// whole move before anything changes.
+// that already exists is merged child by child. A file already in .agentworks
+// keeps that copy when both are identical, or when it is a regenerated marker
+// or lock; a differing file stops the whole move before anything changes.
 func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, error) {
 	var moves []agentworksMove
 	planned := map[string]string{} // target -> source of an earlier planned move
@@ -47,6 +69,11 @@ func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, er
 				return os.Lstat(target)
 			}
 		}
+	}
+	// onDisk: the target file exists now, not only after an earlier planned move.
+	onDisk := func(target string, existing os.FileInfo) bool {
+		now, err := os.Lstat(target)
+		return err == nil && os.SameFile(now, existing)
 	}
 	var add func(source, target string) error
 	add = func(source, target string) error {
@@ -65,6 +92,10 @@ func planAgentworksMoves(r Roots, kinds map[string]string) ([]agentworksMove, er
 		}
 		if err != nil {
 			return err
+		}
+		if info.Mode().IsRegular() && existing.Mode().IsRegular() && onDisk(target, existing) && (regeneratedFile(filepath.Base(target)) || sameFile(source, target, info, existing)) {
+			moves = append(moves, agentworksMove{Source: source, Target: target, Drop: true})
+			return nil
 		}
 		if !info.IsDir() || !existing.IsDir() || info.Mode()&os.ModeSymlink != 0 || existing.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("both the private root and .agentworks hold %s; keep one and run again", target)
@@ -171,6 +202,12 @@ func RestoreAgentworksMove(journalPath string) error {
 		if _, err := os.Lstat(m.Target); os.IsNotExist(err) {
 			continue
 		}
+		if m.Drop {
+			if err := copyPrivateEntry(m.Target, m.Source); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := moveEntry(m.Target, m.Source); err != nil {
 			return err
 		}
@@ -249,7 +286,16 @@ func MigrateToAgentworks(docs string) (count int, journalPath string, err error)
 			return count, journalPath, fmt.Errorf("prepare %s: %w", r.Automation, err)
 		}
 	}
+	dropped := 0
 	for _, m := range journal.Moves {
+		if m.Drop {
+			if err = os.Remove(m.Source); err != nil {
+				return count, journalPath, fmt.Errorf("remove duplicate %s: %w; put back with --restore-crew-agentworks %s", m.Source, err, journalPath)
+			}
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] kept .agentworks copy, removed duplicate %s\n", m.Source)
+			dropped++
+			continue
+		}
 		if err = moveEntry(m.Source, m.Target); err != nil {
 			return count, journalPath, fmt.Errorf("move %s: %w; put back with --restore-crew-agentworks %s", m.Source, err, journalPath)
 		}
@@ -283,6 +329,6 @@ func MigrateToAgentworks(docs string) (count int, journalPath string, err error)
 	if err = os.WriteFile(marker, []byte(journalPath+"\n"), 0o600); err != nil {
 		return count, journalPath, err
 	}
-	fmt.Printf("[CREW_AGENTWORKS_MIGRATION] crews=%d moved=%d journal=%s\n", len(crews), count, journalPath)
+	fmt.Printf("[CREW_AGENTWORKS_MIGRATION] crews=%d moved=%d duplicates_removed=%d journal=%s\n", len(crews), count, dropped, journalPath)
 	return count, journalPath, nil
 }

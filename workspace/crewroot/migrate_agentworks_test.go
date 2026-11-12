@@ -9,7 +9,9 @@ import (
 
 // PLAT-746-924: the one-off move puts a Crew's records in .agentworks/settings,
 // its runs, database and workflow runtime in .agentworks, keeps chats private,
-// stops before any change when both places hold the same file, and can be put back.
+// stops before any change when both places hold differing copies of a file,
+// keeps the .agentworks copy when both are identical or the file is a
+// regenerated marker (a laptop refused to start on these), and can be put back.
 func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	docs, state := filepath.Join(base, "docs"), filepath.Join(base, "state")
@@ -45,6 +47,11 @@ func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 	write(filepath.Join(private, "builder/conversation/chat.json"), "chat")
 	write(filepath.Join(crew, ".agentworks/workflows/wf/workflow.json"), "definition")
 	write(filepath.Join(crew, "db/assets/report.html"), "asset")
+	// Already in both places: identical bytes, and a regenerated marker that differs.
+	write(filepath.Join(private, "workflows/wf/workflow.json.kb-lock"), "")
+	write(filepath.Join(crew, ".agentworks/workflows/wf/workflow.json.kb-lock"), "")
+	write(filepath.Join(private, "workflows/wf/.workspace-skills-v1"), "old marker")
+	write(filepath.Join(crew, ".agentworks/workflows/wf/.workspace-skills-v1"), "Workspace skills migrated.")
 
 	// The same file in both places stops the move before anything changes.
 	write(filepath.Join(crew, ".agentworks/runs/run-1/log.txt"), "other")
@@ -70,6 +77,14 @@ func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 			t.Fatalf("missing after move: %s", kept)
 		}
 	}
+	for dup, want := range map[string]string{"workflows/wf/workflow.json.kb-lock": "", "workflows/wf/.workspace-skills-v1": "Workspace skills migrated."} {
+		if got, err := os.ReadFile(filepath.Join(crew, ".agentworks", dup)); err != nil || string(got) != want {
+			t.Fatalf("duplicate %s: kept %q %v", dup, got, err)
+		}
+		if _, err := os.Lstat(filepath.Join(private, dup)); !os.IsNotExist(err) {
+			t.Fatalf("duplicate %s left in the private root", dup)
+		}
+	}
 	if again, _, err := MigrateToAgentworks(docs); err != nil || again != 0 {
 		t.Fatalf("second start moved again: %d %v", again, err)
 	}
@@ -78,5 +93,8 @@ func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(private, "workflows/wf/schedules.json")); err != nil || string(got) != "workflows/wf/schedules.json" {
 		t.Fatalf("restore: %q %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(private, "workflows/wf/workflow.json.kb-lock")); err != nil {
+		t.Fatalf("restore did not put the removed duplicate back: %v", err)
 	}
 }
