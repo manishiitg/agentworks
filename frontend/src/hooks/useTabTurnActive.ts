@@ -1,6 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore } from '../stores/useChatStore'
-import { foregroundTurnState } from '../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import { runtimeNeedsUserInput } from '../utils/runtimeActivity'
 
@@ -19,15 +18,11 @@ const BACKGROUND_ONLY_LABELS = new Set(['background running', 'waiting for backg
 export function useTabTurnActive(tabId: string | null | undefined, scope: 'any' | 'foreground' = 'any'): boolean {
   const tab = useChatStore(useShallow(state => {
     const current = tabId ? state.chatTabs[tabId] : undefined
-    const runtime = state.activeSessionsCache.find(item => item.session_id === current?.sessionId)?.runtime_state
-    const foreground = foregroundTurnState(current?.sessionId ? state.tabEvents[current.sessionId] : undefined, runtime)
     return {
       sessionId: current?.sessionId,
       isStreaming: current?.isStreaming,
       hasRunningBgAgents: current?.hasRunningBgAgents,
       isCompleted: current?.isCompleted,
-      foregroundTurnCompleted: foreground === 'completed',
-      foregroundTurnStarted: foreground === 'running',
     }
   }))
   const session = useChatStore(state => tab.sessionId

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { runtimeNeedsUserInput, runtimeTurnFailedUnseen } from '../../utils/runtimeActivity'
 import { recordTabMarkTelemetry } from '../../utils/chatDeliveryTelemetry'
@@ -27,24 +26,19 @@ export function useAgentMenuState(tabId: string, workspaceActivity?: 'running' |
     const tab = state.chatTabs[tabId] ?? given
     return !isActive && !!tab?.sessionId && runtimeTurnFailedUnseen(state.activeSessionsCache.find(session => session.session_id === tab.sessionId), tab.lastAccessedAt)
   })
-  // The same busy signal as the chat header: a stored completion ends the spinner at once. It returns the signal that
-  // keeps the tab working (logged below), or null.
+  // The same server-status projection as the chat header and Stop button.
+  // Transcript/generation events do not decide whether this mark stays on.
   const runningReason = useChatStore(state => {
     const stored = state.chatTabs[tabId] ?? given
     if (!stored) return null
     const session = stored.sessionId ? state.activeSessionsCache.find(item => item.session_id === stored.sessionId) : undefined
-    const foreground = foregroundTurnState(stored.sessionId ? state.tabEvents[stored.sessionId] : undefined, session?.runtime_state)
     const activity = chatRuntimeActivity({
       isStreaming: stored.isStreaming,
       hasRunningBgAgents: stored.hasRunningBgAgents,
       isCompleted: stored.isCompleted,
-      foregroundTurnCompleted: foreground === 'completed',
-      foregroundTurnStarted: foreground === 'running',
     }, session)
     if (activity.state !== 'running') return null
     const where = state.chatTabs[tabId] ? '' : 'not_in_store:'
-    if (foreground === 'completed') return `${where}background_after_completion`
-    if (foreground === 'running') return `${where}turn_started_no_end_event`
     if (stored.isStreaming) return `${where}tab_streaming_flag`
     if (stored.hasRunningBgAgents) return `${where}tab_background_flag`
     return `${where}server:${activity.label}`

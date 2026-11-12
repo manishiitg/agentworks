@@ -771,7 +771,6 @@ export interface ChatState extends StoreActions {
   setTabConfig: (tabId: string, configUpdate: Partial<ChatTabConfig>) => void
   setTabMetadata: (tabId: string, metadataUpdate: Partial<NonNullable<ChatTab['metadata']>>) => void
   getTabStreamingStatus: (tabId: string) => boolean
-  checkTabCompletion: (tabId: string, events: Array<{ type: string }>) => boolean
   
   // Tab session status actions
   fetchTabSessionStatus: (tabId: string) => Promise<void>
@@ -3166,23 +3165,6 @@ export const useChatStore = create<ChatState>()(
         // Don't gate on pollingInterval: in SSE mode pollingInterval is always null, but
         // isStreaming is still correctly maintained via SSE status updates.
         return tab.isStreaming === true
-      },
-      
-      checkTabCompletion: (tabId: string, events: Array<{ type: string }>) => {
-        const state = get()
-        const tab = state.chatTabs[tabId]
-        if (!tab) return false
-        
-        const mode = tab.metadata?.mode || 'multi-agent'
-        
-        // Check if any events are completion events.
-        // The signal is 'orchestrator_end' (BaseOrchestrator.EmitOrchestratorEnd);
-        // 'workflow_end' was deleted in batch 4 (never emitted).
-        const completionEventTypes = mode === 'workflow'
-          ? ['orchestrator_end', 'request_human_feedback']
-          : ['unified_completion', 'agent_end', 'conversation_end', 'conversation_error', 'agent_error']
-        
-        return events.some(event => completionEventTypes.includes(event.type))
       },
       
       // Tab session status actions

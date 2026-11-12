@@ -169,3 +169,31 @@ func TestTurnMarkerBeyondTheRecentWindowIsStillFound(t *testing.T) {
 		t.Fatalf("asking for more than exist returns all of them, got %d", len(all))
 	}
 }
+
+// PLAT-746-930: ending one model/text stream must not free a still-running turn.
+func TestGenerationAndStreamEndsDoNotCloseTurn(t *testing.T) {
+	for _, end := range []string{"unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error"} {
+		t.Run(end, func(t *testing.T) {
+			es := NewEventStore(100)
+			defer es.Stop()
+			es.EnableTurnPhase()
+			session := "turn-boundary-" + end
+			add(es, session, "user_message", nil)
+			for _, typ := range []string{"llm_generation_end", "streaming_end", "tool_call_start", "tool_call_end", "llm_generation_start"} {
+				add(es, session, typ, nil)
+				if !es.TurnInProgress(session) || !es.PersistedTurnOpen(session) {
+					t.Fatalf("%s ended the turn before %s", typ, end)
+				}
+			}
+			add(es, session, "coding_agent_question", nil)
+			phase, _, _ := es.TurnPhaseSnapshot(session)
+			if phase != turnPhaseWaitingForYou || !es.TurnInProgress(session) {
+				t.Fatal("waiting for an answer is not a completed turn")
+			}
+			add(es, session, end, nil)
+			if es.TurnInProgress(session) || es.PersistedTurnOpen(session) {
+				t.Fatalf("%s did not close both live and persisted turn state", end)
+			}
+		})
+	}
+}

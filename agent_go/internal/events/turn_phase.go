@@ -125,14 +125,23 @@ func (es *EventStore) PersistedTurnOpen(sessionID string) bool {
 	return open
 }
 
-// lastTurnMarkerOpen reads the newest turn marker in events: open is true when it is a user message, found is false when
-// there is no marker at all.
+// IsTurnEndType identifies whole-turn boundaries, not individual model generations
+// or text streams. Restart recovery and live phase tracking share this contract.
+func IsTurnEndType(typ string) bool {
+	switch typ {
+	case "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
+		return true
+	}
+	return false
+}
+
+// lastTurnMarkerOpen reads the newest whole-turn marker, including after restart.
 func lastTurnMarkerOpen(all []Event) (open, found bool) {
 	for i := len(all) - 1; i >= 0; i-- {
-		switch all[i].Type {
-		case "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
+		if IsTurnEndType(all[i].Type) {
 			return false, true
-		case "user_message":
+		}
+		if all[i].Type == "user_message" {
 			return true, true
 		}
 	}
@@ -183,11 +192,10 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 	if st != nil && st.phase == turnPhaseCompacting {
 		// The idle compaction's own model-call events are not a person's turn;
 		// only EndIdleCompaction, a person's message or a turn end leaves this phase.
-		switch event.Type {
-		case "user_message", "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
+		if event.Type == "user_message" || IsTurnEndType(event.Type) {
 			delete(turnPhases, sessionID)
 			st = nil
-		default:
+		} else {
 			turnPhasesMu.Unlock()
 			return
 		}
@@ -203,62 +211,57 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 		st.phase, st.updated = phase, now
 	}
-	switch event.Type {
-	case "user_message":
-		if st == nil {
-			set(turnPhaseStarting)
-		}
-	case "llm_generation_start":
-		if st == nil {
-			set(turnPhaseStarting)
-		} else if st.phase == turnPhaseRetrying {
-			set(turnPhaseStarting)
-		}
+	ended := IsTurnEndType(event.Type) && st != nil
+	if IsTurnEndType(event.Type) {
+		delete(turnPhases, sessionID)
+		st = nil
+	} else {
+		switch event.Type {
+		case "user_message":
+			if st == nil {
+				set(turnPhaseStarting)
+			}
+		case "llm_generation_start":
+			if st == nil {
+				set(turnPhaseStarting)
+			} else if st.phase == turnPhaseRetrying {
+				set(turnPhaseStarting)
+			}
 
-	case "retry_attempt":
-		if st == nil {
-			set(turnPhaseStarting)
-		}
-		if event.Data != nil {
-			if d, ok := event.Data.Data.(*events.RetryAttemptEvent); ok {
-				set(turnPhaseRetrying)
-				st.reason = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(d.Error), turnPhaseRetrySuffix))
-				st.reason = strings.ReplaceAll(st.reason, "_", " ")
-				st.attempt, st.total, st.nextIn = d.AttemptIndex+1, d.TotalAttempts, d.Duration
-				if st.attempt > st.total && st.total > 0 {
-					st.attempt = st.total
+		case "retry_attempt":
+			if st == nil {
+				set(turnPhaseStarting)
+			}
+			if event.Data != nil {
+				if d, ok := event.Data.Data.(*events.RetryAttemptEvent); ok {
+					set(turnPhaseRetrying)
+					st.reason = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(d.Error), turnPhaseRetrySuffix))
+					st.reason = strings.ReplaceAll(st.reason, "_", " ")
+					st.attempt, st.total, st.nextIn = d.AttemptIndex+1, d.TotalAttempts, d.Duration
+					if st.attempt > st.total && st.total > 0 {
+						st.attempt = st.total
+					}
 				}
 			}
-		}
-	case "request_human_feedback", "blocking_human_feedback", "coding_agent_question":
-		if st != nil {
-			set(turnPhaseWaitingForYou)
-		}
-	case "human_feedback_resolved", "tool_call_start", "conversation_thinking", "llm_generation_end":
-		if st != nil && st.phase != turnPhaseRunning {
-			set(turnPhaseRunning)
-		}
-	case "streaming_chunk":
-		if st != nil && st.phase != turnPhaseRunning {
-			// The agent's own words. A terminal-screen snapshot is the pane, not output: a sign-in or update screen
-			// streamed as terminal text must not turn "starting" into "working".
-			source, _, contentLen := streamingChunkFields(event)
-			// "prompt_accepted" is the terminal CLI saying it took the prompt: the turn really began, even if it is
-			// quiet. Otherwise only the agent's own words count.
-			if source == events.StreamingChunkSourcePromptAccepted || (source != "terminal" && contentLen > 0) {
+		case "request_human_feedback", "blocking_human_feedback", "coding_agent_question":
+			if st != nil {
+				set(turnPhaseWaitingForYou)
+			}
+		case "human_feedback_resolved", "tool_call_start", "conversation_thinking", "llm_generation_end":
+			if st != nil && st.phase != turnPhaseRunning {
 				set(turnPhaseRunning)
 			}
-		}
-	case "streaming_end":
-		// A failed launch ends its stream with nothing in it while the retry is still to come.
-		if st != nil && st.phase == turnPhaseRunning {
-			delete(turnPhases, sessionID)
-			st = nil
-		}
-	case "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
-		if st != nil {
-			delete(turnPhases, sessionID)
-			st = nil
+		case "streaming_chunk":
+			if st != nil && st.phase != turnPhaseRunning {
+				// The agent's own words. A terminal-screen snapshot is the pane, not output: a sign-in or update screen
+				// streamed as terminal text must not turn "starting" into "working".
+				source, _, contentLen := streamingChunkFields(event)
+				// "prompt_accepted" is the terminal CLI saying it took the prompt: the turn really began, even if it is
+				// quiet. Otherwise only the agent's own words count.
+				if source == events.StreamingChunkSourcePromptAccepted || (source != "terminal" && contentLen > 0) {
+					set(turnPhaseRunning)
+				}
+			}
 		}
 	}
 	if st != nil {
@@ -273,6 +276,13 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 	}
 	turnPhasesMu.Unlock()
+	if announce != nil || ended {
+		phase := "ended"
+		if announce != nil {
+			phase = announce.phase
+		}
+		log.Printf("[CHAT_TURN_PHASE] session=%s execution=%s event=%s phase=%s", sessionID, event.ExecutionID, event.Type, phase)
+	}
 	es.announceTurnPhase(sessionID, announce, now)
 }
 
