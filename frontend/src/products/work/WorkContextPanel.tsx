@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, CalendarClock, ChevronRight, Eye, FolderSync, Globe, Laptop, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
+import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -21,7 +21,6 @@ import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess, openCrewSync } from './MacSharedAgents'
 import { useChatStore } from '../../stores/useChatStore'
-import { activateTab } from '../../utils/activateTab'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -121,11 +120,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessDetail = section('access')?.detail || section('sharing')?.detail
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
   // Crew lives (its state icon); the server words both.
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:online' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:online' ? accessDetail : item.id === 'mcp:team' ? access?.team_detail : undefined} onClick={() => open(item)}>{item.label}</Row>
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:online' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:online' ? accessDetail : undefined} onClick={() => open(item)}>{item.id === 'mcp:team' ? accessTree.find(line => line.kind === 'team')?.title || item.label : item.label}</Row>
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
-  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
+  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, team_live: Users, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert }
   // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
   const openLine = (line: CrewAccessLine) => {
     // The dashboard line (owner, 6 Nov) opens the Online page's Dashboards tab, where the server lists them, or says
@@ -134,25 +133,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
   }
-  // A person in the Team, by account: their agent in this Crew's tabs (watch only), else Access at the Team tab.
-  const openPerson = (userId: string) => {
-    const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata?.agentProfileTabCanWrite === false && item.metadata?.agentProfileTabOwnerID === userId)
-    if (tab) activateTab(tab.tabId); else openCrewAccess(projectId, '', 'team')
-  }
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const treeLines = (lines: CrewAccessLine[]) => lines.map((line, index) => {
     const Icon = lineIcon[line.kind] || Globe
-    // Keep the shared names available without filling the menu on every Crew open.
-    if (line.kind === 'agents') return <div key={`${scope}:${line.kind}:${index}`} role="listitem">
-      <details className="group/shared-agents">
-        <summary className={`${lineButton} items-center list-none cursor-pointer [&::-webkit-details-marker]:hidden`}>
-          <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/shared-agents:rotate-90" />
-          <span className="min-w-0 flex-1 font-medium text-foreground">{line.title}</span>
-          {line.count !== undefined && <span className="shrink-0 text-muted-foreground">{line.count} {line.count === 1 ? 'agent' : 'agents'}</span>}
-        </summary>
-        {line.detail && <p className="break-words pl-6 pr-1.5 pb-1 text-[11px] text-muted-foreground">{line.detail}</p>}
-      </details>
-    </div>
     // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line (no
     // "Manage dashboards" link, owner 10 Nov). With none, the server's one line and its Ask, as before.
     if (line.kind === 'dashboard' && line.dashboards?.length) {
@@ -175,21 +158,17 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     }
     return <div key={`${line.kind}:${index}`} role="listitem">
       <button type="button" onClick={() => openLine(line)} className={lineButton}>
-        <Icon aria-hidden="true" className={`mt-0.5 h-3 w-3 shrink-0 ${line.kind === 'clash' ? 'text-amber-600' : 'text-muted-foreground'}`} />
+        {line.kind === 'team_live' ? <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${line.tag === 'waiting' ? 'bg-amber-500' : 'bg-emerald-500'}`} /> : <Icon aria-hidden="true" className={`mt-0.5 h-3 w-3 shrink-0 ${line.kind === 'clash' || line.kind === 'folder' ? 'text-amber-600' : 'text-muted-foreground'}`} />}
         <span className="min-w-0 flex-1"><span className="block break-words font-medium text-foreground">{line.title}</span>
           {line.detail && <span className="block break-words text-muted-foreground">{line.detail}</span>}
           {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
         </span>
       </button>
-      {line.people?.map(person => <button key={person.user_id} type="button" onClick={() => openPerson(person.user_id)} title={person.online_label} className={`${lineButton} pl-6`}>
-        <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-        <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents_label && ` · ${person.agents_label}`}</span>
-      </button>)}
     </div>
   })
   // Each row's lines sit under it as a sub-list (owner, 5 Nov: "put inside access only like a sub menu"; 11 Nov: Team
   // and Online), as the server groups them; who asked sits under Online. Each line opens its page at its place.
-  const teamLines = accessTree.filter(line => line.group === 'team')
+  const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team')
   const onlineLines = accessTree.filter(line => line.group !== 'team')
   const teamTree = teamLines.length > 0 && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1">{treeLines(teamLines)}</div>
   const asksTree = (asking.length > 0 || onlineLines.length > 0) && <div role="list" aria-label="Online details" className="ml-3 border-l border-border pl-2 pb-1">

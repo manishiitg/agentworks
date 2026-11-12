@@ -18,17 +18,8 @@ import (
 // nothing is cut off. Lines with nothing to say are left out. Each line says which row it sits under (Group). The
 // server writes every line; the Mac app and the website show the same tree.
 
-type crewAccessPerson struct {
-	UserID      string `json:"user_id"` // screens find the person's tabs by account, never by name
-	Name        string `json:"name"`
-	Online      bool   `json:"online"`
-	OnlineLabel string `json:"online_label,omitempty"` // the dot's words, from the server
-	AgentsLabel string `json:"agents_label,omitempty"` // "8 agents": the person's chip in the tab strip names them
-	StatusLabel string `json:"status_label,omitempty"`
-}
-
 type crewAccessLine struct {
-	Kind   string `json:"kind"`  // mac, team, where, agents, dashboard, public, folder, clash
+	Kind   string `json:"kind"`  // mac, team, team_live, dashboard, public, folder, clash
 	Group  string `json:"group"` // the menu row it sits under: "team" or "online" (crewAccessLineGroup)
 	Title  string `json:"title"`
 	Detail string `json:"detail,omitempty"`
@@ -39,7 +30,6 @@ type crewAccessLine struct {
 	Dashboards []crewAccessDashboard `json:"dashboards,omitempty"`
 	Count      int                   `json:"count,omitempty"` // agents or dashboards: how many
 	Tag        string                `json:"tag,omitempty"`   // dashboard: who can open them ("not shared", "your team", ...)
-	People     []crewAccessPerson    `json:"people,omitempty"`
 	Progress   *crewTeamRound        `json:"progress,omitempty"`
 }
 
@@ -76,7 +66,7 @@ const crewAccessTeamOffTitle = "Team off"
 // folder under Team, and how everyone else reaches it (Mac online, AgentBridge, dashboards) under Online.
 func crewAccessLineGroup(kind string) string {
 	switch kind {
-	case "team", "where", "agents", "folder", "clash":
+	case "team", "team_live", "folder", "clash":
 		return "team"
 	}
 	return "online"
@@ -113,86 +103,61 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		}
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
-	people := []crewAccessPerson{}
-	for _, p := range f.People {
-		// The server marks the viewer's own row ("you"); on the Mac its ids are the server's, not this Mac's.
-		if p.You || p.UserID == f.Viewer {
-			continue
+	names := []string{}
+	live := []crewAccessLine{}
+	for _, person := range f.People {
+		mine := person.You || person.UserID == f.Viewer
+		name := crewTeamFirstName(person.Name)
+		if !mine {
+			names = append(names, name)
 		}
-		status := ""
-		for _, a := range p.Agents {
-			if a.StatusLabel != "" {
-				status = a.StatusLabel
+		for _, agent := range person.Agents {
+			// Activity must never reveal an Only me agent, including the viewer's.
+			if !agent.InTeam || (agent.Activity != "running" && agent.Activity != "waiting") {
+				continue
 			}
+			label := name + "'s " + agent.Name
+			if mine {
+				label = "Your " + agent.Name
+			}
+			detail := "Working"
+			if agent.Activity == "waiting" {
+				detail = firstNonEmptyTrimmed(agent.StatusLabel, "Waiting for its owner")
+			}
+			live = append(live, crewAccessLine{Kind: "team_live", Title: label, Detail: detail, Tag: agent.Activity, Target: "activity"})
 		}
-		// The name the server gave (this Mac does not know the server's people), cut to its short form.
-		name := strings.SplitN(strings.TrimSpace(firstNonEmptyTrimmed(p.Name, crewPersonShortName(p.UserID))), "@", 2)[0]
-		agents := ""
-		if n := len(p.Agents); n > 0 {
-			agents = fmt.Sprintf("%d %s", n, plural(n, "agent", "agents"))
-		}
-		people = append(people, crewAccessPerson{UserID: p.UserID, Name: name, Online: p.Active, OnlineLabel: p.ActiveLabel, AgentsLabel: agents, StatusLabel: status})
 	}
-	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
-	title := fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people"))
+	title := "Team · You"
+	if len(names) > 0 {
+		title += " + " + strings.Join(names, ", ")
+	}
 	if f.PeopleUnknown {
 		title = "Team"
 	}
-	lines = append(lines, crewAccessLine{Kind: "team", Title: title, People: people})
-	// One working copy per member (owner, 5 Nov): where this member's own agents work.
-	switch f.Where {
-	case "mac":
-		lines = append(lines, crewAccessLine{Kind: "where", Title: "On your Mac", Detail: "Your agents here work on your Mac"})
-	}
-	// Working on the website says itself (owner, 6 Nov: "if a user opens on web it is working on web"): no line for it.
-	// What is shared with the team, by name (owner, 5 Nov: "Shared with the team" is enough).
-	inTeam := []string{}
-	for _, person := range f.People {
-		if !person.You && person.UserID != f.Viewer {
-			continue
-		}
-		for _, a := range person.Agents {
-			if a.InTeam {
-				inTeam = append(inTeam, firstNonEmptyTrimmed(a.Name, a.Tab))
-			}
-		}
-	}
-	if len(inTeam) > 0 {
-		lines = append(lines, crewAccessLine{Kind: "agents", Title: "Shared with the team", Count: len(inTeam), Detail: strings.Join(inTeam, ", ")})
-	}
+	lines = append(lines, crewAccessLine{Kind: "team", Title: title, Count: len(names)})
+	lines = append(lines, live[:min(3, len(live))]...)
 	lines = append(lines, crewAccessPublicLine(f.Agents)...)
 	if f.Team.Folder.shared() {
-		detail := "Nothing synced yet"
-		switch {
-		case f.Progress != nil:
-			detail = crewAccessProgressLine(*f.Progress)
-		case f.HasLocal && f.LocalError != "":
-			detail = "Can't sync: " + f.LocalError
-		case f.HasLocal && !f.LocalSynced.IsZero():
-			detail = fmt.Sprintf("Up to date · checked %s · %d %s", crewAccessAgo(f.LocalSynced), f.LocalFiles, plural(f.LocalFiles, "file", "files"))
-		case !f.LastChange.IsZero():
-			detail = "Last change " + crewAccessAgo(f.LastChange)
+		if f.HasLocal && f.LocalError != "" {
+			lines = append(lines, crewAccessLine{Kind: "folder", Title: "Sync stopped", Detail: f.LocalError, Target: "sync"})
 		}
-		if f.Progress == nil {
-			if open := crewTeamOpenClashPaths(f.Clashes); len(open) == 0 {
-				detail += " · no clashes"
-			} else {
-				detail += " · " + crewTeamClashLine(open)
+		for _, clash := range f.Clashes {
+			if clash.Resolved {
+				continue
 			}
-		}
-		lines = append(lines, crewAccessLine{Kind: "folder", Title: "Shared: " + f.Team.Folder.display(), Detail: detail, Progress: f.Progress})
-		for i, c := range f.Clashes {
-			if i == 3 {
-				break
-			}
-			detail := c.Path + " · " + c.WinningAuthor + " and " + firstNonEmptyTrimmed(c.LosingAuthor, "an earlier version")
-			if c.Merged {
-				detail += fmt.Sprintf(" · merged; %d %s changed by both kept the later version", c.Hunks, plural(c.Hunks, "part", "parts"))
-			}
-			lines = append(lines, crewAccessLine{Kind: "clash", Title: fmt.Sprintf("%d %s", len(f.Clashes), plural(len(f.Clashes), "clash", "clashes")), Detail: detail})
+			lines = append(lines, crewAccessLine{Kind: "clash", Title: clash.Path + " has a clash", Detail: "Pick a copy", Path: clash.Path, Target: "sync"})
 		}
 	}
 	return lines
+}
+
+// crewTeamFirstName uses a supplied first name; account usernames remain the fallback.
+func crewTeamFirstName(name string) string {
+	words := strings.Fields(strings.SplitN(strings.TrimSpace(name), "@", 2)[0])
+	if len(words) == 0 {
+		return "Teammate"
+	}
+	return words[0]
 }
 
 // crewAccessDashboardLine is the Crew's dashboards in the Online tree (owner, 5 Nov: one place for Share and the

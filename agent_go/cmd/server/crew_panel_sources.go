@@ -409,7 +409,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 				}
 				// While the Team is off its own line says so; the row adds nothing (it would repeat "off").
 				if line.Kind == "team" && line.Title != crewAccessTeamOffTitle {
-					access.TeamDetail = fmt.Sprintf("You + %d", len(line.People))
+					access.TeamDetail = strings.TrimPrefix(line.Title, "Team · ")
 				}
 			}
 			for _, ask := range data.Asking {
