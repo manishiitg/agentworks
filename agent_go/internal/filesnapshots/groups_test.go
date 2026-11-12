@@ -266,14 +266,20 @@ func TestWorkingTreePreviewDoesNotAllocateOversizedUntrackedFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "small.txt"), []byte("one\ntwo\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink("small.txt", filepath.Join(root, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	files, ok := workingTreeEdits(context.Background(), root, root, "", func(string) bool { return true })
 	runtime.ReadMemStats(&after)
-	if !ok || len(files) != 2 {
+	if !ok || len(files) != 3 {
 		t.Fatalf("working tree files: %v %v", ok, files)
 	}
 	for _, f := range files {
+		if f.Path == "link.txt" && f.Added != nil {
+			t.Fatal("non-regular preview must remain uncounted")
+		}
 		if f.Path == "large.bin" && f.Added != nil {
 			t.Fatal("oversized preview must remain uncounted")
 		}

@@ -330,17 +330,17 @@ func workingTreeEdits(ctx context.Context, root, abs, dir string, allow func(str
 			continue
 		}
 		rel := strings.TrimPrefix(strings.TrimPrefix(c.Path, dir), "/")
-		file, err := os.Open(filepath.Join(abs, filepath.FromSlash(rel)))
+		filePath := filepath.Join(abs, filepath.FromSlash(rel))
+		info, err := os.Lstat(filePath)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+			continue
+		}
+		file, err := os.Open(filePath)
 		if err != nil {
 			continue
 		}
-		info, err := file.Stat()
-		if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
-			file.Close()
-			continue
-		}
 		// PLAT-746-876: bound the read itself, including a file growing
-		// after Stat; checking length after ReadFile allocated the whole file.
+		// after Lstat; checking length after ReadFile allocated the whole file.
 		data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
 		file.Close()
 		if err != nil || len(data) > 1<<20 {
