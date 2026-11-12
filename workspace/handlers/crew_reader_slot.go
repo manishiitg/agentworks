@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 )
@@ -43,4 +44,52 @@ func sharedCrewDirForCommand(docsDir, workingDir string, guard *models.FolderGua
 		}
 	}
 	return ""
+}
+
+// crewPrivateDirForCommand returns a Crew's private storage root, <docs>/_system/crew-data/<crew id>, when the command
+// works inside a folder the server's guard grants in that root, and "" otherwise. A Crew workflow's runs, logs and
+// database live there, so a run started by someone else than the owner (a Team member, a Run person) used to start
+// as the caller's slot and was refused before its script ran ("working folder: ... permission denied"). A workflow run
+// is a Crew run and uses the Crew's account (PLAT-746-355): like the Crew folder, the private root is group-owned by
+// the owner's slot (mode 2770), so the caller finds that slot with slotOwningGroup. Landlock still confines the command
+// to the guard's paths.
+func crewPrivateDirForCommand(docsDir, workingDir string, guard *models.FolderGuardConfig) string {
+	if guard == nil || !guard.Enabled {
+		return ""
+	}
+	rel, err := filepath.Rel(docsDir, workingDir)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	prefix := strings.Split(crewroot.PrivateDirectory, "/")
+	if len(parts) <= len(prefix) {
+		return ""
+	}
+	for i, segment := range prefix {
+		if parts[i] != segment {
+			return ""
+		}
+	}
+	if id := parts[len(prefix)]; id == "" || id == "." || id == ".." {
+		return ""
+	}
+	root := filepath.Join(docsDir, crewroot.PrivateDirectory, parts[len(prefix)])
+	for _, granted := range append(append([]string{}, guard.ReadPaths...), guard.WritePaths...) {
+		physical, resolveErr := resolveGuardWritePath(granted, docsDir)
+		if resolveErr != nil {
+			continue
+		}
+		physical = filepath.Clean(physical)
+		if pathInside(root, physical) && pathInside(physical, workingDir) {
+			return root
+		}
+	}
+	return ""
+}
+
+// pathInside reports whether path is root or below it.
+func pathInside(root, path string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel)
 }
