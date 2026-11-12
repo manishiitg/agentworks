@@ -127,7 +127,7 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	common.SetSessionCrewReader(session, true)
 	common.SetSessionRunOutputPath(session, logical+"/runs/current/output")
 	runPolicy := cliLandlockPolicyForSession(session, "codex-cli", cwd, nil)
-	output := filepath.Join(roots.Private, "runs", "current", "output")
+	output := filepath.Join(roots.Automation, "runs", "current", "output")
 	foundOutput := false
 	for _, grant := range runPolicy.WorkspaceWritePaths {
 		foundOutput = foundOutput || grant == output
