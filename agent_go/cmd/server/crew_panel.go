@@ -29,9 +29,11 @@ type crewPanelRow struct {
 	Connected   bool      `json:"connected,omitempty"`
 	Attention   bool      `json:"attention,omitempty"`
 	Path        string    `json:"path,omitempty"`
-	// Changes rows: the repository heading a row sits under, and its file count.
+	// Changes rows: the repository heading a row sits under, its file and
+	// unpushed-commit counts, and Quiet for a checkout with neither.
 	Group    string `json:"group,omitempty"`
 	Count    string `json:"count,omitempty"`
+	Quiet    bool   `json:"quiet,omitempty"`
 	Motion   bool   `json:"motion,omitempty"`
 	Artifact bool   `json:"artifact,omitempty"`
 }

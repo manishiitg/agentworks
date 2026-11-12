@@ -39,45 +39,67 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			if data.Unavailable {
 				return section, err
 			}
-			// Only checkouts with uncommitted files are listed (none: the row is
-			// hidden). A repository with several changed checkouts is a group:
-			// its main checkout first, then its worktrees.
+			// Checkouts with uncommitted files or commits not pushed are listed
+			// first. A repository with several such checkouts is a group: its
+			// main checkout first, then its worktrees. Every other checkout
+			// follows as a quiet row the browser folds under "N with no changes"
+			// (owner, 12 Nov: show clean folders and worktrees too).
+			busy := func(repo workspaceGitRepo) bool { return len(repo.Files) > 0 || repo.Ahead > 0 }
 			dirty := map[string]int{}
 			for _, repo := range data.Repos {
-				if len(repo.Files) > 0 {
+				if busy(repo) {
 					dirty[repo.Repository]++
 				}
 			}
 			count := 0
 			truncated := false
+			var quiet []crewPanelRow
 			for _, repo := range data.Repos {
-				if len(repo.Files) == 0 {
-					continue
-				}
-				count += len(repo.Files)
-				truncated = truncated || repo.Truncated
-				changed := fmt.Sprintf("%d changed", len(repo.Files))
-				if repo.Truncated {
-					changed = fmt.Sprintf("%d+ changed", len(repo.Files))
-				}
 				branch := repo.Branch
 				if branch == "" {
 					branch = "No commits yet"
 				}
 				folder := crewPanelName(repo.Root, workspace)
-				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: changed, Destination: "files", Path: repo.Root}
-				switch {
-				case repo.Repository != "" && dirty[repo.Repository] > 1:
+				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Destination: "files", Path: repo.Root}
+				if repo.Worktree && repo.Repository != "" {
+					row.Detail = branch + " · worktree of " + repo.Repository
+				}
+				if !busy(repo) {
+					row.Quiet = true
+					row.Count = crewPanelSyncState(repo)
+					quiet = append(quiet, row)
+					continue
+				}
+				count += len(repo.Files)
+				truncated = truncated || repo.Truncated
+				var parts []string
+				if len(repo.Files) > 0 {
+					changed := fmt.Sprintf("%d changed", len(repo.Files))
+					if repo.Truncated {
+						changed = fmt.Sprintf("%d+ changed", len(repo.Files))
+					}
+					parts = append(parts, changed)
+				}
+				if repo.Ahead > 0 {
+					parts = append(parts, fmt.Sprintf("%d not pushed", repo.Ahead))
+				}
+				row.Count = strings.Join(parts, " · ")
+				if repo.Repository != "" && dirty[repo.Repository] > 1 {
 					row.Group, row.Label, row.Detail = repo.Repository, branch, "main checkout"
 					if repo.Worktree {
 						row.Detail = "worktree · " + folder
 					}
-				case repo.Worktree && repo.Repository != "":
-					row.Detail = branch + " · worktree of " + repo.Repository
 				}
 				section.Rows = append(section.Rows, row)
 			}
+			section.Rows = append(section.Rows, quiet...)
 			section.Detail = crewPanelCount(count, "file")
+			if count == 0 {
+				section.Detail = "No changes"
+				if len(section.Rows) > len(quiet) {
+					section.Detail = "Commits not pushed"
+				}
+			}
 			if truncated {
 				section.Detail = fmt.Sprintf("%d+ files", count)
 			}
@@ -85,7 +107,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 				// The repository limit or the time limit stopped the check: say so
 				// instead of a short list, or a hidden row when nothing changed was
 				// found in the part that was checked.
-				if len(section.Rows) == 0 {
+				if len(section.Rows) == len(quiet) {
 					section.Rows = append(section.Rows, crewPanelRow{ID: "more", Label: "Not every repository was checked", Detail: "Open to check them all", Destination: "files"})
 				}
 				section.Detail += " · not every repository checked"
@@ -497,4 +519,18 @@ func (api *StreamingAPI) crewDashboardSharing(r *http.Request, workspace string)
 		shared = fmt.Sprintf("%d %s", len(people), plural(len(people), "person", "people"))
 	}
 	return detail, shared, err
+}
+
+// crewPanelSyncState says how a checkout with no changes stands against its
+// remote branch, for the Changes row's "with no changes" list.
+func crewPanelSyncState(repo workspaceGitRepo) string {
+	switch {
+	case repo.Detached:
+		return "detached"
+	case repo.Upstream == "":
+		return "local only"
+	case repo.Behind > 0:
+		return fmt.Sprintf("%d behind", repo.Behind)
+	}
+	return "up to date"
 }
