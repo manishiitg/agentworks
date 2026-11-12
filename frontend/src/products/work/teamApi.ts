@@ -190,7 +190,7 @@ export type CrewPeopleLevelKey = 'works' | 'dashboards'
 export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; note?: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
 export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
 export type CrewPeopleView = {
-  kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; add_everyone?: string
+  kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; add_everyone?: string
   can_add: boolean; can_share: boolean; owner: CrewPeoplePerson; people: CrewPeoplePerson[]; dashboard_people: CrewPeoplePerson[]; more_dashboards?: string; levels: CrewPeopleLevel[]
   gets: { title: string; tagline: string; items: { text: string; yes: boolean }[] }[]
 }
