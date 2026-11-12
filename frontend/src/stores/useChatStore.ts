@@ -263,7 +263,7 @@ function addTabEventsBatched(sessionId: string, events: PollingEvent[]) {
   // Check if any event is "important" (completion, error, human feedback) — flush immediately
   const hasImportant = events.some(e => {
     const t = e.type
-    return t === 'unified_completion' || t === 'conversation_end' ||
+    return t === 'unified_completion' || t === 'conversation_end' || t === 'llm_generation_end' ||
       t === 'agent_error' || t === 'conversation_error' ||
       t === 'orchestrator_agent_error' || t === 'workflow_error' ||
       t === 'request_human_feedback' || t === 'blocking_human_feedback' ||
@@ -662,8 +662,8 @@ export interface ChatState extends StoreActions {
 
   // Streaming text accumulation (per session)
   // Only tracks parent agent streaming - sub-agent streaming routed to delegationStreamingText
-  streamingGeneration: Record<string, { id: string; sequence: number }>
-  setStreamingGeneration: (sessionId: string, id?: string, sequence?: number) => void
+  streamingGeneration: Record<string, { id: string; sequence: number; nativeBlock?: boolean }>
+  setStreamingGeneration: (sessionId: string, id?: string, sequence?: number, nativeBlock?: boolean) => void
   streamingText: Record<string, string>  // sessionId → accumulated streaming text (response content only)
   streamingChatUIMode: Record<string, 'progressive' | 'complete'>
   streamingStatus: Record<string, string>  // sessionId → latest status/heartbeat message (⏳/⚠️ messages)
@@ -1830,11 +1830,11 @@ export const useChatStore = create<ChatState>()(
         set({ toasts: [] })
       },
 
-      setStreamingGeneration: (sessionId, id, sequence) => set(state => {
+      setStreamingGeneration: (sessionId, id, sequence, nativeBlock) => set(state => {
         if (id && typeof sequence === 'number' && sequence > 0) {
           const current = state.streamingGeneration[sessionId]
-          if (current?.id === id && current.sequence === sequence) return state
-          return { streamingGeneration: { ...state.streamingGeneration, [sessionId]: { id, sequence } } }
+          if (current?.id === id && current.sequence === sequence && current.nativeBlock === nativeBlock) return state
+          return { streamingGeneration: { ...state.streamingGeneration, [sessionId]: { id, sequence, nativeBlock } } }
         }
         if (!state.streamingGeneration[sessionId]) return state
         const next = { ...state.streamingGeneration }; delete next[sessionId]

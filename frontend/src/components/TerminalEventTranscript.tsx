@@ -618,9 +618,10 @@ const ASSISTANT_ARTIFACT_KEYS = ['content', 'final_result', 'result'] as const
 
 const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: string; timestamp: string; label?: string; icon?: React.ReactNode; framed?: boolean }> = ({ event, content, timestamp, label = 'Agent', icon, framed = true }) => {
   const artifact = useMemo(() => chatArtifactRef(event), [event])
+  const nativeBlock = Boolean((transcriptEventPayload(event).metadata as Record<string, unknown> | undefined)?.assistant_block_id)
   const full = useChatArtifactText(artifact, ASSISTANT_ARTIFACT_KEYS)
   return (
-    <article data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : 'py-1'}>
+    <article data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : nativeBlock ? '' : 'py-1'}>
       {framed && <AssistantTurnHeader event={event} timestamp={timestamp} label={label} icon={icon} />}
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode />
@@ -1159,7 +1160,7 @@ interface TerminalEventTranscriptProps {
    * individual protocol events, but belongs in the readable live transcript. */
   streamingChatUIMode?: 'progressive' | 'complete'
   streamingText?: string
-  streamingGeneration?: { id: string; sequence: number }
+  streamingGeneration?: { id: string; sequence: number; nativeBlock?: boolean }
   streamingStatus?: string
   /** Optional product skin for the transcript backdrop. AgentWorks keeps its
    * existing default; product surfaces can use their own visual identity. */
@@ -1287,7 +1288,22 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const searchRows = useCallback(() => listData.map(item => ({ key: item.key, text: item.kind === 'working'
     ? item.steps.map(transcriptSearchText).join('\n')
     : item.kind === 'live' ? item.text : transcriptSearchText(item) })), [listData])
-  const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])
+  const turnSlots = useMemo(() => {
+    const slots = buildTurnSlots(listData)
+    const completions = new Map(scoped.filter(event => event.reply_blocks_complete && event.generation_id).map(event => [event.generation_id, event]))
+    // Native blocks replace only the aggregate prose, not its existing done
+    // time/duration. Match the server's row identity, never answer text.
+    const doneRows = new Map(listData.flatMap(item => item.kind === 'event' ? [[item.event.id, item.event] as const] : []))
+    for (const slot of slots) {
+      const row = slot.done ? doneRows.get(slot.done.key) : undefined
+      const end = row?.generation_id ? completions.get(row.generation_id) : undefined
+      if (slot.done && end) {
+        const payload = transcriptEventPayload(end)
+        slot.done = { key:end.id, at:end.timestamp || slot.done.at, durationNs: typeof payload.duration === 'number' ? payload.duration : slot.done.durationNs }
+      }
+    }
+    return slots
+  }, [listData, scoped])
   const workingNow = runtimeActivity !== undefined && runtimeActivity.state !== 'ready'
 
   const keys = useMemo(() => listData.map(item => item.key), [listData])
@@ -1466,7 +1482,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const body = questionPrompt
             ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} docked={questionPrompt.promptId === dockedCodingAgentQuestion} />
             : item.kind === 'live'
-            ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            ? <LiveAssistantTranscript nativeBlock={streamingGeneration?.nativeBlock} chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
@@ -1524,9 +1540,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
 
 // Custom product renderers can keep their existing live-text cue until they
 // opt into the shared lifecycle indicator.
-const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode }) => (
+const LiveAssistantTranscript: React.FC<{ nativeBlock?: boolean; text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode, nativeBlock }) => (
   text ? (
-    <article data-testid="terminal-clear-live-assistant-message" className="py-1">
+    <article data-testid="terminal-clear-live-assistant-message" className={nativeBlock ? '' : 'py-1'}>
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer chatElementStream={chatUIStreamMode === 'progressive' ? 'progressive' : 'pending'} content={text} framed={false} maxHeight="none" copyableCode />
       </div>
