@@ -165,18 +165,13 @@ export function ProjectFilterMenu({ counts, networks = [], network, onNetwork }:
 }
 
 /** A row's groups: check a group to put the project in it. */
-export function ProjectGroupsMenu({ name, projectKey }: { name: string; projectKey: string }) {
+export function ProjectGroupsMenu({ name, projectKey, inline = false }: { name: string; projectKey: string; inline?: boolean }) {
   const { groups, error } = useMenuGroups()
   const popover = usePopover()
   const [adding, setAdding] = useState(false)
   const toggleIn = (group: Group) => void saveGroups(groups.map(g => g.id !== group.id ? g
     : { ...g, projects: g.projects.includes(projectKey) ? g.projects.filter(key => key !== projectKey) : [...g.projects, projectKey] }))
-  return <>
-    <button ref={popover.trigger} type="button" title="Groups" aria-label={`Groups for ${name}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(208, true)}
-      className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100">
-      <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
-    </button>
-    {popover.render(`Groups for ${name}`, 'w-52', <>
+  const choices = <>
       <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Groups</p>
       {groups.map(group => <button key={group.id} type="button" role="menuitemcheckbox" aria-checked={group.projects.includes(projectKey)} onClick={() => toggleIn(group)} className={item}>
         <span className="min-w-0 flex-1 truncate">{group.name}</span>{group.projects.includes(projectKey) && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -185,6 +180,16 @@ export function ProjectGroupsMenu({ name, projectKey }: { name: string; projectK
         ? <NameInput placeholder="New group name" onDone={newName => { setAdding(false); if (newName) void saveGroups([...groups, { id: '', name: newName, projects: [projectKey] }]) }} />
         : <button type="button" onClick={() => setAdding(true)} className={item}><Plus className="h-3.5 w-3.5" aria-hidden="true" />New group…</button>}
       {error && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{error}</p>}
-    </>)}
+  </>
+  if (inline) return <details className="group/groups">
+    <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md px-2 py-2 text-xs hover:bg-muted"><FolderPlus aria-hidden="true" className="h-3.5 w-3.5" />Add to group…</summary>
+    <div className="border-l border-border pl-2">{choices}</div>
+  </details>
+  return <>
+    <button ref={popover.trigger} type="button" title="Groups" aria-label={`Groups for ${name}`} aria-haspopup="dialog" aria-expanded={popover.open} onClick={() => popover.toggle(208, true)}
+      className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100">
+      <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
+    {popover.render(`Groups for ${name}`, 'w-52', choices)}
   </>
 }

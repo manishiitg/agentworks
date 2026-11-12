@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal, Plus, Terminal } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Terminal } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
@@ -15,7 +15,7 @@ const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
 /** The open Crew's agents in the app's left menu: one row each with its
- * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it, and New agent below the list. */
+ * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it, with creation in the project actions menu. */
 export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -63,10 +63,6 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />+{hiddenCount} hidden {hiddenCount === 1 ? 'agent' : 'agents'}
     </button>}
     {showHidden && <>{hidden.map(row)}{hiddenClosed.map(closedRow)}</>}
-    {crew.canAdd && <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId } })); closeDrawer() }}
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-primary hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
-      <Plus aria-hidden="true" className="h-3.5 w-3.5" />New agent
-    </button>}
     {/* Closed agents (no tab here) open again from this list. */}
     {closed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
