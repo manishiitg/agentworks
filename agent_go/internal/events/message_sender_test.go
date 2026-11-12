@@ -3,6 +3,8 @@ package events
 import (
 	"encoding/json"
 	pkgevents "github.com/manishiitg/mcpagent/events"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +69,33 @@ func TestDeliveredAttributionKeepsServerClientID(t *testing.T) {
 // PLAT-746: an incoming queued card must not indent an unrelated reply.
 func TestAgentReplyRequiresExactDeliveredTurnAndClearsForHumanSteer(t *testing.T) {
 	const session = "reply-attribution"
+	// A populated event must serialize every declared wire field. This guards
+	// the manual writer, which previously silently dropped the reply link.
+	wireEvent := journalTestEvent("wire", "review")
+	fields := reflect.ValueOf(&wireEvent).Elem()
+	for i := 0; i < fields.NumField(); i++ {
+		if fields.Field(i).Kind() == reflect.String {
+			fields.Field(i).SetString("present")
+		}
+	}
+	wireEvent.Sequence = 1
+	encoded, err := json.Marshal(wireEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys map[string]interface{}
+	if err := json.Unmarshal(encoded, &keys); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < fields.NumField(); i++ {
+		key := strings.Split(fields.Type().Field(i).Tag.Get("json"), ",")[0]
+		if key != "" && key != "-" {
+			if _, ok := keys[key]; !ok {
+				t.Errorf("declared Event wire field %s is omitted", key)
+			}
+		}
+	}
+
 	store := openClientMessageTestStore(t, session)
 	input := journalTestEvent("agent-input", "review")
 	input.Data.TurnID = "turn-agent"
