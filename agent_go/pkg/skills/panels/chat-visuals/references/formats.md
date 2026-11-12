@@ -6,8 +6,10 @@ Use a visual only when it helps explain the answer. Supported formats:
   Use an actual existing workspace path or HTTP(S) URL, never an absolute computer
   path, invented URL, account token or data URL. Spaces in Markdown paths may use
   angle brackets: `![caption](<Crew/example/assets/my image.png>)`. Images keep their
-  proportions; click to enlarge and download. Several images can appear in sequence;
-  use grid cards for a titled collection. Workspace file permissions still apply.
+  proportions; click to enlarge and download. Consecutive Markdown images (including blank lines between image-only paragraphs)
+  automatically form a compact gallery. Put prose or a heading between them to
+  keep separate groups. No gallery JSON is needed; use grid cards for a titled
+  image-and-text collection. Workspace file permissions still apply.
   The app-only `image` widget below is an alternative, not required for Markdown:
 
 ```chat-ui

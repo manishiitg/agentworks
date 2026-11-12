@@ -16,7 +16,8 @@ usually need only a Markdown table. Show screenshots, designs and other relevant
 visual results inline without waiting for the person to ask for a component.
 For a single image in app chat, prefer `![caption](Crew/example/assets/image.png)`
 using an actual existing workspace path or HTTP(S) URL. No card/title/JSON is
-needed. The app handles authenticated workspace loading, enlarge and download.
+needed. Consecutive Markdown images automatically form a compact gallery; put
+prose between them when they should stay separate. The app handles authenticated workspace loading, enlarge and download.
 Keep ordinary answers as text; do not turn every reply into a visual.
 
 Read [formats and examples](references/formats.md) before authoring a `chat-ui`
