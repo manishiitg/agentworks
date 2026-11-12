@@ -878,7 +878,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				current := conv
 				current.Endpoints[0] = api.agentMessageCallerRole(current.Endpoints[0])
 				current.Endpoints[1] = api.agentMessageCallerRole(current.Endpoints[1])
-				if steer = agentMessageSteerableReply(current, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
+				if steer = agentMessageMaySteer(current, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
 					busyWaits[msg.ID]++
 					lane.Unlock()
 					time.Sleep(time.Second)
@@ -983,14 +983,13 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 
 // Same-person agent communications may enter an existing owner turn. Other
 // people and delegated/restricted turns retain their own admission boundary.
-func agentMessageSteerableReply(c agentConversation, m agentMessage) bool {
+func agentMessageMaySteer(c agentConversation, m agentMessage) bool {
 	if (m.From != 0 && m.From != 1) || m.Kind != "" || m.File != nil {
 		return false
 	}
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-	return dest.UserID != "" && dest.UserID == source.UserID && dest.Session != "" && !dest.External &&
-		dest.Guest == "" && dest.Mode != "run" && dest.ShareID == "" && source.ShareID == "" &&
-		source.Guest == "" && source.Mode != "run" &&
+	return crewOwnAgentMessage(dest, source) && dest.Session != "" && !dest.External &&
+		dest.ShareID == "" && source.ShareID == "" &&
 		dest.FunctionCallID == "" && dest.ConditionJob == "" && source.FunctionCallID == "" && source.ConditionJob == "" &&
 		crossPersonOwner(source, dest.UserID) == ""
 }
@@ -1000,7 +999,7 @@ func agentMessageSteerableReply(c agentConversation, m agentMessage) bool {
 func (api *StreamingAPI) steerAgentMessageReply(ctx context.Context, c agentConversation, m agentMessage) (bool, error) {
 	c.Endpoints[0] = api.agentMessageCallerRole(c.Endpoints[0])
 	c.Endpoints[1] = api.agentMessageCallerRole(c.Endpoints[1])
-	if !agentMessageSteerableReply(c, m) {
+	if !agentMessageMaySteer(c, m) {
 		return false, nil
 	}
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
