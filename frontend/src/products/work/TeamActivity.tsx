@@ -1,101 +1,135 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Lock } from 'lucide-react'
 import { liveFeed } from '../../services/liveFeed'
 import { useChatStore } from '../../stores/useChatStore'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { openAgentTab } from '../../utils/openAgentTab'
+import { workConversationAgent } from '../../utils/workConversationKey'
+import { openCrewAccess } from './MacSharedAgents'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
-/** The Team's activity log as the server writes it (crew_team_activity_log.go): every line is the server's; the text of
- * a message is there only when both agents' chats are shared Live with the viewer. */
-type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string }
-type ActivityMessage = { id: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityView = { now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting' | ''; line: string }[]; messages: ActivityMessage[]; other: { kind: string; line: string }[]; foot: string }
+type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
+type ActivityMessage = { id: string; sentence: string; topic?: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'no_answer' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
+type ActivityView = { now: { person: string; agent: string; you?: boolean; state: 'running' | 'waiting'; line: string; end: ActivityEnd }[]; idle: ActivityEnd[]; messages: ActivityMessage[]; other: { kind: string; path: string; line: string }[]; next_cursor?: string; refresh_after_ms?: number; foot: string }
 
 const pill: Record<ActivityMessage['status'], string> = {
   answered: 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300',
   waiting: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  no_answer: 'border-destructive/30 bg-destructive/10 text-destructive',
   mac_off: 'border-border bg-muted text-muted-foreground',
 }
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
-/** The tab here of one Team agent, by its server key (a Mac app tab carries it after ":team:"). */
-function tabFor(end: ActivityEnd) {
-  const tabs = useChatStore.getState().chatTabs
-  return Object.keys(tabs).find(id => {
-    const key = tabs[id]?.metadata?.agentProfileConversationKey
-    return key && (key === end.chat_key || key === end.watch_key || key.endsWith(`:team:${end.chat_key}`))
-  })
+function day(at: string) {
+  const date = new Date(at), today = new Date(), yesterday = new Date()
+  yesterday.setDate(today.getDate() - 1)
+  return date.toDateString() === today.toDateString() ? 'Today' : date.toDateString() === yesterday.toDateString() ? 'Yesterday' : date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-/** Read again when the Team panel changes (a crew_panel notice or a Team change), like the Team tab itself. */
+/** Use the admitted tab binding, never a person's display name, to open an agent. */
+function tabFor(projectId: string, end: ActivityEnd) {
+  return Object.values(useChatStore.getState().chatTabs).find(tab => {
+    const meta = tab.metadata, key = meta?.agentProfileConversationKey
+    if (meta?.agentProfileProjectId !== projectId || !key) return false
+    return key === end.chat_key || key === end.watch_key || key.endsWith(`:team:${end.chat_key}`) ||
+      end.you && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && !!end.tab && (meta.agentProfileIsMainChat ? 'main' : workConversationAgent(key)) === end.tab
+  })?.tabId
+}
+function openAgent(projectId: string, end: ActivityEnd) {
+  const tab = tabFor(projectId, end)
+  if (tab) { openAgentTab(tab); return }
+  const crew = useCrewAgentsStore.getState()
+  const closed = crew.projectId === projectId ? crew.closed.find(agent => agent.key === end.chat_key || agent.key === end.watch_key || end.you && !!end.tab && workConversationAgent(agent.key) === end.tab) : undefined
+  if (closed) { void closed.open(); return }
+  useChatStore.getState().addToast('This agent is not open here yet. Open it from the agent chips.', 'error')
+}
+
+/** Same crew_panel notices as the Team page; older pages use a server message-ID cursor, not a timer. */
 function useTeamActivity(target: TeamTarget, projectId: string) {
+  const user = useAuthStore(state => state.user?.id)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const scope = JSON.stringify([user, server, target.connection, target.project, projectId])
+  const [loadedScope, setLoadedScope] = useState('')
   const [view, setView] = useState<ActivityView>()
   const [error, setError] = useState('')
-  const [retry, setRetry] = useState(0)
+  const [olderLoading, setOlderLoading] = useState(false)
+  const loadRef = useRef<(older?: boolean) => void>(() => {})
   useEffect(() => {
-    let active = true
-    setView(undefined)
-    setError('')
-    let request = 0
-    const load = () => {
-      const current = ++request
-      void teamRequest<ActivityView>({ project: target.project, connection: target.connection }, '/activity')
-        .then(data => { if (active && current === request) { setView(data); setError('') } })
-        .catch(reason => { if (active && current === request) setError(teamFailure(reason).message) })
+    let active = true, request = 0, current: ActivityView | undefined
+    let boundary: ReturnType<typeof setTimeout> | undefined
+    setView(undefined); setError(''); setOlderLoading(false); setLoadedScope(scope)
+    const load = (older = false) => {
+      clearTimeout(boundary)
+      const cursor = older ? current?.next_cursor : undefined
+      if (older && !cursor) return
+      const sequence = ++request
+      if (older) setOlderLoading(true)
+      void teamRequest<ActivityView>(target, `/activity${cursor ? `?before=${encodeURIComponent(cursor)}` : ''}`)
+        .then(data => {
+          if (!active || sequence !== request) return
+          current = { ...data, messages: older && current ? [...current.messages, ...data.messages] : data.messages }
+          setView(current); setError('')
+          if (data.refresh_after_ms && data.refresh_after_ms > 0) boundary = setTimeout(() => load(), data.refresh_after_ms)
+        })
+        .catch(reason => { if (active && sequence === request) setError(teamFailure(reason).message) })
+        .finally(() => { if (active && sequence === request) setOlderLoading(false) })
     }
-    load()
-    window.addEventListener('agentworks:team-updated', load)
-    const unlive = liveFeed.subscribe(['crew_panel'], null, load, projectId)
-    return () => { active = false; window.removeEventListener('agentworks:team-updated', load); unlive() }
-  }, [target.project, target.connection, projectId, retry])
-  return { view, error, reload: () => setRetry(value => value + 1) }
+    loadRef.current = load
+    const refresh = () => load()
+    refresh()
+    window.addEventListener('agentworks:team-updated', refresh)
+    const unlive = liveFeed.subscribe(['crew_panel'], null, refresh, projectId)
+    return () => { active = false; clearTimeout(boundary); loadRef.current = () => {}; window.removeEventListener('agentworks:team-updated', refresh); unlive() }
+  }, [target.project, target.connection, projectId, scope])
+  return { view: loadedScope === scope ? view : undefined, error: loadedScope === scope ? error : '', olderLoading, reload: () => loadRef.current(), older: () => loadRef.current(true) }
 }
 
 export function TeamActivity({ target, projectId }: { target: TeamTarget; projectId: string }) {
-  const { view, error, reload } = useTeamActivity(target, projectId)
+  const { view, error, reload, older, olderLoading } = useTeamActivity(target, projectId)
   const [open, setOpen] = useState('')
-  if (error) return <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div>
-  if (!view) return <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>
-  const heading = 'mb-1.5 mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
-  return <section aria-label="Activity" className="space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm">
-    <p className={heading}>Now</p>
-    <div className="flex flex-wrap gap-2">
-      {view.now.map((agent, i) => <span key={i} className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1 text-[13px]">
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${agent.state === 'running' ? 'animate-pulse bg-emerald-500' : agent.state === 'waiting' ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} />
-        <span className="font-medium">{agent.you ? 'You' : agent.person} · {agent.agent}</span>
-        <span className={agent.state === 'running' ? 'text-emerald-600 dark:text-emerald-400' : agent.state === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>{agent.line}</span>
-      </span>)}
-    </div>
-    <p className={heading}>Agent messages</p>
-    {view.messages.length === 0 ? <p className="text-xs text-muted-foreground">No messages between the Team's agents yet.</p>
-      : <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {view.messages.map(message => {
-          const text = Boolean(message.question)
-          const isOpen = text && open === message.id
-          const tab = isOpen ? tabFor(message.to) : undefined
-          return <div key={message.id}>
-            <button type="button" disabled={!text} aria-expanded={text ? isOpen : undefined} onClick={() => setOpen(isOpen ? '' : message.id)}
-              className="grid w-full grid-cols-[14px_1fr_auto_auto] items-center gap-2.5 px-3 py-2 text-left enabled:hover:bg-muted/50 max-sm:grid-cols-[14px_1fr_auto]">
-              <ChevronRight aria-hidden="true" className={`h-3 w-3 text-muted-foreground transition-transform ${text ? '' : 'invisible'} ${isOpen ? 'rotate-90' : ''}`} />
-              <span className={`min-w-0 truncate ${message.status === 'mac_off' ? 'text-muted-foreground' : ''}`}>{message.from.label}<span className="mx-1 text-muted-foreground">→</span>{message.to.label}<span className="ml-1.5 text-muted-foreground">asked</span></span>
-              <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11.5px] ${pill[message.status]}`}>{message.status_line}</span>
-              <span className="text-xs tabular-nums text-muted-foreground max-sm:col-start-2">{clock(message.sent_at)}</span>
+  if (!view) return error ? <div role="alert" className="space-y-2 rounded-xl border border-border p-4 text-sm"><p>Could not load Team activity. {error}</p><button type="button" onClick={reload} className="text-primary hover:underline">Try again</button></div> : <p role="status" className="text-sm text-muted-foreground">Loading Team activity…</p>
+  const heading = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
+  const agentOpen = (end: ActivityEnd) => <button type="button" onClick={() => openAgent(projectId, end)} className="shrink-0 text-xs text-primary hover:underline">Open →</button>
+  return <section aria-label="Activity" className="space-y-4 rounded-xl border border-border px-4 py-3 text-sm">
+    {view.other.length > 0 && <section aria-label="Needs attention" className="space-y-2">
+      <h3 className={`${heading} text-amber-600`}>Needs attention</h3>
+      {view.other.map(item => <div key={item.path} className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+        <p className="min-w-0 flex-1 break-words text-[13px]">{item.line}</p>
+        <button type="button" onClick={() => openCrewAccess(projectId, '', 'team', 'sync')} className="shrink-0 text-xs text-primary hover:underline">Pick a copy →</button>
+      </div>)}
+    </section>}
+    <section aria-label="Working now" className="space-y-2">
+      <h3 className={heading}>Working now</h3>
+      {view.now.length === 0 && <p className="text-xs text-muted-foreground">No agent is working right now.</p>}
+      {view.now.map(agent => <div key={agent.end.chat_key} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${agent.state === 'running' ? 'motion-safe:animate-pulse bg-emerald-500' : 'bg-amber-500'}`} />
+        <div className="min-w-0 flex-1"><p className="font-medium">{agent.end.label}</p><p className="text-xs text-muted-foreground">{agent.line}</p></div>{agentOpen(agent.end)}
+      </div>)}
+      {!!view.idle?.length && <details><summary className="cursor-pointer text-xs text-muted-foreground">{view.idle.length} others idle</summary><div className="mt-2 space-y-1">{view.idle.map(agent => <div key={agent.chat_key} className="flex items-center justify-between gap-2 px-3 py-1 text-xs text-muted-foreground"><span>{agent.label}</span>{agentOpen(agent)}</div>)}</div></details>}
+    </section>
+    <section aria-label="Agents asking each other" className="space-y-2">
+      <h3 className={heading}>Agents asking each other</h3>
+      {view.messages.length === 0 && <p className="text-xs text-muted-foreground">No messages between the Team's agents yet.</p>}
+      {view.messages.map((message, index) => {
+        const readable = Boolean(message.question), isOpen = readable && open === message.id
+        const group = day(message.sent_at)
+        return <Fragment key={message.id}>
+          {(index === 0 || day(view.messages[index - 1].sent_at) !== group) && <p className="pt-2 text-xs font-medium text-muted-foreground">{group}</p>}
+          <div className="rounded-lg border border-border">
+            <button type="button" disabled={!readable} aria-expanded={readable ? isOpen : undefined} onClick={() => setOpen(isOpen ? '' : message.id)} className="flex w-full items-start gap-2 px-3 py-2 text-left enabled:hover:bg-muted/40">
+              <ChevronRight aria-hidden="true" className={`mt-1 h-3 w-3 shrink-0 text-muted-foreground ${readable ? '' : 'invisible'} ${isOpen ? 'rotate-90' : ''}`} />
+              <span className="min-w-0 flex-1"><span className="block text-[13px]">{message.sentence}</span>{message.topic && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{message.topic}</span>}</span>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${pill[message.status]}`}>{message.status_line}</span><span className="text-[11px] text-muted-foreground">{clock(message.sent_at)}</span>
             </button>
-            {message.hidden_line && <p className="flex items-center gap-1.5 px-3 pb-2 pl-9 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3 shrink-0" />{message.hidden_line}</p>}
-            {isOpen && <div className="space-y-1.5 px-3 pb-3 pl-9 text-[13px]">
-              <p className="max-w-[520px] whitespace-pre-wrap rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5"><span className="block text-[11px] text-muted-foreground">{message.from.label} asked</span>{message.question}</p>
-              {message.answer && <p className="ml-10 max-w-[520px] whitespace-pre-wrap rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 max-sm:ml-4"><span className="block text-[11px] text-muted-foreground">{message.to.label} answered</span>{message.answer}</p>}
-              {tab && <button type="button" onClick={() => openAgentTab(tab)} className="text-[12.5px] text-primary hover:underline">Open {message.to.label} →</button>}
-            </div>}
+            {message.hidden_line && <p className="flex items-center gap-1.5 px-3 pb-2 pl-8 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3 shrink-0" />{message.hidden_line}</p>}
+            {isOpen && <div className="space-y-2 px-3 pb-3 pl-8 text-[13px]"><p className="whitespace-pre-wrap rounded-lg bg-muted/40 p-2">{message.question}</p>{message.answer && <p className="ml-4 whitespace-pre-wrap rounded-lg border border-border p-2">{message.answer}</p>}{agentOpen(message.to)}</div>}
           </div>
-        })}
-      </div>}
-    {view.other.length > 0 && <>
-      <p className={heading}>Other</p>
-      <div className="divide-y divide-border rounded-lg border border-border">
-        {view.other.map((item, i) => <p key={i} className="px-3 py-2 text-[13px]"><span className="mr-1.5 rounded bg-destructive/10 px-1.5 py-px text-[11px] text-destructive">{item.kind === 'clash' ? 'Clash' : 'Team'}</span>{item.line}</p>)}
-      </div>
-    </>}
+        </Fragment>
+      })}
+      {view.next_cursor && <button type="button" disabled={olderLoading} onClick={older} className="text-xs text-primary hover:underline disabled:opacity-50">{olderLoading ? 'Loading…' : 'Show older'}</button>}
+    </section>
+    {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" onClick={reload} className="underline">Try again</button></p>}
     <p className="text-xs text-muted-foreground">{view.foot}</p>
   </section>
 }

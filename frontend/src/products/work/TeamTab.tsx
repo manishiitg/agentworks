@@ -10,6 +10,7 @@ import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { TeamActivity } from './TeamActivity'
+import { pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
@@ -77,7 +78,20 @@ function useFolderSize(target: TeamTarget, query?: string) {
 export function TeamTab({ projectId, onTurnOn, onBack }: { projectId: string; onTurnOn?: () => void; onBack?: () => void }) {
   const state = useTeamTab(projectId)
   const tabId = useId()
-  const [section, setSection] = useState<{ project: string; tab: 'activity' | 'settings' }>()
+  const [section, setSection] = useState<{ project: string; tab: CrewTeamSection } | undefined>(() => {
+    const requested = pendingCrewTeamSection(projectId)
+    return requested ? { project: projectId, tab: requested } : undefined
+  })
+  useEffect(() => {
+    const requested = pendingCrewTeamSection(projectId)
+    if (requested) setSection({ project: projectId, tab: requested })
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; teamSection?: CrewTeamSection }>).detail
+      if (detail?.projectId === projectId && detail.teamSection) setSection({ project: projectId, tab: detail.teamSection })
+    }
+    window.addEventListener('agentworks:open-crew-access', open)
+    return () => window.removeEventListener('agentworks:open-crew-access', open)
+  }, [projectId])
   const { view, target, error } = state
   const [notice, setNotice] = useState('') // the server's line after a partly saved wizard, until dismissed
   useEffect(() => {
@@ -98,46 +112,65 @@ export function TeamTab({ projectId, onTurnOn, onBack }: { projectId: string; on
   </section>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
-  const selected = team.on ? (section?.project === projectId ? section.tab : 'activity') : 'settings'
+  const selected = team.on ? (section?.project === projectId ? section.tab : 'activity') : 'people'
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
     {team.on && <div className="flex items-stretch gap-2">
       {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-      <div role="tablist" aria-label="Team" className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm">
-        {(['activity', 'settings'] as const).map(tab => <button key={tab} type="button" role="tab"
+      <div role="tablist" aria-label="Team" className="grid min-w-0 flex-1 grid-cols-4 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm">
+        {(['people', 'agents', 'activity', 'sync'] as const).map(tab => <button key={tab} type="button" role="tab"
           id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
           tabIndex={selected === tab ? 0 : -1}
           onClick={() => setSection({ project: projectId, tab })}
           onKeyDown={event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault()
-            const next = event.key === 'Home' ? 'activity' : event.key === 'End' ? 'settings' : tab === 'activity' ? 'settings' : 'activity'
+            const order: CrewTeamSection[] = ['people', 'agents', 'activity', 'sync']
+            const next = event.key === 'Home' ? order[0] : event.key === 'End' ? order[3] : order[(order.indexOf(tab) + (event.key === 'ArrowLeft' ? 3 : 1)) % 4]
             setSection({ project: projectId, tab: next })
             document.getElementById(`${tabId}-${next}`)?.focus()
           }}
           className={`min-w-0 rounded-lg px-2 py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
-          <span className="block font-semibold">{tab === 'activity' ? 'Activity' : 'Settings'}</span>
-          <span className="mt-0.5 block text-[11px]">{tab === 'activity' ? 'Who is working, messages' : 'People, folder and sync'}</span>
+          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync' })[tab]}</span>
+
         </button>)}
       </div>
     </div>}
-    {selected === 'activity' ? <div role="tabpanel" id={`${tabId}-activity-panel`} aria-labelledby={`${tabId}-activity`} tabIndex={0}>
-      <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />
-    </div> : <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-settings-panel`} aria-labelledby={team.on ? `${tabId}-settings` : undefined} className="space-y-3">
-    {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
-    <PeopleCard view={view} target={target} projectId={projectId} />
-    {team.on && <>
-      <CrewWhereRow projectId={projectId} />
-      <FolderLine view={view} target={target} projectId={projectId} />
-      {team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}
-      {team.folder_access && <section aria-label="Sync" className={card}>
-        <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
-        <TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} />
-      </section>}
-    </>}
-    </div>}
+    <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
+      {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}</>}
+      {selected === 'agents' && <><TeamAgentsCard view={view} target={target} projectId={projectId} />{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</>}
+      {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
+    </div>
+  </div>
+}
+
+function TeamAgentsCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
+  const agents = view.agents || []
+  const shared = agents.filter(agent => agent.in_team).length
+  return <section aria-label="Agents" className="space-y-3">
+    <p className="px-1 text-xs text-muted-foreground">Shared with the Team · {shared} {shared === 1 ? 'agent' : 'agents'}</p>
+    {agents.map(agent => <TeamAgentRow key={agent.id} agent={agent} target={target} projectId={projectId} />)}
+    {!agents.length && <p className="text-xs text-muted-foreground">No shared agents yet.</p>}
+  </section>
+}
+function TeamAgentRow({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
+  const { pending, error, run } = useSave()
+  const [details, setDetails] = useState(false)
+  const change = (inTeam: boolean) => run('sharing', async () => {
+    await teamRequest(target, '/agent-visibility', 'POST', { agent_key: agent.id, in_team: inTeam })
+    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  })
+  return <div className={card}>
+    <div className="flex items-center gap-3"><div className="min-w-0 flex-1"><p className="font-medium">{agent.name}</p><p className="text-xs text-muted-foreground">{agent.mine ? 'You' : shortName(agent.owner_name).split(/\s+/)[0]}{agent.place_label ? ` · ${agent.place_label}` : ''}</p>{agent.purpose && <p className="mt-1 text-xs text-muted-foreground">{agent.purpose}</p>}</div>
+      {agent.can_change ? <Switch aria-label={`${agent.name}: In team`} checked={agent.in_team} disabled={Boolean(pending) || agent.in_team && !agent.can_unshare} onCheckedChange={on => void change(on)} /> : <span className="text-xs text-muted-foreground">Shared</span>}
+    </div>
+    {agent.fixed && agent.mine && <p className="text-xs text-muted-foreground">{agent.fixed}</p>}
+    <button type="button" onClick={() => setDetails(value => !value)} aria-expanded={details} className="text-xs text-primary hover:underline">{details ? 'Hide details' : 'Details'}</button>
+    {details && <AgentDetails agent={agent} target={target} projectId={projectId} />}
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
 

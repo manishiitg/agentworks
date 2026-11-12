@@ -17,14 +17,15 @@ import (
 // message's text shows only while both agents' chats are Live for the viewer (agentChatShare); nothing a person types to
 // their own agent is ever here, since both ends must be this Crew's Team agents.
 
-const crewTeamActivityMessages = 50
+const crewTeamActivityMessages = 20
 
 type crewTeamActivityNow struct {
-	Person string `json:"person"`
-	Agent  string `json:"agent"`
-	You    bool   `json:"you,omitempty"`
-	State  string `json:"state"` // "running", "waiting" or ""
-	Line   string `json:"line"`
+	End    crewTeamActivityEnd `json:"end"`
+	Person string              `json:"person"`
+	Agent  string              `json:"agent"`
+	You    bool                `json:"you,omitempty"`
+	State  string              `json:"state"` // "running", "waiting" or ""
+	Line   string              `json:"line"`
 }
 
 type crewTeamActivityEnd struct {
@@ -35,14 +36,17 @@ type crewTeamActivityEnd struct {
 	ChatKey string `json:"chat_key"`
 	// WatchKey is its tab's key for someone else where that differs (the owner's Mac Main), as on the Team tab.
 	WatchKey string `json:"watch_key,omitempty"`
+	Tab      string `json:"tab,omitempty"`
 }
 
 type crewTeamActivityMessage struct {
 	ID         string              `json:"id"`
+	Sentence   string              `json:"sentence"`
+	Topic      string              `json:"topic,omitempty"`
 	From       crewTeamActivityEnd `json:"from"`
 	To         crewTeamActivityEnd `json:"to"`
 	SentAt     time.Time           `json:"sent_at"`
-	Status     string              `json:"status"` // "answered", "waiting" or "mac_off"
+	Status     string              `json:"status"` // "answered", "waiting", "no_answer" or "mac_off"
 	StatusLine string              `json:"status_line"`
 	AnsweredAt *time.Time          `json:"answered_at,omitempty"`
 	Question   string              `json:"question,omitempty"`
@@ -52,14 +56,18 @@ type crewTeamActivityMessage struct {
 
 type crewTeamActivityOther struct {
 	Kind string `json:"kind"` // "clash"
+	Path string `json:"path"`
 	Line string `json:"line"`
 }
 
 type crewTeamActivityView struct {
-	Now      []crewTeamActivityNow     `json:"now"`
-	Messages []crewTeamActivityMessage `json:"messages"`
-	Other    []crewTeamActivityOther   `json:"other"`
-	Foot     string                    `json:"foot"`
+	Idle           []crewTeamActivityEnd     `json:"idle"`
+	RefreshAfterMS int64                     `json:"refresh_after_ms,omitempty"`
+	NextCursor     string                    `json:"next_cursor,omitempty"`
+	Now            []crewTeamActivityNow     `json:"now"`
+	Messages       []crewTeamActivityMessage `json:"messages"`
+	Other          []crewTeamActivityOther   `json:"other"`
+	Foot           string                    `json:"foot"`
 }
 
 // crewTeamActivityAgent is one Team agent with its person, for placing a message's ends.
@@ -71,14 +79,22 @@ type crewTeamActivityAgent struct {
 
 // crewTeamActivityFor builds the log for caller, a member of t.
 func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTeamActivityView {
-	out := crewTeamActivityView{Now: []crewTeamActivityNow{}, Messages: []crewTeamActivityMessage{}, Other: []crewTeamActivityOther{},
+	return crewTeamActivityPage(ctx, t, caller, "")
+}
+
+func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
+	out := crewTeamActivityView{Idle: []crewTeamActivityEnd{}, Now: []crewTeamActivityNow{}, Messages: []crewTeamActivityMessage{}, Other: []crewTeamActivityOther{},
 		Foot: "Shows messages between agents only. What a person types to their own agent is never shown here."}
 	onMac := crewRelayTwin(t.ProjectID)
 	// Every name a message endpoint may carry for an agent: its row key, and for the owner's Mac agents the keys the Mac
 	// sends under (macSharedAgentChatKey; the Crew's own id for Main).
 	byKey := map[string]*crewTeamActivityAgent{}
 	for _, p := range teamAgentsByPerson(ctx, t, caller) {
+		p.Name = crewTeamFirstName(p.Name)
 		for _, a := range p.Agents {
+			if !a.InTeam {
+				continue
+			}
 			state, line := "", firstNonEmptyTrimmed(a.StatusLabel, "Idle")
 			switch a.Activity {
 			case "running":
@@ -86,14 +102,18 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 			case "waiting":
 				state = "waiting" // its row already says "Waiting for <name>"
 			}
-			out.Now = append(out.Now, crewTeamActivityNow{Person: p.Name, Agent: a.Name, You: p.You, State: state, Line: line})
 			label := p.Name + "'s " + a.Name
 			if p.You {
 				label = "Your " + a.Name
 			}
-			entry := &crewTeamActivityAgent{person: p, agent: a, end: crewTeamActivityEnd{Person: p.Name, Agent: a.Name, You: p.You, Label: label, ChatKey: a.ChatKey}}
+			entry := &crewTeamActivityAgent{person: p, agent: a, end: crewTeamActivityEnd{Person: p.Name, Agent: a.Name, You: p.You, Label: label, ChatKey: a.ChatKey, Tab: a.Tab}}
 			if p.Owner && onMac && a.Tab == macMainTab && !p.You {
 				entry.end.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey
+			}
+			if state == "" {
+				out.Idle = append(out.Idle, entry.end)
+			} else {
+				out.Now = append(out.Now, crewTeamActivityNow{Person: p.Name, Agent: a.Name, You: p.You, State: state, Line: line, End: entry.end})
 			}
 			keys := []string{a.ChatKey}
 			if p.Owner && a.Place == "mac" {
@@ -107,12 +127,22 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 		}
 	}
 	if store, err := readAgentMessageSnapshot(ctx); err == nil {
-		out.Messages = crewTeamActivityMessagesFrom(ctx, t, caller, store, byKey)
+		out.Messages, out.NextCursor = crewTeamActivityMessagePage(crewTeamActivityMessagesFrom(ctx, t, caller, store, byKey), before)
+	}
+	// One server-directed read when a waiting question crosses the decided
+	// 30-minute boundary; once no answer, no timer is returned.
+	for _, message := range out.Messages {
+		if message.Status == "waiting" {
+			remaining := max(int64(1), time.Until(message.SentAt.Add(30*time.Minute)).Milliseconds())
+			if out.RefreshAfterMS == 0 || remaining < out.RefreshAfterMS {
+				out.RefreshAfterMS = remaining
+			}
+		}
 	}
 	if summary, err := readCrewTeamLedgerSummary(t.ProjectID, t.Folder, false); err == nil {
 		for _, path := range summary.clashes {
 			if t.Folder.holds(path) {
-				out.Other = append(out.Other, crewTeamActivityOther{Kind: "clash", Line: "Clash in " + path + " — not sorted out yet"})
+				out.Other = append(out.Other, crewTeamActivityOther{Kind: "clash", Path: path, Line: "Clash in " + path + " — not sorted out yet"})
 			}
 		}
 	}
@@ -153,7 +183,7 @@ func crewTeamActivityMessagesFrom(ctx context.Context, t crewTeam, caller string
 				at := m.SentAt
 				for _, i := range open {
 					row := &out[i]
-					row.Status, row.StatusLine, row.AnsweredAt = "answered", "answered in "+crewTeamAnsweredIn(at.Sub(row.SentAt)), &at
+					row.Status, row.StatusLine, row.AnsweredAt = "answered", "Answered in "+crewTeamAnsweredIn(at.Sub(row.SentAt)), &at
 					if hidden == "" {
 						row.Answer = m.Text
 					}
@@ -162,9 +192,12 @@ func crewTeamActivityMessagesFrom(ctx context.Context, t crewTeam, caller string
 				continue
 			}
 			from, to := ends[m.From], ends[1-m.From]
-			row := crewTeamActivityMessage{ID: m.ID, From: from.end, To: to.end, SentAt: m.SentAt, Status: "waiting", StatusLine: "waiting for answer"}
+			row := crewTeamActivityMessage{ID: m.ID, From: from.end, To: to.end, SentAt: m.SentAt, Status: "waiting", StatusLine: "Waiting · " + crewTeamAnsweredIn(time.Since(m.SentAt))}
 			// Waiting on an agent of a Mac that is off and that the server does not answer for (the agents list's
 			// "Mac off" status, teamAgentsByPerson).
+			if time.Since(m.SentAt) >= 30*time.Minute {
+				row.Status, row.StatusLine = "no_answer", "No answer after 30 min"
+			}
 			if to.agent.Place == "mac" && !to.person.MacOn && !to.agent.PlaceServer {
 				whose := to.person.Name + "'s"
 				if to.person.You {
@@ -174,18 +207,41 @@ func crewTeamActivityMessagesFrom(ctx context.Context, t crewTeam, caller string
 			}
 			if hidden == "" {
 				row.Question = m.Text
+				row.Topic = strings.TrimSpace(strings.SplitN(m.Text, "\n", 2)[0])
 			} else {
 				row.HiddenLine = "Chat hidden by " + hidden + " — only the line is shown"
 			}
+			target := to.end.Label
+			if to.person.You {
+				target = "your " + to.agent.Name
+			}
+			row.Sentence = from.end.Label + " asked " + target
 			open, openFrom = append(open, len(out)), m.From
 			out = append(out, row)
 		}
 	}
-	slices.SortStableFunc(out, func(a, b crewTeamActivityMessage) int { return b.SentAt.Compare(a.SentAt) })
-	if len(out) > crewTeamActivityMessages {
-		out = out[:crewTeamActivityMessages]
-	}
+	slices.SortStableFunc(out, func(a, b crewTeamActivityMessage) int {
+		if order := b.SentAt.Compare(a.SentAt); order != 0 {
+			return order
+		}
+		return strings.Compare(b.ID, a.ID)
+	})
 	return out
+}
+
+// Stable message-ID cursor: new messages do not shift the next older page.
+func crewTeamActivityMessagePage(rows []crewTeamActivityMessage, before string) ([]crewTeamActivityMessage, string) {
+	if before != "" {
+		index := slices.IndexFunc(rows, func(row crewTeamActivityMessage) bool { return row.ID == before })
+		if index < 0 {
+			return []crewTeamActivityMessage{}, ""
+		}
+		rows = rows[index+1:]
+	}
+	if len(rows) > crewTeamActivityMessages {
+		return rows[:crewTeamActivityMessages], rows[crewTeamActivityMessages-1].ID
+	}
+	return rows, ""
 }
 
 // crewTeamAnsweredIn is how long an answer took, in plain words: "30 s", "2 min", "3 h".
@@ -215,5 +271,5 @@ func (api *StreamingAPI) handleCrewTeamActivity(w http.ResponseWriter, r *http.R
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, crewTeamActivityFor(r.Context(), t, strings.TrimSpace(claims.UserID)))
+	externalJSON(w, crewTeamActivityPage(r.Context(), t, strings.TrimSpace(claims.UserID), r.URL.Query().Get("before")))
 }
