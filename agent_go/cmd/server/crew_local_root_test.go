@@ -81,12 +81,13 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	if roots.Files != project || crewFilesPath(logical) != logical+"/_files" {
 		t.Fatal("wrong files root")
 	}
+	// PLAT-746-924: records sit in .agentworks/settings, never loose beside the person's files.
 	for _, name := range []string{"product.json", "workflow.json"} {
-		if _, err := os.Stat(filepath.Join(roots.Private, name)); err != nil {
+		if _, err := os.Stat(filepath.Join(roots.SettingsDir(), name)); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(roots.Resources, name)); !os.IsNotExist(err) {
-			t.Fatal("private manifest in resources", name)
+			t.Fatal("record loose in resources", name)
 		}
 	}
 	if cwd, err := crewCLIWorkingDir(logical, "owner", "local-session", "cursor-cli", false); err != nil || cwd != project {
@@ -125,16 +126,16 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	if search.Code != 200 || !strings.Contains(search.Body.String(), logical+"/_files/notes.txt") || strings.Contains(search.Body.String(), project) {
 		t.Fatalf("search selected folder: %d %s", search.Code, search.Body.String())
 	}
-	// Private settings writes and subsequent reads agree on the physical root.
+	// Settings writes and subsequent reads agree on the physical root.
 	for i, name := range []string{"product-schedules.json", "triggers/deliveries/new.json"} {
 		if w := write(name, "{}", fmt.Sprintf("private-%d", i), &wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}); w.Code != 200 {
 			t.Fatalf("private write: %d %s", w.Code, w.Body.String())
 		}
-		if raw, err := os.ReadFile(filepath.Join(roots.Private, name)); err != nil || string(raw) != "{}" {
-			t.Fatal("settings write missed private root", err)
+		if raw, err := os.ReadFile(filepath.Join(roots.SettingsDir(), name)); err != nil || string(raw) != "{}" {
+			t.Fatal("settings write missed the settings folder", err)
 		}
 		if _, err := os.Stat(filepath.Join(roots.Resources, name)); !os.IsNotExist(err) {
-			t.Fatal("private write shadowed in resources", err)
+			t.Fatal("settings write shadowed in resources", err)
 		}
 	}
 	for _, pair := range [][2]string{{"reports/summary.md", "_files/moved.md"}, {"_files/notes.txt", "reports/moved.md"}, {"reports/summary.md", "product-schedules.json"}, {"product-schedules.json", "reports/moved.json"}} {
@@ -170,10 +171,10 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	if w := write("_files/resource-link/reports/escape.md", "alias", "deny-link", guard); w.Code == 200 {
 		t.Fatal("symlink resource alias accepted")
 	}
-	for _, name := range []string{"product-schedules.json", "schedule-runs.json", "triggers/deliveries/input.json", ".report-cache/result.txt"} {
+	for name, root := range map[string]string{"product-schedules.json": roots.SettingsDir(), "schedule-runs.json": roots.SettingsDir(), "triggers/deliveries/input.json": roots.SettingsDir(), ".report-cache/result.txt": roots.Private} {
 		p, _, err := crewroot.Resolve(docs, logical+"/"+name)
-		if err != nil || !crewroot.Within(roots.Private, p) {
-			t.Fatalf("private path %s: %s %v", name, p, err)
+		if err != nil || !crewroot.Within(root, p) {
+			t.Fatalf("path %s: %s %v", name, p, err)
 		}
 	}
 	// The Files panel and bare bridge paths use the same issued files root.
@@ -279,7 +280,7 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 			t.Fatal("bad archive path")
 		}
 	}
-	if !saved["resources/reports/summary.md"] || !saved["settings/product.json"] {
+	if !saved["resources/reports/summary.md"] || !saved["resources/settings/product.json"] {
 		t.Fatal("incomplete archive", saved)
 	}
 	// Retry after resources/private state have already been removed, as happens
