@@ -268,20 +268,22 @@ func pruneEventsForRetention(events []Event, maxEvents int) ([]Event, int) {
 // Event represents a generic event that can be stored and retrieved
 // Both MCP agent and orchestrator events now use the same AgentEvent structure
 type Event struct {
-	ReplyToAgentMessageID string             `json:"reply_to_agent_message_id,omitempty"`
-	UsageExecutionID      string             `json:"usage_execution_id,omitempty"`
-	ID                    string             `json:"id"`
-	Type                  string             `json:"type"`
-	Timestamp             time.Time          `json:"timestamp"`
-	Data                  *events.AgentEvent `json:"data,omitempty"` // Use AgentEvent directly - both systems compatible
-	Error                 string             `json:"error,omitempty"`
-	SessionID             string             `json:"session_id,omitempty"`
-	ExecutionID           string             `json:"execution_id,omitempty"`
-	ParentExecutionID     string             `json:"parent_execution_id,omitempty"`
-	ExecutionKind         string             `json:"execution_kind,omitempty"`
-	TerminalOwnerID       string             `json:"terminal_owner_id,omitempty"`
-	TerminalID            string             `json:"terminal_id,omitempty"`
-	Sequence              int64              `json:"sequence,omitempty"`
+	GenerationID            string             `json:"generation_id,omitempty"`
+	GenerationStartSequence int64              `json:"generation_start_sequence,omitempty"`
+	ReplyToAgentMessageID   string             `json:"reply_to_agent_message_id,omitempty"`
+	UsageExecutionID        string             `json:"usage_execution_id,omitempty"`
+	ID                      string             `json:"id"`
+	Type                    string             `json:"type"`
+	Timestamp               time.Time          `json:"timestamp"`
+	Data                    *events.AgentEvent `json:"data,omitempty"` // Use AgentEvent directly - both systems compatible
+	Error                   string             `json:"error,omitempty"`
+	SessionID               string             `json:"session_id,omitempty"`
+	ExecutionID             string             `json:"execution_id,omitempty"`
+	ParentExecutionID       string             `json:"parent_execution_id,omitempty"`
+	ExecutionKind           string             `json:"execution_kind,omitempty"`
+	TerminalOwnerID         string             `json:"terminal_owner_id,omitempty"`
+	TerminalID              string             `json:"terminal_id,omitempty"`
+	Sequence                int64              `json:"sequence,omitempty"`
 }
 
 // UnmarshalJSON restores the EventData interface as a lossless generic payload.
@@ -325,6 +327,10 @@ func (e Event) MarshalJSON() ([]byte, error) {
 		"session_id": e.SessionID,
 	}
 
+	if e.GenerationID != "" {
+		result["generation_id"] = e.GenerationID
+		result["generation_start_sequence"] = e.GenerationStartSequence
+	}
 	// Add error if it exists
 	if e.ReplyToAgentMessageID != "" {
 		result["reply_to_agent_message_id"] = e.ReplyToAgentMessageID
@@ -664,6 +670,7 @@ type Subscriber struct {
 type EventStore struct {
 	events              map[string][]Event // sessionID -> events
 	terminalEvents      map[string]map[string][]Event
+	generationPositions map[string]generationPosition
 	nextSequence        map[string]int64
 	sessionStartIndices map[string]int    // sessionID -> startIndex (offset for events in memory)
 	sessionOwners       map[string]string // sessionID -> userID
@@ -1050,6 +1057,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	} else if event.Sequence > es.nextSequence[sessionID] {
 		es.nextSequence[sessionID] = event.Sequence
 	}
+	es.stampGenerationPosition(sessionID, &event)
 	projected, durable := projectDurableChatEvent(event)
 	journal := es.durableJournal
 	storesChat := journal != nil && es.persistenceClasses[sessionID] == SessionPersistenceInteractiveChat
@@ -1674,6 +1682,7 @@ func (es *EventStore) RemoveSession(sessionID string) {
 	delete(es.events, sessionID)
 	delete(es.terminalEvents, sessionID)
 	delete(es.nextSequence, sessionID)
+	delete(es.generationPositions, sessionID)
 	delete(es.sessionStartIndices, sessionID)
 	delete(es.sessionOwners, sessionID)
 	delete(es.persistenceClasses, sessionID)
@@ -1723,6 +1732,7 @@ func (es *EventStore) cleanupInactiveSessions() {
 			delete(es.events, sessionID)
 			delete(es.terminalEvents, sessionID)
 			delete(es.nextSequence, sessionID)
+			delete(es.generationPositions, sessionID)
 		}
 	}
 }
