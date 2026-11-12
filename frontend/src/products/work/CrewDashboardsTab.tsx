@@ -31,10 +31,10 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [where?.project, where?.connection, kind]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading dashboards…</p>
+  if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading artifacts…</p>
   return <div className="space-y-3">
-  <section aria-label="Dashboards" className={teamCard}>
-    <h3 className="font-semibold">Dashboards</h3>
+  <section aria-label="Artifacts" className={teamCard}>
+    <h3 className="font-semibold">Artifacts</h3>
     {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
     {tab.filters.length > 1 && <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
       {tab.filters.map(filter => <button key={filter.key} type="button" aria-pressed={tab.filter === filter.key} onClick={() => setKind(filter.key)}

@@ -166,10 +166,10 @@ func crewTeamFirstName(name string) string {
 // One header (owner, 9 Nov mock): "Dashboards", how many and who can open them, then each dashboard by name.
 func crewAccessDashboardLine(items []crewAccessDashboard, shared string) crewAccessLine {
 	if len(items) == 0 {
-		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No dashboard yet · ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
+		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No artifacts yet · ask AI to make one", Ask: "Help me make an artifact for this Crew", Target: "dashboards"}
 	}
 	// Mock approved 9 Nov: a header "Dashboards  N" with who can open them as a tag, then one row per dashboard.
-	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Dashboards", Count: len(items), Tag: crewAccessDashboardShared(shared), Path: items[0].Path, Target: "dashboards", Dashboards: items}
+	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Artifacts", Count: len(items), Tag: crewAccessDashboardShared(shared), Path: items[0].Path, Target: "dashboards", Dashboards: items}
 }
 
 // crewAccessDashboard is one dashboard under the dashboard line: its name and the document it opens.

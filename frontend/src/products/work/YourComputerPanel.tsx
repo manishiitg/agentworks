@@ -416,7 +416,7 @@ function PublishCrewScreen({ step, name, facts, tooBig, status, backup, error, o
     // Each shown step covers some of the move's phases; without a phase (an older server) the bytes decide the first.
     const at = status?.phase ? MOVE_PHASES.indexOf(status.phase) : total > 0 && done >= total ? 2 : 0
     const state = (first: number, last: number): 'done' | 'now' | 'next' => at > last ? 'done' : at >= first ? 'now' : 'next'
-    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', state(0, 1)], ['Chats and agents', state(2, 2)], ['Schedules, watchers, dashboards', state(3, 4)], ['Ready online', state(5, 6)]]
+    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', state(0, 1)], ['Chats and agents', state(2, 2)], ['Schedules, watchers, artifacts', state(3, 4)], ['Ready online', state(5, 6)]]
     return <section aria-label="Publishing Crew" className="space-y-4 py-4 text-sm">
       <p className="text-base font-semibold">Publishing "{name}"…</p>
       <p className="text-[13px] text-muted-foreground">If it's interrupted, it picks up where it left off.</p>
@@ -435,7 +435,7 @@ function PublishCrewScreen({ step, name, facts, tooBig, status, backup, error, o
       <span className="flex flex-col items-center gap-1"><Cloud className="h-7 w-7 text-primary" aria-hidden="true" />Online<span>after the move</span></span>
     </div>
     {tooBig ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p> : <>
-      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Dashboards and functions'])}{box('Stays on this Mac', ['A backup copy of the folder', 'Apps and sign-ins installed only here'])}</div>
+      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Artifacts and functions'])}{box('Stays on this Mac', ['A backup copy of the folder', 'Apps and sign-ins installed only here'])}</div>
       <MoveFacts facts={facts} />
       <p className="text-[13px] text-amber-600">You can't move it back to this Mac. Afterwards you open it from Online, like any online Crew.</p>
     </>}

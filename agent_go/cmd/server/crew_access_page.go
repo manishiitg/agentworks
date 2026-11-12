@@ -77,7 +77,7 @@ var crewAccessMacTabs = func() []crewAccessTab {
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
 	{ID: "agents", Label: "Share agents", Detail: "who else can ask your agents", Group: "online"},
-	{ID: "dashboards", Label: "Dashboards", Detail: "what this Crew publishes", Group: "online"},
+	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
 }
 
 var crewAccessSlackTab = crewAccessTab{ID: "slack", Label: "Slack", Detail: "talk to this Crew in Slack", Group: "online"}
