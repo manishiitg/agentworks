@@ -326,6 +326,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	}
 
 	// Add error if it exists
+	if e.ReplyToAgentMessageID != "" {
+		result["reply_to_agent_message_id"] = e.ReplyToAgentMessageID
+	}
 	if e.Error != "" {
 		result["error"] = e.Error
 	}
