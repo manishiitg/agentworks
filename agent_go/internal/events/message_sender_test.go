@@ -1,6 +1,7 @@
 package events
 
 import (
+	"encoding/json"
 	pkgevents "github.com/manishiitg/mcpagent/events"
 	"testing"
 )
@@ -81,6 +82,25 @@ func TestAgentReplyRequiresExactDeliveredTurnAndClearsForHumanSteer(t *testing.T
 			if row.ID == id {
 				if row.ReplyToAgentMessageID != want {
 					t.Fatalf("%s: got %q want %q", id, row.ReplyToAgentMessageID, want)
+				}
+				// The actual API and journal use Event.MarshalJSON, not struct tags.
+				encoded, err := json.Marshal(row)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var restored Event
+				if err := json.Unmarshal(encoded, &restored); err != nil {
+					t.Fatal(err)
+				}
+				if restored.ReplyToAgentMessageID != want {
+					t.Fatalf("%s: JSON lost reply link: got %q want %q", id, restored.ReplyToAgentMessageID, want)
+				}
+				var wire map[string]interface{}
+				if err := json.Unmarshal(encoded, &wire); err != nil {
+					t.Fatal(err)
+				}
+				if _, exists := wire["reply_to_agent_message_id"]; exists != (want != "") {
+					t.Fatalf("%s: unrelated reply must omit the link", id)
 				}
 				return
 			}
