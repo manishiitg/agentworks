@@ -29,7 +29,28 @@ func originalMainChatKey(projectID, conversationID string) string {
 
 // Project admission is independent of a chat. Only an actual default-chat open
 // resolves this optional role, and it never repairs, creates or adopts an agent.
-var errChooseProjectAgent = errors.New("Choose an agent in this Crew, or create an agent first.")
+// The text never tells people to create an agent when Main is missing (Team
+// decision, 12 Nov): that wording pushed people to make agents they did not
+// need when they only wanted Main.
+var errChooseProjectAgent = errors.New("Main isn't ready yet. Open this Crew again in a moment.")
+
+// mainNotReadyError is errChooseProjectAgent for someone who is not the Crew's
+// owner: only the owner opening the Crew sets its Main up.
+type mainNotReadyError struct{ owner string }
+
+func (e mainNotReadyError) Error() string {
+	return e.owner + "'s Main isn't ready yet. Ask " + e.owner + " to open this Crew once, then try again."
+}
+
+func (e mainNotReadyError) Is(target error) bool { return target == errChooseProjectAgent }
+
+func mainNotReadyFor(userID, ownerID string) error {
+	ownerID = strings.TrimSpace(ownerID)
+	if ownerID == "" || ownerID == strings.TrimSpace(userID) {
+		return errChooseProjectAgent
+	}
+	return mainNotReadyError{owner: crewTeamFirstName(crewPersonShortName(ownerID))}
+}
 
 func (store productConversationRegistryStore) resolveProjectMainAddress(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) (productConversationBinding, error) {
 	if !isProjectProfileID(profile.ID) || !binding.ProjectMainAddress {
@@ -54,7 +75,7 @@ func (store productConversationRegistryStore) resolveProjectMainAddress(ctx cont
 	}
 	key := strings.TrimSpace(manifest.MainChatKey)
 	if !ordinaryProjectChatKey(manifest.ID, key) {
-		return binding, errChooseProjectAgent
+		return binding, mainNotReadyFor(userID, manifest.OwnerID)
 	}
 	doc, err := store.loadDocument(ctx, productConversationRegistryPath(userID))
 	if err != nil {
@@ -62,7 +83,7 @@ func (store productConversationRegistryStore) resolveProjectMainAddress(ctx cont
 	}
 	record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, key)]
 	if !exists || record.ConversationKey != key || !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, record) {
-		return binding, errChooseProjectAgent
+		return binding, mainNotReadyFor(userID, manifest.OwnerID)
 	}
 	binding.ConversationKey, binding.ProjectMainChatKey = key, key
 	binding.ProjectMainAddress = false
