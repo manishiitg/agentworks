@@ -48,7 +48,7 @@ func crewMoveRecordPath(roots crewroot.Roots, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !found || !crewroot.Within(roots.Private, p) {
+	if !found || !crewroot.Within(roots.Automation, p) && !crewroot.Within(roots.Private, p) {
 		return "", fmt.Errorf("Crew settings storage is unavailable")
 	}
 	return p, nil

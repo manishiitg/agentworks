@@ -34,7 +34,7 @@ The server provides endpoints for:
 
 func init() {
 	serverCmd.Flags().Bool("debug", false, "Enable debug mode")
-	serverCmd.Flags().String("restore-crew-state-backup", "", "Restore a stopped Crew storage conversion and exit")
+	serverCmd.Flags().String("restore-crew-agentworks", "", "Put a stopped instance's Crew files back from a .agentworks move journal and exit")
 	viper.BindPFlag("debug", serverCmd.Flags().Lookup("debug"))
 }
 
@@ -65,18 +65,17 @@ func runServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if backup, _ := cmd.Flags().GetString("restore-crew-state-backup"); backup != "" {
-		if err := crewroot.RestorePrivateStateBackup(backup); err != nil {
-			fmt.Printf("[CREW_STATE_MIGRATION] restore failed: %v\n", err)
+	if journal, _ := cmd.Flags().GetString("restore-crew-agentworks"); journal != "" {
+		if err := crewroot.RestoreAgentworksMove(journal); err != nil {
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] restore failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
-	if count, backup, err := crewroot.MigratePrivateState(docsDir); err != nil {
-		fmt.Printf("[CREW_STATE_MIGRATION] failed: %v; backup=%s\n", err, backup)
+	// One place for a Crew's files (PLAT-746-924): moved once, before any traffic.
+	if count, journal, err := crewroot.MigrateToAgentworks(docsDir); err != nil {
+		fmt.Printf("[CREW_AGENTWORKS_MIGRATION] failed after %d moves: %v; journal=%s\n", count, err, journal)
 		os.Exit(1)
-	} else if backup != "" {
-		fmt.Printf("[CREW_STATE_MIGRATION] moved=%d backup=%s\n", count, backup)
 	}
 
 	// Create default workspace subdirectories.

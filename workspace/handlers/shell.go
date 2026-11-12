@@ -213,10 +213,6 @@ func ExecuteShellCommand(c *gin.Context) {
 	// owner's group-owned folder. Only when the server's guard grants that Crew; Landlock still confines the command.
 	if slotsOn && slotErr == nil && userSlot != "" {
 		crewDir := sharedCrewDirForCommand(docsDir, workingDir, req.FolderGuard)
-		if crewDir == "" {
-			// A Crew workflow run works in the Crew's private storage and runs as the Crew too (PLAT-746-355).
-			crewDir = crewPrivateDirForCommand(docsDir, workingDir, req.FolderGuard)
-		}
 		if crewDir != "" {
 			if ownerSlot := slotOwningGroup(crewDir); ownerSlot != "" && ownerSlot != userSlot {
 				log.Printf("[SLOTS] Crew command for %s runs as the Crew owner's slot %s", resolvedUserID, ownerSlot)
