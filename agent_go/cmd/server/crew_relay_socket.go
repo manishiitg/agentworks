@@ -553,9 +553,16 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 			go publishCrewPanelChanged(project)
 		}
 	}
-	for len(stream.batches) > 1000 || stream.bytes > 8<<20 {
-		stream.bytes -= len(stream.batches[0].Body)
-		stream.batches = stream.batches[1:]
+	dropped := 0
+	for len(stream.batches)-dropped > 1000 || stream.bytes > 8<<20 {
+		stream.bytes -= len(stream.batches[dropped].Body)
+		stream.batches[dropped] = crewRelayBatch{}
+		dropped++
+	}
+	if dropped > 0 {
+		// PLAT-746-876: a sliced-off prefix still retains its payloads in
+		// the backing array. Clear it and detach the kept replay window.
+		stream.batches = append([]crewRelayBatch(nil), stream.batches[dropped:]...)
 	}
 	for sub := range stream.subs {
 		select {
