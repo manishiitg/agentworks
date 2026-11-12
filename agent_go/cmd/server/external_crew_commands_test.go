@@ -24,7 +24,20 @@ const externalCommandCrewRoot = "Crew/test-team"
 const externalCommandCrewState = "_system/crew-data/team"
 
 // A Crew's records live in its .agentworks/settings (PLAT-746-924); chats stay in its private state.
-const externalCommandCrewSettings = externalCommandCrewRoot + "/.agentworks/settings"
+const externalCommandCrewAutomation = externalCommandCrewRoot + "/.agentworks"
+const externalCommandCrewSettings = externalCommandCrewAutomation + "/settings"
+
+// writeLocalCrewSettings writes a laptop Crew's record into <project>/.agentworks/settings.
+func writeLocalCrewSettings(t *testing.T, project, name, content string) {
+	t.Helper()
+	dir := filepath.Join(project, ".agentworks", "settings")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // Drive the MCP transport and the actual workspace file handlers against disk.
 // This catches a tool that reports success but writes outside the app's project.

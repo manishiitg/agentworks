@@ -43,7 +43,7 @@ func TestWhatsAppCrewRouteChecksPairedOwnerProject(t *testing.T) {
 	if allowed, err := api.checkWhatsAppWorkflowAccess(context.Background(), "other", route); err != nil || allowed {
 		t.Fatalf("other user allowed=%v err=%v", allowed, err)
 	}
-	if err := os.Remove(filepath.Join(f.docs, externalCommandCrewState, "product.json")); err != nil {
+	if err := os.Remove(filepath.Join(f.docs, externalCommandCrewSettings, "product.json")); err != nil {
 		t.Fatal(err)
 	}
 	if allowed, err := api.checkWhatsAppWorkflowAccess(context.Background(), "owner", route); err != nil || allowed {

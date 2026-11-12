@@ -62,8 +62,8 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: crewID, ProjectID: crewID, OwnerID: "owner"}); err != nil {
 			t.Fatal(err)
 		}
-		f.write(t, "_system/crew-data/"+crewID+"/product.json", fmt.Sprintf(`{"schema_version":1,"product":"work","id":%q,"title":%q,"session_id":%q}`, crewID, crewID, "session-"+crewID))
-		f.write(t, "_system/crew-data/"+crewID+"/workflow.json", fmt.Sprintf(`{"id":%q,"label":%q,"created_by":"owner"}`, crewID, crewID))
+		f.write(t, crewRoot+"/.agentworks/settings/product.json", fmt.Sprintf(`{"schema_version":1,"product":"work","id":%q,"title":%q,"session_id":%q}`, crewID, crewID, "session-"+crewID))
+		f.write(t, crewRoot+"/.agentworks/settings/workflow.json", fmt.Sprintf(`{"id":%q,"label":%q,"created_by":"owner"}`, crewID, crewID))
 		if err := os.MkdirAll(filepath.Join(f.docs, crewRoot), 0700); err != nil {
 			t.Fatal(err)
 		}

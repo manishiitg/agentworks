@@ -105,8 +105,8 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	}
 	const project = "local-example"
 	const virtual = "Crew/local-example"
-	f.write(t, "_system/crew-data/"+project+"/product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
-	f.write(t, "_system/crew-data/"+project+"/workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
+	writeLocalCrewSettings(t, root, "product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
+	writeLocalCrewSettings(t, root, "workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: project, ProjectID: project, OwnerID: "default", Shared: true, Private: true, CanonicalRoot: virtual, LocalRoot: root}); err != nil {
 		t.Fatal(err)
 	}

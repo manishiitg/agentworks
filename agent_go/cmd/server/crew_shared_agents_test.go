@@ -28,8 +28,8 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(f.docs, callerRoot), 0700); err != nil {
 		t.Fatal(err)
 	}
-	// PLAT-856-383: platform records and transcripts live outside user files.
-	const callerState = "_system/crew-data/calling"
+	// A Crew's records live in its .agentworks/settings (PLAT-746-924).
+	const callerState = callerRoot + "/.agentworks/settings"
 	f.write(t, callerState+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team","session_id":"session-calling"}`)
 	f.write(t, callerState+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other"}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "calling-team", ProjectID: "calling", OwnerID: "other", Shared: true, Private: true}); err != nil {

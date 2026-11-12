@@ -170,8 +170,8 @@ func TestCrewUploadIsReachableFromTheTurnAndTheChat(t *testing.T) {
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "test-custom", ProjectID: "custom", OwnerID: "owner", CanonicalRoot: customRoot, LocalRoot: project, Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, "_system/crew-data/custom/product.json", `{"schema_version":1,"product":"work","id":"custom","title":"Custom","session_id":"sess-custom"}`)
-	f.write(t, "_system/crew-data/custom/workflow.json", `{"id":"custom","label":"Custom","created_by":"owner"}`)
+	writeLocalCrewSettings(t, project, "product.json", `{"schema_version":1,"product":"work","id":"custom","title":"Custom","session_id":"sess-custom"}`)
+	writeLocalCrewSettings(t, project, "workflow.json", `{"id":"custom","label":"Custom","created_by":"owner"}`)
 	f.write(t, externalCommandCrewRoot+"/other.txt", "another Crew's file")
 	docs, err := filepath.EvalSymlinks(f.docs)
 	if err != nil {

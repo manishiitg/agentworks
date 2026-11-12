@@ -85,8 +85,8 @@ func TestProviderAccountsSharedAccountAndCrewTurnsAreFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.write(t, "Crew/other-team/.fixture", "")
-	f.write(t, "_system/crew-data/other-team/product.json", `{"schema_version":1,"product":"work","id":"other-team","title":"Other team","session_id":"other-main"}`)
-	f.write(t, "_system/crew-data/other-team/workflow.json", `{"id":"other-team","created_by":"other"}`)
+	f.write(t, "Crew/other-team/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"other-team","title":"Other team","session_id":"other-main"}`)
+	f.write(t, "Crew/other-team/.agentworks/settings/workflow.json", `{"id":"other-team","created_by":"other"}`)
 	account := env.addAccount(t, "owner", map[string]interface{}{"provider": "claude-code", "display_name": "Shared coding account", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"other"}}})
 	for _, turn := range []struct{ user, root, project string }{{"owner", externalCommandCrewRoot, "team"}, {"other", "Crew/other-team", "other-team"}} {
 		if mode, code := env.queryToolsMode(t, turn.user, turn.user+"-builder", turn.root, turn.project, account.ID); mode != "full" {
