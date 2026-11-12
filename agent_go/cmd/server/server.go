@@ -4299,7 +4299,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	if idleRun == nil && !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
 		api.clearSessionStopped(sessionID)
-		codexFollowUps.personWrote(sessionID)
+		backgroundFollowUps.personWrote(sessionID)
 		// Lift the MCP registry zombie-prevention flag only for that intentional
 		// user resume, otherwise internal recovery can resurrect stopped bridges.
 		mcpagent.ClearHTTPSessionStopped(sessionID)
