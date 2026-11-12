@@ -1,5 +1,6 @@
 import type { PollingEvent, RuntimeSnapshot } from '../services/api-types'
 import { isForegroundSessionEvent } from '../../shared/session/foreground'
+import { recordStaleTurnRecovery } from './chatDeliveryTelemetry'
 import { runtimeDisplayStatus } from './runtimeActivity'
 import { getEventPayloadParts, getRuntimeEventScope } from './runtimeEventScope'
 
@@ -49,7 +50,10 @@ export function foregroundTurnState(events?: readonly PollingEvent[], runtime?: 
   if (state === 'running' && latest && runtimeDisplayStatus(runtime) === 'stopped') {
     const startedAt = Date.parse(latest.timestamp || '')
     const endedAt = Date.parse(runtime?.completed_at || '')
-    if (Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt >= startedAt) return 'completed'
+    if (Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt >= startedAt) {
+      recordStaleTurnRecovery(runtime!.session_id, latest)
+      return 'completed'
+    }
   }
   return state
 }

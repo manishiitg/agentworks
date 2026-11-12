@@ -180,6 +180,20 @@ export function recordTabReorderTelemetry(sessionId: string, attemptId: string, 
   if (timer === undefined) timer = window.setTimeout(flush, 100)
 }
 
+/** Content-free proof of server-authoritative recovery, once per retained start. */
+export function recordStaleTurnRecovery(sessionId: string, start: PollingEvent): void {
+  if (typeof window === 'undefined' || !sessionId || !shouldRecordMilestone('tab_mark', sessionId, start)) return
+  const envelope = start.data as Record<string, unknown> | undefined
+  const inner = envelope?.data as Record<string, unknown> | undefined
+  const turn = typeof envelope?.turn_id === 'string' ? envelope.turn_id : typeof inner?.turn_id === 'string' ? inner.turn_id : ''
+  console.info('[TURN_MARK] recovered_stale_start', { session: sessionId, turn, event: start.id })
+  if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
+  queue.push({ sequence: ++sequence, phase: 'tab_mark', session_id: sessionId, event_id: start.id,
+    event_type: start.type, submission_id: turn, delivery_status: 'recovered_stale_start', transport: 'server_runtime',
+    server_event_time: start.timestamp, client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
+  if (timer === undefined) timer = window.setTimeout(flush, 100)
+}
+
 /** Why a chat tab shows working (the signal keeping it on), when it turns on and when it is still on after a minute,
  * so a mark that never goes away names its cause in the server log. IDs and signal names only. */
 const lastTabMark = new Map<string, number>()
