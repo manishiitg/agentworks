@@ -25,7 +25,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // PLAT-746-883: activity must be discoverable separately from setup, and a failed read must not disappear.
 it('opens activity, shows lookup failure with retry, and separates People, Agents, Activity and Sync', async () => {
-  vi.mocked(teamRequest).mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValue({ now: [], messages: [], other: [], foot: '' })
+  vi.mocked(teamRequest).mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValue({ feed: [] })
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
@@ -61,7 +61,7 @@ it('opens only the current person physical agent across the Mac/server project p
   const previous = useChatStore.getState().chatTabs
   useChatStore.setState({ chatTabs: { 'local-tab': { tabId: 'local-tab', metadata: { agentProfileProjectId: 'local-project', agentProfileConversationKey: 'local-project:chat:side', agentProfileIsMainChat: false, agentProfileTabCanWrite: true } } } as never })
   const host = document.createElement('div'), root = createRoot(host)
-  const data = (you: boolean) => ({ messages: [{ id: 'question', from: { person: 'Example', label: 'Research' }, to: { person: 'Example', agent: 'Research', you, label: 'Research', chat_key: 'server-project:chat:side', tab: 'side' }, question: 'Example question', sent_at: new Date().toISOString(), status: 'answered', status_line: 'Answered', answer: 'Example answer' }] })
+  const data = (you: boolean) => ({ feed: [{ id: 'question:question', kind: 'question', at: new Date().toISOString(), person: 'Example', title: 'Research', verb: 'asked Main', message: { id: 'question', from: { person: 'Example', label: 'Research' }, to: { person: 'Example', agent: 'Research', you, label: 'Research', chat_key: 'server-project:chat:side', tab: 'side' }, question: 'Example question', sent_at: new Date().toISOString(), status: 'answered', status_line: 'Answered', answer: 'Example answer' } }] })
   try {
     vi.mocked(openAgentTab).mockClear()
     vi.mocked(teamRequest).mockResolvedValue(data(true) as never)
@@ -83,7 +83,7 @@ it('clears permission-filtered activity immediately when the account changes', a
   const previous = useAuthStore.getState().user
   useAuthStore.setState({ user: { id: 'first-person' } as never })
   const host = document.createElement('div'), root = createRoot(host)
-  vi.mocked(teamRequest).mockResolvedValueOnce({ now: [], idle: [], other: [], foot: '', messages: [{ id: 'private', sentence: 'Research asked Main', topic: 'Visible only to the first account', question: 'Visible only to the first account', sent_at: new Date().toISOString(), status: 'waiting', status_line: 'Waiting', from: {}, to: {} }] } as never).mockImplementation(() => new Promise(() => {}))
+  vi.mocked(teamRequest).mockResolvedValueOnce({ feed: [{ id: 'question:private', kind: 'question', at: new Date().toISOString(), person: 'Example', title: 'Research', verb: 'asked Main', line: 'Visible only to the first account', message: { id: 'private', question: 'Visible only to the first account', from: {}, to: {} } }] } as never).mockImplementation(() => new Promise(() => {}))
   try {
     await act(async () => root.render(<TeamActivity projectId="same-project" target={{ project: 'same-project' }} />))
     expect(host.textContent).toContain('Visible only to the first account')

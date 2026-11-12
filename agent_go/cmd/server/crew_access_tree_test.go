@@ -60,3 +60,14 @@ func TestCrewTeamFirstNameFromLogin(t *testing.T) {
 		}
 	}
 }
+
+// A short label must not turn two different people into one on screen.
+func TestCrewTeamDistinctNamesInOneTeam(t *testing.T) {
+	raw := map[string]string{"a": "Sam Khan", "b": "Sam Roy", "c": "ana1@example.com", "d": "ana2@example.com", "e": "Élodie Martin"}
+	labels := crewTeamDistinctNames(raw)
+	for id, want := range map[string]string{"a": "Sam K.", "b": "Sam R.", "c": "ana1", "d": "ana2", "e": "Élodie"} {
+		if labels[id] != want {
+			t.Errorf("%s got %q want %q", id, labels[id], want)
+		}
+	}
+}

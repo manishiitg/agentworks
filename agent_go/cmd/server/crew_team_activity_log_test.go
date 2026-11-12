@@ -84,6 +84,12 @@ func TestCrewTeamActivityHidesTextOfHiddenChatsAndMarksAnswers(t *testing.T) {
 			t.Fatalf("a Hidden chat's text reached a teammate: %+v", q)
 		}
 	}
+	teamForFeed, _ := readCrewTeam("team")
+	for _, item := range crewTeamActivityFor(t.Context(), teamForFeed, "owner").Feed {
+		if item.Line != "" || item.Message == nil || item.Message.Question != "" || item.Message.Answer != "" {
+			t.Fatalf("hidden text reached merged feed: %+v", item)
+		}
+	}
 	// Its own person still reads it; the owner's chat stays Live.
 	if q := read("other")[1]; q.Question != "check the login tests" || q.Answer != "41 passed" || q.HiddenLine != "" {
 		t.Fatalf("the person who hid their chat lost the text: %+v", q)
@@ -102,20 +108,27 @@ func TestCrewTeamActivityHidesTextOfHiddenChatsAndMarksAnswers(t *testing.T) {
 
 }
 
-// PLAT-746-904: Show older follows a stable message ID, not an offset shifted by new messages.
+// PLAT-746-904: mixed feed ordering and Show older use one stable identity cursor.
 func TestCrewTeamActivityPagesByMessageID(t *testing.T) {
-	rows := make([]crewTeamActivityMessage, 21)
-	for i := range rows {
-		rows[i].ID = strconv.Itoa(i)
+	view := crewTeamActivityView{}
+	now := time.Now()
+	for i := 0; i < 21; i++ {
+		view.Messages = append(view.Messages, crewTeamActivityMessage{ID: strconv.Itoa(i), SentAt: now.Add(-time.Duration(i) * time.Minute)})
 	}
-	first, cursor := crewTeamActivityMessagePage(rows, "")
-	if len(first) != 20 || cursor != "19" {
-		t.Fatalf("wrong first page: %d %q", len(first), cursor)
+	view.Decisions = []crewTeamActivityPost{{ID: "decision", At: now.Add(time.Minute), OwnerID: "owner", Agent: "Main", Line: "Settled"}}
+	view.Findings = []crewTeamActivityPost{{ID: "finding", At: now.Add(-30 * time.Second), Schedule: "Daily check", Line: "Found"}}
+	rows := crewTeamActivityFeed(view, "owner")
+	if rows[0].Kind != "decision" || rows[0].Title != "Your Main" || rows[2].Kind != "finding" {
+		t.Fatalf("feed not merged in time order: %+v", rows[:3])
 	}
-	rows = append([]crewTeamActivityMessage{{ID: "new"}}, rows...)
-	second, next := crewTeamActivityMessagePage(rows, cursor)
-	if len(second) != 1 || second[0].ID != "20" || next != "" {
-		t.Fatalf("cursor shifted after a new question: %+v %q", second, next)
+	first, cursor := crewTeamFeedPage(rows, "")
+	if len(first) != 20 || cursor != rows[19].ID {
+		t.Fatal("mixed feed page not capped")
+	}
+	rows = append([]crewTeamFeedItem{{ID: "decision:new"}}, rows...)
+	second, next := crewTeamFeedPage(rows, cursor)
+	if len(second) != 3 || second[0].ID != rows[21].ID || next != "" {
+		t.Fatalf("cursor shifted: %+v", second)
 	}
 }
 

@@ -565,7 +565,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         </div>
       )
   const moreBeforePeople = chipPeople.length > 0 && !menuMode
-  const personChipList = chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
+  const personChipList = chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)} activity={team?.people.find(person => person.user_id === group.person)?.activity}
     agents={group.agents} watching={group.watching} onPick={selectTab} help={teamState.view?.help}
     onAskHelp={placeProject && teamState.view?.help_ask ? () => { fillMainDraft(placeProject, teamState.view?.help_ask || '') } : undefined} />)
 
@@ -693,8 +693,8 @@ const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-em
 /** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many
  * of their agents are here and the dot for their Mac; it opens their agents with the server's status words (the Team
  * tab reading). While one of theirs is open, the chip names it. */
-function PersonChip({ name, presence, agents, watching, onPick, help, onAskHelp }: {
-  name: string; presence?: TeamTabPresence; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
+function PersonChip({ name, presence, activity, agents, watching, onPick, help, onAskHelp }: {
+  name: string; presence?: TeamTabPresence; activity?: 'running' | 'waiting'; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
   help?: { title: string; text: string }[]; onAskHelp?: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -719,11 +719,11 @@ function PersonChip({ name, presence, agents, watching, onPick, help, onAskHelp 
   }, [open, helpOpen])
   const avatar = (size: string) => <span aria-hidden="true" className={`relative grid ${size} shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary`}>
     {name.trim().charAt(0).toUpperCase() || '?'}
-    {presence && <span className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-background p-[1.5px]"><PersonPresenceDot presence={presence} className="h-2 w-2" /></span>}
+    {activity && <span title={activity === 'running' ? 'Working' : 'Waiting'} className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-background p-[1.5px]"><span className={`h-2 w-2 rounded-full ${activity === 'running' ? 'bg-emerald-500' : 'bg-amber-500'}`} /></span>}
   </span>
   return <>
     <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open}
-      aria-label={`${name}'s agents (${agents.length})${presence ? ` · ${presence.line}` : ''}`} title={presence?.line || `${name}'s agents`}
+      aria-label={`${name}'s agents (${agents.length})${activity ? ` · ${activity === 'running' ? 'Working' : 'Waiting'}` : ''}`} title={`${name}'s agents${activity ? ` · ${activity === 'running' ? 'Working' : 'Waiting'}` : ''}`}
       data-person-chip={name} data-tab-active={watching ? 'true' : undefined}
       className={`inline-flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching ? 'border-primary text-foreground' : 'border-border text-foreground/85'}`}>
       {avatar('h-5 w-5')}
