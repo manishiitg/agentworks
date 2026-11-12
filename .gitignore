@@ -125,6 +125,8 @@ workspace-projects/*
 
 
 agent_go/service-account.json
+# Local machine setup files (credentials, .env); nothing here is tracked.
+/deploy/dedicated-vm/
 agent_go/service_account.json
 
 # Gitleaks reports and cache
