@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 // What the Team tab shows of another person's agents while they work (owner, 6 Nov: "when their agent is
@@ -11,7 +13,6 @@ import (
 // the events its Mac relays (crewRelayStream.running), a server agent's from the server's own turn queue.
 
 var crewActivityStart = map[string]bool{"user_message": true, "conversation_start": true, "llm_generation_start": true, "streaming_start": true}
-var crewActivityEnd = map[string]bool{"llm_generation_end": true, "unified_completion": true, "agent_end": true, "conversation_end": true, "conversation_error": true, "context_cancelled": true}
 
 // crewRelayBatchRunning reads one batch of relayed events: whether its last lifecycle event starts or ends a turn;
 // known is false when it holds none.
@@ -28,7 +29,7 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 		switch {
 		case crewActivityStart[event.Type]:
 			running, known = true, true
-		case crewActivityEnd[event.Type]:
+		case events.IsTurnEndType(event.Type):
 			running, known = false, true
 		}
 	}

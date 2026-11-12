@@ -21,7 +21,7 @@ it('keeps the header and Stop active through generation ends and settles from se
     session_id: 'turn-status-chat', generation: 1, revision: 1, phase: 'running',
     foreground_turn: { busy: true, has_cancel: true, can_steer: true, synthetic: false },
     background_live: false, terminal_busy: false, waiting_for_user: false,
-    started_at: '2026-01-01T10:00:00Z', observed_at: '2026-01-01T10:01:00Z',
+    started_at: '2026-01-01T10:00:00Z', last_progress_at: '2026-01-01T10:01:00Z', observed_at: '2026-01-01T10:01:00Z',
   }
   // Same projection and tab setters used by ChatArea's SSE/REST handler.
   const status = (snapshot: RuntimeSnapshot) => {
