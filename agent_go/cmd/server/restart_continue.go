@@ -3,7 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+
 	"fmt"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"log"
 	"path/filepath"
 	"strings"
@@ -198,7 +203,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		backgroundFollowUps.restore(sessionID, record.FollowUps)
 		reason := ""
 		switch {
-		case api.eventStore == nil || !api.eventStore.PersistedTurnOpen(sessionID):
+		case api.eventStore == nil || (!api.eventStore.PersistedTurnOpen(sessionID) && !api.storedRestartInterruption(sessionID)):
 			reason = "turn_not_open"
 		case api.isSessionMarkedStopped(sessionID):
 			reason = "stopped_by_person"
@@ -296,4 +301,58 @@ func (api *StreamingAPI) noteRestartLivePersonInput(sessionID, messageID string)
 	if err := api.saveRestartContinueRequest(context.Background(), req.userID, sessionID, messageID, req); err != nil {
 		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=live_config_write_failed", sessionID, messageID)
 	}
+}
+
+// A normal app exit must not be mistaken for a person's Stop or a successful
+// finish. This cause is set only by the server's graceful-shutdown path.
+var errAppRestart = errors.New("app shutting down for restart")
+
+type restartAwareEventObserver struct{ *storeevents.EventObserver }
+
+func (o *restartAwareEventObserver) HandleEvent(ctx context.Context, event *unifiedevents.AgentEvent) error {
+	if errors.Is(context.Cause(ctx), errAppRestart) {
+		switch data := event.Data.(type) {
+		case *unifiedevents.ContextCancelledEvent:
+			if data.Metadata == nil {
+				data.Metadata = map[string]interface{}{}
+			}
+			data.Metadata["source"] = "app_restart"
+		case *unifiedevents.UnifiedCompletionEvent:
+			// A real successful result remains finished even if shutdown starts
+			// while observers are publishing it.
+			if data.Status != "completed" {
+				if data.Metadata == nil {
+					data.Metadata = map[string]interface{}{}
+				}
+				data.Metadata["source"] = "app_restart"
+				data.Metadata[mcpagent.RetainedTurnOutcomeMetadataKey] = "interrupted"
+				data.Metadata["stopped"] = false
+			}
+		}
+	}
+	return o.EventObserver.HandleEvent(ctx, event)
+}
+
+// Read the newest whole-turn marker, including generic JSONL/SQLite replay.
+// A later Stop/error/finish/new input supersedes any earlier restart marker.
+func (api *StreamingAPI) storedRestartInterruption(sessionID string) bool {
+	rows := api.eventStore.LastEventsRaw(sessionID, 300)
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
+		if row.Type == "user_message" {
+			return false
+		}
+		if !storeevents.IsTurnEndType(row.Type) {
+			continue
+		}
+		if row.Data == nil {
+			return false
+		}
+		var payload struct {
+			Metadata map[string]interface{} `json:"metadata"`
+		}
+		raw, err := json.Marshal(row.Data.Data)
+		return err == nil && json.Unmarshal(raw, &payload) == nil && payload.Metadata["source"] == "app_restart"
+	}
+	return false
 }
