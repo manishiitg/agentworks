@@ -25,7 +25,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // PLAT-746-883: activity must be discoverable separately from setup, and a failed read must not disappear.
 it('opens activity, shows lookup failure with retry, and separates People, Agents, Activity and Sync', async () => {
-  vi.mocked(teamRequest).mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValue({ feed: [] })
+  vi.mocked(teamRequest).mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValue({ feed: [], next_cursor: 'retained-item' })
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
@@ -38,6 +38,10 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
     await act(async () => host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click())
     expect(host.querySelector('[role="alert"]')).toBeNull()
     expect(host.querySelector('section[aria-label="Activity"]')).not.toBeNull()
+    // A retained item can disappear before Show older is clicked: explain the terminal empty page.
+    vi.mocked(teamRequest).mockResolvedValueOnce({ feed: [] })
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Show older')!.click())
+    expect(host.textContent).toContain('No older activity')
     await act(async () => tab('Agents').click())
     expect(host.querySelector('section[aria-label="Agents"]')).not.toBeNull()
     await act(async () => tab('People').click())
