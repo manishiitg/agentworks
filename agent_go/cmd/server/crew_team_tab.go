@@ -334,7 +334,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
-	out.Live = crewTeamLiveFor(t.ProjectID, byPerson, viewer)
+	out.Live = crewTeamLiveFor(t, byPerson, viewer)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p

@@ -20,6 +20,7 @@ import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { dedupeServerNames } from '../utils/mcpServerAlias'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
+import { TeamMonitor } from './workspace/TeamMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import { ProductTopBar, ProductTopBarMain } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
@@ -447,7 +448,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
           {/* Product and current automation */}
           <ProductTopBarMain>
             {/* Product-level navigation stays separate from AgentWorks modes. */}
-            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
+            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <><TeamMonitor /><GlobalActivityMonitor /></>}
 
             {productControl}
 

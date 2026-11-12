@@ -11,8 +11,9 @@ import (
 	"time"
 )
 
-// The sidebar receives only names, identity and the server's live state, never
-// a Doing line, a pending question's text or another chat's contents.
+// The Monitor's Team view (PLAT-746-926): names, identity, the server's live
+// state, each teammate's presence and an agent's own Doing post (the same post
+// Team › Activity shows them), never a pending question's text or a chat.
 type crewTeamLiveAgent struct {
 	ID       string `json:"id"`
 	OwnerID  string `json:"owner_id"`
@@ -22,28 +23,49 @@ type crewTeamLiveAgent struct {
 	Person   string `json:"person"`
 	Label    string `json:"label"`
 	Activity string `json:"activity"`
+	// Doing is the agent's latest Team "Doing" post, only while it works or waits.
+	Doing string `json:"doing,omitempty"`
+}
+
+// crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Mac on", "Active now on the
+// web") or when they were last seen, from the same reading as the Team tab's people dots.
+type crewTeamLivePerson struct {
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
+	Online bool   `json:"online"`
+	Line   string `json:"line"`
 }
 type crewTeamLiveView struct {
-	Agents  []crewTeamLiveAgent `json:"agents"`
-	Idle    []crewTeamLiveAgent `json:"idle"`
-	Summary string              `json:"summary"`
+	Agents  []crewTeamLiveAgent  `json:"agents"`
+	Idle    []crewTeamLiveAgent  `json:"idle"`
+	People  []crewTeamLivePerson `json:"people"`
+	Summary string               `json:"summary"`
 }
 
 // Input has already passed current Team membership/In-team admission and the
 // one live wait cutoff in teamAgentsByPersonWithMain. Both open and unopened
 // Crews use this projection; a screen never computes a teammate's state.
-func crewTeamLiveFor(project string, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
-	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}}
+func crewTeamLiveFor(t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
+	project := t.ProjectID
+	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
+	var doing map[string]crewTeamActivityPost
 	for _, person := range people {
 		if person.You || person.UserID == viewer {
 			continue
 		}
+		out.People = append(out.People, crewTeamLivePerson{UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
 		for _, agent := range person.Agents {
 			if !agent.InTeam {
 				continue
 			}
 			row := crewTeamLiveAgent{ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
 			row.Label = row.Person + " · " + row.Name
+			if row.Activity == "running" || row.Activity == "waiting" {
+				if doing == nil {
+					doing = crewTeamActivityPostsFor(t).Doing
+				}
+				row.Doing = doing[agent.ID].Line
+			}
 			if row.Activity == "running" {
 				row.Label += " working"
 				out.Agents = append(out.Agents, row)

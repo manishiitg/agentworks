@@ -1,4 +1,4 @@
-import { TeamLiveAgents, type TeamLiveView } from './TeamLiveAgents'
+import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
 import { ProjectAgentMark } from './SidebarCrewAgentMark'
 import { workConversationAgent } from '../../utils/workConversationKey'
@@ -183,7 +183,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
         else open(connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
       }} />
     return crew
-      ? <ExpandableCrew key={key} projectId={project.id} summary={project.team_live?.summary} connectionId={connection.id} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
+      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
@@ -229,7 +229,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
 }
 
 /** Each expanded Crew loads its own admitted chats, including on other connections. */
-function ExpandableCrew({ projectId, summary, connectionId, selected, initialOpen, children }: { projectId: string; summary?: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => ReactNode }) {
+function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => ReactNode }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'crew', connectionId, projectId)
   const saved = useSidebarExpansionStore(state => state.expanded[key])
   const toggle = useSidebarExpansionStore(state => state.toggle)
@@ -251,7 +251,8 @@ function ExpandableCrew({ projectId, summary, connectionId, selected, initialOpe
     .filter(session => session.crew_project_id === projectId)
   const running = sessions.some(hasActiveSessionWork)
   const ownActivityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
-  const activityLabel = (team.view?.live ? team.view.live.summary : summary) || ownActivityLabel
+  // Only the person's own work: teammates' agents are in the Monitor's Team view (PLAT-746-926).
+  const activityLabel = ownActivityLabel
   // This network's chat changes arrive as live notices; another network's list is checked every minute.
   const here = connectionId === getRawActiveWorkspaceId()
   const [reload, setReload] = useState(0)
@@ -301,10 +302,6 @@ function ExpandableCrew({ projectId, summary, connectionId, selected, initialOpe
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
   return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
-    <TeamLiveAgents live={team.view?.live} openFor={live => {
-      const chat = chats.find(row => teamAgentForTab(team, row.conversation_key, !!row.is_main, row.can_write !== false)?.id === live.id)
-      return chat ? () => open(chat) : undefined
-    }} />
     {hiddenAgents.length > 0 && <button type="button" aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted max-md:min-h-10">
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden {hiddenAgents.length === 1 ? 'agent' : 'agents'}
     </button>}

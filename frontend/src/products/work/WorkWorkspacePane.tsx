@@ -13,6 +13,7 @@ import { DashboardCreateDraftButton } from '../../components/workflow/DashboardE
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
+import { TeamMonitor } from '../../components/workspace/TeamMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
 import { setWorkspaceViewTarget, useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
@@ -94,6 +95,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
 
   return <div data-tour="work-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
     <TooltipProvider delayDuration={150}>
+      {showActivityMonitor && <TeamMonitor />}
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
     </TooltipProvider>
   </div>
