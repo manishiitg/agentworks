@@ -223,7 +223,7 @@ func TestOnlySamePersonAgentMessagesSteerIntoOwnerTurn(t *testing.T) {
 		{"guest asker", conv(guestAsker, replier), agentMessage{From: 1}, false},
 		{"person ping", conv(asker, replier), agentMessage{From: 1, Kind: "ping"}, false},
 	} {
-		if got := agentMessageSteerableReply(tc.c, tc.m); got != tc.want {
+		if got := agentMessageMaySteer(tc.c, tc.m); got != tc.want {
 			t.Errorf("%s: steerable=%v, want %v", tc.name, got, tc.want)
 		}
 	}
