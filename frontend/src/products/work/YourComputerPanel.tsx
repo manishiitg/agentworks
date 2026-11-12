@@ -16,7 +16,6 @@ import { ShareCrew, SlackTab } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
-import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
 
@@ -33,7 +32,7 @@ type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?
 type AccessText = { line: string; note?: string }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
-type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
+type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
@@ -374,7 +373,8 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
         </div>
         {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
       </div>
-      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
+      {!online && binding?.connection_id && <div className="rounded-xl border border-border p-3"><p className="font-semibold">One agent</p>
+        <p className="text-[12.5px] text-muted-foreground">Open the agent's menu and choose Run online. It makes a copy that runs on {network} with your Mac on or off; the agent itself stays on this Mac.</p></div>}
     </section>}
     {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
         turns the Team on through the Mac while Mac online is off. */}

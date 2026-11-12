@@ -51,16 +51,6 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 		return
 	}
 	out := crewSyncReply{ProjectID: id, Binding: binding, Placements: placements}
-	if action == "publish_agents" {
-		rows, e := api.macAgentRows(r.Context(), claims, id)
-		if e != nil {
-			fail(e)
-			return
-		}
-		out.Publish = &crewAgentPublishPreview{Agents: rows}
-		externalJSON(w, out)
-		return
-	}
 	if selected == nil {
 		fail(fmt.Errorf("choose an agent to publish"))
 		return

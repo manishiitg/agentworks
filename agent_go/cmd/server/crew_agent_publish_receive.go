@@ -28,7 +28,6 @@ type crewAgentPublishPreview struct {
 	NeedsLogin  bool                      `json:"needs_login,omitempty"`
 	Selection   crewAgentPublishSelection `json:"selection"`
 	Accounts    []crewAgentPublishAccount `json:"accounts"`
-	Agents      []macAgentRow             `json:"agents,omitempty"`
 	TransferID  string                    `json:"transfer_id,omitempty"`
 	Files       int                       `json:"files"`
 	Bytes       int64                     `json:"bytes"`

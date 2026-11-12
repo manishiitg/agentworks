@@ -25,6 +25,7 @@ import { fillAgentPurposeDraft, fillMainDraft, sendToTab } from '../../utils/age
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 
 
@@ -206,6 +207,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
   const setupOf = (tab: ChatTab) => teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))?.setup
   const automationsAsk = team?.asks?.automations
+  // Run online is for a Crew on this Mac (owner, 12 Nov): the Mac's own server says so through local_mode.
+  const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
     // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
     if (surface !== 'work' || !isAgentTab(tab)) return undefined
@@ -249,6 +252,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
     return {
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
+      runOnline: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,
@@ -688,6 +692,8 @@ function PersonAgentWord({ tabId, activity }: { tabId: string; activity?: 'runni
   const word = !own && state === 'waiting' ? 'Waiting' : state ? AGENT_STATE_WORD[state] : ''
   return word ? <span className="ml-auto shrink-0 pl-2 text-[10px] font-normal text-muted-foreground">{word}</span> : null
 }
+// The agent menu's Run online sends this to the agent itself: it picks what its online copy needs (crew_run_online.go).
+const RUN_ONLINE_ASK = 'Run yourself online: make your online copy with manage_crew_sync run_online. Pick the folders and files you work with and the schedules meant for you, and write a short handover note first.'
 const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-emerald-400', wait: 'text-amber-600 dark:text-amber-400', server: 'text-sky-600 dark:text-sky-400' }
 
 /** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Cloud, Eye, EyeOff, GitFork, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -71,6 +71,8 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
   fork?: () => void | Promise<void>
+  /** Asks the agent to make its online copy (crew_run_online.go); only on the Mac, for your own agents. */
+  runOnline?: () => void
   /** The saved order's key, for dragging rows. */
   orderKey?: string
   renameDraft?: string
@@ -235,6 +237,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
       setForking(true)
       try { await actions.fork!() } finally { setForking(false); onDone() }
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
+    {actions.runOnline && <button type="button" role="menuitem" className={item} title="Makes a copy of this agent that runs on the server, even when your Mac is off. This agent stays here." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
