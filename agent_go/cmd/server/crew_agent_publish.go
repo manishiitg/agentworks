@@ -236,7 +236,7 @@ func crewAgentPublishIncludes(selection crewAgentPublishSelection, key string, d
 	}
 	paths := selection.Paths
 	if area == "resources" {
-		paths = append(slices.Clone(paths), "skills", "memory", "MEMORY.md", "PROJECT_INSTRUCTIONS.md", "AGENTS.md", "CLAUDE.md")
+		paths = append(slices.Clone(paths), "skills", "memory", "MEMORY.md", "AGENTS.md", "CLAUDE.md")
 	}
 	for _, p := range paths {
 		if p == "." || rel == p || strings.HasPrefix(rel, p+"/") || directory && strings.HasPrefix(p, rel+"/") {
