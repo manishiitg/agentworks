@@ -29,13 +29,13 @@ export function ChatChangesRow({ section, storageKey, onOpen }: { section?: Crew
   })
   return <div>
     <div className="flex items-center">
+      <div className="min-w-0 flex-1">
+        <WorkspaceContextRow icon={Github} hint="Open file changes and diffs. Shows current uncommitted files across this project’s repositories, whoever changed them." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>Changes</WorkspaceContextRow>
+      </div>
       <button type="button" aria-expanded={open} aria-label={open ? 'Collapse changed repositories' : 'Expand changed repositories'} onClick={() => setState(open ? 'closed' : 'open')}
         className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
       </button>
-      <div className="min-w-0 flex-1">
-        <WorkspaceContextRow icon={Github} hint="Open file changes and diffs. Shows current uncommitted files across this project’s repositories, whoever changed them." onClick={() => onOpen()} detail={section.detail || (section.error ? 'Unavailable' : undefined)}>Changes</WorkspaceContextRow>
-      </div>
     </div>
     {open && rows.length > 0 && <div className="mt-0.5 pl-4">{rows}</div>}
   </div>
