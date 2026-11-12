@@ -218,6 +218,10 @@ var (
 )
 
 // workspaceGitExcludesFile writes the platform ignore list once per process and returns its path ("" when it cannot be written; git then runs as before).
+// Git reads only one core.excludesFile, so the list also carries the
+// account's own global ignore file (core.excludesFile, else
+// ~/.config/git/ignore): without it the Changes row counted files such as
+// .DS_Store that the person's own git hides.
 func workspaceGitExcludesFile() string {
 	workspaceGitExcludesOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "agentworks-git-excludes-")
@@ -225,11 +229,40 @@ func workspaceGitExcludesFile() string {
 			return
 		}
 		file := filepath.Join(dir, "ignore")
-		if os.WriteFile(file, []byte(workspaceGitPlatformIgnore), 0o600) == nil {
+		content := workspaceGitPlatformIgnore
+		if own := workspaceGitGlobalExcludes(); own != "" {
+			content += "# The account's own global ignore list\n" + own + "\n"
+		}
+		if os.WriteFile(file, []byte(content), 0o600) == nil {
 			workspaceGitExcludesPath = file
 		}
 	})
 	return workspaceGitExcludesPath
+}
+
+// workspaceGitGlobalExcludes returns the contents of the global ignore file
+// Git itself would use for this account ("" when there is none).
+func workspaceGitGlobalExcludes() string {
+	path := ""
+	if out, err := exec.Command("git", "config", "--global", "--path", "--get", "core.excludesFile").Output(); err == nil {
+		path = strings.TrimSpace(string(out))
+	}
+	if path == "" {
+		base := os.Getenv("XDG_CONFIG_HOME")
+		if base == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return ""
+			}
+			base = filepath.Join(home, ".config")
+		}
+		path = filepath.Join(base, "git", "ignore")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 // Set only after normal workspace admission and real-path confinement.
