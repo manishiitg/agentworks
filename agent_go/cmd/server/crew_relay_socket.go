@@ -473,9 +473,10 @@ type crewRelayBatch struct {
 }
 
 type crewRelayStream struct {
-	batches []crewRelayBatch
-	bytes   int
-	last    time.Time
+	batches        []crewRelayBatch
+	bytes          int
+	evictedThrough int
+	last           time.Time
 	// running: a turn is going in this chat (its latest lifecycle event is a start); since is when that event arrived.
 	running bool
 	// waiting: the agent stopped to ask its person something (a question or an approval), from the Mac's report.
@@ -488,6 +489,9 @@ type crewRelayStreamSet struct {
 	sync.Mutex
 	streams map[string]*crewRelayStream
 }
+
+// Bound replay payloads across all chats, in addition to each chat cap.
+const crewRelayReplayBytes = 64 << 20
 
 var crewRelayStreams = &crewRelayStreamSet{streams: map[string]*crewRelayStream{}}
 
@@ -556,6 +560,9 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 	dropped := 0
 	for len(stream.batches)-dropped > 1000 || stream.bytes > 8<<20 {
 		stream.bytes -= len(stream.batches[dropped].Body)
+		if b := stream.batches[dropped]; b.Kind == "event" && b.Seq > stream.evictedThrough {
+			stream.evictedThrough = b.Seq
+		}
 		stream.batches[dropped] = crewRelayBatch{}
 		dropped++
 	}
@@ -564,11 +571,40 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 		// the backing array. Clear it and detach the kept replay window.
 		stream.batches = append([]crewRelayBatch(nil), stream.batches[dropped:]...)
 	}
+	s.trimReplay(crewRelayReplayBytes)
 	for sub := range stream.subs {
 		select {
 		case sub <- batch:
 		default: // a stalled viewer resumes from its last event number
 		}
+	}
+}
+
+// trimReplay drops the least recently updated replay payloads, not the live
+// subscription or turn state. Called with the set lock held.
+func (s *crewRelayStreamSet) trimReplay(limit int) {
+	total := 0
+	for _, stream := range s.streams {
+		total += stream.bytes
+	}
+	for total > limit {
+		var oldest *crewRelayStream
+		for _, stream := range s.streams {
+			if stream.bytes > 0 && (oldest == nil || stream.last.Before(oldest.last)) {
+				oldest = stream
+			}
+		}
+		if oldest == nil {
+			return
+		}
+		for i, batch := range oldest.batches {
+			if batch.Kind == "event" && batch.Seq > oldest.evictedThrough {
+				oldest.evictedThrough = batch.Seq
+			}
+			oldest.batches[i] = crewRelayBatch{}
+		}
+		total -= oldest.bytes
+		oldest.batches, oldest.bytes = nil, 0
 	}
 }
 
@@ -599,7 +635,7 @@ func (s *crewRelayStreamSet) subscribe(owner, project, conversation string, sinc
 	key := owner + "/" + project + "/" + conversation
 	stream := s.get(key)
 	var replay []crewRelayBatch
-	gap := since > 0 && len(stream.batches) > 0
+	gap := since > 0 && (len(stream.batches) > 0 || since < stream.evictedThrough)
 	for _, batch := range stream.batches {
 		if batch.Seq > since || batch.Kind != "event" && batch.Seq >= since {
 			replay = append(replay, batch)

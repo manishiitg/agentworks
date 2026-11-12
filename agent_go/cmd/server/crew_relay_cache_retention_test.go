@@ -37,3 +37,39 @@ func TestRelayCacheCapReleasesDroppedPayloads(t *testing.T) {
 		})
 	}
 }
+
+// Global eviction must keep live delivery and signal replay gaps.
+func TestRelayCacheGlobalCapKeepsLiveSubscriptions(t *testing.T) {
+	set := &crewRelayStreamSet{streams: map[string]*crewRelayStream{}}
+	for _, chat := range []string{"old", "new"} {
+		set.append("owner", "project", chat, crewRelayBatch{Kind: "event", Seq: 2, Body: json.RawMessage(`{"events":[]}`)})
+	}
+	_, _, sub, closeSub := set.subscribe("owner", "project", "old", 2)
+	defer closeSub()
+	old := set.streams["owner/project/old"]
+	old.running = true
+	backing := old.batches
+	set.Lock()
+	set.trimReplay(len(set.streams["owner/project/new"].batches[0].Body))
+	set.Unlock()
+	if len(old.batches) != 0 || old.bytes != 0 || backing[0].Body != nil {
+		t.Fatal("global eviction retained oldest replay")
+	}
+	if !old.running || len(old.subs) != 1 {
+		t.Fatal("eviction changed live state")
+	}
+	_, gap, _, done := set.subscribe("owner", "project", "old", 1)
+	done()
+	if !gap {
+		t.Fatal("evicted replay must signal resync")
+	}
+	set.append("owner", "project", "old", crewRelayBatch{Kind: "event", Seq: 3, Body: json.RawMessage(`{"events":[]}`)})
+	select {
+	case batch := <-sub:
+		if batch.Seq != 3 {
+			t.Fatal("wrong live event")
+		}
+	default:
+		t.Fatal("live delivery lost")
+	}
+}
