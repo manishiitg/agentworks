@@ -83,7 +83,14 @@ HAPPY = {
     "H1": "Switch AI program mid-chat: the next program answers from the same conversation",
     "H2": "A file one agent writes is in the Crew for its owner (over MCP) and for the next agent",
     "H3": "A Vault app tool has a short readable name: search it, call it, call it again in a new chat (PLAT-856)",
+    "H4": "A Team decision one agent posts reaches another agent through the Team record (PLAT-746-904)",
 }
+
+# H4: the poster's decision carries a random marker; only the stored Team record can give it to the reader.
+TEAM_POST_PROMPT = ("Use the team_sync tool with action=decision, line=\"{marker} agent test decision\" and why=\"agent test\". "
+                    "Reply with only POSTED if it was accepted, or REFUSED and the tool's exact reply if not.")
+TEAM_READ_PROMPT = ("Use the team_sync tool with action=decisions. Reply with only the line of the newest decision that starts "
+                    "with TEAMTEST-, or NONE if there is none.")
 
 # app__tool, readable: no connection ID, credential scope or hash, within the providers' 64 characters.
 VAULT_TOOL = re.compile(r"TOOL=([A-Za-z0-9_-]{1,64})")
@@ -234,6 +241,25 @@ class Run:
             for chat_id in chat_ids:
                 self.close(chat_id)
 
+    def h4(self, poster, reader):
+        marker = "TEAMTEST-" + uuid.uuid4().hex[:8].upper()
+        started, chat_ids = time.monotonic(), []
+        try:
+            chat_ids.append(self.open(f"agent-test H4 post {poster['provider']}", poster))
+            problems, answer = self.ask(chat_ids[-1], TEAM_POST_PROMPT.format(marker=marker), started,
+                                        lambda a: "POSTED" in a or "REFUSED" in a, "POSTED")
+            if problems:
+                return "NOT RUN", [f"post: {p}" for p in problems]
+            if "POSTED" not in answer:
+                # A Crew without a Team (or this chat not In team) refuses by design: nothing proven either way.
+                return "NOT RUN", [f"post refused: {smoke.first_line(answer)[:160]}"]
+            chat_ids.append(self.open(f"agent-test H4 read {reader['provider']}", reader))
+            problems, _ = self.ask(chat_ids[-1], TEAM_READ_PROMPT, started, lambda a: marker in a, marker)
+            return ("FAIL", [f"{reader['provider']} reading the Team decisions: {p}" for p in problems]) if problems else ("PASS", [])
+        finally:
+            for chat_id in chat_ids:
+                self.close(chat_id)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -284,7 +310,8 @@ def main():
             try:
                 verdict, problems = (run.check(sid, target) if sid in CHECKS else
                                      run.h1(target, other) if sid == "H1" else
-                                     run.h2(target, other) if sid == "H2" else run.h3(target))
+                                     run.h2(target, other) if sid == "H2" else
+                                     run.h4(target, other) if sid == "H4" else run.h3(target))
             except Exception as error:
                 verdict, problems = "NOT RUN", [f"error: {smoke.first_line(str(error))}"]
             report(verdict, sid, label, problems)
