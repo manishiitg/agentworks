@@ -1241,7 +1241,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const items = useMemo(() => {
     const completed = new Map<string, string>()
     for (const item of rawItems) {
-      if (item.kind === 'event' && item.event.generation_id && isAgentResponseEvent(item.event)
+      if (item.kind === 'event' && item.event.generation_id && typeof item.event.reply_remainder !== 'string' && isAgentResponseEvent(item.event)
         && transcriptEventPayload(item.event).restored_intermediate_update !== true) completed.set(item.event.generation_id, item.key)
     }
     return rawItems.map(item => item.kind === 'event' && item.event.generation_id && completed.get(item.event.generation_id) === item.key
@@ -1275,7 +1275,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const [isAtTranscriptEnd, setIsAtTranscriptEnd] = useState(true)
   const listData = useMemo<TranscriptRenderItem[]>(() => {
     const completed = streamingGeneration ? [...items].reverse().find(item => item.kind === 'event'
-      && item.event.generation_id === streamingGeneration.id && isAgentResponseEvent(item.event)
+      && item.event.generation_id === streamingGeneration.id && typeof item.event.reply_remainder !== 'string' && isAgentResponseEvent(item.event)
       && transcriptEventPayload(item.event).restored_intermediate_update !== true) : undefined
     // A real generation completion replaces its live carrier under the same
     // row key. Intermediate narration remains separately journalled as before.
