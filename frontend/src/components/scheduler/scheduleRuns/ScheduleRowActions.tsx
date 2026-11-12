@@ -1,5 +1,6 @@
 import React from 'react'
-import { MoreHorizontal, Pause, Play, Square, Trash2 } from 'lucide-react'
+import { Cloud, MoreHorizontal, Pause, Play, Square, Trash2 } from 'lucide-react'
+import { RUN_ONLINE_AUTOMATION_HINT } from '../../automation/runOnlineAutomation'
 import type { ScheduledJob } from '../../../services/api-types'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { isScheduleWaitingStatus } from './helpers'
@@ -13,6 +14,8 @@ type ScheduleRowActionsProps = Pick<
   isMissedJob: boolean
   /** The kebab button's classes -- the two hosting rows style it differently. */
   menuButtonClassName: string
+  /** Run online (a Crew on this Mac): moves this schedule to its agent's online agent. */
+  onRunOnline?: (name: string) => void
 }
 
 // The Stop / Run now / Resume action plus the "More schedule actions" menu
@@ -30,6 +33,7 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
   handleToggle,
   handleDelete,
   menuButtonClassName,
+  onRunOnline,
 }) => (
   <>
     {!isReadOnlyUser && (
@@ -94,6 +98,17 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-muted"
             >
               <Pause className="h-3.5 w-3.5" /> Pause schedule
+            </button>
+          )}
+          {!isReadOnlyUser && onRunOnline && (
+            <button
+              type="button"
+              role="menuitem"
+              title={RUN_ONLINE_AUTOMATION_HINT}
+              onClick={() => { setOpenActionMenuJobId(null); onRunOnline(job.name) }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-muted"
+            >
+              <Cloud className="h-3.5 w-3.5" /> Run online
             </button>
           )}
           {!isReadOnlyUser && (

@@ -15,10 +15,11 @@ type ScheduleTableViewProps = {
     | 'openActionMenuJobId' | 'setOpenActionMenuJobId'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'toggleRunHistory' | 'openScheduledRun'
   >
+  onRunOnline?: (name: string) => void
 }
 
 /** Global schedules show timing first; instructions and run diagnostics are opt-in. */
-export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTableViewProps) {
+export function ScheduleTableView({ panel, entityType = 'workflow', onRunOnline }: ScheduleTableViewProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   useEffect(() => {
     if (panel.focusedScheduleId) {
@@ -96,7 +97,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                   <div className="flex items-center justify-between gap-4">
                     <p className="text-xs text-muted-foreground">{job.run_count} runs · Last result: {job.last_status || 'Not run yet'}{job.starts ? ` · ${job.starts}` : ''}</p>
                     {!panel.isReadOnlyUser && <div className="flex items-center gap-1">
-                      <ScheduleRowActions {...panel} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
+                      <ScheduleRowActions {...panel} onRunOnline={onRunOnline} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
                     </div>}
                   </div>
                   {isWebhook && <WebhookEndpoint id={job.id} name={job.name} />}

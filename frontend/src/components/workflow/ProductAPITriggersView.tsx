@@ -8,6 +8,7 @@ import { Switch } from '../ui/Switch'
 import type { ScheduledJobRun } from '../../services/api-types'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
+import { RUN_ONLINE_AUTOMATION_HINT } from '../automation/runOnlineAutomation'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 
@@ -16,7 +17,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update project triggers'
 }
 
-export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, hideEmpty = false, pageRows = false }: { pageRows?: boolean; embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, onRunOnline, embedded = false, hideEmpty = false, pageRows = false }: { onRunOnline?: (name: string) => void; pageRows?: boolean; embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
   const [destinations, setDestinations] = useState<RunDestinationChoice[]>([])
@@ -148,7 +149,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
           {(destinations.length ? destinations : [{ id: trigger.run_destination || 'chat', label: trigger.run_destination || 'chat' }]).map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
         </select>
         </label>
-        <div className="flex flex-wrap gap-1.5"><button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Disable' : 'Enable'}</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(trigger.id)}>Remove</button></div>
+        <div className="flex flex-wrap gap-1.5"><button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Disable' : 'Enable'}</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button>{onRunOnline && <button type="button" disabled={busy} className={buttonClass} title={RUN_ONLINE_AUTOMATION_HINT} onClick={() => onRunOnline(trigger.name)}>Run online</button>}<button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(trigger.id)}>Remove</button></div>
       </div>
     </AutomationRow>)}</AutomationListBox>}{!hideEmpty && triggers.length === 0 && <EmptyAutomations>No webhooks yet. Ask the chat to create one.</EmptyAutomations>}
     {copied && <p role="status" className="text-xs text-muted-foreground">{copied}</p>}

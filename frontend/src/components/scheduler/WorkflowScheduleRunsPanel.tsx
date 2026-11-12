@@ -40,9 +40,11 @@ interface WorkflowScheduleRunsPanelProps {
   refreshToken?: number
   /** Reports status snapshots so an owning header can show pills and spinners. */
   onStatus?: (status: ScheduleStatusSnapshot) => void
+  /** Run online (a Crew on this Mac): a schedule row's menu moves it to its agent's online agent. */
+  onRunOnline?: (name: string) => void
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, onRunOnline }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
   useEffect(() => {
@@ -370,7 +372,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length > 0 && (
-            compact ? <ScheduleTableView panel={panel} entityType={entityType} /> : <ScheduleListView panel={panel} />
+            compact ? <ScheduleTableView panel={panel} entityType={entityType} onRunOnline={onRunOnline} /> : <ScheduleListView panel={panel} />
           )}
         </div>
         </>}
