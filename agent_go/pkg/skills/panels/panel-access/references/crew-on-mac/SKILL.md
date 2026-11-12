@@ -18,13 +18,14 @@ separate from website sharing. Public means other agents on that server can find
 and message it; it does not put the Crew on everyone's website. Do this only on
 the person's request, preserving current server checks.
 
-## Move execution to the server
+## Run an agent online
 
-For one agent, use `publish_preview` with its name and selected relative paths.
-Show what moves, size, destination account and missing setup. After the person
-agrees to that concrete preview, use `publish_agent` with the same transfer_id and
-confirmed=true. Other agents stay on the Mac. A whole-Crew `server` move is
-one-way: explain it and get the person's yes before confirmed=true.
+When the person asks an agent to run online (or presses Run online), use
+`run_online`: it makes a copy of that one agent on the server, named
+`<name> · online`; the original stays on this Mac. Choose its `paths` and
+`schedules` yourself without a preview, and write a short handover note in your
+reply first. Moving the whole Crew online is not done from chat: it is the
+Mac app's Move online, under Where it lives.
 
 Inspect the returned provider and continuation mode. Native history, file copy,
 credentials and available server tools are separate; never promise every CLI or
