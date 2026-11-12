@@ -600,7 +600,7 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 				return out
 			}
 			if b, err := readCrewTeamLocal(dir); err == nil {
-				line, problem := crewTeamCopyLine(b)
+				line, problem := crewTeamCopyLine(b, t.Folder)
 				out.Line, out.Problem = line+" · "+clashLine, out.Problem || problem
 				return out
 			}
@@ -614,12 +614,12 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 
 // crewTeamCopyLine is one copy's sync state in plain words, and whether it is a problem: the one line the Mac app and
 // the website show (a Mac's own copy from its status, a member's server copy from the Team tab), with what it leaves out.
-func crewTeamCopyLine(b crewTeamLocal) (string, bool) {
+func crewTeamCopyLine(b crewTeamLocal, folder crewTeamFolder) (string, bool) {
 	line, problem := crewTeamCopyState(b)
 	if b.Root != "" {
 		op := b.onPurpose()
 		skipped := 0
-		for _, rel := range crewTeamSkipped(b.Root) {
+		for _, rel := range crewTeamSkipped(b.Root, folder) {
 			if !op[rel] {
 				skipped++
 			}
