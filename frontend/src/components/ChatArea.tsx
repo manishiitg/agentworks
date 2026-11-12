@@ -277,6 +277,7 @@ function handleLiveStreamingEvent(
       chatStore.clearDelegationStreamingText(scope.id)
     } else if (scope.kind === 'session') {
       chatStore.clearStreamingText(actualSessionId)
+      chatStore.setStreamingGeneration(actualSessionId, event.generation_id, event.generation_start_sequence)
     } else if (scope.kind === 'workshop' && scope.id) {
       chatStore.clearExecutionStreamingText(scope.id)
     }
@@ -322,6 +323,7 @@ function handleLiveStreamingEvent(
       if (chunkIndex === 0 || chunkIndex === 1) chatStore.clearExecutionStreamingText(scope.id)
       chatStore.appendExecutionStreamingChunk(actualSessionId, scope.id, chunkIndex, content)
     } else if (scope.kind === 'session') {
+      if (event.generation_id) chatStore.setStreamingGeneration(actualSessionId, event.generation_id, event.generation_start_sequence)
       if (chunkIndex === 0 || chunkIndex === 1) chatStore.clearStreamingText(actualSessionId)
       // A whole-message narration chunk becomes its own durable row (both
       // callers push intermediateUpdateFromTranscriptChunk's result), so it
@@ -429,6 +431,7 @@ export interface ChatContentRendererProps {
   isStreaming: boolean
   isRestoring: boolean
   streamingText: string
+  streamingGeneration?: { id: string; sequence: number }
   streamingChatUIMode?: 'progressive' | 'complete'
   streamingStatus?: string
   hasOlder?: boolean
@@ -835,6 +838,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeStreamingText = useChatStore((state) =>
     activeSessionId ? state.streamingText[activeSessionId] || '' : ''
   )
+  const streamingGeneration = useChatStore(state => activeSessionId ? state.streamingGeneration[activeSessionId] : undefined)
   const streamingChatUIMode = useChatStore(state => activeSessionId ? state.streamingChatUIMode[activeSessionId] : undefined)
   const streamingStatus = useChatStore((state) =>
     activeSessionId ? state.streamingStatus[activeSessionId] || '' : ''
@@ -1822,13 +1826,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       const isForegroundSession = isForegroundSessionEvent(event, rawComponent, rawCorrelationId)
       const runtimeScope = getRuntimeEventScope(event)
       const isSubAgentEvent = !isForegroundSession || runtimeScope.kind !== 'session'
-
-      // A message steered into a running answer: the text already streamed stays above it. The live buffer
-      // renders below every row, so freeze it as its own reply row dated just before the message.
-      if (!isSubAgentEvent && event.type === 'user_message' && (innerData?.metadata as Record<string, unknown> | undefined)?.source === 'coding_agent_live_input' && event.timestamp) {
-        const frozen = chatStore.freezeStreamingTextBefore(actualSessionId, event.timestamp)
-        if (frozen) newEvents.push(frozen)
-      }
 
       // Skip backend user_message events when we already have a frontend-created one
       // (avoids duplicate user message bubbles in the chat). Internal
@@ -3693,6 +3690,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             // A tab whose history is still loading shows the loading state, not a blank pane (owner, 2026-10-28).
             isRestoring={multiAgentSurface === 'restoring' || activeHistoryPending || (isLoadingHistory && transcriptEvents.length === 0)}
             streamingText={activeStreamingText}
+                    streamingGeneration={streamingGeneration}
             streamingChatUIMode={streamingChatUIMode}
             streamingStatus={streamingStatus}
             hasOlder={historyPagination?.hasMore ?? false}
@@ -3765,6 +3763,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
+                    streamingGeneration={streamingGeneration}
                     streamingChatUIMode={streamingChatUIMode}
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
@@ -3836,6 +3835,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
+                    streamingGeneration={streamingGeneration}
                     streamingChatUIMode={streamingChatUIMode}
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}

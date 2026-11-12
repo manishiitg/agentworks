@@ -26,6 +26,7 @@ import { ChatElementDisclosureContext } from './ui/ChatElement'
 import { failureHints, normalizeProductChatFailure } from '../platform/chat/productChatFailure'
 import {
   buildTranscriptItems,
+  transcriptServerPosition,
   collapseTurnFailures,
   turnFailureText,
   internalTranscriptMessageTitle,
@@ -1158,6 +1159,7 @@ interface TerminalEventTranscriptProps {
    * individual protocol events, but belongs in the readable live transcript. */
   streamingChatUIMode?: 'progressive' | 'complete'
   streamingText?: string
+  streamingGeneration?: { id: string; sequence: number }
   streamingStatus?: string
   /** Optional product skin for the transcript backdrop. AgentWorks keeps its
    * existing default; product surfaces can use their own visual identity. */
@@ -1196,6 +1198,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   onRetry,
   streamingChatUIMode = 'complete',
   streamingText = '',
+  streamingGeneration,
   streamingStatus = '',
   surfaceClassName,
   toolLayout,
@@ -1235,10 +1238,19 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // context_cancelled is the agent library's debug event, emitted once per
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
-  const items = useMemo<TranscriptRenderItem[]>(
+  const rawItems = useMemo<TranscriptRenderItem[]>(
     () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined),
     [scoped, questions, searchable, showThinking],
   )
+  const items = useMemo(() => {
+    const completed = new Map<string, string>()
+    for (const item of rawItems) {
+      if (item.kind === 'event' && item.event.generation_id && isAgentResponseEvent(item.event)
+        && transcriptEventPayload(item.event).restored_intermediate_update !== true) completed.set(item.event.generation_id, item.key)
+    }
+    return rawItems.map(item => item.kind === 'event' && item.event.generation_id && completed.get(item.event.generation_id) === item.key
+      ? { ...item, key: `generation:${item.event.generation_id}` } : item)
+  }, [rawItems])
   const replyIds = useMemo(() => new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : [])), [items])
   const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], replyIds), [events, replyIds])
   const linkedPullRequests = useMemo(() => replyPullRequestsByMessage(events ?? [], replyIds), [events, replyIds])
@@ -1248,13 +1260,30 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     item.kind === 'event' && (item.event.type === 'user_message' || isAgentResponseEvent(item.event) || turnFailureText(item.event)),
   ), [items])
   const [isAtTranscriptEnd, setIsAtTranscriptEnd] = useState(true)
-  const listData = useMemo<TranscriptRenderItem[]>(
-    () => ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
+  const listData = useMemo<TranscriptRenderItem[]>(() => {
+    const completed = streamingGeneration ? [...items].reverse().find(item => item.kind === 'event'
+      && item.event.generation_id === streamingGeneration.id && isAgentResponseEvent(item.event)
+      && transcriptEventPayload(item.event).restored_intermediate_update !== true) : undefined
+    // A real generation completion replaces its live carrier under the same
+    // row key. Intermediate narration remains separately journalled as before.
+    if (completed) return items
+    const showLive = ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
       || (runtimeActivity?.state !== undefined && runtimeActivity.state !== 'ready' && (!items.length || isUserItem(items.at(-1))))
-      ? [...items, { kind: 'live' as const, key: '__live-stream__', text: streamingText, status: streamingStatus }]
-      : items,
-    [items, streamingStatus, streamingText, runtimeActivity?.state],
-  )
+    if (!showLive) return items
+    const live: TranscriptRenderItem = { kind: 'live', key: streamingGeneration ? `generation:${streamingGeneration.id}` : '__live-stream__', text: streamingText, status: streamingStatus }
+    if (!streamingGeneration) return [...items, live]
+    const at = items.findIndex(item => {
+      if (item.kind === 'live') return false
+      const first = item.kind === 'event' ? item.event : item.events[0]
+      if (!first) return false
+      const position = transcriptServerPosition(first)
+      if (position !== undefined) return position > streamingGeneration.sequence
+      return item.kind === 'event' && item.event.type === 'user_message'
+        && transcriptEventPayload(item.event).metadata != null
+        && (transcriptEventPayload(item.event).metadata as Record<string, unknown>).provisional === true
+    })
+    return at < 0 ? [...items, live] : [...items.slice(0, at), live, ...items.slice(at)]
+  }, [items, streamingGeneration, streamingStatus, streamingText, runtimeActivity?.state])
   const searchRows = useCallback(() => listData.map(item => ({ key: item.key, text: item.kind === 'working'
     ? item.steps.map(transcriptSearchText).join('\n')
     : item.kind === 'live' ? item.text : transcriptSearchText(item) })), [listData])

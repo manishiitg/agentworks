@@ -1116,6 +1116,10 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		es.nextSequence[sessionID] = event.Sequence
 	}
 
+	if event.GenerationID != "" && (event.Type == "streaming_start" || event.Type == "llm_generation_end" || event.Type == "agent_end" || event.Type == "unified_completion") {
+		log.Printf("[CHAT_GENERATION] session=%s type=%s row=%s generation=%s start_sequence=%d append_sequence=%d", sessionID, event.Type, event.ID, event.GenerationID, event.GenerationStartSequence, event.Sequence)
+	}
+
 	// A replacing terminal snapshot supersedes the previous one of its terminal (event_memory.go).
 	es.supersedeTerminalSnapshot(sessionID, event)
 
