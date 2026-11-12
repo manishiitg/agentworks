@@ -39,6 +39,7 @@ type crewAccessFacts struct {
 	TeamKnown bool
 	// PeopleUnknown: the Team is on but its people could not be read yet; the line names no count rather than 0.
 	PeopleUnknown bool
+	SuppressLive  bool // kept people labels are not a fresh activity claim
 	Team          *crewTeam
 	People        []crewTeamAgentsPerson // everyone in the Team with their in-team agents (crew_team_agents.go)
 	Agents        []macSharedAgent
@@ -113,7 +114,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		}
 		for _, agent := range person.Agents {
 			// Activity must never reveal an Only me agent, including the viewer's.
-			if !agent.InTeam || (agent.Activity != "running" && agent.Activity != "waiting") {
+			if f.SuppressLive || !agent.InTeam || (agent.Activity != "running" && agent.Activity != "waiting") {
 				continue
 			}
 			label := name + "'s " + agent.Name
@@ -266,6 +267,7 @@ type crewAccessRemote struct {
 	last    time.Time
 	// peopleRead: people came from a good /agents read (this one or an earlier one); without it the count is unknown.
 	peopleRead bool
+	liveRead   bool // current /agents attempt succeeded (not just kept labels)
 }
 
 // crewAccessTreeFor builds the tree where this server stands, like crewAccessSummaryFor.
@@ -320,6 +322,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 	if remote.team != nil {
 		f.TeamKnown, f.Team, f.People, f.Clashes, f.LastChange = true, remote.team, remote.people, remote.clashes, remote.last
 		f.PeopleUnknown = remote.team.On && !remote.peopleRead
+		f.SuppressLive = !remote.liveRead
 		if dir, err := crewTeamLocalDir(owner, c, b.PeerProjectID, remote.team.Folder.ID); err == nil {
 			f.Progress = crewTeamRoundFor(dir)
 			if local, err := readCrewTeamLocal(dir); err == nil {
@@ -356,6 +359,7 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 	var t crewTeam
 	route := "/api/crew-teams/" + url.PathEscape(peer)
 	if !read("team", route, &t) {
+		prev.liveRead = false
 		return prev
 	}
 	out.team = &t
@@ -365,7 +369,7 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 			People []crewTeamAgentsPerson `json:"people"`
 		}
 		if read("agents", route+"/agents", &agents) {
-			out.people, out.peopleRead = agents.People, true
+			out.people, out.peopleRead, out.liveRead = agents.People, true, true
 		}
 	}
 	if t.FolderAccess && t.Folder.ID != "" {

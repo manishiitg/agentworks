@@ -41,4 +41,12 @@ func TestCrewTeamCardShowsOnlyLiveSharedAgentsAndProblems(t *testing.T) {
 	if live != 3 || problems != 2 {
 		t.Fatalf("want three live rows and just open problems: %+v", lines)
 	}
+	// Retained people labels after a failed Mac read must not claim live work.
+	facts.SuppressLive = true
+	for _, line := range crewAccessTree(facts) {
+		if line.Kind == "team_live" {
+			t.Fatal("last-good people must not produce live activity after a failed read")
+		}
+	}
+
 }
