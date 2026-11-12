@@ -66,6 +66,15 @@ func TestCrewFilesMoveIntoAgentworksOnce(t *testing.T) {
 		t.Fatalf("a refused move changed files: %v", err)
 	}
 	os.RemoveAll(filepath.Join(crew, ".agentworks/runs"))
+	// A clash through an earlier planned move names the file that really holds
+	// the other copy: the private database and the Crew folder's db/ both go to .agentworks/db.
+	write(filepath.Join(crew, "db/db.sqlite"), "other db")
+	if _, _, err := MigrateToAgentworks(docs); err == nil {
+		t.Fatal("two different databases were merged")
+	} else if msg := err.Error(); !strings.Contains(msg, filepath.Join(private, "db/db.sqlite")+" (12 bytes") || !strings.Contains(msg, filepath.Join(crew, "db/db.sqlite")+" (8 bytes") || strings.Contains(msg, ".agentworks/db/db.sqlite") {
+		t.Fatalf("refusal does not name both real database files: %v", err)
+	}
+	os.Remove(filepath.Join(crew, "db/db.sqlite"))
 
 	count, journal, err := MigrateToAgentworks(docs)
 	if err != nil || count == 0 {
