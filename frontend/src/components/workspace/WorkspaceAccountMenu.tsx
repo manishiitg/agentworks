@@ -20,8 +20,8 @@ export function WorkspaceAccountMenu() {
   if (!user) return null
   const name = multiUser ? user.username || user.email || 'Your account' : 'Local account'
   const trigger = <>
-    <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">{name.trim().charAt(0).toUpperCase() || '?'}</span>
-    <span className="flex min-w-0 flex-1 flex-col text-left"><span className="truncate text-xs font-medium text-foreground">{name}</span><span className="text-[11px] text-muted-foreground">Account &amp; settings</span></span>
+    <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">{name.trim().charAt(0).toUpperCase() || '?'}</span>
+    <span className="min-w-0 flex-1 truncate text-left text-xs font-medium text-foreground">{name}</span>
   </>
   return <ProductSettingsMenu accountTrigger={trigger} aboveTrigger={<GetApp compact={!sidebarTarget} />}>
     <AccountControl menuOnly>
