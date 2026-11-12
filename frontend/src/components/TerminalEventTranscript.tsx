@@ -1252,7 +1252,24 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     return rawItems.map(item => item.kind === 'event' && item.event.generation_id && completed.get(item.event.generation_id) === item.key
       ? { ...item, key: `generation:${item.event.generation_id}` } : item)
   }, [rawItems])
-  const replyIds = useMemo(() => new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : [])), [items])
+  const replyAliases = useMemo(() => {
+    const aliases = new Map<string, string[]>()
+    const nativeRows = new Map<string, string>()
+    for (const item of items) {
+      if (item.kind !== 'event' || !isAgentResponseEvent(item.event)) continue
+      aliases.set(item.event.id, [item.event.id])
+      if (item.event.generation_id) nativeRows.set(item.event.generation_id, item.event.id)
+    }
+    // Change reviews and PR links still belong to the canonical completion.
+    // Attach them to its explicit native reply carrier, never match prose.
+    for (const event of scoped) {
+      if (!event.reply_blocks_complete || !event.generation_id || aliases.has(event.id)) continue
+      const row = nativeRows.get(event.generation_id)
+      if (row) aliases.get(row)?.push(event.id)
+    }
+    return aliases
+  }, [items, scoped])
+  const replyIds = useMemo(() => new Set([...replyAliases.values()].flat()), [replyAliases])
   const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], replyIds), [events, replyIds])
   const linkedPullRequests = useMemo(() => replyPullRequestsByMessage(events ?? [], replyIds), [events, replyIds])
   // Retry belongs to the latest human turn, never an older failed message
@@ -1504,8 +1521,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                 />
               )
           const match = searchMatch?.key === item.key ? searchMatch.query : null
-          const changeRef = item.kind === 'event' ? fileChanges.get(item.event.id) : undefined
-          const linkedPRs = item.kind === 'event' ? linkedPullRequests.get(item.event.id) : undefined
+          const origins = item.kind === 'event' ? replyAliases.get(item.event.id) || [item.event.id] : []
+          const changeRef = origins.map(id => fileChanges.get(id)).find(Boolean)
+          const linkedPRs = origins.map(id => linkedPullRequests.get(id)).find(Boolean)
           const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}{linkedPRs && item.kind === 'event' && <ReplyLinkedPullRequests pullRequests={linkedPRs} sessionId={item.event.session_id || terminal?.session_id || ''} cardGroups={changeRef?.summary?.groups} />}</SearchMatchContext.Provider>
           const matchStyle = match ? 'ring-1 ring-inset ring-yellow-400/70 bg-yellow-400/5' : ''
           if (!slot?.agent) {
