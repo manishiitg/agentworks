@@ -42,6 +42,9 @@ func TestPythonCrewFileReadIsFreshScopedAndKeepsRawSandboxClosed(t *testing.T) {
 	const root = "Workflow/files"
 	crew := filepath.Join(docs, "Crew/example")
 	private := filepath.Join(docs, "_system/crew-data/crew")
+	// The knowledge base and records live in the Crew's .agentworks; the run stays private.
+	automation := filepath.Join(crew, ".agentworks")
+	settings := filepath.Join(automation, "settings")
 	runtime := filepath.Join(private, "workflows/task")
 	code, output := filepath.Join(runtime, "runs/run-one/source"), filepath.Join(runtime, "runs/run-one/execution/task")
 	for _, dir := range []string{crew, output} {
@@ -51,31 +54,31 @@ func TestPythonCrewFileReadIsFreshScopedAndKeepsRawSandboxClosed(t *testing.T) {
 	}
 	write(filepath.Join(state, "ownership/projects.json"), `{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`)
 	write(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(root)))), `{"id":"task","crew_id":"crew","crew_root":"Crew/example","workspace_path":"Workflow/files","kind":"script","runtime_root":"workflows/task"}`)
-	note := filepath.Join(private, "knowledgebase/notes/owner-handled.md")
+	note := filepath.Join(automation, "knowledgebase/notes/owner-handled.md")
 	write(note, "first")
 	write(filepath.Join(crew, "notes/visible.md"), "current resource")
 	for _, name := range []string{"service-account-prod.json", "credentials.yaml", "auth.json", "_files/auth.json", "knowledgebase/notes/credentials.yaml"} {
 		base := crew
 		if strings.HasPrefix(name, "knowledgebase/") {
-			base = private
+			base = automation
 		}
 		write(filepath.Join(base, name), "must not be returned")
 	}
-	write(filepath.Join(private, "knowledgebase/notes/big.md"), strings.Repeat("x", pythonCrewFileLimit+1))
-	write(filepath.Join(private, "knowledgebase/notes/binary.md"), string([]byte{0xff}))
-	write(filepath.Join(private, "knowledgebase2/private.md"), "must not be returned")
-	write(filepath.Join(private, "Knowledgebase/private.md"), "must not be returned")
-	write(filepath.Join(private, "knowledgebase/notes/huge.md"), "")
-	if err := os.Truncate(filepath.Join(private, "knowledgebase/notes/huge.md"), 1<<30); err != nil {
+	write(filepath.Join(automation, "knowledgebase/notes/big.md"), strings.Repeat("x", pythonCrewFileLimit+1))
+	write(filepath.Join(automation, "knowledgebase/notes/binary.md"), string([]byte{0xff}))
+	write(filepath.Join(automation, "knowledgebase2/private.md"), "must not be returned")
+	write(filepath.Join(automation, "Knowledgebase/private.md"), "must not be returned")
+	write(filepath.Join(automation, "knowledgebase/notes/huge.md"), "")
+	if err := os.Truncate(filepath.Join(automation, "knowledgebase/notes/huge.md"), 1<<30); err != nil {
 		t.Fatal(err)
 	}
-	write(filepath.Join(private, "workflow.json"), `{"private":true}`)
+	write(filepath.Join(settings, "workflow.json"), `{"private":true}`)
 	outside := filepath.Join(docs, "Crew/other/private-note.md")
 	write(outside, "must not be returned")
-	if err := os.Symlink(outside, filepath.Join(private, "knowledgebase/notes/link.md")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(automation, "knowledgebase/notes/link.md")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Dir(outside), filepath.Join(private, "knowledgebase/linked")); err != nil {
+	if err := os.Symlink(filepath.Dir(outside), filepath.Join(automation, "knowledgebase/linked")); err != nil {
 		t.Fatal(err)
 	}
 	source := `from pathlib import Path
@@ -134,9 +137,9 @@ print('fresh-own-Crew-read-and-refusals-ok')
 		case 1:
 			write(note, "second")
 		case 2:
-			write(filepath.Join(private, "workflow.json"), `{"knowledgebase_mode":"shared"}`)
+			write(filepath.Join(settings, "workflow.json"), `{"knowledgebase_mode":"shared"}`)
 		case 4:
-			write(filepath.Join(private, "workflow.json"), `{"private":true}`)
+			write(filepath.Join(settings, "workflow.json"), `{"private":true}`)
 		}
 		for key, values := range reply.Header() {
 			w.Header()[key] = values
