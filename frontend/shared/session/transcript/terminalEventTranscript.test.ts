@@ -560,7 +560,7 @@ describe('buildTranscriptItems', () => {
     expect((items[1] as Extract<TranscriptItem, { kind: 'tools' }>).toolCount).toBe(2)
   })
 
-  // PLAT-746-894: Codex wrote its reply while a command was still running;
+  // PLAT-746-898: Codex wrote its reply while a command was still running;
   // the command's end landed after the text and its card lost its input.
   it('attaches a tool end that arrives after reply text to the card holding its start', () => {
     const call = { tool_call_id: 'exec-1', tool_name: 'exec_command' }
