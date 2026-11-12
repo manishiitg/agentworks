@@ -443,8 +443,9 @@ type StreamingAPI struct {
 	// Note: Removed session management - fresh agents created per request
 
 	// Agent cancel functions for proper context cancellation: sessionID -> context.CancelFunc
-	agentCancelFuncs map[string]context.CancelFunc
-	agentCancelMux   sync.RWMutex
+	agentCancelFuncs    map[string]context.CancelFunc
+	agentCancelMux      sync.RWMutex
+	shutdownTurnCancels sync.Map // session -> context.CancelCauseFunc; Stop keeps its own cause
 
 	// Workflow orchestrator sessions: sessionID -> orchestrator.Orchestrator
 
@@ -3311,6 +3312,12 @@ func (api *StreamingAPI) cancelActiveWorkForShutdown() {
 		return
 	}
 
+	// Set the cause before ordinary cancel funcs run. Context cancellation keeps
+	// its first cause, so an earlier person Stop never becomes a restart.
+	api.shutdownTurnCancels.Range(func(_, value interface{}) bool {
+		value.(context.CancelCauseFunc)(errAppRestart)
+		return true
+	})
 	var agentCancels []context.CancelFunc
 	api.agentCancelMux.Lock()
 	for sessionID, cancelFunc := range api.agentCancelFuncs {
@@ -7005,7 +7012,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			costSourceOption(req),
 			costobserver.WithProductAttribution(turnCostAttribution),
 		)
-		if err := llmAgent.AddObserver(eventObserver); err != nil {
+		if err := llmAgent.AddObserver(&restartAwareEventObserver{EventObserver: eventObserver}); err != nil {
 			sendError(fmt.Sprintf("Failed to attach event observer: %v", err), true)
 			return
 		}
@@ -7258,6 +7265,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// This prevents the agent from being canceled when the HTTP request ends
 		agentCtx, cancelTurn := context.WithCancelCause(streamCtx)
 		agentCancel = func() { cancelTurn(context.Canceled) }
+		api.shutdownTurnCancels.Store(sessionID, cancelTurn)
+		defer api.shutdownTurnCancels.Delete(sessionID)
 		stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, queryID, time.Now(), nil, func(reason error) bool {
 			if releaseAnsweredCodingTurn(sessionID) {
 				return true
@@ -7659,6 +7668,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				turnStatus = trackedExecutionStatusFailed
 				api.updateSessionStatus(sessionID, "error")
 				api.emitIdleTurnFailure(sessionID, queryID)
+			} else if errors.Is(context.Cause(agentCtx), errAppRestart) && api.eventStore != nil &&
+				(api.eventStore.TurnInProgress(sessionID) || api.storedRestartInterruption(sessionID)) {
+				api.emitInterruptedTurnEnd(sessionID, "app_restart")
 			} else if api.eventStore != nil && api.eventStore.TurnInProgress(sessionID) {
 				// Prefer the SDK's own terminal event. If cancellation released
 				// the consumer first, record an interrupted end so the UI settles.
