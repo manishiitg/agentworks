@@ -902,6 +902,16 @@ func (api *StreamingAPI) recentMacAsks(project string) []macAskActivity {
 	return out
 }
 
+// crewOwnTeamAgentMessage: the sender is one of the destination owner's own agents of the same Crew (not a Run person,
+// not another Crew), the Team is on and the destination agent is In team.
+func crewOwnTeamAgentMessage(project, tab string, source, dest agentMessageEndpoint) bool {
+	if source.ID != project || !crewOwnAgentMessage(dest, source) {
+		return false
+	}
+	t, err := liveCrewTeam(project)
+	return err == nil && t.On && t.OwnerID == dest.UserID && t.agentInTeam(dest.UserID, tab)
+}
+
 // macAgentReplyWindow bounds how long the server waits for a Mac agent's answer to another person's message.
 const macAgentReplyWindow = 30 * time.Minute
 
@@ -912,7 +922,11 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return api.deliverToMemberMacAgent(ctx, c, m, source, dest)
 	}
 	tab := macSharedAgentTab(dest.ID, dest.ChatKey)
-	if _, reason := macSharedAgentForAgent(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
+	// Your own agent of this Crew messaging your other In team agent on your Mac (owner, 12 Nov: an agent's online copy
+	// and its Mac original talk through Team messaging). A teammate's agent keeps the Team audience check below.
+	if crewOwnTeamAgentMessage(dest.ID, tab, source, dest) {
+		log.Printf("[CREW_TEAM] project=%s event=own_agent_message tab=%q", dest.ID, tab)
+	} else if _, reason := macSharedAgentForAgent(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s tab=%q action=message refused reason=%s sender_agent=%s user=%s", dest.ID, tab, reason, source.NamedAgentID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")
 	}

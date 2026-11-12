@@ -472,12 +472,15 @@ func crewMemberMacTarget(project, key string) (string, string, bool) {
 
 // crewMemberMacAgentFor is a member's Mac agent the caller may message: the caller is in the Team, not that member,
 // and the agent is not Only me.
-func crewMemberMacAgentFor(ctx context.Context, project, key, caller string) (string, crewMacTeamTab, bool) {
+// own: the message comes from one of the member's own agents of this Crew (crewOwnAgentMessage); it reaches their own
+// agent only while that agent is In team (owner, 12 Nov: an agent and its online copy talk through Team messaging).
+func crewMemberMacAgentFor(ctx context.Context, project, key, caller string, own bool) (string, crewMacTeamTab, bool) {
 	person, tab, ok := crewMemberMacTarget(project, key)
-	if !ok || caller == person {
+	if !ok || caller == person && !own {
 		return "", crewMacTeamTab{}, false
 	}
-	if t, err := readCrewTeam(project); err != nil || !t.member(caller) {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.member(caller) || caller == person && !t.agentInTeam(person, tab) {
 		return "", crewMacTeamTab{}, false
 	}
 	for _, t := range crewMacTabsFor(ctx, person, project, caller) {
@@ -497,7 +500,7 @@ const crewMemberMacOffLine = "Their Mac is off and their agent can't answer from
 // that has a standby copy answers from the server AS THE MEMBER (crew_standby_runas.go); otherwise the message waits
 // for the Mac.
 func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
-	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID)
+	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID, source.ID == dest.ID && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
 	if !ok {
 		log.Printf("[CREW_TEAM] project=%s event=member_mac_message refused user=%s", dest.ID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")

@@ -25,7 +25,7 @@ func TestCrewTeamTargetFailureKeepsInternalDetailsPrivate(t *testing.T) {
 func TestCrewTeamMessageRejectsStaleAddressWithRefresh(t *testing.T) {
 	for _, id := range []string{"example:chat:side", "example:chat:mac-main", "old-tab"} {
 		w := httptest.NewRecorder()
-		_, _, ok := (&StreamingAPI{}).crewTeamMessageTarget(w, httptest.NewRequest("POST", "/", nil), "example", id, &UserClaims{UserID: "member"})
+		_, _, ok := (&StreamingAPI{}).crewTeamMessageTarget(w, httptest.NewRequest("POST", "/", nil), "example", id, "", &UserClaims{UserID: "member"})
 		if ok || w.Code != 409 || !strings.Contains(w.Body.String(), "stale_team_address") || !strings.Contains(w.Body.String(), "list_agents") {
 			t.Fatalf("stale address %q: status=%d body=%s", id, w.Code, w.Body.String())
 		}
