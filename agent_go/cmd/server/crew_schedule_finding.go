@@ -1,10 +1,13 @@
 package server
 
 import (
-	"context"
+	"crypto/subtle"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A schedule run's finding is an explicit team_sync call (action=finding), like
@@ -23,18 +26,21 @@ func beginCrewScheduleTurn(sessionID string, job productScheduleJob) (end func()
 	return func() { crewScheduleTurns.Delete(sessionID) }
 }
 
-func (api *StreamingAPI) postCrewTeamFinding(ctx context.Context, caller *UserClaims, localProject, project, sessionID, sourceKey, line string) (string, error) {
+const crewFindingRefusal = "Findings come from scheduled runs; use decision or doing instead."
+
+// crewScheduleTurnName is the schedule that started this session's current turn, for this person and Crew.
+func crewScheduleTurnName(sessionID, localProject, user string) (string, error) {
 	turn, ok := crewScheduleTurns.Load(sessionID)
 	st, _ := turn.(crewScheduleTurn)
-	if !ok || st.Project != localProject || st.UserID != caller.UserID || project != localProject || IsLocalMode() {
-		return "", fmt.Errorf("Findings come from scheduled runs; use decision or doing instead.")
+	if !ok || st.Project != localProject || st.UserID != user {
+		return "", fmt.Errorf("%s", crewFindingRefusal)
 	}
-	agentID, err := api.crewTeamActivityAgentForSession(ctx, caller, nil, localProject, project, sessionID, sourceKey)
-	if err != nil {
-		return "", err
-	}
-	if _, err := writeCrewTeamActivityPost(ctx, project, caller.UserID, agentID, "finding", line, "", st.Name); err != nil {
-		return "", fmt.Errorf("Could not post. Use one short line, and only an In team agent can post.")
-	}
-	return "Posted to the Team as a finding from " + st.Name + ".", nil
+	return st.Name, nil
+}
+
+// crewMacPairSent: the call carries this Crew's pair ID, so it is the owner's Mac speaking for its own Crew.
+func crewMacPairSent(r *http.Request, project string) bool {
+	b, err := crewroot.ReadSync(project)
+	sent := r.Header.Get(crewMacPairHeader)
+	return err == nil && b != nil && b.PairID != "" && sent != "" && subtle.ConstantTimeCompare([]byte(sent), []byte(b.PairID)) == 1
 }

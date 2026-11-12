@@ -69,9 +69,6 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			project = manifest.ID
 		}
 
-		if action == "finding" {
-			return api.postCrewTeamFinding(ctx, caller, manifest.ID, project, sessionID, sourceKey, externalArg(args, "line"))
-		}
 		if sharedSender != "" && project != manifest.ID && action != "doing" && action != "decision" {
 			return "", fmt.Errorf("This shared agent uses only this project's team. Open your own chat for another team")
 		}
@@ -115,7 +112,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				project = b.PeerProjectID
 			}
 		}
-		if (action == "doing" || action == "decision") && project != currentTeamProject {
+		if (action == "doing" || action == "decision" || action == "finding") && project != currentTeamProject {
 			return "", fmt.Errorf("Post as your current agent in this Crew's Team, not another Crew")
 		}
 		if action == "configure" || action == "directory" || action == "people" {
@@ -146,6 +143,25 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			}
 			op, method = "activity-posts", http.MethodPost
 			body, _ = json.Marshal(map[string]any{"kind": action, "agent_id": agentID, "line": externalArg(args, "line"), "why": externalArg(args, "why")})
+		case "finding":
+			// Only a schedule's own turn; the schedule name comes from the server's record of that turn, never from the model.
+			name, err := crewScheduleTurnName(sessionID, manifest.ID, caller.UserID)
+			if err != nil {
+				return "", err
+			}
+			agentID, err := api.crewTeamActivityAgentForSession(ctx, caller, connection, manifest.ID, project, sessionID, sourceKey)
+			if err != nil {
+				return "", err
+			}
+			if connection == nil {
+				if _, err := writeCrewTeamActivityPost(ctx, project, caller.UserID, agentID, "finding", externalArg(args, "line"), "", name); err != nil {
+					return "", fmt.Errorf("Could not post. Use one short line, and only an In team agent can post.")
+				}
+				return "Posted to the Team as a finding from " + name + ".", nil
+			}
+			// A Mac Crew's Team is on the server: the Mac posts through the same route with its pair header.
+			op, method = "activity-posts", http.MethodPost
+			body, _ = json.Marshal(map[string]any{"kind": "finding", "agent_id": agentID, "line": externalArg(args, "line"), "schedule": name})
 		case "decisions":
 			op = "activity-posts"
 		case "status":

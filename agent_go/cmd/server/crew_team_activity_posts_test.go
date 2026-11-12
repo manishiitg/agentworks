@@ -12,6 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"path/filepath"
 )
 
@@ -143,11 +144,31 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if _, err := reg.exec(ctx, map[string]any{"action": "doing", "project": "another-crew", "line": "Wrong Crew"}); err == nil {
 		t.Fatal("tool posted across Crews")
 	}
-	forged, _ := json.Marshal(map[string]any{"kind": "finding", "agent_id": own, "line": "Not a schedule run", "schedule": "Forged schedule"})
+	forged, _ := json.Marshal(map[string]any{"kind": "finding", "agent_id": own, "line": "Mac checked item", "schedule": "Mac schedule"})
 	w := httptest.NewRecorder()
 	f.api.handleCrewTeamActivityPosts(w, adminRequest(http.MethodPost, "/api/crew-teams/team/activity-posts", string(forged), &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
-	if w.Code != 400 {
-		t.Fatal("agent-facing route forged an automatic schedule finding")
+	if w.Code != 403 || !strings.Contains(w.Body.String(), "Findings come from scheduled runs") {
+		t.Fatalf("agent-facing route forged a schedule finding: %d %s", w.Code, w.Body.String())
+	}
+	// A Mac Crew's schedule run posts through this route with the Crew's pair header (PLAT-856-564).
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	macPost := func(pair string) *httptest.ResponseRecorder {
+		r := adminRequest(http.MethodPost, "/api/crew-teams/team/activity-posts", string(forged), &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"})
+		r.Header.Set(crewMacPairHeader, pair)
+		w := httptest.NewRecorder()
+		f.api.handleCrewTeamActivityPosts(w, r)
+		return w
+	}
+	if w := macPost("wrong-pair"); w.Code != 403 {
+		t.Fatalf("finding with a wrong pair header admitted: %d", w.Code)
+	}
+	if w := macPost("owner-pair"); w.Code != 200 {
+		t.Fatalf("Mac schedule finding refused: %d %s", w.Code, w.Body.String())
+	}
+	if posts, _ := readCrewTeamActivityPosts("team"); len(posts.Findings) != 2 || posts.Findings[1].Schedule != "Mac schedule" {
+		t.Fatalf("Mac finding not stored with its schedule: %+v", posts.Findings)
 	}
 	// Explicit posts remain stored, but do not bypass a later Only me choice.
 	saved, err := readCrewTeam("team")
