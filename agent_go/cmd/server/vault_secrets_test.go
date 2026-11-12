@@ -186,7 +186,7 @@ func TestCrewTeamMembersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 		globalSecrets, managedGlobals = oldGlobals, oldManaged
 		managedGlobalsMu.Unlock()
 	})
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
 	names := []string{"CREW_TOKEN"}
 	for _, person := range []string{"owner", "other"} {
 		ctx := internalBotRequestContext(t.Context(), person)

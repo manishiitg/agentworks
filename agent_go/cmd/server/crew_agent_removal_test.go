@@ -57,20 +57,20 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 			t.Fatal(createErr)
 		}
 		if key == "team:chat:remove" {
-			if err = store.writeMainChatPointer(ctx, externalCommandCrewState+"/product.json", key, record.SessionID); err != nil {
+			if err = store.writeMainChatPointer(ctx, externalCommandCrewSettings+"/product.json", key, record.SessionID); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 	const schedule = `{"schedules":[{"id":"daily","name":"Daily check","project":{"kind":"crew","id":"team"},"action":{"type":"message","tab":"team:chat:remove"},"input":{"messages":["Check status"]},"enabled":false}]}`
-	f.write(t, externalCommandCrewState+"/schedules.json", schedule)
+	f.write(t, externalCommandCrewSettings+"/schedules.json", schedule)
 	var workflow map[string]any
-	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/workflow.json")), &workflow); err != nil {
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/workflow.json")), &workflow); err != nil {
 		t.Fatal(err)
 	}
 	workflow["schedules"] = []any{map[string]any{"id": "script-notify", "name": "Script notification", "chat_id": "team:chat:remove", "enabled": false}}
 	rawWorkflow, _ := json.Marshal(workflow)
-	f.write(t, externalCommandCrewState+"/workflow.json", string(rawWorkflow))
+	f.write(t, externalCommandCrewSettings+"/workflow.json", string(rawWorkflow))
 	call := func(input AgentProfileConversationRequest) *httptest.ResponseRecorder {
 		t.Helper()
 		body, _ := json.Marshal(input)
@@ -91,7 +91,7 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	if len(preview.Dependencies) != 2 || preview.Dependencies[0].Name != "Daily check" {
 		t.Fatalf("missing named dependency: %+v", preview.Dependencies)
 	}
-	if f.read(t, externalCommandCrewState+"/schedules.json") != schedule || !projectChatExists(ctx, "owner", "work", "team", "team:chat:remove") {
+	if f.read(t, externalCommandCrewSettings+"/schedules.json") != schedule || !projectChatExists(ctx, "owner", "work", "team", "team:chat:remove") {
 		t.Fatal("preview changed work")
 	}
 	response = call(AgentProfileConversationRequest{ConversationKey: "team:chat:remove", RemovalConfirmation: preview.Confirmation, RemovalChoices: map[string]string{preview.Dependencies[0].ID: "team:chat:keep", preview.Dependencies[1].ID: "team:chat:keep"}})
@@ -102,7 +102,7 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 		t.Fatal("removed wrong agent")
 	}
 	var manifest productProjectManifest
-	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/product.json")), &manifest); err != nil {
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/product.json")), &manifest); err != nil {
 		t.Fatal(err)
 	}
 	if manifest.MainChatKey != "" || manifest.SessionID != "" {
@@ -114,13 +114,13 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 			Action  struct{ Tab string }
 		}
 	}
-	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/schedules.json")), &saved); err != nil {
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/schedules.json")), &saved); err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.Schedules) != 1 || saved.Schedules[0].Action.Tab != "team:chat:keep" || saved.Schedules[0].Enabled {
 		t.Fatal("linked work was lost, not reassigned, or enabled")
 	}
-	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/workflow.json")), &workflow); err != nil {
+	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/workflow.json")), &workflow); err != nil {
 		t.Fatal(err)
 	}
 	notify := workflow["schedules"].([]any)[0].(map[string]any)

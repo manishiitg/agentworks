@@ -23,6 +23,9 @@ import (
 const externalCommandCrewRoot = "Crew/test-team"
 const externalCommandCrewState = "_system/crew-data/team"
 
+// A Crew's records live in its .agentworks/settings (PLAT-746-924); chats stay in its private state.
+const externalCommandCrewSettings = externalCommandCrewRoot + "/.agentworks/settings"
+
 // Drive the MCP transport and the actual workspace file handlers against disk.
 // This catches a tool that reports success but writes outside the app's project.
 func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string) {
@@ -53,8 +56,8 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 		t.Fatal(err)
 	}
 	// PLAT-856-383: the real server keeps registered Crew records private.
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team"}`)
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team"}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner"}`)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		if c.GetHeader("X-Workspace-Token") != "crew-command-test-token" {
@@ -153,12 +156,12 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 		t.Fatalf("command update was not stored: %s", saved)
 	}
 	// Product commands are not editable through this custom-only directory.
-	productCommand := f.read(t, externalCommandCrewState+"/product.json")
+	productCommand := f.read(t, externalCommandCrewSettings+"/product.json")
 	call(map[string]any{"action": "delete", "name": "review"})
 	if _, err := os.Stat(filepath.Join(f.docs, commandPath)); !os.IsNotExist(err) {
 		t.Fatalf("deleted command still exists: %v", err)
 	}
-	if f.read(t, externalCommandCrewState+"/product.json") != productCommand {
+	if f.read(t, externalCommandCrewSettings+"/product.json") != productCommand {
 		t.Fatal("custom command operation changed the product manifest")
 	}
 }

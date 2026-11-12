@@ -30,8 +30,8 @@ func TestCrewOpeningWithoutMainUsesAuthorizedExistingAgent(t *testing.T) {
 		}
 	}
 	// A stale deleted Main pointer is not repaired or adopted.
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"team:chat:deleted"}`)
-	before := f.read(t, externalCommandCrewState+"/product.json")
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"team:chat:deleted"}`)
+	before := f.read(t, externalCommandCrewSettings+"/product.json")
 	open := func(user, key, requested string) (int, AgentProfileConversationResponse) {
 		t.Helper()
 		raw, _ := json.Marshal(AgentProfileConversationRequest{ConversationKey: key, RequestedAgent: requested})
@@ -60,7 +60,7 @@ func TestCrewOpeningWithoutMainUsesAuthorizedExistingAgent(t *testing.T) {
 	if status, _ := open("owner", "team", "team:chat:deleted"); status == 200 {
 		t.Fatal("deleted selection fell back")
 	}
-	if f.read(t, externalCommandCrewState+"/product.json") != before {
+	if f.read(t, externalCommandCrewSettings+"/product.json") != before {
 		t.Fatal("opening saved a replacement Main")
 	}
 }
