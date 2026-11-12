@@ -251,6 +251,8 @@ type crewShareSharedEntry struct {
 	Name string `json:"name"`
 	Line string `json:"line"`
 	Can  string `json:"can"`
+	// Key is a teammate agent's chat key, so its row opens that agent (owner, 12 Nov); empty for an action.
+	Key string `json:"key,omitempty"`
 }
 
 // crewShareSharedWithYou lists the agents other people share with the viewer, from the Team tab's own rows, and the
@@ -294,7 +296,7 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 			can += " · chat hidden"
 		}
 		p := person(a.OwnerID, a.OwnerName)
-		p.Items = append(p.Items, crewShareSharedEntry{Name: a.Name, Line: line, Can: "You can: " + can})
+		p.Items = append(p.Items, crewShareSharedEntry{Name: a.Name, Line: line, Can: "You can: " + can, Key: a.Key})
 	}
 	if viewer != t.OwnerID {
 		var actions []crewShareAction
