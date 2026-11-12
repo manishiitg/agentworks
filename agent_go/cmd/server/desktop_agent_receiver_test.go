@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -99,5 +103,87 @@ func TestDesktopAppVisitorCanOnlyReplyToAdmittedInbox(t *testing.T) {
 	}
 	if !desktopAppTurnMayAddress(QueryRequest{}, "network:login:agent:private") {
 		t.Fatal("owner's own turn refused")
+	}
+}
+
+// PLAT-746: own AgentBridge mail was forced into queue even while a native
+// turn could accept it. Exercise its profile request, live submission, and
+// durable no-target fallback; visitors must never reach that live path.
+func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		own      bool
+		prior    QueryRequest
+		result   string
+		wantLive bool
+	}{
+		{"own confirmed", true, QueryRequest{}, "sent_to_cli", true},
+		{"own no target", true, QueryRequest{}, "no_target", true},
+		{"own uncertain", true, QueryRequest{}, "uncertain", true},
+		{"visitor", false, QueryRequest{}, "", false},
+		{"restricted current turn", true, QueryRequest{PinRunMode: true}, "", false},
+		{"bot current turn", true, QueryRequest{BotPlatform: "slack"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := internalBotRequestContext(context.Background(), "owner")
+			api := newConversationTurnQueueTestAPI(map[string]string{})
+			api.internalChatSubmissionStore = newTestChatSubmissionStore()
+			api.lastQueryRequests = map[string]QueryRequest{"recipient": tc.prior}
+			record := ProductConversationRecord{SessionID: "recipient", ConversationKey: "crew:chat:recipient", WorkspacePath: "Chats"}
+			input := api.desktopAppMessageInput("owner", record, desktopAppIncoming{Own: tc.own}, "admitted agent message")
+			query, err := queryRequestForAgentProfileChat(routeTestProfile("example-product", true, ""), input, record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prefer := shouldTryRetainedDeliveryBeforeQueue(ctx, query, record.SessionID)
+			if prefer != tc.wantLive {
+				t.Fatalf("live-first=%t want %t", prefer, tc.wantLive)
+			}
+			calls := 0
+			api.internalLiveInputDeliver = func(w http.ResponseWriter, r *http.Request, _, _, _ string) bool {
+				calls++
+				if tc.result == "no_target" {
+					return false
+				}
+				if tc.result == "uncertain" {
+					writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
+					return true
+				}
+				_ = json.NewEncoder(w).Encode(QueryResponse{Status: queryStatusLiveInputDelivered, DeliveryStatus: "sent_to_cli"})
+				return true
+			}
+			r := httptest.NewRequest(http.MethodPost, "/api/query", nil).WithContext(ctx)
+			r.Header.Set("Idempotency-Key", "agentbridge:test:message")
+			capture := httptest.NewRecorder()
+			w, r, finish, ok := api.beginChatSubmission(capture, r, record.SessionID, "example-product", query.Query)
+			if !ok {
+				t.Fatal("submission refused")
+			}
+			handled := prefer && api.tryDeliverQueryAsLiveInput(w, r, record.SessionID, query.Query, "query-1", nil)
+			if !handled {
+				if _, _, err := api.enqueueConversationTurn(ctx, "owner", record.SessionID, query); err != nil {
+					t.Fatal(err)
+				}
+			}
+			finish()
+			wantCalls := 0
+			if tc.wantLive {
+				wantCalls = 1
+			}
+			if calls != wantCalls {
+				t.Fatalf("native attempts=%d want %d", calls, wantCalls)
+			}
+			rows, err := api.readConversationTurnQueue(ctx, "owner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantRows := 1
+			if tc.result == "sent_to_cli" || tc.result == "uncertain" {
+				wantRows = 0
+			}
+			if len(rows) != wantRows {
+				t.Fatalf("durable queued rows=%d want %d", len(rows), wantRows)
+			}
+		})
 	}
 }
