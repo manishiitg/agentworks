@@ -116,9 +116,12 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	if !hasResources {
 		t.Fatal("missing whole resource write grant")
 	}
+	// A blocked path inside the Crew folder must exist, so the launcher mounts over
+	// it, or sit inside the read-only settings/; any other missing one would split
+	// the folder and stop the CLI creating files there.
 	for _, p := range append(policy.BlockedPaths, policy.BlockedWritePaths...) {
-		if crewroot.Within(roots.Resources, p) {
-			t.Fatal("blocked descendant would split resource root", p)
+		if _, err := os.Lstat(p); crewroot.Within(roots.Resources, p) && !crewroot.Within(roots.SettingsDir(), p) && err != nil {
+			t.Fatal("missing blocked path would split the Crew folder", p)
 		}
 	}
 	common.SetSessionCrewReader(session, true)
