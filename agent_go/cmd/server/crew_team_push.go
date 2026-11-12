@@ -117,16 +117,15 @@ func pushCrewTeamBusy(project string) {
 	label := shareOwnerLabeler()
 	for _, sock := range targets {
 		everyone := crewTeamPeopleFor(t, people, sock.owner, label)
-		state, line := crewTeamBusyLine(everyone)
 		raw, _ := json.Marshal(everyone)
 		key := crewTeamBusySentKey(project, sock)
-		sent := state + "|" + line + "|" + string(raw)
+		sent := string(raw)
 		if previous, ok := crewTeamBusySent.Load(key); ok && previous.(string) == sent {
 			continue
 		}
-		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, State: state, LastLine: line, Event: raw}) == nil {
+		if sock.send(crewRelayMessage{Type: "team.busy", Project: project, Event: raw}) == nil {
 			crewTeamBusySent.Store(key, sent)
-			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s device=%s state=%q people=%s", project, logUsernameForUserID(sock.owner), sock.device, state, raw)
+			log.Printf("[CREW_TEAM] project=%s event=presence_pushed to=%s device=%s people=%d", project, logUsernameForUserID(sock.owner), sock.device, len(everyone))
 		}
 	}
 }
@@ -182,80 +181,12 @@ func crewTeamPeopleFor(t crewTeam, people []crewTeamAgentsPerson, viewer string,
 	return out
 }
 
-// crewTeamBusyLine is the row's spinner state and hover line: the others working ("A is working", "A and B are
-// working"), else the others waiting for their person.
-func crewTeamBusyLine(people []crewTeamPresence) (string, string) {
-	for _, state := range []string{"working", "waiting"} {
-		names := []string{}
-		for _, p := range people {
-			if p.State == state {
-				names = append(names, p.Name)
-			}
-		}
-		if len(names) == 0 {
-			continue
-		}
-		who, verb := names[0], "is"
-		if len(names) > 1 {
-			who, verb = strings.Join(names[:len(names)-1], ", ")+" and "+names[len(names)-1], "are"
-		}
-		if state == "working" {
-			return "running", who + " " + verb + " working"
-		}
-		return "waiting", who + " " + verb + " waiting for an answer"
-	}
-	return "", ""
-}
-
-// On the Mac: the last "who else is working" note per Crew on this Mac (the owner's Mac Crew or a member's copy).
-type crewTeamBusyNote struct {
-	State  string             `json:"state"`
-	Line   string             `json:"line"`
-	People []crewTeamPresence `json:"people,omitempty"`
-	at     time.Time
-}
-
-var crewTeamBusyNotes sync.Map // local project -> crewTeamBusyNote
-
-func noteCrewTeamBusy(project, state, line string, everyone json.RawMessage) {
-	// A Crew on a server this Mac shows from that server's list (no copy here) is kept by its server id.
-	local := firstNonEmptyTrimmed(crewLocalCopyOf(project), crewTeamRemoteNoteKey(project))
-	note := crewTeamBusyNote{State: state, Line: line, at: time.Now()}
-	_ = json.Unmarshal(everyone, &note.People)
-	log.Printf("[CREW_TEAM] project=%s local=%s event=presence_received state=%q people=%d", project, local, state, len(note.People))
-	if state == "" && len(note.People) == 0 {
-		crewTeamBusyNotes.Delete(local)
-	} else {
-		crewTeamBusyNotes.Store(local, note)
-	}
-	// The left menu re-reads its list on a sessions notice; this Crew's open Team tab re-reads on its own notice.
+// A presence change invalidates the existing views; the sidebar keeps no second
+// Team busy/people model. Agent chips and the Team page read their ordinary data.
+func noteCrewTeamBusy(project string) {
+	local := crewLocalCopyOf(project)
 	livefeed.Default.Publish(livefeed.Sessions, "")
-	if !strings.HasPrefix(local, "remote:") {
+	if local != "" {
 		publishCrewPanelChanged(local)
 	}
 }
-
-// crewTeamBusyFor is the note for a Crew on this Mac, while it is fresh (a turn never reported ended stops counting).
-func crewTeamBusyFor(local string) *crewTeamBusyNote {
-	value, ok := crewTeamBusyNotes.Load(local)
-	if !ok {
-		return nil
-	}
-	note := value.(crewTeamBusyNote)
-	// A turn never reported ended stops counting; who is online stays until the server says otherwise.
-	if time.Since(note.at) > crewActivityStale {
-		note.State, note.Line = "", ""
-		people := make([]crewTeamPresence, len(note.People))
-		for i, person := range note.People {
-			if person.State == "working" || person.State == "waiting" {
-				person.State = "online"
-			}
-			people[i] = person
-		}
-		note.People = people
-	}
-	return &note
-}
-
-// crewTeamRemoteNoteKey is the note key of a Crew that lives on a server, for that server's list on this Mac.
-func crewTeamRemoteNoteKey(project string) string { return "remote:" + project }

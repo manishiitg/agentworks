@@ -28,7 +28,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { ProjectFilterMenu, ProjectGroupsMenu, matchesMenuFilter, useMenuGroups, useMenuNetwork, type MenuFilter, type MenuNetwork } from './MenuGroups'
 
 
-type SidebarProject = { id: string; name: string; shared_line?: string; team_busy?: { state: 'running' | 'waiting' | ''; line: string; people?: { name: string; state: 'working' | 'waiting' | 'online' | 'offline'; line?: string }[] }; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
+type SidebarProject = { id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
  * 10 Nov). The personal AgentWorks agent is on the Home page only. */
@@ -167,7 +167,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
         else open(connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
       }} />
     return crew
-      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} teamBusy={project.team_busy} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
+      ? <ExpandableCrew key={key} projectId={project.id} connectionId={connection.id} selected={here && !!project.selected} initialOpen={shortcut || (here && !!project.selected)}>{row}</ExpandableCrew>
       : <Fragment key={key}>{row()}</Fragment>
   }
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
@@ -213,7 +213,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
 }
 
 /** Each expanded Crew loads its own admitted chats, including on other connections. */
-function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBusy, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; teamBusy?: SidebarProject['team_busy']; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => ReactNode }) {
+function ExpandableCrew({ projectId, connectionId, selected, initialOpen, children }: { projectId: string; connectionId: string; selected: boolean; initialOpen: boolean; children: (expanded: boolean, onToggle: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => ReactNode }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'crew', connectionId, projectId)
   const saved = useSidebarExpansionStore(state => state.expanded[key])
   const toggle = useSidebarExpansionStore(state => state.toggle)
@@ -234,9 +234,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   const sessions = (connectionId === getRawActiveWorkspaceId() ? localSessions : activity || [])
     .filter(session => session.crew_project_id === projectId)
   const running = sessions.some(hasActiveSessionWork)
-  // A teammate working here shows on the row too, from the server's note (owner, 10 Nov), with its line on hover.
-  const activityLabel = running || teamBusy?.state === 'running' ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
-  const activityTitle = !running && teamBusy?.state === 'running' ? teamBusy.line : undefined
+  const activityLabel = running ? 'Running' : sessions.some(runtimeNeedsUserInput) ? 'Needs your input' : undefined
   // This network's chat changes arrive as live notices; another network's list is checked every minute.
   const here = connectionId === getRawActiveWorkspaceId()
   const [reload, setReload] = useState(0)
@@ -289,15 +287,13 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, teamBu
   const hiddenAgents = chats.filter(chat => chat.pinned === false)
   const people = [...new Set(shown.filter(chat => chat.can_write === false && chat.tab_owner_id).map(chat => chat.tab_owner_id!))]
   const personName = (id: string) => (shown.find(chat => chat.tab_owner_id === id)?.tab_owner_name || 'Teammate').split('@')[0]
-  const presence = (name: string) => teamBusy?.people?.find(person => person.name === name)
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, activityTitle, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : people.length === 0 ? shown.map(chatRow) : <>
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : people.length === 0 ? shown.map(chatRow) : <>
       <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">You</p>
       {shown.filter(chat => !(chat.can_write === false && chat.tab_owner_id)).map(chatRow)}
       {people.map(id => {
         const name = personName(id)
-        const state = presence(name)
         return <div key={id} role="group" aria-label={`${name}'s agents`}>
-          <p title={state?.line} className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{state && <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${state.state === 'offline' ? 'bg-muted-foreground/50' : 'bg-emerald-500'}`} />}{name}</p>
+          <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{name}</p>
           {shown.filter(chat => chat.can_write === false && chat.tab_owner_id === id).map(chatRow)}
         </div>
       })}
