@@ -873,9 +873,12 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			lane.Lock()
 			steer := false
 			if dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
-				// A reply to what this chat asked, from the same person's agent, goes straight into the running turn
-				// (owner, 2026-11-11); anything else waits for the turn to end.
-				if steer = agentMessageSteerableReply(conv, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
+				// Same-person agent communications enter the running owner turn;
+				// restricted or other-person communications wait for their own turn.
+				current := conv
+				current.Endpoints[0] = api.agentMessageCallerRole(current.Endpoints[0])
+				current.Endpoints[1] = api.agentMessageCallerRole(current.Endpoints[1])
+				if steer = agentMessageSteerableReply(current, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
 					busyWaits[msg.ID]++
 					lane.Unlock()
 					time.Sleep(time.Second)
@@ -978,24 +981,28 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 	}()
 }
 
-// agentMessageSteerableReply is a reply from the agent this chat asked (the conversation's second side; the
-// asker is Endpoints[0]) when both sides act for the same person: it may enter the asker's running turn, under
-// that turn's own access. New tasks, follow-ups from the asker, other people's agents, guests, shares, network
-// messages and function calls keep their own turn and its own admission.
+// Same-person agent communications may enter an existing owner turn. Other
+// people and delegated/restricted turns retain their own admission boundary.
 func agentMessageSteerableReply(c agentConversation, m agentMessage) bool {
-	if m.From != 1 || m.Kind != "" || m.File != nil {
+	if (m.From != 0 && m.From != 1) || m.Kind != "" || m.File != nil {
 		return false
 	}
-	asker, replier := c.Endpoints[0], c.Endpoints[1]
-	return asker.UserID != "" && asker.UserID == replier.UserID && asker.Session != "" && !asker.External &&
-		asker.Guest == "" && asker.Mode != "run" && asker.ShareID == "" && replier.ShareID == "" &&
-		asker.FunctionCallID == "" && asker.ConditionJob == "" &&
-		crossPersonOwner(replier, asker.UserID) == ""
+	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
+	return dest.UserID != "" && dest.UserID == source.UserID && dest.Session != "" && !dest.External &&
+		dest.Guest == "" && dest.Mode != "run" && dest.ShareID == "" && source.ShareID == "" &&
+		source.Guest == "" && source.Mode != "run" &&
+		dest.FunctionCallID == "" && dest.ConditionJob == "" && source.FunctionCallID == "" && source.ConditionJob == "" &&
+		crossPersonOwner(source, dest.UserID) == ""
 }
 
 // steerAgentMessageReply hands an admitted reply to the asking chat's running turn. It reports false with no
 // error when the turn can no longer take input, so the caller lets the message wait for its own turn.
 func (api *StreamingAPI) steerAgentMessageReply(ctx context.Context, c agentConversation, m agentMessage) (bool, error) {
+	c.Endpoints[0] = api.agentMessageCallerRole(c.Endpoints[0])
+	c.Endpoints[1] = api.agentMessageCallerRole(c.Endpoints[1])
+	if !agentMessageSteerableReply(c, m) {
+		return false, nil
+	}
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return false, err

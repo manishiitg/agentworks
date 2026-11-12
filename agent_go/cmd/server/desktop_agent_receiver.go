@@ -334,18 +334,39 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 	}
 	idempotency := "agentbridge:" + connectionID + ":" + message.ID
 	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "sender_label": message.Sender, "sender_agent": message.Sender, "sender_channel": "AgentBridge", "display_content": message.Text, "agent_message_inbox": replyTo, "message_id": message.ID, "client_message_id": idempotency, "app_agent_reply_to": replyTo})
-	body, _ := json.Marshal(AgentProfileChatRequest{Message: text, ConversationKey: record.ConversationKey, DeliveryMode: "queue"})
+	input := api.desktopAppMessageInput(owner, record, message, text)
+	body, _ := json.Marshal(input)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 	req = mux.SetURLVars(req, map[string]string{"id": record.ProfileID})
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempotency)
 	capture := &internalResponseCapture{}
 	api.handleAgentProfileChatQuery(capture, req)
-	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s status=%d", connectionID, record.ConversationID, message.ID, capture.status)
+	var result struct {
+		Status         string `json:"status"`
+		DeliveryStatus string `json:"delivery_status"`
+	}
+	_ = json.Unmarshal(capture.body.Bytes(), &result)
+	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s status=%d live_first=%t outcome=%s delivery_status=%s", connectionID, record.ConversationID, message.ID, capture.status, input.DeliveryMode != "queue", result.Status, result.DeliveryStatus)
 	if capture.status >= 300 {
 		return fmt.Errorf("app chat did not admit the message (status %d)", capture.status)
 	}
 	return nil
+}
+
+// Called only after authenticated inbox and exact-recipient admission above.
+// Own mail may steer an unrestricted owner turn. It must not borrow a visitor,
+// bot or function turn's running runtime, or interrupt an automatic follow-up.
+func (api *StreamingAPI) desktopAppMessageInput(owner string, record ProductConversationRecord, message desktopAppIncoming, text string) AgentProfileChatRequest {
+	input := AgentProfileChatRequest{Message: text, ConversationKey: record.ConversationKey, DeliveryMode: "queue"}
+	api.lastQueryMu.RLock()
+	prior := api.lastQueryRequests[record.SessionID]
+	api.lastQueryMu.RUnlock()
+	role := api.agentMessageCallerRole(agentMessageEndpoint{UserID: owner, Kind: triggerCallerCrew, Session: record.SessionID})
+	if message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" && !api.isSyntheticTurn(record.SessionID) {
+		input.DeliveryMode = ""
+	}
+	return input
 }
 
 func desktopAppAgentRecipient(ctx context.Context, owner string, expected ProductConversationRecord) (ProductConversationRecord, error) {

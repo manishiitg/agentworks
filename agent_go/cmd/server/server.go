@@ -9400,6 +9400,10 @@ func (api *StreamingAPI) recordMCPAgentSessionLiveInputAt(sessionID, message, pr
 }
 
 func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, clientMessageID string, sessionOwnsCompletion bool, nativeTurnID string, acceptedAt time.Time, executionIDs ...string) string {
+	return api.recordAttributedRetainedLiveInput(nil, sessionID, message, provider, clientMessageID, sessionOwnsCompletion, nativeTurnID, acceptedAt, executionIDs...)
+}
+
+func (api *StreamingAPI) recordAttributedRetainedLiveInput(attribution map[string]interface{}, sessionID, message, provider, clientMessageID string, sessionOwnsCompletion bool, nativeTurnID string, acceptedAt time.Time, executionIDs ...string) string {
 	messageID := newSteerMessageID()
 	executionID := "live-turn:" + messageID
 	if len(executionIDs) > 0 && strings.TrimSpace(executionIDs[0]) != "" {
@@ -9414,7 +9418,7 @@ func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, c
 	api.lastQueryMu.RUnlock()
 	api.trackConversationTurnStart(executionID, sessionID, request)
 	api.watchCrewTurnSnapshot(executionID)
-	api.recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, "sent_to_cli", clientMessageID)
+	api.recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, "sent_to_cli", clientMessageID, attribution)
 	if sessionOwnsCompletion {
 		api.markMCPAgentSessionTurnRunningWithNativeID(sessionID, executionID, nativeTurnID, acceptedAt)
 	} else {
@@ -10387,6 +10391,7 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
 func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) (handled bool) {
+	attribution, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
 	// Not delivered: the caller starts a new turn under the same query ID, and that turn keeps the before-snapshot
 	// prepared here. Abandoning it marked every such turn's snapshot unavailable (server B 2026-10-28, PLAT-746-158).
 	defer func() {
@@ -10450,7 +10455,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
 				noteLiveInputDelivered(sessionID, string(delivery.Provider), message, withSessionMode(sessionModeFromContext(r.Context()), message))
-				messageID := api.recordMCPAgentSessionLiveInputAt(sessionID, message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, deliveryStartedAt, queryID)
+				messageID := api.recordAttributedRetainedLiveInput(attribution, sessionID, message, provider, clientMessageIDFromContext(r.Context()), true, delivery.TurnID, deliveryStartedAt, queryID)
 				api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 				w.Header().Set("Content-Type", "application/json")
 				response := QueryResponse{
@@ -10504,7 +10509,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				return true
 			}
 			noteLiveInputDelivered(sessionID, retainedProvider, message, withSessionMode(sessionModeFromContext(r.Context()), message))
-			messageID := api.recordRetainedTerminalLiveInput(sessionID, message, retainedProvider, clientMessageIDFromContext(r.Context()), queryID)
+			messageID := api.recordAttributedRetainedLiveInput(attribution, sessionID, message, retainedProvider, clientMessageIDFromContext(r.Context()), false, "", time.Time{}, queryID)
 			api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 			w.Header().Set("Content-Type", "application/json")
 			response := QueryResponse{QueryID: queryID, SessionID: sessionID, Status: queryStatusLiveInputDelivered, Message: "Delivered to retained coding-agent CLI", DeliveryStatus: "sent_to_cli", Provider: retainedProvider, DeliveryTransport: "tmux", DeliverySource: queryDeliverySourceRetainedCompatibility, MessageID: messageID}
@@ -10589,7 +10594,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		api.setSessionBusy(sessionID, false)
 		api.markRetainedMainCodingTurnRunning(sessionID, queryID)
 	}
-	api.recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageIDFromContext(r.Context()))
+	api.recordAttributedCodingAgentUserMessage(sessionID, message, provider, messageID, deliveryStatus, clientMessageIDFromContext(r.Context()), attribution)
 	api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 	log.Printf("[QUERY→LIVE] Delivered /api/query message to retained CLI for session %s status=%s: %.80s", sessionID, deliveryStatus, message)
 
