@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -105,13 +106,13 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 		defer crewRunOnlineBusy.Delete(key)
 		background := context.WithoutCancel(ctx)
 		started := time.Now()
-		copyName, err := api.runCrewAgentOnline(background, claims, connection, roots, record.SessionID, tab, name, selection, schedules)
+		copyName, note, err := api.runCrewAgentOnline(background, claims, connection, roots, record.SessionID, tab, name, selection, schedules)
 		result := "copied"
 		if err != nil {
 			result = "failed"
 		}
 		log.Printf("[CREW_RUN_ONLINE] owner=%s project=%s tab=%s result=%s schedules=%d paths=%d elapsed_ms=%d", claims.UserID, project, tab, result, len(schedules), len(selection.Paths), time.Since(started).Milliseconds())
-		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d schedule(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.", name, len(selection.Paths), len(schedules), copyName)
+		message := fmt.Sprintf("[Run online] %q is now running on the server as its own agent. It has this chat's history up to now, your memory and skills, %d chosen path(s) and %d schedule(s); this original stays on this Mac. Tell the person in one or two lines: open %q on the website to try it, and the two have separate memory and files from now on.%s", name, len(selection.Paths), len(schedules), copyName, note)
 		if err != nil {
 			message = fmt.Sprintf("[Run online] The online copy of %q did not finish: %s. Tell the person in one line what happened and what they can do.", name, err.Error())
 		}
@@ -204,11 +205,11 @@ func (api *StreamingAPI) crewRunOnlineSchedules(ctx context.Context, claims *Use
 	return ids, nil
 }
 
-func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserClaims, connection desktopConnection, roots crewroot.Roots, source, tab, name string, selection crewAgentPublishSelection, schedules []string) (string, error) {
+func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserClaims, connection desktopConnection, roots crewroot.Roots, source, tab, name string, selection crewAgentPublishSelection, schedules []string) (string, string, error) {
 	deadline := time.Now().Add(crewRunOnlineWait)
 	for api.crewAgentTurnRunning(source) {
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("its reply did not end within %s", crewRunOnlineWait)
+			return "", "", fmt.Errorf("its reply did not end within %s", crewRunOnlineWait)
 		}
 		time.Sleep(2 * time.Second)
 	}
@@ -216,7 +217,7 @@ func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserCla
 	copyName := name + crewRunOnlineSuffix
 	fork, err := api.forkCrewTab(ctx, crewAgentPublishKey(roots.ID, tab), copyName)
 	if err != nil {
-		return copyName, err
+		return copyName, "", err
 	}
 	copyName = fork.Name
 	// Point the chosen schedules at the copy: the publish moves them with it and switches them off here.
@@ -224,7 +225,7 @@ func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserCla
 	if len(schedules) > 0 {
 		all, e := readProjectSchedules(ctx, roots.Virtual)
 		if e != nil {
-			return copyName, e
+			return copyName, "", e
 		}
 		before = slices.Clone(all)
 		for i := range all {
@@ -233,7 +234,7 @@ func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserCla
 			}
 		}
 		if e = writeProjectSchedules(ctx, roots.Virtual, all); e != nil {
-			return copyName, e
+			return copyName, "", e
 		}
 	}
 	err = api.publishCrewRunOnlineCopy(ctx, claims, connection, roots.ID, selection, fork.ChatID)
@@ -243,9 +244,43 @@ func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserCla
 		}
 	}
 	if err != nil {
-		return copyName, fmt.Errorf("%s (the tab %q stayed on this Mac; you can delete it)", err.Error(), copyName)
+		return copyName, "", fmt.Errorf("%s (the tab %q stayed on this Mac; you can delete it)", err.Error(), copyName)
 	}
-	return copyName, nil
+	if e := api.copyCrewRunOnlineTeamSettings(ctx, claims, roots.ID, tab, fork.ChatID); e != nil {
+		log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s team_settings=failed reason=%q", roots.ID, tab, e.Error())
+		return copyName, " Its Team settings could not be copied; set them in Team > Agents.", nil
+	}
+	return copyName, "", nil
+}
+
+// The copy starts with the original's Team settings (Team Module Manager, 12 Nov): In team, When others ask and what
+// teammates see of its chat. From then on the two are separate agents with their own settings.
+func (api *StreamingAPI) copyCrewRunOnlineTeamSettings(ctx context.Context, claims *UserClaims, project, from, to string) error {
+	team, err := liveCrewTeam(project)
+	if err != nil || !team.On {
+		return nil
+	}
+	if !team.agentInTeam(team.OwnerID, from) {
+		_, err = api.crewAccessChatAction(ctx, project, "unshare", map[string]any{"agent": to})
+		return err
+	}
+	rule := team.agentRule(team.OwnerID, from)
+	if _, err = api.crewAccessChatAction(ctx, project, "share", map[string]any{"agent": to, "can_make_changes": rule.CanMakeChanges, "when_others_ask": rule.WhenOthersAsk}); err != nil {
+		return err
+	}
+	if rule.ChatShare == "" {
+		return nil
+	}
+	b, err := crewroot.ReadSync(project)
+	if err != nil || b == nil || b.Side != "local" {
+		return fmt.Errorf("this Crew is not connected to its server")
+	}
+	c, err := desktopConnectionFor(claims.UserID, b.ConnectionID)
+	if err != nil {
+		return err
+	}
+	var out crewTeamAgentRule
+	return crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/agent-rule", map[string]any{"agent_key": macSharedAgentChatKey(b.PeerProjectID, to), "chat_share": rule.ChatShare}, &out)
 }
 
 type crewForkedTab struct {
