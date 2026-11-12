@@ -612,7 +612,7 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
 const ASSISTANT_ARTIFACT_KEYS = ['content', 'final_result', 'result'] as const
 
 const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: string; timestamp: string; label?: string; icon?: React.ReactNode; framed?: boolean }> = ({ event, content, timestamp, label = 'Agent', icon, framed = true }) => {
-  const artifact = useMemo(() => typeof event.reply_remainder === 'string' ? undefined : chatArtifactRef(event), [event])
+  const artifact = useMemo(() => typeof event.reply_remainder === 'string' ? null : chatArtifactRef(event), [event])
   const nativeBlock = Boolean((transcriptEventPayload(event).metadata as Record<string, unknown> | undefined)?.assistant_block_id)
   const full = useChatArtifactText(artifact, ASSISTANT_ARTIFACT_KEYS)
   return (
@@ -1309,6 +1309,10 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     for (const slot of slots) {
       const row = slot.done ? doneRows.get(slot.done.key) : undefined
       const end = row?.generation_id ? completions.get(row.generation_id) : undefined
+      const native = row && (transcriptEventPayload(row).metadata as Record<string, unknown> | undefined)?.assistant_block_id
+      // Finishing a text block is not finishing the agent turn. Preserve one
+      // existing done/steps summary only where the canonical end points.
+      if (native && !end) { slot.done = undefined; continue }
       if (slot.done && end) {
         const payload = transcriptEventPayload(end)
         slot.done = { key:end.id, at:end.timestamp || slot.done.at, durationNs: typeof payload.duration === 'number' ? payload.duration : slot.done.durationNs }
