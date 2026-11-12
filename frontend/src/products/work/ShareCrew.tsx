@@ -5,6 +5,8 @@ import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { openAgentTab } from '../../utils/openAgentTab'
+import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
 import { SlackBotChoice } from '../../components/integrations/ProductSlackPanel'
 import { openCrewAccess } from './MacSharedAgents'
@@ -93,6 +95,15 @@ function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
   </div>
 }
 
+/** Opens a teammate's agent by its chat key: its open tab, else the closed agent the left menu lists. */
+function openTeammateAgent(key: string) {
+  const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === key)
+  if (tab) { openAgentTab(tab.tabId); return }
+  const closed = useCrewAgentsStore.getState().closed.find(agent => agent.key === key)
+  if (closed) { void closed.open(); return }
+  useChatStore.getState().addToast('Open it from the agents menu (⌄) next to your tabs.', 'info')
+}
+
 /** Team › Agents: one card per own agent (Ask), the Crew's actions, teammates' agents, then "Who can use these". */
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
@@ -105,11 +116,18 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
     {/* Teammates' agents: one row each with who shared it; no switches, they belong to the teammate. */}
     {shared.length > 0 && <>
       <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Teammates' agents</p>
-      {shared.flatMap(person => person.items.map(item => <div key={person.name + item.name + item.line} className="flex items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-sm">
-        <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{person.name.slice(0, 1).toUpperCase()}</span>
-        <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{person.name} · {item.line}</span></span>
-        <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
-      </div>))}
+      {shared.flatMap(person => person.items.map(item => {
+        const body = <>
+          <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{person.name.slice(0, 1).toUpperCase()}</span>
+          <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{person.name} · {item.line}</span></span>
+          <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
+        </>
+        const row = 'flex w-full items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-left text-sm'
+        // A teammate's agent opens like it does from the agents menu (owner, 12 Nov); an action stays a plain line.
+        return item.key
+          ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(item.key!)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
+          : <div key={person.name + item.name + item.line} className={row}>{body}</div>
+      }))}
     </>}
     <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
     {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}
