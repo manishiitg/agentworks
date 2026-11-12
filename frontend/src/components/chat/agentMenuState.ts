@@ -32,8 +32,8 @@ export function useAgentMenuState(tabId: string, workspaceActivity?: 'running' |
   const runningReason = useChatStore(state => {
     const stored = state.chatTabs[tabId] ?? given
     if (!stored) return null
-    const foreground = foregroundTurnState(stored.sessionId ? state.tabEvents[stored.sessionId] : undefined)
     const session = stored.sessionId ? state.activeSessionsCache.find(item => item.session_id === stored.sessionId) : undefined
+    const foreground = foregroundTurnState(stored.sessionId ? state.tabEvents[stored.sessionId] : undefined, session?.runtime_state)
     const activity = chatRuntimeActivity({
       isStreaming: stored.isStreaming,
       hasRunningBgAgents: stored.hasRunningBgAgents,

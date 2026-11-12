@@ -19,7 +19,8 @@ const BACKGROUND_ONLY_LABELS = new Set(['background running', 'waiting for backg
 export function useTabTurnActive(tabId: string | null | undefined, scope: 'any' | 'foreground' = 'any'): boolean {
   const tab = useChatStore(useShallow(state => {
     const current = tabId ? state.chatTabs[tabId] : undefined
-    const foreground = foregroundTurnState(current?.sessionId ? state.tabEvents[current.sessionId] : undefined)
+    const runtime = state.activeSessionsCache.find(item => item.session_id === current?.sessionId)?.runtime_state
+    const foreground = foregroundTurnState(current?.sessionId ? state.tabEvents[current.sessionId] : undefined, runtime)
     return {
       sessionId: current?.sessionId,
       isStreaming: current?.isStreaming,
@@ -34,10 +35,8 @@ export function useTabTurnActive(tabId: string | null | undefined, scope: 'any' 
     : undefined)
   if (scope === 'foreground') {
     if (session && runtimeNeedsUserInput(session)) return false
-    if (tab.isStreaming) return true
     const activity = chatRuntimeActivity({ ...tab, hasRunningBgAgents: false }, session)
     return activity.state === 'running' && !BACKGROUND_ONLY_LABELS.has(activity.label)
   }
-  if (tab.isStreaming || tab.hasRunningBgAgents) return true
   return chatRuntimeActivity(tab, session).state === 'running'
 }

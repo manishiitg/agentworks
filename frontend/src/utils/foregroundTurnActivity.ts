@@ -1,5 +1,6 @@
-import type { PollingEvent } from '../services/api-types'
+import type { PollingEvent, RuntimeSnapshot } from '../services/api-types'
 import { isForegroundSessionEvent } from '../../shared/session/foreground'
+import { runtimeDisplayStatus } from './runtimeActivity'
 import { getEventPayloadParts, getRuntimeEventScope } from './runtimeEventScope'
 
 const completionTypes = new Set([
@@ -22,7 +23,7 @@ export function isForegroundTurnCompletion(event: PollingEvent): boolean {
   return getEventPayloadParts(event).innerData?.restored_intermediate_update !== true
 }
 
-export function foregroundTurnState(events?: readonly PollingEvent[]): 'running' | 'completed' | undefined {
+export function foregroundTurnState(events?: readonly PollingEvent[], runtime?: RuntimeSnapshot): 'running' | 'completed' | undefined {
   let latest: PollingEvent | undefined
   let state: 'running' | 'completed' | undefined
   for (const event of events || []) {
@@ -41,6 +42,14 @@ export function foregroundTurnState(events?: readonly PollingEvent[]): 'running'
     }
     latest = event
     state = completed ? 'completed' : 'running'
+  }
+  // PLAT-746-903: an open renderer can retain a start after the server has
+  // finished. Only a server terminal verdict at/after that start can settle it;
+  // a cached completion from the previous turn cannot clear newly typed input.
+  if (state === 'running' && latest && runtimeDisplayStatus(runtime) === 'stopped') {
+    const startedAt = Date.parse(latest.timestamp || '')
+    const endedAt = Date.parse(runtime?.completed_at || '')
+    if (Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt >= startedAt) return 'completed'
   }
   return state
 }
