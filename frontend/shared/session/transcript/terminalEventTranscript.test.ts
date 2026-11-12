@@ -1578,7 +1578,7 @@ it('keeps native blocks whole around a delivered steer and hides only the aggreg
     generation_id: `start-${block}`, generation_start_sequence: start, sequence,
     data: { data: { content, source: 'transcript', is_delta: false, metadata: { assistant_block_id: block, assistant_block_phase: 'end' } } } as never,
   })
-  const first = 'Before delivery.\n\n```ts\nconst value = 1\n```\nThis block finishes intact.'
+  const first = '    Indented code stays exact.\n\nBefore delivery.\n\n```ts\nconst value = 1\n```\nThis block finishes intact.'
   const events = [
     snapshot('a', 2, 6, 'native-a', first),
     evt({ id: 'steer', session_id: 's1', type: 'user_message', sequence: 4, data: { data: { content: 'Change direction', metadata: { delivery_status: 'sent_to_cli' } } } as never }),

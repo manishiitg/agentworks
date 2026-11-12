@@ -1111,6 +1111,9 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
       return true
     }
 
+    const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+    if (metadata?.assistant_block_id) return true
+
     const completionAnswers = (completionAnswersByTurn.get(turn) || [])
       .filter(done => !distinctServerTurns(done.turnID, eventTurnID(event)))
       .map(done => done.text)
