@@ -323,10 +323,8 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 	return rows
 }
 
-// readCrewProjectManifests loads a crew's product and runtime manifests
-// read-only. It never migrates or writes: a crew missing its runtime
-// manifest lists with whatever product.json carries.
-func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
+// readCrewProjectMetadata reads identity and the Main pointer without loading runtime actions.
+func readCrewProjectMetadata(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
 	raw, found, err := readFileFromWorkspace(ctx, projectRoot+"/product.json")
 	if err != nil || !found {
 		if err != nil {
@@ -340,6 +338,15 @@ func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string
 	}
 	if !strings.EqualFold(strings.TrimSpace(manifest.Product), strings.TrimSpace(profileID)) || strings.TrimSpace(manifest.ID) == "" {
 		return productProjectManifest{}, errSharedProjectNotFound
+	}
+	return manifest, nil
+}
+
+// readCrewProjectManifests also expands runtime actions for callers that need them.
+func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
+	manifest, err := readCrewProjectMetadata(ctx, profileID, projectRoot)
+	if err != nil {
+		return productProjectManifest{}, err
 	}
 	if isProjectProfileID(profileID) {
 		// Falls back to product.json when workflow.json is absent;

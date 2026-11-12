@@ -308,3 +308,38 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 		t.Fatal("refused duplicate registry write changed identities or settings")
 	}
 }
+
+// PLAT-746-901: opening Team must not expand schedules/functions/webhooks just
+// to identify Main. Invalid unrelated action files previously hid Main too.
+func TestCrewTeamMainLookupSkipsRuntimeActions(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	ctx := context.Background()
+	key := "team:chat:root-example"
+	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+key+`"}`)
+	for _, name := range []string{"workflow.json", "schedules.json", "functions.json", "webhooks.json"} {
+		f.write(t, externalCommandCrewState+"/"+name, "invalid unrelated runtime data")
+	}
+	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: "main-session"}
+	store := defaultProductConversationRegistryStore()
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
+		t.Fatal(err)
+	}
+	main := crewOwnerMainChatKey("team")
+	if main != key {
+		t.Fatalf("unrelated runtime actions blocked the saved Main: %q", main)
+	}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true}
+	rows := memberTeamAgentsWithMain(ctx, team, "owner", "owner", main)
+	if len(rows) != 1 || rows[0].ChatKey != key || rows[0].Tab != macMainTab {
+		t.Fatalf("Team discovery did not use the resolved Main: %+v", rows)
+	}
+	// Keep validating the owner registry rather than trusting the manifest alone.
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{}}); err != nil {
+		t.Fatal(err)
+	}
+	if crewOwnerMainChatKey("team") != "" {
+		t.Fatal("an unregistered Main must stay unavailable")
+	}
+}

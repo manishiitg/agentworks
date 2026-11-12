@@ -353,7 +353,7 @@ func crewOwnerMainChatKey(project string) string {
 		return ""
 	}
 	ctx := context.Background()
-	manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
+	manifest, err := readCrewProjectMetadata(ctx, crewProfileID, root)
 	if err != nil || manifest.ID != project || manifest.MainChatKey == "" {
 		return ""
 	}

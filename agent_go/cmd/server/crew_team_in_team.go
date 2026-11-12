@@ -21,10 +21,14 @@ import (
 // Main is an optional role on the owner's saved physical agent. A bare
 // project address or a deterministic member name must not fabricate that role.
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
+	return crewTeamMainAgentWithKey(t, person, key, crewOwnerMainChatKey(t.ProjectID))
+}
+
+// The request resolves Main once; comparisons inside row loops perform no reads.
+func crewTeamMainAgentWithKey(t crewTeam, person, key, main string) bool {
 	if person != t.OwnerID {
 		return false
 	}
-	main := crewOwnerMainChatKey(t.ProjectID)
 	return main != "" && (key == main || key == macMainTab || key == t.ProjectID)
 }
 
@@ -156,8 +160,9 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 		return t, "", errCrewTeamAgentNotYours
 	}
 	rows := crewTeamOwnRows(ctx, t, person)
+	main := crewTeamMainAgent(t, person, key)
 	for _, row := range rows {
-		if row.ID == key || row.ChatKey == key || row.Tab == key || crewTeamMainAgent(t, person, key) && row.Tab == macMainTab {
+		if row.ID == key || row.ChatKey == key || row.Tab == key || main && row.Tab == macMainTab {
 			return t, row.ID, nil
 		}
 	}

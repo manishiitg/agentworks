@@ -83,17 +83,20 @@ type crewTeamAgentsPerson struct {
 // teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
 // from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
+	return teamAgentsByPersonWithMain(ctx, t, caller, crewOwnerMainChatKey(t.ProjectID))
+}
+
+func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey string) []crewTeamAgentsPerson {
 	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
 	onMac := crewRelayTwin(t.ProjectID)
 	// Website tabs use the Main conversation's physical key, while AgentBridge
 	// addresses it by project. Return the actual tab identity to the browser.
-	mainKey := crewTeamOwnerMainKey(ctx, t)
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn, owner.AppVersion = crewMacSocketOnline(t.OwnerID, t.ProjectID, b.PairID)
 	}
 	if !onMac {
 		// A Crew that lives on the server (owner, 5 Nov): its owner's agents are server tabs, In team unless Only me.
-		owner.Agents = memberTeamAgents(ctx, t, t.OwnerID, caller)
+		owner.Agents = memberTeamAgentsWithMain(ctx, t, t.OwnerID, caller, mainKey)
 	}
 	// The Mac conversations of the owner's agents, by tab, for what is running in them.
 	ownerConversations := map[string]string{}
@@ -171,12 +174,12 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 				person.Agents = append(person.Agents, row)
 			}
 		} else {
-			person.Agents = memberTeamAgents(ctx, t, p.UserID, caller)
+			person.Agents = memberTeamAgentsWithMain(ctx, t, p.UserID, caller, mainKey)
 		}
 		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
 	}
-	if err := assignCrewTeamAgentIDs(t, out); err != nil {
+	if err := assignCrewTeamAgentIDsWithMain(t, out, mainKey); err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
 	}
@@ -190,20 +193,33 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 
 // memberTeamAgents are one person's own tabs in this Crew's server copy that the caller may see.
 func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []crewTeamAgent {
+	return memberTeamAgentsWithMain(ctx, t, member, caller, crewOwnerMainChatKey(t.ProjectID))
+}
+
+func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, ownerMainKey string) []crewTeamAgent {
 	project := t.ProjectID
 	out := []crewTeamAgent{}
+	// A single registry snapshot supplies both chat bindings and display identities.
+	// Main was already validated by the request; no per-chat manifest/action loads.
 	store := defaultProductConversationRegistryStore()
-	records, err := store.projectChats(ctx, member, crewProfileID, project)
+	path := productConversationRegistryPath(member)
+	mu := productConversationRegistryMutex(path)
+	mu.Lock()
+	doc, err := store.loadDocument(ctx, path)
+	mu.Unlock()
 	if err != nil {
 		return out
 	}
-	identities, _ := store.agentIdentities(ctx, member, crewProfileID, project)
 	mainKey := crewOwnerDefaultChatKey(project, member)
 	if member == t.OwnerID {
-		mainKey = crewOwnerMainChatKey(project)
+		mainKey = ownerMainKey
 	}
-	for _, record := range records {
-		identity := identities[record.ConversationKey]
+	prefix := productConversationRegistryEntryKey(crewProfileID, project) + codeChatSideMarker
+	for entryKey, record := range doc.Entries {
+		if !strings.HasPrefix(entryKey, prefix) || strings.Contains(strings.TrimPrefix(entryKey, prefix), ":") {
+			continue
+		}
+		identity := doc.Agents[entryKey]
 		if !t.seesAgent(caller, member, record.ConversationKey) || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) || crewFunctionTabKey(record.ConversationKey) {
 			continue
 		}
