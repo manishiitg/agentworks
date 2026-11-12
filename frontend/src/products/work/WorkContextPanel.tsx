@@ -19,7 +19,7 @@ import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore
 import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
-import { openCrewAccess, openCrewSync } from './MacSharedAgents'
+import { openCrewAccess } from './MacSharedAgents'
 import { useChatStore } from '../../stores/useChatStore'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -70,6 +70,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = crewProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
     if (!admitted.some(candidate => candidate.id === item.id)) return
+    if (item.id === 'mcp:team') { openCrewAccess(projectId, '', 'team'); return }
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
@@ -129,8 +130,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openLine = (line: CrewAccessLine) => {
     // The dashboard line (owner, 6 Nov) opens the Online page's Dashboards tab, where the server lists them, or says
     // there are none and offers its Ask.
+    if (line.kind === 'team_live') { openCrewAccess(projectId, '', 'team', 'activity'); return }
     if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'dashboards'); return }
-    if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
+    if (line.kind === 'folder' || line.kind === 'clash') openCrewAccess(projectId, '', 'team', 'sync')
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
   }
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'

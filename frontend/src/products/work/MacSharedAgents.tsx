@@ -5,25 +5,16 @@ import type { CrewAsk } from './YourComputerPanel'
 
 // Opening the Access page at a tab (WorkSurface listens), from an agent's tab or the side panel's Access lines.
 // Team is its own page; the other tabs make up the Online page (owner, 11 Nov: Share split into Team and Online).
+export type CrewTeamSection = 'people' | 'agents' | 'activity' | 'sync'
 export type CrewAccessSection = 'mac' | 'publish' | 'team' | 'agents' | 'dashboards' | 'slack'
-let pendingAccess: { projectId: string; tab: string; section: CrewAccessSection } | null = null
+let pendingAccess: { projectId: string; tab: string; section: CrewAccessSection; teamSection?: CrewTeamSection } | null = null
 export function hasPendingCrewAccess(projectId: string) { return pendingAccess?.projectId === projectId }
 /** Which Access tab a pending open asks for (Team unless said otherwise). */
 export function pendingCrewAccessSection(projectId: string): CrewAccessSection { return pendingAccess?.projectId === projectId ? pendingAccess.section : 'team' }
-export function openCrewAccess(projectId: string, tab: string, section: CrewAccessSection = 'team') {
-  pendingAccess = { projectId, tab, section }
-  window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section } }))
-}
-/** The side panel's Shared folder row: open Access on its Team tab, scrolled to the shared folder's Sync section. */
-let pendingSync = ''
-export function openCrewSync(projectId: string) {
-  pendingSync = projectId
-  openCrewAccess(projectId, '')
-}
-export function takeCrewSync(projectId: string) {
-  if (pendingSync !== projectId) return false
-  pendingSync = ''
-  return true
+export function pendingCrewTeamSection(projectId: string): CrewTeamSection | undefined { return pendingAccess?.projectId === projectId ? pendingAccess.teamSection : undefined }
+export function openCrewAccess(projectId: string, tab: string, section: CrewAccessSection = 'team', teamSection?: CrewTeamSection) {
+  pendingAccess = { projectId, tab, section, teamSection }
+  window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section, teamSection } }))
 }
 /** Opens another person's own thread with one of this Mac's shared agents, for the owner to read. */
 export async function openCrewAskThread(projectId: string, ask: CrewAsk) {

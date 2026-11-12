@@ -1262,7 +1262,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-chat-usage', open)
     return () => window.removeEventListener('agentworks:open-chat-usage', open)
   }, [selected?.id, workspacePanels, selectWorkspaceView])
-  // openCrewAccess / openCrewSync (an agent's "Sharing…", the side panel's Access lines) open the one Access page, the
+  // openCrewAccess (an agent's "Sharing…", the side panel's Access lines) open the one Access page, the
   // same full panel in the Mac app and on the website; it then opens the asked tab (and scrolls to Sync).
   useEffect(() => {
     const open = (event: Event) => {
