@@ -61,16 +61,18 @@ it('opens only the current person physical agent across the Mac/server project p
   const previous = useChatStore.getState().chatTabs
   useChatStore.setState({ chatTabs: { 'local-tab': { tabId: 'local-tab', metadata: { agentProfileProjectId: 'local-project', agentProfileConversationKey: 'local-project:chat:side', agentProfileIsMainChat: false, agentProfileTabCanWrite: true } } } as never })
   const host = document.createElement('div'), root = createRoot(host)
-  const data = (you: boolean) => ({ now: [{ person: 'Example', agent: 'Research', state: 'running', line: 'Working', end: { person: 'Example', agent: 'Research', you, label: 'Research', chat_key: 'server-project:chat:side', tab: 'side' } }], idle: [], messages: [], other: [], foot: '' })
+  const data = (you: boolean) => ({ messages: [{ id: 'question', from: { person: 'Example', label: 'Research' }, to: { person: 'Example', agent: 'Research', you, label: 'Research', chat_key: 'server-project:chat:side', tab: 'side' }, question: 'Example question', sent_at: new Date().toISOString(), status: 'answered', status_line: 'Answered', answer: 'Example answer' }] })
   try {
     vi.mocked(openAgentTab).mockClear()
     vi.mocked(teamRequest).mockResolvedValue(data(true) as never)
     await act(async () => root.render(<TeamActivity projectId="local-project" target={{ project: 'server-project' }} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Open'))!.click())
     expect(openAgentTab).toHaveBeenCalledWith('local-tab')
     vi.mocked(openAgentTab).mockClear()
     vi.mocked(teamRequest).mockResolvedValue(data(false) as never)
     await act(async () => root.render(<TeamActivity key="different-person" projectId="local-project" target={{ project: 'server-project' }} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Open'))!.click())
     expect(openAgentTab).not.toHaveBeenCalled()
   } finally { await act(async () => root.unmount()); useChatStore.setState({ chatTabs: previous }) }

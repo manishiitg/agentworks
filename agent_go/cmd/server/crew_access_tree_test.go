@@ -51,3 +51,12 @@ func TestCrewTeamCardShowsOnlyLiveSharedAgentsAndProblems(t *testing.T) {
 	}
 
 }
+
+// PLAT-746-904: absent a saved first name, login punctuation/digits are not a person's name.
+func TestCrewTeamFirstNameFromLogin(t *testing.T) {
+	for input, want := range map[string]string{"example.member42@example.com": "Example", "ravi_reports": "Ravi", "asha123": "Asha", "Asha Patel": "Asha", "Élodie Martin": "Élodie", "": "Teammate"} {
+		if got := crewTeamFirstName(input); got != want {
+			t.Errorf("%q: got %q want %q", input, got, want)
+		}
+	}
+}
