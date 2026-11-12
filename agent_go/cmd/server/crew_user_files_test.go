@@ -156,7 +156,7 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 		t.Fatal("function output", err)
 	}
 	opened.Close()
-	if got, err := knowledgeProjectResource(&knowledgeProject{Workspace: logical, Path: filepath.Join(roots.Private, "workflow.json")}, "knowledgebase"); err != nil || got != filepath.Join(roots.Private, "knowledgebase") {
+	if got, err := knowledgeProjectResource(&knowledgeProject{Workspace: logical, Path: filepath.Join(roots.SettingsDir(), "workflow.json")}, "knowledgebase"); err != nil || got != filepath.Join(roots.Automation, "knowledgebase") {
 		t.Fatal("knowledge source", got, err)
 	}
 	record := &publishedProject{Root: logical, WorkspaceID: "managed-id", ProfileID: "work", OwnerID: "owner", ProjectID: "source-id", Revision: "rev1"}
