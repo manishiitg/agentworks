@@ -458,8 +458,11 @@ export function useWorkChatTab(
         const savedSkills = target.selectedSkills
         const conversation = await agentApi.resolveAgentProfileConversation(product.profileId, {
           conversation_key: target.id,
+          requested_agent: currentProductRoute()?.agent && currentProductRoute()?.agent !== 'main' ? workConversationKey(target.id, currentProductRoute()!.agent!) : undefined,
         })
         if (cancelled) return
+
+        if (conversation.choose_agent) return
 
         const previousActiveWasMain = Boolean(chatStore.activeTabId && chatStore.chatTabs[chatStore.activeTabId]?.metadata?.agentProfileIsMainChat && belongsToWorkProject(chatStore.chatTabs[chatStore.activeTabId], target.id))
         for (const tab of Object.values(chatStore.chatTabs)) {
@@ -476,7 +479,7 @@ export function useWorkChatTab(
           agentProfileIdentityName: target.identity?.name,
           agentProfileChatContract: 'profile-v1',
           agentProfileBuilder: false,
-          agentProfileIsMainChat: true,
+          agentProfileIsMainChat: conversation.is_main_chat === true,
           agentProfileTabOwnerID: conversation.tab_owner_id,
           agentProfileTabOwnerName: conversation.tab_owner_name,
           agentProfileTabCanWrite: conversation.can_write,

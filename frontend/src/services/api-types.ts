@@ -218,6 +218,7 @@ export interface AgentProfileChatRequest {
 }
 
 export interface AgentProfileConversationRequest {
+  requested_agent?: string
   conversation_key?: string
   /** Stable Work project id. Resume derives its tab key on the server. */
   resource_id?: string
@@ -290,6 +291,7 @@ export interface AgentProfileSideChat {
 }
 
 export interface AgentProfileConversationResponse {
+  choose_agent?: boolean
   chat_location?: 'mac'
   model_id?: string
   reasoning_effort?: string
