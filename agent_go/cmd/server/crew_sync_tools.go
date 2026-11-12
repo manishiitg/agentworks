@@ -108,62 +108,12 @@ func (api *StreamingAPI) pairedCrewSyncAction(w http.ResponseWriter, r *http.Req
 	api.runDesktopCrewSync(w, request, false)
 }
 
-func (api *StreamingAPI) crewAgentPublishChatAction(ctx context.Context, claims *UserClaims, project string, args map[string]any) (string, error) {
-	binding, err := crewroot.ReadSync(project)
-	if err != nil || binding == nil || binding.Side != "local" {
-		return "", fmt.Errorf("connect this Crew to its server in Mac online first")
-	}
-	connection, err := desktopConnectionFor(claims.UserID, binding.ConnectionID)
-	if err != nil {
-		return "", err
-	}
-	rows, err := api.macAgentRows(ctx, claims, project)
-	if err != nil {
-		return "", err
-	}
-	name := strings.TrimSpace(externalArg(args, "agent"))
-	selection := crewAgentPublishSelection{AccountID: externalArg(args, "account_id")}
-	for _, row := range rows {
-		if row.Tab == name || strings.EqualFold(row.Name, name) {
-			if selection.Tab != "" {
-				return "", fmt.Errorf("more than one agent has that name; choose its tab from agents")
-			}
-			selection.Tab = row.Tab
-		}
-	}
-	if selection.Tab == "" {
-		return "", fmt.Errorf("choose this Crew's agent by name from agents")
-	}
-	if raw, ok := args["paths"].([]any); ok {
-		for _, item := range raw {
-			p, ok := item.(string)
-			if !ok {
-				return "", fmt.Errorf("paths must be folder or file names")
-			}
-			selection.Paths = append(selection.Paths, p)
-		}
-	}
-	action := externalArg(args, "action")
-	if action == "publish_agent" {
-		if confirmed, _ := args["confirmed"].(bool); !confirmed {
-			return "", fmt.Errorf("show the publish_preview first, including files, callers and account; after the person confirms the one-way move, call publish_agent with its transfer_id and confirmed=true")
-		}
-	}
-	request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, claims))
-	response := httptest.NewRecorder()
-	api.runDesktopCrewAgentPublish(response, request, connection, project, action, externalArg(args, "transfer_id"), &selection)
-	if response.Code >= 400 {
-		return "", fmt.Errorf("%s", laptopActionErrorText(response.Body.String()))
-	}
-	return strings.TrimSpace(response.Body.String()), nil
-}
-
 func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, sessionID, root string) error {
 	if !IsLocalMode() || readOnly || !websiteDeviceClaims(claims) {
 		return nil
 	}
 	gate.Declare("manage_crew_sync")
-	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "This Crew's Share page, from chat (the owner only, on this Mac). publish_preview: review moving one named agent permanently to the server with its native chat, memory, skills, selected paths and callers; paths are relative to this Crew (empty means no working files; dot means all). The response gives actual size, callers, own server accounts and transfer_id. publish_agent: after the person confirms that preview, pass the transfer_id and confirmed=true. Other agents stay on the Mac. Missing login: use the existing server Providers page, never copy credentials. status: on this Mac or online. reach_on: turn on Use from phone and web (the person's words for it) while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. While the Team is on it is refused: the Team keeps the Crew online, so the owner turns the Team off first. server: move it online (one-way; tell the person, get their yes, then pass confirmed=true). links: the website and phone link, the address for ChatGPT or Claude, and where Slack is set up. agents: this Crew's agents (Main and its tabs) with purpose and whether each is In team. share: put one agent In team (agent by name): everyone in this Crew's Team sees it and its chat live and their agents can message it. A purpose is optional. It only answers their questions unless can_make_changes=true; when_others_ask adds the owner's own rule for others' asks. public: make one agent Public on AgentBridge (any agent on the server can find and message it; it does not appear on anyone's website; it stays on this Mac); only_my_agents: take that back. share and unshare are about people and leave Public as it is. unshare: back to Only me. New agents are In team; Main is always In team. lent: what this Mac's Vault gives the Crew that teammates' agents cannot use yet (each with a key); lent_copy key=secret:NAME copies a secret to your Vault on the server for this Crew, lent_move key=app:ID moves a signed-in app there. team: the Team switch (on=true or false; the owner only); on also turns on Mac online when it is off (with several networks, ask the person which one and use reach_on first). On shares every agent with the team and, when no shared folder is chosen, makes an empty team/ folder and shares it. Off leaves only the owner and takes every agent out of the team (people stay saved); Public on AgentBridge stays. People and the folder are team_sync configure. While this Mac is off, a shared agent's team copy on the server answers people (always; there is no setting); this is separate from permanent Publish. sync_anyway: one file of the shared folder that looks like it holds passwords or keys (path, exact, from the Sync section's skipped files) synced to everyone in the Team anyway (on=true), or taken back (on=false: removed from the shared folder, kept on this Mac); the person asks for it by name. Use the Share page names Mac online, Publish and Team. Describe execution as On this Mac or On the server.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server", "links", "agents", "share", "unshare", "public", "only_my_agents", "team", "lent", "lent_copy", "lent_move", "sync_anyway", "publish_preview", "publish_agent"}}, "key": map[string]any{"type": "string", "description": "For lent_copy and lent_move: the item's key from lent."}, "on": map[string]any{"type": "boolean", "description": "For team and sync_anyway: true on, false off."}, "path": map[string]any{"type": "string", "description": "For sync_anyway: the skipped file's path inside the shared folder."}, "paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For publish_preview: paths inside this Crew; empty for memory/skills only, dot for all working files."}, "account_id": map[string]any{"type": "string", "description": "Own server account returned by publish_preview; required only when choosing among accounts."}, "transfer_id": map[string]any{"type": "string", "description": "For publish_agent: the exact reviewed transfer from publish_preview."}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}, "confirmed": map[string]any{"type": "boolean", "description": "For server: the person said yes to the one-way move in this chat."}, "agent": map[string]any{"type": "string", "description": "For share and unshare: the agent's name as listed by agents (Main for the main chat)."}, "can_make_changes": map[string]any{"type": "boolean", "description": "For share: false (default) it only answers their questions; true it can change files, run commands and use the owner's apps and logins for them."}, "when_others_ask": map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "For share: the owner's optional rule for what this agent may do when someone else asks it (\"\" clears it). An instruction, not a lock."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout("manage_crew_sync", "This Crew's Share page, from chat (the owner only, on this Mac). run_online: when the person asks an agent to run online (or presses Run online), make an online copy of it that runs on the server; the original stays on this Mac. Omit agent to copy yourself. You decide what the copy needs, without a preview: paths = the folders and files inside this Crew it works with (empty for its chat, memory and skills only; dot for all), schedules = names of message schedules for this agent that should run online instead (they stop on this Mac). Before calling, write a short handover note in your reply (what the agent is for, where its files are, which Mac paths or apps it will not have on the server); the copy keeps this conversation, note included. It starts when this reply ends and a message arrives in this chat when the copy runs online, as <name> · online. Missing login: use the existing server Providers page, never copy credentials. status: on this Mac or online. reach_on: turn on Use from phone and web (the person's words for it) while the Mac is on (with several networks, pass network; if unsure, ask the person which one). reach_off: only in the app on this Mac; removes its empty online copy. While the Team is on it is refused: the Team keeps the Crew online, so the owner turns the Team off first. server: move it online (one-way; tell the person, get their yes, then pass confirmed=true). links: the website and phone link, the address for ChatGPT or Claude, and where Slack is set up. agents: this Crew's agents (Main and its tabs) with purpose and whether each is In team. share: put one agent In team (agent by name): everyone in this Crew's Team sees it and its chat live and their agents can message it. A purpose is optional. It only answers their questions unless can_make_changes=true; when_others_ask adds the owner's own rule for others' asks. public: make one agent Public on AgentBridge (any agent on the server can find and message it; it does not appear on anyone's website; it stays on this Mac); only_my_agents: take that back. share and unshare are about people and leave Public as it is. unshare: back to Only me. New agents are In team; Main is always In team. lent: what this Mac's Vault gives the Crew that teammates' agents cannot use yet (each with a key); lent_copy key=secret:NAME copies a secret to your Vault on the server for this Crew, lent_move key=app:ID moves a signed-in app there. team: the Team switch (on=true or false; the owner only); on also turns on Mac online when it is off (with several networks, ask the person which one and use reach_on first). On shares every agent with the team and, when no shared folder is chosen, makes an empty team/ folder and shares it. Off leaves only the owner and takes every agent out of the team (people stay saved); Public on AgentBridge stays. People and the folder are team_sync configure. While this Mac is off, a shared agent's team copy on the server answers people (always; there is no setting); this is separate from permanent Publish. sync_anyway: one file of the shared folder that looks like it holds passwords or keys (path, exact, from the Sync section's skipped files) synced to everyone in the Team anyway (on=true), or taken back (on=false: removed from the shared folder, kept on this Mac); the person asks for it by name. Use the Share page names Mac online, Publish and Team. Describe execution as On this Mac or On the server.", map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server", "links", "agents", "share", "unshare", "public", "only_my_agents", "team", "lent", "lent_copy", "lent_move", "sync_anyway", "run_online"}}, "key": map[string]any{"type": "string", "description": "For lent_copy and lent_move: the item's key from lent."}, "on": map[string]any{"type": "boolean", "description": "For team and sync_anyway: true on, false off."}, "path": map[string]any{"type": "string", "description": "For sync_anyway: the skipped file's path inside the shared folder."}, "paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For run_online: paths inside this Crew the copy needs; empty for chat, memory and skills only, dot for all working files."}, "schedules": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "For run_online: names of this agent's message schedules that move to the online copy."}, "account_id": map[string]any{"type": "string", "description": "For run_online: one of your own server accounts, only when the reply asks you to choose."}, "network": map[string]any{"type": "string", "description": "For reach_on with several networks: the network's name, as the person said it."}, "confirmed": map[string]any{"type": "boolean", "description": "For server: the person said yes to the one-way move in this chat."}, "agent": map[string]any{"type": "string", "description": "For share, unshare and run_online: the agent's name as listed by agents (Main for the main chat)."}, "can_make_changes": map[string]any{"type": "boolean", "description": "For share: false (default) it only answers their questions; true it can change files, run commands and use the owner's apps and logins for them."}, "when_others_ask": map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "For share: the owner's optional rule for what this agent may do when someone else asks it (\"\" clears it). An instruction, not a lock."}}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller, err := api.interactiveLaptopOwner(ctx, claims, sessionID, root)
 		if err != nil {
 			return "", err
@@ -173,8 +123,8 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 			return "", err
 		}
 		switch action := externalArg(args, "action"); action {
-		case "publish_preview", "publish_agent":
-			return api.crewAgentPublishChatAction(ctx, caller, manifest.ID, args)
+		case "run_online":
+			return api.crewRunOnlineChatAction(ctx, caller, manifest.ID, sessionID, args)
 		case "links", "agents", "share", "unshare", "public", "only_my_agents":
 			return api.crewAccessChatAction(ctx, manifest.ID, action, args)
 		case "sync_anyway":
