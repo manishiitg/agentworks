@@ -463,6 +463,9 @@ func (api *StreamingAPI) handleProviderAccountSignOut(w http.ResponseWriter, r *
 	if target.Record != nil && target.Record.AuthMethod == providerAuthServerLogin {
 		closed := api.closeSessionsOnProviderAccount(target.ID)
 		modelProxyFor(target.Record.OwnerUserID).signOut(target.Provider)
+		if err := rotateServerLoginPlaceholder(r.Context(), target.ID); err != nil {
+			log.Printf("[SERVER_LOGIN] account %s: placeholder not rotated on sign-out: %v", target.ID, err)
+		}
 		log.Printf("[SERVER_LOGIN] %s signed out %s's own %s login (account %s, stopped %d session(s))", caller, target.Record.OwnerUserID, target.Provider, target.ID, closed)
 		status := serverLoginStatus(*target.Record)
 		rememberProviderAccountStatus(target.ID, status)
