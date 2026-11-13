@@ -2466,6 +2466,12 @@ GO_LDFLAGS="-X github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator
 # server at a local download directory; the native CLI for this machine is
 # packaged there in the background once the server is healthy
 # (start_deferred_dev_setup). The server reads the files per request.
+# A slow laptop leaves its own profiles: past this heap size the server writes
+# heap, allocs, goroutine and 30 s CPU profiles to logs/pprof/<time>/ (at most
+# every 10 minutes), so an agent can read them without a pprof token.
+export AGENTWORKS_AUTO_PPROF_HEAP_MB="${AGENTWORKS_AUTO_PPROF_HEAP_MB:-1500}"
+export AGENTWORKS_AUTO_PPROF_DIR="${AGENTWORKS_AUTO_PPROF_DIR:-${SCRIPT_DIR}/logs/pprof}"
+
 if [ -z "${AGENTWORKS_CLI_DOWNLOAD_DIR:-}" ]; then
     export AGENTWORKS_CLI_DOWNLOAD_DIR="${SCRIPT_DIR}/bin/cli-downloads"
     DEV_CLI_PACKAGE_PENDING=true
