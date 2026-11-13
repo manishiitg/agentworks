@@ -4,20 +4,20 @@ import { reportNotifyFocus } from '../services/notifications'
 import { playNotificationSound } from '../utils/sound'
 
 /**
- * Tells the server which chat is in front on this device (none when the window is in the background), so that chat
- * gets no notification here, and plays the short sound a notification asks for while this tab is open behind others.
+ * Reports the native notification-active state on desktop (visible on Mac), or the focused
+ * visible chat on the website. The server owns notification suppression.
  */
 export function useNotifyFocus() {
   const session = useChatStore(state => (state.activeTabId ? state.chatTabs[state.activeTabId]?.sessionId : null) || null)
   useEffect(() => {
     const nativeWindow = window.electronAPI
     const report = () => {
-      const focused = nativeWindow?.isWindowFocused ? nativeWindow.isWindowFocused() : document.hasFocus()
-      reportNotifyFocus(document.visibilityState === 'visible' && focused ? session : null)
+      const focused = nativeWindow?.isNotificationWindowActive ? nativeWindow.isNotificationWindowActive() : document.hasFocus()
+      reportNotifyFocus((nativeWindow?.isNotificationWindowActive ? focused : document.visibilityState === 'visible' && focused) ? session : null)
     }
-    // Clear explicitly on blur; document.hasFocus() can lag the blur event.
-    const blur = () => reportNotifyFocus(null)
-    const stopNativeFocus = nativeWindow?.onWindowFocusChanged?.(focused => reportNotifyFocus(focused && document.visibilityState === 'visible' ? session : null))
+    // Only website blur clears the report; a Mac window remains visible across monitors.
+    const blur = () => nativeWindow?.isNotificationWindowActive ? report() : reportNotifyFocus(null)
+    const stopNativeFocus = nativeWindow?.onNotificationWindowActiveChanged?.(focused => reportNotifyFocus(focused ? session : null))
     report()
     window.addEventListener('focus', report)
     window.addEventListener('blur', blur)
@@ -34,7 +34,8 @@ export function useNotifyFocus() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'agentworks-notify-sound' && !document.hasFocus()) playNotificationSound()
+      const active = window.electronAPI?.isNotificationWindowActive?.() ?? document.hasFocus()
+      if (event.data?.type === 'agentworks-notify-sound' && !active) playNotificationSound()
     }
     navigator.serviceWorker.addEventListener('message', onMessage)
     return () => navigator.serviceWorker.removeEventListener('message', onMessage)

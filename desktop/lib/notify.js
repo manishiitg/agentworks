@@ -112,4 +112,11 @@ function notifyRoute(route, remote) {
   return crew[0] + (agent && /^[a-zA-Z0-9_.:-]{1,256}$/.test(agent) ? '?agent=' + encodeURIComponent(agent) : '');
 }
 
-module.exports = { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders };
+// A visible Mac window can be on a second monitor while another app has focus.
+// Visibility is the owner's notification policy, not a claim about keyboard focus.
+function notificationWindowActive(window, platform) {
+  return !!(window && !window.isDestroyed() && window.isVisible() && !window.isMinimized()
+    && (platform === 'darwin' || window.isFocused()));
+}
+
+module.exports = { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders, notificationWindowActive };
