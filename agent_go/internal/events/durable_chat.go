@@ -31,6 +31,7 @@ var durableChatEventTypes = map[string]bool{
 	"coding_agent_native_activity": true,
 	"context_compaction":           true,
 	"chat_model_changed":           true,
+	"chat_forked":                  true,
 	"conversation_end":             true,
 	"conversation_error":           true,
 	"conversation_resumed":         true,

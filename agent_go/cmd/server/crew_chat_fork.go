@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -165,6 +167,10 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalFailure(w, err)
 		return
 	}
+	if err = api.seedForkChatJournal(user, destination, source.Record.ConversationKey, firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat"), data); err != nil {
+		externalFailure(w, err)
+		return
+	}
 	forkCompleted = true
 	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
@@ -298,4 +304,49 @@ func exportCrewForkProgram(store, cwd, id, provider, transport, out string, maxB
 	default:
 		return nil, fmt.Errorf("this native format cannot be forked; continued from copied conversation")
 	}
+}
+
+// The resume archive is model context; the chat screen reads the destination's
+// own journal. Copy only dialogue, never source event ownership or tool handles.
+func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductConversationRecord, sourceKey, sourceName string, raw []byte) error {
+	if api.eventStore == nil {
+		return fmt.Errorf("the copied conversation journal is unavailable")
+	}
+	var conversation builderConversationLog
+	if err := json.Unmarshal(raw, &conversation); err != nil {
+		return err
+	}
+	conversation.SessionID = destination.SessionID
+	api.eventStore.SetSessionOwner(destination.SessionID, user)
+	if err := api.eventStore.SetSessionPersistenceClass(destination.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		return err
+	}
+	var dialogue []storeevents.Event
+	for _, row := range builderConversationToRawEventsLimit(conversation, 0) {
+		var event storeevents.Event
+		if err := json.Unmarshal(row, &event); err != nil {
+			return err
+		}
+		dialogue = append(dialogue, event)
+	}
+	if err := api.eventStore.ImportDurableChatEvents(destination.SessionID, dialogue); err != nil {
+		return err
+	}
+	project := crewResourceProjectID(sourceKey)
+	chat := strings.TrimPrefix(sourceKey, project+codeChatSideMarker)
+	if sourceKey == project {
+		chat = "main"
+	}
+	now := time.Now()
+	marker := storeevents.Event{
+		ID: "fork:" + destination.SessionID, Type: "chat_forked", Timestamp: now, SessionID: destination.SessionID,
+		Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("chat_forked", map[string]interface{}{
+			"source_name": sourceName, "source_project_id": project, "source_chat_id": chat,
+		})),
+	}
+	if err := api.eventStore.AddEventChecked(destination.SessionID, marker); err != nil {
+		return err
+	}
+	log.Printf("[CHAT_FORK_PHASE] phase=display_history session=%s dialogue_rows=%d success=true", destination.SessionID, len(dialogue))
+	return nil
 }

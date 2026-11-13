@@ -1,4 +1,5 @@
 import React from 'react'
+import { openAppProduct } from '../../utils/appNavigation'
 import { nativeActivityText } from '../../utils/nativeActivityText'
 import { WorkingStatus } from '../chat/WorkingStatus'
 import { InspectExecutionButton } from '../chat/InspectExecutionButton'
@@ -480,6 +481,13 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
         </div>
       </CompactWrapper>
     )
+  }
+  if (event.type === 'chat_forked') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const name = typeof data.source_name === 'string' ? data.source_name : 'another chat'
+    const project = typeof data.source_project_id === 'string' ? data.source_project_id : ''
+    const chat = typeof data.source_chat_id === 'string' ? data.source_chat_id : ''
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked from {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}</span><span className="flex-1 border-t border-border" /></div>
   }
   if (event.type === 'chat_model_changed') {
     const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
