@@ -1,3 +1,4 @@
+import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
 import { resolveSlashCommandInput } from '../commands/commandPrompt'
@@ -658,6 +659,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const micStateRef = useRef<MicState>('idle')
   const [micBannerHost, setMicBannerHost] = useState<HTMLDivElement | null>(null)
   // While dictating, the mic keeps the send corner even if the box already has text.
+  const showMicrophone = useChatDisplayStore(state => state.showMicrophone)
   const [micActive, setMicActive] = useState(false)
   const handleMicStateChange = useCallback((s: MicState) => { micStateRef.current = s; setMicActive(s !== 'idle') }, [])
 
@@ -2846,7 +2848,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }
   // Shared controls are defined once and placed in the appropriate composer
   // group. The mic always stays with the right-hand send actions.
-  const micEl = voiceCapabilityEnabled && (
+  const micEl = voiceCapabilityEnabled && (showMicrophone || micActive) && (
     <MicButton
       ref={micRef}
       profileId={isProductProfile ? (agentProfileId ?? '') : ''}
