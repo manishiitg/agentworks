@@ -30,6 +30,7 @@ func crewTeamNativeFoldersChecked(ctx context.Context, claims *UserClaims) ([]wo
 		return nil, e
 	}
 	var grants []workflowtypes.WorkflowFolderGrant
+	var unavailable error
 	for _, c := range connections {
 		check, cancel := context.WithTimeout(ctx, 5*time.Second)
 		var out struct {
@@ -38,7 +39,8 @@ func crewTeamNativeFoldersChecked(ctx context.Context, claims *UserClaims) ([]wo
 		e = crewTeamRemoteJSON(check, claims.UserID, c, http.MethodGet, "/api/crew-teams", nil, &out)
 		cancel()
 		if e != nil {
-			return nil, e
+			unavailable = e
+			continue
 		}
 		for _, team := range out.Teams {
 			if !team.FolderAccess {
@@ -60,5 +62,5 @@ func crewTeamNativeFoldersChecked(ctx context.Context, claims *UserClaims) ([]wo
 			grants = append(grants, workflowtypes.WorkflowFolderGrant{ID: "team-" + id, Alias: "team_" + id, Path: b.Root, Access: workflowtypes.FolderAccessReadWrite, Reason: team.Name + " · shared with the team: " + team.Folder.display()})
 		}
 	}
-	return grants, nil
+	return grants, unavailable
 }

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -339,12 +340,21 @@ func TestWorkFolderTurnRejectsReadFailure(t *testing.T) {
 	claims := &UserClaims{UserID: "u-alice", Username: "alice"}
 	request, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := workFolderGrantsForTurn(request, claims); err == nil {
+	if _, _, err := workFolderGrantsForTurn(request, claims); err == nil {
 		t.Fatal("canceled authority read became an empty grant set")
 	}
 	turn := context.WithoutCancel(request)
-	grants, err := workFolderGrantsForTurn(turn, claims)
+	grants, _, err := workFolderGrantsForTurn(turn, claims)
 	if err != nil || len(grants) != 1 || grants[0].Alias != "site" {
 		t.Fatalf("detached turn lost stored grants: count=%d err=%v", len(grants), err)
+	}
+}
+
+func TestWorkFolderTurnKeepsResolvedFoldersWhenTeamUnavailable(t *testing.T) {
+	own := []workflowtypes.WorkflowFolderGrant{{ID: "own"}}
+	team := []workflowtypes.WorkflowFolderGrant{{ID: "reachable-team"}}
+	grants, notice, err := workFolderTurnResult(own, team, fmt.Errorf("private internal connection detail"))
+	if err != nil || len(grants) != 2 || notice == "" || strings.Contains(notice, "private") {
+		t.Fatalf("resolved folders lost or internal error exposed: count=%d notice=%q err=%v", len(grants), notice, err)
 	}
 }
