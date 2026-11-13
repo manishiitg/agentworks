@@ -31,9 +31,9 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
   if (crew.projectId !== projectId || !crew.agents.length) return null
-  // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
-  const shown = crew.agents.filter(agent => !agent.ownerId && (agent.pinned !== false || agent.tabId === activeTabId))
-  const hidden = crew.agents.filter(agent => !agent.ownerId && agent.pinned === false && agent.tabId !== activeTabId)
+  // Selection changes the open chat, not the saved Hidden placement.
+  const shown = crew.agents.filter(agent => !agent.ownerId && agent.pinned !== false)
+  const hidden = crew.agents.filter(agent => !agent.ownerId && agent.pinned === false)
   const hiddenClosed = crew.closed.filter(agent => agent.pinned === false)
   const closed = crew.closed.filter(agent => agent.pinned !== false)
   const ungroupedClosed = closed.filter(agent => !grouping.groups.some(group => group.agents.includes(agent.key)))
