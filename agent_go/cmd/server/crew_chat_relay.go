@@ -29,17 +29,18 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
-	Source         string          `json:"source,omitempty"` // Fixed diagnostic route label; never caller identity.
-	SubmissionID   string          `json:"submission_id,omitempty"`
-	ConversationID string          `json:"conversation_id,omitempty"`
-	ID             string          `json:"id"`
-	ComposerInput  bool            `json:"composer_input,omitempty"`
-	Operation      string          `json:"operation"`
-	Message        string          `json:"message,omitempty"`
-	DeliveryMode   string          `json:"delivery_mode,omitempty"`
-	Query          url.Values      `json:"query,omitempty"`
-	Answer         json.RawMessage `json:"answer,omitempty"`
-	Path           string          `json:"path,omitempty"`
+	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
+	Source             string                  `json:"source,omitempty"` // Fixed diagnostic route label; never caller identity.
+	SubmissionID       string                  `json:"submission_id,omitempty"`
+	ConversationID     string                  `json:"conversation_id,omitempty"`
+	ID                 string                  `json:"id"`
+	ComposerInput      bool                    `json:"composer_input,omitempty"`
+	Operation          string                  `json:"operation"`
+	Message            string                  `json:"message,omitempty"`
+	DeliveryMode       string                  `json:"delivery_mode,omitempty"`
+	Query              url.Values              `json:"query,omitempty"`
+	Answer             json.RawMessage         `json:"answer,omitempty"`
+	Path               string                  `json:"path,omitempty"`
 	// Workspace: the owner's own AI app call (ask, read_chat, reply_input), run on the Mac as its named tab.
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
