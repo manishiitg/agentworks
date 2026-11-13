@@ -101,8 +101,12 @@ func writeCrewTeamState(project string, change func(*crewTeamLocalState)) error 
 // Team (audience "team"), keeping each entry's other choices, and who sees which is the server's In team / Only me;
 // off, only agents public on AgentBridge stay, with no people audience. It says whether the list changed.
 func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]macSharedAgent, bool) {
-	next := slices.Clone(current)
-	changed := false
+	// A removed/import-replaced tab must not poison the entire next push:
+	// pushMacSharedAgents correctly refuses unknown tabs, including stale saved ones.
+	next := slices.DeleteFunc(slices.Clone(current), func(agent macSharedAgent) bool {
+		return !slices.ContainsFunc(rows, func(row macAgentRow) bool { return row.Tab == agent.Tab })
+	})
+	changed := len(next) != len(current)
 	if !on {
 		next = slices.DeleteFunc(next, func(agent macSharedAgent) bool { return !agent.AgentBridgePublic })
 		changed = len(next) < len(current)

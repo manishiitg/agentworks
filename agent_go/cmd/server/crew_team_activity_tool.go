@@ -30,7 +30,7 @@ func (api *StreamingAPI) crewTeamActivityAgentForSession(ctx context.Context, ca
 		}
 	}
 	if key == "" {
-		return crewTeamRegisteredAgent{}, fmt.Errorf("Post Team activity from an In team agent in this Crew")
+		return crewTeamRegisteredAgent{}, fmt.Errorf("Post activity from your own agent in this Crew")
 	}
 	// A shared ask has its own private thread session. Its source agent comes
 	// only from the server-owned ask provenance, never from a model argument or
