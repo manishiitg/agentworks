@@ -94,8 +94,10 @@ func (api *StreamingAPI) liveSteerProviderTransportReady(sessionID, provider str
 		return api.internalSteerTransportReady(provider, sessionID)
 	}
 	switch provider {
+	// Claude SDK has no tmux registry entry. Its live process accepts steering
+	// through the SDK control channel, with delivery revalidated at send.
 	case "claude-code":
-		return claudecodeadapter.InteractiveSessionRegistered(sessionID)
+		return claudecodeadapter.ClaudeSDKSessionActive(sessionID) || claudecodeadapter.InteractiveSessionRegistered(sessionID)
 	case "cursor-cli":
 		return cursorcli.InteractiveSessionRegistered(sessionID)
 	case "codex-cli":

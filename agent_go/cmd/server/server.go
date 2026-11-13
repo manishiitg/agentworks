@@ -1365,8 +1365,12 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 	api.pendingMu.RLock()
 	pendingResults := len(api.pendingCompletions[sessionID])
 	api.pendingMu.RUnlock()
-	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q",
-		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID))
+	// Delivery intent is metadata only: distinguish an explicit next-turn send
+	// from a steer that could not reach the current transport (PLAT-746).
+	queueReason, canSteer := api.queuedMessageDeliveryState(sessionID, req)
+	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q delivery_mode=%q disable_live_input=%t pending_attachments=%d queue_reason=%q can_steer=%t",
+		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID),
+		req.DeliveryMode, req.DisableLiveInputDelivery, len(req.PendingAttachments), queueReason, canSteer)
 	api.recordQueuedConversationUserMessage(sessionID, turn)
 	api.kickConversationTurnQueue(sessionID)
 	_ = json.NewEncoder(w).Encode(QueryResponse{
