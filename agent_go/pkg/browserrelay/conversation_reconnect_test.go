@@ -40,7 +40,7 @@ func TestChatBrowserSessionSurvivesRestartAndKeepsCrewsSeparate(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { c.Close() })
-		if err = c.WriteJSON(envelope{Type: "pair", Token: tokens[crew], Features: []string{"chat-clients"}}); err != nil {
+		if err = c.WriteJSON(envelope{Type: "pair", Token: tokens[crew], Version: "0.6.0", Features: []string{"chat-clients"}}); err != nil {
 			t.Fatal(err)
 		}
 		c.SetReadDeadline(time.Now().Add(3 * time.Second))
