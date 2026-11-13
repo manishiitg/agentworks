@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentSetupMark } from '../chat/AgentIcon'
 import { useAgentMenuState, type AgentMenuState } from '../chat/agentMenuState'
@@ -17,9 +17,9 @@ import type { MenuAgentGroup } from '../../services/llm-config-api'
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 
-/** The open Crew's agents in the app's left menu: one row each with its
+/** One shared list for the open Crew's sidebar and Agents popup: one row each with its
  * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it, with creation in the project actions menu. */
-export function SidebarCrewAgents({ projectId }: { projectId: string }) {
+export function SidebarCrewAgents({ projectId, popup = false, reordering = false, onSelect, onClosedOpened }: { projectId: string; popup?: boolean; reordering?: boolean; onSelect?: (tabId: string) => void; onClosedOpened?: () => void }) {
   const crew = useCrewAgentsStore()
   const grouping = useAgentGroups(JSON.stringify([getRawActiveWorkspaceId(), projectId]))
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -37,12 +37,12 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const closed = crew.closed.filter(agent => agent.pinned !== false)
   const ungroupedClosed = closed.filter(agent => !grouping.groups.some(group => group.agents.includes(agent.key)))
   const hiddenCount = hidden.length + hiddenClosed.length
-  const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer() }}
+  const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
     className="flex w-full min-w-0 items-center rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
     <span className="min-w-0 truncate">{agent.name}</span>
   </button>
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} />
-  return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
+  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+  return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : 'ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5'}>
     {shown.filter(agent => !grouping.groups.some(group => group.agents.includes(tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''))).map(row)}
     {grouping.groups.map(group => {
       const members = shown.filter(agent => group.agents.includes(tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''))
@@ -90,7 +90,7 @@ export function AgentCliIcon({ provider }: { provider?: string }) {
   </span>
 }
 
-function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, onMove, onCreateGroup, groupsReady }: { groups: MenuAgentGroup[]; groupKey: string; groupsReady: boolean; onCreateGroup: (name: string, key: string) => Promise<void>; onMove: (key: string, id: string) => Promise<void>; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
+function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, onMove, onCreateGroup, groupsReady, popup, reordering, onSelect }: { popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; groups: MenuAgentGroup[]; groupKey: string; groupsReady: boolean; onCreateGroup: (name: string, key: string) => Promise<void>; onMove: (key: string, id: string) => Promise<void>; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   const [menu, setMenu] = useState(false)
   const [newGroup, setNewGroup] = useState<string | null>(null)
@@ -111,8 +111,9 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
     onDragOver={dragging && key ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
-      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
+      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+        {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
@@ -122,10 +123,11 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
         <AgentMark state={state} asking={agent.asking} />
       </button>
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
-      className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
+      className={`absolute right-1 ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
     </button>}
-    {menu && (actions || groupKey) && <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-border bg-popover p-1 shadow-lg">
+    {/* Inside the popup, actions scroll with the list rather than clipping at its edge. */}
+    {menu && (actions || groupKey) && <div className={`${popup ? 'relative mx-1 my-1' : 'absolute right-0 top-full z-50 mt-1 w-44'} rounded-xl border border-border bg-popover p-1 shadow-lg`}>
       {groupKey && groups.length > 0 && <label className="block px-2 py-1 text-xs text-muted-foreground">Group
         <select aria-label={`Group for ${agent.name}`} className="mt-1 w-full rounded border border-border bg-popover p-1 text-foreground" value={groups.find(group => group.agents.includes(groupKey))?.id || ''} onChange={event => { void onMove(groupKey, event.target.value); setMenu(false) }}>
           <option value="">No group</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}

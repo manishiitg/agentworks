@@ -1,3 +1,4 @@
+import { SidebarCrewAgents } from '../workspace/SidebarCrewAgents'
 import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
@@ -454,6 +455,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   // Your own agents' menu (the caret) sits with your tabs, before the divider and the other people's chips.
   // Keep general agent actions reachable with Main alone, including when local-chat import is unavailable.
+  const sharedAgentMenu = surface === 'work' && !!placeProject
   const moreMenu = (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
@@ -479,11 +481,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                 <span className="ml-auto flex items-center gap-2"><CrewPlaceBadge place={place} word={placeWord} />
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}</span>
               </div>
-              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
+              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">{sharedAgentMenu ? 'Drag agents, or use Move up / Move down in their menu.' : 'Drag agents or use the arrows to change their order.'}</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
+              {sharedAgentMenu && <SidebarCrewAgents projectId={placeProject!} popup reordering={reordering} onSelect={tabId => { setMoreOpen(false); selectTab(tabId) }} onClosedOpened={() => setMoreOpen(false)} />}
               {menuGroups.map(group => <Fragment key={`person:${group.person}`}>
-              {menuGrouped && <p title={presenceOf(group.person)?.line} className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(group.person)} />{group.person ? personName(group.person) : 'You'}</p>}
-              {group.tabs.map(tab => {
+              {!sharedAgentMenu && menuGrouped && <p title={presenceOf(group.person)?.line} className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(group.person)} />{group.person ? personName(group.person) : 'You'}</p>}
+              {group.tabs.filter(tab => !sharedAgentMenu || !isAgentTab(tab)).map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 // Anyone may pin another person's tab on their own strip; renaming and ordering stay with its owner.
                 const pinKey = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
@@ -548,7 +551,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               })}
               </Fragment>)}
               {/* Closed agents open again from here too, for people who use tabs instead of the left menu. */}
-              {closedAgents.length > 0 && <>
+              {!sharedAgentMenu && closedAgents.length > 0 && <>
                 <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">Closed agents</p>
                 {closedAgents.map(agent => <button key={agent.key} type="button" title={agent.purpose || undefined} onClick={() => { setMoreOpen(false); void agent.open() }}
                   className="flex min-h-10 w-full min-w-0 items-center rounded-xl px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"><span className="min-w-0 truncate">{agent.name}</span></button>)}
