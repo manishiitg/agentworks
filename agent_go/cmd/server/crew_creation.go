@@ -480,7 +480,12 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 				return CreatedCrew{}, err
 			}
 		}
-		if err := crewroot.WriteSync(crewID, *settings.SyncBinding); err != nil {
+		// Only layout is needed during creation. The server owns its own
+		// initialization writes; publish the final editing side after those
+		// writes finish, without changing SplitFiles again.
+		initial := *settings.SyncBinding
+		initial.Editing = initial.Side
+		if err := crewroot.WriteSync(crewID, initial); err != nil {
 			return CreatedCrew{}, err
 		}
 	}
