@@ -478,9 +478,10 @@ type crewTeamScanResult struct {
 	changes   []crewTeamChange
 	entries   map[string]crewTeamLocalFile // the new state of each changed path (absent for a removal)
 	sources   map[string]chunkSource
-	dirs      []string // folders the scan entered: what a watcher watches ("" is the copy's folder)
-	stated    int      // files whose size and time were read
-	reused    int      // stable file versions reused without reading contents
+	dirNames  map[string]int // entry counts per listed folder for global watcher accounting
+	dirs      []string       // folders the scan entered: what a watcher watches ("" is the copy's folder)
+	stated    int            // files whose size and time were read
+	reused    int            // stable file versions reused without reading contents
 	readFiles int
 	readBytes int64
 	unstable  int  // retry these files next round without blocking other transfers
@@ -500,7 +501,7 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 // each is in, and a path marked true (made, removed or renamed: maybe a folder) with all it holds. changed nil reads
 // the whole copy. rules is whether the folder had a .gitignore at its last full scan.
 func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
-	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}}
+	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}, dirNames: map[string]int{}}
 	op := b.onPurpose()
 	full := changed == nil
 	enters := func(rel string) bool { return crewsync.Allowed(crewTeamKey(rel), true) && share.walks(rel) }
@@ -542,6 +543,7 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 		entries, err := os.ReadDir(filepath.Join(b.Root, filepath.FromSlash(rel)))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				out.dirNames[rel] = 0
 				listed[rel], deep[rel] = true, true // gone (or a file): what was under it is checked below
 				return nil
 			}
@@ -550,6 +552,7 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 		again := listed[rel]
 		if !again {
 			out.names += len(entries)
+			out.dirNames[rel] = len(entries)
 		}
 		listed[rel] = true
 		deep[rel] = deep[rel] || recurse

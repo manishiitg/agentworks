@@ -45,8 +45,7 @@ var crewTeamWatches sync.Map
 var crewTeamWatchBudget atomic.Int64
 var crewTeamFallbackCopies atomic.Int64
 
-// Caller holds the watch lock. Incremental scans conservatively reserve their
-// names until the next full scan; do not undercount newly discovered entries.
+// Caller holds the watch lock. Reservations cover directory entries plus roots.
 func (w *crewTeamWatch) reserveNames(want int64) bool {
 	for {
 		old := crewTeamWatchBudget.Load()
@@ -61,6 +60,28 @@ func (w *crewTeamWatch) reserveNames(want int64) bool {
 	}
 }
 
+// Changed scans replace counts, rather than repeatedly charging the same entries.
+func (w *crewTeamWatch) countedNames(full bool, counts map[string]int) int64 {
+	if full || w.dirNames == nil {
+		w.dirNames = map[string]int{}
+	}
+	for dir, count := range counts {
+		if count == 0 {
+			for prior := range w.dirNames {
+				if prior != dir && (dir == "" || strings.HasPrefix(prior, dir+"/")) {
+					delete(w.dirNames, prior)
+				}
+			}
+		}
+		w.dirNames[dir] = count
+	}
+	total := int64(len(w.dirNames))
+	for _, count := range w.dirNames {
+		total += int64(count)
+	}
+	return total
+}
+
 func (w *crewTeamWatch) releaseNames() {
 	crewTeamWatchBudget.Add(-w.names)
 	w.names = 0
@@ -69,6 +90,7 @@ func (w *crewTeamWatch) releaseNames() {
 type crewTeamWatch struct {
 	mu       sync.Mutex
 	names    int64
+	dirNames map[string]int
 	root     string
 	key      string // what the share reads, at the last full scan
 	w        *fsnotify.Watcher
@@ -173,20 +195,23 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 	if plan.full {
 		w.key, w.lastFull, w.rules = key, time.Now(), scan.rules
 	}
-	if w.off || w.closed {
+	if w.closed || (w.off && !plan.full) {
 		return
 	}
 
-	wantNames := int64(scan.names)
-	if !plan.full {
-		wantNames += w.names
-	}
+	wantNames := w.countedNames(plan.full, scan.dirNames)
 	if !w.reserveNames(wantNames) {
-		log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=global_name_budget names=%d reserved=%d limit=%d", project, wantNames, crewTeamWatchBudget.Load(), crewTeamWatchNames)
+		if !w.off {
+			log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=global_name_budget names=%d reserved=%d limit=%d", project, wantNames, crewTeamWatchBudget.Load(), crewTeamWatchNames)
+		}
 		w.stop()
 		return
 	}
 
+	if w.off {
+		w.off = false
+		crewTeamFallbackCopies.Add(-1)
+	}
 	if w.w == nil {
 		fw, e := fsnotify.NewWatcher()
 		if e != nil {
