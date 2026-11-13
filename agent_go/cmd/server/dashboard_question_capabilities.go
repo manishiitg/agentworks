@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
@@ -87,6 +88,9 @@ func (api *StreamingAPI) resolveDashboardQuestion(ctx context.Context, claims *U
 // identity while checking each distinct captured publication's live access.
 func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, claims *UserClaims, resource dashboardQuestionResource, revision string) (resolvedDashboardQuestion, error) {
 	out := resolvedDashboardQuestion{Resource: resource}
+	if resource.Removed {
+		return out, dashboardFailure(http.StatusGone, dashboardRemovedMessage)
+	}
 	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}

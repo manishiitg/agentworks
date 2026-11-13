@@ -88,6 +88,12 @@
   },
   {
     "family": "dashboard",
+    "name": "delete",
+    "member": "delete_dashboard",
+    "description": "Delete the dashboard and its public and short links, keeping files, run history and Crew functions."
+  },
+  {
+    "family": "dashboard",
     "name": "restore",
     "member": "restore_dashboard",
     "description": "Restore an earlier revision using the current expected_revision."

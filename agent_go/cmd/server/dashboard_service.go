@@ -29,7 +29,7 @@ func dashboardFailure(status int, message string) error {
 	return &wf.FileError{Status: status, Message: message}
 }
 func dashboardMutation(action string) bool {
-	return action == "create" || action == "update" || action == "publish" || action == "restore"
+	return action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete"
 }
 
 // dashboardExportAction renders the dashboard in the server's browser with the caller's data.
@@ -376,6 +376,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if claims.AccessToken != nil {
 		req.Guard = claims.AccessToken.FileGuard
+	}
+	if args.Action == "delete" {
+		api.deleteDashboard(w, r, target, req)
+		return
 	}
 	if args.Action == "get" || args.Action == "validate" || args.Action == "preview" || args.Action == "link" {
 		req.Action = "get"

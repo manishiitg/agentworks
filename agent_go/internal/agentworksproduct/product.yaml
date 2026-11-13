@@ -207,6 +207,7 @@ chat:
       - export_dashboard_static
       - set_dashboard_public_link
       - publish_dashboard
+      - delete_dashboard
       - restore_dashboard
       - get_dashboard_link
       # External MCP presents these native aliases as share action=get/set.
@@ -361,6 +362,7 @@ chat:
       - export_dashboard_static
       - set_dashboard_public_link
       - publish_dashboard
+      - delete_dashboard
       - restore_dashboard
       - get_dashboard_link
       # External MCP presents these native aliases as share action=get/set.
