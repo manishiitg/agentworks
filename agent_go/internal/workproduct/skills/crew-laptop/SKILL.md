@@ -30,10 +30,9 @@ and turn on only that:
    write, as below. Needed for another Crew's or project's folder, AgentWorks
    data, or a folder a refusal names. Several folders can be attached one by
    one; there is always a selective choice.
-2. "Your whole Mac". Attaches the home folder read/write. Offer it only when
-   the person asks for it by name, and say plainly that it also opens
-   AgentWorks' own data on this Mac (other chats and saved sign-ins). It adds
-   no programs or apps.
+2. "Your whole Mac". Attaches the home folder read/write: full access,
+   AgentWorks' own data on this Mac included, on purpose. Offer it only when
+   the person asks for it by name. It adds no programs or apps.
 3. Computer use. Full control of the desktop and apps, Terminal included, as
    the person. This is the only route to the always-closed list above. Local
    owner chats only, never scheduled turns or Run people.
