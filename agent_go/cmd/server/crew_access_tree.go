@@ -127,7 +127,11 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 				title = post.Agent
 				detail = post.Schedule + ": " + post.Line
 			}
-			live = append(live, crewAccessLine{Kind: "team_live", Title: title, Detail: detail, Tag: post.Kind, Target: "activity"})
+			tag := post.Kind
+			if post.Private {
+				tag = "Only you"
+			}
+			live = append(live, crewAccessLine{Kind: "team_live", Title: title, Detail: detail, Tag: tag, Target: "activity"})
 		}
 	}
 	for _, person := range f.People {
@@ -317,7 +321,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 			f.Member = t.OwnerID != owner
 			if t.On {
 				f.People = teamAgentsByPerson(ctx, t, owner)
-				f.Posts = crewTeamActivityPostsFor(t)
+				f.Posts = crewTeamActivityPostsFor(t, owner)
 			}
 			// A teammate on the website has their own copy of the shared folder here (crew_team_server_copy.go).
 			if _, onMac := t.memberMac(owner); f.Member && !onMac && t.Folder.ID != "" && crewRelayTwin(project) {

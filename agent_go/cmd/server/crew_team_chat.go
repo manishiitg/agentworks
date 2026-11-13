@@ -137,31 +137,34 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		}
 		switch action {
 		case "doing", "decision":
-			agentID, err := api.crewTeamActivityAgentForSession(ctx, caller, connection, manifest.ID, project, sessionID, sourceKey)
+			actor, err := api.crewTeamActivityAgentForSession(ctx, caller, connection, manifest.ID, project, sessionID, sourceKey)
 			if err != nil {
 				return "", err
 			}
 			op, method = "activity-posts", http.MethodPost
-			body, _ = json.Marshal(map[string]any{"kind": action, "agent_id": agentID, "line": externalArg(args, "line"), "why": externalArg(args, "why")})
+			body, _ = json.Marshal(map[string]any{"kind": action, "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "line": externalArg(args, "line"), "why": externalArg(args, "why")})
 		case "finding":
 			// Only a schedule's own turn; the schedule name comes from the server's record of that turn, never from the model.
 			name, err := crewScheduleTurnName(sessionID, manifest.ID, caller.UserID)
 			if err != nil {
 				return "", err
 			}
-			agentID, err := api.crewTeamActivityAgentForSession(ctx, caller, connection, manifest.ID, project, sessionID, sourceKey)
+			actor, err := api.crewTeamActivityAgentForSession(ctx, caller, connection, manifest.ID, project, sessionID, sourceKey)
 			if err != nil {
 				return "", err
 			}
 			if connection == nil {
-				if _, err := writeCrewTeamActivityPost(ctx, project, caller.UserID, agentID, "finding", externalArg(args, "line"), "", name); err != nil {
+				if _, err := writeCrewTeamActivityPostAs(ctx, project, caller.UserID, actor, "finding", externalArg(args, "line"), "", name); err != nil {
 					return "", fmt.Errorf("Could not post. Use one short line, and only an In team agent can post.")
+				}
+				if !actor.InTeam {
+					return "Saved. Only you see it, because this agent isn't In team.", nil
 				}
 				return "Posted to the Team as a finding from " + name + ".", nil
 			}
 			// A Mac Crew's Team is on the server: the Mac posts through the same route with its pair header.
 			op, method = "activity-posts", http.MethodPost
-			body, _ = json.Marshal(map[string]any{"kind": "finding", "agent_id": agentID, "line": externalArg(args, "line"), "schedule": name})
+			body, _ = json.Marshal(map[string]any{"kind": "finding", "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "line": externalArg(args, "line"), "schedule": name})
 		case "decisions":
 			op = "activity-posts"
 		case "status":
@@ -316,6 +319,12 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				return "", fmt.Errorf("%s", laptopActionErrorText(w.Body.String()))
 			}
 			data = w.Body.Bytes()
+		}
+		if action == "doing" || action == "decision" || action == "finding" {
+			var post crewTeamActivityPost
+			if json.Unmarshal(data, &post) == nil && post.Private {
+				return "Saved. Only you see it, because this agent isn't In team.", nil
+			}
 		}
 		if action == "decisions" {
 			var posts crewTeamActivityPosts

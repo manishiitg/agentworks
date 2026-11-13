@@ -11,7 +11,7 @@ import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
 type ActivityMessage = { id: string; sentence: string; topic?: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'no_answer' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityItem = { id: string; kind: 'decision' | 'finding' | 'question'; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
+type ActivityItem = { private?: boolean; id: string; kind: 'decision' | 'finding' | 'question'; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
 type ActivityView = { feed: ActivityItem[]; next_cursor?: string; refresh_after_ms?: number }
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -106,6 +106,7 @@ export function TeamActivity({ target, projectId }: { target: TeamTarget; projec
               <span className="min-w-0 flex-1 text-[13px]"><strong className="font-semibold">{item.title}</strong> <span className="text-muted-foreground">{item.verb}</span></span>
               {readable && <ChevronRight aria-hidden="true" className={`mt-1 h-3 w-3 shrink-0 text-muted-foreground ${isOpen ? 'rotate-90' : ''}`} />}
             </button> : <p className="text-[13px]"><strong className="font-semibold">{item.title}</strong> <span className="text-muted-foreground">{item.verb}</span></p>}
+            {item.private && <span className="text-[10px] text-muted-foreground">Only you</span>}
             {item.line && <p className="mt-0.5 truncate text-[13px]">{item.line}</p>}
             {item.why && <p className="mt-0.5 text-xs text-muted-foreground">{item.why}</p>}
             {message && <p className={`mt-0.5 text-xs ${item.state === 'waiting' || item.state === 'no_answer' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{item.state_line}</p>}

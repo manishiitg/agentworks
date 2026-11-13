@@ -23,6 +23,8 @@ const crewTeamActivityKept = 200
 // Explicit Team posts, not excerpts of a person's private conversation. One
 // Doing line per registry agent; the newest decisions/findings remain in the Team record.
 type crewTeamActivityPost struct {
+	Private  bool      `json:"private,omitempty"`
+	ChatKey  string    `json:"chat_key,omitempty"`
 	ID       string    `json:"id"`
 	Kind     string    `json:"kind"`
 	AgentID  string    `json:"agent_id"`
@@ -63,6 +65,19 @@ func readCrewTeamActivityPosts(project string) (crewTeamActivityPosts, error) {
 // The same writer is used by chat/MCP and the schedule runner. Schedule is
 // supplied only by trusted scheduler code; the agent-facing route cannot set it.
 func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, kind, line, why, schedule string) (crewTeamActivityPost, error) {
+	team, err := readCrewTeam(project)
+	if err != nil {
+		return crewTeamActivityPost{}, err
+	}
+	agent, ok := team.Agents[agentID]
+	if !ok || agent.OwnerID != person {
+		return crewTeamActivityPost{}, fmt.Errorf("Post activity from your own agent in this Crew")
+	}
+	return writeCrewTeamActivityPostAs(ctx, project, person, agent, kind, line, why, schedule)
+}
+
+// actor is resolved by the session boundary, never from a model-chosen identity.
+func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, actor crewTeamRegisteredAgent, kind, line, why, schedule string) (crewTeamActivityPost, error) {
 	var empty crewTeamActivityPost
 	if kind != "doing" && kind != "decision" && kind != "finding" {
 		return empty, fmt.Errorf("Choose doing or decision")
@@ -85,18 +100,31 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 	if err != nil || !crewTeamAgentsVisible(team, person) {
 		return empty, fmt.Errorf("This Crew's Team is not available to you")
 	}
-	agent, ok := team.Agents[agentID]
-	if !ok || agent.OwnerID != person || !agent.InTeam {
-		return empty, fmt.Errorf("Only an In team agent can post its own Team activity")
+	agent, registered := team.Agents[actor.ID]
+	if !registered {
+		agent = actor
+		agent.InTeam = false
 	}
+	if agent.OwnerID != person || agent.ChatKey == "" || isSharedThreadKey(agent.ChatKey) {
+		return empty, fmt.Errorf("Post activity from your own agent in this Crew")
+	}
+	private := !registered || !agent.InTeam
+	if actor.InTeam && private {
+		return empty, fmt.Errorf("The agent is no longer In team. Try again from its own chat")
+	}
+	key := agent.ID
+	if key == "" {
+		key = agent.ChatKey
+	}
+
 	posts, err := readCrewTeamActivityPosts(project)
 	if err != nil {
 		return empty, err
 	}
-	post := crewTeamActivityPost{ID: uuid.NewString(), Kind: kind, AgentID: agent.ID, OwnerID: person, Agent: agent.Name, Person: crewTeamFirstName(crewPersonShortName(person)), Line: line, Why: why, Schedule: strings.TrimSpace(schedule), At: time.Now().UTC()}
+	post := crewTeamActivityPost{ID: uuid.NewString(), Kind: kind, Private: private, ChatKey: agent.ChatKey, AgentID: agent.ID, OwnerID: person, Agent: agent.Name, Person: crewTeamFirstName(crewPersonShortName(person)), Line: line, Why: why, Schedule: strings.TrimSpace(schedule), At: time.Now().UTC()}
 	switch kind {
 	case "doing":
-		posts.Doing[agent.ID] = post
+		posts.Doing[key] = post
 	case "decision":
 		posts.Decisions = append(posts.Decisions, post)
 	case "finding":
@@ -114,9 +142,10 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 	return post, nil
 }
 
-// A retained post never bypasses current Team membership or Only me. Text is
+// Private posts are owner-only, even if the agent is later shared. Public posts
+// still require current Team membership and In-team admission. Text is
 // explicit Team communication, so chat history visibility is not used as a grant.
-func crewTeamActivityPostsFor(team crewTeam) crewTeamActivityPosts {
+func crewTeamActivityPostsFor(team crewTeam, viewer string) crewTeamActivityPosts {
 	posts, err := readCrewTeamActivityPosts(team.ProjectID)
 	if err != nil {
 		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=read_failed", team.ProjectID)
@@ -124,6 +153,9 @@ func crewTeamActivityPostsFor(team crewTeam) crewTeamActivityPosts {
 	}
 	active := map[string]bool{}
 	visible := func(post crewTeamActivityPost) bool {
+		if post.Private {
+			return team.On && viewer != "" && viewer == post.OwnerID && team.member(viewer) && crewTeamAccountActive(viewer)
+		}
 		agent, ok := team.Agents[post.AgentID]
 		enabled, known := active[agent.OwnerID]
 		if !known {
@@ -165,7 +197,7 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
-		externalJSON(w, crewTeamActivityPostsFor(team))
+		externalJSON(w, crewTeamActivityPostsFor(team, claims.UserID))
 		return
 	}
 	var body struct {
@@ -174,6 +206,8 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 		Line     string `json:"line"`
 		Why      string `json:"why"`
 		Schedule string `json:"schedule"`
+		ChatKey  string `json:"chat_key"`
+		Agent    string `json:"agent"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body) != nil || (body.Kind != "doing" && body.Kind != "decision" && body.Kind != "finding") {
 		externalError(w, 400, "invalid_activity", "Choose doing or decision and give one short line")
@@ -187,14 +221,15 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 	}
 	// Resolve a current admitted registry identity, not an address alias or a
 	// chosen display name. A person cannot post as another person's agent.
-	agent, owner, err := crewTeamAgentByID(r.Context(), team.ProjectID, claims.UserID, body.AgentID)
-	if err != nil || owner != claims.UserID || !agent.InTeam {
-		externalError(w, 403, "activity_forbidden", "Only an In team agent can post its own Team activity")
+	actor, err := api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent)
+	if err != nil {
+		externalError(w, 403, "activity_forbidden", "Post activity from your own agent in this Crew")
 		return
 	}
-	post, err := writeCrewTeamActivityPost(r.Context(), team.ProjectID, claims.UserID, agent.ID, body.Kind, body.Line, body.Why, activitySchedule(body.Kind, body.Schedule))
+
+	post, err := writeCrewTeamActivityPostAs(r.Context(), team.ProjectID, claims.UserID, actor, body.Kind, body.Line, body.Why, activitySchedule(body.Kind, body.Schedule))
 	if err != nil {
-		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=post_failed agent_id=%s", team.ProjectID, agent.ID)
+		log.Printf("[CREW_TEAM_ACTIVITY] project=%s event=post_failed agent_id=%s", team.ProjectID, actor.ID)
 		externalError(w, 400, "activity_failed", "Could not post. Use one short line and give a short reason for a decision.")
 		return
 	}

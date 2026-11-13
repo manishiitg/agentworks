@@ -137,7 +137,7 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 		t.Fatalf("recent-decisions read was not short and specific: %s", text)
 	}
 	snapshot, _ := readCrewTeam("team")
-	public := crewTeamActivityPostsFor(snapshot)
+	public := crewTeamActivityPostsFor(snapshot, "owner")
 	public.Decisions[0].At = time.Now().Add(-25 * time.Hour)
 	facts := crewAccessFacts{TeamKnown: true, ServerCrew: true, Team: &snapshot, Posts: public, Viewer: "owner"}
 	live := 0
@@ -164,8 +164,8 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if w := postHTTP("other", own); w.Code != 403 {
 		t.Fatalf("foreign agent admitted: %d %s", w.Code, w.Body.String())
 	}
-	if w := postHTTP("owner", private); w.Code != 403 {
-		t.Fatalf("Only me agent admitted: %d %s", w.Code, w.Body.String())
+	if w := postHTTP("owner", private); w.Code != 200 {
+		t.Fatalf("own Only me agent refused: %d %s", w.Code, w.Body.String())
 	}
 	if _, err := reg.exec(ctx, map[string]any{"action": "doing", "project": "another-crew", "line": "Wrong Crew"}); err == nil {
 		t.Fatal("tool posted across Crews")
@@ -211,16 +211,42 @@ func TestCrewTeamActivityPostsBindOwnSharedAgentAndKeepDecisions(t *testing.T) {
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if visible := crewTeamActivityPostsFor(saved); len(visible.Doing) != 0 || len(visible.Decisions) != 0 {
+	if visible := crewTeamActivityPostsFor(saved, "other"); len(visible.Doing) != 0 || len(visible.Decisions) != 0 {
 		t.Fatal("retained post bypassed Only me")
 	}
 	stored, _ := readCrewTeamActivityPosts("team")
 	if len(stored.Decisions) != 2 {
 		t.Fatal("hiding an agent deleted retained decisions")
 	}
-	if _, err := writeCrewTeamActivityPost(ctx, "team", "owner", private, "doing", "Private progress", "", ""); err == nil {
-		t.Fatal("shared writer admitted Only me")
+	if _, err := writeCrewTeamActivityPost(ctx, "team", "owner", private, "decision", "Private progress", "Owner note", ""); err != nil {
+		t.Fatal(err)
 	}
+	ownPosts := crewTeamActivityPostsFor(saved, "owner")
+	otherPosts := crewTeamActivityPostsFor(saved, "other")
+	if len(ownPosts.Decisions) != 1 || !ownPosts.Decisions[0].Private || ownPosts.Decisions[0].ChatKey == "" || len(otherPosts.Decisions) != 0 {
+		t.Fatal("private activity was hidden from owner or disclosed to teammate")
+	}
+	// Unregistered own sessions also post privately; no model-supplied agent key.
+	doc, _ := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
+	doc.Entries[productConversationRegistryEntryKey(crewProfileID, "team:chat:unregistered")] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: "team:chat:unregistered", SessionID: "session-unregistered", WorkspacePath: externalCommandCrewRoot, Title: "New agent"}
+	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	ownTool := &singleToolCaptureRegistrar{}
+	if err := f.api.registerCrewTeamChatTool(ownTool, newProductToolGate(nil), &UserClaims{UserID: "owner", Username: "owner"}, false, "session-unregistered", externalCommandCrewRoot, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := ownTool.exec(ctx, map[string]any{"action": "decision", "line": "New private note", "why": "Keep this to myself"})
+	if err != nil || !strings.Contains(reply, "Only you see it") {
+		t.Fatalf("unregistered own agent: %s %v", reply, err)
+	}
+	if got := crewTeamActivityPostsFor(saved, "other"); len(got.Decisions) != 0 {
+		t.Fatal("unregistered private post leaked")
+	}
+	if _, err := shared.exec(ctx, map[string]any{"action": "doing", "line": "Must not become private"}); err == nil {
+		t.Fatal("shared ask posted private activity after source unshared")
+	}
+
 	// Refusal bodies never include a storage path or saved post text.
 	if w := postHTTP("other", own); strings.Contains(w.Body.String(), "confirmed totals") || strings.Contains(w.Body.String(), dir) {
 		t.Fatal("refusal leaked internal post state")

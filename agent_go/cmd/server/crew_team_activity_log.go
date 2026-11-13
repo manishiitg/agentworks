@@ -89,7 +89,7 @@ func crewTeamActivityFor(ctx context.Context, t crewTeam, caller string) crewTea
 func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string) crewTeamActivityView {
 	out := crewTeamActivityView{Idle: []crewTeamActivityEnd{}, Now: []crewTeamActivityNow{}, Messages: []crewTeamActivityMessage{}, Other: []crewTeamActivityOther{},
 		Foot: "Shows explicit Team posts and messages between agents. What a person types to their own agent is never shown here."}
-	posts := crewTeamActivityPostsFor(t)
+	posts := crewTeamActivityPostsFor(t, caller)
 	out.Decisions, out.Findings = posts.Decisions, posts.Findings
 	onMac := crewRelayTwin(t.ProjectID)
 	// Every name a message endpoint may carry for an agent: its row key, and for the owner's Mac agents the keys the Mac
