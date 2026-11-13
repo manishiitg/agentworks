@@ -155,7 +155,7 @@ function AgentGroup({ group, agents, count, onToggle, onRename, onRemove, childr
   const [marks, setMarks] = useState<Record<string, AgentMenuState>>({})
   const report = useCallback((id: string, state: AgentMenuState) => setMarks(previous => previous[id] === state ? previous : { ...previous, [id]: state }), [])
   const states = agents.map(agent => marks[agent.tabId])
-  const state = (['waiting', 'running', 'failed', 'done'] as const).find(value => states.includes(value)) || null
+  const groupStates = (['waiting', 'running', 'failed', 'done'] as const).filter(value => states.includes(value))
   return <div className="min-w-0">
     {agents.map(agent => <GroupStatusProbe key={agent.tabId} agent={agent} report={report} />)}
     <div className="group flex min-w-0 items-center gap-1">
@@ -163,7 +163,7 @@ function AgentGroup({ group, agents, count, onToggle, onRename, onRemove, childr
         <input autoFocus aria-label="Rename group" maxLength={40} value={name} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setEditing(false) }} className="min-w-0 flex-1 rounded border border-border bg-background px-1 text-xs" /><button className="text-xs" type="submit">Save</button>
       </form> : <button type="button" aria-expanded={!group.collapsed} onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-muted-foreground hover:text-foreground">
         <ChevronRight className={`h-3 w-3 shrink-0 ${group.collapsed ? '' : 'rotate-90'}`} /><span className="min-w-0 truncate">{group.name}</span><span className="text-[10px]">{count}</span>
-        {group.collapsed && <AgentMark state={state} />}
+        {group.collapsed && <span className="ml-auto flex shrink-0 items-center gap-1">{groupStates.map(state => <AgentMark key={state} state={state} />)}</span>}
       </button>}
       <button type="button" aria-label={`Rename ${group.name}`} onClick={() => { setName(group.name); setEditing(true) }} className="rounded p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"><Pencil className="h-3 w-3" /></button>
       <button type="button" aria-label={`Delete group ${group.name}`} onClick={onRemove} className="rounded p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"><X className="h-3 w-3" /></button>
