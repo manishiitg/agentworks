@@ -214,6 +214,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	// Stop closes the coding CLI, so nothing can finish the turn it was running: release every
 	// marker that says the session is busy, or the next message queues behind a dead turn forever
 	// (server B, 2026-09-30: every message after a Stop stayed "queued_for_turn").
+	api.endNativeBackground(sessionID, "", "")
 	api.releaseStoppedSessionTurnMarkers(sessionID)
 	if api.terminalStore == nil {
 		return

@@ -2509,3 +2509,21 @@ func (es *EventStore) EndNativeCommandsWithoutResult(sessionID string) {
 				Data: &events.ToolCallEndEvent{ToolName: d.ToolName, ToolCallID: id, SyntheticSettle: true, Result: "No result was captured before the command's runtime ended."}}})
 	}
 }
+
+// NativeCommand is an actual provider-owned command, not an ordinary tool.
+type NativeCommand struct {
+	ID, Name  string
+	StartedAt time.Time
+}
+
+func (es *EventStore) OpenNativeCommands(sessionID string) []NativeCommand {
+	toolCallsMu.Lock()
+	defer toolCallsMu.Unlock()
+	var result []NativeCommand
+	for id, call := range openToolCall[sessionID] {
+		if call.nativeCompletion {
+			result = append(result, NativeCommand{ID: id, Name: call.name, StartedAt: call.startedAt})
+		}
+	}
+	return result
+}

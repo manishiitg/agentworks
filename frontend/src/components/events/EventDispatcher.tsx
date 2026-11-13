@@ -1,3 +1,4 @@
+import { NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
 import React from 'react'
 import { openAppProduct } from '../../utils/appNavigation'
 import { nativeActivityText } from '../../utils/nativeActivityText'
@@ -414,6 +415,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   if (event.type === 'coding_agent_native_activity') {
     const envelope = event.data as { data?: { record?: Record<string, unknown> } } | undefined
     const record = envelope?.data?.record || {}
+    if (record.work_id && ['helper', 'background_command'].includes(String(record.kind))) return <NativeBackgroundTaskLine record={record} />
     const content = nativeActivityText(record)
     if (!content) return null
     return <CompactWrapper compact={compact}><div className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">{content}</div></CompactWrapper>

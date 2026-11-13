@@ -6,11 +6,18 @@ const text = (value: unknown): string => typeof value === 'string' ? value : ''
 /** SDK and transcript bookends update one row, scoped to the exact native parent. */
 export function coalesceNativeHelperActivity(events: PollingEvent[]): PollingEvent[] {
   const result: PollingEvent[] = []
+  const work = new Map<string, number>()
   const helpers = new Map<string, { index: number, record: Record<string, unknown>, sdkID?: string }>()
   for (const event of events) {
     const envelope = object(event.data)
     const payload = object(envelope?.data) || envelope || {}
     const record = object(payload.record)
+    if (event.type === 'coding_agent_native_activity' && typeof record?.work_id === 'string') {
+      const index = work.get(record.work_id)
+      if (index === undefined) { work.set(record.work_id, result.length); result.push(event) }
+      else result[index] = { ...event, id: result[index].id }
+      continue
+    }
     if (event.type !== 'coding_agent_native_activity' || record?.kind !== 'helper') {
       result.push(event)
       continue
