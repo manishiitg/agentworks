@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -25,8 +26,8 @@ const (
 	crewTeamWokeAfter       = 3 * time.Minute
 	crewTeamWakeDelay       = time.Second      // a burst of writes starts one round
 	crewTeamForgetWatchIdle = 10 * time.Minute // a copy no round asked for: its watcher closes
-	// crewTeamWatchNames bounds the names in watched folders: a Mac's watcher holds one open file per name.
-	crewTeamWatchNames = 20000
+	// Global budget across every Team copy: kqueue opens each watched name on macOS.
+	crewTeamWatchNames = 4000
 )
 
 // crewTeamWake starts the next round early, once a burst of changes has settled.
@@ -41,9 +42,32 @@ func crewTeamWakeSoon() {
 
 // crewTeamWatches: copy record folder -> its watch.
 var crewTeamWatches sync.Map
+var crewTeamWatchBudget atomic.Int64
+
+// Caller holds the watch lock. Incremental scans conservatively reserve their
+// names until the next full scan; do not undercount newly discovered entries.
+func (w *crewTeamWatch) reserveNames(want int64) bool {
+	for {
+		old := crewTeamWatchBudget.Load()
+		next := old - w.names + want
+		if next > crewTeamWatchNames {
+			return false
+		}
+		if crewTeamWatchBudget.CompareAndSwap(old, next) {
+			w.names = want
+			return true
+		}
+	}
+}
+
+func (w *crewTeamWatch) releaseNames() {
+	crewTeamWatchBudget.Add(-w.names)
+	w.names = 0
+}
 
 type crewTeamWatch struct {
 	mu       sync.Mutex
+	names    int64
 	root     string
 	key      string // what the share reads, at the last full scan
 	w        *fsnotify.Watcher
@@ -151,16 +175,22 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 	if w.off || w.closed {
 		return
 	}
-	if plan.full && scan.names > crewTeamWatchNames {
-		log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=too_many_names names=%d limit=%d", project, scan.names, crewTeamWatchNames)
+
+	wantNames := int64(scan.names)
+	if !plan.full {
+		wantNames += w.names
+	}
+	if !w.reserveNames(wantNames) {
+		log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=global_name_budget names=%d reserved=%d limit=%d", project, wantNames, crewTeamWatchBudget.Load(), crewTeamWatchNames)
 		w.stop()
 		return
 	}
+
 	if w.w == nil {
 		fw, e := fsnotify.NewWatcher()
 		if e != nil {
 			log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=%q", project, e)
-			w.off = true
+			w.stop()
 			return
 		}
 		w.w, w.dirs = fw, map[string]bool{}
@@ -246,6 +276,7 @@ func (w *crewTeamWatch) note(ev fsnotify.Event) {
 
 // stop turns watching off for this copy: full scans only, at crewTeamUnwatchedEvery. Called with mu held.
 func (w *crewTeamWatch) stop() {
+	w.releaseNames()
 	if w.w != nil {
 		_ = w.w.Close()
 	}
@@ -255,6 +286,7 @@ func (w *crewTeamWatch) stop() {
 func (w *crewTeamWatch) close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.releaseNames()
 	if w.w != nil {
 		_ = w.w.Close()
 	}

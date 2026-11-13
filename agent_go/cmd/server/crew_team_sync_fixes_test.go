@@ -818,3 +818,33 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 		t.Fatalf("sync line after resolve %q", sync.Line)
 	}
 }
+
+// PLAT-746-958: many individually small copies must not exhaust the Mac's
+// file table together. Rejected copies retain the full-scan fallback.
+func TestCrewTeamWatcherBudgetIsGlobalAndReleased(t *testing.T) {
+	before := crewTeamWatchBudget.Load()
+	a, b := &crewTeamWatch{}, &crewTeamWatch{}
+	defer a.close()
+	defer b.close()
+	available := int64(crewTeamWatchNames) - before
+	if available < 2 {
+		t.Fatal("unexpected preexisting watcher budget")
+	}
+	if !a.reserveNames(available - 1) {
+		t.Fatal("first copy refused")
+	}
+	if b.reserveNames(2) {
+		t.Fatal("second copy exceeded global budget")
+	}
+	a.stop()
+	if !a.off || a.w != nil || a.names != 0 {
+		t.Fatal("fallback retained watcher resources")
+	}
+	if !b.reserveNames(2) {
+		t.Fatal("closed copy did not release budget")
+	}
+	b.close()
+	if crewTeamWatchBudget.Load() != before {
+		t.Fatal("budget leaked after close")
+	}
+}
