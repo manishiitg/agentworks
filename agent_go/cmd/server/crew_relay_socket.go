@@ -91,7 +91,13 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 		}
 	}
 	if _, err := api.crewSyncRoots(ctx, claims, crew.Project); err != nil {
-		return fmt.Errorf("not the owner")
+		// Only a confirmed account mismatch may ask the Mac to re-pair.
+		// Missing settings or a failed workspace read must not create copies
+		// repeatedly under the SAME owner (PLAT-746-972).
+		if owner := ownerOfCrewProjectID(crew.Project); owner != "" && owner != claims.UserID {
+			return fmt.Errorf("not the owner")
+		}
+		return fmt.Errorf("Crew unavailable: %w", err)
 	}
 	if err != nil || b == nil || b.Side != "server" || b.PairID != crew.Pair {
 		return fmt.Errorf("not this Crew's pair")

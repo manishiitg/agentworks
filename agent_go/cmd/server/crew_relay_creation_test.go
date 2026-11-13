@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -45,5 +46,14 @@ func TestSplitRelayCreationRemainsAdmitted(t *testing.T) {
 		if err := f.api.crewRelayAdmit(context.WithValue(t.Context(), UserContextKey, other), other, crewRelayCrew{Project: created.ProjectID, Pair: request.PairID}); err == nil {
 			t.Fatal("another account connected to the owner's twin")
 		}
+		// A read failure for the correct owner is NOT an account change and
+		// must never trigger the Mac's create-another-copy repair loop.
+		if err := os.Remove(filepath.Join(roots.SettingsDir(), "product.json")); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.api.crewRelayAdmit(ctx, claims, crewRelayCrew{Project: created.ProjectID, Pair: request.PairID}); err == nil || strings.Contains(err.Error(), "not the owner") {
+			t.Fatalf("unavailable settings misreported as account switch: %v", err)
+		}
+
 	}
 }
