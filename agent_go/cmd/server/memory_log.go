@@ -18,11 +18,17 @@ const memoryLogInterval = time.Minute
 // startMemoryLog logs heap, goroutines and the event store's in-memory size
 // every minute, so a memory spike leaves evidence in agent.log.
 func startMemoryLog(store *events.EventStore) {
+	profiler := newAutoProfiler()
 	go func() {
 		ticker := time.NewTicker(memoryLogInterval)
 		defer ticker.Stop()
-		for range ticker.C {
+		for now := range ticker.C {
 			log.Print(memoryLogLine(store))
+			if profiler != nil {
+				var mem runtime.MemStats
+				runtime.ReadMemStats(&mem)
+				profiler.check(mem.HeapInuse>>20, now)
+			}
 		}
 	}()
 }
