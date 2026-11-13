@@ -383,12 +383,18 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 				identity.ModelID = chat.Conversation.ModelID
 			}
 			if identity.Engine != "" {
-				if chosen, _ := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine); chosen != nil {
+				chosen, reason := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine)
+				if chosen == nil && h.AgentTab != "" && chat.Conversation.Native == nil && identity.ModelID != "" {
+					// History only: there is no session to resume, so the program's model on this server will do.
+					chosen, reason = api.crewNativeDestination(ctx, claims, roots, current, identity, "", identity.Engine)
+				}
+				if chosen != nil {
 					identity = *chosen
 				} else {
 					if h.AgentTab != "" {
 						lock.Unlock()
-						return fmt.Errorf("the selected server account cannot resume this agent")
+						log.Printf("[CREW_AGENT_PUBLISH] project=%s tab=%s program=%s model=%s result=refused reason=%q", roots.ID, h.AgentTab, identity.Engine, identity.ModelID, reason)
+						return fmt.Errorf("the selected server account cannot resume this agent: %s", reason)
 					}
 					identity.Engine, identity.ModelID, identity.ConnectionID = current.Provider, current.ModelID, current.ConnectionID
 				}
