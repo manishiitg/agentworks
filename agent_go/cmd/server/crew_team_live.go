@@ -40,10 +40,12 @@ type crewTeamLivePerson struct {
 	Line   string `json:"line"`
 }
 type crewTeamLiveView struct {
-	Agents  []crewTeamLiveAgent  `json:"agents"`
-	Idle    []crewTeamLiveAgent  `json:"idle"`
-	People  []crewTeamLivePerson `json:"people"`
-	Summary string               `json:"summary"`
+	Network   string               `json:"network,omitempty"`
+	NetworkID string               `json:"network_id,omitempty"`
+	Agents    []crewTeamLiveAgent  `json:"agents"`
+	Idle      []crewTeamLiveAgent  `json:"idle"`
+	People    []crewTeamLivePerson `json:"people"`
+	Summary   string               `json:"summary"`
 }
 
 // Input has already passed current Team membership/In-team admission and the
@@ -225,6 +227,8 @@ func crewTeamLocalNavigationLive(ctx context.Context, owner, project string, rea
 		}
 	}
 	if live, ok := rows[binding.PeerProjectID]; ok {
+		live.Network = connection.Name
+		live.NetworkID = connection.Server
 		return &live
 	}
 	return nil
