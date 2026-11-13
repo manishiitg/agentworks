@@ -103,8 +103,7 @@ func idleCompactHint() string {
 // conversation is saved to resume.
 func chatContextRuntime(owner string, tab chatContextTab) (provider, model, transport string, hasHandle bool) {
 	provider, model = strings.TrimSpace(tab.Record.Provider), strings.TrimSpace(tab.Record.ModelID)
-	if target, found, err := resolveProductResumeTarget(owner, tab.Record); err == nil && found && target != nil && target.Runtime != nil {
-		runtime := target.Runtime
+	if runtime := chatContextRuntimeMetadata(owner, tab.Record); runtime != nil {
 		provider = firstNonEmptyTrimmed(runtime.Provider, provider)
 		model = firstNonEmptyTrimmed(runtime.ModelID, model)
 		transport = strings.TrimSpace(runtime.Transport)
