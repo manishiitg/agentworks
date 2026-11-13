@@ -2462,12 +2462,13 @@ fi
 GO_LDFLAGS="-X github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow.injectedPlatformVersion=${PLATFORM_REVISION}"
 
 # go run places the agent binary in a temporary build directory, so it cannot
-# discover release-style downloads beside its executable. Package the native
-# CLI for this machine and point the development server at that directory.
+# discover release-style downloads beside its executable. Point the development
+# server at a local download directory; the native CLI for this machine is
+# packaged there in the background once the server is healthy
+# (start_deferred_dev_setup). The server reads the files per request.
 if [ -z "${AGENTWORKS_CLI_DOWNLOAD_DIR:-}" ]; then
     export AGENTWORKS_CLI_DOWNLOAD_DIR="${SCRIPT_DIR}/bin/cli-downloads"
-    dev_setup bash "${SCRIPT_DIR}/../scripts/package-agentworks-cli-local.sh" "$AGENTWORKS_CLI_DOWNLOAD_DIR" || exit 1
-    dev_phase cli_package
+    DEV_CLI_PACKAGE_PENDING=true
 fi
 
 if [ -n "$PLATFORM_REVISION" ]; then

@@ -56,15 +56,18 @@ MCP_AGENT_SERVER_URL=http://example.com
 curl() { [ -f "$scratch/healthy" ]; }
 sleep() { command sleep 0.05; }
 dev_log_init() { :; }
+DEV_CLI_PACKAGE_PENDING=true
 build_dev_playwright_fixtures() { echo built > "$scratch/fixtures-built"; }
+build_dev_cli_package() { echo built > "$scratch/cli-built"; }
 start_deferred_dev_setup
 worker=$!
-[ ! -f "$scratch/fixtures-built" ]
+[ ! -f "$scratch/fixtures-built" ] && [ ! -f "$scratch/cli-built" ]
 touch "$scratch/healthy"
 wait "$worker"
-[ -f "$scratch/fixtures-built" ]
+[ -f "$scratch/fixtures-built" ] && [ -f "$scratch/cli-built" ]
 grep -q 'playwright=completed' "$DEV_STARTUP_LOG"
-echo 'PASS: fixture setup is deferred until health (stub tools only)'
+grep -q 'cli_package=completed' "$DEV_STARTUP_LOG"
+echo 'PASS: fixture and CLI packaging are deferred until health (stub tools only)'
 
 # PLAT-746-935: exercise the actual workspace launch function with a slow
 # fake Go build. No real Go build, service, health request or app restart.
