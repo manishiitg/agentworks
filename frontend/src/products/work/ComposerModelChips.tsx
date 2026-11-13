@@ -3,7 +3,7 @@ import { ComposerActionItems, type ComposerActions } from '../../components/chat
 import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
 import { formatTokens } from '../../utils/formatTokens'
-import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
+import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem, MicrophoneDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, Loader2, Server, Settings2 } from 'lucide-react'
@@ -368,6 +368,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {!pendingSwitch && <div className="mt-1.5 flex flex-wrap items-center gap-x-1 border-t border-border pt-1.5" aria-label="Chat display">
       <ThinkingDisplayMenuItem compact className={displayToggleClass} />
       <ToolsDisplayMenuItem compact className={displayToggleClass} />
+      <MicrophoneDisplayMenuItem compact className={displayToggleClass} />
       {sessionId && <ContextDisplayMenuItem compact className={displayToggleClass} />}
       <ComposerShortcuts busy={busy} />
     </div>}
