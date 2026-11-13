@@ -433,6 +433,13 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		return
 	}
 	slotDone := time.Now()
+	// PLAT-746: opening an already-loaded chat only needs fresh project admission,
+	// not every tab's model/account resolution. Use the identical slot check above.
+	if r.Method == http.MethodGet && r.URL.Query().Get("access_only") == "1" {
+		log.Printf("[CHAT_MODELS] navigation project=%s slot=%s", projectID, slotDone.Sub(started).Round(time.Millisecond))
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"can_open_models": slot.canBuild})
+		return
+	}
 	store := defaultProductConversationRegistryStore()
 	var changedKey string
 	var beforeIdentity ProductAgentIdentity

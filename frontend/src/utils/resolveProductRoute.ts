@@ -48,7 +48,7 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       // Fresh project/tab admission, not a browser-side permission cache. Avoid
       // reloading every project manifest just to show an already-open own chat.
       const [models, chats] = await Promise.all([
-        api.get<{ can_open_models: boolean }>('/api/agent-profiles/work/chat-models', { params: { project_id: route.id }, signal, skipSessionContext: true }),
+        api.get<{ can_open_models: boolean }>('/api/agent-profiles/work/chat-models', { params: { project_id: route.id, access_only: 1 }, signal, skipSessionContext: true }),
         api.get<AgentProfileSideChat[]>('/api/agent-profiles/work/side-chats', { params: { project_id: route.id, with_main: 1 }, signal, skipSessionContext: true }),
       ])
       if (signal.aborted) return () => {}
