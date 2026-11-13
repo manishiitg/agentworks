@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -341,5 +343,46 @@ func TestCrewTeamMainLookupSkipsRuntimeActions(t *testing.T) {
 	}
 	if crewOwnerMainChatKey("team") != "" {
 		t.Fatal("an unregistered Main must stay unavailable")
+	}
+}
+
+// PLAT-746-951: a cold/offline Mac metadata read must not hide an admitted
+// registry target. Listing and send admission use the same registry identity.
+func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	newExternalCrewCommandFixture(t)
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "owner-mac"}); err != nil {
+		t.Fatal(err)
+	}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"helper": true, "private": false}})}
+	var shared string
+	for id, a := range team.Agents {
+		a.Place = "mac"
+		a.Name = a.Tab
+		team.Agents[id] = a
+		if a.InTeam {
+			shared = id
+		}
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	crewMacTeamTabsCache.Store("team\x00other", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{}})
+	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00other") })
+	rows := teamMemberAgentRows(t.Context(), "owner", []map[string]interface{}{{"id": "team", "name": "Example"}})
+	if len(rows) != 1 || rows[0]["id"] != crewTeamAgentAddress("team", shared) {
+		t.Fatalf("registered target missing or private row exposed: %+v", rows)
+	}
+	agent, owner, err := crewTeamAgentByID(t.Context(), "team", "owner", shared)
+	if err != nil || owner != "other" || agent.ID != shared {
+		t.Fatalf("listed registry target refused by admission: %+v %s %v", agent, owner, err)
+	}
+	if err := removeCrewAgentListing("team", "other", "team:chat:helper"); err != nil {
+		t.Fatal(err)
+	}
+	rows = teamMemberAgentRows(t.Context(), "owner", []map[string]interface{}{{"id": "team", "name": "Example"}})
+	if len(rows) != 0 {
+		t.Fatal("deleted registry identity remained listed")
 	}
 }
