@@ -558,6 +558,19 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				caller, target := codeChatCaller(project, base), codeChatTarget(project, chat, agentProfileRuntimeWorkspace(userID, base.Path))
+				// An online agent (Run online) runs only on the server: this Mac's tab for it never answers, so the message goes
+				// there through the Team, the way its Mac original and it talk (owner, 13 Nov: any agent of a Crew can talk to
+				// any other).
+				if tab := crewAgentPublishTab(chat.Key); IsLocalMode() && stringToolArg(args, "inbox_id") == "" && tab != "" && crewPublishedTarget(project.ProjectID, tab) {
+					out, err := api.sendTeamMessageFromMac(ctx, userID, caller, "team:"+project.ProjectID+":"+tab, strings.TrimSpace(message), submissionID)
+					if err != nil {
+						log.Printf("[CREW_TEAM] project=%s event=online_agent_message_failed tab=%s reason=%q", project.ProjectID, tab, err.Error())
+						return "", fmt.Errorf("%s runs on the server; it could not be reached from this Mac: %w", chat.Name, err)
+					}
+					log.Printf("[CREW_TEAM] project=%s event=online_agent_message tab=%s", project.ProjectID, tab)
+					out["next"] = fmt.Sprintf("Sent to %s on the server. Its answer comes back to this chat as a new message when it is ready. Tell the person it was sent.", chat.Name)
+					return jsonOut(out)
+				}
 				out, err := api.sendAgentMessage(ctx, userID, caller, target, strings.TrimSpace(message), stringToolArg(args, "inbox_id"), submissionID)
 				if err != nil {
 					return "", err

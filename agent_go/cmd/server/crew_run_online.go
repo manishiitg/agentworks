@@ -368,7 +368,13 @@ func (api *StreamingAPI) runCrewAgentOnline(ctx context.Context, claims *UserCla
 		restore()
 	}
 	if err != nil {
-		return copyName, "", fmt.Errorf("%s (the tab %q stayed on this Mac; you can delete it)", err.Error(), copyName)
+		// A failed Run online leaves nothing behind: the copy's tab goes (owner, 13 Nov: four leftover tabs after retries).
+		if e := api.removeCrewRunOnlineFork(ctx, crewAgentPublishKey(roots.ID, fork.ChatID)); e != nil {
+			log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s fork=%s remove=failed reason=%q", roots.ID, tab, fork.ChatID, e.Error())
+			return copyName, "", fmt.Errorf("%s (the tab %q stayed on this Mac; you can delete it)", err.Error(), copyName)
+		}
+		log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s fork=%s removed=true", roots.ID, tab, fork.ChatID)
+		return copyName, "", err
 	}
 	if e := api.copyCrewRunOnlineTeamSettings(ctx, claims, roots.ID, tab, fork.ChatID); e != nil {
 		log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s team_settings=failed reason=%q", roots.ID, tab, e.Error())
@@ -427,6 +433,35 @@ func (api *StreamingAPI) forkCrewTab(ctx context.Context, conversationKey, name 
 		return out, fmt.Errorf("the online agent's chat could not be made")
 	}
 	return out, nil
+}
+
+// removeCrewRunOnlineFork closes a copy's tab that never went online, through the Close action (preview, then confirm).
+// A tab something else already points at stays for the person to decide.
+func (api *StreamingAPI) removeCrewRunOnlineFork(ctx context.Context, conversationKey string) error {
+	close := func(in AgentProfileConversationRequest) (*httptest.ResponseRecorder, error) {
+		body, _ := json.Marshal(in)
+		request := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)).WithContext(ctx)
+		request = mux.SetURLVars(request, map[string]string{"id": crewProfileID})
+		response := httptest.NewRecorder()
+		api.handleCloseAgentProfileSideChat(response, request)
+		if response.Code >= 400 {
+			return response, fmt.Errorf("%s", laptopActionErrorText(response.Body.String()))
+		}
+		return response, nil
+	}
+	response, err := close(AgentProfileConversationRequest{ConversationKey: conversationKey, PreviewRemoval: true})
+	if err != nil {
+		return err
+	}
+	var preview crewAgentRemovalPreview
+	if err = json.Unmarshal(response.Body.Bytes(), &preview); err != nil || preview.Confirmation == "" {
+		return fmt.Errorf("the removal preview was unreadable")
+	}
+	if len(preview.Dependencies) > 0 {
+		return fmt.Errorf("other work points at this tab")
+	}
+	_, err = close(AgentProfileConversationRequest{ConversationKey: conversationKey, RemovalConfirmation: preview.Confirmation})
+	return err
 }
 
 // publishCrewRunOnlineCopy sends the idle fork to the server with the existing publish (preview, then confirm).
