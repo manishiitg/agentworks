@@ -145,14 +145,18 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if selection.AccountID != out.Publish.Selection.AccountID {
 		return out, fmt.Errorf("confirm the server account before publishing")
 	}
-	if len(in.Native) != 1 || in.Native[0] == nil {
+	// One native session, or none: an agent whose program cannot copy its chat comes with its saved history only
+	// (crewMoveImportMode), and its first reply here starts that program's own session.
+	if len(in.Native) > 1 || (len(in.Native) == 1 && in.Native[0] == nil) {
 		return out, fmt.Errorf("publish requires exactly one native session")
 	}
-	if err = in.Native[0].Validate(); err != nil {
-		return out, err
-	}
-	if err = crewNativeRuntimeAvailable(ctx, in.Native[0]); err != nil {
-		return out, err
+	if len(in.Native) == 1 {
+		if err = in.Native[0].Validate(); err != nil {
+			return out, err
+		}
+		if err = crewNativeRuntimeAvailable(ctx, in.Native[0]); err != nil {
+			return out, err
+		}
 	}
 	if in.Action == "stage_agent" {
 		return api.prepareCrewTransfer(ctx, claims, id, in)
@@ -202,16 +206,22 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 			}
 			return nil
 		}
-		if imported != nil || chat.Previous || chat.Key != crewAgentPublishKey(h.SourceID, selection.Tab) || chat.Conversation == nil || chat.Conversation.Native == nil {
+		if imported != nil || chat.Previous || chat.Key != crewAgentPublishKey(h.SourceID, selection.Tab) || chat.Conversation == nil || (chat.Conversation.Native == nil) != (len(in.Native) == 0) {
 			return fmt.Errorf("publish must contain only this agent's current native conversation")
 		}
-		a, _ := json.Marshal(chat.Conversation.Native)
-		b, _ := json.Marshal(in.Native[0])
-		if !bytes.Equal(a, b) {
-			return fmt.Errorf("the native session differs from the confirmed publish")
-		}
-		if chat.Conversation.Native.Provider != provider || chat.Conversation.Native.SessionID != in.Native[0].SessionID {
-			return fmt.Errorf("the native session differs from the staged agent")
+		if chat.Conversation.Native == nil {
+			if len(chat.Conversation.History) == 0 {
+				return fmt.Errorf("the agent's conversation is missing")
+			}
+		} else {
+			a, _ := json.Marshal(chat.Conversation.Native)
+			b, _ := json.Marshal(in.Native[0])
+			if !bytes.Equal(a, b) {
+				return fmt.Errorf("the native session differs from the confirmed publish")
+			}
+			if chat.Conversation.Native.Provider != provider || chat.Conversation.Native.SessionID != in.Native[0].SessionID {
+				return fmt.Errorf("the native session differs from the staged agent")
+			}
 		}
 		if selection.Tab != macMainTab && strings.TrimSpace(chat.Identity.Name) == "" {
 			return fmt.Errorf("give the agent a name")
@@ -268,6 +278,10 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 		return out, err
 	}
 	out.Placements, err = readCrewAgentPlacements(id)
-	log.Printf("[CREW_AGENT_PUBLISH] owner=%s project=%s tab=%s transfer=%s native=%s files=%d result=server", claims.UserID, id, selection.Tab, in.TransferID, imported.Conversation.Native.SessionID, len(in.Snapshot.Files))
+	native := "none"
+	if imported.Conversation.Native != nil {
+		native = imported.Conversation.Native.SessionID
+	}
+	log.Printf("[CREW_AGENT_PUBLISH] owner=%s project=%s tab=%s transfer=%s program=%s native=%s files=%d result=server", claims.UserID, id, selection.Tab, in.TransferID, provider, native, len(in.Snapshot.Files))
 	return out, err
 }

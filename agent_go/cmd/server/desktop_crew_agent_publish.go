@@ -80,7 +80,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 	}
 	var plan crewAgentPublishPlan
 	if action == "publish_preview" {
-		remote, e := desktopCrewSyncCall(r.Context(), claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "publish_accounts", PairID: binding.PairID, Provider: record.Provider, PublishAgent: &selection})
+		remote, e := desktopCrewSyncCall(r.Context(), claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "publish_accounts", PairID: binding.PairID, Provider: crewAgentPublishProgram(record, identity), PublishAgent: &selection})
 		if e != nil {
 			fail(e)
 			return
@@ -119,7 +119,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			return
 		}
 		transfer = uuid.NewString()
-		request := crewSyncRequest{MacMainConversationID: main.ConversationID, Action: "publish_agent", PairID: binding.PairID, TransferID: transfer, SplitFiles: roots.SeparateFiles(), Snapshot: &snapshot, PublishAgent: &selection, Provider: record.Provider}
+		request := crewSyncRequest{MacMainConversationID: main.ConversationID, Action: "publish_agent", PairID: binding.PairID, TransferID: transfer, SplitFiles: roots.SeparateFiles(), Snapshot: &snapshot, PublishAgent: &selection, Provider: crewAgentPublishProgram(record, identity)}
 		preview := *out.Publish
 		preview.TransferID, preview.Files = transfer, len(snapshot.Files)
 		for _, file := range snapshot.Files {
@@ -127,8 +127,11 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 		}
 		e = readCrewMoveData(snapshot.StatePath, func(h crewMoveHeader, chat *crewMoveChat) error {
 			if chat != nil {
-				if chat.Conversation == nil || chat.Conversation.Native == nil {
+				if chat.Conversation == nil || (chat.Conversation.Native == nil && len(chat.Conversation.History) == 0) {
 					return fmt.Errorf("this agent has no portable native session")
+				}
+				if chat.Conversation.Native == nil {
+					return nil // history only (crewMoveImportMode)
 				}
 				request.Native = append(request.Native, chat.Conversation.Native)
 				for _, file := range chat.Conversation.Native.Files {
@@ -161,7 +164,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			fail(e)
 			return
 		}
-		if len(request.Native) != 1 {
+		if len(request.Native) > 1 {
 			fail(fmt.Errorf("choose an agent with one current native conversation"))
 			return
 		}
