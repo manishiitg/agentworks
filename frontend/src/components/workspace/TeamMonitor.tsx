@@ -149,7 +149,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     </button>
   }
 
-  const chip = (face: Face) => <button key={face.key} type="button" title={face.line} onClick={() => setOnly(current => current === face.key ? '' : face.key)}
+  const chip = (face: Face) => <button key={face.key} type="button" title={only === face.key ? `${face.line} · click again to show everyone` : face.line} onClick={() => setOnly(current => current === face.key ? '' : face.key)}
           className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${only === face.key ? 'border-primary text-foreground' : 'border-border text-muted-foreground'} ${face.online || face.working || face.waiting ? '' : 'opacity-60'}`}>
           {avatar(face, 'h-5 w-5 text-[9px]')}{face.name}<span className="text-muted-foreground">{face.working || face.waiting ? face.working + face.waiting : face.online ? '' : face.line.replace(/^Last seen /, '')}</span>
   </button>
@@ -177,10 +177,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       {team && <>
         <div className="px-3 pb-1.5 pt-3 text-sm font-semibold text-foreground">Team</div>
         {rows.length > 0 && <div className="px-3 pb-2 text-xs text-muted-foreground">{`${rows.length - waiting} agent${rows.length - waiting === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}`}</div>}
-        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-          <button type="button" onClick={() => setOnly('')} className={`rounded-full border px-2.5 py-0.5 text-xs ${only ? 'border-border text-muted-foreground' : 'border-primary text-foreground'}`}>Everyone</button>
-          {!multi && faces.map(chip)}
-        </div>
+        {/* A person's chip filters the list to them; clicking it again shows everyone again (no separate reset chip). */}
+        {!multi && <div className="flex flex-wrap gap-1.5 px-3 pb-2">{faces.map(chip)}</div>}
         {multi && networks.map(network => <div key={network} className="px-3 pb-2">
           <div className="pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{network}</div>
           <div className="flex flex-wrap gap-1.5">{faces.filter(face => face.network === network).map(chip)}</div>
