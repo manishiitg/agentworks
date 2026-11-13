@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"io"
 	"log"
 	"net/http"
@@ -172,13 +173,17 @@ func readConversationTailFromWorkspace(ctx context.Context, filePath string, n i
 
 // appendConversationHistoryInWorkspace adds messages to a chat conversation
 // and sets top-level fields, without rewriting the conversation.
-func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}) error {
+func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}, expected ...*chatlog.Version) error {
 	noteWorkspaceMutation(filePath, false)
 	segments := strings.Split(filePath, "/")
 	for i, segment := range segments {
 		segments[i] = url.PathEscape(segment)
 	}
-	body, err := json.Marshal(map[string]interface{}{"messages": messages, "patch": patch})
+	requestBody := map[string]interface{}{"messages": messages, "patch": patch}
+	if len(expected) > 0 {
+		requestBody["expected_version"] = expected[0]
+	}
+	body, err := json.Marshal(requestBody)
 	if err != nil {
 		return err
 	}

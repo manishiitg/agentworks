@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"log"
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -83,13 +85,15 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	if !ok {
 		return false
 	}
+	// A failed attempt must leave the full merger's input intact.
+	patch = maps.Clone(patch)
 	header, err := readChatConversationHeader(path)
 	if err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s header_error=true", session)
-		return true
+		return false
 	}
 	if owner := stringFromRecord(header, "user_id"); owner != "" && owner != user {
-		return true
+		return false
 	}
 	if !source.same(statResumeHistory(user, source.workspace, path)) {
 		return false
@@ -108,7 +112,7 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	if value, exists := header["ui_events"]; exists {
 		raw, err := json.Marshal(value)
 		if err != nil || json.Unmarshal(raw, &previousUI) != nil {
-			return true
+			return false
 		}
 	}
 	ui = trimChatHistoryUIEvents(mergeChatHistoryUIEvents(previousUI, ui))
@@ -123,11 +127,18 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	}
 	encoded, err := chatHistoryToRaw(messages)
 	if err != nil {
-		return true
+		return false
 	}
-	if err = appendConversationHistoryInWorkspace(context.Background(), path, encoded, patch); err != nil {
+	if !source.same(statResumeHistory(user, source.workspace, path)) {
+		return false
+	}
+	expected, err := chatlog.VersionFromInfos(source.header, source.log)
+	if err != nil {
+		return false
+	}
+	if err = appendConversationHistoryInWorkspace(context.Background(), path, encoded, patch, &expected); err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s append_error=true", session)
-		return true
+		return false
 	}
 	// No old row can be removed by Append. Its saved prefix therefore already
 	// satisfies the full writer's user-turn-loss guard without another file read.
@@ -138,13 +149,17 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	}
 	if err = writeChatTailResumeSnapshot(path, header, history, totalTurns); err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s resume_error=true", session)
+		return false
 	}
 	size := int64(0)
 	if stat := statResumeHistory(user, source.workspace, path); stat != nil {
 		size = stat.header.Size()
+	} else {
+		return false
 	}
 	if err = updatePersistedChatHistoryIndex(user, session, mode, history, runtime, path, size, now, bot); err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s index_error=true", session)
+		return false
 	}
 	log.Printf("[CHAT_PERSIST_TAIL] session=%s prior_messages=%d appended_messages=%d messages=%d", session, source.persistedBody, len(tail), len(history))
 	return true
