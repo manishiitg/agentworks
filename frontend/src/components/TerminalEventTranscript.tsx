@@ -1065,8 +1065,9 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
         className="flex w-full items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <Send className={`h-3.5 w-3.5 shrink-0 ${view.failed ? 'text-red-500' : 'text-primary/70'}`} aria-hidden="true" />
-        <span className="truncate">
-          You → <span className="font-medium text-foreground/85">{view.targetLabel || view.target || 'Agent'}</span>
+        {/* The server sends the recipient's name; its address stays in the tooltip, never as the label. */}
+        <span className="truncate" title={view.target || undefined}>
+          You → <span className="font-medium text-foreground/85">{view.targetLabel || 'another agent'}</span>
         </span>
         <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
         {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}

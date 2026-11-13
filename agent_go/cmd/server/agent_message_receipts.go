@@ -77,12 +77,10 @@ func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoi
 	agent, named := s.destAgentOf(dest)
 	state, text := receiptState(m, agent, named)
 	out := map[string]interface{}{"state": state, "state_text": text, "message": text, "sent_at": m.SentAt}
-	// The recipient's own name for itself (a Crew's title, an agent's label), so the sender's chat can say "Message to
-	// <label>" instead of a raw agent id.
-	if label := strings.TrimSpace(dest.Label); label != "" {
+	// The recipient's own name for itself (a Crew's title, an agent's current label), so the sender's chat can say
+	// "Message to <label>" instead of a raw agent id such as app-<id>.
+	if label := strings.TrimSpace(s.endpointName(dest, dest.UserID)); label != "" {
 		out["to_label"] = label
-	} else if agent != nil && strings.TrimSpace(agent.Label) != "" && agent.Label != agent.Name {
-		out["to_label"] = strings.TrimSpace(agent.Label)
 	}
 	if named {
 		out["delivery_mode"] = "inbox"
@@ -105,7 +103,7 @@ func (s agentMessageStore) sentReceipts(c agentConversation, side, limit int) []
 			continue
 		}
 		row := s.receiptFields(m, c.Endpoints[1-side])
-		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, endpointDisplayLabel(c.Endpoints[1-side], c.Endpoints[side].UserID)
+		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, s.endpointName(c.Endpoints[1-side], c.Endpoints[side].UserID)
 		rows = append(rows, row)
 	}
 	return rows
@@ -115,4 +113,20 @@ func stampReceipt(m *agentMessage, delivery string, now time.Time) {
 	if delivery == "delivered" && m.DeliveredAt.IsZero() {
 		m.DeliveredAt = now
 	}
+}
+
+// endpointName is how cards and inbox rows name an endpoint: a named agent by its current label (what the directory
+// shows), not the registered address it was stored with (app-<id>). Other endpoints keep their stored label.
+func (s agentMessageStore) endpointName(e agentMessageEndpoint, viewer string) string {
+	if e.NamedAgentID != "" {
+		for _, a := range s.Agents {
+			if a.ID == e.NamedAgentID && a.UserID == e.UserID {
+				if label := cleanAgentLabel(a.Label); label != "" {
+					e.Label = label
+				}
+				break
+			}
+		}
+	}
+	return endpointDisplayLabel(e, viewer)
 }
