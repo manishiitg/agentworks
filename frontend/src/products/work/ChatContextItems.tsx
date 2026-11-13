@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useChatContextView } from './useChatContextView'
+import { useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Check, Info, Layers, RotateCcw } from 'lucide-react'
 import { agentApi } from '../../services/api'
@@ -92,14 +93,9 @@ export async function changeChatContext(sessionId: string, body: ChatContextChan
  * back and the server's answer is shown. Mounted only while the menu is open, so it reads fresh numbers.
  */
 export default function ChatContextItems({ sessionId, modelLabel, showDisplay = true, showTerminal = true }: { sessionId: string; modelLabel?: string; showDisplay?: boolean; showTerminal?: boolean }) {
-  const [view, setView] = useState<ChatContextView | null>(null)
+  const view = useChatContextView(sessionId)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    if (sessionId) agentApi.getChatContext(sessionId).then(next => { if (!cancelled) setView(next) }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [sessionId])
 
   if (!view) return null
   const used = view.used_tokens ?? 0
@@ -112,8 +108,8 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
     if (busy) return
     setBusy(true)
     try {
-      const next = await changeChatContext(sessionId, body)
-      if (next) setView(next)
+      await changeChatContext(sessionId, body)
+      // The shared hook receives the server response through chatContextChangedEvent.
     } finally { setBusy(false) }
   }
   // Keep the menu open after a switch, so the person sees it change.
