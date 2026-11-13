@@ -476,6 +476,13 @@ func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.Native
 		}
 		return nil
 	}
+	// The SDK also streams synthetic helper follow-ups. Their transcript turn
+	// root is not necessarily the foreground publication root, but the native
+	// message/block identity is the same. Never publish that completed block twice.
+	if o.api.nativeReplyBlockAlreadyPublished(o.snapshot.SessionID, record.AssistantBlockID) {
+		log.Printf("[NATIVE_RECORD] reply_skipped session=%s provider=%s native=%s turn=%s item=%s reason=native_block_already_published block=%s", o.snapshot.SessionID, record.Provider, record.SessionID, record.TurnID, record.ID, record.AssistantBlockID)
+		return nil
+	}
 	chunk := &agentevents.StreamingChunkEvent{BaseEventData: agentevents.BaseEventData{EventID: id + ":reply", Timestamp: observedAt, Metadata: map[string]interface{}{"native_continuation": true, "provider": record.Provider, "native_record_id": record.ID, "native_turn_id": record.TurnID}}, Source: "transcript", Content: record.Text}
 	reply := storeevents.Event{ID: id + ":reply", Type: "streaming_chunk", Timestamp: observedAt, SessionID: o.snapshot.SessionID, ExecutionKind: "main_agent", Data: agentevents.NewAgentEvent(chunk)}
 	reply.Data.SessionID = o.snapshot.SessionID
@@ -576,4 +583,27 @@ func (api *StreamingAPI) nativeCodingBackgroundWork(sessionID string) []SessionB
 		o.mu.Unlock()
 	}
 	return items
+}
+
+// Only a completed main-session native block proves publication. Empty IDs,
+// partial streams, another chat and legacy/unstreamed records are not proof.
+func (api *StreamingAPI) nativeReplyBlockAlreadyPublished(sessionID, blockID string) bool {
+	if api == nil || api.eventStore == nil || blockID == "" {
+		return false
+	}
+	for _, event := range api.eventStore.GetAllEventsRaw(sessionID) {
+		if event.Type != "streaming_chunk" || event.TerminalOwnerID != "main:"+sessionID {
+			continue
+		}
+		data := eventPayloadMap(event)
+		metadata, _ := data["metadata"].(map[string]interface{})
+		if metadata["assistant_block_id"] != blockID || metadata["assistant_block_phase"] != "end" || data["source"] != "transcript" {
+			continue
+		}
+		content, _ := data["content"].(string)
+		if content != "" {
+			return true
+		}
+	}
+	return false
 }
