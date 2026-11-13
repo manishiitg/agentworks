@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
-	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
@@ -167,7 +167,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		externalFailure(w, err)
 		return
 	}
-	if err = api.seedForkChatJournal(user, destination, source.Record.ConversationKey, firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat"), data); err != nil {
+	if err = api.seedForkChatJournal(user, destination, source.Record.ConversationKey, firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat"), saved.History); err != nil {
 		externalFailure(w, err)
 		return
 	}
@@ -308,15 +308,26 @@ func exportCrewForkProgram(store, cwd, id, provider, transport, out string, maxB
 
 // The resume archive is model context; the chat screen reads the destination's
 // own journal. Copy only dialogue, never source event ownership or tool handles.
-func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductConversationRecord, sourceKey, sourceName string, raw []byte) error {
+func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductConversationRecord, sourceKey, sourceName string, history []llmtypes.MessageContent) error {
 	if api.eventStore == nil {
 		return fmt.Errorf("the copied conversation journal is unavailable")
 	}
-	var conversation builderConversationLog
-	if err := json.Unmarshal(raw, &conversation); err != nil {
-		return err
+	// Reuse the one parsed model history. Only text references are projected;
+	// do not marshal/unmarshal another full history including tool payloads.
+	conversation := builderConversationLog{SessionID: destination.SessionID}
+	for _, message := range history {
+		role := string(message.Role)
+		if role != "human" && role != "user" && role != "ai" && role != "assistant" {
+			continue
+		}
+		row := builderConversationMessage{Role: role}
+		for _, part := range message.Parts {
+			if text := chatHistoryPartText(part); text != "" {
+				row.Parts = append(row.Parts, builderConversationPart{Text: text})
+			}
+		}
+		conversation.ConversationHistory = append(conversation.ConversationHistory, row)
 	}
-	conversation.SessionID = destination.SessionID
 	api.eventStore.SetSessionOwner(destination.SessionID, user)
 	if err := api.eventStore.SetSessionPersistenceClass(destination.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
 		return err
