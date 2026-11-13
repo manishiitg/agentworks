@@ -28,6 +28,8 @@ type crewTeamLiveAgent struct {
 	Activity string `json:"activity"`
 	// Doing is the agent's latest Team "Doing" post, only while it works or waits.
 	Doing string `json:"doing,omitempty"`
+	// Waiting says who a waiting agent waits on ("Waiting for Laxmi's reply"), only while it waits.
+	Waiting string `json:"waiting,omitempty"`
 	crewTeamMessagePreview
 }
 
@@ -100,6 +102,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 				out.Agents = append(out.Agents, row)
 			} else if row.Activity == "waiting" {
 				row.Label += " waiting"
+				row.Waiting = agent.StatusLabel
 				out.Agents = append(out.Agents, row)
 			} else {
 				out.Idle = append(out.Idle, row)
@@ -145,8 +148,14 @@ func crewTeamLiveLog(project, viewer string, live crewTeamLiveView) {
 
 // Only metadata from admitted Team-to-Team conversations affects the live line.
 // A reply closes the preceding outstanding question; it is not a new wait.
-func crewTeamMessageWaitStarts(ctx context.Context, project string, people []crewTeamAgentsPerson) map[string]time.Time {
-	out := map[string]time.Time{}
+// crewTeamWait is one unanswered Team message: when it was sent and the chat it waits on.
+type crewTeamWait struct {
+	Since time.Time
+	On    string // chat key of the agent that has not replied yet
+}
+
+func crewTeamMessageWaitStarts(ctx context.Context, project string, people []crewTeamAgentsPerson) map[string]crewTeamWait {
+	out := map[string]crewTeamWait{}
 	allowed := map[string]bool{}
 	for _, person := range people {
 		for _, agent := range person.Agents {
@@ -185,8 +194,8 @@ func crewTeamMessageWaitStarts(ctx context.Context, project string, people []cre
 		}
 		if from >= 0 {
 			key := conversation.Endpoints[from].ChatKey
-			if previous, ok := out[key]; !ok || since.Before(previous) {
-				out[key] = since
+			if previous, ok := out[key]; !ok || since.Before(previous.Since) {
+				out[key] = crewTeamWait{Since: since, On: conversation.Endpoints[1-from].ChatKey}
 			}
 		}
 	}

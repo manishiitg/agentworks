@@ -108,9 +108,10 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
 	names := []string{}
-	// The card is what the Team did, not your own agents' work (the left menu shows that; owner, 12 Nov): recent
-	// decisions and schedule findings first, then teammates' agents working or waiting now.
-	live := []crewAccessLine{}
+	// The card is what the Team is doing, not your own agents' work (the left menu shows that; owner, 12 Nov).
+	// Teammates' agents working or waiting now come first, then recent decisions and schedule findings
+	// (owner, 13 Nov: the card showed only decisions; "we should show agents working also").
+	live, recentLines := []crewAccessLine{}, []crewAccessLine{}
 	if !f.SuppressLive {
 		recent := append(slices.Clone(f.Posts.Decisions), f.Posts.Findings...)
 		slices.SortFunc(recent, func(a, b crewTeamActivityPost) int { return b.At.Compare(a.At) })
@@ -131,7 +132,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 			if post.Private {
 				tag = "Only you"
 			}
-			live = append(live, crewAccessLine{Kind: "team_live", Title: title, Detail: detail, Tag: tag, Target: "activity"})
+			recentLines = append(recentLines, crewAccessLine{Kind: "team_live", Title: title, Detail: detail, Tag: tag, Target: "activity"})
 		}
 	}
 	for _, person := range f.People {
@@ -150,7 +151,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 				detail = doing.Line
 			}
 			if agent.Activity == "waiting" {
-				detail = firstNonEmptyTrimmed(agent.StatusLabel, "Waiting for its owner")
+				detail = firstNonEmptyTrimmed(agent.StatusLabel, "Waiting for "+name)
 			}
 			live = append(live, crewAccessLine{Kind: "team_live", Title: name + "'s " + agent.Name, Detail: detail, Tag: agent.Activity, Target: "activity"})
 		}
@@ -164,6 +165,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 	}
 	lines = append(lines, crewAccessLine{Kind: "team", Title: title, Count: len(names)})
 	lines = append(lines, live[:min(3, len(live))]...)
+	lines = append(lines, recentLines[:min(3, len(recentLines))]...)
 	lines = append(lines, crewAccessPublicLine(f.Agents)...)
 	if f.Team.Folder.shared() {
 		if f.HasLocal && f.LocalError != "" {
