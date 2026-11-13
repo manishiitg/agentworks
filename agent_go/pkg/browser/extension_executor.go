@@ -226,6 +226,9 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	createdFirstTab := false
 	firstTabLabel := ""
 	if client.Status().Tabs == 0 {
+		if tab != "" {
+			return "", missingExtensionTabReference(tab, nil)
+		}
 		if command == "tab" && (len(values) == 0 || (len(values) == 1 && values[0] == "list")) {
 			return `{"success":true,"data":{"tabs":[]}}`, nil
 		}
@@ -287,6 +290,22 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	tabs, listErr := parseCDPTabs(listed)
 	if listErr != nil {
 		return "", fmt.Errorf("Chrome tab list could not be verified")
+	}
+	requestedTab := tab
+	if command == "tab" && len(values) == 1 && values[0] != "list" && values[0] != "new" && values[0] != "close" {
+		requestedTab = values[0]
+	}
+	if requestedTab != "" {
+		found := false
+		for _, current := range tabs {
+			if current.TabID == requestedTab || current.TargetID == requestedTab || current.Label == requestedTab {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", missingExtensionTabReference(requestedTab, tabs)
+		}
 	}
 	var selected cdpTabInfo
 	for _, current := range tabs {
@@ -421,4 +440,16 @@ func extensionCaptureArguments(command string, values []string, downloads string
 		return "", nil, err
 	}
 	return tab, captureArgsWithDefaultDirectory(command, values, downloads), nil
+}
+
+// The list was obtained through this conversation's private relay client, not
+// from all tabs in Chrome. Never recover by URL/title or retry an action on a
+// different tab: missing CLI aliases are not proof that a real tab was closed.
+func missingExtensionTabReference(tab string, tabs []cdpTabInfo) error {
+	available := make([]map[string]string, 0, len(tabs))
+	for _, current := range tabs {
+		available = append(available, map[string]string{"tabId": current.TabID, "targetId": current.TargetID})
+	}
+	data, _ := json.Marshal(available)
+	return fmt.Errorf("CHROME_TAB_REFERENCE_NOT_FOUND: tab reference %q is not available in this chat's current browser connection. This does not prove the Chrome tab was closed. Current tabs for this chat: %s. Run browser tab list, then use an explicitly listed tab reference; do not open a duplicate or select by URL/title", tab, data)
 }

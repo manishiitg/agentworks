@@ -379,8 +379,10 @@ try {
   const until = async (read, check, label) => {for(let i=0;i<150;i++){const value=await read();if(check(value))return value;await new Promise(resolve=>setTimeout(resolve,100));}assert.fail(label);};
   const codeStatus=async()=> (await fetch(`${base}/fixture/code-status`)).json();
   await sideTool('open',`${base}/fixture?side-server-resume=1`);
-  const sideBeforeResume=(await sideTool('tab')).tabs.map(t=>t.targetId);
-  const primaryBeforeResume=(await cli('tab')).tabs.map(t=>t.targetId);
+  const sideRowsBeforeResume=(await sideTool('tab')).tabs;
+  const primaryRowsBeforeResume=(await cli('tab')).tabs;
+  const sideBeforeResume=sideRowsBeforeResume.map(t=>t.targetId);
+  const primaryBeforeResume=primaryRowsBeforeResume.map(t=>t.targetId);
   const oldStatus=await codeStatus();
   await privatePage.bringToFront();
   assert.equal((await fetch(`${base}/fixture/restart-relay`,{method:'POST'})).status,200);
@@ -390,10 +392,23 @@ try {
   assert.ok(resumed.tabs.some(t=>t.id===tabId));
   assert.equal(await activeTab(),privateTabId,'server resume does not focus or adopt private tab');
   // B reconnects first; A's physical page must not be offered to B.
+  // PLAT-746-953: listing new aliases alone hid the reported bug. Use the
+  // exact short references retained by the agent before credentials rotated.
+  assert.match(JSON.stringify(await sideTool('eval','--tab',sideRowsBeforeResume[0].tabId,'location.search')),/side-server-resume=1/);
+  assert.match(JSON.stringify(await cli('snapshot','--tab',primaryRowsBeforeResume[0].tabId,'-i')),/Save customer/);
   assert.deepEqual((await sideTool('tab')).tabs.map(t=>t.targetId),sideBeforeResume);
   assert.deepEqual((await cli('tab')).tabs.map(t=>t.targetId),primaryBeforeResume);
   assert.match(JSON.stringify(await cli('snapshot','-i')),/Save customer/);
   assert.doesNotMatch(JSON.stringify(await cli('tab')),/side-server-resume=1/);
+  const closedReference=await cli('tab','new',`${base}/fixture?closed-reference=1`);
+  await cli('tab','close',closedReference.tabId);
+  const missing=await fetch(`${base}/fixture/tool`,{method:'POST',body:JSON.stringify({command:'snapshot',args:['--tab',closedReference.tabId,'-i']})});
+  assert.equal(missing.status,409);
+  const missingMessage=await missing.text();
+  assert.match(missingMessage,/CHROME_TAB_REFERENCE_NOT_FOUND/);
+  assert.doesNotMatch(missingMessage,/side-server-resume=1/,'recovery list never reveals another chat');
+  assert.deepEqual((await cli('tab')).tabs.map(t=>t.targetId),primaryBeforeResume,'missing reference never creates a replacement tab');
+  console.log('PASS old tab aliases survive reconnect; closed tabs do not cause cross-chat adoption or duplicate tabs');
   console.log('PASS two Code chats retain ownership when B reconnects first after server restart');
   console.log('PASS server restart renews connection automatically and restores only explicitly shared session tab IDs');
   // Close an idle chat after reconnect, before either native client reattaches.
