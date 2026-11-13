@@ -268,10 +268,25 @@ func mergeStringEnums(old, value any) (map[string]any, bool) {
 
 // Only immutable compiled validation is shared. Tool definitions, executors,
 // selections and authorization remain specific to each projected agent.
+const compiledSchemaCacheLimit = 256
+
+type compiledSchemaEntry struct {
+	schema *jsonschema.Schema
+	used   uint64
+}
+
 var compiledSchemas = struct {
 	sync.Mutex
-	byHash map[[32]byte]*jsonschema.Schema
-}{byHash: make(map[[32]byte]*jsonschema.Schema)}
+	byHash map[[32]byte]compiledSchemaEntry
+	clock  uint64
+}{byHash: make(map[[32]byte]compiledSchemaEntry)}
+
+// CompiledSchemaCacheEntries is metadata for the existing memory summary.
+func CompiledSchemaCacheEntries() int {
+	compiledSchemas.Lock()
+	defer compiledSchemas.Unlock()
+	return len(compiledSchemas.byHash)
+}
 
 func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	encoded, err := json.Marshal(schema)
@@ -284,8 +299,11 @@ func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	// duplicate retained graphs. Validate treats the published schema read-only.
 	compiledSchemas.Lock()
 	defer compiledSchemas.Unlock()
-	if cached := compiledSchemas.byHash[key]; cached != nil {
-		return cached, nil
+	compiledSchemas.clock++
+	if cached, ok := compiledSchemas.byHash[key]; ok {
+		cached.used = compiledSchemas.clock
+		compiledSchemas.byHash[key] = cached
+		return cached.schema, nil
 	}
 	var document any
 	if err := json.Unmarshal(encoded, &document); err != nil {
@@ -300,6 +318,16 @@ func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	compiledSchemas.byHash[key] = compiled
+	if len(compiledSchemas.byHash) >= compiledSchemaCacheLimit {
+		var oldest [32]byte
+		least := ^uint64(0)
+		for hash, entry := range compiledSchemas.byHash {
+			if entry.used < least {
+				oldest, least = hash, entry.used
+			}
+		}
+		delete(compiledSchemas.byHash, oldest)
+	}
+	compiledSchemas.byHash[key] = compiledSchemaEntry{schema: compiled, used: compiledSchemas.clock}
 	return compiled, nil
 }
