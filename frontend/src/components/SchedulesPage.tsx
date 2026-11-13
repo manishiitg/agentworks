@@ -1,3 +1,5 @@
+import { useAuthStore } from '../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { lazy, Suspense, useState } from 'react'
 import { CalendarClock, Webhook } from 'lucide-react'
@@ -20,6 +22,9 @@ const tabs = [
 
 /** Shared schedules and triggers overview, opened from the top-bar icon. */
 export default function SchedulesPage() {
+  const user = useAuthStore(state => state.user?.id)
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const initialSearch = useAppStore(state => state.schedulesSearchScope === `${workspace}:${user || ''}` ? state.schedulesSearchQuery : '')
   const showSchedules = useAppStore(state => state.showSchedulesOverview)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const setShowSchedulesOverview = useAppStore(state => state.setShowSchedulesOverview)
@@ -65,7 +70,7 @@ export default function SchedulesPage() {
       } />
       <div role="tabpanel" className="min-h-0 flex-1">
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
-          {activeTab === 'schedules' && <Schedules key={productSurface} embedded active={showSchedules && !showProviders}
+          {activeTab === 'schedules' && <Schedules key={productSurface} initialSearch={initialSearch} embedded active={showSchedules && !showProviders}
             onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'}
             productProfileId={isCrew ? 'work' : undefined} />}
           {activeTab === 'triggers' && <Triggers key={productSurface} kind={isCrew ? 'crew' : 'workflow'}

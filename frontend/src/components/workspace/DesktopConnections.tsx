@@ -1,3 +1,4 @@
+import { RecentAgentChats } from './RecentAgentChats'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
 import { ProjectAgentMark } from './SidebarCrewAgentMark'
@@ -113,7 +114,6 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const inventory = current ? state.inventory : {}
   const directoryError = desktop ? state.error : ''
   const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
-  const allProjectsExpanded = useAllProjectsExpanded(Boolean(pinned?.length))
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   // The network last picked is kept with the menu's other choices on the server (useMenuNetwork), once they load.
   const { network: savedNetwork, loaded: menuLoaded, pickNetwork } = useMenuNetwork()
@@ -194,10 +194,11 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)) && filtered.shown(project))
   const { macs, server } = groupByMac(unpinnedRows)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
-    <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 ${allProjectsExpanded ? 'overflow-y-auto' : ''}`}>
-      {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 ${allProjectsExpanded ? 'shrink-0' : 'min-h-0 overflow-y-auto'}`}>
+    <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`}>
+      {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
+      <RecentAgentChats />
       <AllProjects hasPins={Boolean(pinned?.length)} counts={filtered.counts}
         networks={connections.map(connection => ({ id: connection.id, name: connection.id === 'local' ? 'Mac' : connection.name }))}
         network={showingAll ? 'all' : selectedLocations[0]}

@@ -120,6 +120,6 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
   openProductWorkspace(destination)
   const app = useAppStore.getState()
   if (item.action === 'providers' || item.action === 'users' || item.action === 'mcp') openWorkspaceSettings(item.action)
-  else if (item.action === 'schedules') app.setShowSchedulesOverview(true)
+  else if (item.action === 'schedules') { useAppStore.setState({ schedulesSearchQuery: '', schedulesSearchScope: '' }); app.setShowSchedulesOverview(true) }
   return true
 }

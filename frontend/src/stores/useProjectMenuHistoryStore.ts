@@ -13,6 +13,8 @@ export function connectedWorkHistoryScope(): string {
 
 /** Presentation history only. The current destination inventory decides access. */
 export const useProjectMenuHistoryStore = create<{
+  recentAgents: Record<string, string[]>
+  visitAgent: (scope: string, tab: string) => void
   recent: Record<string, string[]>
   startHere: Record<string, string[]>
   pinned: Record<string, string[]>
@@ -21,6 +23,8 @@ export const useProjectMenuHistoryStore = create<{
   seedStartHere: (scope: string, destinations: string[]) => void
   visit: (scope: string, destination: string) => void
 }>()(persist(set => ({
+  recentAgents: {},
+  visitAgent: (scope, tab) => set(state => !scope || state.recentAgents[scope]?.[0] === tab ? state : ({ recentAgents: { ...state.recentAgents, [scope]: [tab, ...(state.recentAgents[scope] || []).filter(id => id !== tab)].slice(0, PROJECT_MENU_RECENT_LIMIT) } })),
   recent: {},
   startHere: {},
   pinned: {},
@@ -57,5 +61,5 @@ export const useProjectMenuHistoryStore = create<{
     setItem: (key, value) => { try { window.localStorage.setItem(key, value) } catch { /* History is optional. */ } },
     removeItem: key => { try { window.localStorage.removeItem(key) } catch { /* History is optional. */ } },
   })),
-  partialize: state => ({ recent: state.recent, startHere: state.startHere, pinned: state.pinned }),
+  partialize: state => ({ recentAgents: state.recentAgents, recent: state.recent, startHere: state.startHere, pinned: state.pinned }),
 }))

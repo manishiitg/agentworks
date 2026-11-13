@@ -22,6 +22,7 @@ import { useCanPauseSchedules } from '../../hooks/useCanPauseSchedules'
 const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
 
 interface WorkflowScheduleRunsPanelProps {
+  initialSearch?: string
   onClose: () => void
   embedded?: boolean
   active?: boolean
@@ -44,8 +45,9 @@ interface WorkflowScheduleRunsPanelProps {
   onRunOnline?: (name: string) => void
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, onRunOnline }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus, onRunOnline }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
+  useEffect(() => { if (initialSearch !== undefined) panel.setSearchQuery(initialSearch) }, [initialSearch, panel.setSearchQuery])
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
   useEffect(() => {
     if (refreshToken) void loadJobs(true)
