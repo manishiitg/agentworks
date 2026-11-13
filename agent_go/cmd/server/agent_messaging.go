@@ -759,8 +759,15 @@ func agentMessageText(c agentConversation, m agentMessage) string {
 }
 
 func agentMessageInstructions(inboxID string) string {
-	return fmt.Sprintf("Replies are optional. To send a message back, use the `messages` tool with action=send, inbox_id=%q and message=... (a workflow step has it as `send_message`). If it is not one of your direct tools, reach it the way you reach your other tools, such as call_tool. Your final chat answer is NOT forwarded. Decide yourself whether to reply, set a one-time schedule, follow up or continue work.", inboxID)
+	return fmt.Sprintf("Replies are optional. To send a message back, use the `messages` tool with action=send, inbox_id=%q and message=... (a workflow step has it as `send_message`). If it is not one of your direct tools, reach it the way you reach your other tools, such as call_tool. %s Decide yourself whether to reply, set a one-time schedule, follow up or continue work.", inboxID, agentMessageChatAnswerNote)
 }
+
+// agentMessageChatAnswerNote keeps the receiving chat quiet: the person reads that chat, and long restatements of
+// another agent's status update were the main noise there (PLAT-746).
+const agentMessageChatAnswerNote = "Your final chat answer is NOT forwarded, but the person sees it in this chat: when this message needs nothing from them, answer in one short line."
+
+// agentMessageWritingNote is how one agent writes to another: short plain sentences the person can also read.
+const agentMessageWritingNote = "Write messages to agents in short plain sentences; a status update is one line (Done: <what>. Needs: <nothing or what>.), with commit or PR numbers only when the receiver must act on them."
 
 // This key is set only by admitted agent delivery or the owner's own AI app ask, never from HTTP/JSON fields.
 type deliveredAgentMessageKey struct{}
