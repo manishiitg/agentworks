@@ -45,8 +45,9 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 	defer livefeed.Default.Unsubscribe(sub)
 	if claims != nil {
 		// The Team's "active now" dot (crew_team_active.go).
-		noteWebOpen(claims.UserID, 1)
-		defer noteWebOpen(claims.UserID, -1)
+		where := clientWhere(r.UserAgent())
+		noteWebOpen(claims.UserID, where, 1)
+		defer noteWebOpen(claims.UserID, where, -1)
 	}
 
 	// Subscribe before telling the client to resync, so nothing published
@@ -105,7 +106,7 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			if claims != nil {
-				noteWebOpen(claims.UserID, 0)
+				noteWebOpen(claims.UserID, clientWhere(r.UserAgent()), 0)
 			}
 			flusher.Flush()
 		}
