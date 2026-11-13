@@ -202,6 +202,7 @@ type restoredChatHistoryPersistTarget struct {
 // and carry it through the shared runner without asking later stages to find the
 // same conversation again from a path, workspace, or session id.
 type resolvedResumeTarget struct {
+	source           *resumeHistorySource
 	SessionID        string
 	WorkspacePath    string
 	ConversationPath string
@@ -645,6 +646,7 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write %s: %v", convPath, err)
 		return
 	}
+	api.rememberWrittenResumeHistory(userID, sessionID, convPath, persistedHistory, runtime)
 	if err := writeChatHistoryResumeSnapshot(context.Background(), convPath, convJSON); err != nil {
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write resume snapshot for %s: %v", convPath, err)
 	}
@@ -1198,14 +1200,15 @@ func (api *StreamingAPI) restoreResolvedResumeTarget(currentSessionID string, ta
 	}
 
 	restored := false
-	history := append([]llmtypes.MessageContent(nil), target.History...)
+	history := target.History
 	if len(history) > 0 {
 		api.conversationMux.Lock()
-		if _, exists := api.conversationHistory[currentSessionID]; !exists {
+		if _, exists := api.conversationHistory[currentSessionID]; !exists || target.source != nil && !target.source.same(api.resumeHistorySources[currentSessionID]) {
 			if api.conversationHistory == nil {
 				api.conversationHistory = make(map[string][]llmtypes.MessageContent)
 			}
 			api.conversationHistory[currentSessionID] = history
+			api.rememberResumeHistorySourceLocked(currentSessionID, target)
 			restored = true
 		}
 		api.conversationMux.Unlock()

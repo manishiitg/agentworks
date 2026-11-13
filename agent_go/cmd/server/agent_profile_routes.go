@@ -111,12 +111,26 @@ type AgentProfileConversationResponse struct {
 type resolvedResumeTargetContextKey struct{}
 
 func resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
+	return runningServerAPI.resolveProductResumeTarget(userID, conversation)
+}
+
+func (api *StreamingAPI) resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
 	started := time.Now()
 	workspacePath := normalizeConversationWorkspace(conversation.WorkspacePath)
 	// The same folder the turn itself reads the chat's history from: a shared Crew/<id> stays as it is, a Chats/...
 	// path maps into the caller's tree. Prefixing every path with the caller's tree missed every shared Crew, so a
 	// Crew chat that switched coding agent started with no history (PLAT-872-78).
 	lookupWorkspacePath := productConversationRuntimeWorkspace(userID, workspacePath)
+	if cached, ok := api.reusableProductResumeTarget(userID, workspacePath, conversation.SessionID); ok && !crewBuilderDiskHiddenFromUser(userID, lookupWorkspacePath) {
+		log.Printf("[CHAT_RESUME_REUSE] session=%s messages=%d", conversation.SessionID, len(cached.History))
+		return cached, true, nil
+	}
+	// Local identity is optional: remote/missing sources retain the ordinary read
+	// path, and are never cached without a verifiable file identity.
+	var source *resumeHistorySource
+	if path, ok, err := FindChatHistoryConversationPathForSession(userID, conversation.SessionID, lookupWorkspacePath); err == nil && ok {
+		source = statResumeHistory(userID, workspacePath, path)
+	}
 	target, ok, err := readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
 	count := 0
 	if target != nil {
@@ -126,7 +140,11 @@ func resolveProductResumeTarget(userID string, conversation ProductConversationR
 	if err != nil || !ok || target == nil {
 		return nil, false, err
 	}
+	if source != nil && (source.path != target.ConversationPath || !source.same(statResumeHistory(userID, workspacePath, target.ConversationPath))) {
+		source = nil
+	}
 	return &resolvedResumeTarget{
+		source:           source,
 		SessionID:        target.SessionID,
 		WorkspacePath:    workspacePath,
 		ConversationPath: target.ConversationPath,

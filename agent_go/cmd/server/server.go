@@ -476,8 +476,9 @@ type StreamingAPI struct {
 	workflowStepIDMux sync.RWMutex
 
 	// Conversation history storage: sessionID -> conversation history
-	conversationHistory map[string][]llmtypes.MessageContent
-	conversationMux     sync.RWMutex
+	conversationHistory  map[string][]llmtypes.MessageContent
+	conversationMux      sync.RWMutex
+	resumeHistorySources map[string]*resumeHistorySource
 
 	// Restored coding-agent persistence targets. Keyed by current Runloop
 	// sessionID so follow-up turns after a native resume continue updating the
@@ -7193,6 +7194,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					preModeChangeSnapshot = make([]llmtypes.MessageContent, len(existing))
 					copy(preModeChangeSnapshot, existing)
 					delete(api.conversationHistory, sessionID)
+					delete(api.resumeHistorySources, sessionID)
 				}
 			}
 			api.lastWorkshopModeBySession[sessionID] = newWorkshopMode
