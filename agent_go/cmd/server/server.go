@@ -2475,6 +2475,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/status", api.handleProviderAccountStatus).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/sign-out", api.handleProviderAccountSignOut).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/server-login", api.handleServerLogin).Methods("GET", "POST")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/move-to-server", api.handleMoveLoginToServer).Methods("POST")
+	apiRouter.HandleFunc("/server-login/move-in", api.handleServerLoginMoveIn).Methods("POST")
 	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")

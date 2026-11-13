@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -359,15 +358,7 @@ func museAccountStatus(target providerAccountTarget) (state, identity string) {
 // $HOME/.codex/auth.json): the "email" claim of the saved ID token, read without its signature, for display only.
 // `codex login status` names only the method.
 func codexLoginEmail(target providerAccountTarget) string {
-	codexHome := envValue(target.Env, "CODEX_HOME")
-	if codexHome == "" {
-		home := envValue(target.Env, "HOME")
-		if home == "" {
-			home = target.Home
-		}
-		codexHome = filepath.Join(home, ".codex")
-	}
-	raw, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	raw, err := os.ReadFile(codexLoginFile(target))
 	if err != nil {
 		return ""
 	}
@@ -376,21 +367,10 @@ func codexLoginEmail(target providerAccountTarget) string {
 			IDToken string `json:"id_token"`
 		} `json:"tokens"`
 	}
-	if json.Unmarshal(raw, &parsed) != nil {
-		return ""
-	}
-	parts := strings.Split(parsed.Tokens.IDToken, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
-	if err != nil {
-		return ""
-	}
 	var claims struct {
 		Email string `json:"email"`
 	}
-	if json.Unmarshal(payload, &claims) != nil || !strings.Contains(claims.Email, "@") {
+	if json.Unmarshal(raw, &parsed) != nil || !jwtClaims(parsed.Tokens.IDToken, &claims) || !strings.Contains(claims.Email, "@") {
 		return ""
 	}
 	return claims.Email

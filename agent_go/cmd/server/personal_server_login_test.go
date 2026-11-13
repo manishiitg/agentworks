@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -46,5 +48,23 @@ func TestPersonalModelProxyPlaceholderGuard(t *testing.T) {
 	}
 	if code := relay(placeholder); code != http.StatusUnauthorized {
 		t.Fatalf("old key after sign-out: %d, want 401", code)
+	}
+}
+
+// Moving a Mac's Codex login to the server carries only a ChatGPT sign-in, in the model proxy's own format; an API-key
+// login has nothing to renew and is refused (PLAT-856-441).
+func TestCodexProxyLoginConversion(t *testing.T) {
+	if _, _, err := codexProxyLogin([]byte(`{"OPENAI_API_KEY":"sk-example","tokens":null}`)); err == nil {
+		t.Fatal("an API-key login was accepted")
+	}
+	claims := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"person@example.com"}`))
+	idToken := "e30." + claims + ".sig"
+	stored, email, err := codexProxyLogin([]byte(`{"tokens":{"id_token":"` + idToken + `","access_token":"e30.e30.sig","refresh_token":"rt","account_id":"acct"}}`))
+	if err != nil || email != "person@example.com" {
+		t.Fatalf("email %q, err %v", email, err)
+	}
+	var saved map[string]string
+	if json.Unmarshal(stored, &saved) != nil || saved["type"] != "codex" || saved["refresh_token"] != "rt" || saved["email"] != "person@example.com" {
+		t.Fatalf("saved login %v", saved)
 	}
 }
