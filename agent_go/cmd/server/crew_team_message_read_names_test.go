@@ -67,6 +67,22 @@ func TestCrewTeamPairedReadUsesStoredSenderIdentity(t *testing.T) {
 	if status, body := read("owner", "pair", "sender"); status == 200 || strings.Contains(body, "Visible reply") {
 		t.Fatalf("revoked endpoint read: %d %s", status, body)
 	}
+
+	// The Mac forwards only an absent inbox, never a local denial or retained tombstone.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	if err := crewroot.WriteSync("local", crewroot.SyncBinding{Mode: "relay", Side: "local", PairID: "pair", PeerProjectID: "team"}); err != nil {
+		t.Fatal(err)
+	}
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "local", ProfileID: "work"}, Chat: &codeChat{Key: "local:chat:sender"}}
+	if !crewTeamMailboxLocalMiss(agentMessageStore{}, c.ID, caller) {
+		t.Fatal("absent paired inbox was not routed")
+	}
+	if crewTeamMailboxLocalMiss(agentMessageStore{Conversations: []agentConversation{c}}, c.ID, caller) {
+		t.Fatal("local inbox denial routed remotely")
+	}
+	if crewTeamMailboxLocalMiss(agentMessageStore{Expired: []expiredAgentConversation{{ID: c.ID}}}, c.ID, caller) {
+		t.Fatal("retained expired inbox routed remotely")
+	}
 }
 
 // Exact names select an admitted registry row; ambiguous names and near UUIDs
