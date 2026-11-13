@@ -1283,15 +1283,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-crew-access', open)
     return () => window.removeEventListener('agentworks:open-crew-access', open)
   }, [selected?.id, isShared, selectWorkspaceView])
-  // "Works once this Crew is online. [Move online]" opens Where it lives (useMacCrew.tsx).
-  useEffect(() => {
-    const open = (event: Event) => {
-      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id) return
-      openWorkPresentationView('mcp', 'computer')
-    }
-    window.addEventListener('agentworks:open-where-it-lives', open)
-    return () => window.removeEventListener('agentworks:open-where-it-lives', open)
-  }, [selected?.id, openWorkPresentationView])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {

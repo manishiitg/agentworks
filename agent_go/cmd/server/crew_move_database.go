@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -46,42 +45,4 @@ func snapshotCrewMoveDatabase(ctx context.Context, source, destination string) e
 		return fmt.Errorf("snapshot Crew database: %w", err)
 	}
 	return os.Chmod(destination, 0600)
-}
-
-func importCrewMoveDatabase(ctx context.Context, roots crewroot.Roots, source string) error {
-	if source == "" {
-		return nil
-	}
-	destination, err := crewMoveRecordPath(roots, "db/db.sqlite")
-	if err != nil {
-		return err
-	}
-	if err = os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(destination), ".move-db-*.sqlite")
-	if err != nil {
-		return err
-	}
-	stage := f.Name()
-	f.Close()
-	defer os.Remove(stage)
-	if err = os.Remove(stage); err != nil {
-		return err
-	}
-	// VACUUM validates the received image and creates a standalone database;
-	// the destination is a new, inactive Crew until records are admitted.
-	if err = snapshotCrewMoveDatabase(ctx, source, stage); err != nil {
-		return err
-	}
-	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		if err = os.Remove(destination + suffix); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	if err = os.Rename(stage, destination); err != nil {
-		return err
-	}
-	log.Printf("[CREW_SYNC] project=%s phase=database-imported", roots.ID)
-	return nil
 }

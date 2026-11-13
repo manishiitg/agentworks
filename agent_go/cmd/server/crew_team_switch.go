@@ -97,7 +97,7 @@ func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *Use
 	}
 	request = mux.SetURLVars(request, map[string]string{"project": project, "connection": connection})
 	capture := &internalResponseCapture{}
-	api.runDesktopCrewSync(capture, request, false)
+	api.runDesktopCrewSync(capture, request)
 	if capture.status >= 300 {
 		var failure map[string]any
 		_ = json.Unmarshal(capture.body.Bytes(), &failure)

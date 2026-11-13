@@ -27,8 +27,8 @@ online agent, never a copy or backup: the backup is something else (a shared
 Team agent's copy on the server that answers only while the Mac is off, made
 automatically). Choose its `paths` and
 `automations` (schedules, webhooks and watchers meant for it) yourself without a preview, and write a short handover note in your
-reply first. Moving the whole Crew online is not done from chat: it is the
-Mac app's Move online, under Where it lives.
+reply first. Moving the whole Crew online is removed (owner, 13 Nov): an
+agent goes on the server with Run online.
 
 Inspect the returned provider and continuation mode. Native history, file copy,
 credentials and available server tools are separate; never promise every CLI or

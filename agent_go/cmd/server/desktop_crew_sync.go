@@ -6,35 +6,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-const crewSyncResetMessage = "this saved transfer cannot be resumed; your files are kept. Open this Crew in the Mac app to restart its move"
-
 func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
 	}
-	api.runDesktopCrewSync(w, r, true)
+	api.runDesktopCrewSync(w, r)
 
 }
 
-func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Request, allowPair bool) {
-	started := time.Now()
+func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	if !IsLocalMode() {
 		externalError(w, 403, "local_app_required", "Open the Crew in the local AgentWorks app.")
@@ -58,37 +50,10 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	id := mux.Vars(r)["project"]
 	switch input.Action {
-	case "status", "server", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "lent", "lent_copy", "lent_move":
+	// "server" (Move online, the whole Crew) is removed (owner, 13 Nov, PLAT-856-564): an agent goes online with Run online.
+	case "status", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "lent", "lent_copy", "lent_move":
 	default:
-		externalError(w, 400, "invalid_action", "Choose Move online.")
-		return
-	}
-	// A durable receipt permits finishing local retirement after a lost reply or
-	// a restart following the managed-folder rename. Never accept peer paths.
-	if receipt, e := readCrewMoveReceipt(id); e != nil {
-		externalError(w, 409, "sync_unavailable", e.Error())
-		return
-	} else if receipt != nil {
-		if !websiteDeviceClaims(claims) || receipt.Roots.Owner != claims.UserID || receipt.Binding.ConnectionID != connection.ID {
-			externalError(w, 403, "sync_unavailable", "Only this Crew's owner can finish its move.")
-			return
-		}
-		if input.Action != "status" && input.Action != "server" {
-			externalError(w, 409, "sync_unavailable", "This Crew lives online. Open its online copy.")
-			return
-		}
-		if !receipt.Complete && input.Action == "server" {
-			receipt, e = finishCrewMove(r.Context(), receipt.Roots, receipt.Binding, time.Now())
-			if e != nil {
-				externalError(w, 409, "sync_unavailable", e.Error())
-				return
-			}
-		}
-		out := crewMoveReply(receipt)
-		if !receipt.Complete {
-			out.Place = "moving"
-		}
-		externalJSON(w, out)
+		externalError(w, 400, "invalid_action", "Moving the whole Crew online is removed. To put an agent on the server, open its menu and choose Run online.")
 		return
 	}
 	roots, err := api.crewSyncRoots(r.Context(), claims, id)
@@ -109,14 +74,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		}
 		externalJSON(w, out)
 		return
-	}
-	var main ProductConversationRecord
-	if input.Action == "server" {
-		main, err = api.crewHandoffProjectTemplate(r.Context(), claims, roots.ID)
-		if err != nil {
-			externalError(w, 409, "sync_unavailable", err.Error())
-			return
-		}
 	}
 	// Serialize sync operations independently of working files. Chats and edits
 	// must not wait for the network. Status is read without waiting for this lock.
@@ -154,41 +111,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 409, "wrong_connection", "Use this Crew's paired server.")
 		return
 	}
-	// Freeze the observed authority before releasing the file lock. A remote
-	// activation during transfer must not be overwritten on return.
-	outside := func(fn func() error) error {
-		before, e := crewroot.ReadSync(roots.ID)
-		if e != nil {
-			return e
-		}
-		unlock()
-		unlock = nil
-		runErr := fn()
-		unlock, e = wf.LockWorkspace(r.Context(), roots.Files)
-		if e != nil {
-			return e
-		}
-		if _, e = api.crewSyncRoots(r.Context(), claims, roots.ID); e != nil {
-			return e
-		}
-		current, e := crewroot.ReadSync(roots.ID)
-		if e != nil {
-			return e
-		}
-		if (before == nil) != (current == nil) || (before != nil && (before.PairID != current.PairID || before.Editing != current.Editing || before.PendingAction != current.PendingAction || before.LastTransfer != current.LastTransfer)) {
-			return fmt.Errorf("this Crew's sync state changed during transfer; retry from its current state")
-		}
-		return runErr
-	}
-	call := func(project string, request crewSyncRequest) (out crewSyncReply, e error) {
-		e = outside(func() error {
-			var err error
-			out, err = desktopCrewSyncCall(r.Context(), claims.UserID, &connection, project, request)
-			return err
-		})
-		return
-	}
-
 	// Picking a Crew's server (several connected) creates its empty twin there; a Crew has one server.
 	if input.Action == "relay" {
 		if binding == nil && !desktopServerSupportsRelay(r.Context(), claims.UserID, connection) {
@@ -278,280 +200,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		externalJSON(w, crewSyncReply{ProjectID: roots.ID})
 		return
 	}
-	fail := func(err error) {
-		pair := ""
-		if binding != nil {
-			pair = binding.PairID
-		}
-		action := input.Action
-		switch action {
-		case "server", "status":
-		default:
-			action = "unknown"
-		}
-		log.Printf("[CREW_SYNC] project=%s pair=%s action=%s phase=failed code=%s reason=%q", roots.ID, pair, action, crewSyncErrorCode(err), err.Error())
-		message := err.Error()
-		if binding != nil && binding.SchedulesPaused {
-			message += ". Your Mac schedules are paused for this move. Retry Move online to finish."
-		}
-		externalError(w, 409, crewSyncErrorCode(err), message)
-	}
-	if binding == nil {
-		if !allowPair {
-			fail(fmt.Errorf("open this Crew in the AgentWorks app and choose its connected server first"))
-			return
-		}
-		if input.Action != "server" {
-			fail(fmt.Errorf("update the server before transferring work"))
-			return
-		}
-		_, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, roots.ID)
-		if !ok {
-			fail(fmt.Errorf("this Crew is unavailable"))
-			return
-		}
-		pair := uuid.NewString()
-		remote, e := call("new", crewSyncRequest{Action: "create", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: manifest.displayTitle()})
-		if e != nil {
-			fail(e)
-			return
-		}
-		if remote.Binding == nil || remote.ProjectID == "" {
-			fail(fmt.Errorf("server did not return the new Crew"))
-			return
-		}
-		binding = &crewroot.SyncBinding{Mode: "relay", ArchiveOnly: remote.Binding.ArchiveOnly, SplitFiles: roots.SeparateFiles(), PairID: remote.Binding.PairID, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server}
-		if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
-			fail(err)
-			return
-		}
-	}
-	if input.Action == "server" {
-		if e := outside(func() error { _, e := api.prepareCrewDependencies(r, roots, binding, connection, allowPair); return e }); e != nil {
-			fail(e)
-			return
-		}
-	}
-	previous, err := readCrewSyncManifest(roots.ID)
-	if err != nil {
-		fail(err)
-		return
-	}
-	conversationNotice := ""
-	changedDuringHandoff := false
-	switch input.Action {
-	case "server":
-		pendingPath, e := crewSyncManifestPath(roots.ID)
-		if e != nil {
-			fail(e)
-			return
-		}
-		pendingPath += ".pending"
-		var transfer crewSyncRequest
-		if binding.PendingAction != "" {
-			if input.Action != binding.PendingAction {
-				fail(fmt.Errorf("finish the interrupted %s transfer first", binding.PendingAction))
-				return
-			}
-			data, e := os.ReadFile(pendingPath)
-			if e != nil || json.Unmarshal(data, &transfer) != nil {
-				fail(fmt.Errorf("the pending transfer is unavailable; restore its private sync record before continuing"))
-				return
-			}
-			if transfer.Snapshot == nil || transfer.Snapshot.Payloads["content"].Hash != "" {
-				fail(fmt.Errorf("%s", crewSyncResetMessage))
-				return
-			}
-			if len(transfer.Snapshot.Payloads) == 0 || transfer.Snapshot.Payloads["state"].Hash == "" {
-				fail(fmt.Errorf("%s", crewSyncResetMessage))
-				return
-			}
-		}
-		if binding.PendingAction == "" {
-			remote, e := call(binding.PeerProjectID, crewSyncRequest{Action: "status"})
-			if e != nil {
-				fail(e)
-				return
-			}
-			if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.Editing != "local" {
-				fail(fmt.Errorf("this Crew is already online"))
-				return
-			}
-			if input.Action == "server" {
-				if e := api.crewSyncIdle(roots); e != nil {
-					fail(e)
-					return
-				}
-			}
-			snapshot, e := captureCrewSyncSnapshot(r.Context(), roots, previous)
-			defer snapshot.Close()
-			if e != nil {
-				fail(e)
-				return
-			}
-			transfer = crewSyncRequest{Action: "push", PairID: binding.PairID, Editing: "server", Snapshot: &snapshot, TransferID: uuid.NewString()}
-			if e = api.captureCrewMoveData(r.Context(), claims, roots, main, &snapshot); e != nil {
-				fail(e)
-				return
-			}
-			seen := map[string]bool{}
-			if e = readCrewMoveData(snapshot.StatePath, func(_ crewMoveHeader, chat *crewMoveChat) error {
-				if chat == nil || chat.Conversation == nil || chat.Conversation.Native == nil {
-					return nil
-				}
-				b := chat.Conversation.Native
-				key := b.Provider + "/" + b.SessionID
-				if !seen[key] {
-					transfer.Native = append(transfer.Native, b)
-					seen[key] = true
-				}
-				return nil
-			}); e != nil {
-				fail(e)
-				return
-			}
-			if e = freezeCrewPayloads(roots.ID, binding.PairID, transfer.TransferID, "upload", transfer.Snapshot); e != nil {
-				fail(e)
-				return
-			}
-			if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
-				fail(e)
-				return
-			}
-			binding.PendingAction = input.Action
-			binding.Editing = "server"
-			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
-				fail(e)
-				return
-			}
-		}
-		stage := transfer
-		stage.Action = "stage"
-		prepared, e := call(binding.PeerProjectID, stage)
-		if e != nil {
-			fail(e)
-			return
-		}
-		if prepared.Binding == nil || prepared.Binding.LastTransfer != transfer.TransferID {
-			if e = hydrateCrewPayloads(roots.ID, binding.PairID, transfer.TransferID, "upload", transfer.Snapshot); e != nil {
-				fail(e)
-				return
-			}
-			if e = outside(func() error {
-				return readCrewMoveData(transfer.Snapshot.StatePath, func(_ crewMoveHeader, chat *crewMoveChat) error {
-					if chat == nil || chat.Conversation == nil || chat.Conversation.Native == nil {
-						return nil
-					}
-					b := chat.Conversation.Native
-					if err := bindCrewNativeStage(roots, b); err != nil {
-						return err
-					}
-					return desktopCrewNativeSync(r.Context(), roots, connection, binding, b)
-				})
-			}); e != nil {
-				fail(e)
-				return
-			}
-			if e = outside(func() error {
-				return desktopCrewPayloads(r.Context(), roots.Owner, roots.ID, connection, binding, transfer.TransferID, transfer.Snapshot)
-			}); e != nil {
-				fail(e)
-				return
-			}
-		}
-		if input.Action == "server" && (prepared.Binding == nil || prepared.Binding.LastTransfer != transfer.TransferID) {
-			if e = api.crewSyncIdle(roots); e != nil {
-				fail(e)
-				return
-			}
-			stageRoot, e := crewSyncStagingRoot(roots.ID)
-			if e != nil {
-				fail(e)
-				return
-			}
-			latest, e := captureCrewFiles(r.Context(), roots, transfer.Snapshot.Files, stageRoot, nil)
-			defer latest.Close()
-			if e != nil {
-				fail(e)
-				return
-			}
-			git, e := crewsync.CaptureGit(r.Context(), roots.Files, transfer.Snapshot.Git, latest.StagingDir)
-			if e != nil {
-				fail(e)
-				return
-			}
-			latest.Git = git
-			changedDuringHandoff = crewSnapshotChanged(latest)
-			if git != nil && git.BundlePath != "" {
-				_ = os.Remove(git.BundlePath)
-				_ = os.Remove(filepath.Dir(git.BundlePath))
-			}
-			if changedDuringHandoff {
-				// Confirm the captured copy without handing execution to a stale
-				// version. The next send captures the edits made during upload.
-				transfer.Editing = "local"
-				if e = fsutil.WriteJSONAtomic(pendingPath, transfer, 0600); e != nil {
-					fail(e)
-					return
-				}
-			}
-		}
-		if transfer.Editing == "server" && (prepared.Binding == nil || prepared.Binding.LastTransfer != transfer.TransferID) {
-			binding.SchedulesPaused = true
-			if e = crewroot.WriteSync(roots.ID, *binding); e != nil {
-				fail(e)
-				return
-			}
-			if e = api.disableCrewMoveSchedules(r.Context(), roots, transfer.Snapshot.StatePath); e != nil {
-				fail(e)
-				return
-			}
-		}
-		remote, e := call(binding.PeerProjectID, transfer)
-		if e != nil {
-			fail(e)
-			return
-		}
-		if remote.Binding == nil || remote.Binding.PairID != binding.PairID || remote.Binding.LastTransfer != transfer.TransferID {
-			fail(fmt.Errorf("server did not confirm this transfer; retry it"))
-			return
-		}
-		if e = saveCrewSyncSnapshot(roots, *transfer.Snapshot); e != nil {
-			fail(e)
-			return
-		}
-		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, crewContentBytes(transfer.Snapshot), len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
-		binding.Editing = remote.Binding.Editing
-		binding.LastTransfer = transfer.TransferID
-		conversationNotice = remote.ConversationNotice
-		binding.PendingAction = ""
-		binding.SchedulesPaused = false
-	default:
-		fail(fmt.Errorf("choose Move online"))
-		return
-	}
-	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	binding.LastCompletedAt = binding.UpdatedAt
-	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
-		fail(err)
-		return
-	}
-	if p, e := crewSyncManifestPath(roots.ID); e == nil {
-		_ = os.Remove(p + ".pending")
-	}
-	if changedDuringHandoff {
-		fail(fmt.Errorf("files changed during upload; the captured copy is saved on the server. Send again to move your latest work"))
-		return
-	}
-	receipt, err := finishCrewMove(r.Context(), roots, binding, time.Now())
-	if err != nil {
-		fail(err)
-		return
-	}
-	out := crewMoveReply(receipt)
-	out.ConversationNotice = conversationNotice
-	log.Printf("[CREW_SYNC] owner=%s project=%s pair=%s phase=retired local_folder_kept=%t", claims.UserID, roots.ID, binding.PairID, roots.Local)
-	externalJSON(w, out)
+	externalError(w, 400, "invalid_action", "Choose a sync action.")
 }
 
 func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktopConnection, project string, request crewSyncRequest) (crewSyncReply, error) {
