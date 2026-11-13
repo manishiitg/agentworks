@@ -676,8 +676,9 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 		result := api.callCrewMac(r, project, crewChatCall{Operation: "tabs"})
 		var rows []AgentProfileSideChat
 		if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
-			writeCrewChatResult(w, result)
-			return true
+			// A failed Mac list cannot hide independently available server agents.
+			log.Printf("[CREW_CHAT_RELAY] project=%s event=mac_tabs_unavailable status=%d", project, result.Status)
+			rows = nil
 		}
 		for _, row := range rows {
 			base, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)

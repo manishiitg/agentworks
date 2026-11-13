@@ -110,10 +110,6 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	}
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/api/agent-profiles/work/conversation", nil)
 	r = mux.SetURLVars(r, map[string]string{"id": "work"})
-	conversation, err := api.resolveAgentProfileConversation(r, profile, project, "")
-	if err != nil {
-		return fail(409, err.Error())
-	}
 	if call.Operation == "file" {
 		return api.desktopCrewFile(ctx, claims, project, call)
 	}
@@ -159,9 +155,18 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if call.Tab != "" && !crewMacTabID(call.Tab) {
 		return fail(400, "This tab is unavailable.")
 	}
+	var conversation ProductConversationRecord
+	var mainErr error
+	// Main is optional. Explicit tabs and non-chat operations never require it.
+	if call.Tab == "" {
+		conversation, mainErr = api.resolveAgentProfileConversation(r, profile, project, "")
+		if mainErr != nil && call.Operation == "resolve" {
+			return fail(409, mainErr.Error())
+		}
+	}
 	// A tab, or a session address that is not Main's: the conversation must be one of this Crew's own tabs. Only a
 	// resolve with a new tab id opens a new tab, as + New agent does on the Mac.
-	if call.Tab != "" || (call.Operation != "resolve" && call.ConversationID != conversation.ConversationID) {
+	if call.Tab != "" || (call.Operation != "resolve" && (mainErr != nil || call.ConversationID != conversation.ConversationID)) {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
 		if err != nil {
 			return fail(409, err.Error())
