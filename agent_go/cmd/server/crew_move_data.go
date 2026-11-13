@@ -732,24 +732,3 @@ func rebindCrewMoveWatcher(s *projectactions.Schedule, h crewMoveHeader, destina
 	s.Input = raw
 	return nil
 }
-
-func crewMoveNotice(statePath string) string {
-	message := "Your agents, chats and schedules are available online."
-	_ = readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
-		if chat != nil {
-			return nil
-		}
-		if len(h.Webhooks) > 0 {
-			message += " Webhooks have new URLs and credentials; open Webhooks to connect callers."
-		}
-		for _, s := range h.Schedules {
-			var input scheduleExecutionInput
-			if json.Unmarshal(s.Input, &input) == nil && input.Condition != nil && (input.Condition.PersonalGmail() || input.Condition.GitHubPR != nil) {
-				message += " Account-based watchers are paused until you choose their accounts online."
-				break
-			}
-		}
-		return nil
-	})
-	return message
-}

@@ -20,9 +20,7 @@ import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
-// Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
-// and, when it finished, where the Mac folder is kept.
-type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
+type MoveReport = { place?: CloudState; message?: string }
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 type ServerCopy = { name: string; detail: string }
@@ -34,11 +32,6 @@ type AccessText = { line: string; note?: string }
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
-// The move's own steps, as the server reports them (astra, PLAT-856-509).
-type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
-const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
-type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
-const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
@@ -168,11 +161,11 @@ const tintedIcons = new Map<string, LucideIcon>()
  * server's crew-sync reply decides it: the tabs, and whether this app holds the Mac's controls (the Mac app's own Crew)
  * or shows those rows as text (the website, or a Crew from a server); then the People and Dashboards tabs and laptop
  * access where the server lists them. */
-export function YourComputerPanel({ projectId, sessionId, workspacePath, onFullScreen, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
-  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} onFullScreen={onFullScreen} onBack={onBack} /></div>
+export function YourComputerPanel({ projectId, sessionId, workspacePath, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} onBack={onBack} /></div>
 }
 
-function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; onBack?: () => void }) {
   const team = useTeamTab(projectId).view?.team
   const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   // The last Online tab is remembered per Crew in this browser (owner, 5 Nov); Team is its own page, opened from its
@@ -190,18 +183,14 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     window.addEventListener('agentworks:open-crew-access', openTeam)
     return () => window.removeEventListener('agentworks:open-crew-access', openTeam)
   }, [projectId])
-  const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
-  const name = tab?.metadata?.agentProfileProjectTitle || 'this'
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [busy, setBusy] = useState(false)
-  const [busyAction, setBusyAction] = useState('')
-  const [moved, setMoved] = useState<MoveReport | null>(null)
   const [reaching, setReaching] = useState(false)
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'move'>('')
+  const [open, setOpen] = useState<'' | 'code'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -214,50 +203,27 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
   const here = status?.access_here === 'mac'
   const binding = status?.binding
   const online = binding?.editing === 'server'
-  const moving = busyAction === 'server' || binding?.pending_action === 'server' || status?.place === 'moving'
-  // Before moving online, the Mac says whether this Crew fits (the server decides the numbers).
-  const [readiness, setReadiness] = useState<Readiness>()
-  useEffect(() => {
-    if (online || !here) return
-    const abort = new AbortController()
-    void api.get<Readiness>(`/api/crew-sync/${encodeURIComponent(projectId)}/readiness`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setReadiness(data) }).catch(() => {})
-    return () => abort.abort()
-  }, [projectId, online, here])
-  const tooBig = !online && readiness?.fits === false
   const target = binding?.connection_id || publishConnection || (connections.length === 1 ? connections[0].id : '')
   // A network is named by its server's address, such as agents.example.com.
   const networkName = (id?: string) => { const item = connections.find(c => c.id === id); try { return item ? new URL(item.server).host : '' } catch { return item?.name || '' } }
   const reach = (via: string) => { setAsking(false); setReaching(true); void run('relay', via).finally(() => setReaching(false)) }
   const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
-  const run = async (action: 'server' | 'relay' | 'offline', via = target) => {
-    setBusy(true); setBusyAction(action); setError('')
+  const run = async (action: 'relay' | 'offline', via = target) => {
+    setBusy(true); setError('')
     try {
-      const reply = await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
-      if (action === 'server' && reply?.place === 'online') setMoved(reply)
-      if (action !== 'server') teamChanged()
+      await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
+      teamChanged()
       return true
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
-    finally { setBusy(false); setBusyAction(''); setReload(value => value + 1); refreshCrewPlace(projectId) }
+    finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
   }
-  const move = async (share: boolean) => {
-    setOpen('')
-    if (await run('server') && share && link) window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')
-  }
-  const minutes = readiness ? Math.max(1, Math.round(readiness.estimated_seconds / 60)) : 0
-  const facts = readiness && !tooBig ? { size: sizeLabel(readiness.measurement.bytes), time: `about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` } : undefined
   const way = (title: string, line: string, action: ReactNode) => <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 py-2.5 text-sm">
     <div className="min-w-0 flex-1"><p className="font-semibold">{title}</p><p className="text-[12.5px] text-muted-foreground">{line}</p></div>
     <div className="flex flex-wrap items-center gap-1.5">{action}</div>
   </div>
   // Website and phone: the Mac app opens its Crew on the paired server; the website is that server.
   const reachLink = here ? link : `${window.location.origin}/crew/projects/${encodeURIComponent(projectId)}`
-  // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
-  const [doneSeen, setDoneSeen] = useState(false)
-  const done = online && Boolean(moved) && !doneSeen
-  // Publish's full-page steps run where the Mac's controls are (the Mac app).
-  const step: MoveStep | '' = !here ? '' : open === 'move' && !online ? 'confirm' : moving ? 'moving' : done ? 'done' : ''
-  useEffect(() => { onFullScreen?.(step !== ''); return () => onFullScreen?.(false) }, [step, onFullScreen])
   // Esc goes back too, unless the person is typing or a dialog is open.
   useEffect(() => {
     if (!onBack) return
@@ -269,8 +235,6 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
   }, [onBack])
-  if (step) return <MoveCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
-    onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
   const pairedConnection = connections.find(item => item.id === binding?.connection_id)
   const pairedServer = binding?.peer_server || pairedConnection?.server
@@ -334,7 +298,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{status.access_mac?.status}</span>
             {status.access_mac_locked
               ? <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3" />{status.access_mac_locked}</span>
-              : here ? !moving && <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+              : here ? <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
                 : <span title="Turn this off in the Mac app."><Switch aria-label="Mac online" checked disabled /></span>}
           </div>
           {connections.length > 1 && pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
@@ -366,13 +330,10 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onFullScreen, onB
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       <div className="flex justify-end"><AskButton projectId={projectId} card="publish" /></div>
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
-      <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
-        <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>
-          <p className="text-[12.5px] text-muted-foreground">{online ? `Runs on ${network}. Your Mac keeps a copy of its folder.` : `Moves this Crew to ${network} for good: all its agents, chats, memory, skills, files and schedules. It then runs there with your Mac on or off; your Mac keeps a copy of its folder.`}</p>
-          {!online && tooBig && <p className="text-xs text-amber-600">This Crew is too large to move online. Move large folders out first.</p>}
-        </div>
-        {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Move online</Button>}
-      </div>
+      {online && <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
+        <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p><p className="text-[12.5px] text-muted-foreground">Runs on {network}. Your Mac keeps a copy of its folder.</p></div>
+        <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button>
+      </div>}
       {!online && binding?.connection_id && <div className="rounded-xl border border-border p-3"><p className="font-semibold">One agent</p>
         <p className="text-[12.5px] text-muted-foreground">Open the agent's menu and choose Run online. It makes a separate online agent, named with · online, that runs only on {network}; the agent itself stays on this Mac.</p></div>}
     </section>}
@@ -407,59 +368,6 @@ function SignInToServer({ onConnected }: { onConnected: () => void }) {
   </section>
 }
 
-/** The Move online step: size and time, what moves, then the owner's click. One-way (owner, 3 Nov). */
-type MoveStep = 'confirm' | 'moving' | 'done'
-
-/** Move online, as one full-page step (owner, 3 Nov mockup): what moves and what stays, size and time, then progress
- * from the move's own report, then done. One-way, no extra gates. */
-function MoveCrewScreen({ step, name, facts, tooBig, status, backup, error, onCancel, onMove, onOpen }: { step: MoveStep; name: string; facts?: { size: string; time: string }; tooBig: boolean; status: SyncStatus | null; backup?: string; error: string; onCancel: () => void; onMove: () => void; onOpen: () => void }) {
-  const box = (title: string, items: string[]) => <div className="flex-1 rounded-2xl border border-border p-3"><p className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</p><ul className="space-y-1 text-[13px]">{items.map(item => <li key={item}>{item}</li>)}</ul></div>
-  if (step === 'done') return <section aria-label="Crew moved online" className="flex flex-col items-center gap-3 py-10 text-center text-sm">
-    <Cloud className="h-10 w-10 text-primary" aria-hidden="true" />
-    <p className="text-base font-semibold">"{name}" is online</p>
-    <p className="max-w-sm text-[13px] text-muted-foreground">It works even when your Mac is off.{backup ? ` This Mac keeps a copy of its folder in "${backup.split('/').pop()}".` : ''}</p>
-    <Button className="rounded-full px-3.5" onClick={onOpen}>Open it</Button>
-  </section>
-  if (step === 'moving') {
-    const total = status?.bytes_total || 0, done = status?.bytes_done || 0
-    // Each shown step covers some of the move's phases; without a phase (an older server) the bytes decide the first.
-    const at = status?.phase ? MOVE_PHASES.indexOf(status.phase) : total > 0 && done >= total ? 2 : 0
-    const state = (first: number, last: number): 'done' | 'now' | 'next' => at > last ? 'done' : at >= first ? 'now' : 'next'
-    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', state(0, 1)], ['Chats and agents', state(2, 2)], ['Schedules, watchers, artifacts', state(3, 4)], ['Ready online', state(5, 6)]]
-    return <section aria-label="Moving Crew online" className="space-y-4 py-4 text-sm">
-      <p className="text-base font-semibold">Moving "{name}" online…</p>
-      <p className="text-[13px] text-muted-foreground">If it's interrupted, it picks up where it left off.</p>
-      <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${total ? Math.min(100, Math.round(done * 100 / total)) : 5}%` }} /></div>
-      {total > 0 && <p className="text-[13px] tabular-nums">{sizeLabel(done)} <span className="text-muted-foreground">of {sizeLabel(total)}</span></p>}
-      <ul className="space-y-1 text-[13px]">{steps.map(([label, state]) => <li key={label} className={state === 'next' ? 'text-muted-foreground' : ''}>{state === 'done' ? '✓' : state === 'now' ? '●' : '○'} {label}</li>)}</ul>
-      {status?.schedules_paused && <p className="text-[13px] text-muted-foreground">{status.message || 'Its schedules wait until the move finishes.'}</p>}
-      {error && <p className="text-[13px] text-amber-600">It stopped. Your work is kept. <button type="button" className="underline" onClick={onMove}>Retry Move online</button></p>}
-    </section>
-  }
-  return <section aria-label={`Move ${name} online`} className="space-y-4 py-2 text-sm">
-    <div><p className="text-base font-semibold">Move "{name}" online</p><p className="text-[13px] text-muted-foreground">It will live online from now on, and work even when your Mac is off.</p></div>
-    <div className="flex items-center justify-center gap-4 py-2 text-center text-xs text-muted-foreground">
-      <span className="flex flex-col items-center gap-1"><Laptop className="h-7 w-7 text-foreground" aria-hidden="true" />On this Mac<span>now</span></span>
-      <span aria-hidden="true" className="text-lg">→</span>
-      <span className="flex flex-col items-center gap-1"><Cloud className="h-7 w-7 text-primary" aria-hidden="true" />Online<span>after the move</span></span>
-    </div>
-    {tooBig ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p> : <>
-      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Artifacts and functions'])}{box('Stays on this Mac', ['A copy of its folder', 'Apps and sign-ins installed only here'])}</div>
-      <MoveFacts facts={facts} />
-      <p className="text-[13px] text-amber-600">You can't move it back to this Mac. Afterwards you open it from Online, like any online Crew.</p>
-    </>}
-    {error && <p className="text-[13px] text-amber-600">{error}</p>}
-    <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" disabled={tooBig || !facts} onClick={onMove}>Move online</Button></div>
-  </section>
-}
-
-function MoveFacts({ facts }: { facts?: { size: string; time: string } }) {
-  if (!facts) return <p className="text-xs text-muted-foreground">Checking its size…</p>
-  return <div className="space-y-0.5 rounded-lg bg-muted/40 px-3 py-2 text-[13px]">
-    <div className="flex justify-between"><span className="text-muted-foreground">Size</span>{facts.size}</div>
-    <div className="flex justify-between"><span className="text-muted-foreground">Time</span>{facts.time}</div>
-  </div>
-}
 
 /** A QR code of the Crew's link, drawn on this Mac (no network call). */
 function LinkCode({ link }: { link: string }) {

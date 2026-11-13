@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,14 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
-	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -67,24 +62,17 @@ type crewSyncReply struct {
 	// 6 Nov: "mac online.. just reach my agent.. from phone"; crew_owner_on_mac.go).
 	ChatOnly bool `json:"chat_only,omitempty"`
 	// ChatOnlyLine is the one line above that chat: which copy this is and what stays on the Mac (owner, 12 Nov).
-	ChatOnlyLine       string                        `json:"chat_only_line,omitempty"`
-	Role               string                        `json:"role,omitempty"`
-	OnServer           []crewServerCopy              `json:"on_server,omitempty"`
-	Publish            *crewAgentPublishPreview      `json:"publish,omitempty"`
-	Placements         map[string]crewAgentPlacement `json:"placements,omitempty"`
-	SchedulesPaused    bool                          `json:"schedules_paused"`
-	Message            string                        `json:"message,omitempty"`
-	BytesDone          int64                         `json:"bytes_done"`
-	BytesTotal         int64                         `json:"bytes_total"`
-	BackupPath         string                        `json:"backup_path,omitempty"`
-	LocalFolderKept    string                        `json:"local_folder_kept,omitempty"`
-	RuntimeReadiness   *crewDependencyReport         `json:"runtime_readiness,omitempty"`
-	ConversationNotice string                        `json:"conversation_notice,omitempty"`
-	TransferID         string                        `json:"transfer_id,omitempty"`
-	ProjectID          string                        `json:"project_id"`
-	Workspace          string                        `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
-	Binding            *crewroot.SyncBinding         `json:"binding"`
-	Snapshot           *crewsync.Snapshot            `json:"snapshot,omitempty"`
+	ChatOnlyLine string                        `json:"chat_only_line,omitempty"`
+	Role         string                        `json:"role,omitempty"`
+	OnServer     []crewServerCopy              `json:"on_server,omitempty"`
+	Publish      *crewAgentPublishPreview      `json:"publish,omitempty"`
+	Placements   map[string]crewAgentPlacement `json:"placements,omitempty"`
+	Message      string                        `json:"message,omitempty"`
+	TransferID   string                        `json:"transfer_id,omitempty"`
+	ProjectID    string                        `json:"project_id"`
+	Workspace    string                        `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
+	Binding      *crewroot.SyncBinding         `json:"binding"`
+	Snapshot     *crewsync.Snapshot            `json:"snapshot,omitempty"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, moving or online (the server decides).
 	Place string `json:"place,omitempty"`
 	// Agents: share_agents' answer, each with the address the server gave it.
@@ -123,29 +111,6 @@ func crewSyncManifestPath(id string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(state, "crew-sync", id+"-files.json"), nil
-}
-func readCrewSyncManifest(id string) (crewsync.Manifest, error) {
-	p, err := crewSyncManifestPath(id)
-	if err != nil {
-		return nil, err
-	}
-	b, err := os.ReadFile(p)
-	if os.IsNotExist(err) {
-		return crewsync.Manifest{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var files crewsync.Manifest
-	err = json.Unmarshal(b, &files)
-	return files, err
-}
-func saveCrewSyncManifest(id string, files crewsync.Manifest) error {
-	p, err := crewSyncManifestPath(id)
-	if err != nil {
-		return err
-	}
-	return fsutil.WriteJSONAtomic(p, files, 0600)
 }
 
 // crewSyncClaimsGate is the part of the sync admission that depends only on the connection: a personal sign-in (or full
@@ -302,7 +267,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		// A Crew that lives on the server has the same Team tab (owner, 5 Nov) under its normal Access page.
 		out.AccessView = "server_crew"
 	}
-	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
 	if r.Method == http.MethodGet && out.Place == "" {
 		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 	}
@@ -355,9 +319,6 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	if input.Action == "handback_pull" || input.Action == "handback_done" {
 		return api.receiveCrewHandback(ctx, claims, id, input)
 	}
-	if input.Action == "stage" {
-		return api.prepareCrewTransfer(ctx, claims, id, input)
-	}
 	if input.Action == "create" {
 		if input.PairID == "" || input.SourceID == "" || input.Name == "" {
 			return crewSyncReply{}, fmt.Errorf("choose a local Crew to sync")
@@ -393,11 +354,6 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		return crewSyncReply{ProjectID: created, Binding: &binding}, nil
 	}
-	if input.Action == "status" && IsLocalMode() && websiteDeviceClaims(claims) {
-		if receipt, e := readCrewMoveReceipt(id); e == nil && receipt != nil && receipt.Roots.Owner == claims.UserID && receipt.Complete {
-			return crewMoveReply(receipt), nil
-		}
-	}
 	roots, err := api.crewSyncRoots(ctx, claims, id)
 	if err != nil {
 		return crewSyncReply{}, err
@@ -415,179 +371,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		for _, entry := range out.Placements {
 			out.OnServer = append(out.OnServer, crewServerCopy{Name: entry.Name, Detail: "native chat, memory, skills and selected working files"})
 		}
-		out.BytesDone, out.BytesTotal = crewMoveBytes(roots, b)
-		if b != nil && b.SchedulesPaused {
-			out.SchedulesPaused = true
-			out.Message = "Your Mac schedules are paused for this move. Retry Move online to finish."
-		}
-		if IsLocalMode() && b != nil && b.Side == "local" && b.PendingAction == "server" {
-			connection, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
-			if e != nil {
-				return out, e
-			}
-			remote, e := desktopCrewSyncCall(ctx, claims.UserID, &connection, b.PeerProjectID, crewSyncRequest{Action: "status"})
-			if e != nil {
-				return out, e
-			}
-			if remote.Binding == nil || remote.Binding.PairID != b.PairID {
-				return out, fmt.Errorf("the paired Crew is unavailable")
-			}
-			out.BytesDone, out.BytesTotal = remote.BytesDone, remote.BytesTotal
-		}
 		return out, nil
 	}
-	// Main-chat initialization may write the project manifest through workspace
-	// HTTP. Complete it before taking the file lock used by that endpoint.
-	var main ProductConversationRecord
-	if input.Action == "push" && input.Editing == "server" {
-		main, err = api.crewHandoffProjectTemplate(ctx, claims, roots.ID)
-		if err != nil {
-			return crewSyncReply{}, err
-		}
-	}
-	unlock, err := wf.LockWorkspace(ctx, roots.Files)
-	if err != nil {
-		return crewSyncReply{}, err
-	}
-	defer unlock()
-	binding, err := crewroot.ReadSync(roots.ID)
-	if err != nil {
-		return crewSyncReply{}, err
-	}
-	out := crewSyncReply{ProjectID: roots.ID, Binding: binding, Workspace: roots.Virtual}
-	if input.Action == "status" {
-		return out, nil
-	}
-	if binding == nil || input.PairID != binding.PairID || binding.Side != "server" {
-		return out, fmt.Errorf("choose the server paired with this Crew")
-	}
-	switch input.Action {
-	case "push":
-		if input.TransferID == "" {
-			return out, fmt.Errorf("a sync transfer identity is required")
-		}
-		if input.TransferID == binding.LastTransfer {
-			return out, nil
-		}
-		if err := api.crewSyncIdle(roots); err != nil {
-			return out, err
-		}
-		if binding.Editing != "local" || input.Snapshot == nil {
-			return out, fmt.Errorf("this Crew already lives online")
-		}
-		if input.Editing != "local" && input.Editing != "server" {
-			return out, fmt.Errorf("choose where to work")
-		}
-		if err = verifyCrewTransferDescriptor(roots.ID, binding.PairID, input.TransferID, input.Snapshot); err != nil {
-			return out, err
-		}
-		if err = hydrateCrewPayloads(roots.ID, binding.PairID, input.TransferID, "upload", input.Snapshot); err != nil {
-			return out, err
-		}
-		defer dropCrewPayloadBytes(input.Snapshot)
-		if input.Editing == "server" {
-			if err = validateCrewMoveData(input.Snapshot.StatePath, binding.PeerProjectID, roots.ID, main.ConversationKey); err != nil {
-				return out, err
-			}
-		}
-		if err = applyCrewSyncSnapshot(ctx, roots, binding.PairID, input.Snapshot); err != nil {
-			return out, err
-		}
-		ensureSharedCrewFolderAccess(strings.TrimPrefix(roots.Virtual, "Crew/"), roots.Owner)
-		if err = saveCrewSyncSnapshot(roots, *input.Snapshot); err != nil {
-			return out, err
-		}
-		if input.Editing == "server" {
-			if err = importCrewMoveDatabase(ctx, roots, input.Snapshot.DatabasePath); err != nil {
-				return out, err
-			}
-			if err = api.importCrewMoveData(ctx, claims, roots, binding.PairID, input.TransferID, main, input.Snapshot.StatePath); err != nil {
-				return out, err
-			}
-			out.ConversationNotice = crewMoveNotice(input.Snapshot.StatePath)
-		}
-		binding.Editing = input.Editing
-		binding.LastTransfer = input.TransferID
-	default:
-		return out, fmt.Errorf("unknown sync action")
-	}
-	binding.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if input.Action == "push" {
-		binding.LastCompletedAt = binding.UpdatedAt
-	}
-	if err = crewroot.WriteSync(roots.ID, *binding); err != nil {
-		return out, err
-	}
-	if input.Action == "push" {
-		cleanupCrewPayloads(roots.ID, binding.PairID, input.TransferID, "upload")
-	}
-	log.Printf("[CREW_SYNC] owner=%s project=%s action=%s editing=%s transfer=%s", claims.UserID, roots.ID, input.Action, binding.Editing, input.TransferID)
-	return out, nil
-}
-
-func readCrewSyncGit(id string) (*crewsync.GitSnapshot, error) {
-	p, err := crewSyncManifestPath(id)
-	if err != nil {
-		return nil, err
-	}
-	b, err := os.ReadFile(p + ".git")
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var state crewsync.GitSnapshot
-	if err = json.Unmarshal(b, &state); err != nil {
-		return nil, err
-	}
-	if state.IndexHash == "" {
-		// One-time conversion of the old on-disk baseline. Ignoring its
-		// staged patch would mistake unchanged destination staging for edits.
-		var old struct {
-			IndexPatch []byte `json:"index_patch"`
-		}
-		if err = json.Unmarshal(b, &old); err != nil {
-			return nil, err
-		}
-		sum := sha256.Sum256(old.IndexPatch)
-		state.IndexHash = hex.EncodeToString(sum[:])
-		backup := p + ".git." + time.Now().UTC().Format("20060102T150405.000000000Z") + ".bak"
-		if err = os.WriteFile(backup, b, 0600); err != nil {
-			return nil, err
-		}
-		if err = fsutil.WriteJSONAtomic(p+".git", state, 0600); err != nil {
-			return nil, err
-		}
-		log.Printf("[CREW_SYNC] project=%s old_git_index=migrated", id)
-	}
-	return &state, nil
-}
-func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous crewsync.Manifest) (crewsync.Snapshot, error) {
-	stageRoot, err := crewSyncStagingRoot(roots.ID)
-	if err != nil {
-		return crewsync.Snapshot{}, err
-	}
-	snapshot, err := captureCrewFiles(ctx, roots, previous, stageRoot, nil)
-	if err != nil {
-		return snapshot, err
-	}
-	prior, err := readCrewSyncGit(roots.ID)
-	if err != nil {
-		return snapshot, err
-	}
-	snapshot.Git, err = crewsync.CaptureGit(ctx, roots.Files, prior, snapshot.StagingDir)
-	if err != nil {
-		return snapshot, err
-	}
-	binding, err := crewroot.ReadSync(roots.ID)
-	if err != nil {
-		return snapshot, err
-	}
-	if binding == nil {
-		return snapshot, fmt.Errorf("pair this Crew before syncing")
-	}
-	return snapshot, nil
+	return crewSyncReply{}, fmt.Errorf("unknown sync action")
 }
 
 // captureCrewFiles captures the Crew's files with its warm cache (what was read before, hashes and chunk ids only), so
@@ -624,45 +410,6 @@ func crewContentBytes(s *crewsync.Snapshot) (size int64) {
 	}
 	return size
 }
-func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) error {
-	id := roots.ID
-	binding, err := crewroot.ReadSync(id)
-	if err != nil {
-		return err
-	}
-	if binding == nil {
-		return fmt.Errorf("Crew is not paired")
-	}
-	if err := saveCrewSyncManifest(id, snapshot.Files); err != nil {
-		return err
-	}
-	if snapshot.Git == nil {
-		return nil
-	}
-	p, err := crewSyncManifestPath(id)
-	if err != nil {
-		return err
-	}
-	state := *snapshot.Git
-	state.BundlePath = ""
-	return fsutil.WriteJSONAtomic(p+".git", state, 0600)
-}
-
-// Editing handoff is between turns. Existing native processes retain the
-// permissions they started with, so a running/retained terminal must finish.
-func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
-	if api.crewNativeTurnRunning(roots) {
-		return fmt.Errorf("finish or stop this Crew's running chat and terminal before moving online")
-	}
-	codeShells.Lock()
-	defer codeShells.Unlock()
-	for _, shell := range codeShells.byID {
-		if shell.projectID == roots.ID && shell.ownerID == roots.Owner {
-			return fmt.Errorf("stop this Crew's open terminal, then retry Move online")
-		}
-	}
-	return nil
-}
 
 func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) (err error) {
 	started := time.Now()
@@ -672,14 +419,4 @@ func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair strin
 	}()
 	defer snapshot.Close()
 	return crewsync.Apply(ctx, roots, *snapshot)
-}
-func crewSnapshotChanged(snapshot crewsync.Snapshot) bool {
-	if len(snapshot.Changes) > 0 {
-		return true
-	}
-	g := snapshot.Git
-	if g == nil {
-		return false
-	}
-	return g.Head != g.Before || g.Branch != g.BeforeBranch || g.IndexHash != g.BeforeIndexHash
 }
