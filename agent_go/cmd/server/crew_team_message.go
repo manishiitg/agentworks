@@ -102,7 +102,11 @@ func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Re
 	}
 	agent, member, lookupErr := crewTeamMessageAgent(r.Context(), project, claims.UserID, chatKey)
 	if lookupErr != nil {
-		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team id_shape=registry_id agent_id=%q", project, chatKey)
+		shape, id := "name", ""
+		if strings.HasPrefix(chatKey, crewTeamAgentIDPrefix) {
+			shape, id = "registry_id", chatKey
+		}
+		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team id_shape=%s agent_id=%q", project, shape, id)
 		externalError(w, 409, "team_target_unresolved", lookupErr.Error())
 		return triggerTarget{}, "", false
 	}
@@ -195,6 +199,13 @@ func (api *StreamingAPI) callTeamMessageFromMac(ctx context.Context, owner strin
 	reply, err := desktopCrewSyncCall(ctx, owner, &connection, b.PeerProjectID, crewSyncRequest{Action: "team_message", PairID: b.PairID, TeamMessage: &input})
 	if err == nil && (input.Operation == "read" && reply.TeamMessages == nil || input.Operation != "read" && reply.InboxID == "") {
 		err = fmt.Errorf("the server did not confirm this Team message; retry after updating the app")
+	}
+	if err == nil {
+		inbox := reply.InboxID
+		if input.Operation == "read" {
+			inbox = input.AgentID
+		}
+		log.Printf("[CREW_TEAM] project=%s event=team_message_%s from=%s inbox=%s", project, firstNonEmptyTrimmed(input.Operation, "send"), tab, inbox)
 	}
 	return reply, err
 }

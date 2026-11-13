@@ -76,6 +76,10 @@ func TestCrewTeamMessageNamesStayInsideAdmittedRegistry(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	newExternalCrewCommandFixture(t)
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"helper": true}, "other": {"helper": true, "private": false}})}
+	for id, a := range team.Agents {
+		a.Name = a.Tab
+		team.Agents[id] = a
+	}
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
