@@ -205,26 +205,32 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 	for _, crew := range crews {
 		id, _ := crew["id"].(string)
 		name, _ := crew["name"].(string)
-		b, err := crewroot.ReadSync(id)
-		if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" || b.PeerProjectID == "" {
-			continue
-		}
-		c, err := desktopConnectionFor(owner, b.ConnectionID)
-		if err != nil {
-			continue
-		}
-		// The Team's own agents list (crew_team_agents.go): the same agents, addresses and in-team choices the chips, the
-		// left menu and the server's message check use, so an agent here gets one address per Team agent (owner, 10 Nov:
-		// the Crew's tab list named the owner's Mac Main differently and messages to it were refused).
 		var team struct {
 			People []crewTeamAgentsPerson `json:"people"`
 		}
-		read, done := context.WithTimeout(ctx, 6*time.Second)
-		err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/agents", nil, &team)
-		done()
-		if err != nil {
-			continue
+		if IsLocalMode() {
+			b, err := crewroot.ReadSync(id)
+			if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" || b.PeerProjectID == "" {
+				continue
+			}
+			c, err := desktopConnectionFor(owner, b.ConnectionID)
+			if err != nil {
+				continue
+			}
+			read, done := context.WithTimeout(ctx, 6*time.Second)
+			err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/agents", nil, &team)
+			done()
+			if err != nil {
+				continue
+			}
+		} else {
+			t, err := readCrewTeam(id)
+			if err != nil || !crewTeamAgentsVisible(t, owner) {
+				continue
+			}
+			team.People = teamAgentsByPerson(ctx, t, owner)
 		}
+
 		for _, p := range team.People {
 			for _, agent := range p.Agents {
 				// Your own agents on this Mac are its sibling chats; your own server agents (an agent's online copy, owner
@@ -236,7 +242,14 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 				if p.You {
 					kind, title = "Your agent on the server", "Your "+firstNonEmptyTrimmed(agent.Name, "Main")
 				}
-				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": kind, "id": "team:" + id + ":" + agent.ID,
+				target := agent.Address
+				if IsLocalMode() {
+					target = "team:" + id + ":" + agent.ID
+				}
+				if target == "" {
+					continue
+				}
+				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": kind, "id": target,
 					"name": title, "owner": p.Name, "crew_name": name, "purpose": agent.Purpose,
 					"presence": firstNonEmptyTrimmed(agent.PlaceLabel, agent.StatusLabel, "Runs when messaged"),
 					"reach":    "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
