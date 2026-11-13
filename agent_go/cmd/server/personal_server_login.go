@@ -223,3 +223,25 @@ func serverLoginAccountCheck(records []storedProviderConnection, record storedPr
 	}
 	return nil
 }
+
+// rotateServerLoginPlaceholder gives the account a new placeholder, so a copy of the old one (a leaked auth.json)
+// stops working at once; the account's next run writes the new one.
+func rotateServerLoginPlaceholder(ctx context.Context, id string) error {
+	placeholder, err := newServerLoginPlaceholder()
+	if err != nil {
+		return err
+	}
+	providerConnectionsMu.Lock()
+	defer providerConnectionsMu.Unlock()
+	records, err := loadProviderConnections(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range records {
+		if records[i].ID == id && records[i].AuthMethod == providerAuthServerLogin {
+			records[i].Credential, records[i].UpdatedAt = placeholder, time.Now().UTC()
+			return saveProviderConnections(ctx, records)
+		}
+	}
+	return fmt.Errorf("account not found")
+}
