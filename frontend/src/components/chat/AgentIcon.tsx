@@ -18,8 +18,8 @@ export function AgentSetupMark({ setup }: { setup?: TeamTabSetup }) {
   const ReachIcon = setup.reach === 'agentbridge' ? Globe : Users
   return <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center gap-1.5">
     {setup.reach && <ReachIcon aria-hidden="true" className={`h-3 w-3 ${setup.reach === 'agentbridge' ? 'text-emerald-500' : 'text-muted-foreground'}`} />}
-    {schedules.length > 0 && <Clock aria-hidden="true" className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />}
-    {triggers.length > 0 && <Zap aria-hidden="true" className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />}
+    {schedules.length > 0 && <Clock aria-hidden="true" className="h-3 w-3 text-[hsl(var(--warning))]" />}
+    {triggers.length > 0 && <Zap aria-hidden="true" className="h-3 w-3 text-[hsl(var(--warning))]" />}
   </span>
 }
 
