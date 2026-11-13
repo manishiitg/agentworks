@@ -766,7 +766,7 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 		return out, err
 	}
 	reply.Event, reply.Revision = event, row.Revision
-	crewStandbyLog(id, tab, "standby_stored", bytes, started, fmt.Sprintf(" copy=%s revision=%d", name, row.Revision))
+	crewStandbyLog(id, tab, "standby_stored", bytes, started, fmt.Sprintf(" copy=%s revision=%d mac_login=%s", name, row.Revision, crewMacLoginKind(row.MacLogin)))
 	if event == "diverged" {
 		label := "diverged"
 		if fresh {
