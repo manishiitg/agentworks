@@ -950,8 +950,17 @@ func agentMailboxEndpointSQL(side, userID string, c triggerLinkCaller) (string, 
 	if c.Chat != nil {
 		session = c.Chat.SessionID
 	}
-	clause := fmt.Sprintf("(%[1]s_named_agent_id = ? AND %[1]s_user_id = ? AND %[1]s_kind = ? AND %[1]s_ref_id = ? AND (%[1]s_external = 1 OR (%[1]s_profile = ? AND %[1]s_session <> '' AND %[1]s_session = ?)))", side)
-	return clause, []any{c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session}
+	index := 0
+	if side == "b" {
+		index = 1
+	}
+	teamID := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].team_agent_id'), '')", index)
+	// A Team identity never falls back to a session when admission was removed.
+	identity := fmt.Sprintf("((%s = '' AND %s_session <> '' AND %s_session = ?) OR (? <> '' AND %s = ?))", teamID, side, side, teamID)
+	current := messageCallerTeamAgentID(userID, c)
+	clause := fmt.Sprintf("(%[1]s_named_agent_id = ? AND %[1]s_user_id = ? AND %[1]s_kind = ? AND %[1]s_ref_id = ? AND (%[1]s_external = 1 OR (%[1]s_profile = ? AND %[2]s)))", side, identity)
+	return clause, []any{c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session, current, current}
+
 }
 
 // queryAgentMailboxConversations loads the conversations matching where, with
@@ -1018,12 +1027,21 @@ func callerAgentMailboxConversation(ctx context.Context, inboxID, userID string,
 	args := append(append([]any{inboxID}, aArgs...), bArgs...)
 	found, err := queryAgentMailboxConversations(ctx, "inbox_id = ? AND ("+a+" OR "+b+")", args...)
 	if err != nil || len(found) == 0 {
+		if err == nil {
+			logAgentMessageIdentityRefusal(inboxID, "read", "endpoint_identity", &caller, userID)
+		}
 		return agentConversation{}, -1, false, err
 	}
 	c := found[0]
-	side := 1
+	side := -1
 	if messageEndpointMatches(c.Endpoints[0], userID, caller) {
 		side = 0
+	} else if messageEndpointMatches(c.Endpoints[1], userID, caller) {
+		side = 1
+	}
+	if side < 0 {
+		logAgentMessageIdentityRefusal(inboxID, "read", "endpoint_recheck", &caller, userID)
+		return agentConversation{}, -1, false, nil
 	}
 	return c, side, true, nil
 }
