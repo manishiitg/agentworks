@@ -1315,7 +1315,10 @@ func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
 	claims := GetUserFromContext(ctx)
-	if conversationTurnQueueExecution(ctx) || req.DisableLiveInputDelivery || req.DeliveryMode == "queue" ||
+	// PLAT-746-973/974: a steer that waited for foreground cleanup still
+	// targets the retained CLI. A claimed queue row must not force a new SDK
+	// launch (and stop its background tasks) just because it was persisted.
+	if (conversationTurnQueueExecution(ctx) && req.DeliveryMode != "steer") || req.DisableLiveInputDelivery || req.DeliveryMode == "queue" ||
 		req.IsAutoNotification ||
 		(claims != nil && claims.AccessToken != nil) {
 		return false

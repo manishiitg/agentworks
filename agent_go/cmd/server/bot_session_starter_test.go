@@ -188,6 +188,74 @@ func TestBotFollowUpReachesRetainedMuseThroughQueryP0(t *testing.T) {
 	}
 }
 
+// PLAT-746-973/974: real query admission, only external terminal delivery stubbed.
+func TestClaimedSteerReachesRetainedRuntimeWithoutRelaunch(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("TRACING_PROVIDER", "noop")
+	const sessionID = "queued-steer-query-p0"
+	const userID = "owner"
+	store := internalevents.NewEventStore(20)
+	defer store.Stop()
+	terminalStore := terminals.NewStore()
+	terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "mlp-muse-cli-int-bot-steer"))
+	deliveries := 0
+	api := &StreamingAPI{
+		agentProfiles: f.api.agentProfiles, provider: "muse-cli",
+		eventStore: store, terminalStore: terminalStore,
+		activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, UserID: userID, Status: "running", WorkspacePath: externalCommandCrewRoot}},
+		internalRetainedTerminalInputHandler: func(_ context.Context, provider llmproviders.Provider, _, owner, message string) error {
+			if provider != llmproviders.ProviderMuseCLI || owner != sessionID || message != "use Notion instead" {
+				t.Fatalf("wrong steer: provider=%s owner=%s message=%q", provider, owner, message)
+			}
+			deliveries++
+			return nil
+		},
+	}
+	t.Cleanup(func() {
+		api.retainedMainTurnsMu.Lock()
+		cancelWatch := api.retainedMainTurnWatchCancels[sessionID]
+		api.retainedMainTurnsMu.Unlock()
+		if cancelWatch != nil {
+			cancelWatch()
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Model the same admitted Crew definition that launched the retained turn.
+	// A profileless general chat is retired; bots keep the Crew's real access checks.
+	query := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Test Team"}, SelectedFolder: externalCommandCrewRoot, Provider: "muse-cli", ModelID: "muse-spark-1.3"}
+	profile, _, admitErr := api.admitQueryTarget(internalBotRequestContext(ctx, userID), &query, userID, sessionID)
+	if admitErr != nil {
+		t.Fatal(admitErr)
+	}
+	api.launchedAgentProfileKeyBySession = map[string]string{sessionID: agentProfileSessionKey(profile)}
+	api.lastQueryRequests = map[string]QueryRequest{sessionID: query}
+	request := map[string]interface{}{
+		"query": "use Notion instead", "agent_mode": "multi-agent", "agent_profile_id": "work",
+		"agent_profile_conversation_key": "team", "selected_folder": externalCommandCrewRoot, "provider": "muse-cli", "model_id": "muse-spark-1.3",
+		"agent_profile_context": map[string]interface{}{"project_title": "Test Team"},
+	}
+	// The durable queue claimed this previously typed steer after the
+	// foreground reply finished. The existing runtime must receive it, not
+	// a newly built runtime with a different MCP bridge scope (746-973/974).
+	request["delivery_mode"] = "steer"
+	body, _ := json.Marshal(request)
+	r := httptest.NewRequest("POST", "/api/query", strings.NewReader(string(body)))
+	r = r.WithContext(withConversationTurnQueueExecution(internalBotRequestContext(ctx, userID, request)))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Session-ID", sessionID)
+	response := httptest.NewRecorder()
+	api.handleQuery(response, r)
+	var result QueryResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || response.Code != 200 || result.Status != queryStatusLiveInputDelivered {
+		t.Fatalf("claimed steer rebuilt runtime instead of warm delivery: %d %s err=%v", response.Code, response.Body.String(), err)
+	}
+
+	if deliveries != 1 {
+		t.Fatalf("retained tmux deliveries=%d, want 1", deliveries)
+	}
+}
+
 func TestBotWorkflowAccessClaimsKeepWhatsAppUserAndSlackRouteSemantics(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[

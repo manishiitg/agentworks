@@ -40,6 +40,9 @@ func TestRetainedDeliveryPrecedesTurnQueueOnlyForHumanInput(t *testing.T) {
 		{"bot trigger without platform", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:slack"}, context.Background(), false},
 		{"token caller without trigger", QueryRequest{AgentMode: "multi-agent"}, context.WithValue(context.Background(), UserContextKey, &UserClaims{AccessToken: &accesstokens.Token{ID: "token-1"}}), false},
 		{"explicit next turn", QueryRequest{AgentMode: "multi-agent", DisableLiveInputDelivery: true}, context.Background(), false},
+		{"claimed steer keeps warm runtime", QueryRequest{AgentMode: "multi-agent", DeliveryMode: "steer", TriggeredBy: "manual"}, withConversationTurnQueueExecution(context.Background()), true},
+		{"claimed explicit queue stays separate", QueryRequest{AgentMode: "multi-agent", DeliveryMode: "queue", TriggeredBy: "manual"}, withConversationTurnQueueExecution(context.Background()), false},
+		{"claimed automatic steer stays separate", QueryRequest{AgentMode: "multi-agent", DeliveryMode: "steer", IsAutoNotification: true}, withConversationTurnQueueExecution(context.Background()), false},
 		{"claimed queue worker", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual"}, withConversationTurnQueueExecution(context.Background()), false},
 	}
 	for _, test := range tests {
