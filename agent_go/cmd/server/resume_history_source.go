@@ -2,6 +2,7 @@ package server
 
 import (
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
@@ -14,6 +15,9 @@ type resumeHistorySource struct {
 	user, workspace, path string
 	header, log           os.FileInfo
 	target                resolvedResumeTarget
+	persistedBody         int
+	persistedTurns        int
+	prefixStable          bool
 }
 
 func statResumeHistory(user, workspace, path string) *resumeHistorySource {
@@ -81,7 +85,7 @@ func (api *StreamingAPI) rememberResumeHistorySourceLocked(session string, targe
 
 // Our successful full snapshot write already has the parsed history. Publish
 // that exact version, rather than forcing the next turn to parse our own write.
-func (api *StreamingAPI) rememberWrittenResumeHistory(user, session, path string, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime) {
+func (api *StreamingAPI) rememberWrittenResumeHistory(user, session, path string, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime, resumeTurns ...int) {
 	if api == nil {
 		return
 	}
@@ -97,6 +101,48 @@ func (api *StreamingAPI) rememberWrittenResumeHistory(user, session, path string
 	}
 	next.target = old.target
 	next.target.Runtime = runtime
+	next.persistedBody = len(chatHistoryBody(history))
+	if len(resumeTurns) > 0 {
+		next.persistedTurns = resumeTurns[0]
+	} else {
+		next.persistedTurns = visibleResumeUserCount(history)
+	}
+	next.prefixStable = next.log != nil && appendableHistoryShape(history)
 	api.conversationHistory[session] = history
 	api.resumeHistorySources[session] = next
+}
+
+// Server history snapshots are immutable message values. Check the previously
+// saved prefix at each replacement, before dropping its canonical slice. Keep
+// only counts/proof, never another slice of old message bodies.
+func (api *StreamingAPI) replaceConversationHistoryLocked(session string, next []llmtypes.MessageContent) {
+	if source := api.resumeHistorySources[session]; source != nil && source.prefixStable {
+		oldBody, newBody := chatHistoryBody(api.conversationHistory[session]), chatHistoryBody(next)
+		n := source.persistedBody
+		if !appendableHistoryShape(next) || len(oldBody) < n || len(newBody) < n || !reflect.DeepEqual(oldBody[:n], newBody[:n]) {
+			invalid := *source
+			invalid.prefixStable = false
+			api.resumeHistorySources[session] = &invalid
+		}
+	}
+	api.conversationHistory[session] = next
+}
+func chatHistoryBody(history []llmtypes.MessageContent) []llmtypes.MessageContent {
+	for len(history) > 0 && history[0].Role == llmtypes.ChatMessageTypeSystem {
+		history = history[1:]
+	}
+	return history
+}
+
+func appendableHistoryShape(history []llmtypes.MessageContent) bool {
+	body := chatHistoryBody(history)
+	if len(history)-len(body) > 1 {
+		return false
+	}
+	for _, message := range body {
+		if message.Role == llmtypes.ChatMessageTypeSystem {
+			return false
+		}
+	}
+	return true
 }

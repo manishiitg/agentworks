@@ -7665,7 +7665,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			} else if len(historyForAgent) > 0 && !replayHistoryToAgent {
 				incrementalHistory = mergeNativeContinuationChatHistory(historyForAgent, incrementalHistory)
 			}
-			api.conversationHistory[sessionID] = incrementalHistory
+			api.replaceConversationHistoryLocked(sessionID, incrementalHistory)
 			api.conversationMux.Unlock()
 
 		})
@@ -7755,7 +7755,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// transcript behind it, so this file is the only record that exists.
 		persistedHistory = cleanChatHistoryForPersistence(persistedHistory)
 		api.conversationMux.Lock()
-		api.conversationHistory[sessionID] = persistedHistory
+		api.replaceConversationHistoryLocked(sessionID, persistedHistory)
 		api.conversationMux.Unlock()
 
 		runtimeWorkspacePath := strings.TrimSpace(req.SelectedFolder)
@@ -8203,7 +8203,7 @@ func (api *StreamingAPI) restorePersistedConversationHistory(sessionID, userID, 
 	if api.conversationHistory == nil {
 		api.conversationHistory = make(map[string][]llmtypes.MessageContent)
 	}
-	api.conversationHistory[sessionID] = history
+	api.replaceConversationHistoryLocked(sessionID, history)
 	api.conversationMux.Unlock()
 
 	// Keep writing to the same conversation JSON after recovery. This matters

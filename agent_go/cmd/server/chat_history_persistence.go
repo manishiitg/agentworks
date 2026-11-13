@@ -579,6 +579,9 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 	lock := chatConversationMutex(convPath)
 	lock.Lock()
 	defer lock.Unlock()
+	if api.tryPersistChatTail(sessionID, agentMode, userID, persistedHistory, runtime, uiEvents, convPath, convData, now, botMeta) {
+		return
+	}
 	// A user-defined title belongs to the durable conversation. Preserve it
 	// when a later turn rewrites the transcript from the in-memory history.
 	if existing, exists, readErr := readFileFromWorkspace(context.Background(), convPath); readErr != nil {
