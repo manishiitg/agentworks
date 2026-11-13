@@ -1003,6 +1003,10 @@ func (es *EventStore) AddEvent(sessionID string, event Event) {
 // acceptance boundary. Canonical producer bridges use this method so a failed
 // append can stop or retry upstream delivery.
 func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
+	return es.addEventChecked(sessionID, event, true)
+}
+
+func (es *EventStore) addEventChecked(sessionID string, event Event, hydrate bool) error {
 	if isUsageOnlyEvent(event) {
 		return nil // for the cost ledger only; never a chat event (see usage_only_event.go)
 	}
@@ -1018,7 +1022,12 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 	if es.holdForDeferredSteer(sessionID, event) {
 		return nil
 	}
-	err := es.addEventUnheld(sessionID, event)
+	var err error
+	if hydrate {
+		err = es.addEventUnheld(sessionID, event)
+	} else {
+		err = es.appendEventWithoutReplay(sessionID, event)
+	}
 	if err == nil {
 		es.signalAnswerEnded(sessionID, event)
 	}
@@ -1027,6 +1036,21 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 
 func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	es.hydrateSession(sessionID)
+	return es.appendEventUnheld(sessionID, event)
+}
+
+// Serialize the no-replay append with a concurrent first UI hydration, so its
+// tail cannot overwrite an accepted neutral end. Release before callbacks.
+func (es *EventStore) appendEventWithoutReplay(sessionID string, event Event) error {
+	es.hydrateMu.Lock()
+	release := sync.OnceFunc(es.hydrateMu.Unlock)
+	defer release()
+	return es.appendEventUnheldWithRelease(sessionID, event, release)
+}
+func (es *EventStore) appendEventUnheld(sessionID string, event Event) error {
+	return es.appendEventUnheldWithRelease(sessionID, event, nil)
+}
+func (es *EventStore) appendEventUnheldWithRelease(sessionID string, event Event, release func()) error {
 	// The per-session lock spans sequence assignment, the durable append and the
 	// in-memory insert, so a session's events stay ordered while mu is released
 	// around SQLite I/O. It is released before callbacks and SSE fan-out, as mu
@@ -1179,6 +1203,9 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	eventAddedCallback := es.eventAddedCallback
 	es.mu.Unlock()
 	unlockSession()
+	if release != nil {
+		release()
+	}
 
 	// Update session activity (call outside lock to avoid potential deadlock)
 	if activityCallback != nil && sessionID != "" {
@@ -2480,34 +2507,6 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time,
 	}
 	es.AddEvent(sessionID, event)
 	return true
-}
-
-// EndNativeCommandsWithoutResult is called only when the owning runtime has
-// gone away, never merely because it finished a reply. Reconstruct unresolved
-// commands from retained history as well, so reload cannot resurrect a spinner.
-func (es *EventStore) EndNativeCommandsWithoutResult(sessionID string) {
-	pending := map[string]*events.ToolCallStartEvent{}
-	for _, event := range es.GetEvents(sessionID, GetEventsOptions{SinceIndex: -1}).Events {
-		if event.Data == nil {
-			continue
-		}
-		switch d := event.Data.Data.(type) {
-		case *events.ToolCallStartEvent:
-			if d.ToolName == "exec_command" && strings.HasPrefix(d.ToolCallID, "exec-") {
-				pending[d.ToolCallID] = d
-			}
-		case *events.ToolCallEndEvent:
-			delete(pending, d.ToolCallID)
-		case *events.ToolCallErrorEvent:
-			delete(pending, d.ToolCallID)
-		}
-	}
-	for id, d := range pending {
-		now := time.Now()
-		es.AddEvent(sessionID, Event{ID: "native-command-unavailable:" + id, Type: "tool_call_end", Timestamp: now, SessionID: sessionID,
-			Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: now, SessionID: sessionID,
-				Data: &events.ToolCallEndEvent{ToolName: d.ToolName, ToolCallID: id, SyntheticSettle: true, Result: "No result was captured before the command's runtime ended."}}})
-	}
 }
 
 // NativeCommand is an actual provider-owned command, not an ordinary tool.
