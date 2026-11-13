@@ -22,7 +22,6 @@ const openAgent = (tabId: string) => { openAgentTab(tabId); closeDrawer() }
 export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const crew = useCrewAgentsStore()
   const grouping = useAgentGroups(JSON.stringify([getRawActiveWorkspaceId(), projectId]))
-  const [newGroup, setNewGroup] = useState<string | null>(null)
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
   const [showClosed, setShowClosed] = useState(false)
@@ -42,7 +41,7 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
     className="flex w-full min-w-0 items-center rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
     <span className="min-w-0 truncate">{agent.name}</span>
   </button>
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} />
+  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} />
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {shown.filter(agent => !grouping.groups.some(group => group.agents.includes(tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''))).map(row)}
     {grouping.groups.map(group => {
@@ -53,10 +52,6 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
         {members.map(row)}{groupedClosed.map(closedRow)}
       </AgentGroup>
     })}
-    {grouping.loaded && (newGroup !== null ? <form className="flex gap-1 px-2 py-1" onSubmit={event => { event.preventDefault(); if (newGroup.trim()) { void grouping.create(newGroup.trim()); setNewGroup(null) } }}>
-      <input autoFocus aria-label="Group name" maxLength={40} placeholder="Group name" className="min-w-0 flex-1 rounded border border-border bg-background px-1 text-xs" value={newGroup} onChange={event => setNewGroup(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setNewGroup(null) }} />
-      <button type="submit" className="text-xs">Add</button><button type="button" aria-label="Cancel new group" onClick={() => setNewGroup(null)}><X className="h-3 w-3" /></button>
-    </form> : <button type="button" onClick={() => setNewGroup('')} className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" />New group</button>)}
     {grouping.error && <p role="alert" className="px-2 text-xs text-destructive">{grouping.error}</p>}
     {hiddenCount > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
@@ -95,9 +90,11 @@ export function AgentCliIcon({ provider }: { provider?: string }) {
   </span>
 }
 
-function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, onMove }: { groups: MenuAgentGroup[]; groupKey: string; onMove: (key: string, id: string) => Promise<void>; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
+function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, onMove, onCreateGroup, groupsReady }: { groups: MenuAgentGroup[]; groupKey: string; groupsReady: boolean; onCreateGroup: (name: string, key: string) => Promise<void>; onMove: (key: string, id: string) => Promise<void>; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   const [menu, setMenu] = useState(false)
+  const [newGroup, setNewGroup] = useState<string | null>(null)
+  useEffect(() => { if (!menu) setNewGroup(null) }, [menu])
   const [over, setOver] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -108,7 +105,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
   }, [menu])
   const actions = agent.actions
   const key = actions?.orderKey
-  const hasActions = !!actions && Object.entries(actions).some(([name, value]) => typeof value === 'function' && name !== 'dropHere')
+  const hasActions = Boolean(groupKey) || !!actions && Object.entries(actions).some(([name, value]) => typeof value === 'function' && name !== 'dropHere')
   // Drag a row onto another to change the order, saved the same way as the tab bar's.
   return <div ref={box} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
@@ -128,13 +125,20 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
       className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
     </button>}
-    {menu && actions && <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-border bg-popover p-1 shadow-lg">
+    {menu && (actions || groupKey) && <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-border bg-popover p-1 shadow-lg">
       {groupKey && groups.length > 0 && <label className="block px-2 py-1 text-xs text-muted-foreground">Group
         <select aria-label={`Group for ${agent.name}`} className="mt-1 w-full rounded border border-border bg-popover p-1 text-foreground" value={groups.find(group => group.agents.includes(groupKey))?.id || ''} onChange={event => { void onMove(groupKey, event.target.value); setMenu(false) }}>
           <option value="">No group</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
         </select>
       </label>}
-      <AgentActionsMenu name={agent.name} actions={actions} pinned={agent.pinned !== false} onDone={() => setMenu(false)} />
+      {groupKey && groupsReady && (newGroup !== null ? <form className="space-y-1 px-2 py-1" onSubmit={event => {
+        event.preventDefault()
+        if (newGroup.trim()) void onCreateGroup(newGroup.trim(), groupKey).then(() => setMenu(false))
+      }}>
+        <input autoFocus aria-label="New group name" maxLength={40} placeholder="Group name" className="w-full min-w-0 rounded border border-border bg-background px-1 py-1 text-xs" value={newGroup} onChange={event => setNewGroup(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setNewGroup(null) } }} />
+        <div className="flex gap-3 text-xs"><button type="submit">Create group</button><button type="button" onClick={() => setNewGroup(null)}>Cancel</button></div>
+      </form> : <button type="button" onClick={() => setNewGroup('')} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><Plus className="h-3.5 w-3.5" />New group…</button>)}
+      {actions && <AgentActionsMenu name={agent.name} actions={actions} pinned={agent.pinned !== false} onDone={() => setMenu(false)} />}
     </div>}
   </div>
 }
