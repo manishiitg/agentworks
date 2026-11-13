@@ -48,9 +48,17 @@ build_dev_playwright_fixtures() {
     done
 }
 
+# Nothing at startup needs the local CLI download (only a person installing the
+# CLI from this app does), so it is packaged after health with the fixtures.
+build_dev_cli_package() {
+    bash "$SCRIPT_DIR/../scripts/package-agentworks-cli-local.sh" "$AGENTWORKS_CLI_DOWNLOAD_DIR"
+}
+
 start_deferred_dev_setup() {
-    [ "${DEV_FIXTURES_PENDING:-false}" = true ] || return 0
+    local fixtures="${DEV_FIXTURES_PENDING:-false}" cli="${DEV_CLI_PACKAGE_PENDING:-false}"
+    [ "$fixtures" = true ] || [ "$cli" = true ] || return 0
     DEV_FIXTURES_PENDING=false
+    DEV_CLI_PACKAGE_PENDING=false
     dev_log_init || return 1
     (
         trap - EXIT INT TERM
@@ -60,13 +68,23 @@ start_deferred_dev_setup() {
             sleep 1
         done
         if [ "$ready" != true ]; then
-            printf '[STARTUP_SETUP] time=%s playwright=failed reason=health_unavailable\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '[STARTUP_SETUP] time=%s deferred=failed reason=health_unavailable\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             exit 1
         fi
-        if build_dev_playwright_fixtures; then
-            printf '[STARTUP_SETUP] time=%s playwright=completed\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        else
-            printf '[STARTUP_SETUP] time=%s playwright=failed\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        if [ "$fixtures" = true ]; then
+            if build_dev_playwright_fixtures; then
+                printf '[STARTUP_SETUP] time=%s playwright=completed\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            else
+                printf '[STARTUP_SETUP] time=%s playwright=failed\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            fi
+        fi
+        if [ "$cli" = true ]; then
+            local started=$SECONDS
+            if build_dev_cli_package; then
+                printf '[STARTUP_SETUP] time=%s cli_package=completed seconds=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$((SECONDS-started))"
+            else
+                printf '[STARTUP_SETUP] time=%s cli_package=failed\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            fi
         fi
     ) >> "$DEV_STARTUP_LOG" 2>&1 < /dev/null &
 }
