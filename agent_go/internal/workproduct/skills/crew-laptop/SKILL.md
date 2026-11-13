@@ -1,21 +1,44 @@
 ---
 name: crew-laptop
-description: Read for full laptop/Mac access, laptop folders and commands, local Computer use (desktop apps, click/type/screenshot), or permission errors. Covers setup and the separate file, terminal and desktop capabilities.
+description: Read when the person asks what you can reach on their computer, asks for folder, full laptop or Mac access, Computer use (desktop apps, click/type/screenshot), or laptop commands, and whenever a command or file read says "Operation not permitted" or is refused. Covers setup and the separate file, terminal and desktop capabilities.
 ---
 
 # Folders and laptop connections
 
-## "Full access" means three separate switches
+## What a chat on this Mac can already do
 
-When the person asks for full laptop or Mac access, say which of these they mean
-(often 1, sometimes 2) and turn on only what they asked for:
+Native commands run in a macOS sandbox with the person's own account. Without
+any grant they can already:
 
-1. Folders. "Your whole Mac" gives this chat the home folder (read and write).
-   Files only: it does not open programs, the local server or other apps.
-2. Computer use. Full control of the desktop and apps, Terminal included, as
-   the person. Local owner chats only, never scheduled turns or Run people.
-3. "Run terminal commands" on a connected laptop. Lets a Crew hosted on a server
-   run commands in a Read & write laptop folder. Not needed for a local Crew.
+- read and write the person's home folder (Desktop, Documents, Downloads,
+  projects), except AgentWorks' own data: other Crews' and projects' folders,
+  the app's state (other chats, saved sign-ins) and protected files;
+- run the programs installed there (`git`, `gh`, `docker`, `aws`, other coding
+  CLIs). They act with the person's own logins: use them only when the task
+  needs them, and never read their sign-in files.
+
+Always closed, whatever is granted: listing or stopping programs (`ps`, `top`,
+`kill`), opening or scripting apps (`open`, `osascript`, Shortcuts) and calling
+the local AgentWorks server from the shell.
+
+## Giving more access: pick the smallest switch
+
+When the person asks for more (or "full") access, find out what the work needs
+and turn on only that:
+
+1. One folder (the usual answer). Attach the exact folder, Read or Read &
+   write, as below. Needed for another Crew's or project's folder, AgentWorks
+   data, or a folder a refusal names. Several folders can be attached one by
+   one; there is always a selective choice.
+2. "Your whole Mac". Attaches the home folder read/write. Offer it only when
+   the person asks for it by name, and say plainly that it also opens
+   AgentWorks' own data on this Mac (other chats and saved sign-ins). It adds
+   no programs or apps.
+3. Computer use. Full control of the desktop and apps, Terminal included, as
+   the person. This is the only route to the always-closed list above. Local
+   owner chats only, never scheduled turns or Run people.
+4. "Run terminal commands" on a connected laptop. Only for a Crew hosted on a
+   server, to run commands in a Read & write laptop folder.
 
 ## Computer use: desktop apps on this computer
 
@@ -42,10 +65,11 @@ The returned `files_path` is the logical file root; `workspace_path` stays the s
 This is separate from connecting a laptop to a hosted Crew. Read `panel-access`'s
 Linked folders procedure, list with `files action=folders`, then use
 `files action=folder_attach` for the folder the person requested. Their request
-is the approval; preserve existing grants and use the needed access. This is the
-same list as Integrations → Folders on this Mac. “Your whole Mac” attaches the
-home folder as `mac` with read/write only when asked. A sign-in folder requires
-the person to name that exact folder; never broaden it to a parent.
+is the approval; preserve existing grants and use the least access the work
+needs (Read unless it must write). This is the same list as Integrations →
+Folders on this Mac. Attach the exact folder, never a parent "to be safe";
+“Your whole Mac” (the home folder as `mac`, read/write) only when they ask for
+it. A sign-in folder requires the person to name that exact folder.
 
 The native sandbox picks up the grant on the next turn. Tell the person to send
 one more message; do not claim the current process gained access immediately.
@@ -56,21 +80,20 @@ On a server, allowed-root checks still apply. A refusal grants no workaround.
 On this Mac, native commands run in a sandbox. Read the refusal and pick the
 matching step; never retry the same command or look for a way around it.
 
-- A file or folder outside the granted folders ("operation not permitted" on a
-  path): ask the person in plain words, for example "I need access to your
-  Downloads folder to read the file. Shall I attach it?" Their yes is the
-  approval; attach it as above (the whole Mac only when they ask for it) and
-  ask them to send one more message, because the grant applies from the next
-  turn.
-- Listing or stopping programs (`ps`, `top`, `kill`), opening or scripting apps
-  (`open`, `osascript`) and calling the local AgentWorks server from the shell
-  stay blocked even with the whole Mac attached, on purpose. Do not ask for more
-  folders for these. Use what exists instead: platform tools for platform
-  actions, and logs on disk for diagnosis. The local server's log folder has a
-  `[MEM]` line every minute, and past a large heap it writes profiles to
-  `logs/pprof/<time>/` (heap, allocs, goroutines, CPU) for you to read. If the
-  work truly needs one of these commands, the route is Computer use (Terminal
-  as the person): offer it once, and enable it only when they say yes.
+- "Operation not permitted" on a path: it is AgentWorks data or a protected
+  file, not an ordinary home folder. Protected files (a workflow's planning/,
+  its raw database, instruction files) stay closed; use their tools. For
+  another Crew's or project's folder, ask in plain words, for example "That
+  file is in your Sales Crew's folder. Shall I give this chat access to that
+  folder?" Their yes is the approval; attach that one folder and ask them to
+  send one more message, because the grant applies from the next turn.
+- Listing or stopping programs, opening or scripting apps, or calling the local
+  AgentWorks server: no folder grant changes these, so do not ask for one. Use
+  platform tools for platform actions and logs on disk for diagnosis: the
+  local server's log folder has a `[MEM]` line every minute and, past a large
+  heap, profiles in `logs/pprof/<time>/` (heap, allocs, goroutines, CPU). If
+  the work truly needs one of these, offer Computer use once and enable it
+  only when they say yes.
 - If none of these covers the need, tell the person exactly which step is blocked
   and what they can do (one command or one setting), rather than saying it failed.
 
