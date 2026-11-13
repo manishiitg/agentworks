@@ -384,9 +384,11 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			}
 			if identity.Engine != "" {
 				chosen, reason := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine)
-				if chosen == nil && h.AgentTab != "" && chat.Conversation.Native == nil && identity.ModelID != "" {
-					// History only: there is no session to resume, so the program's model on this server will do.
-					chosen, reason = api.crewNativeDestination(ctx, claims, roots, current, identity, "", identity.Engine)
+				if chosen == nil && h.AgentTab != "" && chat.Conversation.Native == nil {
+					// History only: there is no session to resume, so any model the account allows on this server will do.
+					if model, _, e := resolveAccountModel(withModelLimitPerson(ctx, claims.UserID), identity.Engine, identity.ConnectionID, ""); e == nil {
+						chosen, reason = api.crewNativeDestination(ctx, claims, roots, current, identity, model, identity.Engine)
+					}
 				}
 				if chosen != nil {
 					identity = *chosen
