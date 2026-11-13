@@ -23,11 +23,18 @@ func admissionRefused(text string) error { return agentAdmissionRefusal{err: err
 // Persist only the connection ID, never its bearer token. Own named-agent mail
 // follows current account access across CLI sign-in replacement; narrowed keys,
 // other people and project callers retain their original grant checks.
-func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
+func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) (retErr error) {
+	check := "destination"
+	defer func() {
+		if retErr != nil {
+			logAgentMessageIdentityRefusal(c.ID, "delivery", check, nil, "")
+		}
+	}()
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
 	if err := validateMessageDestination(ctx, dest); err != nil {
 		return err
 	}
+	check = "shared_contact"
 	if err := recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
 		return err
 	}
@@ -75,6 +82,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return err
 		}
 	}
+	check = "sender_login"
 	if m.SenderWebsiteSession != "" && sessionRevoked(m.SenderWebsiteSession) {
 		return admissionRefused("sending login is no longer authorized")
 	}
@@ -113,6 +121,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		}
 	}
 	for _, e := range c.Endpoints {
+		check = "participant_account"
 		claims := &UserClaims{UserID: e.UserID}
 		if userAccessForClaims(claims).Disabled {
 			return fmt.Errorf("message participant account is disabled")
@@ -141,9 +150,11 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 				return fmt.Errorf("message participant no longer has workflow access")
 			}
 		} else if e.Kind == triggerCallerCrew {
+			check = "crew_runtime"
 			if api.projectActions == nil || api.projectActions.registry == nil {
 				return fmt.Errorf("Crew runtime unavailable")
 			}
+			check = "crew_profile"
 			profile, err := api.projectActions.registry.Resolve(e.Profile, 0, actor)
 			if err != nil || !userAllowedProduct(&UserClaims{UserID: actor}, profile.Product) {
 				return fmt.Errorf("message participant no longer has Crew access")
@@ -153,6 +164,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			if crewTeamMemberOnMac(e.ID, e.UserID) {
 				continue
 			}
+			check = "crew_binding"
 			binding, err := resolveCrewProjectBinding(ctx, actor, profile, e.ID, "")
 			if err != nil || (binding.OwnerID != e.UserID && !(binding.OwnedByCaller && isSideChatConversationKey(e.ChatKey) && crewIsCoOwner(binding.Binding.WorkspacePath, e.UserID))) || canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)) != canonicalCrewWorkspaceRoot(e.Path) {
 				return fmt.Errorf("message Crew is unavailable or ownership changed")

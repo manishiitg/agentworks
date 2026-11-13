@@ -22,8 +22,8 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 		return "not_delivered", "Pending delivery cleared after 24 hours; message history kept."
 	case "delivered":
 		return "delivered", fmt.Sprintf("%s has it.", name)
-	case "failed", "interrupted":
-		return "not_delivered", "The receiving chat could not take it. Check the conversation before trying again."
+	case "undeliverable", "failed", "interrupted":
+		return "not_delivered", "Not delivered: " + agentMessageFailureReason(m.Error)
 	case "suppressed":
 		return "not_delivered", "Access ended before the receiving chat took it."
 	}
@@ -41,6 +41,21 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 		}
 	}
 	return "sent", "Sent to the product's chat; waiting for it to pick it up."
+}
+
+// Stored delivery errors may contain internal paths or provider details. Only
+// these fixed admission sentences become a sender-facing reason.
+func agentMessageFailureReason(reason string) string {
+	switch reason {
+	case "message Crew is unavailable or ownership changed":
+		return "the agent's Crew is unavailable or its ownership changed."
+	case "Team agent unavailable or access removed":
+		return "this agent is no longer available to this Team."
+	case "message participant account is disabled", "message participant account is no longer active":
+		return "a participant's account is no longer active."
+	default:
+		return "the receiving chat could not take it. Check the conversation before trying again."
+	}
 }
 
 func (s agentMessageStore) destAgentOf(e agentMessageEndpoint) (*namedMessageAgent, bool) {

@@ -289,21 +289,32 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 		return false
 	}
 	if e.TeamAgentID != "" {
-		if c.Chat == nil {
-			return false
-		}
-		t, err := readCrewTeam(e.ID)
-		if err != nil || !t.On || !t.member(userID) || !crewTeamAccountActive(userID) || ownerOfCrewProjectID(e.ID) != t.OwnerID {
-			return false
-		}
-		a, ok := t.registeredAgent(userID, c.Chat.Key)
-		return ok && a.ID == e.TeamAgentID && a.InTeam
+		return messageCallerTeamAgentID(userID, c) == e.TeamAgentID
 	}
+
 	if e.Session != "" {
 		return c.Chat != nil && e.Session == c.Chat.SessionID
 	}
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
+
+// One current registry identity is shared by the SQL prefilter and the in-memory
+// check. Session rotation does not change a Team agent's identity.
+func messageCallerTeamAgentID(userID string, c triggerLinkCaller) string {
+	if c.Stamp.Type != triggerCallerCrew || c.Chat == nil {
+		return ""
+	}
+	t, err := readCrewTeam(c.Stamp.ID)
+	if err != nil || !t.On || !t.member(userID) || !crewTeamAccountActive(userID) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID {
+		return ""
+	}
+	a, ok := t.registeredAgent(userID, c.Chat.Key)
+	if !ok || !a.InTeam {
+		return ""
+	}
+	return a.ID
+}
+
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
 	if e.Kind == triggerCallerWorkflow {
 		return admissionRefused("Workflows run directly. Send your message to a Crew agent instead.")
