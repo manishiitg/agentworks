@@ -210,12 +210,21 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 	}
 	now := time.Now()
 	waits := crewTeamMessageWaitStarts(ctx, t.ProjectID, out)
+	ownerOf := map[string]string{} // chat key -> its person's name, to say who a wait is on
+	for _, person := range out {
+		for _, agent := range person.Agents {
+			ownerOf[agent.ChatKey] = person.Name
+		}
+	}
 	for i := range out {
 		for j := range out[i].Agents {
 			agent := &out[i].Agents[j]
-			if since, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" {
-				agent.Activity, agent.waitingSince = "waiting", since
-				agent.StatusLabel = "Waiting for a teammate"
+			if wait, ok := waits[agent.ChatKey]; ok && agent.InTeam && agent.Activity == "" {
+				agent.Activity, agent.waitingSince = "waiting", wait.Since
+				agent.StatusLabel = "Waiting for a teammate's reply"
+				if name := ownerOf[wait.On]; name != "" && name != out[i].Name {
+					agent.StatusLabel = "Waiting for " + name + "'s reply"
+				}
 			}
 			before := agent.Activity
 			agent.Activity = crewTeamLiveActivity(before, agent.waitingSince, out[i].UserID == caller, now)

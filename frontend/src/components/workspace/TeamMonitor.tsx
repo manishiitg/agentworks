@@ -12,7 +12,7 @@ import type { TeamLiveView } from './TeamLiveAgents'
 import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
+type Row = { last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
 type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number }
 
 function lastMessageTime(at: string) {
@@ -90,7 +90,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           else face.working += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
-          rows.push({ last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
+          rows.push({ last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
         }
       }
     }
@@ -154,7 +154,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span>{row.last_message && row.last_message_at && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{lastMessageTime(row.last_message_at)}</span>}</span>
-        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.activity === 'waiting' ? <>{'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.last_message || row.doing || 'Working'}</span>
+        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.activity === 'waiting' ? <>{row.waiting || 'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.last_message || row.doing || 'Working'}</span>
       </span>
     </button>
   }
