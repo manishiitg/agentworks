@@ -81,3 +81,44 @@ func TestAgentProjectionsShareSchemasNotExecutors(t *testing.T) {
 		t.Fatal("new schema ignored")
 	}
 }
+
+// Dynamic per-chat schema enums must not turn sharing into an unbounded cache.
+func TestToolSchemaCacheEvictsLeastRecentlyUsedGraph(t *testing.T) {
+	makeSchema := func(id int) map[string]any {
+		return map[string]any{"type": "string", "enum": []string{fmt.Sprintf("%s-%d", t.Name(), id)}}
+	}
+	coldInput, hotInput := makeSchema(-2), makeSchema(-1)
+	cold, err := compileSchema(coldInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hot, err := compileSchema(hotInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < compiledSchemaCacheLimit+2; i++ {
+		if _, err := compileSchema(makeSchema(i)); err != nil {
+			t.Fatal(err)
+		}
+		again, err := compileSchema(hotInput)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if again != hot {
+			t.Fatal("recently used validator evicted")
+		}
+		if CompiledSchemaCacheEntries() > compiledSchemaCacheLimit {
+			t.Fatal("dynamic schemas exceeded cache bound")
+		}
+	}
+	again, err := compileSchema(coldInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again == cold {
+		t.Fatal("oldest unused schema was not evicted")
+	}
+	if err := cold.Validate(fmt.Sprintf("%s-%d", t.Name(), -2)); err != nil {
+		t.Fatal("eviction changed a live agent validator")
+	}
+}

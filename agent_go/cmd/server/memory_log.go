@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // memoryLogInterval is how often the server logs its memory use. There was
@@ -30,8 +31,8 @@ func memoryLogLine(store *events.EventStore) string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	mb := func(bytes uint64) uint64 { return bytes / (1 << 20) }
-	line := fmt.Sprintf("[MEM] heap_inuse=%dMB heap_alloc=%dMB sys=%dMB goroutines=%d gc=%d",
-		mb(mem.HeapInuse), mb(mem.HeapAlloc), mb(mem.Sys), runtime.NumGoroutine(), mem.NumGC)
+	line := fmt.Sprintf("[MEM] heap_inuse=%dMB heap_alloc=%dMB sys=%dMB goroutines=%d gc=%d tool_schema_entries=%d",
+		mb(mem.HeapInuse), mb(mem.HeapAlloc), mb(mem.Sys), runtime.NumGoroutine(), mem.NumGC, platformtools.CompiledSchemaCacheEntries())
 	if store == nil {
 		return line
 	}
