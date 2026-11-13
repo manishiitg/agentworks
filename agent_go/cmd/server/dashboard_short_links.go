@@ -51,6 +51,10 @@ func (api *StreamingAPI) handleDashboardByCode(w http.ResponseWriter, r *http.Re
 		if resource.Code != code {
 			continue
 		}
+		if resource.Removed {
+			externalError(w, http.StatusGone, "dashboard_removed", dashboardRemovedMessage)
+			return
+		}
 		resolved, err := api.resolveDashboardQuestionResource(r.Context(), claims, resource, "")
 		if err != nil || !resolved.Capability.CanView {
 			externalError(w, 404, "not_found", "dashboard unavailable")
