@@ -335,6 +335,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if err != nil {
 			return crewSyncReply{}, err
 		}
+		if err := crewroot.WriteSync(created, binding); err != nil {
+			return crewSyncReply{}, err
+		}
 		if input.PreviousProjectID != "" {
 			moveCrewTeamToTwin(claims.UserID, input.PreviousProjectID, created)
 		}
