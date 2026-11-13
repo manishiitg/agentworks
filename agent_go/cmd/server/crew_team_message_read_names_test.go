@@ -91,6 +91,7 @@ func TestCrewTeamMessageNamesStayInsideAdmittedRegistry(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"alex.owner","role":"editor","products":["work"]},{"id":"other","username":"blair.member","role":"editor","products":["work"]}]}`)
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"helper": true}, "other": {"helper": true, "private": false}})}
 	for id, a := range team.Agents {
 		a.Name = a.Tab
