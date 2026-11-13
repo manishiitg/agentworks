@@ -190,6 +190,24 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
 	}
+	// The registry owns identity and admission. A cold/offline Mac discovery
+	// read may omit runtime metadata, but must not remove a registered teammate.
+	for i := range out {
+		seen := map[string]bool{}
+		for _, a := range out[i].Agents {
+			seen[a.ID] = true
+		}
+		missing := []crewTeamRegisteredAgent{}
+		for _, a := range t.Agents {
+			if a.OwnerID == out[i].UserID && !seen[a.ID] && (a.InTeam || a.OwnerID == caller) && !crewFunctionTabKey(a.ChatKey) {
+				missing = append(missing, a)
+			}
+		}
+		slices.SortFunc(missing, func(a, b crewTeamRegisteredAgent) int { return strings.Compare(a.ID, b.ID) })
+		for _, a := range missing {
+			out[i].Agents = append(out[i].Agents, crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)})
+		}
+	}
 	now := time.Now()
 	waits := crewTeamMessageWaitStarts(ctx, t.ProjectID, out)
 	for i := range out {
