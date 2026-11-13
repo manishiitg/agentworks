@@ -2,11 +2,13 @@ package platformtools
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -264,10 +266,26 @@ func mergeStringEnums(old, value any) (map[string]any, bool) {
 	return merged, true
 }
 
+// Only immutable compiled validation is shared. Tool definitions, executors,
+// selections and authorization remain specific to each projected agent.
+var compiledSchemas = struct {
+	sync.Mutex
+	byHash map[[32]byte]*jsonschema.Schema
+}{byHash: make(map[[32]byte]*jsonschema.Schema)}
+
 func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	encoded, err := json.Marshal(schema)
 	if err != nil {
 		return nil, err
+	}
+	key := sha256.Sum256(encoded)
+	// Marshal sorts map keys; equivalent schema documents share one validator.
+	// Serialize miss/compile/publication so concurrent agent builds cannot create
+	// duplicate retained graphs. Validate treats the published schema read-only.
+	compiledSchemas.Lock()
+	defer compiledSchemas.Unlock()
+	if cached := compiledSchemas.byHash[key]; cached != nil {
+		return cached, nil
 	}
 	var document any
 	if err := json.Unmarshal(encoded, &document); err != nil {
@@ -278,5 +296,10 @@ func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	if err := compiler.AddResource(location, document); err != nil {
 		return nil, err
 	}
-	return compiler.Compile(location)
+	compiled, err := compiler.Compile(location)
+	if err != nil {
+		return nil, err
+	}
+	compiledSchemas.byHash[key] = compiled
+	return compiled, nil
 }
