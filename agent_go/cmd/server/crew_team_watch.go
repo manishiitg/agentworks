@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
 )
 
 // Team sync watches each copy's folders instead of reading every shared file every round (owner, 6 Nov: Team sync
@@ -17,6 +15,11 @@ import (
 // the start, every few minutes, after the computer wakes, when what the share reads changes, and after a failed round,
 // so a missed event is caught. A copy that cannot be watched (too many names, or the system refused) has full scans
 // only, less often than the old every-round walk.
+//
+// How a copy is watched depends on the system (crewTeamTreeWatching): on a Mac (FSEvents) and on Windows
+// (ReadDirectoryChangesW over the subtree) one watcher covers the copy's whole folder, with no handle per folder or
+// file, so no name budget applies. Elsewhere each folder is added to fsnotify; on a Mac built without cgo that is
+// kqueue, which holds one open file per watched name, hence the global name budget.
 
 const (
 	crewTeamFullScanEvery  = 5 * time.Minute
@@ -26,7 +29,7 @@ const (
 	crewTeamWokeAfter       = 3 * time.Minute
 	crewTeamWakeDelay       = time.Second      // a burst of writes starts one round
 	crewTeamForgetWatchIdle = 10 * time.Minute // a copy no round asked for: its watcher closes
-	// Global budget across every Team copy: kqueue opens each watched name on macOS.
+	// Global budget across every Team copy for per-folder watchers (kqueue opens each watched name).
 	crewTeamWatchNames = 4000
 )
 
@@ -38,6 +41,14 @@ func crewTeamWakeSoon() {
 	case crewTeamWake <- struct{}{}:
 	default:
 	}
+}
+
+// crewTeamWatcher reports changes under one copy's folder to its crewTeamWatch (note, overflow). A tree watcher
+// covers the whole folder from the start and ignores Add/Remove; a per-folder watcher needs each folder added.
+type crewTeamWatcher interface {
+	Add(dir string) error
+	Remove(dir string)
+	Close() error
 }
 
 // crewTeamWatches: copy record folder -> its watch.
@@ -93,7 +104,7 @@ type crewTeamWatch struct {
 	dirNames map[string]int
 	root     string
 	key      string // what the share reads, at the last full scan
-	w        *fsnotify.Watcher
+	w        crewTeamWatcher
 	off      bool // not watched: full scans only
 	closed   bool // forgotten: never watches again
 	dirs     map[string]bool
@@ -199,13 +210,15 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 		return
 	}
 
-	wantNames := w.countedNames(plan.full, scan.dirNames)
-	if !w.reserveNames(wantNames) {
-		if !w.off {
-			log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=global_name_budget names=%d reserved=%d limit=%d", project, wantNames, crewTeamWatchBudget.Load(), crewTeamWatchNames)
+	if !crewTeamTreeWatching {
+		wantNames := w.countedNames(plan.full, scan.dirNames)
+		if !w.reserveNames(wantNames) {
+			if !w.off {
+				log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=global_name_budget names=%d reserved=%d limit=%d", project, wantNames, crewTeamWatchBudget.Load(), crewTeamWatchNames)
+			}
+			w.stop()
+			return
 		}
-		w.stop()
-		return
 	}
 
 	if w.off {
@@ -213,14 +226,13 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 		crewTeamFallbackCopies.Add(-1)
 	}
 	if w.w == nil {
-		fw, e := fsnotify.NewWatcher()
+		fw, e := newCrewTeamWatcher(w.root, w)
 		if e != nil {
 			log.Printf("[CREW_TEAM_LOCAL] project=%s event=watch_off reason=%q", project, e)
 			w.stop()
 			return
 		}
 		w.w, w.dirs = fw, map[string]bool{}
-		go w.listen(fw)
 	}
 	want := map[string]bool{}
 	for _, rel := range scan.dirs {
@@ -234,7 +246,7 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 			return
 		}
 		w.dirs[rel] = true
-		if !plan.full {
+		if !plan.full && !crewTeamTreeWatching {
 			// A new folder: what was made in it before its watch began is read once more next round.
 			if w.changed == nil {
 				w.changed = map[string]bool{}
@@ -245,37 +257,24 @@ func (w *crewTeamWatch) done(project, key string, plan crewTeamScanPlan, scan cr
 	if plan.full { // folders gone or no longer shared
 		for rel := range w.dirs {
 			if !want[rel] {
-				_ = w.w.Remove(filepath.Join(w.root, filepath.FromSlash(rel)))
+				w.w.Remove(filepath.Join(w.root, filepath.FromSlash(rel)))
 				delete(w.dirs, rel)
 			}
 		}
 	}
 }
 
-// listen notes each change under the copy's folder and starts a round once the burst settles.
-func (w *crewTeamWatch) listen(fw *fsnotify.Watcher) {
-	for {
-		select {
-		case ev, ok := <-fw.Events:
-			if !ok {
-				return
-			}
-			w.note(ev)
-		case _, ok := <-fw.Errors:
-			if !ok {
-				return
-			}
-			// Events were dropped (the system's queue overflowed): read everything next round.
-			w.mu.Lock()
-			w.full = true
-			w.mu.Unlock()
-			crewTeamWakeSoon()
-		}
-	}
+// overflow: the system dropped events, so the next round reads everything.
+func (w *crewTeamWatch) overflow() {
+	w.mu.Lock()
+	w.full = true
+	w.mu.Unlock()
+	crewTeamWakeSoon()
 }
 
-func (w *crewTeamWatch) note(ev fsnotify.Event) {
-	rel, err := filepath.Rel(w.root, ev.Name)
+// note records a change at name (a full path under the copy); structural is a create, remove or rename.
+func (w *crewTeamWatch) note(name string, structural bool) {
+	rel, err := filepath.Rel(w.root, name)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return
 	}
@@ -291,7 +290,7 @@ func (w *crewTeamWatch) note(ev fsnotify.Event) {
 		if w.changed == nil {
 			w.changed = map[string]bool{}
 		}
-		w.changed[rel] = w.changed[rel] || ev.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0
+		w.changed[rel] = w.changed[rel] || structural
 	}
 	if w.timer == nil {
 		w.timer = time.AfterFunc(crewTeamWakeDelay, crewTeamWakeSoon)
