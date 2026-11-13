@@ -15,6 +15,7 @@ import (
 // state, each teammate's presence and an agent's own Doing post (the same post
 // Team › Activity shows them), never a pending question's text or a chat.
 type crewTeamLiveAgent struct {
+	Private  bool   `json:"private,omitempty"`
 	ID       string `json:"id"`
 	OwnerID  string `json:"owner_id"`
 	Tab      string `json:"tab"`
@@ -48,23 +49,28 @@ type crewTeamLiveView struct {
 func crewTeamLiveFor(t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	project := t.ProjectID
 	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
-	var doing map[string]crewTeamActivityPost
+	doing := crewTeamActivityPostsFor(t, viewer).Doing
 	for _, person := range people {
-		if person.You || person.UserID == viewer {
-			continue
+		own := person.You || person.UserID == viewer
+		if !own {
+			out.People = append(out.People, crewTeamLivePerson{UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
 		}
-		out.People = append(out.People, crewTeamLivePerson{UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
 		for _, agent := range person.Agents {
-			if !agent.InTeam {
+			post := doing[agent.ID]
+			if agent.ID == "" {
+				post = doing[agent.ChatKey]
+			}
+			if own {
+				if !post.Private || (agent.Activity != "running" && agent.Activity != "waiting") {
+					continue
+				}
+			} else if !agent.InTeam {
 				continue
 			}
-			row := crewTeamLiveAgent{ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
+			row := crewTeamLiveAgent{Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
 			row.Label = row.Person + " · " + row.Name
 			if row.Activity == "running" || row.Activity == "waiting" {
-				if doing == nil {
-					doing = crewTeamActivityPostsFor(t).Doing
-				}
-				row.Doing = doing[agent.ID].Line
+				row.Doing = post.Line
 			}
 			if row.Activity == "running" {
 				row.Label += " working"

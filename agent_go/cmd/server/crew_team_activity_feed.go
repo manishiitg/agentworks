@@ -9,6 +9,7 @@ import (
 // A feed item is projected only from already-admitted posts and permission-filtered
 // messages. Hidden question/answer text never enters the title, verb or line.
 type crewTeamFeedItem struct {
+	Private   bool                     `json:"private,omitempty"`
 	ID        string                   `json:"id"`
 	Kind      string                   `json:"kind"`
 	At        time.Time                `json:"at"`
@@ -36,7 +37,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 			if group.kind == "finding" {
 				title, verb = post.Schedule, "finding"
 			}
-			out = append(out, crewTeamFeedItem{ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: post.Line, Why: post.Why})
+			out = append(out, crewTeamFeedItem{Private: post.Private, ID: group.kind + ":" + post.ID, Kind: group.kind, At: post.At, Person: post.Person, Title: title, Verb: verb, Line: post.Line, Why: post.Why})
 		}
 	}
 	for _, message := range view.Messages {
