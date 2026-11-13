@@ -13,7 +13,9 @@ import (
 
 // The Monitor's Team view (PLAT-746-926): names, identity, the server's live
 // state, each teammate's presence and an agent's own Doing post (the same post
-// Team › Activity shows them), never a pending question's text or a chat.
+// Team › Activity shows them). A last-message excerpt is included only for a
+// current In-team agent whose chat is Live, never Only me or Just-the-agent.
+// Excerpts are visible text only, secret-redacted before shortening.
 type crewTeamLiveAgent struct {
 	Private  bool   `json:"private,omitempty"`
 	ID       string `json:"id"`
@@ -26,6 +28,7 @@ type crewTeamLiveAgent struct {
 	Activity string `json:"activity"`
 	// Doing is the agent's latest Team "Doing" post, only while it works or waits.
 	Doing string `json:"doing,omitempty"`
+	crewTeamMessagePreview
 }
 
 // crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Active now · Mac app", "Mac app connected", or the
@@ -46,7 +49,7 @@ type crewTeamLiveView struct {
 // Input has already passed current Team membership/In-team admission and the
 // one live wait cutoff in teamAgentsByPersonWithMain. Both open and unopened
 // Crews use this projection; a screen never computes a teammate's state.
-func crewTeamLiveFor(t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
+func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	project := t.ProjectID
 	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
 	doing := crewTeamActivityPostsFor(t, viewer).Doing
@@ -55,6 +58,7 @@ func crewTeamLiveFor(t crewTeam, people []crewTeamAgentsPerson, viewer string) c
 		if !own {
 			out.People = append(out.People, crewTeamLivePerson{UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
 		}
+		var previews map[string]crewTeamMessagePreview
 		for _, agent := range person.Agents {
 			post := doing[agent.ID]
 			if agent.ID == "" {
@@ -72,6 +76,20 @@ func crewTeamLiveFor(t crewTeam, people []crewTeamAgentsPerson, viewer string) c
 				row.ID = row.ChatKey
 			}
 			row.Label = row.Person + " · " + row.Name
+			if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.InTeam && registered.Rule.ChatShare == crewChatShareLive {
+				if agent.Place == "mac" {
+					row.crewTeamMessagePreview = agent.lastMessage
+				} else {
+					if previews == nil {
+						previews = crewTeamMessagePreviews(ctx, person.UserID, t.ProjectID)
+					}
+					row.crewTeamMessagePreview = previews[agent.ChatKey]
+				}
+			}
+			row.LastMessage = crewTeamMessageLine(row.LastMessage)
+			if row.LastMessage == "" {
+				row.LastMessageAt = ""
+			}
 			if row.Activity == "running" || row.Activity == "waiting" {
 				row.Doing = post.Line
 			}
@@ -112,7 +130,15 @@ func crewTeamLiveLog(project, viewer string, live crewTeamLiveView) {
 			waiting++
 		}
 	}
-	log.Printf("[CREW_TEAM_LIVE] project=%s viewer=%s working=%d waiting=%d idle=%d", project, viewer, len(live.Agents)-waiting, waiting, len(live.Idle))
+	previews := 0
+	for _, rows := range [][]crewTeamLiveAgent{live.Agents, live.Idle} {
+		for _, row := range rows {
+			if row.LastMessage != "" {
+				previews++
+			}
+		}
+	}
+	log.Printf("[CREW_TEAM_LIVE] project=%s viewer=%s working=%d waiting=%d idle=%d previews=%d", project, viewer, len(live.Agents)-waiting, waiting, len(live.Idle), previews)
 }
 
 // Only metadata from admitted Team-to-Team conversations affects the live line.

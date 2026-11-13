@@ -75,7 +75,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		body, _ := json.Marshal(map[string]string{"error": message})
 		return crewChatResult{ID: call.ID, Status: code, Body: body}
 	}
-	claims, b, _, err := api.desktopCrewChatBinding(ctx, project)
+	claims, b, connection, err := api.desktopCrewChatBinding(ctx, project)
 	if err != nil || b.PairID != pair {
 		return fail(403, "This Mac is no longer editing the paired Crew.")
 	}
@@ -121,13 +121,24 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		return api.desktopCrewWorkspace(ctx, claims, project, call)
 	}
 	// The owner's tabs on the phone and the web (PLAT-856-509): a tab is this Crew's own side chat. Only its key, name
-	// and place on the strip leave the Mac; conversation_id addresses its events.
+	// and place on the strip leave the Mac; Team metadata may also carry a
+	// Live/In-team, redacted last-message preview. conversation_id addresses events.
 	if call.Operation == "tabs" {
-		tabs, err := api.macCrewTabs(ctx, claims, project)
+		tabs, main, err := api.macCrewAgents(ctx, claims, project)
+		metadata := call.Query.Get("team_preview") == "1"
+		if metadata && main.ConversationID != "" {
+			tabs = append(tabs, main)
+		}
 		if err != nil {
 			return fail(409, err.Error())
 		}
+		previews := map[string]crewTeamMessagePreview{}
+		if metadata {
+			previews = api.desktopCrewTeamMessagePreviews(ctx, claims.UserID, project, b.PeerProjectID, connection, tabs)
+		}
 		type tabRow struct {
+			crewTeamMessagePreview
+			IsMain          bool   `json:"is_main,omitempty"`
 			ConversationKey string `json:"conversation_key"`
 			ConversationID  string `json:"conversation_id"`
 			Name            string `json:"name"`
@@ -137,7 +148,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		}
 		rows := []tabRow{}
 		for _, tab := range tabs {
-			rows = append(rows, tabRow{ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned})
+			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned})
 		}
 		data, _ := json.Marshal(rows)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}

@@ -18,11 +18,12 @@ import (
 // them from their own agents.
 
 type crewTeamAgent struct {
-	ID        string `json:"id"`
-	sessionID string
-	Tab       string `json:"tab"`
-	Name      string `json:"name"`
-	Purpose   string `json:"purpose,omitempty"`
+	ID          string `json:"id"`
+	sessionID   string
+	lastMessage crewTeamMessagePreview
+	Tab         string `json:"tab"`
+	Name        string `json:"name"`
+	Purpose     string `json:"purpose,omitempty"`
 	// Place is where it runs: "mac" (its maker's Mac) or "server" (published).
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
@@ -104,9 +105,11 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 	}
 	// The Mac conversations of the owner's agents, by tab, for what is running in them.
 	ownerConversations := map[string]string{}
+	ownerPreviews := map[string]crewTeamMessagePreview{}
 	if onMac {
 		for _, tab := range crewMacTabsFor(ctx, t.OwnerID, t.ProjectID, caller) {
 			ownerConversations[tab.Tab] = tab.ConversationID
+			ownerPreviews[tab.Tab] = tab.crewTeamMessagePreview
 		}
 	}
 	for _, agent := range readMacSharedAgents(t.ProjectID) {
@@ -122,7 +125,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		if agent.Tab == macMainTab {
 			name = "Main" // never the saved chat title "<person> · Builder"
 		}
-		row := crewTeamAgent{Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
+		row := crewTeamAgent{lastMessage: ownerPreviews[agent.Tab], Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
 		if agent.Tab == macMainTab {
 			row.ChatKey = mainKey
 		}
@@ -163,7 +166,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				if tab.Tab == macMainTab {
 					name = "Main"
 				}
-				row := crewTeamAgent{Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
+				row := crewTeamAgent{lastMessage: tab.crewTeamMessagePreview, Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
 				// The same chip as the owner's Mac agents (owner, 6 Nov: Team members are equal).
 				row.PlaceLabel, row.PlaceTone = crewAlwaysOnPlaceLabel(t.ProjectID, p.UserID, tab.Tab, person.MacOn, caller == p.UserID, row.InTeam)
 				row.PlaceServer = row.PlaceTone == "server"

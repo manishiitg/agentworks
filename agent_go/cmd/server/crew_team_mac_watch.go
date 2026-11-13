@@ -24,6 +24,7 @@ import (
 // Their tab lists show them, and the relay streams those conversations, read-only, to the others in the Team.
 
 type crewMacTeamTab struct {
+	crewTeamMessagePreview
 	Person         string // whose Mac it is
 	Tab            string // "main" or the Mac tab id
 	ConversationID string // the Mac conversation, as the relay addresses it
@@ -173,7 +174,7 @@ func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
 
 // readPersonMacTabsNow asks the Mac for its agents (and its Main); ok is false when the Mac did not answer the list.
 func readPersonMacTabsNow(ctx context.Context, person, project, pair string, withMain bool) ([]crewMacTeamTab, bool) {
-	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs"}, 10*time.Second)
+	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs", Query: map[string][]string{"team_preview": {"1"}}}, 10*time.Second)
 	var rows []AgentProfileSideChat
 	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
 		return nil, false
@@ -181,19 +182,17 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 	tabs := []crewMacTeamTab{}
 	for _, row := range rows {
 		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
+		if row.IsMain {
+			id, ok = macMainTab, true
+		}
 		if ok && crewMacTabID(id) && row.ConversationID != "" {
-			tabs = append(tabs, crewMacTeamTab{Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
+			tabs = append(tabs, crewMacTeamTab{crewTeamMessagePreview: crewTeamMessagePreview{LastMessage: row.LastMessage, LastMessageAt: row.LastMessageAt}, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
-	if withMain {
-		main := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "resolve", Source: "team-tabs-refresh"}, 10*time.Second)
-		var out struct {
-			ConversationID string `json:"conversation_id"`
-		}
-		if main.Status == http.StatusOK && json.Unmarshal(main.Body, &out) == nil && out.ConversationID != "" {
-			tabs = append(tabs, crewMacTeamTab{Person: person, Tab: macMainTab, ConversationID: out.ConversationID, Name: "Main"})
-		}
+	if !withMain {
+		tabs = slices.DeleteFunc(tabs, func(tab crewMacTeamTab) bool { return tab.Tab == macMainTab })
 	}
+
 	saveCrewMacTabs(project, person, tabs)
 	return tabs, true
 }

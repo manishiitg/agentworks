@@ -50,6 +50,8 @@ type ChatHistorySession struct {
 	UpdatedAt        string                      `json:"updated_at"`
 	MessageCount     int                         `json:"message_count"`
 	PreviewMessages  []ChatHistoryPreviewMessage `json:"preview_messages,omitempty"`
+	LastMessage      string                      `json:"last_message,omitempty"`
+	LastMessageAt    string                      `json:"last_message_at,omitempty"`
 	// attributionVerified is internal list metadata. It prevents the legacy
 	// attribution repair from reopening a complete transcript after the index
 	// has already confirmed that "default" really does mean legacy data.
@@ -693,6 +695,15 @@ func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode stri
 	if len(query) > 200 {
 		query = query[:200] + "..."
 	}
+	preview := chatHistoryPreviewMessages(history)
+	previous := index.Entries[conversationPath].Session
+	// Preserve the message clock across date-bucket moves of this exact session.
+	for _, entry := range index.Entries {
+		if entry.Session.SessionID == sessionID && crewTeamMessageTimeAfter(entry.Session.LastMessageAt, previous.LastMessageAt) {
+			previous = entry.Session
+		}
+	}
+	last := crewTeamMessagePreviewUpdate(previous, preview, history, now)
 	index.Entries[conversationPath] = chatHistoryIndexEntry{
 		Session: ChatHistorySession{
 			SessionID:        sessionID,
@@ -715,7 +726,8 @@ func updatePersistedChatHistoryIndexWithWriter(userID, sessionID, agentMode stri
 			CreatedAt:        createdAt,
 			UpdatedAt:        now.Format(time.RFC3339),
 			MessageCount:     messageCount,
-			PreviewMessages:  chatHistoryPreviewMessages(history),
+			PreviewMessages:  preview,
+			LastMessage:      last.LastMessage, LastMessageAt: last.LastMessageAt,
 		},
 		SourceSize:          sourceSize,
 		AttributionVerified: true,

@@ -12,8 +12,14 @@ import type { TeamLiveView } from './TeamLiveAgents'
 import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
+type Row = { last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
 type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number }
+
+function lastMessageTime(at: string) {
+ const seconds=Math.max(0, Math.floor((Date.now()-new Date(at).getTime())/1000))
+ if (!Number.isFinite(seconds)) return ''
+ return seconds<60 ? 'just now' : seconds<3600 ? `${Math.floor(seconds/60)}m ago` : seconds<86400 ? `${Math.floor(seconds/3600)}h ago` : `${Math.floor(seconds/86400)}d ago`
+}
 
 const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200', 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200',
   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200', 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-200',
@@ -80,7 +86,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           else face.working += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
-          rows.push({ private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
+          rows.push({ last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
         }
       }
     }
@@ -145,6 +151,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span></span>
         <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.doing || (row.activity === 'waiting' ? 'Waiting' : 'Working')}</span>
+        {row.last_message && <span className="block truncate text-xs text-muted-foreground">{row.last_message}</span>}
+        {row.last_message_at && <span className="block text-[10px] text-muted-foreground">Last message {lastMessageTime(row.last_message_at)}</span>}
       </span>
     </button>
   }
