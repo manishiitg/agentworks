@@ -9,7 +9,7 @@ const duration = (ms: number): string => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
-  return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  return minutes < 60 ? `${minutes}m ${String(seconds % 60).padStart(2, '0')}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
 export function backgroundTaskLine(record: Record<string, unknown>, now: number): string {
   const kind = record.kind === 'helper' ? 'Background agent' : 'Background task'
