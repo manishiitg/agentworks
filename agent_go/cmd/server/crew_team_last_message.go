@@ -20,7 +20,13 @@ type crewTeamMessagePreview struct {
 
 // Redact the complete visible text before whitespace normalization or shortening.
 func crewTeamMessageLine(text string) string {
-	runes := []rune(strings.Join(strings.Fields(redaction.Text(text)), " "))
+	text = redaction.Text(text)
+	// Scheduled update receipts have a separate title/kind header. The full
+	// chat keeps it; the one-line message preview shows only the body.
+	if header, body, ok := strings.Cut(text, "\n\n"); ok && strings.HasSuffix(header, " · update") && strings.TrimSpace(body) != "" {
+		text = body
+	}
+	runes := []rune(strings.Join(strings.Fields(text), " "))
 	if len(runes) > 80 {
 		return string(runes[:79]) + "…"
 	}
