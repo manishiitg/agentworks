@@ -66,7 +66,7 @@ func TestForkSeedsIndependentDialogueAndSourceMarker(t *testing.T) {
 	cancel()
 	<-done
 	body := w.Body.String()
-	for _, id := range []string{"builder-history-fork-session-1", "builder-history-fork-session-3", "fork:fork-session"} {
+	for _, id := range []string{"builder-history-fork-session-0", "builder-history-fork-session-1", "fork:fork-session"} {
 		if strings.Count(body, `"id":"`+id+`"`) != 1 {
 			t.Fatalf("early subscriber missing/duplicated fork history row %s", id)
 		}
