@@ -47,7 +47,7 @@ func (api *StreamingAPI) persistableChatTail(user, session, path string, history
 		return nil, nil, false
 	}
 	body, canonical := chatHistoryBody(history), chatHistoryBody(current)
-	if !appendableHistoryShape(history) || len(body) < source.persistedBody || len(canonical) < source.persistedBody || !samePersistedPrefix(body, canonical, source.persistedBody) {
+	if source.persistedSystem && (len(history) == 0 || history[0].Role != llmtypes.ChatMessageTypeSystem) || !appendableHistoryShape(history) || len(body) < source.persistedBody || len(canonical) < source.persistedBody || !samePersistedPrefix(body, canonical, source.persistedBody) {
 		return nil, nil, false
 	}
 	return source, body[source.persistedBody:], true
