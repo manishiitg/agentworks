@@ -119,7 +119,7 @@ func (api *StreamingAPI) replaceConversationHistoryLocked(session string, next [
 	if source := api.resumeHistorySources[session]; source != nil && source.prefixStable {
 		oldBody, newBody := chatHistoryBody(api.conversationHistory[session]), chatHistoryBody(next)
 		n := source.persistedBody
-		if !appendableHistoryShape(next) || len(oldBody) < n || len(newBody) < n || !reflect.DeepEqual(oldBody[:n], newBody[:n]) {
+		if !appendableHistoryShape(next) || len(oldBody) < n || len(newBody) < n || !samePersistedPrefix(oldBody, newBody, n) {
 			invalid := *source
 			invalid.prefixStable = false
 			api.resumeHistorySources[session] = &invalid
@@ -141,6 +141,26 @@ func appendableHistoryShape(history []llmtypes.MessageContent) bool {
 	}
 	for _, message := range body {
 		if message.Role == llmtypes.ChatMessageTypeSystem {
+			return false
+		}
+	}
+	return true
+}
+
+func samePersistedPrefix(old, next []llmtypes.MessageContent, n int) bool {
+	if len(old) < n || len(next) < n {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		if old[i].Role != next[i].Role || len(old[i].Parts) != len(next[i].Parts) {
+			return false
+		}
+		// Wrapper snapshots copy message structs, not immutable content parts.
+		// Shared parts need no reflective walk, JSON encoding or key allocation.
+		if len(old[i].Parts) > 0 && &old[i].Parts[0] == &next[i].Parts[0] {
+			continue
+		}
+		if !reflect.DeepEqual(old[i], next[i]) {
 			return false
 		}
 	}
