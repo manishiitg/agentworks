@@ -102,8 +102,14 @@ function startNotifyStream({ getOrigin, getHeaders, show, log }) {
 function notifyRoute(route, remote) {
   const value = typeof route === 'string' && route.startsWith('/') ? route : '/';
   if (!remote) return value;
-  const crew = /^\/crew\/projects\/[a-zA-Z0-9_-]+/.exec(value);
-  return crew ? crew[0] : '/home';
+  let url;
+  try { url = new URL(value, 'https://notify.invalid'); } catch { return '/home'; }
+  if (url.origin !== 'https://notify.invalid') return '/home';
+  const crew = /^\/crew\/projects\/[a-zA-Z0-9_-]+$/.exec(url.pathname);
+  if (!crew) return '/home';
+  const agent = url.searchParams.get('agent');
+  // Keep only the chat target the server named; never arbitrary query actions.
+  return crew[0] + (agent && /^[a-zA-Z0-9_.:-]{1,256}$/.test(agent) ? '?agent=' + encodeURIComponent(agent) : '');
 }
 
 module.exports = { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders };

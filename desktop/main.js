@@ -1704,13 +1704,16 @@ function startNotifications() {
         diagLog('[notify] delivery=skipped reason=app_focused');
         return;
       }
+      diagLog(`[notify] delivery=checking focused_window=${Boolean(focusedWindow)} session=${typeof msg.session === 'string' ? msg.session : ''}`);
       if (!Notification.isSupported()) { diagLog('[notify] delivery=skipped reason=unsupported'); return; }
       if (typeof msg.title !== 'string') return;
       const notice = new Notification({ title: msg.title, body: typeof msg.body === 'string' ? msg.body : '', silent: !msg.sound });
       notice.on('click', () => {
         const connection = typeof msg.connection === 'string' && /^[a-f0-9]{32}$/.test(msg.connection) ? msg.connection : 'local';
         openMainWindow();
-        desktopConnectionsApi?.open(connection, notifyRoute(msg.route, connection !== 'local')).catch(err => diagLog('[notify] could not open the chat:', err.message));
+        const route = notifyRoute(msg.route, connection !== 'local');
+        diagLog(`[notify] click connection=${connection} route=${route} session=${typeof msg.session === 'string' ? msg.session : ''}`);
+        desktopConnectionsApi?.open(connection, route).catch(err => diagLog('[notify] could not open the chat:', err.message));
       });
       const event = ['finished', 'failed', 'needs_you', 'team_clash'].includes(msg.event) ? msg.event : 'notification';
       notice.on('show', () => diagLog(`[notify] delivery=shown event=${event}`));
