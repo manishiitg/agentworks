@@ -280,7 +280,7 @@ export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; n
   title: string; line: string; changes_label: string; changes_options: { value: boolean; label: string; line: string }[]
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
-export type CrewShareAgent = { key: string; name: string; line?: string; ask?: CrewShareAsk }
+export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
 export type CrewShareActionsGroup = { title: string; line: string; rows: CrewShareAction[]; setup_ask?: string; wizard_for?: string }
 /** What other people share with the viewer (crew_share_page.go crewShareSharedWithYou): people, then their agents and actions. */

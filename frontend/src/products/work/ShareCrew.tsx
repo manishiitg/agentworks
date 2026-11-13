@@ -155,7 +155,7 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
     <div className="flex items-center gap-2.5 px-4 py-3.5">
       <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Bot className="h-4 w-4" /></span>
       <span className="min-w-0 truncate text-[17px] font-semibold">{agent.name}</span>
-      {agent.line && <span className="whitespace-nowrap text-[13px] text-muted-foreground">· {agent.line}</span>}
+      {agent.line && <span title={agent.hint || undefined} className="whitespace-nowrap text-[13px] text-muted-foreground">· {agent.line}</span>}
     </div>
     {ask && <>
       <div className="flex items-center gap-3 border-t border-border px-4 py-3">

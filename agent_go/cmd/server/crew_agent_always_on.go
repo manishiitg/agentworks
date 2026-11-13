@@ -536,13 +536,13 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam boo
 		if macOn {
 			return "Taking back from the server…", "wait"
 		}
-		return "Mac off · answering from the server" + crewStandbyOnProgram(project, owner, tab), "server"
+		return crewAlwaysOnLine + " · answering your team" + crewStandbyOnProgram(project, owner, tab), "server"
 	case macOn && !inTeam:
 		return "Only you · on your Mac", ""
 	case macOn:
 		return crewStandbyCopyLabel(project, owner, tab)
 	case crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, owner, tab):
-		return "Mac off · answering from the server", "server"
+		return crewAlwaysOnLine + " · answering your team" + crewStandbyOnProgram(project, owner, tab), "server"
 	case yours:
 		return "Mac off · waits for your Mac", ""
 	}
@@ -572,17 +572,21 @@ func crewStandbyCopyLabel(project, person, tab string) (string, string) {
 	rows, err := readCrewStandby(project, person)
 	row, ok := rows[tab]
 	if err != nil || !ok || len(row.Sessions) == 0 {
-		return "Not on the server yet · it copies after its next reply", "wait"
+		return crewAlwaysOnLine + " after its next reply", "wait"
 	}
 	if at, err := time.Parse(time.RFC3339, row.CopiedAt); err == nil {
-		return crewStandbyBackupLine + " · updated " + crewAccessAgo(at), "ok"
+		return crewAlwaysOnLine + " · updated " + crewAccessAgo(at), "ok"
 	}
-	return crewStandbyBackupLine, "ok"
+	return crewAlwaysOnLine, "ok"
 }
 
-// crewStandbyBackupLine names standby for what it is (owner, 12 Nov): a backup that answers only while the Mac is off;
-// Run online is the separate agent that runs only on the server.
-const crewStandbyBackupLine = "Backup on the server for when the Mac is off"
+// crewAlwaysOnLine names the automatic server copy of an In team agent (owner, 13 Nov: "Always online", never
+// "backup"); it answers teammates only while the Mac is off. Run online is the separate agent that runs only on the
+// server. crewAlwaysOnHint is its hover text.
+const (
+	crewAlwaysOnLine = "Always online"
+	crewAlwaysOnHint = "Answers your team when your Mac is off."
+)
 
 // crewAlwaysOnAgentsLine is the Agents card's line for the owner of a Mac Crew with the Team on.
 const crewAlwaysOnAgentsLine = "Shared agents are always on: when your Mac is off, they answer teammates from the server. " + crewTeamAgentsLine
