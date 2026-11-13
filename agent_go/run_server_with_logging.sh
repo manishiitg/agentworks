@@ -2138,6 +2138,7 @@ wait_for_agent_health() {
         if curl -fsS "$url" >/dev/null 2>&1; then
             AGENT_LISTENER="$(dev_owned_listener "$SERVER_PID" "$AGENT_PORT")"
             echo "✅ Agent server is healthy at: $url"
+            dev_phase agent_health
             local timing="[STARTUP_TIMING] started=$DEV_LAUNCH_STARTED_AT healthy=$(date -u +%Y-%m-%dT%H:%M:%SZ) elapsed_seconds=$((SECONDS-DEV_LAUNCH_STARTED_SECONDS))"
             echo "$timing"
             dev_detail "$timing"
@@ -2330,6 +2331,7 @@ else
 
     ensure_dev_agent_browser || { echo "❌ agent-browser installation failed"; exit 1; }
 fi
+dev_phase setup_and_dependencies
 
 # Fixture downloads are not needed for health or the first chat request.
 # Explicit package overrides remain caller-owned and validated before launch.
@@ -2359,12 +2361,14 @@ mkdir -p "$MCPBRIDGE_BIN_DIR"
 # Use the pinned module from this checkout; never build in another agent's
 # mcpagent checkout or install an unreviewed @latest during isolated testing.
 ensure_dev_mcpbridge "$MCPBRIDGE_BIN_DIR/mcpbridge" || exit 1
+dev_phase mcpbridge
 if [ -x "$MCPBRIDGE_BIN_DIR/mcpbridge" ]; then
     export MCP_BRIDGE_BINARY="$MCPBRIDGE_BIN_DIR/mcpbridge"
 fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
     start_native_workspace || exit 1
+    dev_phase workspace_build_and_health
 fi
 
 if [ "$WITH_GATEWAY" = true ]; then
@@ -2374,6 +2378,7 @@ if [ "$WITH_GATEWAY" = true ]; then
         echo "   Stop any other AgentWorks instance using this local workspace, fix the reported error, then run ./run_server_with_logging.sh again."
         exit 1
     fi
+    dev_phase vault_build_and_health
 fi
 
 # Kill all leftover agent-browser daemon processes from previous runs.
@@ -2457,6 +2462,7 @@ GO_LDFLAGS="-X github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator
 if [ -z "${AGENTWORKS_CLI_DOWNLOAD_DIR:-}" ]; then
     export AGENTWORKS_CLI_DOWNLOAD_DIR="${SCRIPT_DIR}/bin/cli-downloads"
     dev_setup bash "${SCRIPT_DIR}/../scripts/package-agentworks-cli-local.sh" "$AGENTWORKS_CLI_DOWNLOAD_DIR" || exit 1
+    dev_phase cli_package
 fi
 
 if [ -n "$PLATFORM_REVISION" ]; then
@@ -2475,6 +2481,7 @@ if [ -f "$FRONTEND_DIR/package.json" ]; then
         echo "❌ Could not prepare dashboard runtimes. See $FRONTEND_LOG_PATH"
         exit 1
     }
+    dev_phase dashboard_assets
 fi
 
 # Run the server with all the enhanced configuration
@@ -2492,6 +2499,7 @@ if [ "$WITH_FRONTEND" != true ] || [ "$WITHOUT_ELECTRON" = true ]; then
     AGENT_DIRECT_BINARY="$SCRIPT_DIR/.bin/agent-server-dev"
     echo "🔨 Building the local backend (including any Go toolchain download)..."
     go build -ldflags "$GO_LDFLAGS" -o "$AGENT_DIRECT_BINARY" main.go || exit 1
+    dev_phase backend_build
 fi
 
 if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
@@ -2502,8 +2510,11 @@ if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
     export AGENTWORKS_DEV_AGENT_LOG="$LOG_PATH"
     echo "🔨 Building the local desktop backend..."
     go build -ldflags "$GO_LDFLAGS" -o "$AGENTWORKS_DEV_AGENT_BINARY" main.go || exit 1
+    dev_phase backend_build
     start_frontend_dev || exit 1
+    dev_phase frontend_ready
     start_electron || exit 1
+    dev_phase electron_started
     SERVER_PID="$ELECTRON_PID"
     wait_for_agent_health || exit 1
     echo "✅ Desktop and connected servers are ready at $FRONTEND_URL"
