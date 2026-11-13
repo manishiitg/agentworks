@@ -10,7 +10,7 @@ export function useChatContextView(sessionId: string, busy = false) {
     const events = state.tabEvents[sessionId] || []
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i]
-      if (['status_line', 'token_usage', 'context_compaction', 'unified_completion', 'conversation_end', 'conversation_error'].includes(event.type)) return event.id
+      if (['status_line', 'token_usage', 'context_compaction', 'unified_completion', 'conversation_end', 'conversation_error'].includes(event.type || '')) return event.id
     }
     return undefined
   })

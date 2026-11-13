@@ -96,7 +96,6 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
   const view = useChatContextView(sessionId)
   const [busy, setBusy] = useState(false)
 
-
   if (!view) return null
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
