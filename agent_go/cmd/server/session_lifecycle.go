@@ -642,6 +642,7 @@ func (api *StreamingAPI) handleClearSession(w http.ResponseWriter, r *http.Reque
 	api.conversationMux.Lock()
 	if _, exists := api.conversationHistory[sessionID]; exists {
 		delete(api.conversationHistory, sessionID)
+		delete(api.resumeHistorySources, sessionID)
 		log.Printf("[SESSION DEBUG] Cleared conversation history for session %s", sessionID)
 	}
 	delete(api.lastWorkshopModeBySession, sessionID)
