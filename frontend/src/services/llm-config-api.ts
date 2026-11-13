@@ -301,7 +301,8 @@ llmConfigApi.interceptors.request.use((config) => {
 })
 
 /** A left menu group: a name the person gives to some projects (keys as pins use). */
-export type MenuGroups = { groups: Array<{ id: string; name: string; projects: string[] }>; filter?: string; network?: string }
+export type MenuAgentGroup = { id: string; name: string; project: string; agents: string[]; collapsed: boolean }
+export type MenuGroups = { agent_groups?: MenuAgentGroup[]; groups: Array<{ id: string; name: string; projects: string[] }>; filter?: string; network?: string }
 
 /** The person's own display choices (server-side, per person). */
 export type ChatPreferences = { show_context_indicator: boolean }

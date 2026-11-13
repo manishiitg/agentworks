@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { Check, FolderPlus, ListFilter, Pencil, Plus, X } from 'lucide-react'
-import { llmConfigService, type MenuGroups } from '../../services/llm-config-api'
+import { llmConfigService, type MenuGroups, type MenuAgentGroup } from '../../services/llm-config-api'
 
 // Left menu groups and filter (owner, 10 Nov, approved mockup "Menu Filters Groups"). The server keeps the groups
 // (menu_groups.go); the screen sends the full list on each change and shows what the server answers.
@@ -12,14 +12,14 @@ export type MenuFilter = 'all' | 'mine' | 'shared' | `group:${string}`
 
 // The groups and the menu's last filter and network, all kept on the server for the person (menu_groups.go), so they
 // survive a restart and are the same on every screen (owner, 10 Nov: the filter was not remembered).
-type Saved = { groups: Group[]; filter: MenuFilter; network: string }
+type Saved = { agent_groups: MenuAgentGroup[]; groups: Group[]; filter: MenuFilter; network: string }
 const useMenuGroupsStore = create<Saved & { loaded: boolean; error: string; set: (saved: Partial<Saved>) => void; fail: (error: string) => void }>()(set => ({
-  groups: [], filter: 'all', network: '', loaded: false, error: '',
+  agent_groups: [], groups: [], filter: 'all', network: '', loaded: false, error: '',
   set: saved => set({ ...saved, loaded: true, error: '' }),
   fail: error => set({ error }),
 }))
 
-const fromServer = (result: MenuGroups): Saved => ({ groups: result.groups || [], filter: (result.filter || 'all') as MenuFilter, network: result.network || '' })
+const fromServer = (result: MenuGroups): Saved => ({ agent_groups: result.agent_groups || [], groups: result.groups || [], filter: (result.filter || 'all') as MenuFilter, network: result.network || '' })
 
 let loading: Promise<void> | null = null
 function loadGroups() {
@@ -32,7 +32,7 @@ function loadGroups() {
 /** Saves a change: the screen shows it at once and then what the server kept. */
 async function saveMenu(change: Partial<Saved>) {
   const store = useMenuGroupsStore.getState()
-  const next = { groups: store.groups, filter: store.filter, network: store.network, ...change }
+  const next = { agent_groups: store.agent_groups, groups: store.groups, filter: store.filter, network: store.network, ...change }
   store.set(next)
   try {
     useMenuGroupsStore.getState().set(fromServer(await llmConfigService.setMenuGroups(next)))
@@ -206,4 +206,21 @@ export function ProjectGroupsMenu({ name, projectKey, inline = false }: { name: 
     </button>
     {popover.render(`Groups for ${name}`, 'w-52', choices)}
   </>
+}
+
+/** Same personal preferences and backend normalization as the project groups. */
+export function useAgentGroups(project: string) {
+  useMenuGroups()
+  const all = useMenuGroupsStore(state => state.agent_groups)
+  const error = useMenuGroupsStore(state => state.error)
+  const loaded = useMenuGroupsStore(state => state.loaded)
+  const groups = all.filter(group => group.project === project)
+  const save = (next: MenuAgentGroup[]) => saveMenu({ agent_groups: [...all.filter(group => group.project !== project), ...next] })
+  return { groups, error, loaded,
+    create: (name: string) => save([...groups, { id: crypto.randomUUID(), name, project, agents: [], collapsed: false }]),
+    rename: (id: string, name: string) => save(groups.map(group => group.id === id ? { ...group, name } : group)),
+    remove: (id: string) => save(groups.filter(group => group.id !== id)),
+    toggle: (id: string) => save(groups.map(group => group.id === id ? { ...group, collapsed: !group.collapsed } : group)),
+    move: (key: string, id: string) => save(groups.map(group => ({ ...group, agents: [...group.agents.filter(agent => agent !== key), ...(group.id === id ? [key] : [])] }))),
+  }
 }

@@ -30,7 +30,17 @@ type menuGroup struct {
 	Projects []string `json:"projects"`
 }
 
+// Agent groups are personal sidebar organization, not membership or access.
+type menuAgentGroup struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Project string `json:"project"`
+	Agents []string `json:"agents"`
+	Collapsed bool `json:"collapsed"`
+}
+
 type menuGroups struct {
+	AgentGroups []menuAgentGroup `json:"agent_groups,omitempty"`
 	Groups []menuGroup `json:"groups"`
 	// The menu's last choices, kept with the groups so they survive a restart and match on every screen (owner,
 	// 10 Nov): Filter is all, mine, shared or group:<id>; Network is a connection id or all.
@@ -67,6 +77,29 @@ func (m menuGroups) normalized() menuGroups {
 			}
 		}
 		out.Groups = append(out.Groups, menuGroup{ID: id, Name: name, Projects: projects})
+	}
+	namesByProject, members, ids := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, group := range m.AgentGroups {
+		project, name := strings.TrimSpace(group.Project), menuGroupName(group.Name)
+		nameKey := project + "\x00" + strings.ToLower(name)
+		if project == "" || len(project) > 512 || name == "" || namesByProject[nameKey] || len(out.AgentGroups) >= menuGroupProjectsMax {
+			continue
+		}
+		id := strings.TrimSpace(group.ID)
+		if id == "" || ids[id] {
+			id = uuid.NewString()
+		}
+		ids[id], namesByProject[nameKey] = true, true
+		agents := []string{}
+		for _, key := range group.Agents {
+			key = strings.TrimSpace(key)
+			memberKey := project + "\x00" + key
+			if key != "" && len(key) <= 512 && !members[memberKey] && len(agents) < menuGroupProjectsMax {
+				members[memberKey] = true
+				agents = append(agents, key)
+			}
+		}
+		out.AgentGroups = append(out.AgentGroups, menuAgentGroup{ID: id, Name: name, Project: project, Agents: agents, Collapsed: group.Collapsed})
 	}
 	return out
 }
