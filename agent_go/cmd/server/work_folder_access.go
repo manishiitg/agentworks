@@ -175,16 +175,22 @@ func workFolderAccessForClaims(ctx context.Context, claims *UserClaims) ([]workf
 }
 
 // A turn must not interpret a failed authority read as an empty grant set.
-func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, error) {
+func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, string, error) {
 	grants, _, err := workFolderAccessForClaimsChecked(ctx, claims)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	teamGrants, err := crewTeamNativeFoldersChecked(ctx, claims)
-	if err != nil {
-		return nil, err
+	teamGrants, teamErr := crewTeamNativeFoldersChecked(ctx, claims)
+	return workFolderTurnResult(grants, teamGrants, teamErr)
+}
+
+func workFolderTurnResult(own, team []workflowtypes.WorkflowFolderGrant, teamErr error) ([]workflowtypes.WorkflowFolderGrant, string, error) {
+	notice := ""
+	if teamErr != nil {
+		// Do not expose remote URLs, response bodies or internal paths.
+		notice = "Team folders are unavailable this turn: a Team connection could not be reached."
 	}
-	return append(grants, teamGrants...), nil
+	return append(own, team...), notice, nil
 }
 
 func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, []string, error) {

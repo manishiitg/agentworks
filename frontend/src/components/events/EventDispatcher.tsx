@@ -1316,6 +1316,15 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   // the next turn. Keep the copy user-facing: "steered" and provider routing
   // described the implementation but made a successful notification look
   // like an unexplained diagnostic.
+  if (event.type === 'work_folder_notice') {
+    const envelope = event.data as unknown as Record<string, unknown> | undefined
+    const payload = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
+    const message = typeof payload.message === 'string' ? payload.message : ''
+    return message ? <CompactWrapper compact={compact}>
+      <div role="status" className="text-sm text-muted-foreground">{message}</div>
+    </CompactWrapper> : null
+  }
+
   if (isEventType(event, 'auto_notification_steered')) {
     const fields = getEventData(event)
     const rawName = fields.name || ''

@@ -5477,14 +5477,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// the HTTP request that has already returned from this background job.
 		// CLI sandbox, tool guards and instructions must use identical grants.
 		var turnFolderGrants []workflowtypes.WorkflowFolderGrant
+		var turnFolderNotice string
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-			turnFolderGrants, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx))
+			turnFolderGrants, turnFolderNotice, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx))
 			if err != nil {
 				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolve_failed session=%s reason=grant_store_unavailable", sessionID)
 				sendError("Could not load your attached folders. Please retry this turn.", true)
 				return
 			}
 			logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolved session=%s grants=%d", sessionID, len(turnFolderGrants))
+		}
+
+		if turnFolderNotice != "" {
+			api.eventStore.AddEvent(sessionID, events.Event{
+				ID:   fmt.Sprintf("work_folder_notice_%s", queryID),
+				Type: "work_folder_notice", Timestamp: time.Now(), SessionID: sessionID,
+				Data: map[string]interface{}{"message": turnFolderNotice},
+			})
 		}
 
 		// Load selected tools and code execution mode from preset if available (for simple/ReAct agents)
@@ -6948,7 +6957,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants)
+				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants) + "\n" + turnFolderNotice
 			}
 			// The full browser guide is a ~10KB on-demand skill; this is only a
 			// pointer so the agent knows the surface exists.
