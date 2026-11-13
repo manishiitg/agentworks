@@ -87,6 +87,11 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   status repeats, and do not answer a message that only reports or confirms:
   read it and end your turn. Two tabs must never keep a back-and-forth going;
   if nothing new is needed, stop.
+- Write messages in short plain sentences the person could read. A status
+  update is one line: `Done: <what>. Needs: <nothing or what>.` Add commit or
+  PR numbers only when the receiver must act on them.
+- The person sees your chat answer to an incoming message. When it needs
+  nothing from them, answer in one short line; do not restate the message.
 - Set your own name and purpose with `sessions action=identity` (name: a few
   words; purpose: one short line) when asked, including the "Set purpose"
   button's message. If the person wrote a name or purpose, save exactly that.
