@@ -1,3 +1,4 @@
+import { SidebarAgentPresence, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X, GripVertical } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
@@ -42,7 +43,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     className={`${sidebarAgentRowClass} text-muted-foreground hover:bg-muted hover:text-foreground`}>
     <span className="min-w-0 truncate">{agent.name}</span>
   </button>
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
+  const row = (agent: CrewAgentRow) => <SidebarAgentPresence key={agent.tabId} identity={sidebarAgentIdentity(getRawActiveWorkspaceId(), tabs[agent.tabId]?.metadata?.agentProfileConversationKey || agent.tabId)}><AgentRow agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} /></SidebarAgentPresence>
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
     {shown.filter(agent => !grouping.groups.some(group => group.agents.includes(tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''))).map(row)}
     {grouping.groups.map(group => {

@@ -1,3 +1,4 @@
+import { SidebarAgentPresence, SidebarAgentVisibilityProvider, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { RecentAgentChats } from './RecentAgentChats'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
@@ -60,13 +61,13 @@ function useWorkHistory(projects: SidebarProject[]) {
   useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
   return { pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
-export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
+export function DesktopConnections({ children, top, projects = [] }: { children?: ReactNode; top?: ReactNode; projects?: SidebarProject[] }) {
   const crews = projects.filter(project => project.kind === 'crew')
   // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
   const invites = useTeamInviteRows()
   return <>
     {invites.length > 0 && <div aria-label="Team invites" className="shrink-0 space-y-1 px-2 pb-2">{invites}</div>}
-    <ProjectMenu projects={crews}>{children}</ProjectMenu>
+    <SidebarAgentVisibilityProvider key={connectedWorkHistoryScope()}><ProjectMenu projects={crews} top={top}>{children}</ProjectMenu></SidebarAgentVisibilityProvider>
   </>
 }
 // All projects starts open when nothing is pinned, so the menu is never empty (owner, 10 Nov); with pins it starts
@@ -98,7 +99,7 @@ function AllProjects({ children, hasPins, counts, networks, network, onNetwork }
 /** The one left menu. In the desktop app it lists every connected network (the Mac and each server); on the website
  * it is the same menu with this server as its only network. The current network's Crews come from the navigation list
  * the sidebar loads; other networks' from the desktop app's inventory. */
-function ProjectMenu({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
+function ProjectMenu({ children, top, projects }: { children?: ReactNode; top?: ReactNode; projects: SidebarProject[] }) {
   const creationProjectId = useCrewAgentsStore(state => state.projectId)
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const desktop = hasDesktopConnections()
@@ -195,6 +196,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const { macs, server } = groupByMac(unpinnedRows)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`}>
+      {top}
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
@@ -300,7 +302,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
+    return <SidebarAgentPresence key={chat.conversation_key} identity={sidebarAgentIdentity(connectionId, chat.conversation_key)}><button type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button></SidebarAgentPresence>
   }
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)

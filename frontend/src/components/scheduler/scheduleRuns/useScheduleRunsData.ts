@@ -1,4 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../../utils/chatIdentity'
+import { useAuthStore } from '../../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../../stores/useWorkspaceConnectionStore'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { schedulerApi } from '../../../api/scheduler'
 import { agentApi } from '../../../services/api'
 import { useGlobalPresetStore } from '../../../stores/useGlobalPresetStore'
@@ -43,6 +46,7 @@ import {
 
 export type UseScheduleRunsDataArgs = {
   active?: boolean
+  initialView?: SchedulePanelView
   onClose: () => void
   onJobsLoaded?: (jobs: ScheduledJob[]) => void
   workflowScope?: WorkflowScope
@@ -61,14 +65,19 @@ function retainDurationAverage(updated: ScheduledJob, previous: ScheduledJob): S
   }
 }
 
-export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, canManage, active = true }: UseScheduleRunsDataArgs) {
+export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, canManage, active = true, initialView }: UseScheduleRunsDataArgs) {
+  const user = useAuthStore(state => state.user?.id)
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const dataScope = `${workspace}:${user || ''}`
+  const [jobsScope, setJobsScope] = useState(dataScope)
+  const request = useRef(0)
   const [jobs, setJobs] = useState<ScheduledJob[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openActionMenuJobId, setOpenActionMenuJobId] = useState<string | null>(null)
   const [expandedWorkflowKeys, setExpandedWorkflowKeys] = useState<string[]>([])
   const isWorkflowScoped = !!workflowScope
-  const [activeView, setActiveView] = useState<SchedulePanelView>(() => defaultSchedulePanelView(isWorkflowScoped))
+  const [activeView, setActiveView] = useState<SchedulePanelView>(() => initialView || defaultSchedulePanelView(isWorkflowScoped))
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null)
   const [focusedScheduleId, setFocusedScheduleId] = useState<string | null>(null)
@@ -126,8 +135,8 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   )
 
   const panelJobs = useMemo(() => {
-    return jobs.filter(job => jobMatchesWorkflowScope(job, stableScope, presetMap))
-  }, [jobs, stableScope, presetMap])
+    return jobsScope === dataScope ? jobs.filter(job => jobMatchesWorkflowScope(job, stableScope, presetMap)) : []
+  }, [jobs, jobsScope, dataScope, stableScope, presetMap])
 
   const panelTitle = useMemo(() => {
     if (!isWorkflowScoped) return 'Automation Schedules'
@@ -152,35 +161,42 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   }, [panelJobs, presetMap])
 
   const loadJobs = useCallback(async (showLoading = false) => {
+    const identity = captureChatIdentity()
+    const sequence = ++request.current
+    const current = () => isChatIdentityCurrent(identity) && request.current === sequence
     if (showLoading) setIsLoading(true)
     setError(null)
     try {
-      const [resp, config] = await Promise.all([
-        schedulerApi.listJobs({
-          entity_type: entityType,
-          workspace_path: scopePath ?? undefined,
-          limit: WORKFLOW_SCHEDULE_PANEL_LIMIT,
-        }),
-        schedulerApi.getConfig().catch(() => null),
-      ])
+      const started = performance.now()
+      const pendingJobs = schedulerApi.listJobs({ entity_type: entityType, workspace_path: scopePath ?? undefined, limit: WORKFLOW_SCHEDULE_PANEL_LIMIT })
+      // Config is optional UI metadata; do not hold usable job rows behind it.
+      void schedulerApi.getConfig().then(config => {
+        if (current()) setSchedulerConfig(config)
+        const elapsed = Math.round(performance.now() - started)
+        if (elapsed >= 400) console.info('[SCHEDULES_LOAD]', { stage: 'config', elapsed_ms: elapsed })
+      }).catch(() => {})
+      const resp = await pendingJobs
+      if (!current()) return
+      const elapsed = Math.round(performance.now() - started)
+      if (elapsed >= 400) console.info('[SCHEDULES_LOAD]', { stage: 'jobs', elapsed_ms: elapsed, count: resp.jobs.length })
       const scheduleJobs = timeScheduledJobs(productProfileId && entityType === 'product'
         ? resp.jobs.filter(job => job.id.startsWith(`product-project:${productProfileId}:`))
         : resp.jobs)
+      setJobsScope(dataScope)
       setJobs(scheduleJobs)
       onJobsLoaded?.(scheduleJobs)
-      setSchedulerConfig(config)
     } catch {
-      setError('Failed to load automation schedules')
+      if (current()) setError('Failed to load automation schedules')
     } finally {
-      if (showLoading) setIsLoading(false)
+      if (showLoading && current()) setIsLoading(false)
     }
-  }, [entityType, productProfileId, onJobsLoaded, scopePath])
+  }, [entityType, productProfileId, onJobsLoaded, scopePath, dataScope])
 
   useEffect(() => {
     if (!active) return
     loadJobs(true)
-    refreshPresets()
-  }, [loadJobs, refreshPresets, active])
+    if (entityType === 'workflow' && !useGlobalPresetStore.getState().workflowPresetsLoaded) void refreshPresets()
+  }, [loadJobs, refreshPresets, active, entityType])
 
   // Keep running jobs responsive; idle panels must still discover later cron runs.
   const hasRunningJob = panelJobs.some(j => j.last_status === 'running')
@@ -385,6 +401,8 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   }, [filteredJobs, presetMap, potentialOverlaps])
 
   const monthlyCalendar = useMemo(() => {
+    // Expanding three months is calendar work, not list/group loading work.
+    if (!active || activeView !== 'calendar') return { label: '', localTimeZone: '', cells: [] as CalendarCell[], total: 0 }
     const year = calendarMonth.getFullYear()
     const month = calendarMonth.getMonth()
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
@@ -455,7 +473,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       cells,
       total: Object.values(byDate).reduce((sum, items) => sum + items.length, 0),
     }
-  }, [calendarMonth, panelJobs, presetMap])
+  }, [calendarMonth, panelJobs, presetMap, active, activeView])
 
   const selectedCalendarCell = useMemo(
     () => monthlyCalendar.cells.find(cell => cell.date === selectedCalendarDate),

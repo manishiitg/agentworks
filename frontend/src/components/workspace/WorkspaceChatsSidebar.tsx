@@ -55,8 +55,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       <a href="/home" onClick={followAppLink} aria-label="Home" title="Home" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
       {toggle}
     </div>
-    <SidebarActions />
-    <DesktopConnections projects={projects.map(project => ({ ...project,
+    <DesktopConnections top={<SidebarActions />} projects={projects.map(project => ({ ...project,
       selected: !globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
         product === 'work' && crewId === project.id,
     }))}>
