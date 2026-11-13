@@ -237,12 +237,21 @@ func (api *StreamingAPI) handleCompanyModelProxy(w http.ResponseWriter, r *http.
 		return
 	}
 	provider, path := mux.Vars(r)["provider"], mux.Vars(r)["path"]
-	if _, offered := companyProxyModels[provider]; !offered || !providerEnabled(provider) || companyLendingLabel(r.Context(), provider) == "" {
+	// The person's own login signed in once on this server comes first (personal_server_login.go): their Mac uses the
+	// same login as their server agents. The answer says so, and the Mac names the account as theirs.
+	own, hasOwn := ownServerLoginAccount(r.Context(), caller, provider)
+	hasOwn = hasOwn && providerEnabled(provider)
+	if _, offered := companyProxyModels[provider]; !hasOwn && (!offered || !providerEnabled(provider) || companyLendingLabel(r.Context(), provider) == "") {
 		desktopJSONError(w, 404, "This server does not offer its "+providerAccountProductName(provider)+" account for use on your Mac.")
 		return
 	}
 	if !companyProxyPaths[path] {
 		desktopJSONError(w, 404, "Not found.")
+		return
+	}
+	if hasOwn {
+		w.Header().Set(serverLoginAccountHeader, "own")
+		api.forwardToPersonalProxy(w, r, own, path, "mac")
 		return
 	}
 	account := "global:" + provider
@@ -487,17 +496,17 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 // companyAccountOffered asks a connected server whether it lends its account for the program to this person: it lists
 // the program's models. known is false when the server could not be asked (offline): nothing changes then. An older
 // server answers unknown addresses with its web page, which is "not offered".
-func companyAccountOffered(ctx context.Context, c desktopConnection, provider string) (offered, known bool) {
+func companyAccountOffered(ctx context.Context, c desktopConnection, provider string) (offered, known, own bool) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Server+"/api/model-proxy/"+provider+"/v1/models", nil)
 	if err != nil {
-		return false, false
+		return false, false, false
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	resp, err := desktopHTTPClient().Do(req)
 	if err != nil {
-		return false, false
+		return false, false, false
 	}
 	defer resp.Body.Close()
 	var answer struct {
@@ -507,14 +516,14 @@ func companyAccountOffered(ctx context.Context, c desktopConnection, provider st
 	switch {
 	case resp.StatusCode == http.StatusOK:
 		// An older server answers with its web page (no model list): it does not offer it.
-		return len(answer.Data) > 0, true
+		return len(answer.Data) > 0, true, resp.Header.Get(serverLoginAccountHeader) == "own"
 	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden:
 		// 404: the server does not lend it; 403: it no longer lets this person use it. Either way it goes.
-		return false, true
+		return false, true, false
 	}
 	log.Printf("[DESKTOP_ACCOUNT] %s on %s: answered %d, company account left as it is", provider, c.Name, resp.StatusCode)
 	// A refusal for now (a limit reached, the proxy down, a sign-in expired) leaves the account as it is.
-	return false, false
+	return false, false, false
 }
 
 // companySync remembers when each person's company accounts were last matched with their servers.
@@ -562,6 +571,8 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	want := map[string]map[string]bool{}
+	// owned[connection][program]: the server answers with the person's own login there, not a company account.
+	owned := map[string]map[string]bool{}
 	names := map[string]string{}
 	// models[connection][program]: the models the server's account allows this person (empty = all), so the Mac
 	// only offers what the server will run.
@@ -587,16 +598,16 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 		}(c)
 	}
 	for _, c := range connections {
-		want[c.ID], names[c.ID] = map[string]bool{}, friendlyServerName(c.Name, c.Server)
+		want[c.ID], owned[c.ID], names[c.ID] = map[string]bool{}, map[string]bool{}, friendlyServerName(c.Name, c.Server)
 	}
 	for _, c := range connections {
 		for provider := range companyProxyModels {
 			wg.Add(1)
 			go func(c desktopConnection, provider string) {
 				defer wg.Done()
-				if offered, known := companyAccountOffered(ctx, c, provider); known {
+				if offered, known, own := companyAccountOffered(ctx, c, provider); known {
 					mu.Lock()
-					want[c.ID][provider] = offered
+					want[c.ID][provider], owned[c.ID][provider] = offered, own
 					mu.Unlock()
 				}
 			}(c, provider)
@@ -621,7 +632,10 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 				continue
 			}
 			have[record.ViaConnection+"/"+record.Provider] = true
-			if name := names[record.ViaConnection] + " · " + providerAccountProductName(record.Provider) + " (company)"; names[record.ViaConnection] != "" && record.DisplayName != name {
+			if own := owned[record.ViaConnection][record.Provider]; known && record.OwnOnServer != own {
+				record.OwnOnServer, changed = own, true
+			}
+			if name := serverAccountOnMacName(names[record.ViaConnection], record.Provider, record.OwnOnServer); names[record.ViaConnection] != "" && record.DisplayName != name {
 				record.DisplayName, changed = name, true
 			}
 			if allowed, known := models[record.ViaConnection][record.Provider]; known && strings.Join(allowed, ",") != strings.Join(record.AllowedModels, ",") {
@@ -639,8 +653,8 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			if _, err := rand.Read(secret); err != nil {
 				return
 			}
-			record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: provider, DisplayName: names[id] + " · " + providerAccountProductName(provider) + " (company)",
-				OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: id, AllowedModels: models[id][provider]}, Credential: hex.EncodeToString(secret)}
+			record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: provider, DisplayName: serverAccountOnMacName(names[id], provider, owned[id][provider]),
+				OwnerUserID: owner, Scope: "user", AuthMethod: "api_key", UpdatedAt: time.Now().UTC(), ViaConnection: id, OwnOnServer: owned[id][provider], AllowedModels: models[id][provider]}, Credential: hex.EncodeToString(secret)}
 			switch provider {
 			case "cursor-cli":
 				// Cursor signs in from a login file in the account's home; its key mode needs a real key.
@@ -660,6 +674,17 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 			log.Printf("[DESKTOP_ACCOUNT] %s: company accounts not saved: %v", owner, err)
 		}
 	}
+}
+
+// serverLoginAccountHeader marks a model-proxy answer that used the person's own login on the server.
+const serverLoginAccountHeader = "X-Agentworks-Account"
+
+// serverAccountOnMacName names a server's account on the Mac: the person's own login there, or the company's.
+func serverAccountOnMacName(server, provider string, own bool) string {
+	if own {
+		return server + " · " + providerAccountProductName(provider) + " (yours, Mac + online)"
+	}
+	return server + " · " + providerAccountProductName(provider) + " (company)"
 }
 
 // allowedSubstitute is the allowed model a request for another model moves to: one that names the requested model

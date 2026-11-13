@@ -102,6 +102,12 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 		if record == nil {
 			continue
 		}
+		if record.AuthMethod == providerAuthServerLogin {
+			status := serverLoginStatus(*record)
+			configured := status.State == "signed_in"
+			view.Configured, view.Identity = &configured, status.Identity
+			continue
+		}
 		if record.AuthMethod != "cli_login" {
 			configured := strings.TrimSpace(record.Credential) != ""
 			view.Configured = &configured

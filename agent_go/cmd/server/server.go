@@ -2361,6 +2361,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		router.HandleFunc(path, api.handleDesktopModelCatalog(provider)).Methods("GET")
 	}
 	apiRouter.HandleFunc("/desktop-model-proxy/{account}/v1/{path:.+}", api.handleDesktopModelProxy).Methods("GET", "POST")
+	apiRouter.HandleFunc("/personal-model-proxy/{account}/v1/{path:.+}", api.handlePersonalModelProxy).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}", api.handleDesktopConnections).Methods("DELETE")
 	apiRouter.PathPrefix("/connections/{connection}/{path:.*}").HandlerFunc(api.handleDesktopConnectionProxy)
 	apiRouter.HandleFunc("/auth/desktop/connect", api.handleDesktopConnect).Methods("POST", "OPTIONS")
@@ -2471,6 +2472,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/provider-connections/share-targets", api.handleProviderShareTargets).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/status", api.handleProviderAccountStatus).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}/sign-out", api.handleProviderAccountSignOut).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/server-login", api.handleServerLogin).Methods("GET", "POST")
 	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
@@ -3681,11 +3683,13 @@ func requestLogID(r *http.Request) string {
 func requestLogPath(r *http.Request) string {
 	path := r.URL.Path
 	// A company account's id on the Mac works like a credential for its local model proxy: never logged.
-	if rest, ok := strings.CutPrefix(path, "/api/desktop-model-proxy/"); ok {
-		if _, tail, found := strings.Cut(rest, "/"); found {
-			path = "/api/desktop-model-proxy/[account]/" + tail
-		} else {
-			path = "/api/desktop-model-proxy/[account]"
+	for _, prefix := range []string{"/api/desktop-model-proxy/", "/api/personal-model-proxy/"} {
+		if rest, ok := strings.CutPrefix(path, prefix); ok {
+			if _, tail, found := strings.Cut(rest, "/"); found {
+				path = prefix + "[account]/" + tail
+			} else {
+				path = prefix + "[account]"
+			}
 		}
 	}
 	if r.URL.RawQuery == "" {

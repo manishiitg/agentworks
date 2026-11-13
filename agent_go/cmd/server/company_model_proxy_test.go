@@ -70,7 +70,7 @@ func TestTokenLimitKeepsCompanyAccount(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTooManyRequests) }))
 	defer server.Close()
-	if _, known := companyAccountOffered(context.Background(), desktopConnection{Server: server.URL, Name: "test"}, "codex-cli"); known {
+	if _, known, _ := companyAccountOffered(context.Background(), desktopConnection{Server: server.URL, Name: "test"}, "codex-cli"); known {
 		t.Fatal("a 429 must leave the company account as it is")
 	}
 }
