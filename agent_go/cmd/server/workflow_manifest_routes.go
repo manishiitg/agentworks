@@ -187,6 +187,15 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 		return
 	}
 
+	// PLAT-750-50: generate the starting page here, never from later reads/sync.
+	kind := "workflow"
+	if manifest.Kind == "relay" {
+		kind = "relay"
+	}
+	if _, _, err := api.ensureDefaultDashboard(r.Context(), GetUserFromContext(r.Context()), dashboardTarget{Root: req.WorkspacePath, Kind: kind, ID: manifest.ID, Title: manifest.Label, Edit: true}); err != nil {
+		log.Printf("[DASHBOARD_DEFAULT] creation failed kind=%s", kind)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
