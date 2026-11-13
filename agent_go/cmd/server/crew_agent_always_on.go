@@ -342,7 +342,7 @@ func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, 
 			continue
 		}
 		started := time.Now()
-		program, err := api.importCrewStandbySession(ctx, claims, roots, binding, tab, key, filepath.Join(dir, tab, session.Dir), session)
+		program, account, err := api.importCrewStandbySession(ctx, claims, roots, binding, tab, key, filepath.Join(dir, tab, session.Dir), session, row.MacLogin)
 		if err != nil {
 			if i == 0 {
 				return err
@@ -354,6 +354,7 @@ func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, 
 		row.Sessions[key] = session
 		if i == 0 {
 			row.MacProgram, row.ServerProgram = session.Provider, program
+			row.ServerAccount = api.crewServerAccountKind(ctx, claims, roots, program, account)
 		}
 		changed = true
 		mode := "native"
@@ -405,36 +406,36 @@ func (api *StreamingAPI) crewStandbyImportRoots(ctx context.Context, claims *Use
 // the native session keeps its id, the history becomes the chat's dialogue. When this server lacks the agent's AI
 // program, the chat continues from that history on a program it has (owner, 6 Nov). It returns the program the
 // server's chat runs.
-func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *UserClaims, roots crewroot.Roots, binding *crewroot.SyncBinding, tab, macKey, copyDir string, session crewAgentStandbySession) (string, error) {
+func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *UserClaims, roots crewroot.Roots, binding *crewroot.SyncBinding, tab, macKey, copyDir string, session crewAgentStandbySession, macLogin string) (string, string, error) {
 	raw, err := os.ReadFile(filepath.Join(copyDir, "conversation.json"))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var conversation crewHandoffConversation
 	if err = json.Unmarshal(raw, &conversation); err != nil {
-		return "", err
+		return "", "", err
 	}
 	native, err := readCrewStandbyBundle(copyDir)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if err = native.Validate(); err != nil {
-		return "", err
+		return "", "", err
 	}
 	conversation.Native = native
-	// Backup runs on the account the person chose for the server, else their own (owner, 13 Nov).
-	if account, how := api.crewBackupServerAccount(ctx, claims, roots, native.Provider); account != "" {
+	// Always online runs on the server account with the Mac's login, else the person's choice, else their own (owner, 13 Nov).
+	if account, how := api.crewBackupServerAccount(ctx, claims, roots, native.Provider, macLogin); account != "" {
 		conversation.ServerAccount = account
 		logCrewServerAccount(roots.ID, claims.UserID, native.Provider, account, "backup_"+how)
 	}
 	// Publish's import reads the native files from this session's stage; a later copy (or a teammate thread of the
 	// same session) may have replaced them there, so this copy is staged again first.
 	if err = stageCrewNative(roots, native); err != nil {
-		return "", err
+		return "", "", err
 	}
 	main, err := api.crewHandoffProjectTemplate(ctx, claims, roots.ID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	main.ConversationKey = crewOwnerMainChatKey(roots.ID)
 	key := ""
@@ -443,11 +444,11 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 		// an agent to satisfy this address after that role has been removed.
 		key = main.ConversationKey
 		if key == "" {
-			return "", errChooseProjectAgent
+			return "", "", errChooseProjectAgent
 		}
 	} else {
 		if !strings.HasPrefix(macKey, binding.PeerProjectID+codeChatSideMarker) {
-			return "", fmt.Errorf("choose the standby agent's physical address")
+			return "", "", fmt.Errorf("choose the standby agent's physical address")
 		}
 		key = roots.ID + strings.TrimPrefix(macKey, binding.PeerProjectID)
 	}
@@ -458,7 +459,7 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	doc, err := store.loadDocument(ctx, path)
 	if err != nil {
 		lock.Unlock()
-		return "", err
+		return "", "", err
 	}
 	entry := productConversationRegistryEntryKey(crewProfileID, key)
 	current, exists := doc.Entries[entry]
@@ -491,7 +492,7 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 		}
 		if err = store.writeDocument(ctx, path, doc); err != nil {
 			lock.Unlock()
-			return "", err
+			return "", "", err
 		}
 	}
 	lock.Unlock()
@@ -500,20 +501,21 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	// A member's copy is imported to be run as the member: its native session lands in their slot's runtime (or none),
 	// so it is marked before the import (the server's own route: crewStandbyRoute, never a caller's request).
 	if err = markCrewStandbySession(withCrewStandbyTurn(ctx), roots.ID, claims.UserID, crewHandoffImportSession(claims.UserID, roots.ID, binding.PairID, transfer)); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, transfer, &conversation, current, crewImportNativeElseHistory); err != nil {
-		return "", err
+		return "", "", err
 	}
-	program := current.Provider
+	program, account := current.Provider, current.ConnectionID
 	if doc, e := store.loadDocument(ctx, path); e == nil {
 		if after, ok := doc.Entries[entry]; ok && !after.FreshNative {
-			program = after.Provider
+			program, account = after.Provider, after.ConnectionID
 		} else if ok {
 			program = firstNonEmptyTrimmed(after.Provider, program)
+			account = firstNonEmptyTrimmed(after.ConnectionID, account)
 		}
 	}
-	return program, nil
+	return program, account, nil
 }
 
 // crewStandbyImportFailed remembers, per agent, when the server last could not start from its copy (for example no
@@ -549,13 +551,28 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam boo
 	return "Mac off · waits for their Mac", ""
 }
 
-// crewStandbyOnProgram names the program the server answers on when it is not the agent's own (" (on Muse)").
+// crewStandbyOnProgram names, while the server answers, the program and whose account it runs on (owner, 13 Nov), in
+// plain words: " (on Claude Code · company account)", " (on Muse · your account)". Never an account's internal id.
 func crewStandbyOnProgram(project, person, tab string) string {
 	rows, err := readCrewStandby(project, person)
-	if row := rows[tab]; err == nil && row.MacProgram != "" && row.ServerProgram != row.MacProgram {
-		return " (on " + crewStandbyServerProgramName(row.ServerProgram) + ")"
+	row := rows[tab]
+	if err != nil {
+		return ""
 	}
-	return ""
+	parts := []string{}
+	if program := firstNonEmptyTrimmed(row.ServerProgram, row.MacProgram); program != "" {
+		parts = append(parts, crewStandbyServerProgramName(program))
+	}
+	switch row.ServerAccount {
+	case crewServerAccountOwn:
+		parts = append(parts, "your account")
+	case crewServerAccountCompany:
+		parts = append(parts, "company account")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (on " + strings.Join(parts, " · ") + ")"
 }
 
 // crewStandbyServerProgramName names the program the server continued on; an imported chat that has not run a turn

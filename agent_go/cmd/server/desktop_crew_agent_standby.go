@@ -290,6 +290,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		}
 		if err == nil {
 			item.Conversation = conversation
+			item.MacLogin = api.crewStandbyMacLogin(ctx, record)
 			answer, err = call("standby_store", []crewStandbySendItem{item})
 		}
 		if err != nil {

@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -131,12 +133,29 @@ func crewServerAccountPick(project, person, provider string, options []crewAgent
 	return ""
 }
 
-// crewBackupServerAccount is the account a Backup turn of person's agent on provider uses: the saved choice, else
-// their own account, else "" (the server's usual pick, the company's account).
-func (api *StreamingAPI) crewBackupServerAccount(ctx context.Context, claims *UserClaims, roots crewroot.Roots, provider string) (string, string) {
+// crewBackupServerAccount is the account an Always online turn of person's agent on provider uses (owner, 13 Nov:
+// "automatic if we have same account else pick what we have done on server"): the server account signed in as the same
+// login the agent uses on the Mac (macLogin, the login the program reports, usually an email; a key has none), else
+// the saved choice, else their own account, else "" (the server's usual pick, the company's account).
+func (api *StreamingAPI) crewBackupServerAccount(ctx context.Context, claims *UserClaims, roots crewroot.Roots, provider, macLogin string) (string, string) {
 	options, err := api.crewServerAccountOptions(ctx, claims, roots, provider)
 	if err != nil || len(options) == 0 {
 		return "", ""
+	}
+	if login := strings.TrimSpace(macLogin); login == crewMacCompanyLogin {
+		// The Mac agent runs on this server's company account (through the server's proxy): the same account here.
+		for _, o := range options {
+			if o.ID == "global:"+provider {
+				return o.ID, "same_login"
+			}
+		}
+	} else if strings.Contains(login, "@") {
+		// A login is matched only by its email: a sign-in method such as "ChatGPT" says nothing about whose it is.
+		for _, o := range options {
+			if strings.EqualFold(strings.TrimSpace(o.Identity), login) {
+				return o.ID, "same_login"
+			}
+		}
 	}
 	if picked := crewServerAccountPick(roots.ID, claims.UserID, provider, options); picked != "" {
 		return picked, "chosen"
@@ -233,4 +252,57 @@ func (api *StreamingAPI) crewServerAccountChatAction(ctx context.Context, claims
 		}
 	}
 	return fmt.Sprintf("%s on the server, for Run online and Backup: %s. Accounts you can use: %s. To change it, ask the person which one and call again with account_id.", program, current, crewServerAccountChoiceLine(options)), nil
+}
+
+// crewServerAccountKind says whose account a server chat ran on, in plain words for the Team tab: "your account" or
+// "company account" ("" when unknown). A "global:" account is the server's own, the company's.
+func (api *StreamingAPI) crewServerAccountKind(ctx context.Context, claims *UserClaims, roots crewroot.Roots, provider, account string) string {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return ""
+	}
+	if strings.HasPrefix(account, "global:") {
+		return crewServerAccountCompany
+	}
+	options, err := api.crewServerAccountOptions(ctx, claims, roots, provider)
+	if err != nil {
+		return ""
+	}
+	for _, o := range options {
+		if o.ID == account {
+			return o.Kind
+		}
+	}
+	return ""
+}
+
+// crewMacCompanyLogin is what the Mac reports for an agent running on its server's company account
+// (checkProviderAccountStatus).
+const crewMacCompanyLogin = "company account"
+
+var crewMacLoginCache sync.Map // account -> crewMacLoginSeen
+
+type crewMacLoginSeen struct {
+	login string
+	at    time.Time
+}
+
+// crewStandbyMacLogin (Mac) is the login the agent's AI account reports, sent with its Always online copy. The program's
+// status command runs at most every 30 minutes per account; "" when it is unknown.
+func (api *StreamingAPI) crewStandbyMacLogin(ctx context.Context, record ProductConversationRecord) string {
+	provider := strings.TrimSpace(record.Provider)
+	if provider == "" {
+		return ""
+	}
+	account := firstNonEmptyTrimmed(record.ConnectionID, "global:"+provider)
+	if seen, ok := crewMacLoginCache.Load(account); ok && time.Since(seen.(crewMacLoginSeen).at) < 30*time.Minute {
+		return seen.(crewMacLoginSeen).login
+	}
+	target, err := api.resolveProviderAccountTarget(ctx, account, provider)
+	if err != nil {
+		return ""
+	}
+	login := strings.TrimSpace(checkProviderAccountStatus(ctx, target, false).Identity)
+	crewMacLoginCache.Store(account, crewMacLoginSeen{login: login, at: time.Now()})
+	return login
 }
