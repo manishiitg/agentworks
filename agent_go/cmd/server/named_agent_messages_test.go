@@ -486,3 +486,19 @@ func TestAgentMailOverMCPNeedsTheCLI(t *testing.T) {
 		t.Fatal("a bound agent connection must be allowed")
 	}
 }
+
+// PLAT-746: a sent card read "You -> app-<id>" because a named agent's endpoint keeps its registered address as its
+// label. Cards and inbox rows use the agent's current label; an endpoint without one keeps its stored label.
+func TestAgentMessageCardsNameNamedAgentsByCurrentLabel(t *testing.T) {
+	s := agentMessageStore{Agents: []namedMessageAgent{{ID: "a1", UserID: "u1", Name: "app-0123", Label: "Website (fork)"}}}
+	named := agentMessageEndpoint{UserID: "u1", NamedAgentID: "a1", Label: "app-0123"}
+	if got := s.endpointName(named, "u1"); got != "Website (fork)" {
+		t.Fatalf("named agent shown as %q", got)
+	}
+	if got := s.receiptFields(agentMessage{}, named)["to_label"]; got != "Website (fork)" {
+		t.Fatalf("send result to_label = %v", got)
+	}
+	if got := s.endpointName(agentMessageEndpoint{UserID: "u1", Label: "Research Crew"}, "u1"); got != "Research Crew" {
+		t.Fatalf("plain endpoint shown as %q", got)
+	}
+}

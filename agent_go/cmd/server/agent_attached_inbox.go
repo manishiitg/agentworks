@@ -56,7 +56,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		heldIDs = append(heldIDs, message.ID+":"+reason)
 		log.Printf("[AGENT-INBOX] action=hold agent=%s message=%s reason=%s sender_kind=%s project=%s chat=%s same_owner=%t", agent.ID, message.ID, reason, source.Kind, source.ID, source.ChatKey, source.UserID == live.UserID)
 		if len(details) < 20 {
-			details = append(details, map[string]string{"sender": endpointDisplayLabel(source, agent.UserID), "reason": why,
+			details = append(details, map[string]string{"sender": store.endpointName(source, agent.UserID), "reason": why,
 				"next": "Ask the sender to send it again once access is restored. It stops waiting 24 hours after it was sent; its history is kept."})
 		}
 	}
@@ -86,7 +86,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 			}
 		}
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
-			"sender": endpointDisplayLabel(source, agent.UserID), "sender_id": source.NamedAgentID,
+			"sender": store.endpointName(source, agent.UserID), "sender_id": source.NamedAgentID,
 			"message": message.Text, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt}
 		if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute {
 			row["sender_user_id"] = source.UserID
