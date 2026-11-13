@@ -41,6 +41,12 @@ export interface MacAppLending {
   signing_in?: { url: string; code?: string; needs_callback?: boolean }
 }
 
+/** An account signed in once on the server: who it is signed in as, or the sign-in waiting for approval. */
+export interface ServerLoginState {
+  signed_in_as?: string
+  signing_in?: { url: string; code?: string }
+}
+
 export interface ProviderConnection {
   id: string
   provider: string
@@ -53,6 +59,8 @@ export interface ProviderConnection {
   base_url?: string
   /** On the Mac: the connected server whose company login this account runs on. */
   via_connection?: string
+  /** On the Mac: that server's login is the person's own, signed in once there (also used by their online agents). */
+  own_on_server?: boolean
   owner_user_id?: string
   updated_at?: string
   sharing?: ProviderAccountSharing
@@ -462,6 +470,16 @@ export const llmConfigService = {
   },
   setMacAppLending: async (provider: string, action: 'sign_in' | 'sign_out' | 'finish', callbackUrl?: string): Promise<MacAppLending> => {
     const response = await llmConfigApi.post(`/api/model-proxy/${encodeURIComponent(provider)}/mac-app`, { action, ...(callbackUrl ? { callback_url: callbackUrl } : {}) })
+    return response.data
+  },
+
+  /** "Sign in once on this server" for one of your own accounts: GET reads it, sign_in starts the link-and-code sign-in. */
+  getServerLogin: async (connectionId: string): Promise<ServerLoginState> => {
+    const response = await llmConfigApi.get(`/api/provider-connections/${encodeURIComponent(connectionId)}/server-login`)
+    return response.data
+  },
+  startServerLogin: async (connectionId: string): Promise<ServerLoginState> => {
+    const response = await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/server-login`, { action: 'sign_in' })
     return response.data
   },
 
