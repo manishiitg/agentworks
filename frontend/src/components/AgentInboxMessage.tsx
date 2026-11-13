@@ -32,13 +32,13 @@ export function AgentInboxMessage({ message, timestamp, artifact = null, queueSt
   const hasDetails = !!(message.kind || message.inboxID || message.instructions)
   const needsLoad = artifact && message.bodyTruncated !== false && !full.text
   return (
-    <article data-testid="agent-inbox-message" className="my-1 w-[min(100%,52rem)] overflow-hidden rounded-md border border-border/60 bg-muted/10 text-left">
-      <header className="flex items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
+    <article data-testid="agent-inbox-message" className="my-1 w-[min(100%,52rem)] overflow-hidden rounded-lg border border-border/60 text-left">
+      <header className="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground">
         <button type="button" aria-expanded={open} aria-label={open ? 'Hide message' : 'Show message'}
           className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setOpen(value => !value)}>
           <Bot aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-          <span className="shrink-0 font-medium text-foreground/80">{message.sender}</span>
+          <span className="shrink-0 font-medium text-foreground/85">{message.sender}</span>
           {!open && <span className="min-w-0 flex-1 truncate">{agentInboxPreview(body)}</span>}
         </button>
         {queueStatus}
