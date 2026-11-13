@@ -27,7 +27,7 @@ const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200
 const tone = (key: string) => tones[[...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % tones.length]
 
 /** Every Crew in the person's menu, on this network and each connected one, with its Team as the server words it. */
-function useTeamCrews(): { connectionId: string; network: string; crews: Crew[] }[] {
+function useTeamCrews(): { connectionId: string; network: string; networkId: string; crews: Crew[] }[] {
   const user = useAuthStore(state => state.user?.id || '')
   const active = getRawActiveWorkspaceId()
   const desktop = hasDesktopConnections()
@@ -47,10 +47,12 @@ function useTeamCrews(): { connectionId: string; network: string; crews: Crew[] 
   useConnectedWorkPolling(desktop)
   const store = useConnectedWorkStore()
   const others = desktop && isChatIdentityCurrent(store.identity)
-    ? connectedLocations(store).filter(connection => connection.id !== active).map(connection => ({ connectionId: connection.id, network: connection.name, crews: (store.inventory[connection.id]?.projects || []).filter(project => project.kind === 'crew') }))
+    ? connectedLocations(store).filter(connection => connection.id !== active).map(connection => ({ connectionId: connection.id, network: connection.name, networkId: connection.server, crews: (store.inventory[connection.id]?.projects || []).filter(project => project.kind === 'crew') }))
     : []
-  const activeName = store.connections.find(connection => connection.id === active)?.name || 'Local'
-  return [{ connectionId: active, network: activeName, crews: here.scope === `${active}:${user}` ? here.crews : [] }, ...others]
+  const activeConnection = store.connections.find(connection => connection.id === active)
+  const activeName = activeConnection?.name || ''
+  const activeNetworkId = activeConnection?.server || window.location.origin
+  return [{ connectionId: active, network: activeName, networkId: activeNetworkId, crews: here.scope === `${active}:${user}` ? here.crews : [] }, ...others]
 }
 
 function openCrewTeam(connectionId: string, crewId: string) {
@@ -69,18 +71,20 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     const faces = new Map<string, Face>()
     const rows: Row[] = []
     const crews = new Set<string>()
-    for (const { connectionId, network, crews: list } of sources) {
+    for (const { connectionId, network: sourceNetwork, networkId: sourceNetworkId, crews: list } of sources) {
       for (const crew of list) {
         const live = crew.team_live
         if (!live) continue
+        const network = live.network || sourceNetwork
+        const networkId = (live.network_id || sourceNetworkId).replace(/\/$/, '')
         for (const person of live.people || []) {
-          const key = `${connectionId}:${person.user_id}`
+          const key = `${networkId}:${person.user_id}`
           const face = faces.get(key) || { key, name: person.name, network, online: false, line: person.line, working: 0, waiting: 0 }
           if (person.online && !face.online) { face.online = true; face.line = person.line }
           faces.set(key, face)
         }
         for (const agent of live.agents) {
-          const personKey = `${connectionId}:${agent.owner_id}`
+          const personKey = `${networkId}:${agent.owner_id}`
           const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0 }
           if (agent.activity === 'waiting') face.waiting += 1
           else face.working += 1
@@ -133,7 +137,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const label = working ? `${working} working` : `${online} online`
   // With more than one network every person and Crew names its network (owner, 12 Nov: "for more than one network we
   // need some identification").
-  const networks = [...new Set(faces.map(face => face.network))]
+  const networks = [...new Set(faces.map(face => face.network).filter(Boolean))]
   const multi = networks.length > 1
   const title = shown.map(face => `${face.name}${multi ? ` (${face.network})` : ''} · ${face.working ? `${face.working} working` : face.waiting ? 'waiting' : face.line || 'online'}`).join('\n')
   const avatar = (face: Face, size: string) => <span className={`relative grid shrink-0 place-items-center rounded-full font-semibold ${size} ${tone(face.key)} ${face.working ? 'ring-2 ring-blue-500' : face.waiting ? 'ring-2 ring-amber-500' : ''} ${face.online || face.working || face.waiting ? '' : 'opacity-40'}`}>
