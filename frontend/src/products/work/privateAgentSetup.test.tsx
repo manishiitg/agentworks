@@ -19,9 +19,9 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 // PLAT-746: a private, unpaired Crew must show the server's automation mark
 // without turning its local metadata into a Team/sharing target.
 it('shows private automation setup without an online Team binding', async () => {
-  vi.mocked(api.get).mockResolvedValue({ data: {} })
+  vi.mocked(api.get).mockResolvedValue({ data: {} } as never)
   const setup = { reach: '', starts_on_own: true, automations: [{ kind: 'Schedule', name: 'Daily report', line: 'every day', on: true }] }
-  vi.mocked(api.request).mockResolvedValue({ data: { agents: [{ mine: true, tab: 'analyst', setup }, { mine: false, tab: 'other', setup }] } })
+  vi.mocked(api.request).mockResolvedValue({ data: { agents: [{ mine: true, tab: 'analyst', setup }, { mine: false, tab: 'other', setup }] } } as never)
   const host = document.createElement('div'), root = createRoot(host)
   function Probe() {
     const state = useTeamTab('private-project')
