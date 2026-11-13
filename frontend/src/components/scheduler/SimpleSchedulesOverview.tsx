@@ -16,9 +16,10 @@ export default function SimpleSchedulesOverview({ active, entityType, initialSea
   const canPause = useCanPauseSchedules()
   const create = () => {
     const chat = useChatStore.getState(), tab = chat.activeTabId ? chat.chatTabs[chat.activeTabId] : undefined
-    if (!tab || tab.metadata?.isViewOnly || tab.metadata?.agentProfileTabCanWrite === false) {
+    const matchesProject = entityType === 'product' ? tab?.metadata?.agentProfileId === 'work' : tab?.metadata?.mode === 'workflow' && !!tab?.metadata?.presetQueryId
+    if (!tab || !matchesProject || tab.metadata?.isViewOnly || tab.metadata?.agentProfileTabCanWrite === false) {
       chat.addToast('Open one of your agents, then choose New schedule.', 'info')
-      window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: '@crew ' } }))
+      window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: entityType === 'product' ? '@crew ' : '@workflows ' } }))
       return
     }
     void openWorkspacePaneChatWithDraft({ tabId: tab.tabId, message: 'Help me create a schedule for this project. Ask me what it should do and when it should run.' }).catch(() => chat.addToast('Could not open the chat. Open your agent and ask it to create a schedule.', 'error'))

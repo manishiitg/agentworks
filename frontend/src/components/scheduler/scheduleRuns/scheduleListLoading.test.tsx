@@ -11,7 +11,7 @@ import { expandCronForMonth } from './cron'
 vi.mock('../../../api/scheduler', () => ({ schedulerApi: { listJobs: vi.fn(), getConfig: vi.fn() } }))
 vi.mock('../../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
 vi.mock('../../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
-vi.mock('../../../utils/chatIdentity', () => ({ captureChatIdentity: () => ({}), isChatIdentityCurrent: () => true }))
+vi.mock('../../../utils/chatIdentity', async original => ({ ...await original<typeof import('../../../utils/chatIdentity')>(), captureChatIdentity: () => ({}), isChatIdentityCurrent: () => true }))
 vi.mock('./cron', async original => ({ ...await original<typeof import('./cron')>(), expandCronForMonth: vi.fn(() => []) }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
