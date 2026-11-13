@@ -34,6 +34,11 @@ func TestNativeBackgroundTaskFactsKeepUsageAndRunsSeparate(t *testing.T) {
 	task := func(id string) llmtypes.NativeRecord {
 		return llmtypes.NativeRecord{ID: id, Provider: "claude-code", SessionID: "native-parent", TaskID: id, TaskRunID: "1", Kind: "helper", State: "started", Timestamp: start}
 	}
+	queued := task("queued")
+	queued.State = "proposed"
+	if api.nativeBackgroundFacts("chat", queued).WorkID != "" {
+		t.Fatal("a proposed task was labelled running")
+	}
 	a := api.nativeBackgroundFacts("chat", task("a"))
 	b := task("b")
 	reported := int64(500)

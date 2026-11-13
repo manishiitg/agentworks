@@ -631,6 +631,12 @@ function dropAdjacentFrontendUserEchoes(events: PollingEvent[]): PollingEvent[] 
 }
 
 function isTranscriptEvent(event: PollingEvent): boolean {
+  // PLAT-746-941: only the server-owned background projection is visible;
+  // ordinary native tool/usage diagnostics still do not split tool batches.
+  if (event.type === 'coding_agent_native_activity') {
+    const record = eventFields(event).record as Record<string, unknown> | undefined
+    return Boolean(record && typeof record.work_id === 'string' && record.work_id && ['helper', 'background_command'].includes(String(record.kind)))
+  }
   if (NON_TRANSCRIPT_TYPES.has(event.type || '')) return false
   if (isRunToolEnd(event)) return false
   if (isContainerTranscriptNoise(event)) return false
