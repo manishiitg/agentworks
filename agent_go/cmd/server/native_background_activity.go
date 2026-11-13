@@ -79,6 +79,10 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 		if r.TaskRunID == "" && !previous.StartedAt.IsZero() && !r.Timestamp.IsZero() && r.Timestamp.Before(previous.StartedAt) {
 			return previous
 		}
+		if previous.TokenSource == "task_report" && r.TokenSource == "native_usage" {
+			r.Tokens = previous.Tokens
+			r.TokenSource = previous.TokenSource
+		}
 		r.WorkID = previous.WorkID
 		if r.TaskRunID == "" {
 			r.TaskRunID = previous.TaskRunID
@@ -91,7 +95,11 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 			r.TokenSource = previous.TokenSource
 		}
 		if !previous.EndedAt.IsZero() && (r.State == "started" || r.State == "progress") {
-			return previous
+			if r.Origin != "background_usage" {
+				return previous
+			}
+			r.State = previous.State
+			r.EndedAt = previous.EndedAt
 		}
 	}
 	if r.WorkID == "" {

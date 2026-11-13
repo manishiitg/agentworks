@@ -108,6 +108,22 @@ func TestNativeBackgroundTaskFactsKeepUsageAndRunsSeparate(t *testing.T) {
 	if got := api.nativeBackgroundFacts("chat", next); got.WorkID == a.WorkID || got.Tokens != nil {
 		t.Fatal("a new native run inherited the old run's row or tokens")
 	}
+	stale := b
+	lower := int64(5)
+	stale.TokenSource = "native_usage"
+	stale.Tokens = &lower
+	stale.Origin = "background_usage"
+	if got := api.nativeBackgroundFacts("chat", stale); got.Tokens == nil || *got.Tokens != 500 {
+		t.Fatal("a delayed ledger projection replaced the task's own report")
+	}
+	update := a
+	latest := int64(151)
+	update.Tokens = &latest
+	update.State = "started"
+	update.Origin = "background_usage"
+	if got := api.nativeBackgroundFacts("chat", update); got.State != "finished" || got.EndedAt.IsZero() || got.Tokens == nil || *got.Tokens != 151 {
+		t.Fatal("late task usage lost the real terminal state")
+	}
 	if b.WorkID == shell.WorkID {
 		t.Fatal("concurrent task identities collided")
 	}
