@@ -392,8 +392,8 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		}
 		watch.done(b.Project, key, plan, scan, errors.Join(e, uploadErr, saveErr, retryErr))
 		if !plan.idle() {
-			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d reused=%d read_files=%d read_bytes=%d unstable=%d changes=%d chunks_sent=%d ms=%d",
-				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, scan.reused, scan.readFiles, scan.readBytes, scan.unstable, len(scan.changes), chunks, time.Since(started).Milliseconds())
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d reused=%d read_files=%d read_bytes=%d unstable=%d changes=%d chunks_sent=%d ms=%d fallback_copies=%d",
+				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, scan.reused, scan.readFiles, scan.readBytes, scan.unstable, len(scan.changes), chunks, time.Since(started).Milliseconds(), crewTeamFallbackCopies.Load())
 		}
 		if e != nil {
 			return crewTeamStep("scan", e)

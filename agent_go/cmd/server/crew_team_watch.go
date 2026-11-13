@@ -43,6 +43,7 @@ func crewTeamWakeSoon() {
 // crewTeamWatches: copy record folder -> its watch.
 var crewTeamWatches sync.Map
 var crewTeamWatchBudget atomic.Int64
+var crewTeamFallbackCopies atomic.Int64
 
 // Caller holds the watch lock. Incremental scans conservatively reserve their
 // names until the next full scan; do not undercount newly discovered entries.
@@ -276,6 +277,9 @@ func (w *crewTeamWatch) note(ev fsnotify.Event) {
 
 // stop turns watching off for this copy: full scans only, at crewTeamUnwatchedEvery. Called with mu held.
 func (w *crewTeamWatch) stop() {
+	if !w.off && !w.closed {
+		crewTeamFallbackCopies.Add(1)
+	}
 	w.releaseNames()
 	if w.w != nil {
 		_ = w.w.Close()
@@ -286,6 +290,12 @@ func (w *crewTeamWatch) stop() {
 func (w *crewTeamWatch) close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+	if w.off {
+		crewTeamFallbackCopies.Add(-1)
+	}
 	w.releaseNames()
 	if w.w != nil {
 		_ = w.w.Close()
