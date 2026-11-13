@@ -17,6 +17,9 @@ import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsa
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
+
+// Programs a person can sign in once on their server, for this Mac and their online agents (PLAT-856-441).
+const SERVER_LOGIN_PROGRAMS = new Set(['codex-cli'])
 import ChatContextItems, { ContextDisplayMenuItem, changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
@@ -226,6 +229,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     ? cursorModels.filter(model => models.some(choice => choice.id === model.model_id)) : []
   const separator = <Menu.Separator className="my-1 h-px bg-border" />
   const subContentClass = cursorChoices.length > 1 ? `${contentClass} w-[min(340px,calc(100vw-24px))]` : contentClass
+  // This chat's account, one row in the menu: which account it uses and where that login works (PLAT-856-441).
+  const currentAccounts = cliGroups.find(group => group.option.id === selectedOption.id)?.accounts || []
+  const inUseAccountChoice = currentAccounts.find(account => account.id === currentAccountId)
+  const accountChoiceLabel = (account: (typeof currentAccounts)[number]) => account.via_connection ? account.display_name.replace(/ \(yours, Mac \+ online\)$/, '') : onThisMac && accountRelation(account) === 'server' ? 'This Mac' : accountOptionLabel(account)
+  const accountReach = (account: (typeof currentAccounts)[number]) => account.own_on_server || account.auth_method === 'server_login' ? 'Mac + online' : ''
   const subRow = (title: string, value: string) => <Menu.SubTrigger className={rowClass}>
     <span className="flex-1">{title}</span>
     <span className="min-w-0 max-w-32 truncate text-muted-foreground">{value}</span>
@@ -325,6 +333,22 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         </Menu.Sub>)}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
+    {currentAccounts.length > 0 && <Menu.Sub>
+      {subRow('Account', inUseAccountChoice ? accountChoiceLabel(inUseAccountChoice) : NO_LONGER_AVAILABLE)}
+      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
+        {currentAccounts.map(account => {
+          const available = accountUsable(account) && accountConfigured(account)
+          return <Menu.Item key={account.id} className={rowClass} disabled={saving || !available} onSelect={event => { if (pickModel(selectedOption, undefined, account.id)) event.preventDefault() }}>
+            <span className="min-w-0 flex-1 truncate">{accountChoiceLabel(account)}{!available ? ` · ${NO_LONGER_AVAILABLE}` : ''}</span>
+            {accountReach(account) && <span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{accountReach(account)}</span>}
+            {account.id === currentAccountId && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          </Menu.Item>
+        })}
+        {SERVER_LOGIN_PROGRAMS.has(selectedOption.provider || "") && <>{separator}<Menu.Item className={rowClass} onSelect={openModels}>
+          <span className="min-w-0 flex-1 truncate">+ Sign in once for Mac + online…</span>
+        </Menu.Item></>}
+      </Menu.SubContent></Menu.Portal>
+    </Menu.Sub>}
     <Menu.Sub>
       {subRow('Model', modelLabel)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={subContentClass}>
