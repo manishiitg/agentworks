@@ -214,13 +214,13 @@ type notifyFocusEntry struct {
 
 var notifyFocus sync.Map // device id -> notifyFocusEntry
 
-func notifyFocused(device, user, session string) bool {
+func notifyFocused(device, user, session string, mac bool) bool {
 	value, ok := notifyFocus.Load(device)
 	if !ok {
 		return false
 	}
 	entry := value.(notifyFocusEntry)
-	return entry.user == user && entry.session == session && time.Since(entry.at) < notifyFocusTTL
+	return entry.user == user && entry.session != "" && (mac || entry.session == session) && time.Since(entry.at) < notifyFocusTTL
 }
 
 // Mac app streams: device id -> listeners.
@@ -431,6 +431,7 @@ func (api *StreamingAPI) handleNotifyFocus(w http.ResponseWriter, r *http.Reques
 	} else {
 		notifyFocus.Store(in.Device, notifyFocusEntry{user: user, session: in.Session, at: time.Now()})
 	}
+	log.Printf("[NOTIFY_FOCUS] user=%s device=%.8s focused=%t session=%s", logUsernameForUserID(user), in.Device, in.Session != "", in.Session)
 	w.WriteHeader(http.StatusNoContent)
 }
 
