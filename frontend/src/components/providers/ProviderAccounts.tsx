@@ -419,6 +419,19 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     finally { setBusy(false); void loadOnServer(server.id) }
   }
   // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
+  // Codex: move this Mac's login to the server instead of signing in there again. One copy only (two copies of one
+  // login sign each other out); the Mac then uses it through the server, and so do the online agents.
+  const canMoveToServer = (record: ProviderConnection) => SERVER_LOGIN_PROVIDERS.has(provider) && !needsSignIn(record)
+    && (record.id === `global:${provider}` || record.auth_method === 'cli_login')
+  const moveToServer = async (record: ProviderConnection, target: { id: string; name: string }) => {
+    setBusy(true); setError(null)
+    try {
+      const result = await llmConfigService.moveLoginToServer(record.id, target.id)
+      setNotice({ id: record.id, text: `Moved to ${target.name}${result.signed_in_as ? ` (${result.signed_in_as})` : ''}. It now works on this Mac and for your online agents.` })
+      changed()
+    } catch (moveError) { setError(providerApiErrorText(moveError, 'Could not move the login.')) }
+    finally { setBusy(false) }
+  }
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
     <div className="mt-2 w-full pl-11 text-xs">
       <div className="flex flex-wrap items-center gap-2">
@@ -432,12 +445,13 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           <span key={server.id} title={title} className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 dark:border-gray-700">
             <span className="font-medium text-gray-800 dark:text-gray-200">{server.name}</span>
             {state === 'ready' && <span className="text-emerald-600 dark:text-emerald-400">{account.server_login && account.mac_login ? `✓ Same login · ${account.server_login}` : '✓ Ready'}</span>}
-            {state === 'sign_in' && <button type="button" disabled={busy} className="font-medium text-amber-600 hover:underline disabled:opacity-50 dark:text-amber-400" onClick={() => void addToServer(record, server)}>Sign in needed</button>}
+            {state === 'sign_in' && !canMoveToServer(record) && <button type="button" disabled={busy} className="font-medium text-amber-600 hover:underline disabled:opacity-50 dark:text-amber-400" onClick={() => void addToServer(record, server)}>Sign in needed</button>}
             {state === 'different_login' && <>
               <span className="text-amber-600 dark:text-amber-400">Different login: {account.server_login}</span>
               <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server, true)}>Sign in again</button>
             </>}
-            {state === 'missing' && <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server)}>Add</button>}
+            {(state === 'missing' || state === 'sign_in') && canMoveToServer(record) && <button type="button" disabled={busy} title="Moves this login to the server: it then works on this Mac and for your online agents, with no second sign-in" className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void moveToServer(record, server)}>Move login here</button>}
+            {state === 'missing' && !canMoveToServer(record) && <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server)}>Add</button>}
             {state === 'loading' && <span className="text-gray-400">…</span>}
             {state === 'unavailable' && <span className="text-gray-400">Status unknown</span>}
           </span>

@@ -484,6 +484,12 @@ export const llmConfigService = {
     return response.data
   },
 
+  /** On the Mac: moves this account's Codex login to a connected server (one copy, used by the Mac and online agents). */
+  moveLoginToServer: async (connectionId: string, server: string): Promise<{ signed_in_as?: string; server?: string }> => {
+    const response = await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/move-to-server`, { server })
+    return response.data
+  },
+
   /** Runs the CLI's own logout in the account's HOME. The account stays. */
   signOutProviderAccount: async (connectionId: string): Promise<void> => {
     await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/sign-out`)
