@@ -746,7 +746,9 @@ func GetDocument(c *gin.Context) {
 	// log; ?tail=N returns only its last N messages (never to be saved back).
 	var content []byte
 	if chatlog.IsConversationPath(filePath) {
-		if c.Query("runtime_metadata") == "true" {
+		if c.Query("header_only") == "true" {
+			content, err = os.ReadFile(filePath)
+		} else if c.Query("runtime_metadata") == "true" {
 			content, err = chatlog.RuntimeMetadata(filePath)
 		} else if tail := c.Query("tail"); tail != "" {
 			n := 0

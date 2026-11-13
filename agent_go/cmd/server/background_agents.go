@@ -2861,7 +2861,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 		// cleanup below it — forever (PLAT-101).
 		abandonReason, streamStalled := drainTurnTextStream(agentCtx, textChan, func(string) {
 			api.conversationMux.Lock()
-			api.conversationHistory[sessionID] = llmAgent.GetHistory()
+			api.replaceConversationHistoryLocked(sessionID, llmAgent.GetHistory())
 			api.conversationMux.Unlock()
 		})
 		if abandonReason != "" {
@@ -2924,7 +2924,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 		// Final save of conversation history, with every answer Claude finished in it (PLAT-872)
 		finalHistory := api.historyWithNativeTurnAnswers(sessionID, llmAgent.GetHistory())
 		api.conversationMux.Lock()
-		api.conversationHistory[sessionID] = finalHistory
+		api.replaceConversationHistoryLocked(sessionID, finalHistory)
 		api.conversationMux.Unlock()
 		log.Printf("[BG AGENT] Synthetic turn completed for session %s, history: %d messages", sessionID, len(finalHistory))
 
