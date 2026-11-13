@@ -98,12 +98,12 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 	t, err := readCrewTeam(project)
 	// The owner of a Crew that lives on their Mac has a copy here too while their agents can answer from the server
 	// (Always on): the server's turns for those agents work in it (crewOwnerCopyWanted).
-	// A member on their Mac has one here too while one of their agents can answer from the server (crewStandbyCopyWanted).
+	// A member working on their Mac has no server working-copy record.
 	wanted := crewStandbyCopyWanted(t, member)
 	if err != nil || member == t.OwnerID && !wanted || t.Folder.ID == "" || !t.edits(member) {
 		return "", nil
 	}
-	if _, onMac := t.memberMac(member); onMac && !wanted {
+	if _, onMac := t.memberMac(member); onMac {
 		return "", nil // their agents here work on their Mac, with its copy
 	}
 	if !crewRelayTwin(project) {
@@ -149,6 +149,10 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=created reason=%s", project, logUsernameForUserID(member), t.Folder.display(), firstNonEmptyTrimmed(reason, "turn"))
 	} else if err != nil {
 		return "", err
+	}
+	// Missing roots cannot upload anything, even if this record once downloaded.
+	if _, e := os.Lstat(b.Root); os.IsNotExist(e) && retireMissingCrewTeamCopy(ctx, dir) {
+		return "", nil
 	}
 	c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: member}}
 	sync := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: member, Username: member}})
@@ -206,7 +210,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 				}
 				// The owner's copy of a Mac Crew exists while an In team agent of theirs can answer here, so it is ready
 				// when their Mac goes off (the first download of a large Crew takes a while).
-				// A member's of their Mac Crew likewise, while one of their agents has a standby copy here.
+				// Web members may retain their own eligible server copy.
 				for _, p := range append([]crewTeamPerson{{UserID: t.OwnerID}}, t.People...) {
 					if p.Invited || !crewStandbyCopyWanted(t, p.UserID) {
 						continue
@@ -230,7 +234,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 
 // removeStaleCrewTeamServerCopies deletes a member's copy once they no longer have that folder: they left or were
 // removed, the Team is off, or the folder changed; it holds team files they have no right to. A member who moved their
-// agents to their Mac keeps nothing here either, but only after this copy's last changes went up (review 5 Nov #9).
+// agents to their Mac has no server sync record. Existing files are left alone.
 // A Team record that cannot be read now (not missing) removes nothing.
 func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 	state, err := crewroot.StateRoot()
@@ -241,6 +245,9 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 	for _, dir := range dirs {
 		b, err := readCrewTeamLocal(dir)
 		if err != nil {
+			continue
+		}
+		if _, e := os.Lstat(b.Root); os.IsNotExist(e) && retireMissingCrewTeamCopy(ctx, dir) {
 			continue
 		}
 		t, err := readCrewTeam(b.Project)
@@ -262,7 +269,7 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			continue
 		}
 		// The owner's copy of a Mac Crew stays while an In team agent of theirs can answer here; once it cannot, its last
-		// changes go up and it goes, like a member's who moved to their Mac.
+		// changes go up and it goes. Mac members have no server working-copy record.
 		if !gone && b.RemoteUser == t.OwnerID && crewRelayTwin(b.Project) {
 			if crewOwnerCopyWanted(t) && t.Folder.ID == b.FolderID {
 				continue
@@ -270,7 +277,7 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
 			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
 			if t.On && t.Folder.ID == b.FolderID {
-				if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
+				if retireMissingCrewTeamCopy(ctx, dir) {
 					continue
 				}
 				if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
@@ -291,22 +298,11 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			continue
 		}
 		stillTheirs := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project)
-		// A member on their Mac keeps the copy while one of their agents has a standby copy here.
-		if stillTheirs && (!onMac || crewStandbyCopyWanted(t, b.RemoteUser)) {
+		// A member works in one place; an old standby flag cannot retain this loop.
+		if stillTheirs && !onMac {
 			continue
 		}
-		if stillTheirs && onMac {
-			// Their last changes go up first; if that fails the copy stays and the next pass tries again.
-			if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
-				continue
-			}
-			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
-			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
-			if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
-				log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=final_upload_failed reason=%q", b.Project, logUsernameForUserID(b.RemoteUser), err)
-				continue
-			}
-		}
+
 		// Only the shared folder changed (Folders <-> Whole Crew): the member still works here. The old record cannot
 		// send anything any more (the server refuses a previous folder's copy), so its folder is kept, unsent edits
 		// included, and the new record adopts it right away (syncCrewTeamServerCopy).
@@ -317,7 +313,7 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		err = os.RemoveAll(dir)
 		// The copy in the Crew's folder goes with it, unless the member's current copy already uses that folder.
-		if err == nil && !folderChanged && crewTeamMemberCopyFolder(b.Root) && !crewTeamCopyInUse(t, b, dir) {
+		if err == nil && !onMac && !folderChanged && crewTeamMemberCopyFolder(b.Root) && !crewTeamCopyInUse(t, b, dir) {
 			err = os.RemoveAll(b.Root)
 		}
 		unlock()
@@ -337,16 +333,16 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 	}
 }
 
-// PLAT-746-820: a never-downloaded, absent copy has nothing to upload when
-// retiring it. Re-read under the sync lock; never remove its physical root.
-func retireMissingUndownloadedCrewTeamCopy(ctx context.Context, dir string) bool {
+// PLAT-746-949: an absent root has nothing left to upload, regardless of the
+// record's old download/revision markers. Re-read under the sync lock; never remove its physical root.
+func retireMissingCrewTeamCopy(ctx context.Context, dir string) bool {
 	unlock, err := wf.LockWorkspace(ctx, dir)
 	if err != nil {
 		return false
 	}
 	defer unlock()
 	b, err := readCrewTeamLocal(dir)
-	if err != nil || b.Downloaded || b.Revision != 0 || b.Root == "" {
+	if err != nil || b.Root == "" {
 		return false
 	}
 	if _, err = os.Lstat(b.Root); !os.IsNotExist(err) {
@@ -355,7 +351,7 @@ func retireMissingUndownloadedCrewTeamCopy(ctx context.Context, dir string) bool
 	if err = os.RemoveAll(dir); err != nil {
 		return false
 	}
-	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=never_downloaded_root_missing", b.Project, logUsernameForUserID(b.RemoteUser))
+	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=root_missing", b.Project, logUsernameForUserID(b.RemoteUser))
 	return true
 }
 
@@ -396,8 +392,8 @@ func crewTeamServerFolders(claims *UserClaims) []workflowtypes.WorkflowFolderGra
 		if claims.UserID == t.OwnerID && !crewOwnerCopyWanted(t) || !t.edits(claims.UserID) {
 			continue
 		}
-		if _, onMac := t.memberMac(claims.UserID); onMac && claims.UserID != t.OwnerID && !crewStandbyCopyWanted(t, claims.UserID) {
-			continue // a member on their Mac has their copy here only while one of their agents can answer from the server
+		if _, onMac := t.memberMac(claims.UserID); onMac && claims.UserID != t.OwnerID {
+			continue // a member on their Mac has no server working copy
 		}
 		dir, err := crewTeamServerCopyDir(claims.UserID, t.ProjectID, t.Folder.ID)
 		if err != nil {
@@ -454,12 +450,16 @@ func crewTeamCopyInUse(t crewTeam, b crewTeamLocal, dir string) bool {
 // has a standby copy here, so the server may answer for it while the Mac is off and that turn needs the team's files.
 func crewOwnerCopyWanted(t crewTeam) bool { return crewStandbyCopyWanted(t, t.OwnerID) }
 
-// crewStandbyCopyWanted is the same for any joined person of a Mac Crew's Team, a member on their Mac included: they
-// have their own copy of the Team's shared folder here (team-copies/<member>/) while an agent of theirs has a standby
-// copy, so the server's turns for it, run as them (crew_standby_runas.go), work in their copy and never the owner's.
+// crewStandbyCopyWanted keeps the owner's eligible copy and web members' copies.
+// A member who works on their Mac has only that working copy, regardless of an old standby marker.
 func crewStandbyCopyWanted(t crewTeam, person string) bool {
 	if IsLocalMode() || !t.On || t.Folder.ID == "" || t.OwnerID == "" || person == "" || !crewRelayTwin(t.ProjectID) || !t.member(person) {
 		return false
+	}
+	if person != t.OwnerID {
+		if _, onMac := t.memberMac(person); onMac {
+			return false
+		}
 	}
 	rows, err := readCrewStandby(t.ProjectID, person)
 	return err == nil && len(rows) > 0
