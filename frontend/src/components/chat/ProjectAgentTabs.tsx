@@ -16,7 +16,7 @@ import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
-import { teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
+import { agentSetupForTab, teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -197,7 +197,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   }
   const sharedHere = (tab: ChatTab) => Boolean(shareOf(tab))
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
-  const setupOf = (tab: ChatTab) => teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))?.setup
+  const setupOf = (tab: ChatTab) => agentSetupForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))
   const automationsAsk = team?.asks?.automations
   // Run online is for a Crew on this Mac (owner, 12 Nov): the Mac's own server says so through local_mode.
   const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)

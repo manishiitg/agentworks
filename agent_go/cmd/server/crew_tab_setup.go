@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -214,11 +215,15 @@ func crewTabAutomationsCached(ctx context.Context, project string, canRead bool,
 			started := time.Now()
 			items, ok := read(bg)
 			entry.mu.Lock()
+			changed := ok && !reflect.DeepEqual(entry.items, items)
 			if ok {
 				entry.items = items
 			}
 			entry.at, entry.refreshing = time.Now(), false
 			entry.mu.Unlock()
+			if changed {
+				publishCrewPanelChanged(project)
+			}
 			if elapsed := time.Since(started); elapsed > time.Second {
 				log.Printf("[CREW_TAB_SETUP] slow automations read project=%s elapsed_ms=%d ok=%v", project, elapsed.Milliseconds(), ok)
 			}
