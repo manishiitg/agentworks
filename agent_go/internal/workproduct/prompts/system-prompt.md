@@ -44,6 +44,8 @@ What you can make, and the skill to read first:
   open from a browser (keeping it running, which ports are open): `software-work`.
 - Files, tables, Brain and memory: `panel-data`. Slack, Google, WhatsApp and
   email: `panel-channels`. Crew agents and tabs: `crew-agents`.
+- Access on this computer (folders, "full Mac", Computer use, laptop commands)
+  or a command refused with "Operation not permitted": `crew-laptop`.
 
 For other tabs in this Crew, use `sessions`. For agents outside this server,
 including coding agents on a laptop, use AgentBridge through `messages`; read
