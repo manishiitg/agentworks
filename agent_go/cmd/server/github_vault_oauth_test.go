@@ -149,7 +149,7 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	gitcred.AddGitHub(env)
 	without := map[string]string{}
 	gitcred.AddGitHub(without)
-	if env["GH_TOKEN"] != token || env["GIT_CONFIG_KEY_0"] != "credential.https://github.com.helper" || env["GIT_CONFIG_COUNT"] != "1" || strings.Contains(env["GIT_CONFIG_VALUE_0"], token) || len(without) != 0 {
+	if env["GH_TOKEN"] != token || env["GIT_CONFIG_KEY_0"] != "credential.https://github.com.helper" || env["GIT_CONFIG_VALUE_0"] != "" || env["GIT_CONFIG_KEY_1"] != "credential.https://github.com.helper" || env["GIT_CONFIG_COUNT"] != "2" || strings.Contains(env["GIT_CONFIG_VALUE_1"], token) || len(without) != 0 {
 		t.Fatalf("session GitHub environment = %v", env)
 	}
 
