@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -46,9 +48,18 @@ func TestChatPersistenceAppendsUnchangedPrefixWithIdenticalFullMerge(t *testing.
 		t.Fatal(err)
 	}
 	var fullReads, fullWrites, appended atomic.Int64
+	var failAppend, failResume atomic.Bool
 	router := gin.New()
 	router.Any("/api/documents/*filepath", func(c *gin.Context) {
 		p := strings.TrimPrefix(c.Param("filepath"), "/")
+		if p == path+"/append-history" && failAppend.Swap(false) {
+			c.JSON(500, gin.H{"error": "injected append failure"})
+			return
+		}
+		if p == chatHistoryResumeSnapshotPath(path) && c.Request.Method == http.MethodPut && failResume.Swap(false) {
+			c.JSON(500, gin.H{"error": "injected projection failure"})
+			return
+		}
 		if p == path && c.Request.Method == http.MethodGet && c.Query("header_only") != "true" {
 			fullReads.Add(1)
 		}
@@ -90,7 +101,7 @@ func TestChatPersistenceAppendsUnchangedPrefixWithIdenticalFullMerge(t *testing.
 		}
 		return doc
 	}
-	compare := func(incoming []llmtypes.MessageContent, wantFast bool) {
+	compare := func(incoming []llmtypes.MessageContent, wantFast bool, fallback ...bool) {
 		t.Helper()
 		before := read()
 		expected, err := mergeChatConversationSnapshots(before, map[string]interface{}{"conversation_history": incoming})
@@ -116,7 +127,7 @@ func TestChatPersistenceAppendsUnchangedPrefixWithIdenticalFullMerge(t *testing.
 		if after["title"] != "Named chat" || after["kept_metadata"] == nil {
 			t.Fatal("metadata lost")
 		}
-		if wantFast && (fullReads.Load() != reads || fullWrites.Load() != writes) {
+		if wantFast && len(fallback) == 0 && (fullReads.Load() != reads || fullWrites.Load() != writes) {
 			t.Fatal("fast save read or rewrote complete history")
 		}
 		// The bounded resume projection must keep full-source ordering/pagination.
@@ -142,6 +153,62 @@ func TestChatPersistenceAppendsUnchangedPrefixWithIdenticalFullMerge(t *testing.
 	if appended.Load() != 4 {
 		t.Fatal("repeat save appended duplicate body rows")
 	}
+
+	// An append refusal and an error after append acceptance both fall back to
+	// full alignment; neither may drop the new rows or duplicate an accepted tail.
+	retry := append(append([]llmtypes.MessageContent(nil), next...), llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "after failure"))
+	failAppend.Store(true)
+	compare(retry, true, true)
+	retry = append(append([]llmtypes.MessageContent(nil), retry...), llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "after projection failure"))
+	failResume.Store(true)
+	compare(retry, true, true)
+	// The turn save and the whole-record relay/snapshot writer use the same
+	// chatConversationMutex over read/modify/write, not two independent locks.
+	raceInput := append(append([]llmtypes.MessageContent(nil), retry...), llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "concurrent save"))
+	before := read()
+	expectedRace, err := mergeChatConversationSnapshots(before, map[string]interface{}{"conversation_history": raceInput})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, _ := json.Marshal(map[string]interface{}{"session_id": session, "user_id": "owner", "conversation_history": raceInput})
+	start := make(chan struct{})
+	errs := make(chan error, 1)
+	var writers sync.WaitGroup
+	writers.Add(2)
+	go func() {
+		defer writers.Done()
+		<-start
+		api.persistChatConversationToPathWithTerminalSession(session, "", "multi-agent", "owner", raceInput, nil, nil, path)
+	}()
+	go func() {
+		defer writers.Done()
+		<-start
+		errs <- persistRawConversationSnapshot(context.Background(), path, string(snapshot))
+	}()
+	close(start)
+	writers.Wait()
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	gotRace, _ := json.Marshal(read()["conversation_history"])
+	wantRace, _ := json.Marshal(expectedRace)
+	var gotRaceValue, wantRaceValue interface{}
+	json.Unmarshal(gotRace, &gotRaceValue)
+	json.Unmarshal(wantRace, &wantRaceValue)
+	if !reflect.DeepEqual(gotRaceValue, wantRaceValue) {
+		t.Fatal("concurrent saves duplicated or lost the tail")
+	}
+	// Reprime from the current saved snapshot after the independent writer.
+	data, err := chatlog.Load(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	racedTarget, found, err := parseRestoredChatHistoryPersistTarget(data, session, path)
+	if err != nil || !found {
+		t.Fatal("cannot re-read race result")
+	}
+	api.rememberWrittenResumeHistory("owner", session, path, racedTarget.History, nil)
+	next = racedTarget.History
 	changed := append([]llmtypes.MessageContent(nil), next...)
 	changed[1] = llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "edited older row")
 	compare(changed, false)
