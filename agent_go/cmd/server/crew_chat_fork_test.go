@@ -1,11 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/gorilla/mux"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // PLAT-746: copying model context must also populate the screen's own durable
@@ -27,8 +33,43 @@ func TestForkSeedsIndependentDialogueAndSourceMarker(t *testing.T) {
 		{"Role":"ai","Parts":[{"Text":"Answer"}]}
 	]}`)
 	dest := ProductConversationRecord{SessionID: "fork-session"}
-	if err := api.seedForkChatJournal("owner", dest, "project:chat:source", "Design", raw); err != nil {
+	// Reproduce opening the newly registered destination before seed completes.
+	store.SetSessionOwner(dest.SessionID, "owner")
+	if err := store.SetSessionPersistenceClass(dest.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
 		t.Fatal(err)
+	}
+	if rows := store.GetAllEventsRaw(dest.SessionID); len(rows) != 0 {
+		t.Fatal("new fork must start empty")
+	}
+	// The SSE pane has already loaded the empty destination, just as in the
+	// reported fork. No copied row may be emitted as a fresh turn activity.
+	api.runtimeCoordinator = NewRuntimeCoordinator()
+	api.activeSessions = map[string]*ActiveSessionInfo{dest.SessionID: {SessionID: dest.SessionID, Status: "completed", CreatedAt: time.Now()}}
+	req := httptest.NewRequest("GET", "/api/sessions/"+dest.SessionID+"/events/stream?durable_chat=1&since=0", nil)
+	req = mux.SetURLVars(req, map[string]string{"session_id": dest.SessionID})
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	w := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { api.handleSSEStream(w, req.WithContext(ctx)); close(done) }()
+	time.Sleep(50 * time.Millisecond)
+	var parsed struct {
+		History []llmtypes.MessageContent `json:"conversation_history"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.seedForkChatJournal("owner", dest, "project:chat:source", "Design", parsed.History); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+	body := w.Body.String()
+	for _, id := range []string{"builder-history-fork-session-1", "builder-history-fork-session-3", "fork:fork-session"} {
+		if strings.Count(body, `"id":"`+id+`"`) != 1 {
+			t.Fatalf("early subscriber missing/duplicated fork history row %s", id)
+		}
 	}
 	owner, err := store.DurableChatOwner(dest.SessionID)
 	if err != nil || owner != "owner" {

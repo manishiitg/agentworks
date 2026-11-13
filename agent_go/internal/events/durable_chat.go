@@ -259,8 +259,18 @@ func (es *EventStore) ImportDurableChatEvents(sessionID string, imported []Event
 		}
 	}
 	if migrator, ok := journal.(DurableEventJournalMigrator); ok {
-		return migrator.MarkMigrationComplete(sessionID)
+		if err := migrator.MarkMigrationComplete(sessionID); err != nil {
+			return err
+		}
 	}
+	// A pane can subscribe before a fork finishes importing. Its first read
+	// may have cached an empty or partial tail. The next read must replay the
+	// completed journal, without running the imported rows through observers.
+	es.hydrateMu.Lock()
+	es.mu.Lock()
+	delete(es.hydratedSessions, sessionID)
+	es.mu.Unlock()
+	es.hydrateMu.Unlock()
 	return nil
 }
 
