@@ -12,7 +12,7 @@
   Mac" is `folder_attach` on the home folder with alias `mac` and `read_write`. Offer
   it only when asked; one exact folder is usually enough. On a Mac most of the home
   is already open to the chat; a grant matters for AgentWorks data (another Crew's
-  or project's folder), and the whole Mac also opens that data. It covers files
+  or project's folder); the whole Mac includes that data on purpose. It covers files
   only; programs and apps are Computer use (`crew-laptop`). Downloads is on by default and is
   switched on that screen only.
 - Do not attach a folder that holds sign-ins (`.ssh`, `.aws`, keychains, browser
