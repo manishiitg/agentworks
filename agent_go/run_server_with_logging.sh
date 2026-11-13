@@ -1532,6 +1532,7 @@ export MCPAGENT_CLAUDE_ENFORCE_HTTP_TOOL_ROUTING="${MCPAGENT_CLAUDE_ENFORCE_HTTP
 mkdir -p "$LOG_DIR"
 
 # Truncate the log files to start fresh
+dev_phase ports_and_env
 dev_detail "📝 Truncating log files for clean start..."
 # Keep the last three server logs (server_debug.log.1 is the previous start) so evidence from
 # before a restart is not lost.
@@ -1600,7 +1601,9 @@ run_local_builder_chat_migration() {
     dev_detail "✅ Local Workflow Builder chat migration complete"
 }
 
+dev_phase log_truncate
 run_local_builder_chat_migration || exit 1
+dev_phase builder_chat_migration
 
 # Migrate non-secret account audiences before launching the new server. Backups
 # of environment files stay outside workspace documents and are private.
@@ -1627,6 +1630,7 @@ if [ -n "${AGENTWORKS_PROVIDER_POLICY:-}" ]; then
     AGENTWORKS_PROVIDER_POLICY="$(python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" --workspace-dir "$WORKSPACE_DOCS_PATH" --backup-dir "$account_audience_backup" --export-current-policy)" || exit 1
     export AGENTWORKS_PROVIDER_POLICY
 fi
+dev_phase data_migrations
 
 
 # Log rotation cap (used by background daemon)
@@ -1661,6 +1665,7 @@ else
     mkdir -p generated/agents
     dev_detail "✅ generated/agents created (was missing)"
 fi
+dev_phase folder_cleanup
 
 # Add timestamp header to log file
 echo "🚀 MCP Agent Server Session Started: $(date)" > "$LOG_PATH"
