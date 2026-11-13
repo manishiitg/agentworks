@@ -51,6 +51,9 @@ type crewStandbySendItem struct {
 	// Diverged (handback_done): the Mac had changed this conversation too, so it kept its own and saved the server's
 	// aside (crew_agent_handback.go).
 	Diverged bool `json:"diverged,omitempty"`
+	// MacLogin (standby_store) is the login the agent's AI account reports on the Mac (usually an email), so Always
+	// online can pick the server account signed in as the same login (crew_server_account.go).
+	MacLogin string `json:"mac_login,omitempty"`
 }
 
 type crewStandbyReply struct {
@@ -96,6 +99,10 @@ type crewAgentStandby struct {
 	// differ when this server lacks the Mac's program and continued from saved history instead (owner, 6 Nov).
 	MacProgram    string `json:"mac_program,omitempty"`
 	ServerProgram string `json:"server_program,omitempty"`
+	// MacLogin is the login the agent's account reports on the Mac; ServerAccount whose account the server chat runs
+	// on ("own" or "company"), shown in the Team tab while the server answers (owner, 13 Nov).
+	MacLogin      string `json:"mac_login,omitempty"`
+	ServerAccount string `json:"server_account,omitempty"`
 }
 
 type crewAgentStandbySession struct {
@@ -747,6 +754,9 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 		row.Sessions = map[string]crewAgentStandbySession{}
 	}
 	row.User, row.Peer, row.Tab, row.Location, row.PairID = person, binding.PeerProjectID, tab, "standby", binding.PairID
+	if login := strings.TrimSpace(item.MacLogin); login != "" {
+		row.MacLogin = login
+	}
 	row.Revision++
 	row.CopiedAt = session.StoredAt
 	session.Revision = row.Revision
