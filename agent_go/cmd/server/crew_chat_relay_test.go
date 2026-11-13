@@ -499,7 +499,7 @@ func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
 		t.Fatalf("unknown conversation accepted: %d", got.Status)
 	}
 
-	// A deleted/absent Main must not block the list or a physical tab (PLAT-746-963).
+	// A deleted/absent Main must not block the list or a physical tab (PLAT-746-966).
 	t.Run("relay without Main still lists and resolves owned tabs", func(t *testing.T) {
 		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 		t.Setenv("DEFAULT_USER_ID", "owner")
