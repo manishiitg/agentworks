@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,7 +94,8 @@ func codexProxyLogin(raw []byte) ([]byte, string, error) {
 
 // POST /api/server-login/move-in {"provider": "codex-cli", "login": <Codex auth.json>} — the signed-in person's Mac
 // hands over its login. It becomes the login of their own server-login account (created when they have none),
-// replacing any earlier one.
+// replacing any earlier one. Idempotent: if the Mac never got the answer it sends again, and the login is replaced.
+// Neither the body nor any token is logged.
 func (api *StreamingAPI) handleServerLoginMoveIn(w http.ResponseWriter, r *http.Request) {
 	caller, ok := requireSignedIn(w, r)
 	if !ok {
@@ -102,7 +105,9 @@ func (api *StreamingAPI) handleServerLoginMoveIn(w http.ResponseWriter, r *http.
 		Provider string          `json:"provider"`
 		Login    json.RawMessage `json:"login"`
 	}
-	if json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&input) != nil {
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil {
 		desktopJSONError(w, 400, "Cannot read the login.")
 		return
 	}
@@ -128,14 +133,50 @@ func (api *StreamingAPI) handleServerLoginMoveIn(w http.ResponseWriter, r *http.
 		return
 	}
 	name := modelProxyLogins[input.Provider].prefix + unsafeLoginFileChars.ReplaceAllString(firstNonEmptyTrimmed(email, record.ID), "_") + ".json"
-	if err := os.WriteFile(filepath.Join(dir, "auth", name), stored, 0o600); err != nil {
+	// Atomic: the proxy never sees a half-written login.
+	if err := writeFileAtomic(filepath.Join(dir, "auth", name), stored); err != nil {
 		desktopJSONError(w, 500, "Cannot keep the login here.")
 		return
 	}
-	proxy.upstream() // a running proxy picks the file up itself; a stopped one reads it on start
+	proxy.restart() // only this person's proxy, so it serves the new login at once
+	proxy.upstream()
 	rememberProviderAccountStatus(record.ID, serverLoginStatus(record))
 	log.Printf("[SERVER_LOGIN] %s moved their %s login from the Mac into account %s", caller, input.Provider, record.ID)
 	desktopJSON(w, map[string]string{"account_id": record.ID, "signed_in_as": proxy.signedInAs(input.Provider)})
+}
+
+// moveTargetSecure: a login is sent only over https, or plain http to this machine itself.
+func moveTargetSecure(server string) bool {
+	u, err := url.Parse(server)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "https" {
+		return true
+	}
+	ip := net.ParseIP(u.Hostname())
+	return u.Scheme == "http" && (u.Hostname() == "localhost" || (ip != nil && ip.IsLoopback()))
+}
+
+// writeFileAtomic writes a 0600 file through a temporary file in the same folder and a rename.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".move-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // ensureServerLoginAccount is the person's server-login account for a program, created when they have none.
@@ -184,8 +225,12 @@ func (api *StreamingAPI) handleMoveLoginToServer(w http.ResponseWriter, r *http.
 	}
 	id := mux.Vars(r)["connectionID"]
 	target, err := api.resolveProviderAccountTarget(r.Context(), id, "")
-	if err != nil || target.Provider != "codex-cli" || !providerAccountManagedBy(target, caller, currentUserIsAdmin(r)) ||
-		(target.Record != nil && target.Record.AuthMethod != "cli_login") {
+	// Only the caller's own login moves into their personal server login (review): a browser-login account they own,
+	// or "global" — on the Mac app that is the Mac's single local Codex login, which belongs to the Mac's own person
+	// (its admin). Being an admin never moves someone else's account.
+	own := target.Record != nil && target.Record.OwnerUserID == caller && target.Record.AuthMethod == "cli_login"
+	macLogin := target.Server && currentUserIsAdmin(r)
+	if err != nil || target.Provider != "codex-cli" || !(own || macLogin) {
 		desktopJSONError(w, 404, "Only a Codex browser login on this Mac can be moved.")
 		return
 	}
@@ -204,6 +249,10 @@ func (api *StreamingAPI) handleMoveLoginToServer(w http.ResponseWriter, r *http.
 	}
 	if err != nil || c == nil {
 		desktopJSONError(w, 400, "Connect this Mac to your server first, then move the login.")
+		return
+	}
+	if !moveTargetSecure(c.Server) {
+		desktopJSONError(w, 400, "The login moves only over a secure (https) connection to your server.")
 		return
 	}
 	file := codexLoginFile(target)

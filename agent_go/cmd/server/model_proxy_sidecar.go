@@ -243,6 +243,21 @@ func (p *modelProxyInstance) upstream() (string, string, bool) {
 	return base, key, true
 }
 
+// restart stops this proxy, if running, so the next upstream() starts it on its current logins.
+func (p *modelProxyInstance) restart() {
+	p.Lock()
+	cmd, exited := p.cmd, p.exited
+	p.cmd = nil
+	p.Unlock()
+	if cmd != nil && cmd.Process != nil && running(exited) {
+		_ = cmd.Process.Kill()
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
 // logOwner names a person's own proxy in log lines (never their login).
 func (p *modelProxyInstance) logOwner() string {
 	if p.owner == "" {
