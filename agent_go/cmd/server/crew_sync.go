@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -331,23 +330,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		if id, b := api.existingCrewRelayTwin(ctx, claims, input.SourceID); b != nil {
 			return crewSyncReply{ProjectID: id, Binding: b}, nil
 		}
-		created, err := api.createWorkspaceFromSpec(ctx, claims, crewProfileID, crewSpec{Name: input.Name}, false)
+		binding := crewroot.SyncBinding{Mode: "relay", ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID, MacName: input.MacName, MacID: input.MacID}
+		created, err := api.createWorkspace(ctx, claims, crewProfileID, crewSpec{Name: input.Name}, false, workspaceCreation{SyncBinding: &binding})
 		if err != nil {
-			return crewSyncReply{}, err
-		}
-		roots, err := api.crewSyncRoots(ctx, claims, created)
-		if err != nil {
-			return crewSyncReply{}, err
-		}
-		if input.SplitFiles {
-			if err = os.MkdirAll(filepath.Join(roots.Files, crewroot.FilesSegment), 0770); err != nil {
-				return crewSyncReply{}, err
-			}
-		}
-		binding := crewroot.SyncBinding{Mode: "relay", ArchiveOnly: input.ArchiveOnly, SplitFiles: input.SplitFiles, PairID: input.PairID, Side: "server", Editing: "local", PeerProjectID: input.SourceID}
-		// A relay twin is empty: the owner uses the Mac Crew from the website while the Mac is on (PLAT-856-509).
-		binding.MacName, binding.MacID = input.MacName, input.MacID
-		if err = crewroot.WriteSync(created, binding); err != nil {
 			return crewSyncReply{}, err
 		}
 		if input.PreviousProjectID != "" {
