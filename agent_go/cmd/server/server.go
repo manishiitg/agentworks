@@ -3186,6 +3186,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	fmt.Printf("🔗 API endpoint: http://%s:%d/api/query\n", config.Host, actualPort)
 	fmt.Printf("📡 Polling API: http://%s:%d/api/sessions/{session_id}/events\n", config.Host, actualPort)
 
+	stopLocalProfiles := startLocalProfileSignal()
+	defer stopLocalProfiles()
+
 	// Wait for interrupt signal to gracefully shutdown
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
