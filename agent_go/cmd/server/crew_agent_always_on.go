@@ -361,7 +361,7 @@ func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, 
 		if program != session.Provider {
 			mode = "history"
 		}
-		log.Printf("[ALWAYS_ON] project=%s tab=%s event=imported copy=%s revision=%d bytes=%d mode=%s mac_program=%s server_program=%s ms=%d", project, tab, session.Dir, session.Revision, session.Bytes, mode, session.Provider, program, time.Since(started).Milliseconds())
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=imported copy=%s revision=%d bytes=%d mode=%s mac_program=%s server_program=%s mac_login=%s server_account=%s ms=%d", project, tab, session.Dir, session.Revision, session.Bytes, mode, session.Provider, program, crewMacLoginKind(row.MacLogin), firstNonEmptyTrimmed(api.crewServerAccountKind(ctx, claims, roots, program, account), "unknown"), time.Since(started).Milliseconds())
 	}
 	if !changed {
 		return nil
@@ -426,7 +426,9 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	// Always online runs on the server account with the Mac's login, else the person's choice, else their own (owner, 13 Nov).
 	if account, how := api.crewBackupServerAccount(ctx, claims, roots, native.Provider, macLogin); account != "" {
 		conversation.ServerAccount = account
-		logCrewServerAccount(roots.ID, claims.UserID, native.Provider, account, "backup_"+how)
+		logCrewServerAccount(roots.ID, claims.UserID, native.Provider, account, "backup_"+how+" mac_login="+crewMacLoginKind(macLogin))
+	} else {
+		logCrewServerAccount(roots.ID, claims.UserID, native.Provider, "server_default", "backup_default mac_login="+crewMacLoginKind(macLogin))
 	}
 	// Publish's import reads the native files from this session's stage; a later copy (or a teammate thread of the
 	// same session) may have replaced them there, so this copy is staged again first.
@@ -538,22 +540,31 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam boo
 		if macOn {
 			return "Taking back from the server…", "wait"
 		}
-		return crewAlwaysOnLine + " · answering your team" + crewStandbyOnProgram(project, owner, tab), "server"
+		return crewStandbyAnsweringLabel(project, owner, tab, yours), "server"
 	case macOn && !inTeam:
 		return "Only you · on your Mac", ""
 	case macOn:
 		return crewStandbyCopyLabel(project, owner, tab)
 	case crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, owner, tab):
-		return crewAlwaysOnLine + " · answering your team" + crewStandbyOnProgram(project, owner, tab), "server"
+		return crewStandbyAnsweringLabel(project, owner, tab, yours), "server"
 	case yours:
 		return "Mac off · waits for your Mac", ""
 	}
 	return "Mac off · waits for their Mac", ""
 }
 
+// crewStandbyAnsweringLabel is the line while the server answers for the agent, worded for who looks: the agent's
+// person reads "answering your team … your account", a teammate "answering the team … their account".
+func crewStandbyAnsweringLabel(project, owner, tab string, yours bool) string {
+	if yours {
+		return crewAlwaysOnLine + " · answering your team" + crewStandbyOnProgram(project, owner, tab, yours)
+	}
+	return crewAlwaysOnLine + " · answering the team" + crewStandbyOnProgram(project, owner, tab, yours)
+}
+
 // crewStandbyOnProgram names, while the server answers, the program and whose account it runs on (owner, 13 Nov), in
 // plain words: " (on Claude Code · company account)", " (on Muse · your account)". Never an account's internal id.
-func crewStandbyOnProgram(project, person, tab string) string {
+func crewStandbyOnProgram(project, person, tab string, yours bool) string {
 	rows, err := readCrewStandby(project, person)
 	row := rows[tab]
 	if err != nil {
@@ -565,7 +576,11 @@ func crewStandbyOnProgram(project, person, tab string) string {
 	}
 	switch row.ServerAccount {
 	case crewServerAccountOwn:
-		parts = append(parts, "your account")
+		if yours {
+			parts = append(parts, "your account")
+		} else {
+			parts = append(parts, "their account")
+		}
 	case crewServerAccountCompany:
 		parts = append(parts, "company account")
 	}

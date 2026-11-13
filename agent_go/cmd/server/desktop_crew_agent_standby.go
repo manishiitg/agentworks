@@ -299,7 +299,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 			skip("send_failed")
 			break
 		}
-		log.Printf("[ALWAYS_ON] project=%s tab=%s event=standby_sent bytes=%d ms=%d result=%s revision=%d", project, tab, bytes, time.Since(started).Milliseconds(), answer.Event, answer.Revision)
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=standby_sent bytes=%d ms=%d result=%s revision=%d mac_login=%s", project, tab, bytes, time.Since(started).Milliseconds(), answer.Event, answer.Revision, crewMacLoginKind(item.MacLogin))
 	}
 	if !failed {
 		crewStandbyMu.Lock()

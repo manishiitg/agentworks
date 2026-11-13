@@ -258,10 +258,8 @@ func (api *StreamingAPI) crewServerAccountChatAction(ctx context.Context, claims
 // "company account" ("" when unknown). A "global:" account is the server's own, the company's.
 func (api *StreamingAPI) crewServerAccountKind(ctx context.Context, claims *UserClaims, roots crewroot.Roots, provider, account string) string {
 	account = strings.TrimSpace(account)
-	if account == "" {
-		return ""
-	}
-	if strings.HasPrefix(account, "global:") {
+	if account == "" || strings.HasPrefix(account, "global:") {
+		// No account recorded means the server's usual pick, its own (the company's) account.
 		return crewServerAccountCompany
 	}
 	options, err := api.crewServerAccountOptions(ctx, claims, roots, provider)
@@ -305,4 +303,18 @@ func (api *StreamingAPI) crewStandbyMacLogin(ctx context.Context, record Product
 	login := strings.TrimSpace(checkProviderAccountStatus(ctx, target, false).Identity)
 	crewMacLoginCache.Store(account, crewMacLoginSeen{login: login, at: time.Now()})
 	return login
+}
+
+// crewMacLoginKind says, for logs, what kind of login the Mac reported for Always online without writing the login
+// itself: "email", "company", "other" (a sign-in method such as "ChatGPT" or an API key) or "none" (not sent).
+func crewMacLoginKind(login string) string {
+	switch login = strings.TrimSpace(login); {
+	case login == "":
+		return "none"
+	case login == crewMacCompanyLogin:
+		return "company"
+	case strings.Contains(login, "@"):
+		return "email"
+	}
+	return "other"
 }
