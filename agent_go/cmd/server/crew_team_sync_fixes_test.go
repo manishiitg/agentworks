@@ -851,6 +851,12 @@ func TestCrewTeamWatcherBudgetIsGlobalAndReleased(t *testing.T) {
 		t.Fatal("closed copy did not release budget")
 	}
 	b.close()
+	a.root = t.TempDir()
+	a.done("example", "same", crewTeamScanPlan{full: true}, crewTeamScanResult{dirs: []string{""}, dirNames: map[string]int{"": 0}}, nil)
+	if a.off || a.w == nil {
+		t.Fatal("fallback copy did not retry watching after budget freed")
+	}
+	a.close()
 	if crewTeamWatchBudget.Load() != before {
 		t.Fatal("budget leaked after close")
 	}
