@@ -24,8 +24,8 @@ import (
 )
 
 // PLAT-746-820: idle sync rounds rewrote the full file baseline every five seconds.
-// PLAT-746-820: final upload retried forever for an absent, never-downloaded copy.
-func TestRetireMissingUndownloadedCrewTeamCopyPreservesExistingAndDownloadedCopies(t *testing.T) {
+// PLAT-746-949: missing roots must stop retrying even after a previous download.
+func TestRetireMissingCrewTeamCopyPreservesExistingFiles(t *testing.T) {
 	for _, scenario := range []struct {
 		name                 string
 		downloaded, existing bool
@@ -33,8 +33,8 @@ func TestRetireMissingUndownloadedCrewTeamCopyPreservesExistingAndDownloadedCopi
 		removed              bool
 	}{
 		{name: "missing never downloaded", removed: true},
-		{name: "missing downloaded", downloaded: true},
-		{name: "missing with revision", revision: 1},
+		{name: "missing downloaded", downloaded: true, removed: true},
+		{name: "missing with revision", revision: 1, removed: true},
 		{name: "existing unsent files", existing: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestRetireMissingUndownloadedCrewTeamCopyPreservesExistingAndDownloadedCopi
 			if err := saveCrewTeamLocal(dir, b); err != nil {
 				t.Fatal(err)
 			}
-			if removed := retireMissingUndownloadedCrewTeamCopy(t.Context(), dir); removed != scenario.removed {
+			if removed := retireMissingCrewTeamCopy(t.Context(), dir); removed != scenario.removed {
 				t.Fatalf("removed=%t, want %t", removed, scenario.removed)
 			}
 			_, err := os.Stat(filepath.Join(dir, "binding.json"))
@@ -817,4 +817,43 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 	if sync := crewTeamTabSyncFor(team, "owner"); !strings.Contains(sync.Line, "no clashes") {
 		t.Fatalf("sync line after resolve %q", sync.Line)
 	}
+}
+
+// PLAT-746-949: a member on their Mac must not keep or recreate a server sync loop.
+func TestCrewTeamMacMemberRetiresServerCopyRecord(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}, Folder: crewTeamFolder{ID: "shared", Folders: []string{"team/"}}}); err != nil {
+		t.Fatal(err)
+	}
+	team, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := crewTeamServerCopyDir("other", "team", team.Folder.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "unsent.txt"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveCrewTeamLocal(dir, crewTeamLocal{Project: "team", RemoteUser: "other", FolderID: team.Folder.ID, Root: root, Downloaded: true}); err != nil {
+		t.Fatal(err)
+	}
+	f.api.removeStaleCrewTeamServerCopies(t.Context())
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("stale server sync record retained: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "unsent.txt")); err != nil || string(data) != "keep" {
+		t.Fatal("cleanup changed existing files")
+	}
+	if got, err := f.api.syncCrewTeamServerCopy(t.Context(), "other", "team", true); err != nil || got != "" {
+		t.Fatalf("Mac member recreated a server copy: %q %v", got, err)
+	}
+	f.api.removeStaleCrewTeamServerCopies(t.Context())
 }
