@@ -3770,7 +3770,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.Query == "" {
+	if req.Query == "" && len(req.PendingAttachments) == 0 {
 		errorMsg := "Query is required"
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return

@@ -19,6 +19,11 @@ export interface ChatSubmissionOptions {
   builderHandoff?: { tabId?: string; sessionId?: string }
 }
 
+// PLAT-746-938: a file-only message is content; an empty composer is not.
+export function hasChatSubmissionContent(text: string, files: readonly FileContextItem[] = [], pending: readonly { hash: string; name: string }[] = []): boolean {
+  return Boolean(text.trim() || files.length || pending.length)
+}
+
 // Only submissions already pending from the same composer share its newly
 // created conversation. Returning to Builder mounts a different composer.
 const pendingBuilders = new Map<string, { target: NonNullable<ChatSubmissionOptions['builderHandoff']>; count: number }>()
