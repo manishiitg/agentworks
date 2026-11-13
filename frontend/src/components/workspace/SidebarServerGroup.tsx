@@ -5,7 +5,7 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin } from 'lucide-react'
+import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
@@ -35,13 +35,9 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       {remote ? <Network className="h-3.5 w-3.5" aria-hidden="true" /> : <Laptop className="h-3.5 w-3.5" aria-hidden="true" />}
     </span>}
     {/* Row actions show on hover, open Crew included (owner, 10 Nov). */}
-    {onTogglePin && <button type="button" aria-label={`${pinned ? 'Unpin' : 'Pin'} ${name}${location ? ` · ${location}` : ''}`} aria-pressed={Boolean(pinned)} title={pinned ? 'Unpin from Pinned' : 'Pin to top'} onClick={onTogglePin}
-      className={`mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100`}>
-      <Pin className="h-3.5 w-3.5" fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
-    </button>}
-    {(onMoveUp || onMoveDown || onNewAgent || groupsMenu || onRemoveOnlineCopy) && <PinnedCrewOrderMenu name={name} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onNewAgent={onNewAgent} groupsMenu={groupsMenu} onRemoveOnlineCopy={onRemoveOnlineCopy} />}
+    {(onMoveUp || onMoveDown || onNewAgent || groupsMenu || onRemoveOnlineCopy || onTogglePin) && <PinnedCrewOrderMenu name={name} pinned={pinned} onTogglePin={onTogglePin} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onNewAgent={onNewAgent} groupsMenu={groupsMenu} onRemoveOnlineCopy={onRemoveOnlineCopy} />}
     {/* The caret only closes an open project's agents; opening the project opens them (owner, 10 Nov). */}
-    {onToggleAgents && agentsExpanded && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
+    {onToggleAgents && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
       className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <ChevronRight className={`h-3.5 w-3.5 transition-transform ${agentsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
     </button>}

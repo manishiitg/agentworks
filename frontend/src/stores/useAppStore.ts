@@ -17,6 +17,8 @@ interface AppState {
   workspaceMinimizedByMode: Record<'workflow' | 'multi-agent', boolean>
   showWorkflowsOverview: boolean
   showSchedulesOverview: boolean
+  schedulesSearchQuery: string
+  schedulesSearchScope: string
   /** Admin full pages opened from the top bar (Users & access, Connect an AI agent). */
   adminPage: 'users' | 'mcp' | 'notifications' | null
   activityWorkflowPath: string | null
@@ -70,6 +72,8 @@ export const useAppStore = create<AppState>()(
         },
         showWorkflowsOverview: false,
         showSchedulesOverview: false,
+        schedulesSearchQuery: '',
+        schedulesSearchScope: '',
         adminPage: null,
         activityWorkflowPath: null,
         useCodeExecutionMode: true, // Default to enabled
@@ -155,7 +159,7 @@ export const useAppStore = create<AppState>()(
         },
 
         setShowSchedulesOverview: (show) => {
-          set(show ? { showSchedulesOverview: true, adminPage: null } : { showSchedulesOverview: false })
+          set(show ? { showSchedulesOverview: true, adminPage: null } : { showSchedulesOverview: false, schedulesSearchQuery: '', schedulesSearchScope: '' })
         },
 
         // One full page at a time: opening an admin page closes the others.
