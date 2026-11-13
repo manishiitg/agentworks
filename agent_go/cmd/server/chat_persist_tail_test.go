@@ -145,6 +145,12 @@ func TestChatPersistenceAppendsUnchangedPrefixWithIdenticalFullMerge(t *testing.
 	changed := append([]llmtypes.MessageContent(nil), next...)
 	changed[1] = llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "edited older row")
 	compare(changed, false)
+	// Without a new system, full alignment retains the old one. Do not
+	// treat that shape as a direct append of the shorter in-memory record.
+	api.conversationMux.RLock()
+	withoutSystem := append([]llmtypes.MessageContent(nil), api.conversationHistory[session][1:]...)
+	api.conversationMux.RUnlock()
+	compare(withoutSystem, false)
 	if fullWrites.Load() == 0 {
 		t.Fatal("changed prefix bypassed general merger")
 	}

@@ -18,6 +18,7 @@ type resumeHistorySource struct {
 	persistedBody         int
 	persistedTurns        int
 	prefixStable          bool
+	persistedSystem       bool
 }
 
 func statResumeHistory(user, workspace, path string) *resumeHistorySource {
@@ -102,6 +103,7 @@ func (api *StreamingAPI) rememberWrittenResumeHistory(user, session, path string
 	next.target = old.target
 	next.target.Runtime = runtime
 	next.persistedBody = len(chatHistoryBody(history))
+	next.persistedSystem = len(history) > 0 && history[0].Role == llmtypes.ChatMessageTypeSystem
 	if len(resumeTurns) > 0 {
 		next.persistedTurns = resumeTurns[0]
 	} else {
@@ -119,7 +121,7 @@ func (api *StreamingAPI) replaceConversationHistoryLocked(session string, next [
 	if source := api.resumeHistorySources[session]; source != nil && source.prefixStable {
 		oldBody, newBody := chatHistoryBody(api.conversationHistory[session]), chatHistoryBody(next)
 		n := source.persistedBody
-		if !appendableHistoryShape(next) || len(oldBody) < n || len(newBody) < n || !samePersistedPrefix(oldBody, newBody, n) {
+		if source.persistedSystem && (len(next) == 0 || next[0].Role != llmtypes.ChatMessageTypeSystem) || !appendableHistoryShape(next) || len(oldBody) < n || len(newBody) < n || !samePersistedPrefix(oldBody, newBody, n) {
 			invalid := *source
 			invalid.prefixStable = false
 			api.resumeHistorySources[session] = &invalid
