@@ -12,7 +12,7 @@ import type { TeamLiveView } from './TeamLiveAgents'
 import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
+type Row = { private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; open: () => void }
 type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number }
 
 const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200', 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200',
@@ -80,7 +80,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           else face.working += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
-          rows.push({ key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
+          rows.push({ private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, open: () => openCrewTeam(connectionId, crew.id) })
         }
       }
     }
@@ -143,7 +143,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     return <button key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span><span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span></span>
+        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span></span>
         <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.doing || (row.activity === 'waiting' ? 'Waiting' : 'Working')}</span>
       </span>
     </button>

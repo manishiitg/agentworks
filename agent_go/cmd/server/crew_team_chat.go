@@ -147,7 +147,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				return "", err
 			}
 			op, method = "activity-posts", http.MethodPost
-			body, _ = json.Marshal(map[string]any{"kind": action, "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "line": externalArg(args, "line"), "why": externalArg(args, "why")})
+			body, _ = json.Marshal(map[string]any{"kind": action, "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "shared_ask": sourceKey != "", "line": externalArg(args, "line"), "why": externalArg(args, "why")})
 		case "finding":
 			// Only a schedule's own turn; the schedule name comes from the server's record of that turn, never from the model.
 			name, err := crewScheduleTurnName(sessionID, manifest.ID, caller.UserID)
@@ -169,7 +169,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			}
 			// A Mac Crew's Team is on the server: the Mac posts through the same route with its pair header.
 			op, method = "activity-posts", http.MethodPost
-			body, _ = json.Marshal(map[string]any{"kind": "finding", "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "line": externalArg(args, "line"), "schedule": name})
+			body, _ = json.Marshal(map[string]any{"kind": "finding", "agent_id": actor.ID, "chat_key": actor.ChatKey, "agent": actor.Name, "shared_ask": sourceKey != "", "line": externalArg(args, "line"), "schedule": name})
 		case "decisions":
 			op = "activity-posts"
 		case "status":

@@ -201,13 +201,14 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 		return
 	}
 	var body struct {
-		Kind     string `json:"kind"`
-		AgentID  string `json:"agent_id"`
-		Line     string `json:"line"`
-		Why      string `json:"why"`
-		Schedule string `json:"schedule"`
-		ChatKey  string `json:"chat_key"`
-		Agent    string `json:"agent"`
+		Kind      string `json:"kind"`
+		AgentID   string `json:"agent_id"`
+		Line      string `json:"line"`
+		Why       string `json:"why"`
+		Schedule  string `json:"schedule"`
+		ChatKey   string `json:"chat_key"`
+		Agent     string `json:"agent"`
+		SharedAsk bool   `json:"shared_ask"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body) != nil || (body.Kind != "doing" && body.Kind != "decision" && body.Kind != "finding") {
 		externalError(w, 400, "invalid_activity", "Choose doing or decision and give one short line")
@@ -222,7 +223,7 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 	// Resolve a current admitted registry identity, not an address alias or a
 	// chosen display name. A person cannot post as another person's agent.
 	actor, err := api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent)
-	if err != nil {
+	if err != nil || body.SharedAsk && !actor.InTeam {
 		externalError(w, 403, "activity_forbidden", "Post activity from your own agent in this Crew")
 		return
 	}
