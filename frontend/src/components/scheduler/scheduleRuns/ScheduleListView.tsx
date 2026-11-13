@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { DetailLine, PageRow, RowButton } from '../../automation/AutomationKit'
 import { Switch } from '../../ui/Switch'
 import { WebhookEndpoint } from './WebhookEndpoint'
@@ -20,12 +20,13 @@ import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 
 type ScheduleListViewProps = {
+  compact?: boolean
   panel: Pick<ScheduleRunsPanelState,
     | 'filteredJobs' | 'presetMap' | 'showWorkflowIdentityInScheduleRows' | 'isReadOnlyUser'
     | 'handleStopRun' | 'handleTrigger' | 'triggering' | 'handleToggle'
     | 'handleRunDestination' | 'handleDelete'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'deletingRunSessionIds'
-    | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
+    | 'focusedScheduleId' | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
   >
 }
 
@@ -41,13 +42,14 @@ function nextLabel(value?: string): string {
  * Schedule rows in the owner-approved mock's look (8 Nov): a switch, the schedule in plain words, up to two detail
  * lines, one action by state and a chevron that opens today's details in place. Rows only: the host supplies the card.
  */
-export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => {
+export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel, compact = false }) => {
   const {
     filteredJobs, presetMap, showWorkflowIdentityInScheduleRows, isReadOnlyUser, handleStopRun, handleTrigger, triggering,
     handleToggle, handleRunDestination, handleDelete, expandedRunHistoryJobIds, runsByJob, runsLoadingJobIds,
     deletingRunSessionIds, toggleRunHistory, openScheduledRun, deleteScheduledRunSession,
   } = panel
   const [openId, setOpenId] = useState<string | null>(null)
+  useEffect(() => { if (panel.focusedScheduleId) setOpenId(panel.focusedScheduleId) }, [panel.focusedScheduleId])
 
   return (
     <div className="divide-y divide-border" data-testid="schedule-list">
@@ -110,9 +112,9 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
             key={job.id}
             testId={`schedule-row-${job.id}`}
             lead={<Switch checked={job.enabled} disabled={isReadOnlyUser} aria-label={`${job.enabled ? 'Pause' : 'Resume'} ${job.name}`} onCheckedChange={() => void handleToggle(job)} />}
-            title={<span title={job.name} className={quiet ? 'opacity-70' : ''}>{cronDesc}</span>}
-            lines={lines}
-            aside={quiet ? 'Paused' : ['Needs attention', 'Queued', 'Waiting for capacity'].includes(statusWord) ? statusWord : undefined}
+            title={<span title={job.name} className={quiet ? 'opacity-70' : ''}>{compact ? localizedJobName : cronDesc}</span>}
+            lines={compact ? [[showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', cronDesc, job.starts, !quiet && job.next_run_at ? `Next ${formatLocalScheduleTime(job.next_run_at)}` : ''].filter(Boolean).join(' · ')] : lines}
+            aside={quiet ? 'Paused' : compact ? statusWord : ['Needs attention', 'Queued', 'Waiting for capacity'].includes(statusWord) ? statusWord : undefined}
             action={action}
             open={open}
             onToggle={() => setOpenId(open ? null : job.id)}
