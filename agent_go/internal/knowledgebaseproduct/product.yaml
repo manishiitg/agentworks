@@ -61,7 +61,7 @@ profile:
       - id: pi-cli
         label: Pi CLI
         provider: pi-cli
-        model_id: google/gemini-3.8-flash
+        model_id: google/gemini-4-hydrogen
         reasoning_efforts: [low, medium, high, xhigh]
         options:
           reasoning_effort: high
@@ -75,8 +75,8 @@ profile:
       - id: agy-cli
         label: Antigravity CLI (Alpha)
         provider: agy-cli
-        model_id: gemini-3.8-flash-high
-        reasoning_efforts: [low, medium, high]
+        model_id: gemini-4-hydrogen-high
+        reasoning_efforts: [low, medium, high, xhigh]
         options:
           reasoning_effort: high
     capabilities:
