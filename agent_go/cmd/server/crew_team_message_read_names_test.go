@@ -70,7 +70,7 @@ func TestCrewTeamPairedReadUsesStoredSenderIdentity(t *testing.T) {
 
 	// The Mac forwards only an absent inbox, never a local denial or retained tombstone.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
-	if err := crewroot.WriteSync("local", crewroot.SyncBinding{Mode: "relay", Side: "local", PairID: "pair", PeerProjectID: "team"}); err != nil {
+	if err := crewroot.WriteSync("local", crewroot.SyncBinding{Mode: "relay", Side: "local", Editing: "local", PairID: "pair", PeerProjectID: "team"}); err != nil {
 		t.Fatal(err)
 	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "local", ProfileID: "work"}, Chat: &codeChat{Key: "local:chat:sender"}}
