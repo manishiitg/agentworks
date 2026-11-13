@@ -87,7 +87,8 @@ type crewSyncReply struct {
 	// AccessTree is the side panel's tree under the Access row (crew_access_tree.go).
 	AccessTree []crewAccessLine `json:"access_tree,omitempty"`
 	// InboxID: team_message's conversation, for the Mac agent's later reads.
-	InboxID string `json:"inbox_id,omitempty"`
+	InboxID      string         `json:"inbox_id,omitempty"`
+	TeamMessages map[string]any `json:"team_messages,omitempty"`
 	// The Access page's shape (crew_access_page.go): whether this app holds the Mac's controls ("mac"), its tabs,
 	// the Mac-only rows as text elsewhere, and its Who can use it and laptop access sections.
 	AccessHere string             `json:"access_here,omitempty"`
