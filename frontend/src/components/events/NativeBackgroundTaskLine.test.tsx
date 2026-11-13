@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { backgroundTaskLine, NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
 import { coalesceNativeHelperActivity } from '../../utils/nativeHelperActivity'
+import { buildTranscriptItems } from '../../utils/terminalEventTranscript'
 import type { PollingEvent } from '../../services/api-types'
 
 it('formats reported running/finished facts, with no invented command usage', () => {
@@ -15,10 +16,13 @@ it('formats reported running/finished facts, with no invented command usage', ()
 })
 
 it('keeps one server-owned row per task run across live updates and replay', () => {
-  const event = (id: string, work: string, state: string, tokens?: number) => ({ id, type: 'coding_agent_native_activity', data: { data: { record: { work_id: work, kind: 'helper', state, tokens } } } }) as unknown as PollingEvent
+  const event = (id: string, work: string, state: string, tokens?: number) => ({ id, session_id: 'task-chat', timestamp: '2026-11-13T10:00:00Z', type: 'coding_agent_native_activity', data: { data: { record: { work_id: work, kind: 'helper', state, tokens } } } }) as unknown as PollingEvent
   const raw = [event('a1', 'a-run1', 'started'), event('b1', 'b-run1', 'started', 500), event('a2', 'a-run1', 'started', 18400), event('a3', 'a-run1', 'finished', 24100), event('a4', 'a-run2', 'started')]
   const rows = coalesceNativeHelperActivity(raw)
   expect(rows).toHaveLength(3)
+  expect(buildTranscriptItems(rows)).toHaveLength(3)
+  const rawDiagnostic = { id: 'raw-tool', type: 'coding_agent_native_activity', data: { data: { record: { kind: 'tool', state: 'completed' } } } } as unknown as PollingEvent
+  expect(buildTranscriptItems([rawDiagnostic])).toHaveLength(0)
   expect(rows[0].id).toBe('a1')
   expect(coalesceNativeHelperActivity(JSON.parse(JSON.stringify(raw)))).toEqual(rows)
 })

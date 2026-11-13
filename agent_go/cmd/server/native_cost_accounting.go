@@ -400,6 +400,9 @@ func (a *nativeCostAccountant) Record(base costledger.Entry) bool {
 		records = append(records, r)
 	}
 	complete := err == nil && s.Supported && s.CaughtUp && s.Gaps == 0 && !nativeSourceRewound(c, s)
+	if complete {
+		a.api.projectNativeBackgroundUsage(a.state.Current.SessionID, a.state.Provider, a.state.NativeID, a.state.Current.AccountID, s.Records)
+	}
 	entries := []costledger.Entry{base}
 	mode := "foreground"
 	priced := true

@@ -32,6 +32,13 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 	if r.Kind != "helper" && r.Kind != "background_command" {
 		return r
 	}
+	switch r.State {
+	case "running":
+		r.State = "started"
+	case "started", "progress", "finished", "completed", "failed", "stopped", "interrupted":
+	default:
+		return r // proposals/rosters are not evidence that work is running
+	}
 	r.Text, r.Output = "", ""
 	keys := nativeBackgroundAliases(r)
 	if len(keys) == 0 {
@@ -102,6 +109,9 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 		if r.EndedAt.IsZero() {
 			r.EndedAt = r.Timestamp
 		}
+	}
+	if r.StartedAt.IsZero() && !r.EndedAt.IsZero() && r.DurationMS > 0 {
+		r.StartedAt = r.EndedAt.Add(-time.Duration(r.DurationMS) * time.Millisecond)
 	}
 	if !r.StartedAt.IsZero() && !r.EndedAt.IsZero() {
 		r.DurationMS = r.EndedAt.Sub(r.StartedAt).Milliseconds()
