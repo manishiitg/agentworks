@@ -337,9 +337,10 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 // writeCrewCreationManifests writes a fresh crew's runtime manifest, identity
 // manifest, and code folder, mirroring the UI creation layout.
 type crewCreationOptions struct {
-	Restore   bool
-	LocalRoot string
-	LLMConfig *workflowtypes.PresetLLMConfig
+	SyncBinding *crewroot.SyncBinding
+	Restore     bool
+	LocalRoot   string
+	LLMConfig   *workflowtypes.PresetLLMConfig
 	// Role is set only by the server (agentWorksRole); a spec never supplies it.
 	Role string
 }
@@ -469,6 +470,19 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		log.Printf("[OWNER_REGISTRY] %s: %v", workspacePath, err)
 	} else {
 		registeredHere = !registeredBefore
+	}
+	// PLAT-746-972: the relay layout must exist BEFORE any manifest write.
+	// SplitFiles changes the settings root; enabling it afterward hides the
+	// newly created manifests and makes the next relay admission fail.
+	if settings.SyncBinding != nil {
+		if settings.SyncBinding.SplitFiles {
+			if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), crewroot.FilesSegment), 0700); err != nil {
+				return CreatedCrew{}, err
+			}
+		}
+		if err := crewroot.WriteSync(crewID, *settings.SyncBinding); err != nil {
+			return CreatedCrew{}, err
+		}
 	}
 	if err := writeCrewCreationManifest(ctx, filepath.ToSlash(filepath.Join(workspacePath, "workflow.json")), runtimeManifest); err != nil {
 		return CreatedCrew{}, err

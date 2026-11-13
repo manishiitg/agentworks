@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"path"
 	"sort"
@@ -485,9 +486,10 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 
 // workspaceCreation carries what only server code may choose for a new Crew: its identity and its platform role.
 type workspaceCreation struct {
-	ReservedID string
-	Role       string
-	Restore    bool
+	SyncBinding *crewroot.SyncBinding
+	ReservedID  string
+	Role        string
+	Restore     bool
 }
 
 func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
@@ -543,7 +545,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, crewID, workspacePath, nil, crewCreationOptions{LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, crewID, workspacePath, nil, crewCreationOptions{SyncBinding: creation.SyncBinding, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {
