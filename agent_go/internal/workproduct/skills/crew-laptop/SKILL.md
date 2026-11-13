@@ -1,9 +1,21 @@
 ---
 name: crew-laptop
-description: Read for laptop folders and commands, local Computer use (desktop apps, click/type/screenshot), or permission errors. Covers setup and the separate file, terminal and desktop capabilities.
+description: Read for full laptop/Mac access, laptop folders and commands, local Computer use (desktop apps, click/type/screenshot), or permission errors. Covers setup and the separate file, terminal and desktop capabilities.
 ---
 
 # Folders and laptop connections
+
+## "Full access" means three separate switches
+
+When the person asks for full laptop or Mac access, say which of these they mean
+(often 1, sometimes 2) and turn on only what they asked for:
+
+1. Folders. "Your whole Mac" gives this chat the home folder (read and write).
+   Files only: it does not open programs, the local server or other apps.
+2. Computer use. Full control of the desktop and apps, Terminal included, as
+   the person. Local owner chats only, never scheduled turns or Run people.
+3. "Run terminal commands" on a connected laptop. Lets a Crew hosted on a server
+   run commands in a Read & write laptop folder. Not needed for a local Crew.
 
 ## Computer use: desktop apps on this computer
 
@@ -52,11 +64,13 @@ matching step; never retry the same command or look for a way around it.
   turn.
 - Listing or stopping programs (`ps`, `top`, `kill`), opening or scripting apps
   (`open`, `osascript`) and calling the local AgentWorks server from the shell
-  stay blocked even with the whole Mac attached. Do not ask for more access for
-  these. Use what exists instead: platform tools for platform actions, Computer
-  use for desktop apps, and logs on disk for diagnosis. The local server's log
-  folder has a `[MEM]` line every minute, and past a large heap it writes
-  profiles to `logs/pprof/<time>/` (heap, allocs, goroutines, CPU) for you to read.
+  stay blocked even with the whole Mac attached, on purpose. Do not ask for more
+  folders for these. Use what exists instead: platform tools for platform
+  actions, and logs on disk for diagnosis. The local server's log folder has a
+  `[MEM]` line every minute, and past a large heap it writes profiles to
+  `logs/pprof/<time>/` (heap, allocs, goroutines, CPU) for you to read. If the
+  work truly needs one of these commands, the route is Computer use (Terminal
+  as the person): offer it once, and enable it only when they say yes.
 - If none of these covers the need, tell the person exactly which step is blocked
   and what they can do (one command or one setting), rather than saying it failed.
 
