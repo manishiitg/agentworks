@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
-import { agentApi } from '../../services/api'
-import type { ChatContextView } from '../../services/api-types'
-import { chatContextChangedEvent, chatLimitsShort, chatLimitsText, openChatContextMenuEvent } from './ChatContextItems'
+import { useChatContextView } from './useChatContextView'
+import { chatLimitsShort, chatLimitsText, openChatContextMenuEvent } from './ChatContextItems'
 import { ContextMeter } from '../../components/chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
 
@@ -13,23 +11,7 @@ import { formatTokens } from '../../utils/formatTokens'
  * plan use goes first, then the bar, then the numbers truncate (container queries on the parent).
  */
 export default function ChatStatusBar({ sessionId, busy, inline = false }: { sessionId: string; busy: boolean; inline?: boolean }) {
-  const [view, setView] = useState<ChatContextView | null>(null)
-
-  useEffect(() => {
-    if (!sessionId) { setView(null); return }
-    let cancelled = false
-    agentApi.getChatContext(sessionId).then(next => { if (!cancelled) setView(next) }).catch(() => { if (!cancelled) setView(null) })
-    return () => { cancelled = true }
-  }, [sessionId, busy])
-
-  useEffect(() => {
-    const changed = (event: Event) => {
-      const next = (event as CustomEvent<ChatContextView>).detail
-      if (next?.session_id === sessionId) setView(next)
-    }
-    window.addEventListener(chatContextChangedEvent, changed)
-    return () => window.removeEventListener(chatContextChangedEvent, changed)
-  }, [sessionId])
+  const view = useChatContextView(sessionId, busy)
 
   if (!view || view.session_id !== sessionId) return null
   const used = view.used_tokens ?? 0
