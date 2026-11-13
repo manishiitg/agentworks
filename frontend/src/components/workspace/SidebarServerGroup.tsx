@@ -14,7 +14,7 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
   const sharedDashboard = kind === 'crew' && mode === 'run'
   // A shared Crew shows a small people icon; whose it is (as the server words it) shows on hover (owner, 10 Nov).
   const subline = stateLine || (personal_agent ? 'Your agent' : undefined)
-  const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
+  const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared artifact' : kind === 'crew' ? 'Crew' : 'Goal'
   // The laptop badge names whose Mac the Crew lives on: another person's Mac Crew says their Mac (owner, 12 Nov).
   const macHome = owned_by_caller === false ? 'On their Mac' : 'On your Mac'
   return <div className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>

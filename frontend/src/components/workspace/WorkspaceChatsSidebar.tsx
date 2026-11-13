@@ -10,14 +10,13 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { followAppLink } from '../../utils/appNavigation'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
-import { DesktopConnections, useAllProjectsOpen } from './DesktopConnections'
+import { DesktopConnections } from './DesktopConnections'
 import { SidebarActions } from './SidebarActions'
 
 type Crew = Awaited<ReturnType<typeof agentApi.listWorkspaceNavigation>>['workspaces'][number]
 
 /** The sidebar chooses a project; its chats belong to the header tabs. */
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
-  const allProjectsExpanded = useAllProjectsOpen()
   const user = useAuthStore(state => state.user)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${workspace}:${user?.id || ''}`
@@ -64,6 +63,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       {!current && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
       {current?.error && <button type="button" className="px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => setRefresh(value => value + 1)}>Could not load Crews. Try again.</button>}
     </DesktopConnections>
-    {footer && <div hidden={!allProjectsExpanded} className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
+    {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
   </aside>
 }

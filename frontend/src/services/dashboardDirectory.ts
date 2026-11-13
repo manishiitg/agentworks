@@ -23,7 +23,7 @@ type DashboardPage = {
 
 export function dashboardDisplayName(row: DashboardDirectoryEntry): string {
   const title = row.title?.trim()
-  return (!title || /^index(?:\.html?)?$/i.test(title)) ? row.project_title?.trim() || 'Dashboard' : title
+  return (!title || /^index(?:\.html?)?$/i.test(title)) ? row.project_title?.trim() || 'Artifact' : title
 }
 
 export function dashboardDirectoryLink(row: DashboardDirectoryEntry): string {

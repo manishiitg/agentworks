@@ -1,3 +1,4 @@
+import { isOwnRecentAgent } from '../utils/recentAgentVisits'
 // @vitest-environment happy-dom
 import { expect, it } from 'vitest'
 import { useProjectMenuHistoryStore } from './useProjectMenuHistoryStore'
@@ -14,4 +15,12 @@ it('keeps recent agent visits scoped, unique and bounded without moving pinned C
   expect(useProjectMenuHistoryStore.getState().recentAgents[scope][0]).toBe('agent-5')
   expect(useProjectMenuHistoryStore.getState().recentAgents[scope]).not.toContain('private-agent')
   expect(useProjectMenuHistoryStore.getState().pinned[scope]).toEqual(['crew'])
+})
+
+// A teammate may be open in the Team header; it never becomes a personal sidebar row.
+it('excludes opened teammates and unknown-owner watched chats from personal recents', () => {
+  expect(isOwnRecentAgent({ agentProfileId: 'work', agentProfileTabOwnerID: 'other', agentProfileTabCanWrite: false }, 'owner')).toBe(false)
+  expect(isOwnRecentAgent({ agentProfileId: 'work', agentProfileTabCanWrite: false }, 'owner')).toBe(false)
+  expect(isOwnRecentAgent({ agentProfileId: 'work', agentProfileTabOwnerID: 'owner', agentProfileTabCanWrite: false }, 'owner')).toBe(true)
+  expect(isOwnRecentAgent({ agentProfileId: 'work', agentProfileTabCanWrite: true }, 'owner')).toBe(true)
 })

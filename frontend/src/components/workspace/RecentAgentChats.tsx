@@ -1,3 +1,4 @@
+import { isOwnRecentAgent } from '../../utils/recentAgentVisits'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
@@ -24,7 +25,7 @@ export function RecentAgentChats() {
   const user = useAuthStore(state => state.user?.id)
   const visible = (recent || []).flatMap(id => {
     const tab = tabs[id], meta = tab?.metadata
-    if (!meta || meta.agentProfileId !== 'work' || meta.isScheduledRun || meta.isBotRun || (meta.agentProfileTabOwnerID && meta.agentProfileTabOwnerID !== user)) return []
+    if (!isOwnRecentAgent(meta, user)) return []
     return [tab]
   }).slice(0, 8)
   return <section aria-label="Recent chats" className="mb-3 shrink-0">

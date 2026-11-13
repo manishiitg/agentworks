@@ -153,7 +153,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const visible = rows.filter(row => selectedLocations.includes(row.connection.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
   // Saved shortcuts contain IDs only. Resolve them against the current admitted inventory on every render.
-  const crewByKey = new Map(rows.filter(row => row.kind === 'crew' && !row.personal_agent).map(row => [keyFor(row), row]))
+  const crewByKey = new Map(rows.filter(row => row.kind === 'crew' && !row.personal_agent && menuListed(row)).map(row => [keyFor(row), row]))
   const pinnedKeys = new Set(pinned || [])
   const pinnedRows = (pinned || [])
     .flatMap(key => { const row = crewByKey.get(key); return row ? [row] : [] })
@@ -196,6 +196,7 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`}>
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
+        <h2 className="px-3 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Pinned Crews</h2>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
       <RecentAgentChats />

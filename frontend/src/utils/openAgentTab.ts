@@ -1,3 +1,5 @@
+import { useAuthStore } from '../stores/useAuthStore'
+import { isOwnRecentAgent } from './recentAgentVisits'
 import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../stores/useProjectMenuHistoryStore'
 import { markViewSwitchStart } from './chatDeliveryTelemetry'
 import { useChatStore } from '../stores/useChatStore'
@@ -10,7 +12,7 @@ export function openAgentTab(tabId: string) {
   const state = useChatStore.getState()
   const tab = state.chatTabs[tabId]
   if (tab && state.activeTabId !== tabId) markViewSwitchStart(tab.metadata?.agentProfileConversationKey)
-  if (tab?.metadata?.agentProfileId === 'work') useProjectMenuHistoryStore.getState().visitAgent(connectedWorkHistoryScope(), tabId)
+  if (isOwnRecentAgent(tab?.metadata, useAuthStore.getState().user?.id)) useProjectMenuHistoryStore.getState().visitAgent(connectedWorkHistoryScope(), tabId)
   const projectId = tab?.metadata?.agentProfileProjectId
   const key = tab?.metadata?.agentProfileConversationKey
   if (!tab || tab.metadata?.agentProfileId !== 'work' || !projectId || !key) return activateTab(tabId)
