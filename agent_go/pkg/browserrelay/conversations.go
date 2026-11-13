@@ -109,11 +109,15 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 		}
 		capability := secret()
 		id := conversationID(b.key, owner)
-		sessionHash := sha256.Sum256([]byte(capability))
+		// CLI tab names/references belong to the selected browser and chat, not
+		// its rotating transport credential (PLAT-746-953). This is a state
+		// namespace only; access still requires the fresh random capability.
+		identity, _ := json.Marshal([]string{b.key, b.browserID, owner})
+		sessionHash := sha256.Sum256(identity)
 		client = &Client{binding: b, owner: owner, id: id, capability: capability,
 			ready:    make(chan struct{}),
 			endpoint: b.endpoint[:len(b.endpoint)-len(b.capability)] + capability,
-			session:  "session-" + hex.EncodeToString(sessionHash[:8]) + "--browser"}
+			session:  "session-" + hex.EncodeToString(sessionHash[:16]) + "--browser"}
 		if b.clients == nil {
 			b.clients = map[string]*Client{}
 		}
