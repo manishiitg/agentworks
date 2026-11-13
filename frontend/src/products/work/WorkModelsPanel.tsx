@@ -58,8 +58,6 @@ export function WorkModelsPanel({
   const tab = useChatStore(state => state.chatTabs[tabId])
   const projectId = projectIdProp || tab?.metadata?.agentProfileProjectId
   const initialModelTarget = tab?.metadata?.agentProfileConversationKey
-  const mainChatKey = useChatStore(state => Object.values(state.chatTabs).find(chat =>
-    chat.metadata?.agentProfileId === effectiveProfileId && chat.metadata?.agentProfileProjectId === projectId && chat.metadata?.agentProfileIsMainChat === true)?.metadata?.agentProfileConversationKey) || projectId
   const supportsChatModels = isProjectProductId(effectiveProfileId) && Boolean(projectId)
   const [chatModels, setChatModels] = useState<AgentProfileChatModel[]>([])
   const [modelChats, setModelChats] = useState<AgentProfileSideChat[]>([])
@@ -72,15 +70,15 @@ export function WorkModelsPanel({
     if (!supportsChatModels || !projectId) return
     let cancelled = false
     setChatModelsLoading(true); setChatModelsReady(false); setChatModelError(''); setModelTarget(initialModelTarget === projectId || initialModelTarget?.startsWith(`${projectId}:chat:`) ? initialModelTarget : ''); setChatModels([]); setModelChats([])
-    void Promise.resolve().then(() => Promise.all([agentApi.listAgentProfileChatModels(effectiveProfileId, projectId), agentApi.listAgentProfileSideChats(effectiveProfileId, projectId)])).then(([models, chats]) => {
+    void Promise.resolve().then(() => Promise.all([agentApi.listAgentProfileChatModels(effectiveProfileId, projectId), agentApi.listAgentProfileSideChats(effectiveProfileId, projectId, true)])).then(([models, chats]) => {
       if (cancelled) return
-      setChatModels(models); setModelChats(chats.filter(chat => !chat.agent_id)); setChatModelsReady(true)
-      // The main chat's tab may carry the bare project id; the server keys the chat as <project>:chat:root-…,
-      // so open on that chat, not the Crew's model.
-      if (initialModelTarget === projectId) {
-        const mainKey = [...models.map(model => model.conversation_key), ...chats.map(chat => chat.conversation_key)].find(key => key?.startsWith(`${projectId}:chat:root-`))
-        if (mainKey) setModelTarget(mainKey)
-      }
+      const listed = chats.filter(chat => !chat.agent_id)
+      setChatModels(models); setModelChats(listed); setChatModelsReady(true)
+      // Main is optional; only the server's explicit role selects it.
+      const target = initialModelTarget === projectId
+        ? listed.find(chat => chat.is_main)?.conversation_key
+        : initialModelTarget
+      setModelTarget(listed.some(chat => chat.conversation_key === target) ? target! : '')
     }).catch(() => { if (!cancelled) setChatModelError('Chat models could not be loaded. Reopen Models to retry.') })
       .finally(() => { if (!cancelled) setChatModelsLoading(false) })
     return () => { cancelled = true }
@@ -236,10 +234,7 @@ export function WorkModelsPanel({
           <button type="button" disabled={chatModelSaving} aria-pressed={!modelTarget} onClick={() => setModelTarget('')} className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${!modelTarget ? 'bg-primary/10' : 'hover:bg-muted'}`}>
             <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
           </button>
-          {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : [
-            { conversation_key: mainChatKey!, name: 'Main chat', can_write: true },
-            ...modelChats,
-          ].map(chat => {
+          {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : modelChats.map(chat => {
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)
             return <button key={chat.conversation_key} type="button" disabled={chat.can_write === false || chatModelSaving || !chatModelsReady} aria-pressed={modelTarget === chat.conversation_key} onClick={() => setModelTarget(chat.conversation_key)} className={`flex w-full items-center justify-between gap-3 border-t border-border px-3 py-2 text-left text-sm disabled:opacity-50 ${modelTarget === chat.conversation_key ? 'bg-primary/10' : 'hover:bg-muted'}`}>
               <span className="min-w-0 truncate">{chat.name}</span>
