@@ -12,12 +12,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "delete_dashboard": "delete", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, shared shadcn component props and Recharts imports. Use before authoring. Two formats: TSX (index.tsx) for live dashboards with data, buttons and functions; HTML (index.html) for a quick shareable page such as a decision, a report or a file view. JSON dashboards are not supported. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
-	for _, name := range []string{"upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
+	for _, name := range []string{"upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "delete_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
 			"workflow_id":  externalString("Workflow or Flow ID from workflow action=list or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
@@ -42,7 +42,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		if action != "list" {
 			props["document_path"] = externalString("HTML page path from the dashboard list, for get/validate/preview/link.")
 			props["dashboard_id"] = externalString("Dashboard slug returned by the dashboard list, or the new slug when creating one.")
-			if action == "create" || action == "update" || action == "publish" || action == "restore" {
+			if action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete" {
 				required = append(required, "dashboard_id")
 			}
 		}
@@ -57,7 +57,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 				props["remove"] = map[string]any{"type": "array", "maxItems": 100, "items": externalString("File to remove.")}
 			}
 		}
-		if dashboardMutation(action) && action != "create" {
+		if dashboardMutation(action) && action != "create" && action != "delete" {
 			props["expected_revision"] = externalString("Current draft revision from reading the dashboard; stale edits/publications are refused.")
 			required = append(required, "expected_revision")
 		}
@@ -72,8 +72,9 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["width"] = map[string]any{"type": "string", "enum": []any{"mobile", "tablet", "desktop", "all"}}
 		}
 		descriptions := map[string]string{
+			"delete":   "Delete this dashboard definition and disable its public and short links. Keeps its files, run history and Crew functions. The person asking in chat is approval; no second confirmation is needed.",
 			"upload":   "Upload an attachment to a Crew using the same route and limits as its chat. The server selects the caller’s upload area. Requires current Crew access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
-			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. HTML pages are included.",
+			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Only managed definitions are listed.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing product authoring consent.",
 			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
 			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
