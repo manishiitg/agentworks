@@ -23,7 +23,8 @@ func TestNativeHelperReplySkipsStreamedBlockButImportsUnstreamed(t *testing.T) {
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-	journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	journalPath := filepath.Join(t.TempDir(), "events.sqlite")
+	journal, err := storeevents.OpenSQLiteEventJournal(journalPath)
 	if err != nil { t.Fatal(err) }
 	defer journal.Close()
 	store := storeevents.NewEventStore(100)
@@ -45,6 +46,8 @@ func TestNativeHelperReplySkipsStreamedBlockButImportsUnstreamed(t *testing.T) {
 	// RemoveSession is an explicit tombstone, not a restart. A fresh store
 	// must hydrate the completed native block from the same durable journal.
 	store.Stop()
+	journal, err = storeevents.OpenSQLiteEventJournal(journalPath)
+	if err != nil { t.Fatal(err) }
 	store = storeevents.NewEventStore(100)
 	store.SetDurableJournal(journal)
 	store.SetSessionOwner(sid, owner)
