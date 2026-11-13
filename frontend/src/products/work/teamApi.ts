@@ -102,7 +102,7 @@ export type TeamTabView = {
   help?: { title: string; text: string }[]; help_ask?: string
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
-export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }
+export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; localSetups?: Record<string, TeamTabSetup>; error: string }
 
 // One read of the Team tab per Crew for the whole page (the Team tab, the left menu, tabs, watching lines): every
 // screen shares it. A live notice (crew_panel) reads it again at once: the server sends one when a Team agent starts or
@@ -132,7 +132,12 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
       reading = true
       try {
         const target = await teamTarget(project, workspace)
-        if (!target) publish({ unbound: true, error: '' })
+        if (!target) {
+          // An unpaired Mac still owns its schedules. Read only setup marks locally;
+          // keep Team unbound so this never offers local sharing controls.
+          const local = await teamRequest<TeamTabView>({ project }, '/tab')
+          publish({ unbound: true, localSetups: Object.fromEntries(local.agents.filter(agent => agent.mine && agent.setup).map(agent => [agent.tab, agent.setup!])), error: '' })
+        }
         else {
           const view = await teamRequest<TeamTabView>(target, '/tab')
           publish({ view, target: { ...target, folderId: view.team.folder.id }, error: '' })
@@ -237,6 +242,12 @@ export async function switchTeam(target: TeamTarget, on: boolean, ownMac = false
 export function teamAgentFor(agents: TeamTabAgent[] | undefined, chatKey?: string) {
   if (!chatKey) return undefined
   return agents?.find(item => item.key === chatKey || item.watch_key === chatKey || chatKey.endsWith(`:team:${item.key}`) || !!item.watch_key && chatKey.endsWith(`:team:${item.watch_key}`))
+}
+
+/** Setup is available on an unpaired Mac too; it never supplies sharing controls. */
+export function agentSetupForTab(state: TeamTabState, key: string | undefined, main: boolean, own: boolean) {
+  if (state.unbound) return own && key ? state.localSetups?.[main ? 'main' : key.split(':chat:')[1]] : undefined
+  return teamAgentForTab(state, key, main, own)?.setup
 }
 
 /** The Team tab's row for one chat tab here: someone else's by its key; one of the person's own by its key on the
