@@ -67,4 +67,21 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 	if len([]rune(crewTeamMessageLine(strings.Repeat("界", 100)))) > 80 {
 		t.Fatal("preview exceeded Unicode character limit")
 	}
+	// A real disk-index refresh reparses the transcript without these fields.
+	// It must not erase metadata that the turn-save writer already stamped.
+	file := localChatHistoryFile{workspacePath: "_system/crew-data/team/builder/conversation/2026-11-13/main-conversation.json", sessionID: "code:project:team", size: 42, modTime: now.Add(time.Hour)}
+	parsed := ChatHistorySession{SessionID: file.sessionID, PreviewMessages: previous.PreviewMessages}
+	index := newChatHistoryIndex()
+	index.Entries[file.workspacePath] = chatHistoryIndexEntry{Session: ChatHistorySession{SessionID: file.sessionID, PreviewMessages: previous.PreviewMessages, LastMessage: updated.LastMessage, LastMessageAt: updated.LastMessageAt}}
+	putLocalChatHistoryIndexEntry(&index, file, parsed)
+	saved := index.Entries[file.workspacePath].Session
+	if saved.LastMessage != updated.LastMessage || saved.LastMessageAt != updated.LastMessageAt {
+		t.Fatal("disk refresh erased the turn writer's preview or clock")
+	}
+	parsed.PreviewMessages = nil
+	putLocalChatHistoryIndexEntry(&index, file, parsed)
+	if saved := index.Entries[file.workspacePath].Session; saved.LastMessage != "" || saved.LastMessageAt != "" {
+		t.Fatal("changed or old content reused a saved preview or invented a clock")
+	}
+
 }

@@ -2197,6 +2197,12 @@ func putLocalChatHistoryIndexEntry(index *chatHistoryIndex, file localChatHistor
 	index.normalize()
 	file.workspacePath = chatHistoryStoragePath(file.workspacePath)
 	session.ConversationPath = file.workspacePath
+	// A disk index refresh parses the transcript, not the save-time message
+	// clock. Keep that writer-owned metadata when the visible preview is the
+	// same; never rebuild it or invent a time from the file's modification time.
+	if previous, ok := index.Entries[file.workspacePath]; ok && previous.Session.SessionID == session.SessionID && slices.Equal(previous.Session.PreviewMessages, session.PreviewMessages) {
+		session.LastMessage, session.LastMessageAt = previous.Session.LastMessage, previous.Session.LastMessageAt
+	}
 	index.Entries[file.workspacePath] = chatHistoryIndexEntry{
 		Session:                  session,
 		SourceSize:               file.size,
