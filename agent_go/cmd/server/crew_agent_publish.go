@@ -361,3 +361,9 @@ func (api *StreamingAPI) crewAgentPublishRecord(ctx context.Context, claims *Use
 	}
 	return record, identity, nil
 }
+
+// crewAgentPublishProgram is the AI program an agent runs: its chat's, else the one chosen for it (a new Run online
+// copy of an agent whose program cannot copy chats has no native session yet).
+func crewAgentPublishProgram(record ProductConversationRecord, identity ProductAgentIdentity) string {
+	return firstNonEmptyTrimmed(record.Provider, identity.Engine)
+}

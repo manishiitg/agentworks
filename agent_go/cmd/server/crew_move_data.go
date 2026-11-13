@@ -188,6 +188,14 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 			}
 			closeWorkflowPolicyCLI(record.SessionID, record.Provider, "moving Crew online")
 			conversation, err := api.captureCrewHandoffConversation(ctx, claims, roots, record, selection.Tab != "")
+			if err != nil && selection.Tab != "" {
+				// An agent whose program cannot copy its own chat (a Run online copy of a Muse or Cursor agent) goes with
+				// its saved history; the server's first reply starts that program's own session from it.
+				if c, e := api.captureCrewHandoffConversation(ctx, claims, roots, record); e == nil && c != nil && len(c.History) > 0 {
+					log.Printf("[CREW_AGENT_PUBLISH] project=%s tab=%s native=none mode=history reason=%q", roots.ID, selection.Tab, err.Error())
+					conversation, err = c, nil
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -369,7 +377,9 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			// available destination account; archives retain the destination default.
 			if h.AgentTab != "" {
 				identity.ConnectionID = h.AccountID
-				identity.Engine = chat.Conversation.Native.Provider
+				if chat.Conversation.Native != nil {
+					identity.Engine = chat.Conversation.Native.Provider
+				}
 				identity.ModelID = chat.Conversation.ModelID
 			}
 			if identity.Engine != "" {
@@ -393,7 +403,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 				return err
 			}
 			current.handoffAgentToolsMode = main.handoffAgentToolsMode
-			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, map[bool]crewImportMode{true: crewImportNative, false: crewImportAny}[h.AgentTab != ""])
+			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, crewMoveImportMode(h.AgentTab, chat.Conversation))
 		}
 		if err := api.importCrewMoveCallers(ctx, claims, roots, h, pair, main.ConversationKey); err != nil {
 			return err
@@ -731,4 +741,16 @@ func rebindCrewMoveWatcher(s *projectactions.Schedule, h crewMoveHeader, destina
 	}
 	s.Input = raw
 	return nil
+}
+
+// crewMoveImportMode: a whole-Crew move takes what it can; one agent's publish needs its native session, or continues
+// from its saved history when it came without one (its program cannot copy a chat, crewAgentPublishProgram).
+func crewMoveImportMode(tab string, c *crewHandoffConversation) crewImportMode {
+	switch {
+	case tab == "":
+		return crewImportAny
+	case c != nil && c.Native == nil:
+		return crewImportNativeElseHistory
+	}
+	return crewImportNative
 }
