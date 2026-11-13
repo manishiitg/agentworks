@@ -18,8 +18,6 @@ import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 
-// Programs a person can sign in once on their server, for this Mac and their online agents (PLAT-856-441).
-const SERVER_LOGIN_PROGRAMS = new Set(['codex-cli'])
 import ChatContextItems, { ContextDisplayMenuItem, changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
@@ -329,8 +327,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
               </Menu.Item>
             })}
             {accounts.length === 0 && <Menu.Item disabled className={rowClass}>{sources.accounts === null ? 'Loading accounts…' : NO_LONGER_AVAILABLE}</Menu.Item>}
+            {separator}<Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">All models & accounts…</span></Menu.Item>
           </Menu.SubContent></Menu.Portal>
         </Menu.Sub>)}
+        {separator}<Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">All models & accounts…</span></Menu.Item>
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
     {currentAccounts.length > 0 && <Menu.Sub>
@@ -344,9 +344,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
             {account.id === currentAccountId && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
           </Menu.Item>
         })}
-        {SERVER_LOGIN_PROGRAMS.has(selectedOption.provider || "") && <>{separator}<Menu.Item className={rowClass} onSelect={openModels}>
-          <span className="min-w-0 flex-1 truncate">+ Sign in once for Mac + online…</span>
-        </Menu.Item></>}
+        {separator}<Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">All models & accounts…</span></Menu.Item>
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
     <Menu.Sub>
@@ -383,7 +381,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {separator}
     <div className="flex items-center gap-1">
     <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage</Menu.Item>
-    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models</Menu.Item>
+    <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>
     </div>
     {/* This chat's Context group (PLAT-872-71): meter, plan limits, auto-compact, compact now, fresh chat. */}
