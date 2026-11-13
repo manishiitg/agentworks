@@ -13,7 +13,7 @@ import { rememberIfVoice } from '../voice/voiceMessages'
 import { intermediateUpdateFromTranscriptChunk, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
 import { applyLiveInputConfirmations, readLiveInputConfirmation, resolveLiveInputConfirmations, stampLiveInputIdentity, withLiveInputReceipt, withPendingProvider } from '../utils/liveInputReceipt'
 import { useRenderLogger, useMemoLogger } from '../utils/renderLogger'
-import { acquireBuilderSubmission, isConfirmedUndeliveredSubmission, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
+import { hasChatSubmissionContent, acquireBuilderSubmission, isConfirmedUndeliveredSubmission, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { isTurnRunningConflict } from '../services/turnRunningRetry'
 import { configureChatQueueController } from '../utils/chatQueueController'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -2693,7 +2693,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const oneShotWorkflowContextSourceTabId = freshActiveTab?.tabId
 
     // Early validation
-    if (!trimmedQuery) {
+    if (!hasChatSubmissionContent(query, options?.fileContext ?? freshActiveTab?.config?.fileContext, options?.pendingAttachments)) {
       logger.warn('ChatArea', 'Empty query, returning early')
       return false
     }
@@ -2703,7 +2703,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     // empty Builder tab. Workshop is now a separate read-only history panel.
 
     if (options?.sourceSessionId === undefined && freshActiveTab?.metadata?.agentProfileBuilder) {
-      const normalized = trimmedQuery.replace(/\s+/g, ' ').trim()
+      const normalized = trimmedQuery.replace(/\s+/g, ' ').trim() || 'New chat'
       const chatName = normalized.length > 110 ? `${normalized.slice(0, 110)}...` : normalized
       const builderConfig = freshActiveTab.config
       const projectId = freshActiveTab.metadata.agentProfileProjectId

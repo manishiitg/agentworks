@@ -35,6 +35,7 @@ func TestPendingChatAttachmentRequiresSameCallerProjectConversationAndSession(t 
 		})
 	}
 	// Only the authorized writer's committed path reaches the prompt, not Name.
+	req.Query = "" // A screenshot may be sent without a caption (PLAT-746-938).
 	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png")
 	if err := api.resolvePendingChatAttachments(context.Background(), "person", "session", &req); err != nil {
 		t.Fatal(err)

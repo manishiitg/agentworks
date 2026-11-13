@@ -51,7 +51,7 @@ import { hasActiveSessionWork } from '../utils/activitySessions'
 import { sendQueuedChatMessage } from '../utils/chatQueueController'
 import { captureChatDraft, updateOwnedChatDraft } from '../utils/chatDraftOwnership'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
-import type { ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
+import { hasChatSubmissionContent, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { isAccessRefusal } from '../platform/chat/submissionFailure'
 import { liveTerminalControlKey } from '../utils/liveTerminalKeys'
 import type { DurableChatQueueHandle } from './chat/DurableChatQueue'
@@ -1605,6 +1605,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   const queryToSubmit = inputText
 
+  const pendingComposerAttachments = uploadingFiles?.tabId === activeTabId && uploadingFiles.canSend && !pendingUploadBatchRef.current?.submitted
+    ? pendingUploadBatchRef.current?.pending ?? [] : []
+  const hasComposerContent = hasChatSubmissionContent(queryToSubmit, chatFileContext, pendingComposerAttachments)
+
   const canBootstrapMultiAgentTab = isMultiAgentMode && !showWorkflowsOverview
   // Workflow builder tabs are intentionally created before their backend session.
   // ChatArea assigns the session id on first submit, so the input must not block
@@ -1612,8 +1616,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const canBootstrapWorkflowPhaseTab = isWorkflowMode && isWorkflowPhaseChat && !!activeTab && !isViewOnly
   const hasSubmitTarget = Boolean(tabSessionId || canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)
   const canSubmitImmediately = useMemo(() => {
-    return Boolean(queryToSubmit?.trim() && !isStreaming && hasSubmitTarget)
-  }, [queryToSubmit, isStreaming, hasSubmitTarget])
+    return Boolean(hasComposerContent && !isStreaming && hasSubmitTarget)
+  }, [hasComposerContent, isStreaming, hasSubmitTarget])
 
   // tmux-transport coding CLIs keep a persistent session, so input should go to
   // the backend immediately rather than the local queue. Workflow chat tabs also
@@ -1988,13 +1992,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog, slashCommands])
 
   const getSubmitBlockReason = useCallback((): string | null => {
-    if (!queryToSubmit?.trim()) return null
+    if (!hasComposerContent) return null
     if (isViewOnly) return 'This conversation is view only.'
     if (isCdpDisconnected) return 'CDP browser mode is selected, but the browser is not connected yet.'
     if (isStreaming && !tabSessionId) return 'This chat is still initializing. Please wait a moment.'
     if (!isStreaming && !hasSubmitTarget) return 'This chat is still initializing. Please wait a moment.'
     return null
-  }, [queryToSubmit, isViewOnly, isCdpDisconnected, isStreaming, tabSessionId, hasSubmitTarget])
+  }, [hasComposerContent, isViewOnly, isCdpDisconnected, isStreaming, tabSessionId, hasSubmitTarget])
 
   // routeSubmit is the single send-routing decision shared by Enter (handleKeyDown)
   // and the Send button (handleSubmit).
@@ -2006,8 +2010,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // STRUCTURED / NON-INTERACTIVE — keep the ordinary steer-or-queue behavior.
   const routeSubmit = useCallback(async (query: string, deliveryOverride?: ChatSubmissionOptions['deliveryMode']) => {
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return
-    const trimmed = query?.trim() || ''
-    if (!trimmed) return
+    if (!hasChatSubmissionContent(query, chatFileContext, pendingComposerAttachments)) return
     if (pendingNativeChoice) {
       addToast('Choose an option above before sending another message.', 'info')
       return
@@ -2109,7 +2112,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
@@ -2761,7 +2764,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const backgroundWork = useSessionBackgroundWork(!isViewOnly && tabSessionId && !hasRunFooter && !terminalViewSelected ? activeTabId : undefined, sendOptionsOpen)
 
   // Check if query is valid (view-only tabs cannot submit)
-  const hasValidQuery = Boolean(inputText?.trim())
+  const hasValidQuery = hasComposerContent
   const inputDisabled = pendingNativeChoice || isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
