@@ -39,6 +39,27 @@ The native sandbox picks up the grant on the next turn. Tell the person to send
 one more message; do not claim the current process gained access immediately.
 On a server, allowed-root checks still apply. A refusal grants no workaround.
 
+## When the sandbox refuses a command
+
+On this Mac, native commands run in a sandbox. Read the refusal and pick the
+matching step; never retry the same command or look for a way around it.
+
+- A file or folder outside the granted folders ("operation not permitted" on a
+  path): ask the person in plain words, for example "I need access to your
+  Downloads folder to read the file. Shall I attach it?" Their yes is the
+  approval; attach it as above (the whole Mac only when they ask for it) and
+  ask them to send one more message, because the grant applies from the next
+  turn.
+- Listing or stopping programs (`ps`, `top`, `kill`), opening or scripting apps
+  (`open`, `osascript`) and calling the local AgentWorks server from the shell
+  stay blocked even with the whole Mac attached. Do not ask for more access for
+  these. Use what exists instead: platform tools for platform actions, Computer
+  use for desktop apps, and logs on disk for diagnosis. The local server's log
+  folder has a `[MEM]` line every minute, and past a large heap it writes
+  profiles to `logs/pprof/<time>/` (heap, allocs, goroutines, CPU) for you to read.
+- If none of these covers the need, tell the person exactly which step is blocked
+  and what they can do (one command or one setting), rather than saying it failed.
+
 ## Connect a laptop to a hosted Crew
 
 For a hosted Crew, the agent runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs. They work on every turn of the person's own chat, scheduled and watch turns and their own agents' messages included; never for another person's message or a Run person. Use the laptop only when the work needs that computer; paths are relative to the granted folder. If the computer is offline, say the local step is unavailable and carry on with the server work; never retry an uncertain command blindly.
