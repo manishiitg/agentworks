@@ -3,6 +3,8 @@ package events
 import (
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -50,10 +52,10 @@ func TestNativeRuntimeSettlementDoesNotHydrateHistory(t *testing.T) {
 	appendSaved(session, Event{ID: "failed", Type: "tool_call_error", Timestamp: time.Now(), Data: &agentevents.AgentEvent{Type: agentevents.ToolCallError, Data: &agentevents.ToolCallErrorEvent{ToolName: "exec_command", ToolCallID: "exec-error", Error: "failed"}}})
 	appendSaved(session, startEvent(session, "ordinary", "other_tool"))
 	appendSaved("another-chat", startEvent("another-chat", "exec-foreign", "exec_command"))
-	prepared, added, active := 0, 0, 0
-	store.SetEventPreparer(func(_ string, _ *Event) { prepared++ })
-	store.SetEventAddedCallback(func(_ string, _ Event) { added++ })
-	store.SetActivityCallback(func(_ string) { active++ })
+	var prepared, added, active atomic.Int64
+	store.SetEventPreparer(func(_ string, _ *Event) { prepared.Add(1) })
+	store.SetEventAddedCallback(func(_ string, _ Event) { added.Add(1) })
+	store.SetActivityCallback(func(_ string) { active.Add(1) })
 	sub := store.Subscribe(session)
 	defer store.Unsubscribe(session, sub)
 	store.EndNativeCommandsWithoutResult(session)
@@ -61,8 +63,8 @@ func TestNativeRuntimeSettlementDoesNotHydrateHistory(t *testing.T) {
 	if counted.tailReads != 0 || store.hydratedSessions[session] || len(store.events[session]) != 1 {
 		t.Fatalf("settlement loaded history: reads=%d hydrated=%t events=%d", counted.tailReads, store.hydratedSessions[session], len(store.events[session]))
 	}
-	if prepared != 1 || added != 1 || active != 1 {
-		t.Fatalf("callbacks: prepare=%d added=%d active=%d", prepared, added, active)
+	if prepared.Load() != 1 || added.Load() != 1 || active.Load() != 1 {
+		t.Fatalf("callbacks: prepare=%d added=%d active=%d", prepared.Load(), added.Load(), active.Load())
 	}
 	select {
 	case end := <-sub.Ch:
@@ -90,4 +92,48 @@ func TestNativeRuntimeSettlementDoesNotHydrateHistory(t *testing.T) {
 	if ends != 1 {
 		t.Fatalf("duplicate neutral ends: %d", ends)
 	}
+	// The cold no-replay end and an ordinary producer share one append order.
+	// Ordinary AddEvent must still hydrate, with neither insertion overwritten.
+	const racing = "native-racing-chat"
+	appendSaved(racing, journalTestEvent("race-context", "saved context"))
+	appendSaved(racing, startEvent(racing, "exec-race", "exec_command"))
+	start := make(chan struct{})
+	errs := make(chan error, 1)
+	var writers sync.WaitGroup
+	writers.Add(2)
+	go func() { defer writers.Done(); <-start; store.EndNativeCommandsWithoutResult(racing) }()
+	go func() {
+		defer writers.Done()
+		<-start
+		errs <- store.AddEventChecked(racing, journalTestEvent("concurrent-message", "new message"))
+	}()
+	close(start)
+	writers.Wait()
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	for _, replay := range [][]Event{store.GetEvents(racing, GetEventsOptions{SinceIndex: -1}).Events, func() []Event {
+		saved, err := journal.LoadTail(racing, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return saved
+	}()} {
+		if len(replay) != 4 {
+			t.Fatalf("racing append lost replay: %d", len(replay))
+		}
+		previous := int64(0)
+		ids := map[string]bool{}
+		for _, event := range replay {
+			if event.Sequence <= previous {
+				t.Fatalf("non-increasing sequence: %d after %d", event.Sequence, previous)
+			}
+			previous = event.Sequence
+			ids[event.ID] = true
+		}
+		if !ids["concurrent-message"] || !ids["native-command-unavailable:exec-race"] {
+			t.Fatal("missing concurrent producer or neutral end")
+		}
+	}
+
 }
