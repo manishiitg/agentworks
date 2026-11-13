@@ -518,11 +518,14 @@ type StreamingAPI struct {
 	// enough for control mode; otherwise the /api/terminals/{id}/stream endpoint
 	// stays inert (404). It is the transport for the SELECTED live tmux terminal;
 	// the snapshot/replay path above still serves the rail / non-selected panes.
-	liveAttach        *liveAttachManager
-	nativeObserversMu sync.Mutex
-	nativeObservers   map[string]*nativeTerminalObserver
-	nativeCostsMu     sync.Mutex
-	nativeCosts       map[string]*nativeCostAccountant
+	liveAttach         *liveAttachManager
+	nativeObserversMu  sync.Mutex
+	nativeObservers    map[string]*nativeTerminalObserver
+	nativeBackgroundMu sync.Mutex
+	nativeBackground   map[string]map[string]llmtypes.NativeRecord
+	nativeCostStopped  atomic.Bool
+	nativeCostsMu      sync.Mutex
+	nativeCosts        map[string]*nativeCostAccountant
 
 	// Short-lived, owner-only PTY sessions used by the guided provider setup
 	// wizard. Commands are selected from a server-side allowlist.
@@ -2140,6 +2143,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		// required for committed replies or native helper activity to arrive.
 		api.observeNativeCodingRuntime(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
+		api.observeNativeBackgroundCommands(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
 		api.notifyNeedsYou(sessionID, event)

@@ -112,6 +112,7 @@ func (o *nativeTerminalObserver) run() {
 				if o.provider == "codex-cli" {
 					o.api.eventStore.EndNativeCommandsWithoutResult(o.snapshot.SessionID)
 				}
+				o.api.endNativeBackground(o.snapshot.SessionID, o.provider, o.nativeID)
 				return
 			}
 		}

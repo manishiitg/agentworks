@@ -429,12 +429,17 @@ func saveNativeCodingState(s *nativeCodingRecordState) error {
 }
 
 func (api *StreamingAPI) saveNativeCodingActivity(sessionID string, record llmtypes.NativeRecord) error {
+	record = api.nativeBackgroundFacts(sessionID, record)
 	id := nativeCodingEventID(sessionID, record)
 	activity := agentevents.NewCodingAgentNativeActivity(record)
 	activity.EventID = id
 	wrapped := agentevents.NewAgentEvent(activity)
 	wrapped.SessionID = sessionID
-	return api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: time.Now(), SessionID: sessionID, ExecutionKind: "main_agent", Data: wrapped})
+	err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: time.Now(), SessionID: sessionID, ExecutionKind: "main_agent", Data: wrapped})
+	if err == nil && record.WorkID != "" && record.Origin != "background_usage" {
+		api.wakeNativeBackgroundAccounting(sessionID)
+	}
+	return err
 }
 
 func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.NativeRecord) error {

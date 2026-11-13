@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -46,13 +47,34 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 			return
 		}
 		task := update.Task
-		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: "helper", State: task.State, Origin: "sdk_helper", Name: task.Description, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: time.Now()}
+		kind := task.Kind
+		if kind != "background_command" {
+			kind = "helper"
+		}
+		at := time.Now()
+		if task.UpdatedAt > 0 {
+			at = time.UnixMilli(task.UpdatedAt)
+		}
+		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: kind, State: task.State, Origin: "sdk_helper", Name: task.Description, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: at, TaskRunID: task.RunID, StartedAt: time.UnixMilli(task.StartedAt), Tokens: task.TotalTokens, DurationMS: task.DurationMS}
 		activity := agentevents.NewAgentEvent(agentevents.NewCodingAgentNativeActivity(record))
 		activity.SessionID = update.Owner
 		api.observeTurnInactivity(update.Owner, storeevents.Event{Type: string(agentevents.CodingAgentNativeActivity), SessionID: update.Owner, Timestamp: time.Now(), ExecutionKind: "main_agent", Data: activity})
+		if task.StartedAt <= 0 {
+			record.StartedAt = time.Time{}
+		}
+		if task.TotalTokens != nil {
+			record.TokenSource = "task_report"
+		}
 		if task.State == "progress" {
-			return
-		} // actual native progress, not another transcript row
+			if api.nativeBackgroundReportUnchanged(update.Owner, record) {
+				return
+			}
+			tokens := int64(-1)
+			if task.TotalTokens != nil {
+				tokens = *task.TotalTokens
+			}
+			record.ID += fmt.Sprintf(":progress:%d:%d:%d", task.UpdatedAt, task.DurationMS, tokens)
+		}
 
 		if err := api.saveNativeCodingActivity(update.Owner, record); err != nil {
 			log.Printf("[SDK_HELPER] event failed session=%s task=%s state=%s: %v", update.Owner, task.TaskID, task.State, err)

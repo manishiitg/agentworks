@@ -14,10 +14,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
 type nativeCostState struct {
+	Background        []llmtypes.NativeRecord     `json:"background,omitempty"`
 	Current           costledger.Entry            `json:"current"`
 	Provider          string                      `json:"provider"`
 	NativeID          string                      `json:"native_id"`
@@ -55,6 +57,7 @@ type nativeCostAccountant struct {
 }
 
 func (api *StreamingAPI) initNativeCostAccounting() {
+	api.nativeCostStopped.Store(false)
 	costobserver.SetNativeAccountingFactory(func(base costledger.Entry, provider, model string) costobserver.NativeAccounting {
 		return api.nativeCostAccounting(base, provider)
 	})
@@ -70,6 +73,9 @@ func (api *StreamingAPI) initNativeCostAccounting() {
 		s, ok := readNativeCostCheckpoint(file)
 		if !ok || !s.Active {
 			continue
+		}
+		for _, record := range s.Background {
+			api.nativeBackgroundFacts(s.Current.SessionID, record)
 		}
 		a := &nativeCostAccountant{api: api, state: s, file: file}
 		api.nativeCostsMu.Lock()
@@ -165,6 +171,7 @@ func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider st
 }
 
 func (api *StreamingAPI) stopNativeCostAccounting() {
+	api.nativeCostStopped.Store(true)
 	costobserver.SetNativeAccountingFactory(nil)
 	api.nativeCostsMu.Lock()
 	defer api.nativeCostsMu.Unlock()
@@ -203,6 +210,7 @@ func (a *nativeCostAccountant) save() {
 		a.reportGap("checkpoint_directory")
 		return
 	}
+	a.state.Background = a.api.knownNativeBackground(a.state.Current.SessionID)
 	raw, err := json.Marshal(a.state)
 	if err != nil {
 		return
@@ -502,6 +510,9 @@ func (a *nativeCostAccountant) poll() bool {
 		return true
 	}
 	a.pollLocked()
+	if a.api.nativeBackgroundKeepsAccounting(a.state.Current.SessionID, a.state.Provider, a.state.NativeID) {
+		a.lastActive = time.Now()
+	}
 	if time.Since(a.lastActive) < nativeCostIdleStop {
 		return true
 	}
@@ -533,6 +544,7 @@ func (a *nativeCostAccountant) pollLocked() {
 		a.reportGap("source_rewound_foreground_preserved")
 		return
 	}
+	a.api.projectNativeBackgroundUsage(a.state.Current.SessionID, a.state.Provider, a.state.NativeID, a.state.Current.AccountID, s.Records)
 	if !c.Ready || a.state.PendingForeground {
 		// This is the coverage handoff, not a historical replay. The existing
 		// foreground path owns all records through this proven source boundary.
