@@ -47,6 +47,9 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 	if strings.Contains(string(raw), `"name":"private"`) {
 		t.Fatal("Only-me agent leaked")
 	}
+	if got := crewTeamMessageLine("example-schedule · update\n\nStarting the check"); got != "Starting the check" {
+		t.Fatalf("scheduled preview repeated its title/kind: %q", got)
+	}
 	now := time.Now().UTC()
 	history := []llmtypes.MessageContent{{Role: llmtypes.ChatMessageType("user"), Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Hello\n  there API_KEY=fixture-key-value"}}}}
 	updated := crewTeamMessagePreviewUpdate(ChatHistorySession{}, chatHistoryPreviewMessages(history), history, now)

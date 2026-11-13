@@ -18,7 +18,7 @@ type Face = { key: string; name: string; network: string; online: boolean; line:
 function lastMessageTime(at: string) {
  const seconds=Math.max(0, Math.floor((Date.now()-new Date(at).getTime())/1000))
  if (!Number.isFinite(seconds)) return ''
- return seconds<60 ? 'just now' : seconds<3600 ? `${Math.floor(seconds/60)}m ago` : seconds<86400 ? `${Math.floor(seconds/3600)}h ago` : `${Math.floor(seconds/86400)}d ago`
+ return seconds<60 ? 'now' : seconds<3600 ? `${Math.floor(seconds/60)}m` : seconds<86400 ? `${Math.floor(seconds/3600)}h` : `${Math.floor(seconds/86400)}d`
 }
 
 const tones = ['bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200', 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200',
@@ -149,10 +149,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     return <button key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span></span>
-        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.doing || (row.activity === 'waiting' ? 'Waiting' : 'Working')}</span>
-        {row.last_message && <span className="block truncate text-xs text-muted-foreground">{row.last_message}</span>}
-        {row.last_message_at && <span className="block text-[10px] text-muted-foreground">Last message {lastMessageTime(row.last_message_at)}</span>}
+        <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span>{row.last_message && row.last_message_at && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{lastMessageTime(row.last_message_at)}</span>}</span>
+        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.activity === 'waiting' ? <>{'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.last_message || row.doing || 'Working'}</span>
       </span>
     </button>
   }
