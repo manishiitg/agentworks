@@ -5473,6 +5473,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
 		defer cancel()
 
+		// Resolve once for this turn, using its execution context rather than
+		// the HTTP request that has already returned from this background job.
+		// CLI sandbox, tool guards and instructions must use identical grants.
+		var turnFolderGrants []workflowtypes.WorkflowFolderGrant
+		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+			turnFolderGrants, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx))
+			if err != nil {
+				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolve_failed session=%s reason=grant_store_unavailable", sessionID)
+				sendError("Could not load your attached folders. Please retry this turn.", true)
+				return
+			}
+			logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolved session=%s grants=%d", sessionID, len(turnFolderGrants))
+		}
+
 		// Load selected tools and code execution mode from preset if available (for simple/ReAct agents)
 		var selectedTools []string
 
@@ -5609,7 +5623,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			cliWritePaths = append(cliWritePaths, chatRuntimeDir)
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
+			grantRead, grantWrite, _, _ := workproduct.ResolveGrants(turnFolderGrants)
 			cliReadPaths = appendUniqueStrings(cliReadPaths, grantRead...)
 			if !crewReaderCLI {
 				cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
@@ -6099,14 +6113,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// Owner-attached external folders: readable always,
 						// writable for read_write grants, exposed to tools
 						// as WORK_FOLDER_<ALIAS> session env.
-						grantRead, grantWrite, grantReadOnly, grantEnv := workFolderGuardInputs(r.Context())
+						grantRead, grantWrite, grantReadOnly, grantEnv := workproduct.ResolveGrants(turnFolderGrants)
 						profileReadOnly = append(profileReadOnly, grantRead...)
 						workGrantWrite = grantWrite
 						workGrantReadOnly = grantReadOnly
 						if len(grantEnv) > 0 {
 							common.SetSessionShellEnv(sessionID, grantEnv)
 						}
-						log.Printf("[WORK FOLDER GUARD] Applied %d attached folder(s) (write=%v) %s", len(grantRead), grantWrite, workFolderGuardDiagnostic(r.Context(), GetUserFromContext(r.Context())))
+						log.Printf("[WORK FOLDER GUARD] Applied %d attached folder(s) (write=%v) %s", len(grantRead), grantWrite, "source=turn_snapshot")
 					}
 					// Crew Run mode: a reader turn keeps the project root
 					// readable but drops it from every write set, with an
@@ -6934,7 +6948,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))
+				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants)
 			}
 			// The full browser guide is a ~10KB on-demand skill; this is only a
 			// pointer so the agent knows the surface exists.

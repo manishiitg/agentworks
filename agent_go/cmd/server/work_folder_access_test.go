@@ -330,3 +330,21 @@ func TestWorkFolderToolsRefreshLiveGuardAndAliasEnvironment(t *testing.T) {
 		t.Fatal("detached folder alias remained in live environment")
 	}
 }
+
+// The background turn outlives its HTTP request. A canceled read must never
+// masquerade as no attached folders (PLAT-746-959).
+func TestWorkFolderTurnRejectsReadFailure(t *testing.T) {
+	root := t.TempDir()
+	withWorkFolderAccessFile(t, workFolderTestDoc(root))
+	claims := &UserClaims{UserID: "u-alice", Username: "alice"}
+	request, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := workFolderGrantsForTurn(request, claims); err == nil {
+		t.Fatal("canceled authority read became an empty grant set")
+	}
+	turn := context.WithoutCancel(request)
+	grants, err := workFolderGrantsForTurn(turn, claims)
+	if err != nil || len(grants) != 1 || grants[0].Alias != "site" {
+		t.Fatalf("detached turn lost stored grants: count=%d err=%v", len(grants), err)
+	}
+}
