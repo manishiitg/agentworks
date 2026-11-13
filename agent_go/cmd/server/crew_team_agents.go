@@ -77,7 +77,7 @@ type crewTeamAgentsPerson struct {
 	MacOn  bool   `json:"mac_on"`
 	// AppVersion is the Mac app version their connected Mac reported ("" when off or from an older app).
 	AppVersion string `json:"app_version,omitempty"`
-	// Active is the people dot, ActiveLabel its words ("Active now on the web", "Mac on", "Last seen 2 h ago").
+	// Active is the people dot, ActiveLabel its words ("Active now · website", "Mac app connected", "Last seen 2 h ago · Windows app").
 	Active      bool            `json:"active"`
 	ActiveLabel string          `json:"active_label"`
 	Agents      []crewTeamAgent `json:"agents"`

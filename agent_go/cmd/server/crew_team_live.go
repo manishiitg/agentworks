@@ -28,7 +28,7 @@ type crewTeamLiveAgent struct {
 	Doing string `json:"doing,omitempty"`
 }
 
-// crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Mac on", "Active now on the
+// crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Active now · Mac app", "Mac app connected", or the
 // web") or when they were last seen, from the same reading as the Team tab's people dots.
 type crewTeamLivePerson struct {
 	UserID string `json:"user_id"`
