@@ -278,8 +278,10 @@ function PersonLine({ person, people, activity, pending, closed, onMove }: { per
     <span className="min-w-0 flex-1">
       <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
       {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
+      {/* Where they are and when (owner, 13 Nov): shown as text, not only as the dot's tooltip. */}
+      {activity?.active_label && <span className="block truncate text-xs text-muted-foreground">{activity.active_label}</span>}
     </span>
-    {activity && <span className="flex shrink-0 items-center" title={activity.active_label || undefined}><Dot on={activity.active} /></span>}
+    {activity && <span className="flex shrink-0 items-center"><Dot on={activity.active} /></span>}
     {options.length > 0 && !closed
       ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={saving}>{null}</Saving>
         <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) onMove(next) }}
