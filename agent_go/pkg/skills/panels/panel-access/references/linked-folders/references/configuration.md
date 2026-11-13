@@ -10,7 +10,8 @@
   process gained access retroactively.
 - On a Mac this is the same list as Integrations → Folders on this Mac. "Your whole
   Mac" is `folder_attach` on the home folder with alias `mac` and `read_write`. Offer
-  it only when asked; one folder is usually enough. Downloads is on by default and is
+  it only when asked; one folder is usually enough. It covers files only; control of
+  programs and apps is Computer use (`crew-laptop`). Downloads is on by default and is
   switched on that screen only.
 - Do not attach a folder that holds sign-ins (`.ssh`, `.aws`, keychains, browser
   profiles) unless the person names that exact folder. Say plainly that you will be
