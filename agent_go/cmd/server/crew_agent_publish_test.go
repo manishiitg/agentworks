@@ -49,6 +49,40 @@ func TestPublishAgentPreflightDistinguishesDisabledProgramFromMissingLogin(t *te
 	}
 }
 
+// PLAT-856-564 (owner, 13 Nov): Run online and Backup offer the person's own account and the company's, and never
+// another person's private account; with both and no choice yet, Run online asks instead of picking one.
+func TestServerAccountChoiceOffersOwnAndCompanyNeverAnothersPrivate(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CODEX_API_KEY", "server-codex-key")
+	own := env.addAccount(t, "alice", map[string]interface{}{"provider": "codex-cli", "display_name": "Alice Codex", "credential": "alice-codex-key"})
+	private := env.addAccount(t, "bob", map[string]interface{}{"provider": "codex-cli", "display_name": "Bob Codex", "credential": "bob-codex-key"})
+	alice := &UserClaims{UserID: "alice"}
+	options, err := env.api.crewServerAccountOptions(t.Context(), alice, crewroot.Roots{}, "codex-cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]string{}
+	for _, o := range options {
+		kinds[o.ID] = o.Kind
+	}
+	if len(options) == 0 || options[0].ID != own.ID || kinds[own.ID] != crewServerAccountOwn || kinds["global:codex-cli"] != crewServerAccountCompany {
+		t.Fatalf("own first and the company's account expected: %+v", options)
+	}
+	if _, offered := kinds[private.ID]; offered {
+		t.Fatalf("another person's private account offered: %+v", options)
+	}
+	preview, err := env.api.crewAgentPublishAccounts(t.Context(), alice, crewroot.Roots{}, "codex-cli", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Ready || !strings.Contains(preview.Message, own.ID) || !strings.Contains(preview.Message, "global:codex-cli") {
+		t.Fatalf("both accounts should be offered to choose from: %+v", preview)
+	}
+	if _, err = env.api.crewAgentPublishAccounts(t.Context(), alice, crewroot.Roots{}, "codex-cli", private.ID); err == nil {
+		t.Fatal("another person's private account was accepted")
+	}
+}
+
 // PLAT-856-523: selecting one agent cannot move another tab's callers, and
 // merging its callers must retain destination schedules that already exist.
 func TestPublishAgentKeepsOtherAgentsCallers(t *testing.T) {

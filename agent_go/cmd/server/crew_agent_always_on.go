@@ -422,6 +422,11 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 		return "", err
 	}
 	conversation.Native = native
+	// Backup runs on the account the person chose for the server, else their own (owner, 13 Nov).
+	if account, how := api.crewBackupServerAccount(ctx, claims, roots, native.Provider); account != "" {
+		conversation.ServerAccount = account
+		logCrewServerAccount(roots.ID, claims.UserID, native.Provider, account, "backup_"+how)
+	}
 	// Publish's import reads the native files from this session's stage; a later copy (or a teammate thread of the
 	// same session) may have replaced them there, so this copy is staged again first.
 	if err = stageCrewNative(roots, native); err != nil {

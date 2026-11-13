@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,8 @@ type crewAgentPublishAccount struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Identity string `json:"identity,omitempty"`
+	// Kind is whose account it is: "own" (the person's) or "company" (the server's, or one shared with them).
+	Kind string `json:"kind,omitempty"`
 }
 
 type crewAgentPublishPreview struct {
@@ -57,43 +60,33 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 		out.Message += "."
 		return out, nil
 	}
-	views, err := api.listProviderAccountViews(ctx, claims.UserID, false, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"})
+	// Your own account or one the company provides (owner, 13 Nov, crew_server_account.go).
+	options, err := api.crewServerAccountOptions(ctx, claims, roots, provider)
 	if err != nil {
 		return nil, err
 	}
-	for _, v := range views {
-		if v.Provider != provider || v.Relation != "own" || !v.Usable || v.Configured != nil && !*v.Configured {
-			continue
-		}
-		out.Accounts = append(out.Accounts, crewAgentPublishAccount{v.ID, v.DisplayName, v.Identity})
+	out.Accounts = options
+	if account == "" {
+		account = crewServerAccountPick(roots.ID, claims.UserID, provider, options)
 	}
-	if account == "" && len(out.Accounts) == 1 {
-		account = out.Accounts[0].ID
+	if account == "" && len(options) == 1 {
+		account = options[0].ID
 	}
-	if len(out.Accounts) == 0 {
+	if len(options) == 0 {
 		out.NeedsLogin = true
-		out.Message = "Sign in to " + program + " on " + server + " once, in Providers → Add my account, then retry."
+		out.Message = "There is no " + program + " account you can use on " + server + ": sign in once in Providers → Add my account, or ask the admin to give you the company's account, then retry."
 		return out, nil
 	}
 	if account == "" {
-		out.Message = "Choose which of your server accounts this agent will use."
+		out.Message = "Ask the person which account this agent uses on " + server + ", their own or the company's, then retry with account_id: " + crewServerAccountChoiceLine(options) + "."
 		return out, nil
 	}
-	found := false
-	for _, candidate := range out.Accounts {
-		if candidate.ID == account {
-			found = true
-		}
-	}
-	if !found {
-		return nil, fmt.Errorf("choose one of your own signed-in accounts on this server")
+	if !slices.ContainsFunc(options, func(o crewAgentPublishAccount) bool { return o.ID == account }) {
+		return nil, fmt.Errorf("that account is not one you can use on %s; choose one of: %s", server, crewServerAccountChoiceLine(options))
 	}
 	admitted, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, provider, account)
 	if err != nil {
 		return nil, err
-	}
-	if admitted == nil || admitted.OwnerUserID != claims.UserID {
-		return nil, fmt.Errorf("publish uses your own AI login; add your account in Providers")
 	}
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
 	if err != nil {
@@ -101,6 +94,12 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 	}
 	if err = claudeCodeQueryAuthenticationError(&resolvedAgentProfile{Definition: profile}, provider, admitted); err != nil {
 		return nil, err
+	}
+	if readCrewServerAccounts(roots.ID, claims.UserID)[provider] != account {
+		if err = writeCrewServerAccount(roots.ID, claims.UserID, provider, account); err != nil {
+			return nil, err
+		}
+		logCrewServerAccount(roots.ID, claims.UserID, provider, account, "run_online")
 	}
 	out.Ready, out.Selection.AccountID = true, account
 	return out, nil

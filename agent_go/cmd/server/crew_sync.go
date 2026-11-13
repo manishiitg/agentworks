@@ -28,15 +28,17 @@ type crewSyncRequest struct {
 	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
 	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
 	Provider              string                     `json:"provider,omitempty"`
-	Native                []*sessiontransfer.Bundle  `json:"native,omitempty"`
-	ArchiveOnly           bool                       `json:"archive_only,omitempty"`
-	Mode                  string                     `json:"mode,omitempty"`
-	MacID                 string                     `json:"mac_id,omitempty"`
-	SplitFiles            bool                       `json:"split_files,omitempty"`
-	TransferID            string                     `json:"transfer_id,omitempty"`
-	Action                string                     `json:"action"`
-	PairID                string                     `json:"pair_id,omitempty"`
-	SourceID              string                     `json:"source_id,omitempty"`
+	// AccountID is, for server_account, the account the person chose for their agents on this server.
+	AccountID   string                    `json:"account_id,omitempty"`
+	Native      []*sessiontransfer.Bundle `json:"native,omitempty"`
+	ArchiveOnly bool                      `json:"archive_only,omitempty"`
+	Mode        string                    `json:"mode,omitempty"`
+	MacID       string                    `json:"mac_id,omitempty"`
+	SplitFiles  bool                      `json:"split_files,omitempty"`
+	TransferID  string                    `json:"transfer_id,omitempty"`
+	Action      string                    `json:"action"`
+	PairID      string                    `json:"pair_id,omitempty"`
+	SourceID    string                    `json:"source_id,omitempty"`
 	// PreviousProjectID (create): the online copy this Mac Crew had before Mac online was turned off; its Team moves to
 	// the new copy, so people and the shared folder survive off and on (owner, 5 Nov).
 	PreviousProjectID string `json:"previous_project_id,omitempty"`
@@ -343,6 +345,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
 	if input.Action == "publish_accounts" || input.Action == "publish_agent" || input.Action == "stage_agent" {
 		return api.receiveCrewAgentPublish(ctx, claims, id, input)
+	}
+	if input.Action == "server_account" {
+		return api.receiveCrewServerAccount(ctx, claims, id, input)
 	}
 	if input.Action == "standby_check" || input.Action == "standby_store" {
 		return api.receiveCrewStandby(ctx, claims, id, input)
