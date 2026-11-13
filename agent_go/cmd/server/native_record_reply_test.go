@@ -27,7 +27,7 @@ func TestNativeHelperReplySkipsStreamedBlockButImportsUnstreamed(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	defer journal.Close()
 	store := storeevents.NewEventStore(100)
-	defer store.Stop()
+	defer func() { store.Stop() }()
 	store.SetDurableJournal(journal)
 	store.SetSessionOwner(sid, owner)
 	if err := store.SetSessionPersistenceClass(sid, storeevents.SessionPersistenceInteractiveChat); err != nil { t.Fatal(err) }
@@ -42,8 +42,13 @@ func TestNativeHelperReplySkipsStreamedBlockButImportsUnstreamed(t *testing.T) {
 	// A partial block and a child owner's block must not suppress main output.
 	addBlock("claude:msg-partial:1", "", "main:"+sid)
 	addBlock("claude:msg-child:1", "end", "child:"+sid)
-	store.RemoveSession(sid) // The durable journal must prove the match after reload too.
-	store.SetSessionOwner(sid, owner) // The admitted observer retains its caller-owned session.
+	// RemoveSession is an explicit tombstone, not a restart. A fresh store
+	// must hydrate the completed native block from the same durable journal.
+	store.Stop()
+	store = storeevents.NewEventStore(100)
+	store.SetDurableJournal(journal)
+	store.SetSessionOwner(sid, owner)
+	api.eventStore = store
 	if !api.nativeReplyBlockAlreadyPublished(sid, "claude:msg-live:1") || api.nativeReplyBlockAlreadyPublished("other-chat", "claude:msg-live:1") || api.nativeReplyBlockAlreadyPublished(sid, "") || api.nativeReplyBlockAlreadyPublished(sid, "claude:msg-partial:1") || api.nativeReplyBlockAlreadyPublished(sid, "claude:msg-child:1") {
 		t.Fatal("native match ignored the main chat/completed identity boundary")
 	}
