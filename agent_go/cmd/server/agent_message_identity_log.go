@@ -38,4 +38,11 @@ func logAgentMessageIdentityRefusal(inbox, operation, check string, caller *trig
 		log.Printf("[AGENT_MESSAGE_IDENTITY] inbox=%s operation=%s check=%s identities=%s", inbox, operation, check, data)
 		return
 	}
+	fields := map[string]any{"endpoints": []endpoint{}}
+	if caller != nil {
+		fields["caller"] = safe(callerMessageEndpoint(user, *caller))
+	}
+	data, _ := json.Marshal(fields)
+	log.Printf("[AGENT_MESSAGE_IDENTITY] inbox=%s operation=%s check=%s identities=%s", inbox, operation, check+"_inbox_missing", data)
+
 }

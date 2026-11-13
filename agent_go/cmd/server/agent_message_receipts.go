@@ -47,6 +47,8 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 // these fixed admission sentences become a sender-facing reason.
 func agentMessageFailureReason(reason string) string {
 	switch reason {
+	case "Choose a chat_id from list_agents for this Crew", "shared agent unavailable or access denied":
+		return "the agent's chat is no longer available. Refresh messages action=list_agents and choose a current agent."
 	case "message Crew is unavailable or ownership changed":
 		return "the agent's Crew is unavailable or its ownership changed."
 	case "Team agent unavailable or access removed":

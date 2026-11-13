@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -394,6 +395,16 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		if index < 0 {
 			agentMessageMu.Unlock()
+			if crewTeamMailboxLocalMiss(s, inboxID, caller) {
+				if file != nil {
+					return nil, fmt.Errorf("Send text in this Team conversation; files cannot be forwarded from this Mac")
+				}
+				reply, err := api.callTeamMessageFromMac(ctx, userID, caller, caller.Stamp.ID, crewTeamMessageRequest{AgentID: inboxID, Message: message, SubmissionID: submissionID})
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"sent": true, "inbox_id": reply.InboxID}, nil
+			}
 			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
 		}
 		c := &s.Conversations[index]
@@ -663,6 +674,13 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			return nil, err
 		}
 		if !found {
+			if crewTeamMailboxLocalMiss(s, inboxID, caller) {
+				reply, err := api.callTeamMessageFromMac(ctx, userID, caller, caller.Stamp.ID, crewTeamMessageRequest{Operation: "read", AgentID: inboxID, After: after, Limit: limit})
+				if err != nil {
+					return nil, err
+				}
+				return reply.TeamMessages, nil
+			}
 			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
 		}
 		items := []map[string]interface{}{}
@@ -1354,6 +1372,11 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 					teamTarget = mapped
 				}
 			}
+			if id == "" && IsLocalMode() && caller.Stamp.Type == triggerCallerCrew && crewTeamShortMessageName(teamTarget) {
+				if b, e := crewroot.ReadSync(caller.Stamp.ID); e == nil && b != nil && b.Side == "local" && b.Mode == "relay" && b.PeerProjectID != "" {
+					teamTarget = "team:" + caller.Stamp.ID + ":" + teamTarget
+				}
+			}
 			if id == "" && IsLocalMode() && strings.HasPrefix(strings.TrimSpace(teamTarget), "team:") {
 				message, _ := args["message"].(string)
 				submission, _ := args["submission_id"].(string)
@@ -1378,6 +1401,15 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			if id == "" {
 				raw, _ := args["target"].(string)
+				if !IsLocalMode() && caller.Stamp.Type == triggerCallerCrew && crewTeamShortMessageName(raw) {
+					if t, e := readCrewTeam(caller.Stamp.ID); e == nil && crewTeamAgentsVisible(t, userID) {
+						a, _, e := crewTeamMessageAgent(ctx, caller.Stamp.ID, userID, raw)
+						if e != nil {
+							return "", e
+						}
+						raw = crewTeamAgentAddress(caller.Stamp.ID, a.ID)
+					}
+				}
 				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "agent:") {
 					target, err = resolveNamedMessageAgent(ctx, userID, strings.TrimSpace(raw)[len("agent:"):], caller.NamedAgentID)
 				} else {
