@@ -2135,7 +2135,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // With an empty input, route prompt/menu keys into the coding-agent pane.
     // Do not gate this on isStreaming/canSteer: a completed agent turn can leave
     // its interactive tmux process alive and waiting for keyboard input.
-    const liveCliKey = liveTerminalControlKey(e, queryToSubmit)
+    const liveCliKey = liveTerminalControlKey(e, queryToSubmit, chatFileContext.length > 0 || Boolean(uploadingFiles?.tabId === activeTabId && uploadingFiles.files.length))
     if (liveCliKey && supportsLiveCodingAgentInput && tabSessionId) {
       e.preventDefault()
       void sendLiveCodingAgentControlKey(liveCliKey, { showToast: false }).then((delivered) => {
@@ -2195,7 +2195,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers])
+  }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -2467,6 +2467,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       useChatStore.getState().getTab(activeTabId!)?.sessionId === uploadSessionId
     setIsUploadingFiles(true)
     setUploadingFiles({ tabId: activeTabId, files, canSend: false })
+    if (!terminalViewSelected) textareaRef.current?.focus()
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
     const conversationKey = activeTab?.metadata?.agentProfileConversationKey
     const batch = agentProfileId === 'work' && agentProfileProjectId && uploadSessionId && conversationKey && !terminalViewSelected
