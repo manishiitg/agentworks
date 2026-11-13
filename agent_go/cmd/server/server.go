@@ -5473,6 +5473,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
 		defer cancel()
 
+		// All following turn reads belong to the execution, not the returned HTTP request.
+		r := r.WithContext(streamCtx)
+
 		// Resolve once for this turn, using its execution context rather than
 		// the HTTP request that has already returned from this background job.
 		// CLI sandbox, tool guards and instructions must use identical grants.
@@ -5492,7 +5495,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.eventStore.AddEvent(sessionID, events.Event{
 				ID:   fmt.Sprintf("work_folder_notice_%s", queryID),
 				Type: "work_folder_notice", Timestamp: time.Now(), SessionID: sessionID,
-				Data: map[string]interface{}{"message": turnFolderNotice},
+				Data: unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{
+					BaseEventData: unifiedevents.BaseEventData{Timestamp: time.Now()},
+					Data:          map[string]interface{}{"message": turnFolderNotice},
+				}),
 			})
 		}
 
