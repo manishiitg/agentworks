@@ -196,7 +196,6 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
     <div className={`flex min-h-0 flex-1 flex-col px-2 pb-3 overflow-y-auto`}>
       {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className={`mb-3 space-y-1 shrink-0`}>
-        <h2 className="px-3 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Pinned Crews</h2>
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
       <RecentAgentChats />
