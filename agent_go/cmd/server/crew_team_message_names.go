@@ -38,7 +38,8 @@ func crewTeamMessageAgent(ctx context.Context, project, caller, requested string
 				c.distance = crewTeamNameDistance(requested, a.ID)
 			}
 			choices = append(choices, c)
-			if requested == a.ID || normalized(requested) == normalized(a.Name) || normalized(requested) == normalized(label) || p.You && normalized(requested) == normalized("Your "+a.Name) {
+			// p.You && requested == a.Tab: your own agent named by its tab id (a Mac agent messaging its online agent).
+			if requested == a.ID || p.You && requested == a.Tab || normalized(requested) == normalized(a.Name) || normalized(requested) == normalized(label) || p.You && normalized(requested) == normalized("Your "+a.Name) {
 				matches = append(matches, c)
 			}
 		}
