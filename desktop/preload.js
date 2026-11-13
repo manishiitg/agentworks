@@ -12,11 +12,11 @@ const desktopConnection = ipcRenderer.sendSync('get-desktop-connection');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getDesktopConnection: () => desktopConnection,
-  isWindowFocused: () => ipcRenderer.sendSync('get-window-focused'),
-  onWindowFocusChanged: (callback) => {
+  isNotificationWindowActive: () => ipcRenderer.sendSync('get-notification-window-active'),
+  onNotificationWindowActiveChanged: (callback) => {
     const handler = (_event, focused) => callback(focused === true);
-    ipcRenderer.on('window-focus-changed', handler);
-    return () => ipcRenderer.removeListener('window-focus-changed', handler);
+    ipcRenderer.on('notification-window-active-changed', handler);
+    return () => ipcRenderer.removeListener('notification-window-active-changed', handler);
   },
   getDesktopApiBaseUrl: () => ipcRenderer.sendSync('get-desktop-api-origin'),
   openDesktopConnection: (id, route) => ipcRenderer.invoke('open-desktop-connection', id, route),

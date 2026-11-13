@@ -471,9 +471,9 @@ function withDesktopVersionCacheBust(url) {
 // IPC Handlers for Settings
 ipcMain.handle('get-settings', () => loadSettings());
 ipcMain.handle('get-app-version', () => app.getVersion());
-ipcMain.on('get-window-focused', event => {
+ipcMain.on('get-notification-window-active', event => {
   const window = BrowserWindow.fromWebContents(event.sender);
-  event.returnValue = !!(window && window === mainWindow && window.isVisible() && !window.isMinimized() && window.isFocused());
+  event.returnValue = window === mainWindow && require('./lib/notify').notificationWindowActive(window, process.platform);
 });
 ipcMain.handle('pick-docs-dir', async () => {
   const result = await dialog.showOpenDialog({
@@ -1697,14 +1697,14 @@ function startNotifications() {
       : { 'X-AgentWorks-Notify': notifySecret, Authorization: `Bearer ${sessionToken(developmentAuthSecret || process.env.AUTH_SECRET, process.env.DEFAULT_USER_ID || 'default')}` },
     log: diagLog,
     show: msg => {
-      // In-app indicators handle every agent while AgentWorks is foreground.
-      // Recheck at delivery time: renderer heartbeats can lag app switching.
-      const focusedWindow = BrowserWindow.getFocusedWindow();
-      if (process.platform === 'darwin' && focusedWindow && !focusedWindow.isDestroyed() && focusedWindow.isVisible() && !focusedWindow.isMinimized()) {
-        diagLog('[notify] delivery=skipped reason=app_focused');
+      // In-app indicators handle every agent while the Mac window is visible.
+      // Recheck at delivery time: renderer heartbeats can lag hide/minimize.
+      const activeWindow = require('./lib/notify').notificationWindowActive(mainWindow, process.platform);
+      if (process.platform === 'darwin' && activeWindow) {
+        diagLog('[notify] delivery=skipped reason=app_visible');
         return;
       }
-      diagLog(`[notify] delivery=checking focused_window=${Boolean(focusedWindow)} session=${typeof msg.session === 'string' ? msg.session : ''}`);
+      diagLog(`[notify] delivery=checking notification_window_active=${activeWindow} session=${typeof msg.session === 'string' ? msg.session : ''}`);
       if (!Notification.isSupported()) { diagLog('[notify] delivery=skipped reason=unsupported'); return; }
       if (typeof msg.title !== 'string') return;
       const notice = new Notification({ title: msg.title, body: typeof msg.body === 'string' ? msg.body : '', silent: !msg.sound });
@@ -1828,16 +1828,16 @@ function createWindow(initialUrl) {
       process.env.AGENTWORKS_DESKTOP_SOCKET, currentDesktopOrigin(), currentDesktopAppOrigin()) : undefined,
   });
   }
-  // The native window is authoritative when the person switches to another app.
-  // Renderer visibility alone stays visible when Chrome covers an open chat.
+  // Native visibility is authoritative on Mac, including on another monitor.
+  // Websites and other desktop platforms retain the active-window rule.
   const chatWindow = mainWindow;
   let lastNotificationFocus;
   const reportNotificationFocus = () => {
     if (chatWindow.isDestroyed() || chatWindow.webContents.isDestroyed()) return;
-    const focused = chatWindow.isVisible() && !chatWindow.isMinimized() && chatWindow.isFocused();
-    chatWindow.webContents.send('window-focus-changed', focused);
+    const focused = require('./lib/notify').notificationWindowActive(chatWindow, process.platform);
+    chatWindow.webContents.send('notification-window-active-changed', focused);
     if (focused !== lastNotificationFocus) {
-      diagLog(`[notify] window_focus=${focused}`);
+      diagLog(`[notify] window_active=${focused} visible=${chatWindow.isVisible()} minimized=${chatWindow.isMinimized()} focused=${chatWindow.isFocused()}`);
       lastNotificationFocus = focused;
     }
   };
