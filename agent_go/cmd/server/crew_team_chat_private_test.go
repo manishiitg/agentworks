@@ -21,12 +21,24 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	const mainKey = "team:chat:root-owner"
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","main_chat_key":"`+mainKey+`"}`)
+	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, mainKey): {ProfileID: crewProfileID, ConversationKey: mainKey, WorkspacePath: externalCommandCrewRoot, SessionID: "owner-main"}}}); err != nil {
+		t.Fatal(err)
+	}
+	agents := crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: true}, "other": {"agent1": true}})
+	for id, a := range agents {
+		if a.OwnerID == "owner" {
+			a.ChatKey = mainKey
+			agents[id] = a
+		}
+	}
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatal(err)
 	}
 	// The current registry is the permission source; native tab names alone
 	// no longer create identities (registry consolidation dbcc51395c).
-	if err := writeCrewTeamAgentFixture(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: true}, "other": {"agent1": true}})}); err != nil {
+	if err := writeCrewTeamAgentFixture(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: agents}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
