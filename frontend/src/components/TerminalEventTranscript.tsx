@@ -1284,7 +1284,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       || (runtimeActivity?.state !== undefined && runtimeActivity.state !== 'ready' && (!items.length || isUserItem(items.at(-1))))
     if (!showLive) return items
     const live: TranscriptRenderItem = { kind: 'live', key: streamingGeneration ? `generation:${streamingGeneration.id}` : '__live-stream__', text: streamingText, status: streamingStatus }
-    if (!streamingGeneration) return [...items, live]
+    // Without native framing there is no earlier block position to preserve.
+    // Keep the unframed live row after the thinking/steps already received.
+    if (!streamingGeneration?.nativeBlock) return [...items, live]
     const at = items.findIndex(item => {
       if (item.kind === 'live') return false
       const first = item.kind === 'event' ? item.event : item.events[0]

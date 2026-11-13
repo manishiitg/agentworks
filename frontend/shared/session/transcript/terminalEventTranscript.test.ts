@@ -1557,7 +1557,7 @@ describe('steered question and one-chunk reply in one batch', () => {
 })
 
 
-it('PLAT-746-928 reload keeps an intact generation at its server start, before the steer, without changing its append cursor', () => {
+it('keeps unframed completion at its own server sequence without changing its append cursor', () => {
   const first = evt({ id: 'first', session_id: 's1', type: 'user_message', sequence: 1, data: { content: 'Start' } as never })
   const steer = evt({ id: 'steer', session_id: 's1', type: 'user_message', sequence: 10, data: { content: 'Follow-up' } as never })
   const reply = evt({ id: 'reply', session_id: 's1', type: 'agent_end', sequence: 20, generation_id: 'stream-start', generation_start_sequence: 2,
@@ -1565,7 +1565,7 @@ it('PLAT-746-928 reload keeps an intact generation at its server start, before t
   const next = evt({ id: 'next', session_id: 's1', type: 'agent_end', sequence: 30, generation_id: 'next-start', generation_start_sequence: 21,
     data: { result: 'New generation', status: 'completed' } as never })
   const restored = JSON.parse(JSON.stringify([first, steer, reply, next])) as PollingEvent[]
-  expect(selectTerminalEvents(restored, null).map(event => event.id)).toEqual(['first', 'reply', 'steer', 'next'])
+  expect(selectTerminalEvents(restored, null).map(event => event.id)).toEqual(['first', 'steer', 'reply', 'next'])
   expect(restored[2].sequence).toBe(20)
   expect((restored[2].data as unknown as { result: string }).result).toBe('```ts\nconst name = 1\n```')
 })
@@ -1605,4 +1605,26 @@ it('keeps native blocks whole around a delivered steer and hides only the aggreg
   // Identical text in different native blocks is not a duplicate response.
   const twins = [snapshot('same-a', 2, 3, 'a', 'Done.'), snapshot('same-b', 4, 5, 'b', 'Done.')]
   expect(buildTranscriptItems(selectTerminalEvents(twins, undefined)).filter(item => item.kind === 'event')).toHaveLength(2)
+})
+
+// PLAT-746-943: Cursor supplies thinking and tools before a final completion,
+// but no native block ID. An old generation start must not lift the final
+// answer above that generation's later thinking/steps, live or on reload.
+it('keeps Cursor thinking and tool errors before its unframed final answer live and restored', () => {
+  const shape = { session_id: 'cursor-chat', execution_id: 'main:cursor-chat', execution_kind: 'main_agent' }
+  const rows = [
+    evt({ ...shape, id: 'question', type: 'user_message', sequence: 10, data: { data: { content: 'Finish the work' } } as never }),
+    evt({ ...shape, id: 'thinking-early', type: 'conversation_thinking', sequence: 11, data: { data: { thinking: 'Inspecting the work', is_delta: false } } as never }),
+    evt({ ...shape, id: 'tool-error', type: 'tool_call_error', sequence: 20, data: { data: { tool_name: 'inspect', error: 'Needs another attempt', tool_call_id: 'call' } } as never }),
+    evt({ ...shape, id: 'thinking-later', type: 'conversation_thinking', sequence: 21, data: { data: { thinking: 'Trying the corrected approach', is_delta: false } } as never }),
+    evt({ ...shape, id: 'final', type: 'unified_completion', sequence: 30, generation_id: 'cursor-start', generation_start_sequence: 12, data: { data: { final_result: 'Done.', status: 'completed' } } as never }),
+  ]
+  for (const events of [rows, JSON.parse(JSON.stringify(rows)) as PollingEvent[]]) {
+    const selected = selectTerminalEvents(events, undefined)
+    expect(selected.map(event => event.id)).toEqual(['question', 'thinking-early', 'tool-error', 'thinking-later', 'final'])
+    const items = buildTranscriptItems(selected)
+    const last = items.at(-1)
+    expect(last?.kind === 'event' && last.event.id).toBe('final')
+    expect(items.some(item => item.kind === 'thinking' && item.text.includes('corrected approach'))).toBe(true)
+  }
 })
