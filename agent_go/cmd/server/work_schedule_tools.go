@@ -137,7 +137,8 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
-				"message":         map[string]interface{}{"type": "string", "description": "The single instruction the agent should perform at each occurrence."},
+				"message":         map[string]interface{}{"type": "string", "description": "The instruction the agent should perform at each occurrence. For several turns in order, use messages."},
+				"messages":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Several instructions sent in order in the same chat, each after the previous turn finishes (a follow-up is a second item). Use instead of message."},
 				"cron_expression": map[string]interface{}{"type": "string", "description": "REPEATING schedule: every 5 minutes = */5 * * * *; every hour = 0 * * * *. Five fields, plus timezone. Use this for every/repeat requests, not in_minutes."},
 				"in_minutes":      map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "ONE TIME ONLY: run once this many minutes from now (5 = once in five minutes; 180 = once in three hours). Never use for every N minutes or repeating work."},
 				"run_at":          map[string]interface{}{"type": "string", "description": "One-time: run once at this exact moment, RFC3339 with an offset, for example 2026-10-05T21:30:00+05:30. Must be in the future."},
@@ -146,10 +147,13 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
 				"chat_id":         map[string]interface{}{"type": "string", "description": "With run_destination chat: run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. With run_destination chat and no chat_id, it runs in the chat this is called from."},
 			},
-			"required": []string{"name", "message"},
+			"required": []string{"name"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			name, _ := args["name"].(string)
-			message, _ := args["message"].(string)
+			messages := scheduleToolMessages(args)
+			if len(messages) == 0 {
+				return "", fmt.Errorf("give message, or messages for several turns in order")
+			}
 			cronExpression, _ := args["cron_expression"].(string)
 			timezone, _ := args["timezone"].(string)
 			runAt, err := oneTimeRunAt(args, time.Now())
@@ -194,7 +198,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 			}
 			job, err := api.projectActions.CreateProjectSchedule(ctx, userID, profileID, projectID, productschedule.Schedule{
-				Name: strings.TrimSpace(name), Messages: []string{strings.TrimSpace(message)}, CronExpression: strings.TrimSpace(cronExpression), RunAt: runAt, Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated, New: destinationSetting.New, ChatKey: chatKey,
+				Name: strings.TrimSpace(name), Messages: messages, CronExpression: strings.TrimSpace(cronExpression), RunAt: runAt, Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated, New: destinationSetting.New, ChatKey: chatKey,
 			})
 			if err != nil {
 				return "", err
@@ -209,6 +213,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object",
 			"properties": map[string]interface{}{
 				"id": map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
+				"messages":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Replace all of the schedule's messages, sent in order each after the previous turn finishes."},
 				"cron_expression": map[string]interface{}{"type": "string"}, "timezone": map[string]interface{}{"type": "string"},
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
@@ -248,8 +253,8 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				if value, ok := args["name"].(string); ok && strings.TrimSpace(value) != "" {
 					schedule.Name = strings.TrimSpace(value)
 				}
-				if value, ok := args["message"].(string); ok && strings.TrimSpace(value) != "" {
-					schedule.Messages = []string{strings.TrimSpace(value)}
+				if messages := scheduleToolMessages(args); len(messages) > 0 {
+					schedule.Messages = messages
 				}
 				if value, ok := args["cron_expression"].(string); ok && strings.TrimSpace(value) != "" {
 					schedule.CronExpression, schedule.CadenceHours, schedule.RunAt = strings.TrimSpace(value), 0, ""
@@ -486,4 +491,23 @@ func (api *StreamingAPI) chatProjectScheduleRows(ctx context.Context, user, root
 		}
 	}
 	return out, nil
+}
+
+// scheduleToolMessages reads a schedule's instructions: messages (several, in order) or
+// the single message. Blank entries are dropped.
+func scheduleToolMessages(args map[string]interface{}) []string {
+	var out []string
+	if list, ok := args["messages"].([]interface{}); ok {
+		for _, item := range list {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				out = append(out, strings.TrimSpace(text))
+			}
+		}
+	}
+	if len(out) == 0 {
+		if text, ok := args["message"].(string); ok && strings.TrimSpace(text) != "" {
+			out = []string{strings.TrimSpace(text)}
+		}
+	}
+	return out
 }
