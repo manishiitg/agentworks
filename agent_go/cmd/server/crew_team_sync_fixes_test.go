@@ -822,6 +822,13 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 // PLAT-746-958: many individually small copies must not exhaust the Mac's
 // file table together. Rejected copies retain the full-scan fallback.
 func TestCrewTeamWatcherBudgetIsGlobalAndReleased(t *testing.T) {
+	probe := &crewTeamWatch{}
+	first := probe.countedNames(true, map[string]int{"": 3, "folder": 200})
+	for i := 0; i < 10; i++ {
+		if got := probe.countedNames(false, map[string]int{"folder": 200}); got != first {
+			t.Fatal("unchanged entries charged twice")
+		}
+	}
 	before := crewTeamWatchBudget.Load()
 	a, b := &crewTeamWatch{}, &crewTeamWatch{}
 	defer a.close()
