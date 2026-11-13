@@ -68,6 +68,9 @@ func crewTeamLiveFor(t crewTeam, people []crewTeamAgentsPerson, viewer string) c
 				continue
 			}
 			row := crewTeamLiveAgent{Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
+			if row.ID == "" {
+				row.ID = row.ChatKey
+			}
 			row.Label = row.Person + " · " + row.Name
 			if row.Activity == "running" || row.Activity == "waiting" {
 				row.Doing = post.Line
