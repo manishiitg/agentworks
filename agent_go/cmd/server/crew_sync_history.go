@@ -37,6 +37,9 @@ type crewHandoffConversation struct {
 	History        []llmtypes.MessageContent `json:"conversation_history"`
 	Native         *sessiontransfer.Bundle   `json:"native,omitempty"`
 	Notice         string                    `json:"-"`
+	// ServerAccount, set only by the server for a Backup import, is the account the person chose for their agents
+	// on this server (crew_server_account.go); it is tried first for the native session's program.
+	ServerAccount string `json:"-"`
 }
 
 // Metadata for an explicitly selected agent belongs to the project, not Main.
@@ -207,6 +210,9 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	// A new paired Crew may otherwise inherit an unrelated company default.
 	if in.Native != nil {
 		identity := doc.Agents[key]
+		if in.ServerAccount != "" {
+			identity.Engine, identity.ConnectionID = in.Native.Provider, in.ServerAccount
+		}
 		if chosen, reason := api.crewNativeDestination(ctx, claims, roots, current, identity, in.ModelID, in.Native.Provider); chosen != nil {
 			current.Provider, current.ModelID, current.ConnectionID = in.Native.Provider, chosen.ModelID, chosen.ConnectionID
 			if doc.Agents == nil {

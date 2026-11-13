@@ -32,8 +32,12 @@ Mac app's Move online, under Where it lives.
 
 Inspect the returned provider and continuation mode. Native history, file copy,
 credentials and available server tools are separate; never promise every CLI or
-account can resume identically. Missing server sign-in uses its existing Providers
-flow, not copied local credential files. A receipt or source save is not live
+account can resume identically. On the server an agent runs on the person's own
+account or one the company provides: when both exist, the reply lists them, so ask
+the person which and retry with `account_id`; the choice is saved for Run online
+and Backup alike, and `server_account` shows or changes it. With no account at all,
+the person signs in on the server's Providers page or asks the admin for the
+company's account; never copy local credential files. A receipt or source save is not live
 publication; verify the actual returned state and link.
 
 ## Work together

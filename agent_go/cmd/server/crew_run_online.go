@@ -128,7 +128,13 @@ func (api *StreamingAPI) crewRunOnlineChatAction(ctx context.Context, claims *Us
 			log.Printf("[CREW_RUN_ONLINE] project=%s tab=%s report=undelivered", project, tab)
 		}
 	}()
-	raw, _ := json.Marshal(map[string]any{"status": "starting", "agent": name, "online_name": name + crewRunOnlineSuffix, "paths": selection.Paths, "automations": automationNames, "next": "The online agent is made when this reply ends; a message arrives in this chat when it runs. The original stays on this Mac. Call it the online agent, never a copy or backup (the backup is the Team's, for when the Mac is off)."})
+	account := ""
+	for _, o := range remote.Publish.Accounts {
+		if o.ID == selection.AccountID {
+			account = crewServerAccountLabel(o)
+		}
+	}
+	raw, _ := json.Marshal(map[string]any{"status": "starting", "agent": name, "online_name": name + crewRunOnlineSuffix, "account": account, "paths": selection.Paths, "automations": automationNames, "next": "The online agent is made when this reply ends; a message arrives in this chat when it runs. The original stays on this Mac. Call it the online agent, never a copy or backup (the backup is the Team's, for when the Mac is off). Say which account it runs on."})
 	return string(raw), nil
 }
 
