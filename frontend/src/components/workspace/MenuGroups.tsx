@@ -217,7 +217,10 @@ export function useAgentGroups(project: string) {
   const groups = all.filter(group => group.project === project)
   const save = (next: MenuAgentGroup[]) => saveMenu({ agent_groups: [...all.filter(group => group.project !== project), ...next] })
   return { groups, error, loaded,
-    create: (name: string) => save([...groups, { id: crypto.randomUUID(), name, project, agents: [], collapsed: false }]),
+    create: (name: string, agent?: string) => save([
+      ...groups.map(group => agent ? { ...group, agents: group.agents.filter(key => key !== agent) } : group),
+      { id: crypto.randomUUID(), name, project, agents: agent ? [agent] : [], collapsed: false },
+    ]),
     rename: (id: string, name: string) => save(groups.map(group => group.id === id ? { ...group, name } : group)),
     remove: (id: string) => save(groups.filter(group => group.id !== id)),
     toggle: (id: string) => save(groups.map(group => group.id === id ? { ...group, collapsed: !group.collapsed } : group)),
