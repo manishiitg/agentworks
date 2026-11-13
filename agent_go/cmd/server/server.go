@@ -5276,9 +5276,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	continuationReq := req
 	continuationReq = queryRequestWithEffectiveRuntime(continuationReq, finalProvider, finalModelID)
 	if idleRun == nil {
-		api.lastQueryMu.Lock()
-		api.lastQueryRequests[sessionID] = continuationReq
-		api.lastQueryMu.Unlock()
+		api.rememberLastQueryRequest(sessionID, continuationReq)
 		if idleCompactPersonTurn(r, sessionID, req) {
 			idleCompacts.notePersonTurn(sessionID, currentUserID, continuationReq, time.Now())
 		}

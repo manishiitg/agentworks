@@ -210,6 +210,24 @@ type resolvedResumeTarget struct {
 	WorkshopMode     string
 }
 
+// Retained turn configuration must not pin the separately parsed resume
+// snapshot. conversationHistory owns the loaded chat; retain routing/runtime
+// metadata for follow-ups without mutating the active turn's input.
+func queryRequestForRetention(req QueryRequest) QueryRequest {
+	if req.resolvedResumeTarget != nil {
+		target := *req.resolvedResumeTarget
+		target.History = nil
+		req.resolvedResumeTarget = &target
+	}
+	return req
+}
+
+func (api *StreamingAPI) rememberLastQueryRequest(sessionID string, req QueryRequest) {
+	api.lastQueryMu.Lock()
+	api.lastQueryRequests[sessionID] = queryRequestForRetention(req)
+	api.lastQueryMu.Unlock()
+}
+
 func (target *resolvedResumeTarget) persistTarget() *restoredChatHistoryPersistTarget {
 	if target == nil {
 		return nil

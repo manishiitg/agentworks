@@ -262,7 +262,7 @@ func (t *idleCompactTracker) notePersonTurn(sessionID, userID string, req QueryR
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c := t.chat(sessionID)
-	c.personReq, c.personUser, c.lastPerson = req, userID, now
+	c.personReq, c.personUser, c.lastPerson = queryRequestForRetention(req), userID, now
 }
 
 func (t *idleCompactTracker) noteTurnEnd(sessionID string, runtime *ChatHistoryAgentRuntime, now time.Time) {

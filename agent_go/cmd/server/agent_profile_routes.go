@@ -110,12 +110,18 @@ type AgentProfileConversationResponse struct {
 type resolvedResumeTargetContextKey struct{}
 
 func resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
+	started := time.Now()
 	workspacePath := normalizeConversationWorkspace(conversation.WorkspacePath)
 	// The same folder the turn itself reads the chat's history from: a shared Crew/<id> stays as it is, a Chats/...
 	// path maps into the caller's tree. Prefixing every path with the caller's tree missed every shared Crew, so a
 	// Crew chat that switched coding agent started with no history (PLAT-872-78).
 	lookupWorkspacePath := productConversationRuntimeWorkspace(userID, workspacePath)
 	target, ok, err := readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
+	count := 0
+	if target != nil {
+		count = len(target.History)
+	}
+	log.Printf("[CHAT_RESUME_LOAD] session=%s elapsed_ms=%d messages=%d found=%t error=%t", conversation.SessionID, time.Since(started).Milliseconds(), count, ok, err != nil)
 	if err != nil || !ok || target == nil {
 		return nil, false, err
 	}
@@ -1053,6 +1059,10 @@ func writeAgentProfileJSON(w http.ResponseWriter, status int, value interface{})
 // owns history/native restoration and runtime rebinding, so connector turns
 // pick up the same migrations as web turns.
 func prepareProductConversationTurn(ctx context.Context, userID string, profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	started := time.Now()
+	defer func() {
+		log.Printf("[CHAT_TURN_PREPARE] session=%s elapsed_ms=%d", conversation.SessionID, time.Since(started).Milliseconds())
+	}()
 	// A chat with its own model (chosen by the person on the Crew's Models page) runs on it for every turn:
 	// typed in the app, or a workflow, function, schedule or another chat reaching it. The browser sends
 	// the Crew's model for every tab, so the server's per-chat choice wins.
