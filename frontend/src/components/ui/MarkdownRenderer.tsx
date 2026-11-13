@@ -1355,7 +1355,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
           img: ({ src, alt }) => {
             if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
             const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/', 'db/assets/', 'assets/']
-            const workspaceFilepath = resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null)
+            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null)
             if (!src) return <span className="text-muted-foreground">Image not found</span>
             return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
               ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'

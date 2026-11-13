@@ -32,7 +32,7 @@ const webURL = text(2048).refine(value => {
   try { return ['http:', 'https:'].includes(new URL(value).protocol) } catch { return false }
 })
 export const workspaceCardImage = (value: string): boolean =>
-  /^(?:Crew|Workflow|Chats|_users|db\/assets|assets)\//.test(value) &&
+  (/^(?:Crew|Workflow|Chats|_users|db\/assets|assets)\//.test(value) || (value.startsWith('/') && !value.startsWith('//'))) &&
   !/[\\\u0000-\u001f\u007f]/.test(value) && !value.split('/').some(part => part === '..' || part === '.')
 
 const developerLink = z.union([webURL, text(2048).refine(workspaceCardImage)])

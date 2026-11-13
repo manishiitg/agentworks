@@ -2,7 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -48,6 +51,30 @@ func TestCrewShareLinksOpenForCrewUsers(t *testing.T) {
 			t.Fatalf("%s download folder: %d %s", user, w.Code, w.Body)
 		}
 	}
+	// PLAT-746: absolute image paths are aliases, not an access grant.
+	absolute := filepath.Join(f.docs, "Crew/alpha/outputs/chart.png")
+	if w := serve("reader", absolute, "read"); w.Code != 200 {
+		t.Fatalf("absolute image: %d %s", w.Code, w.Body)
+	}
+	allowed["reader"] = false
+	if w := serve("reader", absolute, "read"); w.Code != 403 {
+		t.Fatalf("revoked absolute image: %d", w.Code)
+	}
+	allowed["reader"] = true
+	outside := filepath.Join(t.TempDir(), "secret.png")
+	if err := os.WriteFile(outside, []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if w := serve("reader", outside, "read"); w.Code != 403 {
+		t.Fatalf("outside image: %d", w.Code)
+	}
+	if err := os.Symlink(outside, filepath.Join(f.docs, "Crew/alpha/outputs/escape.png")); err != nil {
+		t.Fatal(err)
+	}
+	if w := serve("reader", filepath.Join(f.docs, "Crew/alpha/outputs/escape.png"), "read"); w.Code == 200 {
+		t.Fatal("absolute image followed a symlink outside its root")
+	}
+
 	// A Crew link does not restore access to the retired owner's personal tree.
 	if w := serve("reader", "_users/owner/Chats/Work/projects/alpha/outputs/report.md", "read"); w.Code != 403 {
 		t.Fatalf("reader opened another person's retired Crew tree: %d %s", w.Code, w.Body)
@@ -86,5 +113,50 @@ func TestCrewShareLinksOpenForCrewUsers(t *testing.T) {
 	// Other personal folders of the owner stay private.
 	if w := serve("reader", "Downloads/private.txt", "read"); w.Code != 403 {
 		t.Fatalf("owner's Downloads opened: %d", w.Code)
+	}
+}
+
+// PLAT-746: the failing screenshot lived in a chosen local Crew folder.
+func TestAbsoluteCrewImageBoundFolderKeepsAdmission(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(filepath.Join(project, ".agentworks"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", Owner: "owner", ID: "image-test", LocalRoot: project}}})
+	state := os.Getenv("AGENTWORKS_STATE_ROOT")
+	if err := os.MkdirAll(filepath.Join(state, "ownership"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	shot := filepath.Join(project, "shot.png")
+	if err := os.WriteFile(shot, []byte("image"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := crewLinkReadAllowed
+	crewLinkReadAllowed = func(_ *StreamingAPI, claims *UserClaims, root string) bool {
+		return claims.UserID == "owner" && root == "Crew/example"
+	}
+	t.Cleanup(func() { crewLinkReadAllowed = old })
+	for _, tc := range []struct {
+		user, path string
+		allow      bool
+	}{
+		{"owner", shot, true}, {"outsider", shot, false},
+		{"owner", project + "/../project/shot.png", false},
+		{"owner", project + "/%2e%2e/shot.png", false}, {"owner", project + "/%2fshot.png", false},
+		{"owner", project + "-other/shot.png", false}, {"owner", strings.ToUpper(project) + "/shot.png", false},
+		{"owner", filepath.Join(project, ".agentworks/settings/product.json"), false},
+		{"owner", filepath.Join(f.docs, "_system/crew-data/image-test/private.png"), false},
+		{"owner", filepath.Join(f.docs, "_users/outsider/Downloads/private.png"), false},
+	} {
+		w := httptest.NewRecorder()
+		f.api.handlePublicFile(w, adminRequest("GET", sharedTestURL(tc.path), "", &UserClaims{UserID: tc.user, Username: tc.user}, nil))
+		if (w.Code == 200) != tc.allow {
+			t.Fatalf("%s %s: %d %s", tc.user, tc.path, w.Code, w.Body)
+		}
 	}
 }
