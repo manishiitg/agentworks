@@ -909,7 +909,11 @@ function isOwnTerminalLifecycleStart(event: PollingEvent, terminal: TerminalSnap
 }
 
 export function transcriptServerPosition(event: PollingEvent): number | undefined {
-  if (event.generation_id && typeof event.generation_start_sequence === 'number' && event.generation_start_sequence > 0) return event.generation_start_sequence
+  // Only an actual native block began at this position. A whole-generation
+  // completion (Cursor and other unframed transports) arrives after its own
+  // thinking/tools; anchoring it to streaming_start makes that work read backwards.
+  const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+  if (metadata?.assistant_block_id && event.generation_id && typeof event.generation_start_sequence === 'number' && event.generation_start_sequence > 0) return event.generation_start_sequence
   return typeof event.sequence === 'number' && event.sequence > 0 ? event.sequence : undefined
 }
 
