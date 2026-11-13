@@ -10,6 +10,7 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 
 import { useAgentGroups } from './MenuGroups'
+import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import type { MenuAgentGroup } from '../../services/llm-config-api'
 
@@ -38,11 +39,11 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const ungroupedClosed = closed.filter(agent => !grouping.groups.some(group => group.agents.includes(agent.key)))
   const hiddenCount = hidden.length + hiddenClosed.length
   const closedRow = (agent: CrewClosedAgent) => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }}
-    className="flex w-full min-w-0 items-center rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
+    className={`${sidebarAgentRowClass} text-muted-foreground hover:bg-muted hover:text-foreground`}>
     <span className="min-w-0 truncate">{agent.name}</span>
   </button>
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} groups={grouping.groups} groupKey={tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''} onMove={grouping.move} onCreateGroup={grouping.create} groupsReady={grouping.loaded} popup={popup} reordering={reordering} onSelect={onSelect || openAgent} />
-  return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : 'ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5'}>
+  return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
     {shown.filter(agent => !grouping.groups.some(group => group.agents.includes(tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''))).map(row)}
     {grouping.groups.map(group => {
       const members = shown.filter(agent => group.agents.includes(tabs[agent.tabId]?.metadata?.agentProfileConversationKey || ''))
@@ -53,14 +54,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       </AgentGroup>
     })}
     {grouping.error && <p role="alert" className="px-2 text-xs text-destructive">{grouping.error}</p>}
-    {hiddenCount > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
-      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />+{hiddenCount} hidden {hiddenCount === 1 ? 'agent' : 'agents'}
+    {hiddenCount > 0 && <button type="button" aria-label={`${hiddenCount} hidden ${hiddenCount === 1 ? 'agent' : 'agents'}`} aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
+      className={sidebarAgentDisclosureClass}>
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />+{hiddenCount} hidden
     </button>}
     {showHidden && <>{hidden.map(row)}{hiddenClosed.map(closedRow)}</>}
     {/* Closed agents (no tab here) open again from this list. */}
     {ungroupedClosed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
+      className={sidebarAgentDisclosureClass}>
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showClosed ? 'rotate-90' : ''}`} />Closed agents ({ungroupedClosed.length})
     </button>}
     {showClosed && ungroupedClosed.map(closedRow)}
@@ -112,7 +113,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
     onDragOver={dragging && key ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => onSelect(agent.tabId)}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+        className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentSetupMark setup={agent.info?.setup} />
@@ -174,6 +175,6 @@ function AgentGroup({ group, agents, count, onToggle, onRename, onRemove, childr
       <button type="button" aria-label={`Rename ${group.name}`} onClick={() => { setName(group.name); setEditing(true) }} className="rounded p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"><Pencil className="h-3 w-3" /></button>
       <button type="button" aria-label={`Delete group ${group.name}`} onClick={onRemove} className="rounded p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100"><X className="h-3 w-3" /></button>
     </div>
-    {!group.collapsed && <div className="pl-3">{children}</div>}
+    {!group.collapsed && <div className="pl-2">{children}</div>}
   </div>
 }

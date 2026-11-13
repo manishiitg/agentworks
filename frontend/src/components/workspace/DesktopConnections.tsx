@@ -21,6 +21,7 @@ import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } 
 import { useTeamInviteRows } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { AgentCliIcon, SidebarCrewAgents } from './SidebarCrewAgents'
+import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
 import { ChevronRight } from 'lucide-react'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -297,13 +298,13 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
-    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11"><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
+    return <button key={chat.conversation_key} type="button" role="listitem" onClick={() => open(chat)} className={`${sidebarAgentRowClass} group gap-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11`}><span className="min-w-0 flex-1 truncate">{chat.name || (chat.is_main ? 'Main' : 'Agent')}</span><AgentCliIcon provider={chat.provider} /><ProjectAgentMark projectId={projectId} sessionId={chat.session_id} session={session} local={connectionId === getRawActiveWorkspaceId()} activity={teamAgent?.activity} status={teamAgent?.status_label} /></button>
   }
   const shown = chats.filter(chat => chat.can_write !== false && chat.pinned !== false)
   const hiddenAgents = chats.filter(chat => chat.can_write !== false && chat.pinned === false)
-  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
-    {hiddenAgents.length > 0 && <button type="button" aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted max-md:min-h-10">
-      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden {hiddenAgents.length === 1 ? 'agent' : 'agents'}
+  return <>{children(expanded, () => toggle(key, initialOpen), activityLabel, undefined, () => { if (!expanded) toggle(key, initialOpen) })}{expanded && (selected && liveProjectId === projectId ? <SidebarCrewAgents projectId={projectId} /> : <div role="list" aria-label="Agents" className={sidebarAgentListClass}>{error ? <span className="px-2 text-xs text-muted-foreground">Could not load agents</span> : shown.map(chatRow)}
+    {hiddenAgents.length > 0 && <button type="button" aria-label={`${hiddenAgents.length} hidden ${hiddenAgents.length === 1 ? 'agent' : 'agents'}`} aria-expanded={showHiddenAgents} onClick={() => setShowHiddenAgents(value => !value)} className={sidebarAgentDisclosureClass}>
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden
     </button>}
     {showHiddenAgents && hiddenAgents.map(chatRow)}
     </div>)}</>
