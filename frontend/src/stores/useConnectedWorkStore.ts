@@ -14,6 +14,12 @@ export type LocationActivity = { sessions: ActiveSessionInfo[]; status: DesktopI
 let directoryPending: Promise<void> | undefined
 let activityPending: Promise<void> | undefined
 let ownerIdentity = -1
+// Screens mount, remount and regain focus often; a refresh that finished moments ago is reused instead of reloading
+// every location again (each inventory read costs the server seconds).
+const DIRECTORY_FRESH_MS = 30_000
+const ACTIVITY_FRESH_MS = 5_000
+let directoryAt = 0
+let activityAt = 0
 
 /** Connection-tagged navigation/activity only. Remote conversations never enter the chat store. */
 export const useConnectedWorkStore = create<{
@@ -23,19 +29,22 @@ export const useConnectedWorkStore = create<{
   activity: Record<string, LocationActivity>
   loaded: boolean
   error: string
-  refresh: () => Promise<void>
+  /** force: a server was just connected or disconnected; skip the freshness window. */
+  refresh: (force?: boolean) => Promise<void>
   refreshActivity: () => Promise<void>
 }>(set => ({
   identity: captureChatIdentity(), connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '',
-  refresh: async () => {
+  refresh: async (force = false) => {
     if (!hasDesktopConnections()) return
     const identity = captureChatIdentity()
     if (ownerIdentity !== identity) {
       ownerIdentity = identity
-      directoryPending = undefined; activityPending = undefined
+      directoryPending = undefined; activityPending = undefined; directoryAt = 0; activityAt = 0
       set({ identity, connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '' })
     }
     if (directoryPending) return directoryPending
+    if (!force && Date.now() - directoryAt < DIRECTORY_FRESH_MS) return
+    directoryAt = Date.now()
     const pending = (async () => {
       try {
         const data = await desktopRequest<{ connections: DesktopConnection[] }>()
@@ -59,6 +68,7 @@ export const useConnectedWorkStore = create<{
           set(state => ({ inventory: { ...state.inventory, [connection.id]: result } }))
         }))
       } catch {
+        directoryAt = 0
         if (isChatIdentityCurrent(identity)) set({ error: 'Could not load connections. Try again.' })
       }
     })()
@@ -71,6 +81,8 @@ export const useConnectedWorkStore = create<{
     if (ownerIdentity !== identity || !useConnectedWorkStore.getState().loaded) await useConnectedWorkStore.getState().refresh()
     if (!isChatIdentityCurrent(identity)) return
     if (activityPending) return activityPending
+    if (Date.now() - activityAt < ACTIVITY_FRESH_MS) return
+    activityAt = Date.now()
     const pending = Promise.allSettled(useConnectedWorkStore.getState().connections
       .map(async connection => {
         try {

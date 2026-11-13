@@ -193,10 +193,17 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   // the latest toolbar and the open panel, using the same server-owned lookup and account.
   useEffect(() => {
     if ((!panel && !latest) || !lookUpPullRequests) return
-    const refresh = () => { if (document.visibilityState !== 'hidden') setGitHubRevision(value => value + 1) }
+    let lastAt = Date.now()
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      lastAt = Date.now()
+      setGitHubRevision(value => value + 1)
+    }
+    // Switching back to the window refreshes at most every 30 s; each lookup reads the project's Git state.
+    const onFocus = () => { if (Date.now() - lastAt >= 30_000) refresh() }
     const timer = window.setInterval(refresh, 60_000)
-    window.addEventListener('focus', refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+    window.addEventListener('focus', onFocus)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
   }, [panel, latest, lookUpPullRequests])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []

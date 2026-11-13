@@ -105,7 +105,8 @@ function ProjectMenu({ children, projects }: { children?: ReactNode; projects: S
   const state = useConnectedWorkStore()
   useConnectedWorkPolling(desktop)
   // A teammate starting or stopping work on another network reaches this Mac as a note, then a sessions notice: read
-  // the networks' lists again then, not only on the minute.
+  // the networks' lists again then, not only on the minute. The store reuses a read from the last 30 s: with many
+  // local agents, sessions notices arrive constantly and each full read costs the server seconds.
   useLiveRefetch(() => { void useConnectedWorkStore.getState().refresh() }, { kinds: ['sessions'], fallbackMs: 0, safetyMs: 0, minIntervalMs: 5_000, enabled: desktop })
   const current = desktop && isChatIdentityCurrent(state.identity)
   const connections: DesktopConnection[] = desktop ? connectedLocations(state) : [{ id: active, name: '', server: '' }]
