@@ -498,6 +498,34 @@ func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
 	if got := read("foreign"); got.Status != http.StatusConflict {
 		t.Fatalf("unknown conversation accepted: %d", got.Status)
 	}
+
+	// A deleted/absent Main must not block the list or a physical tab (PLAT-746-963).
+	t.Run("relay without Main still lists and resolves owned tabs", func(t *testing.T) {
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+		t.Setenv("DEFAULT_USER_ID", "owner")
+		if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: "https://example.com", User: UserInfo{ID: "remote-owner"}}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "local", Mode: "relay", Editing: "local", PairID: "pair", ConnectionID: "saved", PeerServer: "https://example.com", PeerProjectID: "remote-team"}); err != nil {
+			t.Fatal(err)
+		}
+		tabs := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "tabs"})
+		if tabs.Status != 200 || !bytes.Contains(tabs.Body, []byte("abcdef12")) {
+			t.Fatalf("tabs require absent Main: %d %s", tabs.Status, tabs.Body)
+		}
+		main := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "resolve"})
+		if main.Status != 409 {
+			t.Fatalf("absent Main resolved: %d", main.Status)
+		}
+		tab := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "resolve", Tab: "abcdef12"})
+		if tab.Status != 200 {
+			t.Fatalf("owned tab requires Main: %d %s", tab.Status, tab.Body)
+		}
+		denied := f.api.runDesktopCrewChat(ctx, "team", "foreign-pair", crewChatCall{Operation: "tabs"})
+		if denied.Status != 403 {
+			t.Fatalf("wrong pair admitted: %d", denied.Status)
+		}
+	})
 	// Removing the saved record must invalidate status even though its runtime still exists.
 	doc.Entries = map[string]ProductConversationRecord{}
 	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
