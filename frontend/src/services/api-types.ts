@@ -192,6 +192,7 @@ export interface AgentQueryResponse {
 // skills from the same shared controls as AgentWorks; the server accepts those
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
+  pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   /** Optional Crew laptop connection; the server checks the current owner and live folder grants. */
   /** Brain folder context only; the server revalidates visibility. */

@@ -184,6 +184,7 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if step == "plan" {
+		log.Printf("[CHAT_ATTACHMENTS] action=plan caller=%q project=%q session=%q conversation=%q bound=%t", claims.UserID, project, in.SessionID, in.ConversationKey, bound)
 		if bound {
 			api.planPendingChatUpload(key)
 		}

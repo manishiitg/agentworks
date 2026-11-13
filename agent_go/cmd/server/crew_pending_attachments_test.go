@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 // PLAT-746-828: an upload planned by someone else, in another Crew/tab/session,
@@ -134,5 +135,46 @@ func TestPendingAttachmentRecallProjectsOnlyReadyPathsForSameConversation(t *tes
 	api.projectPendingChatAttachments("other", turn.SessionID, []queuedConversationTurn{turn}, rows)
 	if len(rows[0].AttachmentPaths) != 0 {
 		t.Fatal("queued attachment path crossed people")
+	}
+}
+
+// PLAT-746-938: normal profile chat must preserve the pending-only request,
+// accept it before bytes commit, and deliver no partial text while it waits.
+func TestCrewProfilePendingOnlyUploadWaitsForCommittedFile(t *testing.T) {
+	input := AgentProfileChatRequest{PendingAttachments: []pendingChatAttachment{{Hash: strings.Repeat("c", 64), Name: "image.png"}}}
+	req, err := queryRequestForAgentProfileChat(routeTestProfile(crewProfileID, true, ""), input, ProductConversationRecord{ConversationKey: "example:chat:side", SessionID: "session", WorkspacePath: "Crew/example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(req.PendingAttachments) != 1 || req.Query != "" {
+		t.Fatalf("adapter dropped the attachment: %#v", req.PendingAttachments)
+	}
+	api := &StreamingAPI{}
+	key := pendingAttachmentKey("person", "session", req, input.PendingAttachments[0].Hash)
+	api.planPendingChatUpload(key)
+	if err := api.validatePendingChatAttachments("person", "session", req); err != nil {
+		t.Fatal(err)
+	}
+	if !shouldQueuePendingAttachments(context.Background(), req) {
+		t.Fatal("upload was not accepted for durable waiting")
+	}
+	done := make(chan error, 1)
+	go func() { done <- api.resolvePendingChatAttachments(context.Background(), "person", "session", &req) }()
+	select {
+	case err := <-done:
+		t.Fatalf("dispatch completed before upload: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("committed upload did not wake dispatch")
+	}
+	if !strings.Contains(req.Query, "Crew/example/uploads/image.png") || len(req.PendingAttachments) != 0 {
+		t.Fatal("attachment was not resolved")
 	}
 }

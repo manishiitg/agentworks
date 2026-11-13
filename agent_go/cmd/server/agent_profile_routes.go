@@ -38,12 +38,13 @@ const maxAgentProfileRequestBytes = 2 << 20
 // among a product-curated set of coding-agent runtimes (see ProviderOption's
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
-	DeliveryMode     string                  `json:"delivery_mode,omitempty"`
-	LaptopConnection *laptopConnectionTarget `json:"laptop_connection,omitempty"`
-	ConnectionID     string                  `json:"connection_id,omitempty"`
-	Message          string                  `json:"message"`
-	ConversationKey  string                  `json:"conversation_key,omitempty"`
-	Engine           string                  `json:"engine,omitempty"`
+	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
+	DeliveryMode       string                  `json:"delivery_mode,omitempty"`
+	LaptopConnection   *laptopConnectionTarget `json:"laptop_connection,omitempty"`
+	ConnectionID       string                  `json:"connection_id,omitempty"`
+	Message            string                  `json:"message"`
+	ConversationKey    string                  `json:"conversation_key,omitempty"`
+	Engine             string                  `json:"engine,omitempty"`
 	// ModelID picks a model within the engine's provider: one the platform's
 	// model catalog lists for that provider (or, when the engine declares its
 	// own Models list, one of those). Empty keeps the option's own model.
@@ -163,6 +164,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 	req := QueryRequest{
 		LaptopConnection:            input.LaptopConnection,
 		Query:                       input.Message,
+		PendingAttachments:          input.PendingAttachments,
 		DeliveryMode:                input.DeliveryMode,
 		ConnectionID:                firstNonEmptyTrimmed(input.ConnectionID, conversation.ConnectionID),
 		SessionTitle:                firstNonEmptyTrimmed(conversation.Title, profile.Name),
@@ -438,7 +440,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid profile chat request: expected one JSON object")
 		return
 	}
-	if strings.TrimSpace(input.Message) == "" {
+	if strings.TrimSpace(input.Message) == "" && len(input.PendingAttachments) == 0 {
 		writeAgentProfileError(w, http.StatusBadRequest, "message is required")
 		return
 	}
@@ -461,7 +463,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode, PendingAttachments: input.PendingAttachments}) {
 		return
 	}
 	// Always on: while the server answers for this agent from its standby copy, the owner's Mac does not run it.
