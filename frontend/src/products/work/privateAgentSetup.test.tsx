@@ -34,6 +34,7 @@ it('shows private automation setup without an online Team binding', async () => 
   try {
     await act(async () => root.render(<Probe />))
     expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ url: '/api/crew-teams/private-project/tab', method: 'GET' }))
-    expect(host.querySelector('[aria-label="Only you · starts on its own"]')).not.toBeNull()
+    expect(host.querySelector('[role="img"]')?.getAttribute('title')).toContain('Daily report')
+    expect(host.querySelector('.lucide-clock')).not.toBeNull()
   } finally { await act(async () => root.unmount()) }
 })

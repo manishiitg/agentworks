@@ -1,24 +1,25 @@
-import { Globe, Loader2, Users, Zap } from 'lucide-react'
+import { Clock, Globe, Loader2, Users, Zap } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
 import type { TeamTabPresence, TeamTabSetup } from '../../products/work/teamApi'
 
 /** The switch-agent key on this computer: ⌘ on a Mac, Ctrl elsewhere. */
 export const AGENT_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
-/** The one setup icon right of an agent's name (owner, 6 Nov, approved mockup): a green globe when it is public on
- * AgentBridge (and so shared), people when it is shared with the team, nothing when only you use it. A small amber bolt
- * (a shape, never a dot, so it never reads as a message state) sits on it when something starts the agent on its own;
- * on an only-you agent the bolt stands alone. The server decides all of it (crew_tab_setup.go). */
+/** Sharing and automation are independent: private agents keep their schedule/trigger
+ * marks too. The server supplies enabled automations; this only chooses their glyphs. */
 export function AgentSetupMark({ setup }: { setup?: TeamTabSetup }) {
-  if (!setup || (!setup.reach && !setup.starts_on_own)) return null
+  if (!setup) return null
+  const active = setup.starts_on_own ? setup.automations.filter(item => item.on) : []
+  const schedules = active.filter(item => item.kind === 'Schedule')
+  const triggers = active.filter(item => item.kind !== 'Schedule')
+  if (!setup.reach && !active.length) return null
   const reach = setup.reach === 'agentbridge' ? 'Public on AgentBridge' : setup.reach === 'team' ? 'Shared with the team' : 'Only you'
-  const label = setup.starts_on_own ? `${reach} · starts on its own` : reach
-  const bolt = (className: string) => <Zap aria-hidden="true" className={`${className} fill-[hsl(var(--warning))] stroke-none text-[hsl(var(--warning))]`} />
-  if (!setup.reach) return <span role="img" aria-label={label} title={label} className="grid shrink-0 place-items-center">{bolt('h-3 w-3')}</span>
-  const Icon = setup.reach === 'agentbridge' ? Globe : Users
-  return <span role="img" aria-label={label} title={label} className={`relative grid shrink-0 place-items-center ${setup.reach === 'agentbridge' ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-    <Icon aria-hidden="true" className="h-3 w-3" />
-    {setup.starts_on_own && bolt('absolute -right-1.5 -top-1 h-2.5 w-2.5')}
+  const label = [reach, ...active.map(item => `${item.kind}: ${item.name} · ${item.line}`)].join('\n')
+  const ReachIcon = setup.reach === 'agentbridge' ? Globe : Users
+  return <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center gap-1.5">
+    {setup.reach && <ReachIcon aria-hidden="true" className={`h-3 w-3 ${setup.reach === 'agentbridge' ? 'text-emerald-500' : 'text-muted-foreground'}`} />}
+    {schedules.length > 0 && <Clock aria-hidden="true" className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />}
+    {triggers.length > 0 && <Zap aria-hidden="true" className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />}
   </span>
 }
 
