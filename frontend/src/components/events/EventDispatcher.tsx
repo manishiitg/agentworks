@@ -1,3 +1,4 @@
+import { CodingAgentPlan } from './CodingAgentPlan'
 import { NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
 import React from 'react'
 import { openAppProduct } from '../../utils/appNavigation'
@@ -315,6 +316,8 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </div>
     )
   }
+
+  if (event.type === 'coding_agent_plan') return <CodingAgentPlan event={event} />
 
   // Type-safe event rendering using discriminated unions
   // Each case uses isEventType for type narrowing, then getEventData for typed access
