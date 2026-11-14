@@ -195,18 +195,6 @@ func (c crewSlackBotChoice) Status() (string, bool) {
 	return "On · " + c.Name, true
 }
 
-// crewSlackTabOffered: the Access page lists a Slack tab when this viewer can read the Crew's Slack bot choice and bots
-// are allowed here (the same read as the Crew menu's Slack bot row); who may change it stays the Slack bot routes' own
-// rule (can_select, can_manage).
-func (api *StreamingAPI) crewSlackTabOffered(r *http.Request, viewer, project string) bool {
-	src, ok := api.crewShareSourceFor(r.Context(), viewer, project)
-	if !ok || src.workspace == "" {
-		return false
-	}
-	bot, err := api.crewSlackBotChoiceFor(r, src.workspace, nil)
-	return err == nil && bot.Allowed
-}
-
 func (api *StreamingAPI) crewSlackBotChoiceFor(r *http.Request, workspace string, vars map[string]string) (crewSlackBotChoice, error) {
 	var data struct {
 		Selected string `json:"selected_id"`
@@ -736,8 +724,8 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		page.AgentsEmpty = "No agents to share yet."
 	}
 
-	// Slack is its own Access tab (owner, 9 Nov), offered by crewSlackTabOffered; this page only carries the "Who can
-	// talk to it" lines the Slack tab prints.
+	// Slack lives under Connections (owner, 14 Nov); this reply supplies the
+	// unchanged Who can talk to it rules used by that settings panel.
 	if dashWorkspace != "" {
 		if bot, err := api.crewSlackBotChoiceFor(r, dashWorkspace, nil); err == nil && bot.Allowed {
 			page.Slack = crewShareSlackRules(owner)
