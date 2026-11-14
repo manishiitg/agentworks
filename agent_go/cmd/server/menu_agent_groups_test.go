@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +134,14 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 // project-bound fork can update the caller's preferences without widening guards.
 func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	f.api.eventStore = storeevents.NewEventStore(100)
+	defer f.api.eventStore.Stop()
+	f.api.eventStore.SetDurableJournal(journal)
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code")
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
@@ -166,6 +176,7 @@ func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
 	// Same HTTP handler as UI and sessions fork; the token is bound to this Crew.
 	claims := crewWriter("owner")
 	claims.AccessToken.CrewIDs = []string{"team"}
+	claims.AccessToken.AllCrews = false
 	tokenCtx := context.WithValue(t.Context(), UserContextKey, claims)
 	request := httptest.NewRequest("POST", "/", nil).WithContext(tokenCtx)
 	status, body := scheduleHandler(request, f.api.handleForkCrewChat, "POST", "/api/agent-profiles/work/conversation/fork", map[string]string{"id": "work"}, nil, map[string]any{"conversation_key": parent.ConversationKey})
