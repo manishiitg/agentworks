@@ -28,6 +28,7 @@ app.setPath('userData', USER_DATA_PATH);
 
 const { localProductEnv } = require('./lib/localProducts');
 const { migrateAccountAvailability } = require('./lib/accountAvailabilityMigration');
+const { migrateTeamPathIdentities } = require('./lib/teamPathIdentityMigration');
 const { createWalkthroughState } = require('./walkthroughState');
 // Initialize lazily, after legacy profile migration has completed.
 let walkthroughState;
@@ -1024,6 +1025,9 @@ function createTray() {
 
 function spawnWorkspace(userDataPath) {
   return new Promise((resolve, reject) => {
+    try {
+      migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state') });
+    } catch (error) { return reject(error); }
     const bin = getBinaryPath('workspace-server');
     if (!fs.existsSync(bin)) {
       return reject(new Error(`Workspace server binary not found at ${bin}. Place workspace-server in desktop/resources/ for development.`));
@@ -1114,6 +1118,7 @@ async function spawnVault(userDataPath) {
 }
 
 async function spawnDevelopmentAgent() {
+  migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(app.getPath('userData'), 'state') });
   const { startDevelopmentAgent } = require('./lib/devAgent');
   developmentAuthSecret ??= fs.readFileSync(0, 'utf8').trim();
   const result = await startDevelopmentAgent({
