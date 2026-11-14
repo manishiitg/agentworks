@@ -1,6 +1,51 @@
 [
   {
     "family": "skills",
+    "name": "native_discover",
+    "member": "discover_native_skills",
+    "description": "Discover or preview own-project native skills without importing or executing.",
+    "external_members": "discover_native_skills|crew_skills__native_discover"
+  },
+  {
+    "family": "skills",
+    "name": "native_discover",
+    "member": "crew_skills__native_discover",
+    "description": "Discover or preview own-project native skills without importing or executing.",
+    "source": "crew_skills",
+    "source_action": "native_discover"
+  },
+  {
+    "family": "skills",
+    "name": "native_import",
+    "member": "import_native_skill",
+    "description": "Explicitly copy a discovered skill into the existing project skill folder.",
+    "external_members": "import_native_skill|crew_skills__native_import"
+  },
+  {
+    "family": "skills",
+    "name": "native_import",
+    "member": "crew_skills__native_import",
+    "description": "Explicitly copy a discovered skill into the existing project skill folder.",
+    "source": "crew_skills",
+    "source_action": "native_import"
+  },
+  {
+    "family": "skills",
+    "name": "native_invocable",
+    "member": "list_invocable_skills",
+    "description": "List this exact current chat's prepared explicit native skill choices.",
+    "external_members": "list_invocable_skills|crew_skills__native_invocable"
+  },
+  {
+    "family": "skills",
+    "name": "native_invocable",
+    "member": "crew_skills__native_invocable",
+    "description": "List this exact current chat's prepared explicit native skill choices.",
+    "source": "crew_skills",
+    "source_action": "native_invocable"
+  },
+  {
+    "family": "skills",
     "name": "list",
     "member": "list_skills",
     "description": "List skills available in this chat or project.",
