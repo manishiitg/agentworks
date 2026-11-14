@@ -2158,6 +2158,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		// Runtime ownership starts observation. Opening a terminal is never
 		// required for committed replies or native helper activity to arrive.
 		api.observeNativeCodingRuntime(sessionID, event)
+		api.observeAccountLimits(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
 		api.observeNativeBackgroundCommands(sessionID, event)
 		api.observeUsageLimitFailure(sessionID, event)

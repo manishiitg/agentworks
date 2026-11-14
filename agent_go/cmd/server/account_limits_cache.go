@@ -2,6 +2,7 @@ package server
 
 import (
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +25,12 @@ type accountLimitCache struct {
 
 var subscriptionLimits = accountLimitCache{snapshots: map[string]accountLimitSnapshot{}}
 
-func accountLimitKey(provider, account string) string { return provider + "|" + account }
+func accountLimitKey(provider, account string) string {
+	if account == "server-default:"+provider {
+		account = "global:" + provider
+	}
+	return provider + "|" + strings.TrimSpace(account)
+}
 
 func cloneAccountLimitSnapshot(s accountLimitSnapshot) accountLimitSnapshot {
 	s.Windows = append([]llmtypes.AccountUsageWindow{}, s.Windows...)
