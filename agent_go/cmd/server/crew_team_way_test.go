@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 )
 
 // PLAT-746-1026: any Team member adds their own secret to the Team (value copied inside the server, kept by them, never
@@ -19,6 +20,12 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
 	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
 	f := newMultiUserFixture(t, layout)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	store, err := chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.API.chatStore = store
 	vault := newOwnerVaultFake(t)
 	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
 	profile := f.Crew
