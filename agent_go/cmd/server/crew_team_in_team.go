@@ -35,7 +35,7 @@ func crewTeamMainAgentWithKey(t crewTeam, person, key, main string) bool {
 	return main != "" && (key == main || key == macMainTab || key == t.ProjectID)
 }
 
-// agentInTeam: the person's own choice for the agent, else In team (new agents are shared).
+// agentInTeam uses the saved choice, then the person's join default for a new agent.
 func (t crewTeam) agentInTeam(person, key string) bool {
 	if crewFunctionTabKey(key) {
 		return false
@@ -46,7 +46,11 @@ func (t crewTeam) agentInTeam(person, key string) bool {
 	if strings.HasPrefix(key, crewTeamAgentIDPrefix) {
 		return false
 	}
-	return true
+	return !t.privateNewAgents(person)
+}
+
+func (t crewTeam) privateNewAgents(person string) bool {
+	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == person && p.PrivateNewAgents })
 }
 
 // errCrewTeamLastShared: a person's last shared agent cannot be turned off (owner, 6 Nov: "all agents cannot be off").

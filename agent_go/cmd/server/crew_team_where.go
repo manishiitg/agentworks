@@ -87,6 +87,7 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 	at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == claims.UserID })
 	person := &t.People[at]
 	if in.Agents != nil {
+		person.PrivateNewAgents = true
 		if in.Where != "mac" || len(*in.Agents) > 200 {
 			externalError(w, 400, "invalid_agents", "Choose your own agents on this Mac.")
 			return

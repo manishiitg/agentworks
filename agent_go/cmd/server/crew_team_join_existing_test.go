@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,7 +79,7 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	write(filepath.Dir(b2.SkillRoot), "skills/report/SKILL.md", "private skill")
 	write(b2.Root, "MEMORY.md", "private memory")
 	write(b2.Root, "PROJECT_INSTRUCTIONS.md", "private guidance")
-	if err := backupCrewTeamJoinSetup(b2.Root); err != nil {
+	if err := backupCrewTeamJoinSetup(b2.Root, "my private chat rules"); err != nil {
 		t.Fatal(err)
 	}
 	round(c2, d2, b2)
@@ -145,6 +146,14 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 		if p.Path == "skills/analysis" && p.ID != ids["skills/report"] {
 			t.Fatal("skill rename replaced its identity")
 		}
+	}
+
+	selectedLocal := b2.importSelectedSkills([]string{"analysis"}, []string{"report", "company-skill"})
+	if !slices.Contains(selectedLocal, "company-skill") {
+		t.Fatal("uninstalled company skill selection was dropped")
+	}
+	if slices.Contains(b2.exportSelectedSkills(selectedLocal, []string{"analysis"}), "company-skill") {
+		t.Fatal("private company skill selection was uploaded")
 	}
 	if got := b2.exportSelectedSkills([]string{"report", "analysis"}); len(got) != 1 || got[0] != "analysis" {
 		t.Fatalf("private skill selection leaked into Team setup: %v", got)
@@ -218,6 +227,7 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","chat_instructions":"my private chat settings"}`)
 	if err = os.WriteFile(filepath.Join(roots.Files, "PROJECT_INSTRUCTIONS.md"), []byte("my original rules"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -306,6 +316,27 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 				t.Fatal("unselected existing agent became shared")
 			}
 		}
+	}
+
+	if saved.agentInTeam("owner", "never-chatted") {
+		t.Fatal("undiscovered existing-project agent defaulted to shared")
+	}
+	if err := assignCrewTeamAgentIDs(saved, []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{{Tab: "late-tab", ChatKey: "invited:chat:late-tab", Name: "Later"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	later := mustReadCrewTeam(t, "invited")
+	late, ok := later.registeredAgent("owner", "invited:chat:late-tab")
+	if !ok || late.InTeam {
+		t.Fatal("later discovered agent defaulted to shared")
+	}
+	if err := setCrewTeamAgentChoice(ctx, "invited", "owner", late.ID, true); err != nil {
+		t.Fatal("explicit sharing refused:", err)
+	}
+	if !mustReadCrewTeam(t, "invited").agentInTeam("owner", late.ID) {
+		t.Fatal("explicit sharing was not saved")
+	}
+	if raw, err := os.ReadFile(filepath.Join(roots.Files, "CHAT_INSTRUCTIONS (before team).md")); err != nil || string(raw) != "my private chat settings" {
+		t.Fatalf("chat settings backup missing: %s %v", raw, err)
 	}
 	if count != 2 {
 		t.Fatalf("expected two private existing agents, got %d", count)

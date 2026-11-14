@@ -10,15 +10,16 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-const crewTeamJoinInstructionsNotice = "Your current project instructions will be kept as a backup and replaced by the Team's."
+const crewTeamJoinInstructionsNotice = "Your current project and chat instructions will be kept as backups and replaced by the Team's."
 const crewTeamJoinAlreadyOnline = "Already online with another setup. Turn Run online off for it first, or pick New project."
 
 type crewTeamJoinTarget struct {
-	ProjectID string        `json:"project_id"`
-	Name      string        `json:"name"`
-	CanJoin   bool          `json:"can_join"`
-	Reason    string        `json:"reason,omitempty"`
-	Agents    []macAgentRow `json:"agents"`
+	ProjectID        string        `json:"project_id"`
+	Name             string        `json:"name"`
+	CanJoin          bool          `json:"can_join"`
+	Reason           string        `json:"reason,omitempty"`
+	Agents           []macAgentRow `json:"agents"`
+	chatInstructions string
 }
 
 // The same admission is used to list targets and immediately before accepting.
@@ -36,6 +37,7 @@ func (api *StreamingAPI) crewTeamJoinTarget(ctx context.Context, claims *UserCla
 		return out, crewroot.Roots{}, fmt.Errorf("This project could not be opened. Pick another project.")
 	}
 	out.Name = firstNonEmptyTrimmed(manifest.Title, manifest.Label, project)
+	out.chatInstructions = manifest.ChatInstructions
 	state := readCrewTeamState(project)
 	team, err := readCrewTeam(project)
 	if err != nil && !os.IsNotExist(err) {

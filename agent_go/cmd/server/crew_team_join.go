@@ -161,6 +161,8 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 	}
 	var agents *[]crewTeamJoinAgent
 	skillRoot := ""
+	chatInstructions := ""
+	backupNote := ""
 	if input.LocalProject != "" {
 		target, roots, err := api.crewTeamJoinTarget(r.Context(), claims, input.LocalProject)
 		if err != nil {
@@ -195,6 +197,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		agents = &choices
 		input.Folder = roots.Files
 		skillRoot = filepath.Join(roots.Resources, "skills")
+		chatInstructions = target.chatInstructions
 	}
 
 	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
@@ -244,7 +247,12 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 			b := crewTeamLocal{SkillRoot: skillRoot, FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
 				Root: folder, LocalProject: input.LocalProject, Status: "pending", Mounted: true, ProtectPrivate: input.LocalProject != ""}
 			if input.LocalProject != "" {
-				err = backupCrewTeamJoinSetup(folder)
+				err = backupCrewTeamJoinSetup(folder, chatInstructions)
+				if err == nil {
+					backupNote = crewTeamJoinBackupNote(input.LocalProject)
+				} else {
+					backupNote = " Some instruction files may already be in (before team) backups; review them before retrying with another project."
+				}
 			}
 			if err == nil {
 				err = b.reconcileMounts(team.Folder)
@@ -254,7 +262,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		if err != nil {
-			externalError(w, 500, "folder_unavailable", "Joined the team, but its folder could not be set up on this Mac: "+err.Error())
+			externalError(w, 500, "folder_unavailable", "Joined the team, but its folder could not be set up on this Mac: "+err.Error()+backupNote)
 			return
 		}
 		out["folder"] = folder
@@ -264,7 +272,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 	local, err := api.addCrewTeamToMacChosen(r.Context(), claims, c, project, team, folder, input.LocalProject, agents)
 	if err != nil {
 		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_failed reason=%q", project, err)
-		externalError(w, 409, "mac_copy_failed", "Joined the team, but its Crew could not be set up on this Mac: "+err.Error())
+		externalError(w, 409, "mac_copy_failed", "Joined the team, but its Crew could not be set up on this Mac: "+err.Error()+backupNote)
 		return
 	}
 	out["project_id"], out["where"] = local, "mac"
@@ -280,7 +288,31 @@ type crewTeamJoinChoice struct {
 	Confirm      bool     `json:"confirm"`
 }
 
-func backupCrewTeamJoinSetup(root string) error {
+func backupCrewTeamJoinSetup(root, chatInstructions string) error {
+	for n := 1; ; n++ {
+		suffix := " (before team)"
+		if n > 1 {
+			suffix = fmt.Sprintf(" (before team %d)", n)
+		}
+		backup := filepath.Join(root, "CHAT_INSTRUCTIONS"+suffix+".md")
+		f, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString(chatInstructions)
+		closeErr := f.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		break
+	}
+
 	for _, name := range []string{"PROJECT_INSTRUCTIONS.md", crewTeamSetupFile} {
 		from := filepath.Join(root, name)
 		info, err := os.Lstat(from)
@@ -313,4 +345,11 @@ func backupCrewTeamJoinSetup(root string) error {
 		}
 	}
 	return nil
+}
+
+func crewTeamJoinBackupNote(existing string) string {
+	if existing == "" {
+		return ""
+	}
+	return " Your original project and chat instructions have (before team) backups in that project's folder; keep them if you retry with another project."
 }

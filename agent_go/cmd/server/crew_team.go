@@ -35,8 +35,9 @@ type crewTeamPerson struct {
 	Invited bool `json:"invited,omitempty"`
 	// Where this member's own agents work in this Crew (owner, 5 Nov: one working copy): "" or "web" on the server,
 	// "mac" on their Mac, paired to this online copy by MacPair (crew_team_where.go).
-	Where   string `json:"where,omitempty"`
-	MacPair string `json:"mac_pair,omitempty"`
+	Where            string `json:"where,omitempty"`
+	MacPair          string `json:"mac_pair,omitempty"`
+	PrivateNewAgents bool   `json:"private_new_agents,omitempty"`
 }
 
 // crewTeamInvite is a Team invite as the invited person sees it.
@@ -574,8 +575,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
 		input.People[i].Invited = at < 0 || previous.People[at].Invited
 		input.People[i].Where, input.People[i].MacPair = "", ""
+		input.People[i].PrivateNewAgents = false
 		if at >= 0 { // where a member works is theirs to choose
 			input.People[i].Where, input.People[i].MacPair = previous.People[at].Where, previous.People[at].MacPair
+			input.People[i].PrivateNewAgents = previous.People[at].PrivateNewAgents
 		}
 		if at < 0 {
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=invited user=%s", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(input.People[i].UserID))
