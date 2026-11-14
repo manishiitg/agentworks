@@ -15,7 +15,10 @@ import (
 	"time"
 )
 
-const restartContinueMessage = "[App restarted] The app restarted while you were working on this. Check what you already did, then continue the task."
+const restartContinueMessage = "[App restarted] Continue where you left off. The app restarted during your last turn. A command or action you started may have finished, may still be running, or may have been killed. Before repeating anything that changes state (such as a deploy, migration, push, or message), check whether it already took effect or is still running. If you cannot tell, say so instead of repeating it. Any background work killed by the restart will not report back on its own; check its state and resume only the work still needed."
+
+const restartContinueLimit = 3
+const restartContinueWindow = 5 * time.Minute
 
 // The last admitted chat's runtime selectors, not its original prompt or a live
 // agent pointer. Restart recovery must re-enter normal query admission.
@@ -26,6 +29,7 @@ type restartContinueRecord struct {
 	Principal        queuedConversationPrincipal `json:"principal"`
 	FollowUps        int                         `json:"follow_ups"`
 	RecoveredQueryID string                      `json:"recovered_query_id,omitempty"`
+	RestartContinues []time.Time                 `json:"restart_continues,omitempty"`
 	SavedAt          time.Time                   `json:"saved_at"`
 }
 
@@ -98,7 +102,8 @@ func (api *StreamingAPI) saveRestartContinueRequest(ctx context.Context, userID,
 	principal.DeliveredMessage = nil
 	principal.CrewAskInput = nil
 	principal.FeedbackOperationID = ""
-	document.Chats[sessionID] = restartContinueRecord{SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID)}
+	previous := document.Chats[sessionID]
+	document.Chats[sessionID] = restartContinueRecord{RestartContinues: previous.RestartContinues, SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID)}
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return err
@@ -165,6 +170,18 @@ func (api *StreamingAPI) writeRestartContinueRecords(ctx context.Context, userID
 	return write(ctx, restartContinuePath(userID), string(raw))
 }
 
+// Keep a separate rolling budget: native background wakes must not spend it,
+// and a process restart or person message must not reset it.
+func recentRestartContinues(attempts []time.Time, now time.Time) []time.Time {
+	recent := make([]time.Time, 0, restartContinueLimit)
+	for _, at := range attempts {
+		if at.After(now.Add(-restartContinueWindow)) {
+			recent = append(recent, at)
+		}
+	}
+	return recent
+}
+
 func waitingPersonTurn(turns []queuedConversationTurn, sessionID string) bool {
 	for _, turn := range turns {
 		if turn.SessionID == sessionID && turn.StartedAt == nil && turn.DeliveryError == "" && personQueuedRequest(turn) {
@@ -221,6 +238,8 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		record.RecoveredQueryID = record.QueryID
 		if waitingPersonTurn(kept, sessionID) {
 			reason = "person_message_queued"
+		} else if len(recentRestartContinues(record.RestartContinues, time.Now())) >= restartContinueLimit {
+			reason = "restart_loop_limit"
 		} else if record.FollowUps >= backgroundFollowUpChainLimit {
 			reason = "chain_limit"
 		}
@@ -230,6 +249,10 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			}
 		}
 		if reason == "" {
+			now := time.Now().UTC()
+			record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
+			// Refresh the synthetic prompt even for records saved by an older build.
+			record.Request.Query = restartContinueMessage
 			record.FollowUps++
 			backgroundFollowUps.restore(sessionID, record.FollowUps)
 			kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: time.Now().UTC()})

@@ -142,14 +142,26 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 			if _, changed := restarted.pruneRestartContinues(got); changed {
 				t.Fatal("journal-replayed app_restart settlement dropped its own continuation")
 			}
-			// Two more process losses preserve the shared count; the fourth note is refused.
-			for cycle := 2; cycle <= 4; cycle++ {
+			// PLAT-746: the fourth restart in five minutes is refused even though
+			// the native background-follow-up budget now permits more than three.
+			for cycle := 2; cycle <= 5; cycle++ {
 				fresh := newAPI()
 				backgroundFollowUps.personWrote(sid) // simulate an empty process-local map
 				request.IsAutoNotification = true
 				document, err := fresh.readRestartContinueRecords(ctx, user)
 				if err != nil {
 					t.Fatal(err)
+				}
+				if cycle == 5 {
+					// Expire only the restart window; background wake counts remain.
+					record := document.Chats[sid]
+					for i := range record.RestartContinues {
+						record.RestartContinues[i] = time.Now().Add(-restartContinueWindow)
+					}
+					document.Chats[sid] = record
+					if err := fresh.writeRestartContinueRecords(ctx, user, document); err != nil {
+						t.Fatal(err)
+					}
 				}
 				backgroundFollowUps.restore(sid, document.Chats[sid].FollowUps)
 				if err := fresh.saveRestartContinueRequest(ctx, user, sid, fmt.Sprint("continued-", cycle), request); err != nil {
@@ -160,12 +172,19 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 				if err != nil {
 					t.Fatal(err)
 				}
-				if cycle <= 3 && len(next) != 1 || cycle == 4 && len(next) != 0 {
+				if cycle != 4 && len(next) != 1 || cycle == 4 && len(next) != 0 {
 					t.Fatalf("cycle=%d continuations=%d", cycle, len(next))
 				}
 				saved, err := fresh.readRestartContinueRecords(ctx, user)
-				if err != nil || saved.Chats[sid].FollowUps > 3 {
-					t.Fatal("restart reset/bypassed shared limit")
+				expectedAttempts := 3
+				if cycle == 2 {
+					expectedAttempts = 2
+				}
+				if cycle == 5 {
+					expectedAttempts = 1
+				}
+				if err != nil || len(saved.Chats[sid].RestartContinues) != expectedAttempts {
+					t.Fatal("restart reset/bypassed restart limit")
 				}
 			}
 		})
