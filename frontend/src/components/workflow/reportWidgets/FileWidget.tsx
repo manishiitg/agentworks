@@ -1,3 +1,4 @@
+import { DocumentPreview, hasDocumentPreview } from '../../files/DocumentPreview'
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { File, FileJson, FileText, Image, Music, Video } from 'lucide-react';
 import type { PlannerFile, ReportFileRenderFormat, ReportWidget } from '../../../services/api-types';
@@ -355,7 +356,7 @@ function useAbsoluteFileContent(path: string, kind: ArtifactKind): FileContentSt
 // the single-file FileWidget (pdf/docx/image/video/audio/html/text/code/json).
 export function FilePreviewByPath({ path, name }: { path: string; name?: string }) {
   const kind = artifactKind(path)
-  const state = useAbsoluteFileContent(path, kind)
+  const state = useAbsoluteFileContent(path, /\.xlsx?$/i.test(path) ? 'docx' : /\.ipynb$/i.test(path) ? 'text' : kind)
   const label = name || basename(path)
 
   if (state.status === 'loading') {
@@ -370,6 +371,9 @@ export function FilePreviewByPath({ path, name }: { path: string; name?: string 
     )
   }
 
+  if (hasDocumentPreview(path) && kind !== 'audio' && kind !== 'video' && kind !== 'pdf') {
+    return <DocumentPreview key={path} name={label} data={state.binaryData} text={state.content} />
+  }
   if (kind === 'html') {
     return <HtmlReportFrame html={state.content || ''} title={label} className="h-full w-full bg-background" />
   }
