@@ -106,6 +106,14 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	mainID := func() string {
+		t.Helper()
+		registered, ok := mustReadCrewTeam(t, "team").registeredAgent("owner", main)
+		if !ok {
+			t.Fatal("Main has no Team registry identity")
+		}
+		return registered.ID
+	}
 	mainAsk := func() crewShareAsk {
 		t.Helper()
 		w := call("owner", "GET", "/share", "")
@@ -115,12 +123,9 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Share cards use the stable Team ID, not the native chat key.
-		registered, ok := mustReadCrewTeam(t, "team").registeredAgent("owner", main)
-		if !ok {
-			t.Fatal("Main has no Team registry identity")
-		}
+		id := mainID()
 		for _, agent := range page.Agents {
-			if agent.Key == registered.ID && agent.Ask != nil {
+			if agent.Key == id && agent.Ask != nil {
 				return *agent.Ask
 			}
 		}
@@ -131,19 +136,19 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 	if ask := mainAsk(); !ask.On || ask.CanChange || ask.Fixed != errCrewTeamLastShared.Error() {
 		t.Fatalf("last shared agent lost its lock or explanation: %+v", ask)
 	}
-	if w := call("owner", "POST", "/agent-visibility", `{"agent_key":"main","in_team":false}`); w.Code != 400 || !strings.Contains(w.Body.String(), "last_shared_agent") {
+	if w := call("owner", "POST", "/agent-visibility", `{"agent_key":"`+mainID()+`","in_team":false}`); w.Code != 400 || !strings.Contains(w.Body.String(), "last_shared_agent") {
 		t.Fatalf("last shared agent was unshared: %d %s", w.Code, w.Body.String())
 	}
 	saveAgents(main, helper)
 	if ask := mainAsk(); !ask.On || !ask.CanChange || ask.Fixed != "" {
 		t.Fatalf("two shared agents still locked: %+v", ask)
 	}
-	mustOK(call("owner", "POST", "/agent-visibility", `{"agent_key":"main","in_team":false}`))
+	mustOK(call("owner", "POST", "/agent-visibility", `{"agent_key":"`+mainID()+`","in_team":false}`))
 	if ask := mainAsk(); ask.On || !ask.CanChange {
 		t.Fatalf("Main did not become private or cannot be shared again: %+v", ask)
 	}
 	// Restore Main for the unchanged published-action checks below.
-	mustOK(call("owner", "POST", "/agent-visibility", `{"agent_key":"main","in_team":true}`))
+	mustOK(call("owner", "POST", "/agent-visibility", `{"agent_key":"`+mainID()+`","in_team":true}`))
 	target := triggerTarget{Kind: triggerCallerCrew, Path: externalCommandCrewRoot, CrewID: "team", CrewOwner: "owner", CrewProfile: "work"}
 	if err := writeCrewFunctions(ctx, target, []crewFunction{
 		{Name: "enabled_action", Instructions: "Return the result."},
