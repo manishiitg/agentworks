@@ -252,6 +252,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 // kill-session) and is a no-op when no session is registered for the
 // owner, so calling all tmux providers is safe and provider-agnostic.
 func closeAllCodingCLIInteractiveSessionsForOwner(owner, reason string) {
+	common.RevokeProcessBridgeCredential(owner, "process_disposed")
 	llmproviders.CloseCursorCLIInteractiveSessionForOwner(owner, reason)
 	llmproviders.CloseCodexCLIInteractiveSessionForOwner(owner, reason)
 	llmproviders.CloseClaudeCodeInteractiveSessionForOwner(owner, reason)
@@ -376,6 +377,7 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 		api.sessionWorkspaceMu.Unlock()
 	}
 
+	common.RevokeProcessBridgeCredential(sessionID, "stop")
 	api.removeSessionAgent(sessionID)
 
 	api.completionLoopStartedMu.Lock()
