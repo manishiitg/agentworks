@@ -39,3 +39,12 @@ it('shows typed long foreground helpers but keeps short ones as ordinary steps',
   expect(backgroundTaskLine(async, at + 288000)).toBe('Explore · Grepping coding.go · 4m 48s · 154.2k tokens')
   expect(backgroundTaskLine({ ...async, tokens: undefined }, at + 1000)).not.toContain('tokens')
 })
+
+it('shows only reported outcomes and omits duration when native times are zero (PLAT-746-995)', () => {
+  const record = { kind: 'background_command', command_label: 'npm run check', started_at: '0001-01-01T00:00:00Z', ended_at: '0001-01-01T00:00:00Z' }
+  for (const state of ['finished', 'failed', 'stopped', 'interrupted']) {
+    const text = backgroundTaskLine({ ...record, state }, Date.now())
+    expect(text).toBe(`Background shell ${state} · npm run check`)
+    expect(text).not.toContain('restart')
+  }
+})

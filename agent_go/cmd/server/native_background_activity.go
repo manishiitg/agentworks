@@ -237,7 +237,7 @@ func (api *StreamingAPI) observeNativeBackgroundCommands(session string, event s
 			if command.Name != "exec_command" || !strings.HasPrefix(command.ID, "exec-") {
 				continue
 			}
-			_ = api.saveNativeCodingActivity(session, llmtypes.NativeRecord{ID: "detached:" + command.ID, Provider: provider, SessionID: native, TaskID: command.ID, ToolID: command.ID, Kind: "background_command", Origin: "reply_detached_command", State: "started", Timestamp: command.StartedAt, StartedAt: command.StartedAt})
+			_ = api.saveNativeCodingActivity(session, llmtypes.NativeRecord{ID: "detached:" + command.ID, Provider: provider, SessionID: native, TaskID: command.ID, ToolID: command.ID, Kind: "background_command", Origin: "reply_detached_command", CommandLabel: command.Label, State: "started", Timestamp: command.StartedAt, StartedAt: command.StartedAt})
 		}
 	case "tool_call_end", "tool_call_error":
 		var id, state string

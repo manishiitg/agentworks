@@ -15,7 +15,7 @@ export function backgroundTaskLine(record: Record<string, unknown>, now: number)
   const helper = record.kind === 'helper'
   const helperType = typeof record.helper_type === 'string' ? record.helper_type.trim() : ''
   const kind = helper ? helperType || 'Background agent' : 'Background shell'
-  const state = record.state === 'started' ? 'running…' : ['finished', 'completed'].includes(String(record.state)) ? 'finished' : record.state === 'stopped' ? 'stopped' : 'ended'
+  const state = record.state === 'started' ? 'running…' : ['finished', 'completed'].includes(String(record.state)) ? 'finished' : record.state === 'stopped' ? 'stopped' : record.state === 'failed' ? 'failed' : record.state === 'interrupted' ? 'interrupted' : 'ended'
   const start = instant(record.started_at), end = instant(record.ended_at)
   const elapsed = start !== undefined && (record.state === 'started' || end !== undefined) ? (end ?? now) - start : typeof record.duration_ms === 'number' ? record.duration_ms : undefined
   // Only presentation is delayed: normal tool steps and native ownership stay intact.
