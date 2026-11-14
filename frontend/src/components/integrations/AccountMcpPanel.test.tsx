@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-import { act } from 'react'
+// @vitest-environment happy-dom
+import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import AccountMcpPanel from './AccountMcpPanel'
@@ -34,6 +34,7 @@ it('adds and removes directly without project context and hides management for s
   fixture.get.mockImplementation(async () => ({ data: { servers: [...rows], can_connect: true } }))
   fixture.post.mockImplementation(async (_path, body) => {
     if (body.operation === 'apps') return { data: { result: '{"apps":[]}' } }
+    if (body.operation === 'edit_connection') rows.find(row => row.id === body.connection_id)!.label = body.label
     if (body.operation === 'remove_connection') rows.splice(rows.findIndex(row => row.id === body.connection_id), 1)
     return { data: { result: body.operation === 'connect' ? '{"auth_url":"https://auth.example.com/authorize","message":"Complete sign-in."}' : 'Removed connection.' } }
   })
@@ -41,6 +42,12 @@ it('adds and removes directly without project context and hides management for s
   expect(host.textContent).not.toContain('Manage in chat')
   expect(host.querySelector('[aria-label="Actions for Shared tools"]')).toBeNull()
   expect(host.querySelector('[aria-label="Actions for My tools"]')).toBeTruthy()
+  await click('Actions for My tools')
+  await click('Edit connection')
+  const edit = document.querySelector('[role="dialog"]')!
+  await fill(edit.querySelector('input')!, 'Edited tools')
+  await act(async () => edit.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(fixture.post).toHaveBeenCalledWith('/api/my-vaults/op', { operation: 'edit_connection', connection_id: 'c-00000001', label: 'Edited tools' }, { skipSessionContext: true })
   await click('Add MCP server')
   const dialog = document.querySelector('[role="dialog"]')!
   const inputs = dialog.querySelectorAll('input')
@@ -50,11 +57,11 @@ it('adds and removes directly without project context and hides management for s
   expect(fixture.post).toHaveBeenCalledWith('/api/my-vaults/op', { operation: 'connect', name: 'New tools', label: 'New tools', url: 'https://tools.example.com/mcp' }, { skipSessionContext: true })
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   expect(host.querySelector('a[href="https://auth.example.com/authorize"]')).toBeTruthy()
-  await click('Actions for My tools')
+  await click('Actions for Edited tools')
   await click('Remove connection')
   const confirmation = document.querySelector('[role="dialog"]')!
   await click('Remove connection', confirmation)
   expect(fixture.post).toHaveBeenCalledWith('/api/my-vaults/op', { operation: 'remove_connection', connection_id: 'c-00000001' }, { skipSessionContext: true })
-  expect(host.querySelector('[aria-label="My tools server"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Edited tools server"]')).toBeNull()
   expect(host.querySelector('[aria-label="Shared tools server"]')).toBeTruthy()
 })
