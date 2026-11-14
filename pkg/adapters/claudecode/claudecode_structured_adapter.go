@@ -68,17 +68,18 @@ type claudeStreamEvent struct {
 		} `json:"delta"`
 	} `json:"event,omitempty"`
 
-	ParentToolUseID string               `json:"parent_tool_use_id,omitempty"`
-	Type            string               `json:"type"`
-	Subtype         string               `json:"subtype,omitempty"`
-	Attempt         int                  `json:"attempt,omitempty"`
-	MaxRetries      int                  `json:"max_retries,omitempty"`
-	RetryDelayMS    int64                `json:"retry_delay_ms,omitempty"`
-	SessionID       string               `json:"session_id,omitempty"`
-	Message         *claudeStreamMessage `json:"message,omitempty"`
-	Result          string               `json:"result,omitempty"`
-	IsError         bool                 `json:"is_error,omitempty"`
-	Usage           *claudeStreamUsage   `json:"usage,omitempty"`
+	ParentToolUseID string                     `json:"parent_tool_use_id,omitempty"`
+	Type            string                     `json:"type"`
+	Subtype         string                     `json:"subtype,omitempty"`
+	Attempt         int                        `json:"attempt,omitempty"`
+	MaxRetries      int                        `json:"max_retries,omitempty"`
+	RetryDelayMS    int64                      `json:"retry_delay_ms,omitempty"`
+	SessionID       string                     `json:"session_id,omitempty"`
+	Message         *claudeStreamMessage       `json:"message,omitempty"`
+	Result          string                     `json:"result,omitempty"`
+	IsError         bool                       `json:"is_error,omitempty"`
+	Usage           *claudeStreamUsage         `json:"usage,omitempty"`
+	ModelUsage      map[string]json.RawMessage `json:"modelUsage,omitempty"`
 	// system/status: "compacting" while compaction runs, null afterwards
 	// with compact_result. system/compact_boundary: compact_metadata.
 	Status          *string                `json:"status,omitempty"`
@@ -740,7 +741,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 				}
 
 				if ev.Subtype == "init" && ev.Model != "" {
-					liveUsage.model = ev.Model
+					liveUsage.observeModel(ev.Model)
 				}
 				for _, c := range compaction.observe(ev, time.Now()) {
 					if !instructionsCompacted && c.Phase == llmtypes.ContextCompactionPhaseEnd && c.Outcome == llmtypes.ContextCompactionOutcomeSuccess {
@@ -763,7 +764,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			case "assistant":
 				if ev.Message != nil && liveUsage.observeUsage(ev.Message.Usage) {
 					if ev.Message.Model != "" {
-						liveUsage.model = ev.Message.Model
+						liveUsage.observeModel(ev.Message.Model)
 					}
 					emitLiveUsage(false)
 				}
@@ -840,6 +841,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 					}
 				}
 			case "result":
+				if liveUsage.observeModelUsage(ev.ModelUsage) && c.logger != nil {
+					c.logger.Infof("[CLAUDE_CONTEXT] session=%s model=%s window=%d source=modelUsage", sessionID, liveUsage.model, liveUsage.window)
+				}
 				if ev.SDKWarmMemory != nil && sess != nil && keepAllowed {
 					sess.logWarmMemory(ev.SDKWarmMemory)
 				}
@@ -1009,6 +1013,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 		"claude_code_mode":           "structured",
 		"claude_code_session_id":     sessionID, // surfaced so mcpagent captures a.ClaudeCodeSessionID and can --resume next turn
 		"context_window_usage_known": false,
+	}
+	if liveUsage.window > 0 {
+		additional[llmtypes.ContextWindowTokensMetaKey] = liveUsage.window
 	}
 	transport := llmtypes.CodingProviderTransportStructured
 	if c.sdkTransport {

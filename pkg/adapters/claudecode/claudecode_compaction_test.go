@@ -43,3 +43,32 @@ func TestClaudeCompactionRecords(t *testing.T) {
 		t.Fatalf("structured end = %+v", out[1])
 	}
 }
+
+// Reported windows may differ by subscription/model; helper totals are not the
+// main model's capacity, and capacity alone must not fabricate context usage.
+func TestClaudeReportedContextWindowUsesNativeModelNotHelpers(t *testing.T) {
+	var ev claudeStreamEvent
+	if err := json.Unmarshal([]byte(`{"type":"result","modelUsage":{"main-model":{"contextWindow":327680},"helper-model":{"contextWindow":1000000}}}`), &ev); err != nil {
+		t.Fatal(err)
+	}
+	usage := &claudeLiveUsage{model: "main-model"}
+	if !usage.observeModelUsage(ev.ModelUsage) {
+		t.Fatal("native capacity missing")
+	}
+	status := usage.statusLine()
+	if status.Metadata[llmtypes.ContextWindowTokensMetaKey] != 327680 {
+		t.Fatalf("wrong model window: %+v", status.Metadata)
+	}
+	if _, known := status.Metadata[llmtypes.ContextUsedTokensMetaKey]; known {
+		t.Fatal("capacity fabricated current usage")
+	}
+	for _, raw := range []string{`{"main-model":{"contextWindow":0}}`, `{"main-model":{"contextWindow":-1}}`, `{"main-model":{"contextWindow":1.5}}`, `{"helper-model":{"contextWindow":1000000}}`} {
+		var models map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &models); err != nil {
+			t.Fatal(err)
+		}
+		if usage.observeModelUsage(models) || usage.window != 327680 {
+			t.Fatalf("invalid/mismatched report replaced known capacity: %s", raw)
+		}
+	}
+}

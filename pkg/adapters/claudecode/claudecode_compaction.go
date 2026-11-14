@@ -138,6 +138,7 @@ func (s *claudeStructuredCompaction) observe(ev claudeStreamEvent, now time.Time
 type claudeLiveUsage struct {
 	model   string
 	context int
+	window  int
 	windows []llmtypes.RateLimitWindow
 }
 
@@ -196,11 +197,18 @@ func (u *claudeLiveUsage) observeRateLimit(info *claudeRateLimitInfo) bool {
 }
 
 func (u *claudeLiveUsage) statusLine() *llmtypes.StatusLine {
-	if u == nil || (u.context <= 0 && len(u.windows) == 0) {
+	if u == nil || (u.context <= 0 && u.window <= 0 && len(u.windows) == 0) {
 		return nil
 	}
 	status := &llmtypes.StatusLine{Provider: "claudecode", Model: u.model}
-	status.SetContextUsage(u.context, 0)
+	status.SetContextUsage(u.context, u.window)
+	// A reported capacity alone is not a known current-context token count.
+	if u.window > 0 {
+		if status.Metadata == nil {
+			status.Metadata = map[string]interface{}{}
+		}
+		status.Metadata[llmtypes.ContextWindowTokensMetaKey] = u.window
+	}
 	status.SetRateLimitWindows(u.windows)
 	var extras []string
 	for _, w := range u.windows {
