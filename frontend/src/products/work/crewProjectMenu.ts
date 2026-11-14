@@ -37,7 +37,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
     // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
     add('mcp', 'Share', 'Team', UsersRound, 'team')
-    add('mcp', 'Share', 'Online', Globe, 'online')
+    add('mcp', 'Share', 'Mac online', Globe, 'online')
     add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot (owner, 14 Nov).
     for (const item of projectChannelSections(bots, bots)) {

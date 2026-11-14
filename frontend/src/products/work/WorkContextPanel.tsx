@@ -9,7 +9,7 @@ import { WorkspaceConnectionsMenu, ConnectionIcon } from '../../components/works
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
-import { cloudStateIcon, type CrewAsk, openCrewAskThread, type CrewAccessLine } from './YourComputerPanel'
+import { type CrewAccessLine } from './YourComputerPanel'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -20,6 +20,7 @@ import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuIt
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
+import { CrewOnlineRow } from './CrewOnlineRow'
 import { useChatStore } from '../../stores/useChatStore'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -59,7 +60,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   })
   const computerState = access?.place
   const accessTree = access?.tree || []
-  const asking = access?.asking || []
   const showMenu = (view: 'full' | 'integrations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
@@ -118,11 +118,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onOpen={(repoRoot) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
   const theirs = access?.role === 'member' || access?.role === 'shared'
   const macElsewhere = data?.mac_elsewhere === true
-  const accessDetail = section('access')?.detail || section('sharing')?.detail
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
   // Crew lives (its state icon); the server words both.
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:online' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:online' ? accessDetail : undefined} onClick={() => open(item)}>{item.id === 'mcp:team' ? accessTree.find(line => line.kind === 'team')?.title || item.label : item.label}</Row>
-  const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
+  const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
+    ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
+    : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.id === 'mcp:team' ? accessTree.find(line => line.kind === 'team')?.title || item.label : item.label}</Row>
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, team_live: Users, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert }
@@ -172,22 +172,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       </button>
     </div>
   })
-  // Each row's lines sit under it as a sub-list (owner, 5 Nov: "put inside access only like a sub menu"; 11 Nov: Team
-  // and Online), as the server groups them; who asked sits under Online. Each line opens its page at its place.
+  // Team keeps its details; Mac online is one row. Artifacts remains a sibling
+  // with its own document list (owner, 15 Nov).
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team')
-  const onlineLines = accessTree.filter(line => line.group !== 'team' && line.kind !== 'dashboard')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = teamLines.length > 0 && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1">{treeLines(teamLines)}</div>
-  const asksTree = (asking.length > 0 || onlineLines.length > 0) && <div role="list" aria-label="Online details" className="ml-3 border-l border-border pl-2 pb-1">
-    {treeLines(onlineLines)}
-    {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
-      <span className="min-w-0 flex-1 truncate">{ask.label}</span>
-      <span className="shrink-0 text-muted-foreground">{ask.detail}</span>
-    </button>)}
-    {asking.length > 5 && <p className="px-1.5 text-[11px] text-muted-foreground">+{asking.length - 5} more</p>}
-  </div>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : item.id === 'mcp:online' ? asksTree : null}</div>)}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>

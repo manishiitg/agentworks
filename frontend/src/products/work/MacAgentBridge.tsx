@@ -10,7 +10,7 @@ import { ProjectAgentBridgePanel } from '../../components/workspace/ProjectAgent
 import { fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 
-/** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
+/** The AgentBridge tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
  * Team tab reply (crew_team_tab.go agentbridge), the same on the Mac app and the website. Only the switch is
  * clickable; an agent with no purpose keeps its disabled Discovery switch with a Set purpose explanation (the server says which). The Mac app switches on its
  * own Mac (crew-sync public / only_my_agents); the website asks the server, which passes it to the Mac and refuses

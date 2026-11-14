@@ -174,7 +174,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'publish' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'agentbridge' || saved === 'publish' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
@@ -330,9 +330,10 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
           {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this Crew in a browser or on your phone.</p>}
         </section>
 
-        {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
-        <MacAgentBridge projectId={projectId} />
       </>}
+    </section>}
+    {!(here && needsServer) && shown === 'agentbridge' && <section role="tabpanel" id={`crew-access-panel-${projectId}-agentbridge`} aria-labelledby={`crew-access-${projectId}-agentbridge`} className="space-y-3">
+      <MacAgentBridge projectId={projectId} />
     </section>}
     {shown === 'online-agents' && <section role="tabpanel" id={`crew-access-panel-${projectId}-online-agents`} aria-labelledby={`crew-access-${projectId}-online-agents`} className="space-y-3">
       {binding ? <OnlineAgentsCard key={`${projectId}:${binding.connection_id || ''}:${binding.peer_project_id}`} projectId={projectId}
