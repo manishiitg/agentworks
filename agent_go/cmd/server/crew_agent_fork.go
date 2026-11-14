@@ -109,7 +109,7 @@ func completeCrewAgentFork(team crewTeam, offer crewAgentFork, person string, no
 	}
 	copy, ok := team.Agents[offer.CopyAgentID]
 	if !ok || copy.ID == offer.Agent.ID || copy.OwnerID != person || copy.InTeam ||
-		copy.ChatKey == "" || copy.ChatKey == offer.Agent.ChatKey || copy.Tab == "" {
+		copy.ChatKey != crewAgentForkChatKey(offer) || copy.ChatKey == offer.Agent.ChatKey || copy.Tab == "" {
 		return fmt.Errorf("import this fork as your own new private agent first")
 	}
 	if err := removeCrewAgentFork(offer); err != nil {
