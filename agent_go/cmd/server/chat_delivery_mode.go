@@ -21,8 +21,15 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	api.conversationTurnQueueMu.Lock()
 	refreshing := api.conversationTurnQueueRuntimeChange[sessionID]
 	api.conversationTurnQueueMu.Unlock()
-	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) || api.launchedAgentProfileDiffers(sessionID) {
+	if sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) {
 		return "refreshing", false
+	}
+	refreshing = refreshing || req.RestartCodingCLI || api.launchedAgentProfileDiffers(sessionID)
+	state := func(allowed bool) (string, bool) {
+		if refreshing {
+			return "refreshing", allowed
+		}
+		return "running", allowed
 	}
 	api.runningAgentsMux.RLock()
 	agent := api.runningAgents[sessionID]
@@ -40,7 +47,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 					if !api.liveSteerProviderTransportReady(sessionID, provider) {
 						return api.blockedQueuedTurnReason(sessionID), false
 					}
-					return "running", !req.DisableLiveInputDelivery
+					return state(!req.DisableLiveInputDelivery)
 				}
 			}
 		}
@@ -55,7 +62,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	if !occupied {
 		return "waiting", false
 	}
-	return "running", !req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID)
+	return state(!req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID))
 }
 
 // PLAT-746: a busy lane or missing live-input transport is not startup evidence.
@@ -118,7 +125,7 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 // Queue access is already checked by pendingQueuedMessages (PLAT-746-313).
 func (api *StreamingAPI) queuedMessageWaitDetail(sessionID, reason string) string {
 	if reason == "refreshing" {
-		return "Waiting for this chat to restart with its updated setup"
+		return "Updated setup applies next turn. You can steer into the current reply."
 	}
 	if idleCompacts.running(sessionID) != nil {
 		return "Waiting for this chat to finish tidying its context"

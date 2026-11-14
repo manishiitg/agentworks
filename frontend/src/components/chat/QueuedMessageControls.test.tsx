@@ -44,8 +44,8 @@ it('keeps the restart reason on the clock and clears stale queue presentation on
   const render = (receipt: Record<string, unknown>) => <><DeliveryTick sessionId="s" metadata={receipt} /><QueuedInboxStatus sessionId="s" metadata={receipt} /><QueuedMessageNotice sessionId="s" metadata={receipt} /></>
   try {
     await act(async () => root.render(render({ client_message_id: 'm', delivery_status: 'queued_for_turn' })))
-    expect(host.textContent).not.toContain('restarts')
-    expect(host.querySelector('[data-testid="delivery-tick"]')?.getAttribute('title')).toContain('restarts')
+    expect(host.textContent).not.toContain('next turn')
+    expect(host.querySelector('[data-testid="delivery-tick"]')?.getAttribute('title')).toContain('next turn')
     for (const receipt of [{ delivery_status: 'sent_to_cli' }, { confirmation: 'confirmed' }, { delivery_status: 'unconfirmed', confirmation: 'confirmed' }]) {
       await act(async () => root.render(render({ client_message_id: 'm', ...receipt })))
       expect(host.querySelector('p')).toBeNull()
@@ -58,4 +58,20 @@ it('keeps the restart reason on the clock and clears stale queue presentation on
     expect(host.textContent).toContain('Delivery unconfirmed')
     expect(actQueue).not.toHaveBeenCalled()
   } finally { await act(async () => root.unmount()); useQueuedMessageControlsStore.getState().set('s', undefined) }
+})
+
+// Pending setup is not permission to hide the server-admitted Steer action.
+it('allows steering during a pending setup refresh when the server admits it', async () => {
+ const { QueuedMessageControls } = await import('./QueuedMessageControls')
+ const { useQueuedMessageControlsStore } = await import('../../stores/useQueuedMessageControlsStore')
+ const host=document.createElement('div'),root=createRoot(host),actQueue=vi.fn()
+ const message={client_message_id:'m',message_id:'queued-m',content:'Continue',can_manage:true,can_steer:true,refreshing:true}
+ useQueuedMessageControlsStore.getState().set('refresh-chat',{messages:{m:message},busyMessageId:null,canEdit:true,editable:true,act:actQueue})
+ try {
+  await act(async()=>root.render(<QueuedMessageControls sessionId="refresh-chat" metadata={{client_message_id:'m'}}/>))
+  const steer=Array.from(host.querySelectorAll('button')).find(button=>button.textContent==='Steer now')
+  expect(steer).toBeDefined()
+  await act(async()=>steer!.click())
+  expect(actQueue).toHaveBeenCalledWith(message,'steer')
+ } finally {await act(async()=>root.unmount());useQueuedMessageControlsStore.getState().set('refresh-chat',undefined)}
 })
