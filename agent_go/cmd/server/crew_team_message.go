@@ -78,6 +78,18 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 		externalError(w, 400, "invalid_operation", "Choose send or read.")
 		return
 	}
+	// The pair proves the sender, not its persisted workspace. Stamp the owner's
+	// current server-admitted root before saving the endpoint; an omitted Path
+	// becomes "." and then fails the normal queued crew_binding recheck (951).
+	if claims.UserID == ownerOfCrewProjectID(project) {
+		binding, _, ok := api.readExternalWorkspace(ctx, claims, project)
+		if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
+			log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=sender_workspace", project)
+			externalError(w, 403, "sender_workspace_unavailable", "This Crew is unavailable or its owner changed.")
+			return
+		}
+		caller.Path = binding.Binding.WorkspacePath
+	}
 	var target triggerTarget
 	member := ""
 	if inbox == "" {
