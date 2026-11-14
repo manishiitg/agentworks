@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -185,43 +184,23 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 		t.Fatalf("Mac on label: %q %q", label, tone)
 	}
 
-	// The Mac goes off: the teammate asks Helper from their own AI app.
+	// The Mac goes off: the place label still advertises its online copy.
 	crewMacSockets.Lock()
 	delete(crewMacSockets.byDevice, "owner-mac")
 	crewMacSockets.Unlock()
 	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); !strings.HasPrefix(label, crewAlwaysOnLine+" · answering your team") || tone != "server" {
 		t.Fatalf("In team, Mac off label: %q %q", label, tone)
 	}
-	member := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}}}
-	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, member))
-	w := httptest.NewRecorder()
-	api.macSharedAgentCall(w, r, "ask", map[string]any{"chat_id": macSharedAgentChatKey("team", helper), "message": "what changed today?"}, "owner", "team")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "submission_id") {
-		t.Fatalf("the teammate's ask was not answered on the server: %d %s (held: %v)", w.Code, w.Body.String(), heldTabs(t))
-	}
-	if len(ran) != 1 || ran[0].Tab != helper || ran[0].Operation != "agent_ask" {
-		t.Fatalf("the server did not run the ask: %+v", ran)
-	}
-	var args struct {
-		SenderID string `json:"sender_id"`
-	}
-	if json.Unmarshal(ran[0].Args, &args) != nil || args.SenderID != "other" {
-		t.Fatalf("the server turn must run with the teammate as the asker, got %q", args.SenderID)
-	}
-	if len(imported) != 1 || imported[0] != helper+"/other" {
-		t.Fatalf("the owner's chat and the teammate's thread must come from the copy: %v", imported)
-	}
+	// PLAT-746-970: teammate asks no longer import or resume the maker's standby
+	// session. TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn covers that
+	// answer/store path with current In-team admission and the asker's account.
 	rows, err := readCrewStandby("team", "owner")
-	if err != nil || rows[helper].Writer != "server" || rows[helper].WriterRevision != 1 || rows[helper].WriterSince == "" {
-		t.Fatalf("the server must be recorded as the writer: %+v %v", rows[helper], err)
-	}
-	// From now on the teammate's thread runs here, not on the Mac.
-	if !crewStandbyServesKey(sharedThreadKey("team", helper, "other")) || crewLivesOnMac(crewProfileID, sharedThreadKey("team", helper, "other"), "owner") {
-		t.Fatal("the teammate's thread on a server-answered agent must run on the server")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// PLAT-856-509 (owner, 6 Nov: "always online agents.. are for another person"): the owner's own chat waits for the Mac,
-	// also while the server answers teammates. Opening it still reads the copy's conversation; a send never runs here.
+	// Opening it still reads the copy's conversation; a send never runs here.
 	ownerKey := macSharedAgentChatKey("team", helper)
 	if crewStandbyServesKey(ownerKey) || !crewLivesOnMac(crewProfileID, ownerKey, "owner") {
 		t.Fatal("the owner's own chat must stay on the Mac")
@@ -236,7 +215,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if routed, w := ownerCall("resolve"); !routed || w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"mac_off":true`) || !strings.Contains(w.Body.String(), "conversation-"+helper) {
 		t.Fatalf("the owner's chat must open from the copy, to read: %t %d %s", routed, w.Code, w.Body.String())
 	}
-	if routed, w := ownerCall("send"); !routed || w.Code != http.StatusServiceUnavailable || len(ran) != 1 {
+	if routed, w := ownerCall("send"); !routed || w.Code != http.StatusServiceUnavailable || len(ran) != 0 {
 		t.Fatalf("the owner's send must wait for the Mac: %t %d %s (ran %d)", routed, w.Code, w.Body.String(), len(ran))
 	}
 
@@ -247,7 +226,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", solo, false, true, false); label != "Mac off · waits for your Mac" || tone != "" {
 		t.Fatalf("Only me, Mac off label: %q %q", label, tone)
 	}
-	if len(imported) != 1 {
+	if len(imported) != 0 {
 		t.Fatalf("an Only me agent's copy was imported: %v", imported)
 	}
 }
