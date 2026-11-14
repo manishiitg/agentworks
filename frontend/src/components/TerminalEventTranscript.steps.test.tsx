@@ -30,14 +30,14 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     event(id, 'tool_call_start', { tool_call_id: id, tool_name: 'exec_command', tool_params: { arguments: '{"cmd":"echo ok"}' } }),
     event(`${id}-end`, 'tool_call_end', { tool_call_id: id, tool_name: 'exec_command', result: 'ok' }),
   ])
-  const before = event('before', 'conversation_response', { content: 'First reply' })
+  const before = event('before', 'llm_generation_end', { content: 'First reply' })
   const first = calls(['a', 'b'])
   const thought = event('thought', 'conversation_thinking', { thinking: 'A supplied reasoning summary' })
   const middle = calls(['c'])
   const empty = event('empty', 'conversation_thinking', { thinking: '', metadata: { presentation: 'assistant_update' } })
   const status = event('status', 'status_line', { content: 'Working' })
   const last = calls(['d', 'e'])
-  const after = event('after', 'conversation_response', { content: 'Second reply' })
+  const after = event('after', 'llm_generation_end', { content: 'Second reply' })
   const events = [before, ...first, thought, ...middle, empty, status, ...last, after]
   const original = JSON.stringify(events)
   const host = document.createElement('div'), root = createRoot(host)
