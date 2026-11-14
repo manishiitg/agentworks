@@ -15,7 +15,7 @@ import (
 
 // The share reply (owner, 9 Nov, approved mocks "Share a Crew" and "Share in Slack"; 11 Nov: Share split into Team and
 // Online; 12 Nov: Share agents moved into Team › Agents): the Team option with its status, the Agents tab (people ask
-// the viewer's agents, or start actions the owner set up), plus the Slack tab's rules.
+// the viewer's agents, or start actions the owner set up), plus the Connections Slack bot rules.
 // Dashboards have their own Online tab (crew_dashboards_tab.go). The server writes every line, chip and
 // status and says which controls this viewer may change; the page prints them and sends the person's change to the
 // existing routes (Team save, people, agent-visibility, agent-rule, the Slack bot routes), plus POST action for one
