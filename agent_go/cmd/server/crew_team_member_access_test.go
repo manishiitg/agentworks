@@ -30,11 +30,15 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
-	ws, _ := newFakeWorkspaceServer(t)
+	ws, documents := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	store := defaultProductConversationRegistryStore()
 	key := "member-access:chat:own"
 	memberMain := crewOwnerDefaultChatKey("member-access", "member")
+	ownerMain := crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID)
+	documents.mu.Lock()
+	documents.files["Crew/member-access/product.json"] = `{"schema_version":1,"product":"work","id":"member-access","main_chat_key":"` + ownerMain + `"}`
+	documents.mu.Unlock()
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "member-session"},
 		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"}}}
 	if err := store.writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
@@ -43,9 +47,28 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	for _, who := range []string{"owner", "teammate"} {
 		otherKey := "member-access:chat:" + who
 		otherDoc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, otherKey): {ProfileID: crewProfileID, ConversationKey: otherKey, SessionID: who + "-session"}}}
+		if who == "owner" {
+			otherDoc.Entries[productConversationRegistryEntryKey(crewProfileID, ownerMain)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: ownerMain, SessionID: "owner-main-session", WorkspacePath: "Crew/member-access"}
+		}
 		if err := store.writeDocument(t.Context(), productConversationRegistryPath(who), otherDoc); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Settings admission uses the Team registry, not conversation discovery.
+	// Seed the same owned agents before exercising visibility and its refusals.
+	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{
+		"member":   {key: true, memberMain: true},
+		"owner":    {"member-access:chat:owner": true, ownerMain: true},
+		"teammate": {"member-access:chat:teammate": true},
+	})
+	for id, agent := range team.Agents {
+		if agent.OwnerID == "member" && agent.ChatKey == memberMain {
+			agent.Name = "Main"
+			team.Agents[id] = agent
+		}
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
 	router := mux.NewRouter()
