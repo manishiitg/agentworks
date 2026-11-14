@@ -2,16 +2,18 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
+	"image/draw"
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
 
-	"golang.org/x/image/draw"
+	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 )
 
@@ -20,7 +22,7 @@ const (
 	nativeChatTurnImageMaxBytes = 80 << 20
 	nativeChatImageMaxSide      = 2000
 	// Bound decoded allocations before invoking a codec on compressed input.
-	nativeChatImageMaxPixels = 64_000_000
+	nativeChatImageMaxPixels = 16_000_000
 )
 
 type preparedNativeChatImage struct {
@@ -46,7 +48,21 @@ func (b *nativeChatImageBuffer) Write(p []byte) (int, error) {
 // No decoded pixels or base64 escape this call. Callers process files serially.
 // HEIC is deliberately not registered in phase one: it needs a separately
 // qualified bounded decoder, not an implicit host-installed conversion tool.
+var nativeChatImageDecodeSlot = make(chan struct{}, 1)
+
 func prepareNativeChatImage(source io.ReadSeeker, destination io.Writer) (preparedNativeChatImage, error) {
+	return prepareNativeChatImageContext(context.Background(), source, destination)
+}
+func prepareNativeChatImageContext(ctx context.Context, source io.ReadSeeker, destination io.Writer) (preparedNativeChatImage, error) {
+	select {
+	case nativeChatImageDecodeSlot <- struct{}{}:
+		defer func() { <-nativeChatImageDecodeSlot }()
+	case <-ctx.Done():
+		return preparedNativeChatImage{}, ctx.Err()
+	}
+	return prepareNativeChatImageUnlocked(source, destination)
+}
+func prepareNativeChatImageUnlocked(source io.ReadSeeker, destination io.Writer) (preparedNativeChatImage, error) {
 	var result preparedNativeChatImage
 	size, err := source.Seek(0, io.SeekEnd)
 	if err != nil {
@@ -84,6 +100,11 @@ func prepareNativeChatImage(source io.ReadSeeker, destination io.Writer) (prepar
 	if err != nil {
 		return result, fmt.Errorf("image_decode: %w", err)
 	}
+	if format == "gif" && pixels.Bounds() != image.Rect(0, 0, config.Width, config.Height) {
+		screen := image.NewNRGBA(image.Rect(0, 0, config.Width, config.Height))
+		draw.Draw(screen, pixels.Bounds(), pixels, pixels.Bounds().Min, draw.Over)
+		pixels = screen
+	}
 	w, h := config.Width, config.Height
 	if w > nativeChatImageMaxSide || h > nativeChatImageMaxSide {
 		if w >= h {
@@ -94,7 +115,7 @@ func prepareNativeChatImage(source io.ReadSeeker, destination io.Writer) (prepar
 			h = nativeChatImageMaxSide
 		}
 		smaller := image.NewNRGBA(image.Rect(0, 0, w, h))
-		draw.CatmullRom.Scale(smaller, smaller.Bounds(), pixels, pixels.Bounds(), draw.Src, nil)
+		xdraw.CatmullRom.Scale(smaller, smaller.Bounds(), pixels, pixels.Bounds(), draw.Src, nil)
 		pixels = smaller
 	}
 	// Rotate only after shrinking: never allocate a second full-size photo.

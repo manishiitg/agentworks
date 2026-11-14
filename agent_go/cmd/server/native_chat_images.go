@@ -175,11 +175,7 @@ func (api *StreamingAPI) withNativeChatImages(ctx context.Context, user, session
 	unavailable := provider != "codex-cli" || req.ClaudeCodeTransport == "tmux" || liveCodingProviderTransport(session) == "tmux"
 	fallbackNotice := false
 	var sourceBytes int64
-	for _, ref := range refs {
-		if ref.User == user && ref.Session == session && ref.Conversation == req.AgentProfileConversationKey && nativeChatImagePath(ref.Path) {
-			sourceBytes += ref.Bytes
-		}
-	}
+
 	for _, ref := range refs {
 		if ref.User != user || ref.Session != session || ref.Conversation != req.AgentProfileConversationKey {
 			continue
@@ -197,7 +193,15 @@ func (api *StreamingAPI) withNativeChatImages(ctx context.Context, user, session
 			fallbackNotice = true
 			continue
 		}
-		inputs = append(inputs, llmtypes.NativeImageInput{ID: ref.Hash, Open: func(deliveryCtx context.Context) (outReader io.ReadCloser, outMIME string, outBytes int64, outErr error) {
+		if ref.Bytes > nativeChatImageMaxBytes || sourceBytes+ref.Bytes > nativeChatTurnImageMaxBytes || len(inputs) >= 16 {
+			api.recordChatImageNotice(session, "An image was too large to send directly. Its file path is still available.")
+			log.Printf("[CHAT_IMAGE] session=%s provider=%s images=1 bytes=%d native=false action=skipped reason=image_limit", session, provider, ref.Bytes)
+			continue
+		}
+		sourceBytes += ref.Bytes
+		inputs = append(inputs, llmtypes.NativeImageInput{ID: ref.Hash, Skipped: func(reason string) {
+			api.recordChatImageNotice(session, "An image could not be sent directly. Its file path is still available.")
+		}, Open: func(deliveryCtx context.Context) (outReader io.ReadCloser, outMIME string, outBytes int64, outErr error) {
 			log.Printf("[CHAT_IMAGE] session=%s provider=%s image=%s images=1 bytes=%d native=true action=started reason=preparing", session, provider, ref.Hash, ref.Bytes)
 			defer func() {
 				if outErr != nil {
@@ -210,9 +214,7 @@ func (api *StreamingAPI) withNativeChatImages(ctx context.Context, user, session
 			if err := deliveryCtx.Err(); err != nil {
 				return nil, "", 0, err
 			}
-			if sourceBytes > nativeChatTurnImageMaxBytes {
-				return nil, "", 0, errors.New("turn_image_size")
-			}
+
 			source, err := api.openAdmittedChatImage(auth, ref)
 			if err != nil {
 				return nil, "", 0, err
@@ -234,7 +236,7 @@ func (api *StreamingAPI) withNativeChatImages(ctx context.Context, user, session
 			if err != nil {
 				return nil, "", 0, err
 			}
-			result, err := prepareNativeChatImage(source, destination)
+			result, err := prepareNativeChatImageContext(deliveryCtx, source, destination)
 			if err == nil {
 				_, err = destination.Seek(0, io.SeekStart)
 			}
