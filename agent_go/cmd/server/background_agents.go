@@ -2799,6 +2799,17 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 		}
 	}
 
+	// Reuse the current wrapper's admitted question mode, just like its tools
+	// and provider. A scheduled/bot/API/child wrapper remains unattended.
+	if provider, attended := llmAgent.NativeQuestionMode(); attended {
+		agentCtx = llmtypes.WithCodingAgentQuestionHandler(agentCtx, provider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
+			return api.waitForCodingAgentClarification(ctx, sessionID, provider, questions)
+		})
+		log.Printf("[QUESTIONS] session=%s attended=true source=synthetic_stored_wrapper provider=%s", sessionID, provider)
+	} else {
+		log.Printf("[QUESTIONS] session=%s attended=false source=synthetic_stored_wrapper provider=%s", sessionID, provider)
+	}
+
 	// Store cancel function so handleStopSession can cancel this turn
 	api.agentCancelMux.Lock()
 	api.agentCancelFuncs[sessionID] = agentCancel
