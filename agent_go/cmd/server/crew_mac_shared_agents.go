@@ -448,7 +448,19 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 				externalError(w, 403, "agent_unavailable", "This agent is no longer In team.")
 				return true
 			}
-			target, err := api.resolveTeamAgentTarget(r.Context(), triggerTarget{Kind: triggerCallerCrew, CrewID: projectID, CrewProfile: crewProfileID, CrewOwner: owner}, registered.ID)
+			profile, err := api.agentProfiles.Resolve(crewProfileID, 0, owner)
+			if err != nil {
+				externalCommunicationError(w, 403, "agent_unavailable", err)
+				return true
+			}
+			binding, err := resolveCrewProjectBinding(r.Context(), owner, profile, projectID, "")
+			if err != nil || binding.OwnerID != owner {
+				externalError(w, 403, "agent_unavailable", "This agent's Crew is unavailable.")
+				return true
+			}
+			// Preserve the validated Crew root in the mailbox endpoint. Delivery
+			// rechecks it even though the answer never runs in the maker's folder.
+			target, err := api.resolveTeamAgentTarget(r.Context(), triggerTarget{Kind: triggerCallerCrew, Path: binding.Binding.WorkspacePath, CrewID: projectID, CrewProfile: crewProfileID, CrewOwner: owner}, registered.ID)
 			if err != nil {
 				externalCommunicationError(w, 403, "agent_unavailable", err)
 				return true
