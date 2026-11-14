@@ -4,17 +4,18 @@ import type { McpConnectionRow } from './McpConnectionsPanel'
 export type VaultMcpServer = VaultConnectionRow
 export function useVaultMcpConnections(workspacePath?: string) {
  const [items, setItems] = useState<VaultConnectionRow[]>([])
+ const [canConnect,setCanConnect] = useState(false)
  const [loading,setLoading] = useState(true)
  const [error,setError] = useState<string | null>(null)
  const refresh = useCallback(async () => {
   setLoading(true)
-  try { setItems(await vaultConnectionsApi.list(workspacePath)); setError(null) }
+  try { const data = await vaultConnectionsApi.inventory(workspacePath); setItems(data.servers); setCanConnect(data.can_connect); setError(null) }
   catch { setError('Apps are unavailable. Refresh to check your connections.') }
   finally { setLoading(false) }
  },[workspacePath])
  useEffect(() => { void refresh(); const focus=()=>void refresh(); window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus) },[refresh])
- return { loading, refresh, items, notices: error ? [{ message:error,retry:()=>void refresh() }] : [],
-  servers:items.map(server=>({id:`vault_${server.id}`,name:server.label,provider:server.provider,source:server.detail||'Saved account',status:server.status==='active'?'Connected':server.status==='authentication_required'?'Sign-in required':'Not connected',toolCount:server.tools.length,
+ return { loading, refresh, items, canConnect, notices: error ? [{ message:error,retry:()=>void refresh() }] : [],
+  servers:items.map(server=>({id:`vault_${server.id}`,name:server.label,provider:server.provider,source:server.detail||'Saved account',status:server.status==='active'?'Connected':server.status==='authentication_required'?'Sign-in required':server.status==='pending'?'Saved · not verified':'Needs attention',toolCount:server.tools.length,
    tools:server.tools.map(tool=>({id:tool.name,name:tool.name.split('__').slice(1).join('__')||tool.name,description:tool.description,rawSchema:tool.input_schema})),
   })) satisfies McpConnectionRow[],
  }

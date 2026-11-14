@@ -169,6 +169,22 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		}
 		return vaultPersonRequest(ctx, person, method, path, payload)
 	}
+	// The screen uses the native exact-connection management path, including its
+	// current owner/admin gate. Never accept a browser-provided vault or project.
+	if args["_screen"] == true {
+		native := map[string]string{"edit_connection": "edit_mcp_server", "sign_in": "install_mcp_server", "sync": "trigger_mcp_discovery", "remove_connection": "remove_mcp_server"}[operation]
+		if native != "" {
+			if !vaultConnectionID.MatchString(connectionID) {
+				return "", errors.New("Choose an exact saved connection")
+			}
+			in := map[string]interface{}{"_vault_only": true, "_screen": true, "name": vaultServerName(connectionID)}
+			for _, field := range []string{"label", "url", "api_key", "api_key_header", "api_key_format", "client_id", "client_secret"} {
+				if value, ok := args[field]; ok { in[field] = value }
+			}
+			if operation == "sign_in" { in["reconnect"] = true }
+			return api.mcpConnectionTool(ctx, person, native, in)
+		}
+	}
 	// Every change goes to the person's own vault (PLAT-856-400); there is no other vault to choose.
 	vaultID := ""
 	if operation != "apps" {
@@ -192,20 +208,28 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			needsAdminSetup = func(name string) bool { return oauthNeedsAdminSetup(config, name, redirect) }
 		}
 		return vaultCatalogApps(data, needsAdminSetup)
-	case "connect", "sign_in":
-		in := map[string]interface{}{"_vault_only": true, "vault_id": vaultID, "catalog": argString(args, "provider"), "label": argString(args, "label"), "name": argString(args, "name"), "url": argString(args, "url")}
-		if operation == "sign_in" {
+	case "connect", "sign_in", "edit_connection":
+		in := map[string]interface{}{"_vault_only": true, "vault_id": vaultID, "catalog": argString(args, "provider"), "label": argString(args, "label"), "name": argString(args, "name"), "url": argString(args, "url"), "_screen": args["_screen"]}
+		if operation == "sign_in" || operation == "edit_connection" {
 			in["name"] = vaultServerName(connectionID)
 			delete(in, "catalog")
 			delete(in, "label")
-			delete(in, "url")
+			if operation == "edit_connection" {
+				in["label"] = argString(args, "label")
+			} else {
+				delete(in, "url")
+			}
 		}
 		for _, field := range []string{"api_key", "api_key_header", "api_key_format", "client_id", "client_secret"} {
 			if value, ok := args[field]; ok {
 				in[field] = value
 			}
 		}
-		return api.mcpConnectionTool(ctx, person, "install_mcp_server", in)
+		nativeOperation := "install_mcp_server"
+		if operation == "edit_connection" {
+			nativeOperation = "edit_mcp_server"
+		}
+		return api.mcpConnectionTool(ctx, person, nativeOperation, in)
 	case "set_secret":
 		name := argString(args, "name")
 		replace := args["replace"] == true

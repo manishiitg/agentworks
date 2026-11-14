@@ -409,7 +409,7 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 		}
 	}
 	labelSameNameVaultRows(rows, from, actor == owner)
-	writeUsersJSON(w, 200, map[string]any{"servers": rows})
+	writeUsersJSON(w, 200, map[string]any{"servers": rows, "can_connect": personVaultActive(actor)})
 }
 
 // labelSameNameVaultRows tells apart two connections with the same name by where each comes from ("Shared through
