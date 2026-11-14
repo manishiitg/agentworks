@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
@@ -60,6 +61,37 @@ func TestCopyVaultConnectorIntoTeamVault(t *testing.T) {
 	}
 	if copied.ID == src.ID || copied.VaultID != team || st.ConnectorBearer(copied.ID) != "team-key" || !st.VaultConnectorOwnedBy("team-1", team, copied.ID) || !st.VaultConnectorOwnedBy("alice", mine, src.ID) {
 		t.Fatalf("the Team must hold its own copy and the member keeps theirs: %+v", copied)
+	}
+
+	// Only the host's service credential reaches the route: a user or MCP token, a missing credential, or the
+	// service credential without a validated person is refused before anything is copied.
+	a.HumanToken = "service-token"
+	mux := http.NewServeMux()
+	a.vaultRoutes(mux)
+	call := func(bearer, platform, actor string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/vaults/"+mine+"/connectors/"+src.ID+"/copy", strings.NewReader(`{"to_vault":"`+team+`","to_owner":"team-1"}`))
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		if platform != "" {
+			req.Header.Set("X-Vault-Platform-User", platform)
+		}
+		if actor != "" {
+			req.Header.Set("X-CapLayer-Actor", actor)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for name, status := range map[string]int{
+		"no credential":         call("", "1", "alice"),
+		"a user token":          call("user-or-mcp-token", "1", "alice"),
+		"no validated person":   call("service-token", "", "alice"),
+		"someone not the owner": call("service-token", "1", "bob"),
+	} {
+		if status != http.StatusUnauthorized && status != http.StatusForbidden {
+			t.Fatalf("%s reached the copy route: %d", name, status)
+		}
 	}
 
 	oauth := store.Connector{ID: "c-oauth", WorkspaceID: "w", Provider: "github", OAuthServer: "github", OAuthCredentialID: "c-oauth", Status: store.StatusActive, VaultID: mine}

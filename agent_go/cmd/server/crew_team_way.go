@@ -240,11 +240,11 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 		err = errors.New("Choose an app or a secret to add to the Team, or something to remove.")
 	}
 	if err != nil {
-		log.Printf("[TEAM_WAY] project=%s actor=%s op=%s kind=%s result=refused", project, claims.UserID, in.Op, in.Kind)
+		log.Printf("[TEAM_WAY] project=%s actor=%s op=%s kind=%s item=%q result=refused", project, claims.UserID, in.Op, in.Kind, in.ID)
 		externalError(w, 400, "team_way_refused", err.Error())
 		return
 	}
-	log.Printf("[TEAM_WAY] project=%s actor=%s op=%s kind=%s result=ok", project, claims.UserID, in.Op, in.Kind)
+	log.Printf("[TEAM_WAY] project=%s actor=%s op=%s kind=%s item=%q result=ok", project, claims.UserID, in.Op, in.Kind, in.ID)
 	view, err := api.teamWayView(ctx, project)
 	if err != nil {
 		externalError(w, 500, "team_way_failed", "It was saved, but the Team's tools could not be read back. Try again.")
