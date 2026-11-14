@@ -156,6 +156,9 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 			return out, &crewSyncFailure{Status: 409, Code: "handback_changed", Message: "this agent's conversations changed on the server; start again"}
 		}
 		s := sessions[at]
+		if chatTerminalTurnRefusal(s.record.SessionID) != "" {
+			return out, fmt.Errorf("%s", chatTerminalPeerNotice)
+		}
 		item := &crewStandbySendItem{Key: s.macKey, Fingerprint: crewHandbackMark(owner, s.record)}
 		reply.Handback = item
 		var conversation *crewHandoffConversation

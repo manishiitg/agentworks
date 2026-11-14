@@ -16,14 +16,16 @@ const chatTerminalNotice = "This chat is open in your terminal; attach it back t
 // One private receipt, not a lease. Recovery supersedes the receipt permanently;
 // an old terminal cannot overwrite a chat continued here after recovery.
 type chatTerminalState struct {
-	JournalBytes int64  `json:"journal_bytes"`
-	JournalSHA   string `json:"journal_sha"`
-	Owner        string `json:"owner"`
-	Chat         string `json:"chat"`
-	Session      string `json:"session"`
-	Native       string `json:"native"`
-	Receipt      string `json:"receipt"`
-	Out          bool   `json:"out"`
+	Revision      int64  `json:"revision"`
+	MirrorProject string `json:"mirror_project,omitempty"`
+	JournalBytes  int64  `json:"journal_bytes"`
+	JournalSHA    string `json:"journal_sha"`
+	Owner         string `json:"owner"`
+	Chat          string `json:"chat"`
+	Session       string `json:"session"`
+	Native        string `json:"native"`
+	Receipt       string `json:"receipt"`
+	Out           bool   `json:"out"`
 }
 
 func chatTerminalPath(session string) (string, error) {
@@ -80,7 +82,7 @@ func chatTerminalTurnRefusal(session string) string {
 		return ""
 	}
 	log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=refused reason=continued_in_terminal", s.Chat, session)
-	return chatTerminalNotice
+	return chatTerminalPeerNotice
 }
 
 func (api *StreamingAPI) chatTerminalWorkRunning(session string) bool {

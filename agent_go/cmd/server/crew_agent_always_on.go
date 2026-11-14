@@ -197,7 +197,10 @@ func crewStandbyCanAnswer(project, owner, tab string) bool {
 // crewStandbyRoute decides whether a teammate's call to this agent runs on the server copy, and prepares it: the owner's
 // chat with the agent (what the thread starts from) and the asking teammate's own thread on it are imported from the copy. writes is set for a call that runs a
 // turn; it makes the server the agent's writer. Any failure leaves the call on its usual path (the Mac, or held).
-func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, tab, sender string, writes bool) bool {
+func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, tab, sender string, writes bool, ownChat ...bool) bool {
+	if writes && terminalStandbyCallRefusal(project, owner, tab, sender, len(ownChat) > 0 && ownChat[0]) != "" {
+		return false
+	}
 	// Placements are the Crew owner's tabs: only they can make the owner's agent "published".
 	if owner == ownerOfCrewProjectID(project) && crewPublishedTarget(project, tab) || !crewStandbyCanAnswer(project, owner, tab) {
 		return false
@@ -218,6 +221,9 @@ func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, t
 	lock := crewStandbyLock(project, owner)
 	lock.Lock()
 	defer lock.Unlock()
+	if writes && terminalStandbyCallRefusal(project, owner, tab, sender, len(ownChat) > 0 && ownChat[0]) != "" {
+		return false
+	}
 	if !crewStandbyCanAnswer(project, owner, tab) {
 		crewAlwaysOnLog(project, tab, "not_on_server", "handed_back", started)
 		return false
@@ -508,6 +514,9 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, transfer, &conversation, current, crewImportNativeElseHistory); err != nil {
 		return "", "", err
 	}
+	if err = applyImportedTerminalStandby(ctx, roots.ID, claims.UserID, conversation.ConversationID); err != nil {
+		return "", "", err
+	}
 	program, account := current.Provider, current.ConnectionID
 	if doc, e := store.loadDocument(ctx, path); e == nil {
 		if after, ok := doc.Entries[entry]; ok && !after.FreshNative {
@@ -536,6 +545,8 @@ func crewStandbyRecentlyFailed(project, person, tab string) bool {
 // "syncing" state: the label says when the last copy arrived.
 func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam bool) (label, tone string) {
 	switch {
+	case terminalStandbyAgentOut(project, owner, tab):
+		return "In terminal", "wait"
 	case crewStandbyServerWriter(project, owner, tab):
 		if macOn {
 			return "Taking back from the server…", "wait"

@@ -198,6 +198,20 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	if err != nil {
 		return
 	}
+	// Clear/reassert terminal receipts before the writer early-return, so a
+	// recovered chat cannot stay paused merely because another chat ran here.
+	for _, record := range crewStandbyRecords(roots) {
+		if crewAgentPublishTab(crewStandbyWireKey(roots.ID, record.ConversationKey)) != tab {
+			continue
+		}
+		if marker, err := readChatTerminal(record.SessionID); err == nil && marker.Revision > 0 {
+			if err = api.syncTerminalStandby(ctx, record, marker); err != nil {
+				retry(record.SessionID)
+				api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
+				continue
+			}
+		}
+	}
 	// What only this Mac has goes with the first check, so the server's note for its turns names it (names only; a
 	// list that cannot be read now keeps the server's last one).
 	var macOnly []crewTeamMacOnlyItem
@@ -240,7 +254,10 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	failed := false
 	for _, record := range crewStandbyRecords(roots) {
 		key := crewStandbyWireKey(roots.ID, record.ConversationKey)
-		if crewAgentPublishTab(key) != tab || primed && !dirty[record.SessionID] {
+		if crewAgentPublishTab(key) != tab {
+			continue
+		}
+		if primed && !dirty[record.SessionID] {
 			continue
 		}
 		started := time.Now()

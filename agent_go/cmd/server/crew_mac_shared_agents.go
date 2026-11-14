@@ -491,6 +491,12 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	}
 	// A published agent lives on the server now: only it answers, never the Mac (856-523). An In team agent answers on
 	// the server from its standby copy while its owner's Mac is off (Always on).
+	if operation != "agent_read" {
+		if reason := terminalStandbyCallRefusal(manifest.ID, project.OwnerID, agent.Tab, claims.UserID, false); reason != "" {
+			externalJSON(w, map[string]any{"error": reason})
+			return true
+		}
+	}
 	published := crewPublishedTarget(manifest.ID, agent.Tab)
 	if published || api.crewStandbyRoute(r.Context(), project.OwnerID, manifest.ID, agent.Tab, claims.UserID, operation != "agent_read") {
 		var result crewChatResult
@@ -968,8 +974,11 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	sender := shareOwnerLabel(source.UserID)
 	// The answer is read from the same Mac, the agent's published server workspace, or its standby copy on the server
 	// while the Mac is off (Always on).
+	if reason := terminalStandbyCallRefusal(dest.ID, dest.UserID, tab, source.UserID, true); reason != "" {
+		return fmt.Errorf("%s", reason)
+	}
 	published := crewPublishedTarget(dest.ID, tab)
-	standby := !published && api.crewStandbyRoute(ctx, dest.UserID, dest.ID, tab, source.UserID, true)
+	standby := !published && api.crewStandbyRoute(ctx, dest.UserID, dest.ID, tab, source.UserID, true, true)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		if published {
 			return api.publishedAgentCall(context.Background(), dest.UserID, dest.ID, call, true)
