@@ -39,7 +39,7 @@ func (api *StreamingAPI) handleAccountLimits(w http.ResponseWriter, r *http.Requ
 	appendView := func(id, provider, name, owner, probePrincipal string, server bool) {
 		// Admission above chooses this quota-only probe target. Provider calls remain
 		// asynchronous, using only the selected account environment.
-		api.probedChatLimits(probePrincipal, provider, id)
+		api.probedChatLimits(probePrincipal, provider, id, userID)
 		view := accountLimitsView{AccountID: id, Provider: provider, Name: name, Owner: owner, SharedServer: server}
 		if snapshot, found := subscriptionLimits.get(provider, id); found {
 			view.Snapshot = &snapshot

@@ -50,7 +50,7 @@ func chatProbeProvider(provider string) string {
 // probedChatLimits is the plan use of one account, asked of its provider when the chat itself reported none.
 // owner is the chat's tab owner; the account must be one they may run on. "" connectionID means the chat's
 // account is not known, so nothing is asked rather than guessing one.
-func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) []chatUsageLimit {
+func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string, requestedBy ...string) []chatUsageLimit {
 	provider, connectionID = chatProbeProvider(provider), strings.TrimSpace(connectionID)
 	if provider == "" || connectionID == "" {
 		return nil
@@ -71,6 +71,12 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) 
 	}
 	chatUsageProbes.running[key] = true
 	chatUsageProbes.mu.Unlock()
+
+	by := owner
+	if len(requestedBy) > 0 && requestedBy[0] != "" {
+		by = requestedBy[0]
+	}
+	log.Printf("[ACCOUNT_LIMITS] action=probe account=%s provider=%s owner=%s by=%s", connectionID, provider, owner, by)
 
 	// PLAT-746-876: a provider quota request took 5–6 seconds on chat-context GET.
 	// Keep authorization above the cache read; only the probe moves off the request.
