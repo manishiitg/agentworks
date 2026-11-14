@@ -36,7 +36,9 @@ func (api *StreamingAPI) handleListWorkflowManifests(w http.ResponseWriter, r *h
 		return
 	}
 
-	discovered, err := DiscoverWorkflowManifests(r.Context())
+	// The manifest index re-reads only changed workflow.json files (a listing, not one read per folder) and drops its
+	// view at once on a write made here. The sidebar inventory calls this every few seconds.
+	discovered, err := workflowManifests.discover(r.Context(), 5*time.Second)
 	if err != nil {
 		log.Printf("[MANIFEST] Error discovering workflows: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to discover workflows: %v", err), http.StatusInternalServerError)
