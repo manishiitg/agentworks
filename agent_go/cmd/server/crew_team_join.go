@@ -163,6 +163,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 	skillRoot := ""
 	chatInstructions := ""
 	backupNote := ""
+	projectName := ""
 	if input.LocalProject != "" {
 		target, roots, err := api.crewTeamJoinTarget(r.Context(), claims, input.LocalProject)
 		if err != nil {
@@ -198,6 +199,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		input.Folder = roots.Files
 		skillRoot = filepath.Join(roots.Resources, "skills")
 		chatInstructions = target.chatInstructions
+		projectName = target.Name
 	}
 
 	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
@@ -249,7 +251,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 			if input.LocalProject != "" {
 				err = backupCrewTeamJoinSetup(folder, chatInstructions)
 				if err == nil {
-					backupNote = crewTeamJoinBackupNote(input.LocalProject)
+					backupNote = crewTeamJoinBackupNote(projectName)
 				} else {
 					backupNote = " Some instruction files may already be in (before team) backups; review them before retrying with another project."
 				}
@@ -351,5 +353,5 @@ func crewTeamJoinBackupNote(existing string) string {
 	if existing == "" {
 		return ""
 	}
-	return " Your original project and chat instructions have (before team) backups in that project's folder; keep them if you retry with another project."
+	return fmt.Sprintf(" Your original project and chat instructions have (before team) backups in %q; keep them if you retry with another project.", existing)
 }

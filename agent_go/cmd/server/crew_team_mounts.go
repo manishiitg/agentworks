@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -377,11 +376,4 @@ func (b *crewTeamLocal) receivedMountPath(remote string, removed bool) {
 			}
 		}
 	}
-}
-
-func crewTeamMountParent(rel string) string {
-	if parent := path.Dir(rel); parent != "." {
-		return parent
-	}
-	return ""
 }
