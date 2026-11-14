@@ -197,6 +197,9 @@ func (a *Agent) deliverUserMessage(ctx context.Context, req UserMessageDeliveryR
 			return llm.SendCodingAgentRetainedInput(ctx, provider, a.modelID, req.SessionID, message)
 		}
 		err := send()
+		if err != nil && inputNotTaken(err) && len(llmtypes.NativeImageInputsForSession(ctx, req.SessionID)) > 0 {
+			return result, &CodingAgentDeliveryError{Kind: DeliveryErrorKindQueueRequired, Provider: provider, Reason: "native image input not taken; use host attachment queue"}
+		}
 		if err != nil && steersNatively(contract.Transport) && inputNotTaken(err) && a.isTurnInFlight() {
 			// A native protocol takes a message mid-turn. "Not taken" while our turn is open usually means its
 			// own turn is still starting (server B 2026-10-27: a message 2s into a Cursor SDK turn was parked
