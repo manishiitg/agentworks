@@ -19,7 +19,7 @@ import (
 // supplies identity and the resolved Crew root, never an arbitrary workspace.
 var externalCrewCapabilities = map[string]map[string]string{
 	"crew_workflows":  {"list": "crew_workflow_files", "create": "crew_workflow_files", "read": "crew_workflow_files", "write": "crew_workflow_files", "describe": "crew_workflow_files", "edit": "crew_workflow_files", "upgrade": "crew_workflow_files"},
-	"crew_skills":     {"list": "list_skills", "search": "search_skills", "install": "install_skill", "import": "import_skill", "uninstall": "uninstall_skill"},
+	"crew_skills":     {"list": "list_skills", "search": "search_skills", "install": "install_skill", "import": "import_skill", "uninstall": "uninstall_skill", "native_discover": "discover_native_skills", "native_import": "import_native_skill", "native_invocable": "list_invocable_skills"},
 	"crew_mcp":        {"list": "list_mcp_servers", "search": "search_mcp_catalog", "install": "install_mcp_server", "remove": "remove_mcp_server", "discover": "trigger_mcp_discovery"},
 	"crew_folders":    {"list": "list_work_folders", "attach": "attach_work_folder", "detach": "detach_work_folder"},
 	"crew_references": {"list": "list_accessible_workflows", "attach": "attach_workflow_reference", "detach": "detach_workflow_reference"},
@@ -131,7 +131,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 	return nil
 }
 func crewCapabilityRead(action string) bool {
-	return action == "list" || action == "search" || action == "discover" || action == "read" || action == "describe"
+	return action == "list" || action == "search" || action == "discover" || action == "read" || action == "describe" || action == "native_discover" || action == "native_invocable"
 }
 
 // Bulk package installation/removal must be allowed over the entire subtree;

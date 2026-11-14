@@ -12568,6 +12568,10 @@ func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
 		return registrar.RegisterCustomTool(name, description, params, exec, "skill_tools")
 	}
 
+	if err := api.registerNativeSkillTools(registrar, disabled, activeProductID, projectSkillsDir); err != nil {
+		return err
+	}
+
 	if err := registerTool(
 		"list_skills",
 		"List skills available in the workspace. Use this to inspect installed skills before selecting them in chat settings or reading their files directly.",

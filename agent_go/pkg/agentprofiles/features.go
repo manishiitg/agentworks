@@ -134,7 +134,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "MCP is enabled. Read the attached `panel-access` skill before managing MCP servers. Distinguish platform connection setup from project selection and use only connected, explicitly selected servers.",
 	},
 	"skills": {
-		Tools:           []string{"list_skills", "search_skills", "install_skill", "import_skill", "uninstall_skill", "update_project_skill_selection"},
+		Tools:           []string{"list_skills", "search_skills", "install_skill", "import_skill", "uninstall_skill", "update_project_skill_selection", "discover_native_skills", "import_native_skill", "list_invocable_skills"},
 		Skills:          []string{"panel-data"},
 		UIPanels:        []string{"skills"},
 		Capabilities:    map[string]CapabilityRequirement{"skill_selection": CapabilityPreferred},

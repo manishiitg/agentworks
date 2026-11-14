@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -149,5 +150,55 @@ func TestNativeSkillDiscoveryImportKeepsOwnerAndFileBoundaries(t *testing.T) {
 	}
 	if result := folderCall("owner", true, names); result.Code != 200 || install.Name != "review" || string(install.Files["references/rules.md"]) != "Review the actual diff." {
 		t.Fatalf("folder copy: %d %s", result.Code, result.Body.String())
+	}
+}
+
+// The public MCP Skills actions use the same own-project native file boundary
+// as the screen, not a second catalog or an arbitrary host path argument.
+func TestNativeSkillDiscoveryThroughExistingSkillsMCP(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	roots, _, err := crewStorageRoots(externalCommandCrewRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recognitionWrite(t, filepath.Join(roots.Files, ".agents/skills/review/SKILL.md"), "---\nname: review\ndescription: Review changes\n---\nRead the real diff.")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	srv := serveExternalMCP(t, f.api, crewWriter("owner"))
+	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "skills", "arguments": map[string]any{"crew_id": "team", "action": "native_discover", "provider": "claude-code"}})
+	requireRemoteSuccess(t, result, "native_discover")
+	listed := marshalStructured(t, result)
+	if !strings.Contains(listed, "review") || strings.Contains(listed, "Read the real diff") {
+		t.Fatal("MCP discovery lost source or read instructions implicitly", listed)
+	}
+	// Direct HTTP application edge exposes the same selector as the MCP result.
+	r := httptest.NewRequest(http.MethodGet, "/api/skills/discover?workspace_path="+url.QueryEscape(externalCommandCrewRoot)+"&provider=claude-code", nil)
+	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, crewWriter("owner")))
+	w := httptest.NewRecorder()
+	f.api.nativeSkillsRoute(false)(w, r)
+	var rows struct {
+		Skills []skills.DiscoveredSkill `json:"skills"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &rows)
+	if w.Code != 200 || len(rows.Skills) != 1 || !strings.Contains(listed, rows.Skills[0].ID) {
+		t.Fatal("MCP and screen returned different source identity", w.Body.String(), listed)
+	}
+	preview := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "skills", "arguments": map[string]any{"crew_id": "team", "action": "native_discover", "provider": "claude-code", "id": rows.Skills[0].ID}})
+	requireRemoteSuccess(t, preview, "native preview")
+	if !strings.Contains(marshalStructured(t, preview), "Read the real diff") {
+		t.Fatal("explicit preview did not read instructions")
+	}
+	// Consent for another Crew cannot reuse the captured source selector.
+	foreign := crewWriter("owner")
+	foreign.AccessToken.AllCrews = false
+	foreign.AccessToken.CrewIDs = []string{"other-crew"}
+	body, _ := json.Marshal(map[string]any{"name": "skills", "arguments": map[string]any{"crew_id": "team", "action": "native_discover", "provider": "claude-code"}})
+	w = httptest.NewRecorder()
+	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), foreign, nil))
+	if w.Code != 403 {
+		t.Fatalf("wrong Crew token read native source: %d %s", w.Code, w.Body.String())
 	}
 }
