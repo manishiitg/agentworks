@@ -39,7 +39,14 @@ func TestNativeBackgroundTaskFactsKeepUsageAndRunsSeparate(t *testing.T) {
 	if api.nativeBackgroundFacts("chat", queued).WorkID != "" {
 		t.Fatal("a proposed task was labelled running")
 	}
-	a := api.nativeBackgroundFacts("chat", task("a"))
+	typed := task("a")
+	typed.HelperType, typed.HelperDescription, typed.HelperMode, typed.CurrentStep = "Explore", "Find routing code", "foreground", "Grepping coding.go"
+	a := api.nativeBackgroundFacts("chat", typed)
+	progress := task("a")
+	progress.State = "progress"
+	if got := api.nativeBackgroundFacts("chat", progress); got.HelperType != "Explore" || got.HelperDescription != "Find routing code" || got.CurrentStep != "Grepping coding.go" || got.HelperMode != "foreground" {
+		t.Fatal("helper progress lost its native labels")
+	}
 	b := task("b")
 	reported := int64(500)
 	b.Tokens = &reported

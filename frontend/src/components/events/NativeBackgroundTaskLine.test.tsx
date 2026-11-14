@@ -26,3 +26,16 @@ it('keeps one server-owned row per task run across live updates and replay', () 
   expect(rows[0].id).toBe('a1')
   expect(coalesceNativeHelperActivity(JSON.parse(JSON.stringify(raw)))).toEqual(rows)
 })
+
+it('shows typed long foreground helpers but keeps short ones as ordinary steps', () => {
+  const start = '2026-11-14T10:00:00Z', at = Date.parse(start)
+  const helper = { work_id: 'explore', kind: 'helper', state: 'started', helper_type: 'Explore', helper_description: 'Find routing code', helper_mode: 'foreground', started_at: start }
+  expect(backgroundTaskLine(helper, at + 2000)).toBe('')
+  expect(backgroundTaskLine(helper, at + 4000)).toBe('Explore · Find routing code · 4s')
+  const short = { ...helper, state: 'finished', ended_at: '2026-11-14T10:00:02Z' }
+  expect(backgroundTaskLine(short, at + 90000)).toBe('')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={short} />)).toBe('')
+  const async = { ...helper, helper_mode: 'async', current_step: 'Grepping coding.go', tokens: 154200 }
+  expect(backgroundTaskLine(async, at + 288000)).toBe('Explore · Grepping coding.go · 4m 48s · 154.2k tokens')
+  expect(backgroundTaskLine({ ...async, tokens: undefined }, at + 1000)).not.toContain('tokens')
+})
