@@ -46,11 +46,10 @@ func (t crewTeam) agentInTeam(person, key string) bool {
 	if strings.HasPrefix(key, crewTeamAgentIDPrefix) {
 		return false
 	}
-	return !t.privateNewAgents(person)
-}
-
-func (t crewTeam) privateNewAgents(person string) bool {
-	return slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == person && p.PrivateNewAgents })
+	if _, onMac := t.memberMac(person); onMac {
+		return false
+	}
+	return true
 }
 
 // errCrewTeamLastShared: a person's last shared agent cannot be turned off (owner, 6 Nov: "all agents cannot be off").

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -347,6 +348,39 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 	if err := setCrewTeamAgentChoice(ctx, "invited", "owner", late.ID, true); err != nil {
 		t.Fatal("explicit sharing refused:", err)
 	}
+
+	joinTime, err := time.Parse(time.RFC3339Nano, readCrewTeamState("team").JoinedAt)
+	if err != nil {
+		t.Fatal("join time missing:", err)
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	postKey := "team" + codeChatSideMarker + "post-join"
+	doc.Entries[productConversationRegistryEntryKey(crewProfileID, postKey)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: postKey, ConversationID: "post-conversation", SessionID: "post-session", WorkspacePath: externalCommandCrewRoot, CreatedAt: joinTime.Add(time.Second).Format(time.RFC3339Nano)}
+	if err = defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	tabs, _, err := f.api.macCrewAgents(ctx, claims, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var post *bool
+	for _, tab := range tabs {
+		if tab.ConversationKey == postKey {
+			post = tab.TeamNewInTeam
+		}
+	}
+	if post == nil || !*post {
+		t.Fatal("post-join agent lost the normal Team default")
+	}
+	if err = assignCrewTeamAgentIDs(mustReadCrewTeam(t, "invited"), []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{{Tab: "post-join", ChatKey: "invited:chat:post-join", Name: "Post join", initialInTeam: post}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if !mustReadCrewTeam(t, "invited").agentInTeam("owner", "invited:chat:post-join") {
+		t.Fatal("post-join agent was not registered with normal sharing")
+	}
 	if !mustReadCrewTeam(t, "invited").agentInTeam("owner", late.ID) {
 		t.Fatal("explicit sharing was not saved")
 	}
@@ -372,6 +406,28 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 	for key, entry := range own.Entries {
 		if after.Entries[key].SessionID != entry.SessionID {
 			t.Fatal("existing chat identity changed")
+		}
+	}
+}
+
+// PLAT-746-976: unknown/pre-join dates are private, including a later-created
+// registry row whose first history proves the physical agent existed earlier.
+func TestTeamJoinAgentDefaultUsesFirstKnownCreationTime(t *testing.T) {
+	join := "2026-11-14T06:00:00Z"
+	for _, tc := range []struct {
+		created, history string
+		want             bool
+	}{
+		{"2026-11-14T05:00:00Z", "", false},
+		{join, "", false},
+		{"2026-11-14T06:00:01Z", "", true},
+		{"", "", false},
+		{"invalid", "", false},
+		{"2026-11-14T06:00:01Z", "2026-11-14T05:00:00Z", false},
+		{"", "2026-11-14T06:00:01Z", true},
+	} {
+		if got := crewTeamAgentJoinedAfter(join, tc.created, tc.history); got != tc.want {
+			t.Fatalf("created=%q history=%q: %v want %v", tc.created, tc.history, got, tc.want)
 		}
 	}
 }

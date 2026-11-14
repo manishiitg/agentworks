@@ -21,6 +21,7 @@ import (
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
 type AgentProfileSideChat struct {
+	TeamNewInTeam *bool `json:"team_new_in_team,omitempty"`
 	crewTeamMessagePreview
 	ChatLocation    string `json:"chat_location,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
@@ -207,6 +208,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	// Every person's default chat in a Crew is their Main (owner, 5 Nov); only the Crew's identity (its purpose)
 	// is the Crew owner's. The left menu's person headings tell two people's Mains apart.
 	crewOwner := ownerOfCrewProjectID(projectID)
+	joinDefault := crewTeamJoinAgentDefaults(userID, projectID, slot.binding.WorkspacePath)
 	crewMain := func(row *AgentProfileSideChat) {
 		if crew, ok := readCrewMainIdentity(r.Context(), slot.binding.WorkspacePath); ok {
 			row.Purpose = firstNonEmptyTrimmed(crew.Purpose, row.Purpose)
@@ -222,6 +224,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
 			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
+			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
 			}
@@ -245,6 +248,9 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 			name = "Main"
 		}
 		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
+		if tab.OwnerID == userID {
+			row.TeamNewInTeam = joinDefault(record)
+		}
 		if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 			row.Provider, row.ModelID = runtime.Provider, runtime.ModelID
 		}

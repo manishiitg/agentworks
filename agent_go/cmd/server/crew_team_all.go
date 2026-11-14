@@ -36,6 +36,7 @@ type crewTeamLocalState struct {
 	// MemberOf: this Mac Crew is a Team member's working copy of someone else's Crew (crew_team_where.go), paired to
 	// that Crew's online copy as the member. It is never repaired into an online copy of its own.
 	MemberOf string `json:"member_of,omitempty"`
+	JoinedAt string `json:"joined_at,omitempty"`
 	// SharedBy is that Crew's owner's name, kept when joining, for the left menu's "Shared by <name>".
 	SharedBy string `json:"shared_by,omitempty"`
 	// SharedFrom is the network the Team is on, as this Mac names that connection (owner, 10 Nov: a copy is listed
