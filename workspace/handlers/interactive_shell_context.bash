@@ -3,13 +3,14 @@
 # when the shell itself added exactly one item since the preceding prompt.
 if [ -z "${__aw_context_installed:-}" ]; then
   __aw_context_installed=1
-  if [ -n "${BASH_VERSION:-}" ] && [ -z "$(trap -p DEBUG)" ] && [[ $- != *T* ]]; then
+  __aw_context_declaration=$(declare -p PROMPT_COMMAND 2>/dev/null)
+  if [[ $__aw_context_declaration == 'declare -- '* || $__aw_context_declaration == 'declare -x '* ]] && [ -n "${BASH_VERSION:-}" ] && [ -z "$(trap -p DEBUG)" ] && [[ $- != *T* ]]; then
     __aw_context_prompt=$PROMPT_COMMAND
     __aw_context_serial=0
     __aw_context_active=
     __aw_context_seen=1
     __aw_context_history() {
-      local entry
+      local entry LC_ALL=C
       __aw_context_number=; __aw_context_command=
       entry=$(HISTTIMEFORMAT= builtin history 1 | head -c 32769)
       if [ "${#entry}" -le 32768 ] && [[ $entry =~ ^[[:space:]]*([0-9]+)[[:space:]]+(.*)$ ]]; then
@@ -45,7 +46,7 @@ if [ -z "${__aw_context_installed:-}" ]; then
     __aw_context_status() { return "$1"; }
     __aw_context_after() {
       local status=$?
-      if [ -n "$__aw_context_active" ]; then
+      if [ -n "$__aw_context_active" ] && [ -z "$(jobs -pr)" ]; then
         __aw_context_emit "D;$__aw_context_active;$status"
       fi
       __aw_context_active=

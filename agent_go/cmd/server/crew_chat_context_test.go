@@ -147,4 +147,56 @@ func TestCrewChatContextMCPUsesSameSourceAndDestinationGuardsAndOrdinaryUploads(
 			}
 		}
 	}
+	// Same actual Streamable-HTTP mapping for terminal selections: the source
+	// is the caller's derived shell, not a caller-provided shell ID or label.
+	terminalReq := mux.SetURLVars(sharedSecretsRequest(http.MethodPost, "/terminal", "owner", nil), map[string]string{"id": "work", "project_id": "team"})
+	_, shellID, _, _, _, status, _ := f.api.codeShellTargetFull(terminalReq)
+	if status != 0 {
+		t.Fatalf("terminal fixture admission %d", status)
+	}
+	codeShellTrack(shellID, "owner", "team", "owner")
+	t.Cleanup(func() { codeShells.Lock(); delete(codeShells.byID, shellID); codeShells.Unlock() })
+	const commandID = "11111111-1111-4111-8111-111111111111-1"
+	stream := codeShellContextStream{shellID: shellID}
+	begin := codeShellContextPrefix + "C;" + commandID + ";" + base64.StdEncoding.EncodeToString([]byte("printf selected")) + "\a"
+	var delivered []byte
+	for _, b := range []byte("before" + begin + "selected" + codeShellContextPrefix + "D;" + commandID + ";0\aafter") {
+		delivered = append(delivered, stream.feed([]byte{b})...)
+	}
+	if !strings.Contains(string(delivered), "before") || !strings.Contains(string(delivered), "selected") || !strings.Contains(string(delivered), "after") {
+		t.Fatal("stream filter lost terminal output")
+	}
+	for _, tc := range []struct {
+		actor, session string
+		tab, status    int
+	}{{"other", session, 1, 403}, {"owner", "private-unregistered", 1, 403}, {"owner", session, 2, 409}} {
+		w := httpCall(tc.actor, map[string]any{"source": "terminal", "operation": "add", "session_id": tc.session, "terminal_tab": tc.tab, "command_id": commandID, "text": "selected", "start_line": 1, "end_line": 1})
+		if w.Code != tc.status {
+			t.Fatalf("terminal refusal: %d %s", w.Code, w.Body.String())
+		}
+	}
+	terminal := callRemoteTool(t, ctx, client, externalMCPToolCall, map[string]any{"name": "workspace", "arguments": map[string]any{"action": "add_context", "workspace_id": "work:team", "context_source": "terminal", "context_op": "add", "conversation_key": conversation, "session_id": session, "terminal_tab": 1, "command_id": commandID, "text": "selected", "start_line": 1, "end_line": 1}})
+	requireRemoteSuccess(t, terminal, "terminal context add")
+	files, err = os.ReadDir(uploads)
+	if err != nil || len(files) != 3 {
+		t.Fatalf("terminal upload absent: %v", err)
+	}
+	foundTerminal := false
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "terminal-selection-") {
+			data, err := os.ReadFile(filepath.Join(uploads, file.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var selection map[string]any
+			if json.Unmarshal(data, &selection) != nil || selection["command"] != "printf selected" || selection["text"] != "selected" || selection["untrusted_context"] != true {
+				t.Fatal("terminal attachment metadata wrong")
+			}
+			foundTerminal = true
+		}
+	}
+	if !foundTerminal {
+		t.Fatal("terminal ordinary JSON attachment missing")
+	}
+
 }
