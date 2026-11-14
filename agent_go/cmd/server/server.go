@@ -2497,6 +2497,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/server-login/move-in", api.handleServerLoginMoveIn).Methods("POST")
 	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/limits", api.handleAccountLimits).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/byok/{action}", api.handleByok).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions", api.handleStartProviderSetup).Methods("POST", "OPTIONS")
