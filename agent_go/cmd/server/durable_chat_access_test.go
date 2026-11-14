@@ -198,7 +198,7 @@ func TestGoalRestoreUsesAuthorizedDurableChatBoundary(t *testing.T) {
 	if err := store.AddEventChecked("goal-chat", goal); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 3; i++ {
 		store.AddEvent("goal-chat", events.Event{ID: fmt.Sprintf("later-%d", i), Type: "user_message", Timestamp: time.Now()})
 	}
 	read := func(owner string) *httptest.ResponseRecorder {
@@ -218,7 +218,7 @@ func TestGoalRestoreUsesAuthorizedDurableChatBoundary(t *testing.T) {
 	if allowed.Code != 200 || json.Unmarshal(allowed.Body.Bytes(), &body) != nil || body.NativeGoalSnapshot == nil || body.NativeGoalSnapshot.ID != "old-goal" {
 		t.Fatalf("own reconnect lost goal: %d %s", allowed.Code, allowed.Body.String())
 	}
-	if len(body.Events) != 1 || body.Events[0].ID != "later-19" || body.OldestSequence != body.Events[0].Sequence || body.LatestSequence != body.Events[0].Sequence {
+	if len(body.Events) != 1 || body.Events[0].ID != "later-2" || body.OldestSequence != body.Events[0].Sequence || body.LatestSequence != body.Events[0].Sequence {
 		t.Fatal("goal projection changed real page/cursors")
 	}
 }

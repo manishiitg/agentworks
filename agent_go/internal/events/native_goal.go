@@ -27,9 +27,9 @@ func (j *SQLiteEventJournal) LatestNativeGoal(ctx context.Context, sessionID str
 	var raw []byte
 	err := j.db.QueryRowContext(ctx, `SELECT payload FROM structured_chat_events
  WHERE session_id=? AND json_extract(payload,'$.type')='native_goal_updated'
- AND COALESCE(json_extract(payload,'$.parent_execution_id'),'')=''
+ AND COALESCE(json_extract(payload,'$.parent_execution_id'),'') IN ('','session:' || ?)
  AND COALESCE(json_extract(payload,'$.execution_kind'),'') IN ('','main_agent')
- ORDER BY sequence DESC LIMIT 1`, sessionID).Scan(&raw)
+ ORDER BY sequence DESC LIMIT 1`, sessionID, sessionID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

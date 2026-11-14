@@ -25,7 +25,7 @@ func TestNativeGoalSnapshotSurvivesTailAndJournalReopen(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	appendGoal("goal", "", &llmtypes.NativeGoal{Objective: "Finish the task", Status: "active"})
+	appendGoal("goal", "session:chat", &llmtypes.NativeGoal{Objective: "Finish the task", Status: "active"})
 	for i := 0; i < 20; i++ {
 		if _, _, err = journal.Append("chat", journalTestEvent(string(rune('a'+i)), "later")); err != nil {
 			t.Fatal(err)
