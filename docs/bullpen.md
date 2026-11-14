@@ -380,7 +380,7 @@ software already running as you.
 **Inbox.** An app without a terminal can register a name through its normal MCP sign-in. It shows Inbox: messages
 wait until the agent reads them. Run `agentworks attach NAME` in the chat's app for live
 delivery. If your MCP sign-in already holds the name, the CLI attach joins it in one step
-and Discovery stays on for the agent.
+and the agent keeps its Discovery setting.
 
 **Disconnected chats.** A chat that was attached shows Inbox when no live session holds its
 name, for example after the app closed or the computer restarted.
