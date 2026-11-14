@@ -32,6 +32,8 @@ type VaultConnection struct {
 	Label    string `json:"label"`
 	Provider string `json:"provider"`
 	Status   string `json:"status"`
+	// SignIn marks a connection that needs each person's own sign-in (so it can never be shared as a key).
+	SignIn bool `json:"sign_in,omitempty"`
 }
 
 // VaultSummary is a vault as one person sees it.
@@ -89,7 +91,7 @@ func (s *MemoryStore) VaultsFor(workspace, userID string) []VaultSummary {
 		for _, c := range s.connectors {
 			if c.VaultID == g.ID {
 				view.ConnectorIDs = append(view.ConnectorIDs, c.ID)
-				view.Connections = append(view.Connections, VaultConnection{ID: c.ID, Label: c.Label, Provider: c.Provider, Status: c.Status})
+				view.Connections = append(view.Connections, VaultConnection{ID: c.ID, Label: c.Label, Provider: c.Provider, Status: c.Status, SignIn: c.OAuthServer != "" || c.OAuthCredentialID != ""})
 			}
 		}
 		for name, secret := range s.secretResources {

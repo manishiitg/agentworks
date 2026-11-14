@@ -64,8 +64,11 @@ type teamWayItem struct {
 }
 
 type teamWayView struct {
-	Items  []teamWayItem `json:"items"`
-	Notice string        `json:"notice,omitempty"`
+	Items []teamWayItem `json:"items"`
+	// OnTeam lists the personal apps (connection ids) and secrets (names) already shared, so the Vault panel can show
+	// "On the Team" instead of the button.
+	OnTeam []string `json:"on_team"`
+	Notice string   `json:"notice,omitempty"`
 }
 
 func teamWayPath(project string) (string, error) {
@@ -264,11 +267,20 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 }
 
 func (api *StreamingAPI) teamWayView(ctx context.Context, project, person string) (teamWayView, error) {
-	view := teamWayView{Items: []teamWayItem{}}
+	view := teamWayView{Items: []teamWayItem{}, OnTeam: []string{}}
 	rec, err := readTeamWay(project)
 	if err != nil {
 		return view, err
 	}
+	for source := range rec.Apps {
+		view.OnTeam = append(view.OnTeam, source)
+	}
+	for key := range rec.AddedBy {
+		if name, ok := strings.CutPrefix(key, "secret:"); ok {
+			view.OnTeam = append(view.OnTeam, name)
+		}
+	}
+	slices.Sort(view.OnTeam)
 	if rec.Vault != "" {
 		owner := "team-" + project
 		data, err := vaultPersonRequest(ctx, owner, http.MethodGet, "/api/vaults/"+url.PathEscape(rec.Vault), nil)

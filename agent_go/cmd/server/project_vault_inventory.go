@@ -25,7 +25,9 @@ type projectVaultItem struct {
 	App          string `json:"app,omitempty"`
 	Owner        string `json:"owner,omitempty"`
 	// Source says whose it is, in plain words: "you", a Company group's name or "the project's owner".
-	Source    string `json:"source,omitempty"`
+	Source string `json:"source,omitempty"`
+	// SignIn marks an app each person signs in to themselves (it is listed for the Team, never copied).
+	SignIn    bool   `json:"sign_in,omitempty"`
 	Status    string `json:"status"`
 	Selected  bool   `json:"selected"`
 	CanSelect bool   `json:"can_select"`
@@ -213,6 +215,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			Connections []struct {
 				ID, Label, Provider, Status string
 				SignInError                 string `json:"sign_in_error"`
+				SignIn                      bool   `json:"sign_in"`
 			} `json:"connections"`
 			SecretNames []string `json:"secret_names"`
 		} `json:"vaults"`
@@ -238,7 +241,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				if c.Status == "active" && c.SignInError == "" {
 					status = "connected"
 				}
-				group.Items = append(group.Items, projectVaultItem{ID: c.ID, Name: c.Label, Provider: c.Provider, Kind: "mcp", Status: status, Selected: serverUsed(c.ID), CanSelect: available[c.ID] || lender == person || slices.Contains(out.Servers, vaultServerName(c.ID))})
+				group.Items = append(group.Items, projectVaultItem{ID: c.ID, Name: c.Label, Provider: c.Provider, Kind: "mcp", SignIn: c.SignIn, Status: status, Selected: serverUsed(c.ID), CanSelect: available[c.ID] || lender == person || slices.Contains(out.Servers, vaultServerName(c.ID))})
 			}
 			for _, name := range row.SecretNames {
 				group.Items = append(group.Items, projectVaultItem{ID: name, Name: vaultSecretShortName(name), Kind: "shared_secret", Status: "stored", Selected: slices.Contains(out.Shared, name), CanSelect: true})
