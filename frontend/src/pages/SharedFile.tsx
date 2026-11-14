@@ -87,6 +87,16 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     console.info(`[FILE_PREVIEW] id=${crypto.randomUUID()} source=shared offset=${offset}`)
     return { status: resp.status, range: resp.headers.get('Content-Range') || '', data: await resp.arrayBuffer() }
   }, [encodedPath, uid])
+  const downloadOriginal = async () => {
+    try {
+      const token = getAuthToken()
+      const response = await fetch(`${getApiBaseUrl() || ''}/api/public/file?path=${encodeURIComponent(encodedPath)}${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      if (!response.ok) throw new Error('Could not download this file.')
+      const href = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
+      setTimeout(() => URL.revokeObjectURL(href), 60_000)
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not download this file.') }
+  }
   const readSharedPage = useCallback(async (_path: string, offset = 0, signal?: AbortSignal) => {
     const response = await fetchSharedRange(offset, signal)
     return decodePreviewPage(response.status, response.range, response.data, offset)
@@ -212,6 +222,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
           <div className="text-red-500 dark:text-red-400 text-6xl mb-4">!</div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Unable to open file</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
+          <button className="mr-3 text-primary underline" onClick={() => void downloadOriginal()}>Download original</button>
           {onBack && (
             <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline">
               Go back
@@ -313,22 +324,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
               {isRenderedSearchAvailable && (
                 <RenderedContentSearchButton search={renderedContentSearch} />
               )}
-              <button onClick={async () => {
-                if (firstPage) {
-                  try {
-                    const token = getAuthToken()
-                    const response = await fetch(`${getApiBaseUrl() || ''}/api/public/file?path=${encodeURIComponent(encodedPath)}${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-                    if (!response.ok) throw new Error('Could not download this file.')
-                    const href = URL.createObjectURL(await response.blob())
-                    const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
-                    setTimeout(() => URL.revokeObjectURL(href), 1000)
-                  } catch (error) { setError(error instanceof Error ? error.message : 'Could not download this file.') }
-                  return
-                }
-                const href = binaryUrl || URL.createObjectURL(new Blob([content || ''], { type: 'text/plain' }))
-                const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
-                if (!binaryUrl) setTimeout(() => URL.revokeObjectURL(href), 1000)
-              }} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600">
+              <button onClick={() => void downloadOriginal()} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600">
                 <Download className="w-4 h-4" />Download
               </button>
             </div>
