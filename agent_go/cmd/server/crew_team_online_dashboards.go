@@ -89,6 +89,11 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 			return result, fmt.Errorf(teamOnlinePreparationNeeded)
 		}
 	}
+	if ref.Seed && len(item.DatasetParts) > 0 {
+		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows("db/db.sqlite", !preview) {
+			return result, fmt.Errorf("the Team dataset is outside this connection's file access")
+		}
+	}
 	if preview {
 		if ref.Seed && len(item.DatasetParts) > 0 && destination.CrewID != "" {
 			target, err = api.dashboardTarget(ctx, claims, destination.Path)
