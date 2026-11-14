@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -92,5 +94,32 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 	}
 	if w = call(f.api.handleChatMessageOpen, "other", map[string]any{"chat": "only-other", "id": "invented", "sequence": 1}); w.Code != 404 {
 		t.Fatalf("forged message ID accepted = %d", w.Code)
+	}
+
+	// A full page of private rows cannot expose its boundary chat through the
+	// continuation token. Replaying it as another person or tampering fails.
+	for i := 0; i < 130; i++ {
+		store.AddEvent("private-stranger", storeevents.Event{ID: fmt.Sprintf("private-%d", i), Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(agentevents.NewUserMessageEvent(1, "needle private tail", "user"))})
+	}
+	w = search("other")
+	var first struct {
+		Results []chatSearchHit `json:"results"`
+		Cursor  string          `json:"next_cursor"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &first) != nil || w.Code != 200 || len(first.Results) != 0 || first.Cursor == "" {
+		t.Fatalf("private page = %d %s", w.Code, w.Body.String())
+	}
+	decoded, _ := base64.StdEncoding.DecodeString(first.Cursor)
+	if strings.Contains(string(decoded), "private-stranger") || strings.Contains(first.Cursor, "private-stranger") {
+		t.Fatal("cursor exposed another person's chat")
+	}
+	w = call(f.api.handleChatMessageSearch, "other", chatSearchInput{Query: "needle", Cursor: first.Cursor})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "needle own text") || strings.Contains(w.Body.String(), "needle private tail") {
+		t.Fatalf("admitted continuation = %d %s", w.Code, w.Body.String())
+	}
+	for _, scenario := range []struct{ user, cursor string }{{"owner", first.Cursor}, {"other", first.Cursor + "x"}} {
+		if w = call(f.api.handleChatMessageSearch, scenario.user, chatSearchInput{Query: "needle", Cursor: scenario.cursor}); w.Code != 400 {
+			t.Fatalf("foreign/tampered cursor accepted: %d", w.Code)
+		}
 	}
 }

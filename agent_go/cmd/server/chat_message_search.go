@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -126,11 +125,18 @@ func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Reque
 		externalError(w, 400, "invalid_arguments", "Use 2 to 200 characters to search messages.")
 		return
 	}
+	// A scan boundary may belong to someone else's chat. Seal it rather
+	// than returning a merely base64-encoded private session ID/timestamp.
+	aad := []byte("chat-message-search\x00" + GetUserIDFromContext(r.Context()) + "\x00" + workspaceFilter + "\x00" + strings.ToLower(query))
 	var cursor *events.ChatMessageCursor
 	if input.Cursor != "" {
-		raw, err := base64.RawURLEncoding.DecodeString(input.Cursor)
+		if len(input.Cursor) > 4096 {
+			externalError(w, 400, "invalid_cursor", "Start the search again.")
+			return
+		}
+		raw, err := decryptSecretValueWithAAD(input.Cursor, aad)
 		cursor = &events.ChatMessageCursor{}
-		if err != nil || len(raw) > 2048 || json.Unmarshal(raw, cursor) != nil || len(cursor.At) > 128 || len(cursor.Session) > 512 || cursor.Sequence < 1 {
+		if err != nil || len(raw) > 2048 || json.Unmarshal([]byte(raw), cursor) != nil || len(cursor.At) > 128 || len(cursor.Session) > 512 || cursor.Sequence < 1 {
 			externalError(w, 400, "invalid_cursor", "Start the search again.")
 			return
 		}
@@ -179,7 +185,11 @@ func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Reque
 	next := ""
 	if page.Next != nil {
 		raw, _ := json.Marshal(page.Next)
-		next = base64.RawURLEncoding.EncodeToString(raw)
+		next, err = encryptSecretValueWithAAD(string(raw), aad)
+		if err != nil {
+			externalError(w, 503, "unavailable", "Could not continue message search. Start it again.")
+			return
+		}
 	}
 	externalJSON(w, map[string]any{"results": result, "next_cursor": next})
 }
