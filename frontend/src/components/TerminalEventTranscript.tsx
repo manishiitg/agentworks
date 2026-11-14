@@ -1,3 +1,4 @@
+import { groupTranscriptMessages, type CompactMessageGroup } from '../utils/compactMessageGroups'
 import { BackgroundWakeNotice, isAutomaticContinueNotice } from './chat/BackgroundWakeNotice'
 import { thinkingSummary } from '../utils/thinkingSummary'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
@@ -70,7 +71,7 @@ import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 // a bigger reading size without coupling the transcript to its zoom control.
 type WorkingStep = Extract<TranscriptItem, { kind: 'tools' | 'thinking' }>
 
-type TranscriptRenderItem = TranscriptItem | {
+type TranscriptRenderItem = TranscriptItem | CompactMessageGroup | {
   kind: 'live'
   key: string
   text: string
@@ -524,6 +525,18 @@ function useDisclosure(key: string, initial = false) {
   return [value, toggle] as const
 }
 
+// Each original message keeps its own expansion and admitted queue controls.
+function CompactMessages({ item, renderEvent }: { item: CompactMessageGroup; renderEvent: (event: PollingEvent) => React.ReactNode }) {
+  const [open, toggle] = useDisclosure(`messages:${item.key}`)
+  return <section className="my-2 text-xs text-muted-foreground" data-testid="compact-message-group">
+    <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
+      {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
+      {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : `${item.label} · ${item.events.length} messages`}
+    </button>
+    {open && <div className="border-l border-border pl-3">{item.events.map(event => <div key={event.id} data-transcript-key={event.id}>{renderEvent(event)}</div>)}</div>}
+  </section>
+}
+
 // Where an item sits in its agent turn. A turn is everything between two user
 // messages: tool batches, thoughts, replies, presentation and activity rows.
 type TurnDone = { key: string; durationNs: number; at: string }
@@ -543,7 +556,7 @@ function itemTime(item: TranscriptRenderItem | undefined): number {
 }
 
 function isUserItem(item: TranscriptRenderItem | undefined): boolean {
-  return item?.kind === 'event' && item.event.type === 'user_message'
+  return item?.kind === 'message_group' || (item?.kind === 'event' && item.event.type === 'user_message')
 }
 
 function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
@@ -1244,8 +1257,11 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const rawItems = useMemo<TranscriptRenderItem[]>(
-    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined),
-    [scoped, questions, searchable, showThinking],
+    () => {
+      const rows = groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined)
+      return searchable ? groupTranscriptMessages(rows, readingState.anchor?.key) : rows
+    },
+    [scoped, questions, searchable, showThinking, readingState.anchor?.key],
   )
   const items = useMemo(() => {
     const completed = new Map<string, string>()
@@ -1310,6 +1326,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   }, [items, streamingGeneration, streamingStatus, streamingText, runtimeActivity?.state])
   const searchRows = useCallback(() => listData.map(item => ({ key: item.key, text: item.kind === 'working'
     ? item.steps.map(transcriptSearchText).join('\n')
+    : item.kind === 'message_group' ? item.events.map(event => transcriptSearchText({ kind: 'event', key: event.id, event })).join('\n')
     : item.kind === 'live' ? item.text : transcriptSearchText(item) })), [listData])
   const turnSlots = useMemo(() => {
     const slots = buildTurnSlots(listData)
@@ -1497,6 +1514,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} docked={questionPrompt.promptId === dockedCodingAgentQuestion} />
             : item.kind === 'live'
             ? <LiveAssistantTranscript nativeBlock={streamingGeneration?.nativeBlock} chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            : item.kind === 'message_group'
+            ? <CompactMessages item={item} renderEvent={event => <TranscriptEvent event={event} onSendMessage={onSendMessage} onResendMessage={onResendMessage} renderInteraction={renderInteraction} assistantLabel={assistantLabel} assistantIcon={assistantIcon} />} />
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
