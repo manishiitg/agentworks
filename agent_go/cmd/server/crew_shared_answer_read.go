@@ -1,6 +1,9 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+	"time"
+)
 
 // Team ask adapters return a normal mailbox receipt. Reading the answer uses
 // that same stored caller identity and mailbox admission, never the maker's
@@ -29,7 +32,7 @@ func (api *StreamingAPI) externalTeamAnswerRead(w http.ResponseWriter, r *http.R
 		externalCommunicationError(w, 400, "message_refused", err)
 		return true
 	}
-	out, err := api.readAgentMessages(r.Context(), claims.UserID, caller, inbox, externalInt(args, "after", 0), 100, externalInt(args, "wait_seconds", 0))
+	out, err := api.readAgentMessages(r.Context(), claims.UserID, caller, inbox, externalInt(args, "after", 0), 100, time.Duration(externalInt(args, "wait_seconds", 0))*time.Second)
 	if err != nil {
 		externalError(w, 403, "conversation_unavailable", "This answer inbox is unavailable to this caller.")
 		return true
