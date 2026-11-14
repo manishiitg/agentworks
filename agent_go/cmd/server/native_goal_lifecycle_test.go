@@ -21,15 +21,15 @@ import (
 func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "retry_after_failure", "arm_stop_race"} {
 		t.Run(action, func(t *testing.T) {
-			withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":["work"]}]}`)
-			api, store := newDurableChatAPI(t, "goal-lifecycle-"+action, "alice")
+			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]}]}`)
+			api, store := newDurableChatAPI(t, "goal-lifecycle-"+action, "owner")
 			sid := "goal-lifecycle-" + action
 			store.SetEventPreparer(api.prepareNativeGoalEvent)
 			files := map[string]string{}
 			api.internalTurnQueueRead = func(_ context.Context, path string) (string, bool, error) { v, ok := files[path]; return v, ok, nil }
 			api.internalTurnQueueWrite = func(_ context.Context, path, raw string) error { files[path] = raw; return nil }
 			record := restartContinueRecord{SessionID: sid, QueryID: "parent", Request: QueryRequest{Query: "Original input must not replay", AgentMode: "multi-agent"}, SavedAt: time.Now()}
-			if err := api.writeRestartContinueRecords(context.Background(), "alice", restartContinueDocument{Chats: map[string]restartContinueRecord{sid: record}}); err != nil {
+			if err := api.writeRestartContinueRecords(context.Background(), "owner", restartContinueDocument{Chats: map[string]restartContinueRecord{sid: record}}); err != nil {
 				t.Fatal(err)
 			}
 			native := llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Finish the task", Status: "active"}}
@@ -57,7 +57,7 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 			runNativeGoalResume = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, owner string) error {
 				calls++
 				command, ok := llmtypes.NativeGoalCommandForSession(ctx, sid)
-				if !ok || command.Action != "resume" || command.Objective != "Finish the task" || session != sid || owner != "alice" {
+				if !ok || command.Action != "resume" || command.Objective != "Finish the task" || session != sid || owner != "owner" {
 					t.Fatal("restore lost goal/principal identity")
 				}
 				raw, _ := json.Marshal(req)

@@ -193,7 +193,7 @@ func TestCrewMainSessionIsRecordedUnderItsMainOwner(t *testing.T) {
 func TestGoalRestoreUsesAuthorizedDurableChatBoundary(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	api, store := newDurableChatAPI(t, "goal-chat", "alice")
+	api, store := newDurableChatAPI(t, "goal-chat", "owner")
 	goal := events.Event{ID: "old-goal", Type: "native_goal_updated", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(&agentevents.NativeGoalEvent{Update: llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Private goal", Status: "paused"}}})}
 	if err := store.AddEventChecked("goal-chat", goal); err != nil {
 		t.Fatal(err)
@@ -209,11 +209,11 @@ func TestGoalRestoreUsesAuthorizedDurableChatBoundary(t *testing.T) {
 		api.handleGetSessionEvents(out, req)
 		return out
 	}
-	denied := read("bob")
+	denied := read("other")
 	if denied.Code != 404 || strings.Contains(denied.Body.String(), "Private goal") {
 		t.Fatal("goal read crossed chat owner boundary", denied.Code)
 	}
-	allowed := read("alice")
+	allowed := read("owner")
 	var body GetEventsResponse
 	if allowed.Code != 200 || json.Unmarshal(allowed.Body.Bytes(), &body) != nil || body.NativeGoalSnapshot == nil || body.NativeGoalSnapshot.ID != "old-goal" {
 		t.Fatalf("own reconnect lost goal: %d %s", allowed.Code, allowed.Body.String())
