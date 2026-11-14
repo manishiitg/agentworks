@@ -120,6 +120,16 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 		t.Fatal(sdkErr)
 	}
 	sdkReader.Close()
+	piContext := env.api.withNativeChatImages(replay, "owner", "chat", "pi-cli", req)
+	piImages := llmtypes.NativeImageInputsForSession(piContext, "chat")
+	if len(piImages) != 1 {
+		t.Fatal("Pi RPC lost admitted image")
+	}
+	piReader, _, _, piErr := piImages[0].Open(context.Background())
+	if piErr != nil {
+		t.Fatal(piErr)
+	}
+	piReader.Close()
 	sdkRequest.ClaudeCodeTransport = "tmux"
 	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "claude-code", sdkRequest), "chat")) != 0 {
 		t.Fatal("image bytes offered to Claude terminal")

@@ -306,6 +306,10 @@ func (api *StreamingAPI) queueDeferredChatImage(w http.ResponseWriter, r *http.R
 // text-only transports keep paths; no image bytes are ever pasted into tmux.
 func (api *StreamingAPI) nativeChatImagesSupported(ctx context.Context, user, session, provider, carried string) bool {
 	live := liveCodingProviderTransport(session)
+	if provider == "pi-cli" {
+		// Pi's coding runtime uses native RPC for prompts and steers.
+		return true
+	}
 	if provider == "codex-cli" {
 		transport := live
 		if transport == "" {
