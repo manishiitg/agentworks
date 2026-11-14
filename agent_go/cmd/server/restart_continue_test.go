@@ -175,6 +175,29 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 				if cycle != 4 && len(next) != 1 || cycle == 4 && len(next) != 0 {
 					t.Fatalf("cycle=%d continuations=%d", cycle, len(next))
 				}
+				if cycle == 4 {
+					notices := 0
+					for _, event := range fresh.eventStore.GetAllEventsRaw(sid) {
+						if event.Type == "restart_continue_notice" {
+							notices++
+						}
+					}
+					if notices != 1 {
+						t.Fatalf("restart limit notices=%d, want 1", notices)
+					}
+					if _, err := fresh.prepareRestartContinues(ctx, user, nil); err != nil {
+						t.Fatal(err)
+					}
+					after := 0
+					for _, event := range fresh.eventStore.GetAllEventsRaw(sid) {
+						if event.Type == "restart_continue_notice" {
+							after++
+						}
+					}
+					if after != notices {
+						t.Fatal("restart limit notice repeated")
+					}
+				}
 				saved, err := fresh.readRestartContinueRecords(ctx, user)
 				expectedAttempts := 3
 				if cycle == 2 {
