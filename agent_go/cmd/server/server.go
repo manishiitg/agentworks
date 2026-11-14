@@ -2152,6 +2152,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.observeNativeCodingRuntime(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
 		api.observeNativeBackgroundCommands(sessionID, event)
+		api.observeUsageLimitFailure(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
 		api.notifyNeedsYou(sessionID, event)
@@ -4326,6 +4327,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		delivered, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
 		combinedPerson := delivered["source"] == "queued_batch" && delivered["combined_person_input"] == true
 		if combinedPerson || (idleCompactPersonTurn(r, sessionID, req) && req.AgentMessageInbox == "" && len(delivered) == 0) {
+			api.cancelUsageLimitRecovery(sessionID, "person_message_admitted")
 			backgroundFollowUps.personWrote(sessionID)
 		}
 		// Lift the MCP registry zombie-prevention flag only for that intentional

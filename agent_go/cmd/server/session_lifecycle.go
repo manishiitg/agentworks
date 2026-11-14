@@ -104,6 +104,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 		return
 	}
 
+	api.cancelUsageLimitRecovery(sessionID, "stopped")
 	// Preserve the user's intent even if the foreground cancel function has just
 	// completed and disappeared. A scheduled sequencer may be between turns at
 	// that exact moment; its waiter must still abort before sending the next one.
@@ -852,6 +853,7 @@ func (api *StreamingAPI) settleStoredTurnForOwner(r *http.Request, sessionID str
 	if err != nil || strings.TrimSpace(owner) == "" || caller == "" || owner != caller {
 		return false
 	}
+	api.cancelUsageLimitRecovery(sessionID, "stopped_after_restart")
 	if !api.eventStore.PersistedTurnOpen(sessionID) {
 		log.Printf("[SESSION STOP] cancel-turn session=%s: no live session and the stored events show no open turn", sessionID)
 		return true

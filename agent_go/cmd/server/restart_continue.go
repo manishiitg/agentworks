@@ -23,6 +23,7 @@ const restartContinueWindow = 5 * time.Minute
 // The last admitted chat's runtime selectors, not its original prompt or a live
 // agent pointer. Restart recovery must re-enter normal query admission.
 type restartContinueRecord struct {
+	UsageLimit       *usageLimitRecoveryRecord   `json:"usage_limit,omitempty"`
 	SessionID        string                      `json:"session_id"`
 	QueryID          string                      `json:"query_id"`
 	Request          QueryRequest                `json:"request"`
@@ -216,6 +217,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		}
 		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=started_original_not_replayed", turn.SessionID, turn.ID)
 	}
+	kept = api.prepareUsageLimitContinues(&document, userID, kept)
 	for sessionID, record := range document.Chats {
 		backgroundFollowUps.restore(sessionID, record.FollowUps)
 		reason := ""
@@ -330,6 +332,7 @@ func (api *StreamingAPI) noteRestartLivePersonInput(sessionID, messageID string)
 	if !known || req.userID == "" {
 		return
 	}
+	api.cancelUsageLimitRecovery(sessionID, "person_live_input")
 	backgroundFollowUps.personWrote(sessionID)
 	if err := api.saveRestartContinueRequest(context.Background(), req.userID, sessionID, messageID, req); err != nil {
 		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=live_config_write_failed", sessionID, messageID)
