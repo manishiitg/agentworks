@@ -60,6 +60,8 @@ it('keeps Customize user management behind the existing administrator gate', asy
   await act(async () => root.render(<ConnectionsToolsPage />))
   const users = [...host.querySelectorAll('button')].find(button => button.textContent === 'Users & access')
   expect(users).toBeTruthy()
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Costs')).toBe(true)
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Conversations')).toBe(false)
   await act(async () => users!.click())
   expect(host.textContent).toContain('User management')
   state.admin = false

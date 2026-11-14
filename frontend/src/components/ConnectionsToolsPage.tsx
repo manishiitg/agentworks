@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Blocks, Cpu, Globe, KeyRound, Plug, Sparkles, Users, Terminal, Info, RotateCcw, DollarSign, Server, MessageSquare } from 'lucide-react'
+import { Blocks, Cpu, Globe, KeyRound, Plug, Sparkles, Users, Terminal, Info, RotateCcw, DollarSign, Server } from 'lucide-react'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } from './integrations/AccountConnectionPanels'
 import { AccountSlackOverview } from './integrations/AccountSlackOverview'
@@ -17,7 +17,6 @@ const UsersContent = lazy(() => import('./UsersPage').then(module => ({ default:
 const ConnectContent = lazy(() => import('./McpConnectPage').then(module => ({ default: module.McpConnectPageContent })))
 const SettingsAiAccounts = lazy(() => import('./providers/SettingsAiAccounts'))
 const CostsOverview = lazy(() => import('./providers/CostsOverview'))
-const ConversationsOverview = lazy(() => import('./providers/ConversationsOverview'))
 const VaultSecrets = lazy(() => import('./secrets/SecretSelectionSection'))
 const AccountMcpPanel = lazy(() => import('./integrations/AccountMcpPanel'))
 const categories = [
@@ -30,7 +29,6 @@ const categories = [
   { id: 'users', label: 'Users & access', icon: Users },
   { id: 'servers', label: 'Connected servers', icon: Server },
   { id: 'costs', label: 'Costs', icon: DollarSign },
-  { id: 'conversations', label: 'Conversations', icon: MessageSquare },
   { id: 'connect', label: 'Connect AI tools', icon: Terminal },
   { id: 'about', label: 'About', icon: Info },
 ] as const
@@ -48,7 +46,7 @@ function ConnectionsToolsContent() {
   const user = useAuthStore(state => state.user)
   const canReview = useCanReviewCode()
   const localMac = window.electronAPI?.getDesktopConnection?.() === 'local'
-  const availableCategories = categories.filter(item => item.id === 'users' ? user?.is_admin === true : item.id === 'servers' ? localMac : item.id === 'costs' || item.id === 'conversations' ? canReview : item.id !== 'connect' || Boolean(user))
+  const availableCategories = categories.filter(item => item.id === 'users' ? user?.is_admin === true : item.id === 'servers' ? localMac : item.id === 'costs' ? canReview : item.id !== 'connect' || Boolean(user))
   const [category, setCategory] = useState<Category>('apps')
   const current = availableCategories.find(item => item.id === category) || availableCategories[0]
   const choose = (next: Category) => setCategory(next)
@@ -72,7 +70,6 @@ function ConnectionsToolsContent() {
             {current.id === 'ai' && <SettingsAiAccounts onCosts={canReview ? () => choose('costs') : undefined} />}
             {current.id === 'servers' && localMac && <SettingsAiAccounts serversOnly />}
             {current.id === 'costs' && canReview && <CostsOverview />}
-            {current.id === 'conversations' && canReview && <ConversationsOverview />}
             {current.id === 'browser' && <BrowserConnectionsPanel open onClose={() => {}} inline startSetup />}
             {current.id === 'mcp' && <AccountMcpPanel />}
             {current.id === 'skills' && <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">Skills belong to your work</h3><p className="text-sm text-muted-foreground">Open a Crew’s Skills panel to view, add or manage its skills. Plugin and tool selections also stay with that Crew; there is no separate account-wide plugin library.</p></div>}

@@ -24,7 +24,7 @@ import (
 // owner-only for them.
 //
 // Admins, and accounts an admin marked as Crew reviewers
-// (UserRecord.CrewReviewer), read everyone's Crew chats and files,
+// (UserRecord.CrewReviewer), inspect Crew files and usage,
 // read-only: these endpoints only read, and nothing here resumes a session or
 // writes a file. Every call is appended to an audit log, which both can read.
 
@@ -288,110 +288,6 @@ func (api *StreamingAPI) handleAdminCodeFile(w http.ResponseWriter, r *http.Requ
 		content = content[:codeAdminFileContentCap]
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"path": rel, "content": content, "binary": binary, "truncated": truncated})
-}
-
-type codeAdminChat struct {
-	UserID       string `json:"user_id"`
-	Username     string `json:"username,omitempty"`
-	SessionID    string `json:"session_id"`
-	Title        string `json:"title,omitempty"`
-	UpdatedAt    string `json:"updated_at,omitempty"`
-	MessageCount int    `json:"message_count"`
-}
-
-// Crew chats belong to the owner; retired sharing records grant no access.
-func codeChatParticipants(ctx context.Context, ownerID, projectID string) []string {
-	return []string{ownerID}
-}
-
-// GET /api/admin/crew/workspaces/{owner}/{project_id}/chats — the owner's and
-// Code's chats. Inspection stays audited and read-only.
-func (api *StreamingAPI) handleAdminCodeChats(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	_, claims, ownerID, projectID, root, ok := api.codeAdminProject(w, r)
-	if !ok {
-		return
-	}
-	if err := recordCodeAdminView(r.Context(), claims, "list_chats", ownerID, projectID, ""); err != nil {
-		writeAgentProfileError(w, http.StatusServiceUnavailable, "the admin audit log is unavailable")
-		return
-	}
-	chats := []codeAdminChat{}
-	for _, userID := range codeChatParticipants(r.Context(), ownerID, projectID) {
-		sessions, err := ListChatHistorySessionsByKind(userID, "", 0, 0, root)
-		if err != nil {
-			continue
-		}
-		for _, session := range sessions {
-			if !workspacePathsMatchForUser(userID, chatHistorySessionWorkspace(session), root) && !strings.HasPrefix(normalizeConversationWorkspace(session.ConversationPath), normalizeConversationWorkspace(root)+"/") {
-				continue
-			}
-			chats = append(chats, codeAdminChat{UserID: userID, Username: crewOwnerDisplayName(sanitizeUserIDForPath(userID)), SessionID: session.SessionID, Title: session.Title, UpdatedAt: session.UpdatedAt, MessageCount: session.MessageCount})
-		}
-	}
-	sort.SliceStable(chats, func(i, j int) bool { return chats[i].UpdatedAt > chats[j].UpdatedAt })
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"chats": chats})
-}
-
-// GET /api/admin/crew/workspaces/{owner}/{project_id}/chats/{session_id}?user=<id>
-// — one chat, read-only: messages, tool calls and their terminal output.
-func (api *StreamingAPI) handleAdminCodeChat(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	_, claims, ownerID, projectID, root, ok := api.codeAdminProject(w, r)
-	if !ok {
-		return
-	}
-	sessionID := strings.TrimSpace(mux.Vars(r)["session_id"])
-	userID := strings.TrimSpace(r.URL.Query().Get("user"))
-	if userID == "" {
-		userID = ownerID
-	}
-	allowed := false
-	for _, person := range codeChatParticipants(r.Context(), ownerID, projectID) {
-		if person == userID {
-			allowed = true
-		}
-	}
-	if !allowed || sessionID == "" {
-		writeAgentProfileError(w, http.StatusNotFound, "chat not found")
-		return
-	}
-	// The legacy conversation reader falls back to this user's global history.
-	// Bind the requested session to this Code before calling it: knowing the
-	// ID of a personal Work chat must not widen a Crew reviewer's access.
-	sessions, err := ListChatHistorySessionsByKind(userID, "", 0, 0, root)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusServiceUnavailable, "cannot list project chats")
-		return
-	}
-	belongs := false
-	for _, session := range sessions {
-		if session.SessionID == sessionID && (workspacePathsMatchForUser(userID, chatHistorySessionWorkspace(session), root) || strings.HasPrefix(normalizeConversationWorkspace(session.ConversationPath), normalizeConversationWorkspace(root)+"/")) {
-			belongs = true
-			break
-		}
-	}
-	if !belongs {
-		writeAgentProfileError(w, http.StatusNotFound, "chat not found")
-		return
-	}
-	if err := recordCodeAdminView(r.Context(), claims, "read_chat", ownerID, projectID, userID+"/"+sessionID); err != nil {
-		writeAgentProfileError(w, http.StatusServiceUnavailable, "the admin audit log is unavailable")
-		return
-	}
-	data, err := ReadChatHistoryConversation(userID, sessionID, root)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, "chat not found")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(data)
 }
 
 // GET /api/admin/crew/audit?month=YYYY-MM — the admin view log. Reading it

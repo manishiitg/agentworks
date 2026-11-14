@@ -48,6 +48,22 @@ func TestCodeReviewToolsAreReadOnly(t *testing.T) {
 	}
 }
 
+// PLAT-746: removing the review page also removes privileged chat reads over MCP.
+// File/cost review and the audit log remain separate capabilities.
+func TestRemovedConversationReviewActionsAreUnavailable(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, codeReviewDirectory)
+	api := &StreamingAPI{}
+	for _, action := range []string{"chats", "chat"} {
+		w := codeReviewCall(api, codeReviewToken("boss", "crews:review"), "workspace_review", map[string]any{
+			"action": action, "owner_id": "owner", "project_id": "example", "session_id": "example", "user_id": "owner",
+		})
+		if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
+			t.Fatalf("removed review action %s returned %d %s", action, w.Code, w.Body.String())
+		}
+	}
+}
+
 // Only an admin sets the reviewer flag: a reviewer cannot grant it, not even
 // to themself.
 func TestOnlyAnAdminMakesCrewReviewers(t *testing.T) {

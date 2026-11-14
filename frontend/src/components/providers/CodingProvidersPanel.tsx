@@ -2,7 +2,6 @@ import { codingProviderName } from '../../utils/codingProviderName'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
-import ConversationsOverview from './ConversationsOverview'
 import { ServersOverview } from './ProvidersOverview'
 import { takeServersPageRequest } from '../workspace/ConnectedServersMenuItem'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
@@ -15,7 +14,6 @@ import {
   Cpu,
   DollarSign,
   KeyRound,
-  MessageSquare,
   Server,
   Loader2,
   RefreshCw,
@@ -153,7 +151,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>(() => takeServersPageRequest() ? 'servers' : 'provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs'>(() => takeServersPageRequest() ? 'servers' : 'provider')
   useEffect(() => {
     const show = () => { takeServersPageRequest(); setView('servers') }
     window.addEventListener('show-servers-page', show)
@@ -198,7 +196,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     window.addEventListener('provider-connections-changed', load)
     return () => window.removeEventListener('provider-connections-changed', load)
   }, [onThisMac, isOpen])
-  useEffect(() => { if (!canReview) setView(current => current === 'costs' || current === 'chats' ? 'provider' : current) }, [canReview])
+  useEffect(() => { if (!canReview) setView(current => current === 'costs' ? 'provider' : current) }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 
   const refresh = useCallback(async () => {
@@ -393,7 +391,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
               </>}
               {canReview && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Review</div>
-                {([{ id: 'costs', label: 'Costs', icon: DollarSign }, { id: 'chats', label: 'Conversations', icon: MessageSquare }] as const).map(item => (
+                {([{ id: 'costs', label: 'Costs', icon: DollarSign }] as const).map(item => (
                   <button type="button" key={item.id} data-tour={`providers-${item.id}`} onClick={() => setView(item.id)} aria-pressed={view === item.id}
                     className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${view === item.id ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
                     <div className="flex min-h-6 items-center gap-2">
@@ -411,7 +409,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
               {view === 'servers' && <ServersOverview providers={orderedProviders} />}
               {canReview && view === 'costs' && <CostsOverview />}
-              {canReview && view === 'chats' && <ConversationsOverview />}
               {selectedProvider && <ConfirmationDialog
                 isOpen={confirmSharedSetup}
                 onClose={() => setConfirmSharedSetup(false)}

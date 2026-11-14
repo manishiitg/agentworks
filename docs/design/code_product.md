@@ -167,8 +167,7 @@ They return results through internal bindings without attaching Code files.
 This is the most important part of Code for teams. **Admins can see what
 everyone does in Code.**
 
-- **Read-only.** An admin can open any user's Code: chats, terminal
-  transcripts, files and usage. They cannot send messages, resume a session,
+- **Read-only.** An admin can open any user's Code files and usage. They cannot send messages, resume a session,
   or edit files as that user.
 - **Visible to users.** Setup → General ("Access") and the Code landing page
   say that admins and Code reviewers may inspect it, read-only and logged.
@@ -181,27 +180,24 @@ everyone does in Code.**
   A reviewer is not an admin but reviews like one, for Code only:
   - every Code's cost row and per-person split in the cost overview (other
     products' rows stay owner/admin-only);
-  - every Code's chats and files, read-only, through the same inspection
+  - every Code's files, read-only, through the same inspection
     endpoints; each view is audited with `role: "reviewer"`;
   - the audit log itself (admins and reviewers both read it).
   A disabled account loses it. Ticking it also enables the Code product for an
   account whose products are a restricted list, since the inspector lives in
   Code. Only an admin sets it (`/api/admin/users` is admin-only).
-- **Providers → Conversations and Costs** (user, 2026-09-30). These review
+- **Providers → Costs** (user, 2026-09-30; conversations removed 2026-11-14). These review
   screens are visible only to admins and enabled Code reviewers, including
-  the provider account cost section. Conversations filters Code projects by
-  owner and chats by participant, then opens a read-only transcript through
-  the existing audited inspection APIs. Changing projects, chats or access
-  clears the previous transcript and ignores late responses. Personal Work
-  chats remain outside the Code reviewer scope. The global cost overview
+  the provider account cost section. The Conversations screen and its privileged
+  chat-list/transcript HTTP and MCP operations were removed by the owner on
+  2026-11-14. Normal owner/shared chat history is unchanged. The global cost overview
   and provider account cost APIs require reviewer/admin permission as well;
   their existing work and account visibility filters still apply. The legacy
   unfiltered `/api/cost/summary` is admin-only. Per-workspace cost views retain
   their existing workspace access rules.
 - **Review over MCP / the external API** (built). Token scope `code:review`
-  plus seven read-only tools: `list_code_workspaces`, `get_code_costs`,
-  `list_code_files`, `read_code_file`, `list_code_chats`, `read_code_chat`,
-  `get_code_audit`. They run the same inspection handlers, so every call
+  plus five read-only tools: `list_code_workspaces`, `get_code_costs`,
+  `list_code_files`, `read_code_file`, `get_code_audit`. They run the same inspection handlers, so every call
   (lists and cost reads included) is audited, with `via: "token:<id>"`. The
   account is re-checked on every call: a token whose user stops being an admin
   or reviewer gets 403 at once, and a token holding the scope without such an

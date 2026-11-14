@@ -363,26 +363,6 @@ export interface SharedProjectSummary {
   schedules?: SharedProjectSchedule[]
 }
 
-export interface CodeAdminWorkspace {
-  owner_id: string
-  owner_username?: string
-  id: string
-  title: string
-  workspace_path: string
-  updated_at?: string
-  /** Compatibility field; Code no longer has sharing grants. */
-  shares: never[]
-}
-
-export interface CodeAdminChat {
-  user_id: string
-  username?: string
-  session_id: string
-  title?: string
-  updated_at?: string
-  message_count: number
-}
-
 export interface CodeAdminAuditEntry {
   at: string
   admin_id: string

@@ -454,8 +454,6 @@ chat:
       - get_review_costs
       - list_review_files
       - read_review_file
-      - list_review_chats
-      - read_review_chat
       - get_review_audit
       # Shared-account token limits and allowed models (get: crews:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
