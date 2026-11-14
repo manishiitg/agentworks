@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -205,11 +207,28 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	}
 	var published dashboards.Result
 	if dataset != nil {
+		var seedBytes int64
+		for _, part := range item.DatasetParts {
+			info, statErr := ref.Package.Stat(part)
+			if statErr != nil || !info.Mode().IsRegular() || info.Size() > publication.MaxFileBytes {
+				return result, fmt.Errorf("the prepared dataset is unavailable or exceeds the publication limit")
+			}
+			seedBytes += info.Size()
+			if seedBytes > publication.MaxBytes {
+				return result, fmt.Errorf("the prepared dataset exceeds the publication limit")
+			}
+		}
+		started := time.Now()
 		// This same-process coordinator holds the normal publication lock until
 		// the seed transaction commits, and restores its pointer on any failure.
 		published, err = dashboards.InstallWithData(ctx, fsutil.WorkspaceDocsRoot(), request, func(publish func() error) error {
 			return teamonline.ImportPartsWithPublication(ctx, dataset, ref.Package, item.DatasetParts, true, publish)
 		})
+		event := "seeded"
+		if err != nil {
+			event = "seed_failed"
+		}
+		log.Printf("[TEAM_ONLINE] event=%s person=%s source=%s destination=%s item=%s bytes=%d elapsed_ms=%d", event, claims.UserID, source.CrewID, destination.CrewID, result.DestinationItemID, seedBytes, time.Since(started).Milliseconds())
 	} else {
 		var updated dashboards.Result
 		updated, err = dashboardWorkspaceRequest(ctx, request)
