@@ -238,3 +238,39 @@ func expireAllCrewAgentForks(ctx context.Context, now time.Time) {
 		mu.Unlock()
 	}
 }
+
+// The named recipient starts acceptance by reserving the copy's identity as
+// Only me, before creating a local/server chat can trigger normal discovery.
+// Caller holds the Team record lock. Repeated acceptance addresses the same
+// copy; it never allocates another agent or changes the maker's row.
+func prepareCrewAgentForkCopy(team crewTeam, offer crewAgentFork, person string, now time.Time) (crewTeamRegisteredAgent, error) {
+	if err := offer.admit(team, person, true, now); err != nil {
+		return crewTeamRegisteredAgent{}, err
+	}
+	key := crewAgentForkChatKey(offer)
+	copy := crewTeamRegisteredAgent{ID: offer.CopyAgentID, OwnerID: person, Tab: "fork-" + offer.ID,
+		ChatKey: key, Name: offer.Agent.Name + " (fork)", InTeam: false}
+	if existing, ok := team.Agents[copy.ID]; ok {
+		if existing.OwnerID != person || existing.ChatKey != key || existing.Tab != copy.Tab || existing.InTeam {
+			return crewTeamRegisteredAgent{}, fmt.Errorf("this fork's private copy identity changed")
+		}
+		return existing, nil
+	}
+	for _, existing := range team.Agents {
+		if existing.OwnerID == person && (existing.ChatKey == key || existing.Tab == copy.Tab) {
+			return crewTeamRegisteredAgent{}, fmt.Errorf("this fork's chat is already bound to another agent")
+		}
+	}
+	if team.Agents == nil {
+		team.Agents = map[string]crewTeamRegisteredAgent{}
+	}
+	team.Agents[copy.ID] = copy
+	dir, err := crewTeamDir(team.ProjectID)
+	if err != nil {
+		return crewTeamRegisteredAgent{}, err
+	}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), team, 0600); err != nil {
+		return crewTeamRegisteredAgent{}, err
+	}
+	return copy, nil
+}
