@@ -55,7 +55,7 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 		if task.UpdatedAt > 0 {
 			at = time.UnixMilli(task.UpdatedAt)
 		}
-		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: kind, State: task.State, Origin: "sdk_helper", Name: task.Description, CommandLabel: task.Command, BackgroundMode: task.BackgroundMode, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: at, TaskRunID: task.RunID, StartedAt: time.UnixMilli(task.StartedAt), Tokens: task.TotalTokens, DurationMS: task.DurationMS}
+		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: kind, State: task.State, Origin: "sdk_helper", Name: task.Description, HelperType: task.HelperType, HelperDescription: task.HelperDescription, HelperMode: task.HelperMode, CurrentStep: task.CurrentStep, CommandLabel: task.Command, BackgroundMode: task.BackgroundMode, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: at, TaskRunID: task.RunID, StartedAt: time.UnixMilli(task.StartedAt), Tokens: task.TotalTokens, DurationMS: task.DurationMS}
 		activity := agentevents.NewAgentEvent(agentevents.NewCodingAgentNativeActivity(record))
 		activity.SessionID = update.Owner
 		api.observeTurnInactivity(update.Owner, storeevents.Event{Type: string(agentevents.CodingAgentNativeActivity), SessionID: update.Owner, Timestamp: time.Now(), ExecutionKind: "main_agent", Data: activity})

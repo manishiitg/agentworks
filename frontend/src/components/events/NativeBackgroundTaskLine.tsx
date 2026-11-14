@@ -12,11 +12,20 @@ const duration = (ms: number): string => {
   return minutes < 60 ? `${minutes}m ${String(seconds % 60).padStart(2, '0')}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
 export function backgroundTaskLine(record: Record<string, unknown>, now: number): string {
-  const kind = record.kind === 'helper' ? 'Background agent' : 'Background shell'
+  const helper = record.kind === 'helper'
+  const helperType = typeof record.helper_type === 'string' ? record.helper_type.trim() : ''
+  const kind = helper ? helperType || 'Background agent' : 'Background shell'
   const state = record.state === 'started' ? 'running…' : ['finished', 'completed'].includes(String(record.state)) ? 'finished' : record.state === 'stopped' ? 'stopped' : 'ended'
-  const parts = [`${kind} ${state}`]
-  if (record.kind === 'background_command' && typeof record.command_label === 'string' && record.command_label.trim()) parts.push(record.command_label)
   const start = instant(record.started_at), end = instant(record.ended_at)
+  const elapsed = start !== undefined && (record.state === 'started' || end !== undefined) ? (end ?? now) - start : typeof record.duration_ms === 'number' ? record.duration_ms : undefined
+  // Only presentation is delayed: normal tool steps and native ownership stay intact.
+  if (helper && record.helper_mode === 'foreground' && (elapsed === undefined || elapsed < 3000)) return ''
+  const parts = [helperType && record.state === 'started' ? kind : `${kind} ${state}`]
+  if (helper) {
+    const activity = record.state === 'started' && typeof record.current_step === 'string' && record.current_step.trim() ? record.current_step : record.helper_description
+    if (typeof activity === 'string' && activity.trim()) parts.push(activity)
+  }
+  if (record.kind === 'background_command' && typeof record.command_label === 'string' && record.command_label.trim()) parts.push(record.command_label)
   if (start !== undefined && (record.state === 'started' || end !== undefined)) parts.push(duration((end ?? now) - start))
   else if (typeof record.duration_ms === 'number' && record.duration_ms > 0) parts.push(duration(record.duration_ms))
   if (typeof record.tokens === 'number' && Number.isSafeInteger(record.tokens) && record.tokens >= 0) {
@@ -36,8 +45,10 @@ export function NativeBackgroundTaskLine({ record }: { record: Record<string, un
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [record.work_id, record.state])
+  const line = backgroundTaskLine(record, now)
+  if (!line) return null
   return <div data-testid="native-background-task-line" data-background-agent-id={String(record.work_id)} className="my-1 flex items-center gap-2 text-xs text-muted-foreground" title={typeof record.name === 'string' ? record.name : undefined}>
     {record.state === 'started' && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary/70" aria-hidden="true" />}
-    <span>{backgroundTaskLine(record, now)}</span>
+    <span>{line}</span>
   </div>
 }

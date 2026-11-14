@@ -76,6 +76,18 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 	}
 	sameRun := previous.WorkID != "" && (r.TaskRunID == "" || previous.TaskRunID == "" || r.TaskRunID == previous.TaskRunID)
 	if sameRun {
+		if r.HelperType == "" {
+			r.HelperType = previous.HelperType
+		}
+		if r.HelperDescription == "" {
+			r.HelperDescription = previous.HelperDescription
+		}
+		if r.CurrentStep == "" {
+			r.CurrentStep = previous.CurrentStep
+		}
+		if r.HelperMode == "" {
+			r.HelperMode = previous.HelperMode
+		}
 		if r.CommandLabel == "" {
 			r.CommandLabel = previous.CommandLabel
 		}
