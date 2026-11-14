@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -33,10 +34,14 @@ func crewTeamPathRenameChanges(project string, before, after crewTeamFolder) ([]
 		return nil, err
 	}
 	changes := []crewTeamChange{}
+	skillNames := map[string]string{}
 	for _, old := range before.Paths {
 		for _, next := range after.Paths {
 			if old.ID != next.ID || old.Path == next.Path {
 				continue
+			}
+			if strings.HasPrefix(old.Path, "skills/") {
+				skillNames[strings.TrimPrefix(old.Path, "skills/")] = strings.TrimPrefix(next.Path, "skills/")
 			}
 			for rel, v := range state.Versions {
 				if v.File == nil || !crewTeamUnder(rel, old.Path) {
@@ -49,6 +54,39 @@ func crewTeamPathRenameChanges(project string, before, after crewTeamFolder) ([]
 				version := &chunkedFile{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}
 				changes = append(changes, crewTeamChange{Path: rel, Before: v.File.Hash}, crewTeamChange{Path: target, After: version})
 			}
+		}
+	}
+	if len(skillNames) > 0 && state.Versions[crewTeamSetupFile].File != nil {
+		root, e := crewTeamFilesRoot(project)
+		if e != nil {
+			return nil, e
+		}
+		raw, e := os.ReadFile(filepath.Join(root, crewTeamSetupFile))
+		if e != nil {
+			return nil, e
+		}
+		var setup crewTeamSetup
+		if e = json.Unmarshal(raw, &setup); e != nil {
+			return nil, e
+		}
+		updated := false
+		for i, name := range setup.SelectedSkills {
+			if next, ok := skillNames[name]; ok {
+				setup.SelectedSkills[i] = next
+				updated = true
+			}
+		}
+		if updated {
+			store, e := crewTeamChunkStore(project)
+			if e != nil {
+				return nil, e
+			}
+			raw = setup.encode()
+			version, e := chunkReader(bytes.NewReader(raw), int64(len(raw)), false, func(id string, data []byte) error { return putChunk(store, id, data) })
+			if e != nil {
+				return nil, e
+			}
+			changes = append(changes, crewTeamChange{Path: crewTeamSetupFile, Before: state.Versions[crewTeamSetupFile].File.Hash, After: &version})
 		}
 	}
 	return changes, nil

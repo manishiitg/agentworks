@@ -72,6 +72,7 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	round(c1, d1, b1)
 	write(b1.Root, "docs/note.txt", "Team note")
 	write(filepath.Dir(b1.SkillRoot), "skills/report/SKILL.md", "Team skill")
+	write(b1.Root, crewTeamSetupFile, `{"selected_skills":["report"]}`)
 	round(c1, d1, b1)
 	write(b2.Root, "docs/private.txt", "private document")
 	write(filepath.Dir(b2.SkillRoot), "skills/report/SKILL.md", "private skill")
@@ -129,6 +130,12 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	round(c2, d2, b2)
 	read(b2.Root, "reports/note.txt", "member edit")
 	read(filepath.Dir(b2.SkillRoot), "skills/analysis/SKILL.md", "Team skill")
+	var selected crewTeamSetup
+	raw, err := os.ReadFile(filepath.Join(b2.Root, crewTeamSetupFile))
+	if err != nil || json.Unmarshal(raw, &selected) != nil || len(selected.SelectedSkills) != 1 || selected.SelectedSkills[0] != "analysis" {
+		t.Fatalf("renamed skill selection did not follow its identity: %s %v", raw, err)
+	}
+
 	read(filepath.Dir(b2.SkillRoot), "skills/report/SKILL.md", "private skill")
 	renamed := mustReadCrewTeam(t, "existing-join")
 	for _, p := range renamed.Folder.Paths {
