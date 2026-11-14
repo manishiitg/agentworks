@@ -3626,6 +3626,7 @@ func (api *StreamingAPI) apiRequestLogMiddleware(next http.Handler) http.Handler
 				return
 			}
 			apiLatency.record(route, status, elapsed)
+			apiRecent.record(route, int64(recorder.bytes), elapsed)
 			if switchID := clientSwitchID(r); switchID != "" {
 				logfWithContext(api.httpRequestLogContext(r), "[SWITCH_REQUEST] switch=%q method=%s path=%s status=%d duration=%s workspace_reads=%d workspace_read_ms=%d", switchID, r.Method, requestLogPath(r), status, elapsed.Round(time.Millisecond), reads.Reads(), reads.Millis())
 			}
