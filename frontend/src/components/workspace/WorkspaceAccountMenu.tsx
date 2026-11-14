@@ -3,8 +3,7 @@ import { connectedLocations, useConnectedWorkPolling, useConnectedWorkStore } fr
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import AppearanceControl from './AppearanceControl'
 import { GetApp } from './GetApp'
-import { Settings, RotateCcw } from 'lucide-react'
-import { openLocalSetup } from '../../utils/homeNavigation'
+import { Settings, ChevronRight, Laptop } from 'lucide-react'
 import { ConnectedServersMenuItem } from './ConnectedServersMenuItem'
 import { ProductSettingsMenu } from './ProductSettingsMenu'
 import NotificationsControl from '../topbar/NotificationsControl'
@@ -37,15 +36,17 @@ export function WorkspaceAccountMenu() {
     <span className="min-w-0 flex-1 truncate text-left text-xs font-medium text-foreground" title={label}>{label}</span>
   </>
   return <ProductSettingsMenu accountTrigger={trigger} aboveTrigger={<GetApp compact={!sidebarTarget} />}>
-    <AccountControl menuOnly>
-      <ProductSurfaceSwitcher menuOnly
-        className="!border-t-0 border-b pb-2 [&_h3]:sr-only [&>div]:!grid-cols-3 [&_button[data-product-option]]:!flex-col [&_button[data-product-option]]:!items-center [&_button[data-product-option]]:!gap-1 [&_button[data-product-option]]:!px-1 [&_button[data-product-option]]:!py-2 [&_button[data-product-option]]:!text-center [&_button[data-product-option]]:!text-[11px] [&_button[data-product-option]>span]:max-w-full [&_button[data-product-option]>span]:truncate" />
-      <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Workspace</p>
-      {window.electronAPI?.getDesktopConnection?.() === 'local' && <button type="button" role="menuitem" data-product-navigation-action onClick={openLocalSetup}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span>Run setup again</span></button>}
-      <ConnectedServersMenuItem />
+    <AccountControl menuOnly accountLabel={label} hideVersion>
+      <details className="group/switch">
+        <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2.5 rounded-md px-3 py-1.5 text-xs hover:bg-muted"><Laptop className="h-4 w-4" />Switch workspace<ChevronRight className="ml-auto h-3.5 w-3.5 group-open/switch:rotate-90" /></summary>
+        <div className="space-y-1 border-l border-border pl-2 ml-4">
+          <ProductSurfaceSwitcher menuOnly menuColumns={1} />
+          <ConnectedServersMenuItem />
+        </div>
+      </details>
       <button type="button" role="menuitem" data-product-navigation-action onClick={() => openWorkspaceSettings('connections')}><Settings className="h-4 w-4" aria-hidden="true" /><span>Settings</span></button>
       <NotificationsControl />
-      <AppearanceControl />
+      <AppearanceControl compact />
     </AccountControl>
   </ProductSettingsMenu>
 }

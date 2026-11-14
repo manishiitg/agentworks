@@ -1,11 +1,14 @@
 import { lazy, Suspense, useState } from 'react'
-import { Blocks, Cpu, Globe, KeyRound, Plug, Search, Sparkles, Users, Terminal } from 'lucide-react'
+import { Blocks, Cpu, Globe, KeyRound, Plug, Search, Sparkles, Users, Terminal, Info, RotateCcw } from 'lucide-react'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } from './integrations/AccountConnectionPanels'
 import { AccountSlackOverview } from './integrations/AccountSlackOverview'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
 import { useCanManageVault } from './integrations/OpenVaultButton'
+import { APP_VERSION } from '../version'
+import { openLocalSetup } from '../utils/homeNavigation'
+import { Button } from './ui/Button'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 
@@ -23,6 +26,7 @@ const categories = [
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'users', label: 'Users & access', icon: Users },
   { id: 'connect', label: 'Connect AI tools', icon: Terminal },
+  { id: 'about', label: 'About', icon: Info },
 ] as const
 type Category = typeof categories[number]['id']
 
@@ -64,6 +68,7 @@ function ConnectionsToolsContent() {
             {category === 'secrets' && <AccountVaultSecrets />}
             {category === 'users' && user?.is_admin && <UsersContent />}
             {category === 'connect' && user && <ConnectContent />}
+            {category === 'about' && <div className="space-y-4"><div><h3 className="text-sm font-medium">AgentWorks</h3><p className="text-sm text-muted-foreground">Version {APP_VERSION}</p></div>{window.electronAPI?.getDesktopConnection?.() === 'local' && <Button variant="outline" size="sm" onClick={openLocalSetup}><RotateCcw className="h-4 w-4" />Run setup again</Button>}</div>}
           </Suspense>
         </>}
       </div>
