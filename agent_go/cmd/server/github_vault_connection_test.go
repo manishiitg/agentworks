@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 // PLAT-746-191: every method saves exactly the caller's selected identity;
@@ -84,6 +86,26 @@ func TestGitHubVaultPATAndCLISelectOnlyThisProject(t *testing.T) {
 	}
 	if rec := githubTestRecord(t, "alice"); rec == nil || rec.Source != "pat" || rec.Login != "alice-pat" {
 		t.Fatal("PAT did not use the existing owner record/grant model")
+	}
+	// PLAT-746-977: global inventory is the caller's saved metadata only, with no Crew or token read.
+	for _, person := range []string{"alice", "bob"} {
+		inventory := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=accounts", "", person, nil)
+		var body struct {
+			Connections []map[string]string `json:"connections"`
+		}
+		if inventory.Code != 200 || json.Unmarshal(inventory.Body.Bytes(), &body) != nil || (person == "alice" && len(body.Connections) != 1) || (person == "bob" && len(body.Connections) != 0) {
+			t.Fatalf("personal inventory %s: %d %s", person, inventory.Code, inventory.Body.String())
+		}
+		if strings.Contains(inventory.Body.String(), pat) || strings.Contains(inventory.Body.String(), "secret_name") || strings.Contains(inventory.Body.String(), "vault_id") {
+			t.Fatal("GitHub inventory exposed credential data")
+		}
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/vault/github?view=accounts", nil)
+	request = request.WithContext(context.WithValue(request.Context(), UserContextKey, &UserClaims{UserID: "alice", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}}}))
+	tokenInventory := httptest.NewRecorder()
+	api.handleGitHubVault(tokenInventory, request)
+	if tokenInventory.Code != http.StatusForbidden {
+		t.Fatal("project token read personal GitHub inventory")
 	}
 	for _, settings := range []struct{ mode, multi, local, owner string }{{"server", "false", "true", "alice"}, {"local", "true", "true", "alice"}, {"local", "false", "true", "bob"}} {
 		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", settings.mode)

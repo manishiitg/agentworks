@@ -478,6 +478,16 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	person := claims.UserID
+	// Personal inventory only: no project selection, CLI credential access or token values.
+	if r.Method == http.MethodGet && r.URL.Query().Get("view") == "accounts" {
+		connections := []map[string]string{}
+		for _, rec := range gitHubConnections(person) {
+			connections = append(connections, map[string]string{"id": rec.ID, "login": rec.Login, "source": rec.Source})
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"connections": connections})
+		return
+	}
 	if !strings.HasSuffix(r.URL.Path, "/complete") {
 		ctx, err := githubProjectContext(r.Context(), person, r.URL.Query().Get("workspace_path"), r.Method != http.MethodGet)
 		if err != nil {
