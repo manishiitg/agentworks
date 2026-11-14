@@ -59,7 +59,7 @@ func (api *StreamingAPI) handlePromptLinkOpen(w http.ResponseWriter, r *http.Req
 	defer func() {
 		log.Printf("[PROMPT_LINK] opened crew=%s agent=%s allowed=%t", crew, logPromptLinkAgent(agent), allowed)
 	}()
-	project, _, ok := api.readExternalWorkspace(r.Context(), claims, crew)
+	project, manifest, ok := api.readExternalWorkspace(r.Context(), claims, crew)
 	if !ok {
 		externalError(w, 404, "not_found", "This Crew is unavailable. Ask its owner for access, or choose a Crew from your workspace.")
 		return
@@ -85,6 +85,14 @@ func (api *StreamingAPI) handlePromptLinkOpen(w http.ResponseWriter, r *http.Req
 	allowed = response.Code == http.StatusOK && body["conversation"] != nil
 	if response.Code == http.StatusOK && !allowed {
 		externalError(w, 404, "agent_unavailable", "This agent is unavailable. Choose an agent you can use from your workspace.")
+		return
+	}
+	if allowed {
+		body["crew_name"] = manifest.displayTitle()
+		conversation, _ := body["conversation"].(map[string]any)
+		title, _ := conversation["title"].(string)
+		body["agent_name"] = firstNonEmptyTrimmed(title, "Agent")
+		externalJSON(w, body)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
