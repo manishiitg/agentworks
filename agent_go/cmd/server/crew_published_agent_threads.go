@@ -171,7 +171,10 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	// A redirect changes the receiving user. Keep all provider/account and
 	// workspace preparation in that normal user's namespace, not the old Mac
 	// agent owner's. Sender authority is still rechecked from the saved message.
-	ctx = internalBotRequestContext(ctx, dest.UserID)
+	// The normal helper deliberately preserves an existing sign-in. Mask only
+	// that old identity before asking it to load the receiving user's directory
+	// record; keep cancellation, admission and sender-attribution context.
+	ctx = internalBotRequestContext(context.WithValue(ctx, UserContextKey, (*UserClaims)(nil)), dest.UserID)
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, dest.UserID)
 	if err != nil {
 		return "", err
