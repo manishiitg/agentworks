@@ -1309,6 +1309,22 @@
     "source_action": "storage_move"
   },
   {
+    "family": "workspace",
+    "name": "open_editor",
+    "member": "workspace__open_editor",
+    "description": "Resolve an admitted local Git project, file and line in the chosen editor. No command or app is run by resolving.",
+    "source": "workspace",
+    "source_action": "open_editor"
+  },
+  {
+    "family": "workspace",
+    "name": "git_action",
+    "member": "workspace__git_action",
+    "description": "Draft editable commit and pull request text, commit, push and open a reviewed pull request using the selected project GitHub account.",
+    "source": "workspace",
+    "source_action": "git_action"
+  },
+  {
     "family": "terminal",
     "name": "local_execute",
     "member": "execute_local_shell_command",

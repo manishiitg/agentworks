@@ -28,6 +28,7 @@ func TestWorkspaceGitDeliveryDraftsDoNotCommitAndPublishingUsesOnlySelectedAccou
 	f, _ := newExternalCrewCommandFixture(t)
 	repo := filepath.Join(f.docs, externalCommandCrewRoot, "app")
 	writeFile(t, filepath.Join(repo, "a.txt"), "first\n")
+	writeFile(t, filepath.Join(repo, ".env"), "EXAMPLE=DO_NOT_SEND_OLD\n")
 	gitRun(t, repo, "init", "-q", "-b", "main")
 	gitRun(t, repo, "add", ".")
 	gitRun(t, repo, "commit", "-q", "-m", "baseline")
@@ -35,6 +36,8 @@ func TestWorkspaceGitDeliveryDraftsDoNotCommitAndPublishingUsesOnlySelectedAccou
 	gitRun(t, repo, "remote", "add", "origin", "git@github.com:example/project.git")
 	writeFile(t, filepath.Join(repo, "a.txt"), "first\nchange\n")
 	writeFile(t, filepath.Join(repo, "new.txt"), "new file evidence\n")
+	writeFile(t, filepath.Join(repo, "private.key"), "DO_NOT_SEND_KEY")
+	writeFile(t, filepath.Join(repo, ".env"), "EXAMPLE=DO_NOT_SEND_NEW")
 	const session = "delivery-owner-chat"
 	const key = "team:chat:root-owner"
 	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Team","main_chat_key":"`+key+`"}`)
@@ -82,6 +85,9 @@ func TestWorkspaceGitDeliveryDraftsDoNotCommitAndPublishingUsesOnlySelectedAccou
 		if actor != "owner" || model.ConnectionID != "caller-model-account" {
 			t.Fatal("draft borrowed another account")
 		}
+		if strings.Contains(input, "DO_NOT_SEND_") {
+			t.Fatal("private file content reached AI draft")
+		}
 		if strings.Contains(input, "foreign-chat") {
 			t.Fatal("foreign chat reached draft")
 		}
@@ -124,6 +130,16 @@ func TestWorkspaceGitDeliveryDraftsDoNotCommitAndPublishingUsesOnlySelectedAccou
 	if !strings.Contains(marshalStructured(t, result), "Editable draft only") {
 		t.Fatal("MCP draft missing")
 	}
+	// PLAT-746-1002 follow-up: the final merged action catalog, not just the
+	// native workspace schema, must admit the editor resolver too.
+	oldLocal := workspaceEditorLocalAvailable
+	workspaceEditorLocalAvailable = func() bool { return true }
+	t.Cleanup(func() { workspaceEditorLocalAvailable = oldLocal })
+	editor := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"action": "open_editor", "workspace_id": "team", "editor": "vscode", "repo": "app", "file": "a.txt", "line": 12}})
+	requireRemoteSuccess(t, editor, "workspace")
+	if !strings.Contains(marshalStructured(t, editor), "vscode://file/") {
+		t.Fatal("registered editor resolver returned no admitted link")
+	}
 	if generated != 2 {
 		t.Fatal("a draft made more than one AI request")
 	}
@@ -157,7 +173,7 @@ func TestWorkspaceGitDeliveryDraftsDoNotCommitAndPublishingUsesOnlySelectedAccou
 	workspaceGitDeliveryRunForTest = func(cmd *exec.Cmd) error {
 		pushes++
 		argv := strings.Join(cmd.Args, " ")
-		if strings.Contains(argv, "fixture-selected-token") || strings.Contains(argv, "Authorization:") || strings.Contains(argv, "--force") || !strings.Contains(argv, "https://github.com/example/project.git "+head+":refs/heads/feature") {
+		if strings.Contains(argv, "fixture-selected-token") || strings.Contains(argv, "Authorization:") || strings.Contains(argv, "--force") || !strings.Contains(argv, "-c core.hooksPath=/dev/null") || !strings.Contains(argv, "https://github.com/example/project.git "+head+":refs/heads/feature") {
 			t.Fatalf("unsafe push arguments: %v", cmd.Args)
 		}
 		want := "GIT_CONFIG_VALUE_0=Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:fixture-selected-token"))
