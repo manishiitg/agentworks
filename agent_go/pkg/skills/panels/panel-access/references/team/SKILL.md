@@ -51,6 +51,8 @@ never copied: it is listed as "Team uses GitHub: each person signs in
 themselves", and each member connects their own. Say which of the two happened.
 The first Add to Team makes the Team's online home. Rules and skills are already
 shared through the Team's setup; do not copy them again.
+Members' agents on the server pick up the Team's shared apps and secrets while they work in that Crew. An agent
+running on a member's Mac does not yet: the Team's vault lives on the server, so do not promise it there.
 
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
