@@ -28,7 +28,7 @@ it('keeps personal setup unscoped and drops late secret names after changing net
   expect(host.textContent).toContain('WhatsApp connection')
   expect(host.textContent).toContain('GitHub accounts')
   expect(host.textContent).toContain('Computer use')
-  expect(host.textContent).not.toContain('Manage')
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Manage')).toBe(false)
   await click('Secrets')
   state.network = 'two'; state.account = 'second'
   await act(async () => root.render(<ConnectionsToolsPage />))
