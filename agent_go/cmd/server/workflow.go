@@ -259,6 +259,9 @@ func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery
 		return "", false, nil // File doesn't exist, but not an error
 	}
 
+	if resp.StatusCode >= 500 {
+		return "", false, fmt.Errorf("%w: status %d", errWorkspaceUnavailable, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", false, fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}

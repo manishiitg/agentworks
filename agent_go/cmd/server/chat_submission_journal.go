@@ -79,6 +79,11 @@ func submissionStateForResponse(status int, body []byte) string {
 	}
 	var response map[string]interface{}
 	if json.Unmarshal(body, &response) == nil {
+		if status == http.StatusServiceUnavailable {
+			if failure, ok := response["error"].(map[string]interface{}); ok && failure["code"] == "workspace_unavailable" {
+				state = "retryable"
+			}
+		}
 		if response["delivery_status"] == "sent_to_cli" {
 			state = "delivery_confirmed"
 		}
@@ -226,6 +231,10 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 				exists = false
 				log.Printf("[CHAT_SUBMISSION] Reconciled submission %s as not delivered after its retained tmux closed; retrying through a resumed turn", previous.ID)
 			}
+		}
+		if exists && previous.State == "retryable" {
+			exists = false
+			log.Printf("[CHAT_SUBMISSION] session=%s submission=%s action=retry reason=workspace_unavailable", session, id)
 		}
 		if exists && previous.State == "rejected" && storedSubmissionWasTurnRunning(previous) {
 			// turn_running proves the message was never sent or queued, so a

@@ -3895,6 +3895,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	resolvedProfile, access, admitErr := api.admitQueryTarget(r.Context(), &req, currentUserID, sessionID)
 	if admitErr != nil {
+		if writeWorkspaceAdmissionUnavailable(w, admitErr) {
+			return
+		}
 		if errors.Is(admitErr, errCrewProjectUnavailable) {
 			logQueryAdmissionRefusal(w, r, "project_access")
 			externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
@@ -4232,6 +4235,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	retainedDeliveryEligible := preferRetainedDelivery && retainedProfileCompatible
 	retainedWorkflowCompatible, runtimeChanged, policyErr := api.prepareWorkflowRetainedDelivery(r.Context(), sessionID, req, retainedDeliveryEligible)
 	if policyErr != nil {
+		if writeWorkspaceAdmissionUnavailable(w, policyErr) {
+			return
+		}
 		logQueryAdmissionRefusal(w, r, "retained_tool_policy")
 		http.Error(w, policyErr.Error(), http.StatusForbidden)
 		return

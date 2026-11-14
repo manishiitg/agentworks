@@ -253,3 +253,78 @@ func TestOwnAgentMailReportsReplayedSubmissionRefusal(t *testing.T) {
 		t.Fatal("cached refusal was redispatched or lacked its replay reason")
 	}
 }
+
+type workspaceOwnerTimeoutTransport struct {
+	base   http.RoundTripper
+	failed bool
+}
+
+func (tr *workspaceOwnerTimeoutTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if !tr.failed && r.URL.Path == "/api/documents/Crew/alpha/product.json" {
+		tr.failed = true
+		return nil, context.DeadlineExceeded
+	}
+	return tr.base.RoundTrip(r)
+}
+
+// PLAT-746-941: an owner-manifest timeout became a permanent403 receipt and
+// every same-key retry replayed it, so admitted agent mail never ran.
+func TestOwnAgentMailRetriesOwnerWorkspaceTimeout(t *testing.T) {
+	newTriggerLinkEnv(t)
+	original := workspaceHTTPClient
+	client := *original
+	base := original.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	transport := &workspaceOwnerTimeoutTransport{base: base}
+	client.Transport = transport
+	workspaceHTTPClient = &client
+	t.Cleanup(func() { workspaceHTTPClient = original })
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.internalChatSubmissionStore = newTestChatSubmissionStore()
+	ctx := internalBotRequestContext(context.Background(), "owner")
+	request := func() *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/api/query", nil).WithContext(ctx)
+		r.Header.Set("Idempotency-Key", "agentbridge:example:timeout-message")
+		return r
+	}
+	dispatched := 0
+	for attempt := 0; attempt < 2; attempt++ {
+		rec := httptest.NewRecorder()
+		w, _, finish, accepted := api.beginChatSubmission(rec, request(), "recipient", linkAlphaPath, "example input")
+		if !accepted {
+			t.Fatal("retry replayed a transient admission failure")
+		}
+		binding, err := readCrewProjectBinding(ctx, "owner", workCrewTestProfile(nil), "alpha", linkAlphaPath)
+		if err != nil {
+			writeAgentProfileQueryError(w, err)
+		} else {
+			if !binding.OwnedByCaller {
+				t.Fatal("owner resolved as another person's turn")
+			}
+			dispatched++
+			writeSentToCLI(w)
+		}
+		finish()
+		if attempt == 0 && (rec.Code != http.StatusServiceUnavailable || rec.Header().Get("X-Query-Refusal-Reason") != "workspace_unavailable") {
+			t.Fatal("owner read timeout was not retryable503")
+		}
+		if attempt == 1 && rec.Code != http.StatusOK {
+			t.Fatal("healthy retry did not dispatch")
+		}
+	}
+	if !transport.failed || dispatched != 1 {
+		t.Fatal("did not exercise timeout then exactly one admitted dispatch")
+	}
+	rec := httptest.NewRecorder()
+	_, _, _, accepted := api.beginChatSubmission(rec, request(), "recipient", linkAlphaPath, "example input")
+	if accepted || rec.Code != http.StatusOK {
+		t.Fatal("successful retry did not retain its receipt")
+	}
+	permanent := httptest.NewRecorder()
+	writeAgentProfileQueryError(permanent, errCrewProjectUnavailable)
+	if permanent.Code != http.StatusForbidden {
+		t.Fatal("real ownership refusal became retryable")
+	}
+}

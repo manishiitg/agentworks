@@ -1058,6 +1058,9 @@ func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.
 }
 
 func writeAgentProfileQueryError(w http.ResponseWriter, err error) {
+	if writeWorkspaceAdmissionUnavailable(w, err) {
+		return
+	}
 	if errors.Is(err, errCrewProjectUnavailable) {
 		externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
 		return
