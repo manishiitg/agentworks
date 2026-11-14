@@ -40,13 +40,13 @@ func memoryLogLine(store *events.EventStore) string {
 	line := fmt.Sprintf("[MEM] heap_inuse=%dMB heap_alloc=%dMB sys=%dMB goroutines=%d gc=%d tool_schema_entries=%d",
 		mb(mem.HeapInuse), mb(mem.HeapAlloc), mb(mem.Sys), runtime.NumGoroutine(), mem.NumGC, platformtools.CompiledSchemaCacheEntries())
 	if store == nil {
-		return line
+		return fmt.Sprintf("%s top_routes=[%s]", line, strings.Join(apiRecent.topAndReset(3), " "))
 	}
 	stats := store.Stats(5)
 	largest := make([]string, 0, len(stats.Largest))
 	for _, session := range stats.Largest {
 		largest = append(largest, fmt.Sprintf("%s:%d+%dt/%dKB", session.SessionID, session.Events, session.TerminalEvents, session.Bytes>>10))
 	}
-	return fmt.Sprintf("%s event_sessions=%d events=%d terminal_events=%d event_bytes=%dMB largest=[%s]",
-		line, stats.Sessions, stats.Events, stats.TerminalEvents, stats.Bytes>>20, strings.Join(largest, " "))
+	return fmt.Sprintf("%s event_sessions=%d events=%d terminal_events=%d event_bytes=%dMB largest=[%s] top_routes=[%s]",
+		line, stats.Sessions, stats.Events, stats.TerminalEvents, stats.Bytes>>20, strings.Join(largest, " "), strings.Join(apiRecent.topAndReset(3), " "))
 }

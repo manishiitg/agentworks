@@ -279,11 +279,14 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 		started := time.Now()
 		repoCtx, stop := context.WithTimeout(discovery, 10*time.Second)
 		defer stop()
-		results[i].repo, results[i].err = s.turnRepo(repoCtx, dirs[i], results[i].root)
+		var shared bool
+		results[i].repo, shared, results[i].err = shareRepoRead(repoCtx, s.Root+"\x00"+dirs[i], func(ctx context.Context) (gitTurnRepo, error) {
+			return s.turnRepo(ctx, dirs[i], results[i].root)
+		})
 		if repoCtx.Err() != nil {
 			results[i].err = repoCtx.Err()
 		}
-		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q elapsed_ms=%d success=%t", results[i].root, time.Since(started).Milliseconds(), results[i].err == nil)
+		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q elapsed_ms=%d success=%t shared=%t", results[i].root, time.Since(started).Milliseconds(), results[i].err == nil, shared)
 		return nil
 	})
 	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
