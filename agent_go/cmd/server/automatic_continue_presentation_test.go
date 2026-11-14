@@ -48,6 +48,5 @@ func TestAutomaticContinuePresentationKeepsPromptAndMarksOnlyServerTurns(t *test
 		if message.Metadata["system_notice_kind"] != nil {
 			t.Fatal("changed agent history instead of display clone")
 		}
-		store.Stop()
 	}
 }
