@@ -1138,6 +1138,15 @@ func acquireAgentMessageAuthority(ctx context.Context, session string) (func(), 
 func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConversation, m agentMessage) (string, error) {
 	dest := c.Endpoints[1-m.From]
 	source := c.Endpoints[m.From]
+	// Old native-chat addresses must not bypass the Team's registry route
+	// and start the maker's chat. Askers refresh the one current directory ID.
+	if !IsLocalMode() && dest.Kind == triggerCallerCrew && dest.TeamAgentID == "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+		if team, e := readCrewTeam(dest.ID); e == nil && crewTeamAgentsVisible(team, source.UserID) {
+			if _, registered := team.registeredAgent(dest.UserID, dest.ChatKey); registered {
+				return "", fmt.Errorf("this Team address is out of date; run messages action=list_agents and use the current agent id")
+			}
+		}
+	}
 	var teamRoute string
 	if dest.TeamAgentID != "" {
 		var err error

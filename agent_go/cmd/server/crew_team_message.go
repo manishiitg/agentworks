@@ -57,7 +57,7 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: project, ProfileID: crewProfileID}, Label: firstNonEmptyTrimmed(in.Agent, "Main"),
 		Chat: &codeChat{OwnerID: claims.UserID, IsMain: in.FromTab == macMainTab, Key: key, ID: in.FromTab, Name: firstNonEmptyTrimmed(in.Agent, "Main"), SessionID: crewChatSessionID(project, in.ConversationID)}}
 	if in.Operation == "digest" {
-		digest, err := crewSharedAnswerDigest(project, claims.UserID, key)
+		digest, err := crewSharedAnswerDigest(project, claims.UserID, in.FromTab)
 		if err != nil {
 			externalError(w, 409, "digest_unavailable", "Could not read this agent's away digest.")
 			return
