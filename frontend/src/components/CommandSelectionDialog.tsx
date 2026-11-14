@@ -29,7 +29,10 @@ interface CommandSelectionDialogProps extends ComposerPickerProps {
   onDeleteCommand?: (command: CommandDefinition) => void
   /** A chat-specific list (for example a dashboard's project functions). It replaces the global and personal commands. */
   commands?: CommandDefinition[]
+  skillCommands?: CommandDefinition[]
 }
+
+const EMPTY_SKILL_COMMANDS: CommandDefinition[] = []
 
 export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   isOpen,
@@ -45,7 +48,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   onCreateCommand,
   onEditCommand,
   onDeleteCommand, inputRef, listId, onActiveOptionChange,
-  nativeGoalSupported = false, standalone = false, onSearchQueryChange, triggerRef, commands
+  nativeGoalSupported = false, standalone = false, onSearchQueryChange, triggerRef, commands, skillCommands = EMPTY_SKILL_COMMANDS
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const revision = useSyncExternalStore(subscribeCommands, getCommandRevision)
@@ -73,7 +76,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
       : getCommands(modeCategory, workshopMode, canWriteWorkflow)), nativeGoalSupported)
 
     if (!searchQuery.trim()) {
-      return allCommands
+      return [...allCommands, ...skillCommands]
     }
 
     const query = searchQuery.toLowerCase().trim()
@@ -99,8 +102,8 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
       return a.command.localeCompare(b.command)
     })
 
-    return filtered
-  }, [nativeGoalSupported, agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands])
+    return [...filtered, ...skillCommands]
+  }, [nativeGoalSupported, agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands, skillCommands])
 
   useEffect(() => { setSelectedIndex(0) }, [searchQuery, isOpen, filteredCommands])
   useEffect(() => {
@@ -214,7 +217,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
                 {cmd.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-medium">/{cmd.command}</div>
+                <div className="font-medium">{cmd.label || `/${cmd.command}`}</div>
                 <div className="text-xs text-muted-foreground truncate">
                   {cmd.description}
                 </div>

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -13,29 +14,42 @@ import (
 )
 
 func (api *StreamingAPI) nativeSkillsRoute(write bool) http.HandlerFunc {
+	return api.ownNativeSkillRoute(write, api.discoverNativeSkills)
+}
+
+func (api *StreamingAPI) ownNativeSkillRoute(write bool, handler http.HandlerFunc) http.HandlerFunc {
 	return workspaceSkillRoute(write, func(w http.ResponseWriter, r *http.Request) {
-		claims := GetUserFromContext(r.Context())
-		workspace := r.URL.Query().Get("workspace_path")
-		crew, ok := resolveCrewPath(r.Context(), claims.UserID, workspace)
-		if !ok || crew.OwnerID != sanitizeUserIDForPath(claims.UserID) {
-			http.Error(w, "Open a Crew you own to discover native skills.", 403)
+		if status, err := api.ownNativeSkillScope(r, write); err != nil {
+			http.Error(w, err.Error(), status)
 			return
 		}
-		if token := claims.AccessToken; token != nil {
-			roots, bound, err := crewStorageRoots(workspace)
-			scope := "crews:read"
-			if write {
-				scope = "crews:write"
-			}
-			// Same native-file admission as localProjectAccess: a file-limited
-			// or another-Crew token cannot expand into personal/native folders.
-			if err != nil || !bound || token.FileGuard != nil || !token.Allows(scope) || !token.AllowsCrew(roots.ID) {
-				http.Error(w, "Use a connection with full access to this own Crew.", 403)
-				return
-			}
-		}
-		api.discoverNativeSkills(w, r)
+		handler(w, r)
 	})
+}
+
+func (api *StreamingAPI) ownNativeSkillScope(r *http.Request, write bool) (int, error) {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil {
+		return 401, fmt.Errorf("Sign in to choose skills.")
+	}
+	workspace := r.URL.Query().Get("workspace_path")
+	crew, ok := resolveCrewPath(r.Context(), claims.UserID, workspace)
+	if !ok || crew.OwnerID != sanitizeUserIDForPath(claims.UserID) {
+		return 403, fmt.Errorf("Open a Crew you own to choose native skills.")
+	}
+	if token := claims.AccessToken; token != nil {
+		roots, bound, err := crewStorageRoots(workspace)
+		scope := "crews:read"
+		if write {
+			scope = "crews:write"
+		}
+		// Same native-file admission as localProjectAccess: a file-limited
+		// or another-Crew token cannot expand into personal/native folders.
+		if err != nil || !bound || token.FileGuard != nil || !token.Allows(scope) || !token.AllowsCrew(roots.ID) {
+			return 403, fmt.Errorf("Use a connection with full access to this own Crew.")
+		}
+	}
+	return 0, nil
 }
 
 // This is discovery for explicit project import, not a native invocation or a

@@ -1,6 +1,7 @@
 import type { FileContextItem } from '../stores/types'
 
 export interface ChatSubmissionOptions {
+  requestedSkillId?: string
   pendingAttachments?: { hash: string; name: string }[]
   fileContext?: FileContextItem[]
   fileContextConsumed?: boolean
@@ -20,8 +21,8 @@ export interface ChatSubmissionOptions {
 }
 
 // PLAT-746-938: a file-only message is content; an empty composer is not.
-export function hasChatSubmissionContent(text: string, files: readonly FileContextItem[] = [], pending: readonly { hash: string; name: string }[] = []): boolean {
-  return Boolean(text.trim() || files.length || pending.length)
+export function hasChatSubmissionContent(text: string, files: readonly FileContextItem[] = [], pending: readonly { hash: string; name: string }[] = [], requestedSkillId?: string): boolean {
+  return Boolean(text.trim() || files.length || pending.length || requestedSkillId)
 }
 
 // Only submissions already pending from the same composer share its newly

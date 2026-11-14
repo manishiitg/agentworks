@@ -797,6 +797,8 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
+	RequestedSkillID    string                   `json:"requested_skill_id,omitempty"`
+	requestedSkillName  string                   // server-resolved display only; never caller authority
 	admittedAttachments []admittedChatAttachment // server-only; never request JSON
 	PendingAttachments  []pendingChatAttachment  `json:"pending_attachments,omitempty"`
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
@@ -3800,7 +3802,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.Query == "" && len(req.PendingAttachments) == 0 {
+	if req.Query == "" && len(req.PendingAttachments) == 0 && req.RequestedSkillID == "" {
 		errorMsg := "Query is required"
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
@@ -4005,6 +4007,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider, !otherRoleTurn, !currentUserIsReadOnly && !crewAskOnly)
 	if goalHandled {
 		return
+	}
+	if next, err := api.prepareRequestedSkill(r, &req, sessionID, turnProvider); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	} else {
+		r = next
 	}
 	if !otherRoleTurn {
 		common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
@@ -4898,6 +4906,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// wrapper, so deriving from r.Context() lets stop_workflow_run/terminate_agent
 		// cancel the actual orchestrator context instead of only the wrapper waiter.
 		workflowBaseCtx := context.Background()
+		if skill, ok := llmtypes.NativeSkillForSession(r.Context(), sessionID); ok {
+			workflowBaseCtx = llmtypes.WithNativeSkill(workflowBaseCtx, sessionID, skill)
+		}
 		workflowBaseCtx = llmtypes.WithNativeImageInputs(workflowBaseCtx, sessionID, llmtypes.NativeImageInputsForSession(r.Context(), sessionID))
 		if goal, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
 			workflowBaseCtx = llmtypes.WithNativeGoalCommand(workflowBaseCtx, goal)

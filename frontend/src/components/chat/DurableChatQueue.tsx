@@ -27,7 +27,7 @@ function markDelivering(sessionId: string, ids: Set<string>) {
 /** This is the server queue, never a second browser dispatch worker. */
 export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   sessionId: string; tabId: string; busy: boolean
-  canEdit?: boolean; onEdit?: (content: string, attachments?: string[]) => void
+  canEdit?: boolean; onEdit?: (content: string, attachments?: string[], requestedSkillId?: string) => void
 }>(function DurableChatQueue({ sessionId, tabId, busy, canEdit = true, onEdit }, ref) {
   const [identity] = useState(captureChatIdentity)
   const [action, setAction] = useState<string | null>(null)
@@ -86,7 +86,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
         const id = clientMessageEventId(message.client_message_id)
         store.setTabEvents(sessionId, store.getTabEvents(sessionId).filter(event => event.id !== id || !isProvisionalUserMessage(event)))
       }
-      if (edit) onEdit?.(message.content, message.attachment_paths)
+      if (edit) onEdit?.(message.content, message.attachment_paths, message.requested_skill_id)
       await client.invalidateQueries({ queryKey: key })
     } catch {
       if (owns()) {

@@ -29,6 +29,7 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
+	RequestedSkillID   string                  `json:"requested_skill_id,omitempty"`
 	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
 	Source             string                  `json:"source,omitempty"` // Fixed diagnostic route label; never caller identity.
 	SubmissionID       string                  `json:"submission_id,omitempty"`

@@ -92,6 +92,7 @@ export interface GetEventsResponse {
 }
 
 export interface PendingQueuedMessage {
+  requested_skill_id?: string
   /** Present only when the server says this pending row has waited at least 15 minutes. */
   waiting_since?: string
   attachment_paths?: string[]

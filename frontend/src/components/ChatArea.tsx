@@ -2693,7 +2693,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const oneShotWorkflowContextSourceTabId = freshActiveTab?.tabId
 
     // Early validation
-    if (!hasChatSubmissionContent(query, options?.fileContext ?? freshActiveTab?.config?.fileContext, options?.pendingAttachments)) {
+    if (!hasChatSubmissionContent(query, options?.fileContext ?? freshActiveTab?.config?.fileContext, options?.pendingAttachments, options?.requestedSkillId)) {
       logger.warn('ChatArea', 'Empty query, returning early')
       return false
     }
@@ -2867,7 +2867,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       : query.trim()
     // The agent receives file paths as request context; the chat timeline shows
     // only the text the user entered.
-    const displayQueryWithContext = query.trim()
+    const displayQueryWithContext = query.trim() || (options?.requestedSkillId ? 'Skill requested' : '')
     const queryWithContext = `${queryBaseWithContext}${restoredConversationContext}`
 
     if (restoredConversationUsesNative) {
@@ -3035,6 +3035,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         restoredConversationPath,
       }), currentTab)
 
+      requestPayload.requested_skill_id = options?.requestedSkillId
       requestPayload.pending_attachments = submittedChatAttachmentReferences(options?.fileContext ?? currentTab.config.fileContext, options?.pendingAttachments)
 
       // Validate execution groups for workflow mode
@@ -3325,7 +3326,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         const store = useChatStore.getState()
         const optimistic = createNextOptimisticUserMessage(
           sourceTab.sessionId,
-          query.trim(),
+          query.trim() || (captured.requestedSkillId ? 'Skill requested' : ''),
           store.getTabEvents(sourceTab.sessionId),
           submissionId,
           (captured.fileContext ?? store.getTabConfig(sourceTab.tabId)?.fileContext ?? [])

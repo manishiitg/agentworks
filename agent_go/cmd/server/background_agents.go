@@ -2740,6 +2740,8 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	api.lastQueryMu.RLock()
 	req, hasReq := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
+	// A per-message explicit skill is never an automatic follow-up selection.
+	req.RequestedSkillID, req.requestedSkillName = "", ""
 
 	// Set session busy synchronously BEFORE spawning goroutine
 	// This prevents concurrent synthetic turns from the completion listener
