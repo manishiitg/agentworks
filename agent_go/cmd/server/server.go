@@ -5806,6 +5806,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		recordSessionSecretScope(sessionID, req.secretsWorkspacePath)
+		common.ConfigureProcessBridgeCredential(sessionID, finalProvider == "codex-cli" && codexPersistentInteractive && req.ParentSessionID == "")
+		if finalProvider == "codex-cli" && codexPersistentInteractive && req.ParentSessionID == "" {
+			pendingToken := common.BridgeTokenForSession(sessionID)
+			defer common.DiscardPendingProcessBridgeCredential(sessionID, pendingToken)
+		}
 		codingAgentSecretEnvironment := make(map[string]string)
 		for _, name := range []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"} {
 			if value := common.GetSessionShellEnv(sessionID)[name]; value != "" {
