@@ -56,6 +56,15 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: project, ProfileID: crewProfileID}, Label: firstNonEmptyTrimmed(in.Agent, "Main"),
 		Chat: &codeChat{OwnerID: claims.UserID, IsMain: in.FromTab == macMainTab, Key: key, ID: in.FromTab, Name: firstNonEmptyTrimmed(in.Agent, "Main"), SessionID: crewChatSessionID(project, in.ConversationID)}}
+	if in.Operation == "digest" {
+		digest, err := crewSharedAnswerDigest(project, claims.UserID, key)
+		if err != nil {
+			externalError(w, 409, "digest_unavailable", "Could not read this agent's away digest.")
+			return
+		}
+		externalJSON(w, crewSyncReply{TeamMessages: map[string]any{"digest": digest}})
+		return
+	}
 	if in.Operation == "read" {
 		out, err := api.readAgentMessages(ctx, claims.UserID, caller, in.AgentID, in.After, in.Limit, 0)
 		if err != nil {
@@ -197,7 +206,7 @@ func (api *StreamingAPI) callTeamMessageFromMac(ctx context.Context, owner strin
 	}
 	input.FromTab, input.ConversationID, input.Agent = tab, conversation, caller.Chat.Name
 	reply, err := desktopCrewSyncCall(ctx, owner, &connection, b.PeerProjectID, crewSyncRequest{Action: "team_message", PairID: b.PairID, TeamMessage: &input})
-	if err == nil && (input.Operation == "read" && reply.TeamMessages == nil || input.Operation != "read" && reply.InboxID == "") {
+	if err == nil && ((input.Operation == "read" || input.Operation == "digest") && reply.TeamMessages == nil || input.Operation != "read" && input.Operation != "digest" && reply.InboxID == "") {
 		err = fmt.Errorf("the server did not confirm this Team message; retry after updating the app")
 	}
 	if err == nil {
