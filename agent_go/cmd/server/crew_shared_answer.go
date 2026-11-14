@@ -65,21 +65,26 @@ func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string
 	if !ok || !agent.InTeam || !team.member(agent.OwnerID) || !crewTeamAccountActive(agent.OwnerID) {
 		return agent, "", "", fmt.Errorf("this agent is no longer In team")
 	}
-	state, err := readCrewTeamCurrentState(project)
-	if err != nil {
-		return agent, "", "", err
-	}
-	root, err := crewTeamFilesRoot(project)
-	if err != nil {
-		return agent, "", "", err
-	}
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.UserID != asker {
 		return agent, "", "", fmt.Errorf("the asking account could not be verified")
 	}
-	files, err := crewSharedAnswerFiles(team, state, root, func(name string) bool { return crewTeamGuardAllows(claims, name, false) })
-	if err != nil {
-		return agent, "", "", err
+	files := ""
+	// A Team can share agents/posts before choosing any folder. Absence of
+	// file sharing means no file input, not failure or a read of the Crew root.
+	if team.Folder.ID != "" && team.Folder.shared() {
+		state, e := readCrewTeamCurrentState(project)
+		if e != nil {
+			return agent, "", "", e
+		}
+		root, e := crewTeamFilesRoot(project)
+		if e != nil {
+			return agent, "", "", e
+		}
+		files, e = crewSharedAnswerFiles(team, state, root, func(name string) bool { return crewTeamGuardAllows(claims, name, false) })
+		if e != nil {
+			return agent, "", "", e
+		}
 	}
 	var out strings.Builder
 	fmt.Fprintf(&out, "Agent: %s\nPurpose: %s\n", redaction.Text(agent.Name), redaction.Text(agent.Purpose))
