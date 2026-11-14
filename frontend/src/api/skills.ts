@@ -30,6 +30,12 @@ api.interceptors.request.use((config) => {
 })
 
 export const skillsApi = {
+  folder: async (workspacePath: string, files: File[], importing: boolean): Promise<{ document?: string; name?: string; files?: string[]; success?: boolean; skill_name?: string }> => {
+    const data = new FormData()
+    data.append('paths', JSON.stringify(files.map(file => file.webkitRelativePath)))
+    files.forEach((file,index) => data.append(`file${index}`,file))
+    return (await api.post(`/api/skills/${importing ? 'import-folder' : 'validate-folder'}`,data,{ params: { workspace_path: workspacePath }, headers: { 'Content-Type': 'multipart/form-data' } })).data
+  },
   discover: async (workspacePath: string, provider: string, id?: string): Promise<NativeSkillDiscovery | DiscoveredSkill> => {
     return (await api.get('/api/skills/discover', { params: { workspace_path: workspacePath, provider, id } })).data
   },
