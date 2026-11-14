@@ -28,6 +28,9 @@ var workspaceSkillsMu sync.Mutex
 type workspaceSkillRequest struct {
 	WorkspacePath string `json:"workspace_path"`
 	Name          string `json:"name,omitempty"`
+	// SkillsFrom names one more Crew whose skills this workspace may read, never change (a Team's online home reads the
+	// Team Crew's own skills). Only the agent server sets it: browsers cannot reach the skill routes.
+	SkillsFrom string `json:"skills_from,omitempty"`
 }
 type workspaceSkillDocument struct {
 	Name     string   `json:"folder_name"`
@@ -326,6 +329,15 @@ func workspaceSkillState(req workspaceSkillRequest) (skillWorkspace, map[string]
 	}
 	if err := migrateWorkspaceSkills(docs, req.WorkspacePath, w.dir, w.config, manifest, steps); err != nil {
 		return w, nil, nil, err
+	}
+	if req.SkillsFrom != "" && w.parent == nil {
+		from, err := skillWorkspaceRoots(docs, req.SkillsFrom)
+		ref, ok := workspaceref.Parse(req.SkillsFrom)
+		if err != nil || !ok || !strings.HasPrefix(ref.Logical(), "Crew/") || req.SkillsFrom == req.WorkspacePath {
+			return w, nil, nil, fmt.Errorf("skills_from must be another Crew")
+		}
+		// The same read-only link a workflow has to its owning Crew: listed and read, never written through this one.
+		w.parent, w.parentWorkspace = &from, req.SkillsFrom
 	}
 	return w, manifest, steps, nil
 }
