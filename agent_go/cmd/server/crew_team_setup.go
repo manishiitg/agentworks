@@ -146,7 +146,7 @@ func (b crewTeamLocal) privateSkill(name string) bool {
 	if b.remoteRel("skills/"+name) != "" {
 		return false
 	}
-	_, err := os.Lstat(filepath.Join(b.Root, "skills", name))
+	_, err := os.Lstat(filepath.Join(b.diskRoot("skills/"+name), "skills", name))
 	return err == nil
 }
 

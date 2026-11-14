@@ -83,14 +83,15 @@ func (b *crewTeamLocal) reconcileOwnedPaths(ctx context.Context, owner string, c
 	changed := false
 	for i, entry := range team.Folder.Paths {
 		old := b.OwnedPaths[entry.ID]
+		root := b.diskRoot(entry.Path)
 		rel := entry.Path
-		p, err := crewTeamMountPath(b.Root, rel)
+		p, err := crewTeamMountPath(root, rel)
 		if err != nil {
 			return err
 		}
 		info, err := os.Lstat(p)
 		if old.Local != "" && old.Local != entry.Path {
-			from, e := crewTeamMountPath(b.Root, old.Local)
+			from, e := crewTeamMountPath(root, old.Local)
 			if e != nil {
 				return e
 			}
@@ -126,7 +127,7 @@ func (b *crewTeamLocal) reconcileOwnedPaths(ctx context.Context, owner string, c
 				if stamp.Device != old.Device || stamp.Inode != old.Inode {
 					continue
 				}
-				name, e := filepath.Rel(b.Root, candidate)
+				name, e := filepath.Rel(root, candidate)
 				if e != nil {
 					return e
 				}

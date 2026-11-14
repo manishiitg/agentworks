@@ -61,6 +61,8 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	c1, d1, b1 := newCopy("owner", false)
 	c2, d2, b2 := newCopy("member", true)
 	b2.ProtectPrivate = true
+	b1.SkillRoot = filepath.Join(t.TempDir(), "skills")
+	b2.SkillRoot = filepath.Join(t.TempDir(), "skills")
 	round := func(c desktopConnection, dir string, b *crewTeamLocal) {
 		t.Helper()
 		if err := syncCrewTeamLocal(t.Context(), c.User.ID, c, dir, b); err != nil {
@@ -69,10 +71,10 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	}
 	round(c1, d1, b1)
 	write(b1.Root, "docs/note.txt", "Team note")
-	write(b1.Root, "skills/report/SKILL.md", "Team skill")
+	write(filepath.Dir(b1.SkillRoot), "skills/report/SKILL.md", "Team skill")
 	round(c1, d1, b1)
 	write(b2.Root, "docs/private.txt", "private document")
-	write(b2.Root, "skills/report/SKILL.md", "private skill")
+	write(filepath.Dir(b2.SkillRoot), "skills/report/SKILL.md", "private skill")
 	write(b2.Root, "MEMORY.md", "private memory")
 	write(b2.Root, "PROJECT_INSTRUCTIONS.md", "private guidance")
 	if err := backupCrewTeamJoinSetup(b2.Root); err != nil {
@@ -81,8 +83,8 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	round(c2, d2, b2)
 	read(b2.Root, "docs (team)/note.txt", "Team note")
 	read(b2.Root, "docs/private.txt", "private document")
-	read(b2.Root, "skills/report (team)/SKILL.md", "Team skill")
-	read(b2.Root, "skills/report/SKILL.md", "private skill")
+	read(filepath.Dir(b2.SkillRoot), "skills/report (team)/SKILL.md", "Team skill")
+	read(filepath.Dir(b2.SkillRoot), "skills/report/SKILL.md", "private skill")
 	read(b2.Root, "PROJECT_INSTRUCTIONS (before team).md", "private guidance")
 	write(b2.Root, "docs (team)/note.txt", "member edit")
 	write(b2.Root, "docs/private.txt", "private changed")
@@ -120,14 +122,14 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	if err := os.Rename(filepath.Join(b1.Root, "docs"), filepath.Join(b1.Root, "reports")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(filepath.Join(b1.Root, "skills", "report"), filepath.Join(b1.Root, "skills", "analysis")); err != nil {
+	if err := os.Rename(filepath.Join(filepath.Dir(b1.SkillRoot), "skills", "report"), filepath.Join(filepath.Dir(b1.SkillRoot), "skills", "analysis")); err != nil {
 		t.Fatal(err)
 	}
 	round(c1, d1, b1)
 	round(c2, d2, b2)
 	read(b2.Root, "reports/note.txt", "member edit")
-	read(b2.Root, "skills/analysis/SKILL.md", "Team skill")
-	read(b2.Root, "skills/report/SKILL.md", "private skill")
+	read(filepath.Dir(b2.SkillRoot), "skills/analysis/SKILL.md", "Team skill")
+	read(filepath.Dir(b2.SkillRoot), "skills/report/SKILL.md", "private skill")
 	renamed := mustReadCrewTeam(t, "existing-join")
 	for _, p := range renamed.Folder.Paths {
 		if p.Path == "reports" && p.ID != ids["docs"] {

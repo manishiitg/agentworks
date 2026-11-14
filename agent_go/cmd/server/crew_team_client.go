@@ -36,6 +36,9 @@ type crewTeamLocal struct {
 	RemoteUser     string                   `json:"remote_user"`
 	Client         string                   `json:"client"`
 	Root           string                   `json:"local_folder"`
+	SkillRoot      string                   `json:"skill_root,omitempty"`
+	ScanSkillsOnly bool                     `json:"-"`
+	SkipSkillTree  bool                     `json:"-"`
 	Mounted        bool                     `json:"mounted,omitempty"`
 	ProtectPrivate bool                     `json:"protect_private,omitempty"`
 	Mounts         map[string]crewTeamMount `json:"mounts,omitempty"`
@@ -152,6 +155,7 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 			}
 			// The Team syncs relative to the Crew's own folder (Whole Crew or chosen folders inside it).
 			b.Root = roots.Files
+			b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
 			b.LocalProject = rec.ProjectID
 			break
 		}
@@ -296,6 +300,11 @@ func crewTeamCheckAfter(pushed bool) time.Duration {
 // folder (review 5 Nov: a new member's blank setup replaced the owner's).
 func (api *StreamingAPI) crewTeamMacRound(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
 	local := crewTeamLocalCrew(*b)
+	if local != "" {
+		if roots, e := api.crewSyncRoots(ctx, &UserClaims{UserID: owner, Username: owner}, local); e == nil {
+			b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
+		}
+	}
 	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
 	if err := syncCrewTeamLocal(ctx, owner, c, dir, b); err != nil {
 		return err
@@ -314,7 +323,11 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	}
 	defer unlock()
 	if fresh, err := readCrewTeamLocal(dir); err == nil {
+		skills := b.SkillRoot
 		*b = fresh
+		if skills != "" {
+			b.setSkillRoot(skills)
+		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -391,8 +404,12 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		started, key := time.Now(), crewTeamScanKey(*b, team.Folder)
 		watch := crewTeamWatchFor(dir, b.Root)
 		plan := watch.take(key)
-		if !plan.idle() {
-			scan, e = crewTeamScanChanged(ctx, b, team.Folder, plan.changed, plan.rules)
+		if !plan.idle() || b.separateSkills() {
+			changed := plan.changed
+			if plan.idle() {
+				changed = map[string]bool{}
+			}
+			scan, e = crewTeamScanChanged(ctx, b, team.Folder, changed, plan.rules)
 		}
 		// Settle metadata after a touch/racy recheck without advancing any
 		// changed version's acknowledgement before the upload succeeds.
@@ -536,10 +553,69 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 // each is in, and a path marked true (made, removed or renamed: maybe a folder) with all it holds. changed nil reads
 // the whole copy. rules is whether the folder had a .gitignore at its last full scan.
 func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
+	if !b.separateSkills() {
+		return crewTeamScanCore(ctx, b, share, changed, rules)
+	}
+	normal := *b
+	normal.SkipSkillTree = true
+	primary, err := crewTeamScanCore(ctx, &normal, share, changed, rules)
+	b.TooLarge = normal.TooLarge
+	if err != nil {
+		return primary, err
+	}
+	skills := *b
+	skills.Root = filepath.Dir(b.SkillRoot)
+	skills.SkillRoot = ""
+	skills.ScanSkillsOnly = true
+	skills.SkipSkillTree = false
+	if err = os.MkdirAll(filepath.Join(skills.Root, "skills"), 0755); err != nil {
+		return primary, err
+	}
+	watch := crewTeamWatchFor(b.SkillRoot, skills.Root)
+	plan := watch.take(crewTeamScanKey(skills, share))
+	if plan.idle() {
+		return primary, nil
+	}
+	extra, err := crewTeamScanCore(ctx, &skills, share, plan.changed, plan.rules)
+	watch.done(b.Project, crewTeamScanKey(skills, share), plan, extra, err)
+	if len(extra.changes) > 0 || extra.unstable > 0 {
+		watch.mu.Lock()
+		watch.full = true
+		watch.mu.Unlock()
+	}
+	b.TooLarge = skills.TooLarge
+	if err != nil {
+		return primary, err
+	}
+	for key, entry := range extra.entries {
+		primary.entries[key] = entry
+	}
+	for key, source := range extra.sources {
+		source.root = skills.Root
+		primary.sources[key] = source
+	}
+	primary.changes = append(primary.changes, extra.changes...)
+	primary.readFiles += extra.readFiles
+	primary.readBytes += extra.readBytes
+	primary.stated += extra.stated
+	primary.reused += extra.reused
+	primary.unstable += extra.unstable
+	return primary, nil
+}
+
+func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
 	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}, dirNames: map[string]int{}}
 	op := b.onPurpose()
 	full := changed == nil
-	enters := func(rel string) bool { return crewsync.Allowed(crewTeamKey(rel), true) && b.walksDisk(rel, share) }
+	enters := func(rel string) bool {
+		if b.SkipSkillTree && crewTeamUnder(rel, "skills") {
+			return false
+		}
+		if b.ScanSkillsOnly && rel != "skills" && !strings.HasPrefix(rel, "skills/") {
+			return false
+		}
+		return crewsync.Allowed(crewTeamKey(rel), true) && b.walksDisk(rel, share)
+	}
 	// targets: folder -> whether everything under it is read (deep), or only its own files.
 	targets := map[string]bool{"": full}
 	if !full {
@@ -709,12 +785,19 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team. A file that is
 	// still here but this copy leaves out (ignored, outside the share) is not this copy's to remove (review 5 Nov).
 	for _, rel := range b.TooLarge {
+		if b.SkipSkillTree && crewTeamUnder(rel, "skills") || b.ScanSkillsOnly && !crewTeamUnder(rel, "skills") {
+			tooLarge = append(tooLarge, rel)
+			continue
+		}
 		if !covered(b.diskRel(rel)) {
 			tooLarge = append(tooLarge, rel) // a folder this round did not read keeps its notice
 		}
 	}
 	b.TooLarge = tooLarge
 	for rel, known := range b.Files {
+		if b.SkipSkillTree && crewTeamUnder(rel, "skills") || b.ScanSkillsOnly && !crewTeamUnder(rel, "skills") {
+			continue
+		}
 		if b.diskRel(rel) == "" || !covered(b.diskRel(rel)) && !slices.Contains(b.StopSyncing, rel) {
 			continue
 		}
@@ -758,6 +841,9 @@ func crewTeamParent(rel string) string {
 // identity and mode; preserving a file's size/mtime cannot hide an edit.
 func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanResult, rel string, d fs.DirEntry, ignored map[string]bool, share crewTeamFolder, seen map[string]bool, tooLarge *[]string) {
 	remote := b.remoteRel(rel)
+	if b.SkipSkillTree && crewTeamUnder(remote, "skills") || b.ScanSkillsOnly && !crewTeamUnder(remote, "skills") {
+		return
+	}
 	if remote == "" {
 		return
 	}
@@ -885,7 +971,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 	// holds reuses only a trusted stamp; changed identities/modes or racy
 	// timestamps require a stable content read before overwriting local work.
 	holds := func(rel string, known crewTeamLocalFile) bool {
-		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(b.diskRel(rel))))
+		info, err := os.Lstat(filepath.Join(b.diskRoot(rel), filepath.FromSlash(b.diskRel(rel))))
 		if err != nil || !info.Mode().IsRegular() {
 			return false
 		}
@@ -895,7 +981,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		if info.Size() != known.Version.Size {
 			return false
 		}
-		entry, _, err := readCrewTeamVersion(b.Root, b.diskRel(rel), op, known.Version)
+		entry, _, err := readCrewTeamVersion(b.diskRoot(rel), b.diskRel(rel), op, known.Version)
 		if err != nil || !crewTeamSameVersion(entry.Version, known.Version) {
 			return false
 		}
@@ -906,7 +992,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 	unchanged := func(rel string) bool {
 		known, had := b.Files[rel]
 		if !had {
-			_, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(b.diskRel(rel))))
+			_, err := os.Lstat(filepath.Join(b.diskRoot(rel), filepath.FromSlash(b.diskRel(rel))))
 			return os.IsNotExist(err)
 		}
 		return holds(rel, known)
@@ -925,7 +1011,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 			skipped = true
 			continue
 		}
-		if err := removeCrewTeamFile(b.Root, b.diskRel(f.Path)); err != nil {
+		if err := removeCrewTeamFile(b.diskRoot(f.Path), b.diskRel(f.Path)); err != nil {
 			return skipped, crewTeamStep("write", err)
 		}
 		delete(b.Files, f.Path)
@@ -968,7 +1054,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		var offset int64
 		for _, ch := range known.Version.Chunks {
 			if _, ok := local[ch.ID]; !ok {
-				local[ch.ID] = chunkSource{path: b.diskRel(rel), offset: offset, size: ch.Len}
+				local[ch.ID] = chunkSource{root: b.diskRoot(rel), path: b.diskRel(rel), offset: offset, size: ch.Len}
 			}
 			offset += ch.Len
 		}
@@ -1053,12 +1139,12 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 				writer.CloseWithError(copyErr)
 			}(*f.Version)
 			writeStarted := time.Now()
-			err = writeCrewTeamFile(ctx, b.Root, b.diskRel(f.Path), reader, *syncFile(*f.Version), op)
+			err = writeCrewTeamFile(ctx, b.diskRoot(f.Path), b.diskRel(f.Path), reader, *syncFile(*f.Version), op)
 			reader.Close()
 			if err != nil {
 				return crewTeamStep("write", err)
 			}
-			info, statErr := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(b.diskRel(f.Path))))
+			info, statErr := os.Lstat(filepath.Join(b.diskRoot(f.Path), filepath.FromSlash(b.diskRel(f.Path))))
 			if statErr != nil {
 				return crewTeamStep("write", statErr)
 			}
