@@ -6,7 +6,7 @@ import { useChatStore } from '../../stores/useChatStore'
 /** The link copies only text and target IDs, never attachments or settings. */
 export function CopyPromptLinkButton({ crew, agent, prompt }: { crew: string; agent?: string; prompt: string }) {
   const [busy, setBusy] = useState(false)
-  return <button type="button" disabled={busy || !prompt.trim()} title="Copy prompt link" aria-label="Copy prompt link" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
+  return <div className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1"><button type="button" disabled={busy || !prompt.trim()} title="Copy prompt link" aria-label="Copy prompt link" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
     onClick={() => {
       if (busy) return
       setBusy(true)
@@ -15,5 +15,7 @@ export function CopyPromptLinkButton({ crew, agent, prompt }: { crew: string; ag
         .then(() => useChatStore.getState().addToast('Prompt link copied. It opens a draft and sends nothing.', 'success'))
         .catch(() => useChatStore.getState().addToast('Could not copy this prompt link. Check the Crew’s server connection and try a shorter prompt.', 'error'))
         .finally(() => setBusy(false))
-    }}><Link aria-hidden="true" className="h-3.5 w-3.5" /></button>
+    }}><span className="inline-flex items-center gap-1.5 text-xs"><Link aria-hidden="true" className="h-3.5 w-3.5" />Copy prompt link</span></button>
+    <p className="text-[11px] text-muted-foreground">Anyone with the link sees this text; don't put passwords in it.</p>
+  </div>
 }
