@@ -13,7 +13,7 @@ import { GlobalActivityMonitor, type OwnActivitySummary } from '../GlobalActivit
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
 type Row = { last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
-type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number }
+type Face = { key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
 
 function lastMessageTime(at: string) {
  const seconds=Math.max(0, Math.floor((Date.now()-new Date(at).getTime())/1000))
@@ -79,22 +79,32 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
         const networkId = (live.network_id || sourceNetworkId).replace(/\/$/, '')
         for (const person of live.people || []) {
           const key = `${networkId}:${person.user_id}`
-          const face = faces.get(key) || { key, name: person.name, network, online: false, line: person.line, working: 0, waiting: 0 }
+          const face = faces.get(key) || { key, name: person.name, network, online: false, line: person.line, working: 0, waiting: 0, idle: 0 }
           if (person.online && !face.online) { face.online = true; face.line = person.line }
           faces.set(key, face)
         }
-        for (const agent of live.agents) {
+        for (const agent of live.agents || []) {
           const personKey = `${networkId}:${agent.owner_id}`
-          const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0 }
+          const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0, idle: 0 }
           if (agent.activity === 'waiting') face.waiting += 1
           else face.working += 1
           faces.set(personKey, face)
           crews.add(`${connectionId}:${crew.id}`)
           rows.push({ last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: agent.activity, doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
         }
+        // Idle teammates' agents (PLAT-746-979): an idle teammate appears nowhere else, so their face stays visible
+        // and clicking it lists every agent including idle ones.
+        for (const agent of live.idle || []) {
+          const personKey = `${networkId}:${agent.owner_id}`
+          const face = faces.get(personKey) || { key: personKey, name: agent.person, network, online: true, line: '', working: 0, waiting: 0, idle: 0 }
+          face.idle += 1
+          faces.set(personKey, face)
+          crews.add(`${connectionId}:${crew.id}`)
+          rows.push({ last_message: agent.last_message, last_message_at: agent.last_message_at, private: agent.private, key: `${connectionId}:${crew.id}:${agent.id}`, personKey, person: agent.person, network, agent: agent.name, crew: crew.name, activity: 'idle', doing: agent.doing, waiting: agent.waiting, open: () => openCrewTeam(connectionId, crew.id) })
+        }
       }
     }
-    const rank = (face: Face) => face.working ? 0 : face.waiting ? 1 : face.online ? 2 : 3
+    const rank = (face: Face) => face.working ? 0 : face.waiting ? 1 : face.online ? 2 : face.idle ? 3 : 4
     return { faces: [...faces.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)), rows, crewCount: crews.size }
   }, [sources])
   const [open, setOpen] = useState(false)
@@ -127,7 +137,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     return () => window.removeEventListener('resize', place)
   }, [open, rows.length, mine.working, mine.needsInput])
 
-  const shown = faces.filter(face => face.online || face.working || face.waiting)
+  const shown = faces.filter(face => face.online || face.working || face.waiting || face.idle)
   const mineActive = mine.working > 0 || mine.needsInput > 0
   const own = <GlobalActivityMonitor representedSessionIds={representedSessionIds} slot={open && mineActive ? slot : null} onSummary={setMine} onClose={close} />
   if (!shown.length && !mineActive) return <div ref={rootRef} className="relative">{own}</div>
@@ -145,8 +155,10 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     {face.online && <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background bg-emerald-500" />}
   </span>
   const listed = rows.filter(row => !only || row.personKey === only)
-  const workingRows = listed.filter(row => row.activity !== 'waiting')
+  const workingRows = listed.filter(row => row.activity !== 'waiting' && row.activity !== 'idle')
   const waitingRows = listed.filter(row => row.activity === 'waiting')
+  // Idle rows show only while one person is picked: clicking a face shows all their agents including idle ones.
+  const idleRows = only ? listed.filter(row => row.activity === 'idle') : []
   const waiting = rows.filter(row => row.activity === 'waiting').length
   const rowView = (row: Row) => {
     const face = faces.find(item => item.key === row.personKey)
@@ -154,13 +166,13 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span>{row.last_message && row.last_message_at && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{lastMessageTime(row.last_message_at)}</span>}</span>
-        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.activity === 'waiting' ? <>{row.waiting || 'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.last_message || row.doing || 'Working'}</span>
+        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.activity === 'waiting' ? <>{row.waiting || 'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.activity === 'idle' ? row.last_message || row.doing || 'Idle' : row.last_message || row.doing || 'Working'}</span>
       </span>
     </button>
   }
 
   const chip = (face: Face) => <button key={face.key} type="button" title={only === face.key ? `${face.line} · click again to show everyone` : face.line} onClick={() => setOnly(current => current === face.key ? '' : face.key)}
-          className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${only === face.key ? 'border-primary text-foreground' : 'border-border text-muted-foreground'} ${face.online || face.working || face.waiting ? '' : 'opacity-60'}`}>
+          className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-xs ${only === face.key ? 'border-primary text-foreground' : 'border-border text-muted-foreground'} ${face.online || face.working || face.waiting || face.idle ? '' : 'opacity-60'}`}>
           {avatar(face, 'h-5 w-5 text-[9px]')}{face.name}<span className="text-muted-foreground">{face.working || face.waiting ? face.working + face.waiting : face.online ? '' : face.line.replace(/^Last seen /, '')}</span>
   </button>
   const team = shown.length > 0
@@ -186,7 +198,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       {mineActive && <div ref={setSlot} className={`pt-2 ${team ? 'border-b border-border pb-1' : 'pb-1'}`} />}
       {team && <>
         <div className="px-3 pb-1.5 pt-3 text-sm font-semibold text-foreground">Team</div>
-        {rows.length > 0 && <div className="px-3 pb-2 text-xs text-muted-foreground">{`${rows.length - waiting} agent${rows.length - waiting === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}`}</div>}
+        {rows.length > 0 && <div className="px-3 pb-2 text-xs text-muted-foreground">{(() => { const active = rows.filter(row => row.activity !== 'waiting' && row.activity !== 'idle').length; return `${active} agent${active === 1 ? '' : 's'} working${waiting ? ` · ${waiting} waiting` : ''} · in ${crewCount} Crew${crewCount === 1 ? '' : 's'}` })()}</div>}
         {/* A person's chip filters the list to them; clicking it again shows everyone again (no separate reset chip). */}
         {!multi && <div className="flex flex-wrap gap-1.5 px-3 pb-2">{faces.map(chip)}</div>}
         {multi && networks.map(network => <div key={network} className="px-3 pb-2">
@@ -198,6 +210,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           {workingRows.map(rowView)}
           {waitingRows.length > 0 && <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Waiting</div>}
           {waitingRows.map(rowView)}
+          {idleRows.length > 0 && <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Idle</div>}
+          {idleRows.map(rowView)}
           {!listed.length && rows.length > 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No agent of theirs is working right now.</p>}
         </div>
       </>}
