@@ -1,3 +1,4 @@
+import api from '../services/api'
 import { openAgentTab } from '../utils/openAgentTab'
 import { loadDashboardDirectory, dashboardDisplayName, dashboardDirectoryLink } from '../services/dashboardDirectory'
 import { schedulerApi } from '../api/scheduler'
@@ -132,7 +133,7 @@ interface PanelItem {
 type ChatFindItem = Omit<PanelItem, 'type' | 'panelId' | 'sectionId'> & { type: 'chat-find' }
 const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 'Find in this chat', subtitle: 'Search loaded messages and steps · Ctrl/Cmd+F', searchText: 'search conversation find text', isActive: false, lastAccessedAt: 0, hasLocalActivity: false }
 
-type ResourceItem = { type: 'artifact' | 'schedule'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
+type ResourceItem = { type: 'artifact' | 'schedule' | 'message'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
 type SearchCategory = 'all' | 'chat' | 'crew' | 'artifact' | 'schedule'
 const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Crews' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
 type QuickSwitcherItem = ResourceItem | ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
@@ -352,6 +353,38 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const resourceScope = `${workspace}:${user?.id || ''}`
   const crewDirectory = crewInventory.scope === resourceScope ? crewInventory.rows : []
+  const [messageAttempt, setMessageAttempt] = useState(0)
+  const [messageSearch, setMessageSearch] = useState<{ key: string; items: ResourceItem[]; cursor: string; loading: boolean; error: boolean }>({ key: '', items: [], cursor: '', loading: false, error: false })
+  const messageBatch = useRef({ key: '', items: [] as ResourceItem[], cursor: '' })
+  const messageKey = `${resourceScope}:${query.trim()}`
+  const messageEnabled = isOpen && !!user && (category === 'all' || category === 'chat') && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2 && [...query.trim()].length <= 200
+  useEffect(() => {
+    if (!messageEnabled) return
+    const controller = new AbortController()
+    if (messageBatch.current.key !== messageKey) messageBatch.current = { key: messageKey, items: [], cursor: '' }
+    const timer = window.setTimeout(() => {
+      const previous = messageBatch.current
+      setMessageSearch({ ...previous, loading: true, error: false })
+      const search = async () => {
+        let items = [...previous.items], cursor = previous.cursor
+        // Bound automatic work too: at most 1024 indexed message rows per
+        // interaction. Searching farther is explicit; a new query aborts it.
+        for (let page = 0; page < 8; page++) {
+          const { data } = await api.post<{ results: { session_id: string; id: string; title: string; snippet: string; url: string }[]; next_cursor: string }>('/api/chat-search', { query: query.trim(), cursor }, { signal: controller.signal, skipSessionContext: true })
+          if (controller.signal.aborted) return
+          items = [...items, ...data.results.filter(hit => !items.some(item => item.id === `message:${hit.session_id}:${hit.id}`)).map(hit => ({ type: 'message' as const, id: `message:${hit.session_id}:${hit.id}`, label: hit.title, subtitle: hit.snippet, searchText: '', href: hit.url, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }))]
+          cursor = data.next_cursor
+          const batch = { key: messageKey, items, cursor }
+          messageBatch.current = batch
+          setMessageSearch({ ...batch, loading: Boolean(cursor) && page < 7 && items.length - previous.items.length < 20, error: false })
+          if (!cursor || items.length - previous.items.length >= 20) break
+        }
+      }
+      void search().catch(() => { if (!controller.signal.aborted) setMessageSearch({ ...messageBatch.current, loading: false, error: true }) })
+    }, 250)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [messageEnabled, messageKey, messageAttempt, query])
+
   useEffect(() => {
     if (!isOpen || !user) return
     const controller = new AbortController()
@@ -677,8 +710,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
     const explicitScope = query.trim().match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
-    return category === 'chat' || (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
-  }, [matchingItems, allItems, query, scopeFilter, category])
+    const navigation = category === 'chat' || (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
+    return [...navigation, ...(messageEnabled && messageSearch.key === messageKey ? messageSearch.items : [])]
+  }, [matchingItems, allItems, query, scopeFilter, category, messageEnabled, messageSearch, messageKey])
   const firstMatchRef = useRef<string | undefined>(undefined)
   firstMatchRef.current = matchingItems[0]?.id
 
@@ -711,13 +745,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0) {
-      const el = listRef.current.children[selectedIndex] as HTMLElement
+      const el = document.getElementById(`quick-navigation-${encodeURIComponent(filteredItemsRef.current[selectedIndex]?.id || '')}`)
       el?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
     }
   }, [selectedIndex])
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
-    if (item.type === 'artifact') {
+    if (item.type === 'artifact' || item.type === 'message') {
       if (item.href) { const target = new URL(item.href, window.location.href); if (target.origin === window.location.origin) window.location.assign(target.href) }
       onClose(); return
     }
@@ -876,6 +910,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         </div>
         {resources.scope === resourceScope && resources.loading && <p role="status" className="px-4 py-1 text-xs text-muted-foreground">Loading artifacts and schedules…</p>}
         {resources.scope === resourceScope && resources.error && <button type="button" onClick={() => setResourceAttempt(value => value + 1)} className="px-4 py-1 text-xs text-muted-foreground underline">Some artifacts or schedules could not load. Retry</button>}
+        {messageEnabled && messageSearch.key === messageKey && <div className="flex items-center gap-3 px-4 py-1 text-xs text-muted-foreground">
+          {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Search older messages</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
+        </div>}
         {/* Item list */}
         <div ref={listRef} id="quick-navigation-results" role="listbox" aria-label="Search results" className="overflow-y-auto max-h-[48vh]">
           {filteredItems.length === 0 ? (
@@ -898,8 +935,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   : MessageSquare
               const activeSession = itemActiveSession(item)
               return (
+                <React.Fragment key={item.id}>
+                {item.type === 'message' && filteredItems[index - 1]?.type !== 'message' && <h3 className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">In messages · this workspace</h3>}
                 <div
-                  key={item.id}
                   data-navigation-id={item.id}
                   data-navigation-parent={item.treeChild ? projectTreeKey(item) : undefined}
                   id={`quick-navigation-${encodeURIComponent(item.id)}`}
@@ -954,6 +992,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                     {item.subtitle && <div className="text-xs text-muted-foreground truncate">{item.subtitle}</div>}
                   </div>
                 </div>
+                </React.Fragment>
               )
             })
           )}

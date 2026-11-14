@@ -169,6 +169,10 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 			return nil, fmt.Errorf("initialize structured event journal: %w", err)
 		}
 	}
+	if err := installChatMessageIndexes(&SQLiteEventJournal{db: db}); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize chat message indexes: %w", err)
+	}
 	_ = os.Chmod(path, 0o600)
 	read, err := sql.Open("sqlite", sqlitefile.URI(path)+"?_pragma=busy_timeout(5000)&_pragma=query_only(1)")
 	if err != nil {
