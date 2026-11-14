@@ -124,6 +124,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 		},
 		MCP: mcpagent.MCPRuntimeConfig{
 			SessionID: config.SessionID, UserID: config.UserID, RuntimeOverrides: config.RuntimeOverrides,
+			VirtualToolScopeKey: config.BridgeVirtualToolScopeKey,
 		},
 		Workspace: mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: config.CodingAgentWorkingDir, CodingAgentRuntimeDir: config.CodingAgentRuntimeDir},
 		Observability: mcpagent.ObservabilityRuntimeConfig{
@@ -328,9 +329,12 @@ type LLMAgentConfig struct {
 	// CodingAgentUserAnswersNativeQuestions: a person attends this chat and can
 	// answer the coding CLI's native questions; otherwise they are auto-answered.
 	CodingAgentUserAnswersNativeQuestions bool
-	CursorBridgeToolsMode                 bool
-	CodingAgentToolsMode                  string
-	CodingAgentApprovalsMode              string
+	// BridgeVirtualToolScopeKey is assigned only by the host main-chat builder.
+	// Helpers leave it empty and keep private per-build virtual handlers.
+	BridgeVirtualToolScopeKey string
+	CursorBridgeToolsMode     bool
+	CodingAgentToolsMode      string
+	CodingAgentApprovalsMode  string
 	// BridgeRoutingInstructionsOverride replaces mcpagent's generic
 	// bridge-only preamble. Product profiles with native coding tools use an
 	// empty override because their own prompt explains the product tools.
