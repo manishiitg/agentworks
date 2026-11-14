@@ -125,6 +125,25 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s actor=%s event=accept_started", project, id, copy.ID, claims.UserID)
+		if !macSource {
+			mu.Unlock()
+			destination, importErr := api.acceptCrewAgentForkOnServer(r, offer)
+			mu.Lock()
+			current, readErr := readCrewTeam(project)
+			if importErr == nil {
+				importErr = readErr
+			}
+			if importErr == nil {
+				importErr = completeCrewAgentFork(current, offer, claims.UserID, time.Now().UTC())
+			}
+			if importErr != nil {
+				fail(409, "Could not finish your private copy. Try accepting again.")
+				return
+			}
+			publishCrewPanelChanged(project)
+			externalJSON(w, map[string]any{"accepted": true, "copy": copy, "conversation_key": destination.ConversationKey, "session_id": destination.SessionID})
+			return
+		}
 		externalJSON(w, map[string]any{"copy": copy, "fork_id": id})
 		return
 	}

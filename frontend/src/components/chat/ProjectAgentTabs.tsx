@@ -1,3 +1,4 @@
+import { PendingAgentForks } from './PendingAgentForks'
 import { ForkToTeammate } from './ForkToTeammate'
 import { continueInTerminal } from './TerminalResume'
 import { SidebarCrewAgents } from '../workspace/SidebarCrewAgents'
@@ -576,6 +577,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
+      <PendingAgentForks state={teamState} />
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
