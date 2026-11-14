@@ -1036,7 +1036,7 @@ function createTray() {
 function spawnWorkspace(userDataPath) {
   return new Promise((resolve, reject) => {
     try {
-      migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state') });
+      migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'), docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(userDataPath, 'workspace-docs') });
     } catch (error) { return reject(error); }
     const bin = getBinaryPath('workspace-server');
     if (!fs.existsSync(bin)) {
@@ -1128,7 +1128,7 @@ async function spawnVault(userDataPath) {
 }
 
 async function spawnDevelopmentAgent() {
-  migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(app.getPath('userData'), 'state') });
+  migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(app.getPath('userData'), 'state'), docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(app.getPath('userData'), 'workspace-docs') });
   const { startDevelopmentAgent } = require('./lib/devAgent');
   developmentAuthSecret ??= fs.readFileSync(0, 'utf8').trim();
   const result = await startDevelopmentAgent({

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createHash, randomUUID } = require('crypto');
+const { migrateTeamFolderSelections } = require('./teamFolderSelectionMigration');
 
 function ordinary(value) {
   if (typeof value !== 'string' || !value || value.startsWith('/') || value.includes('\\') || value.split('/').some(p => ['', '.', '..'].includes(p))) {
@@ -39,7 +40,7 @@ function bindingFiles(root, dir) {
   return files;
 }
 
-function migrateTeamPathIdentities({ stateDir, log = console.log }) {
+function migrateTeamPathIdentities({ stateDir, docsDir, log = console.log }) {
   const root = path.resolve(stateDir), planned = [], teams = new Map();
   let teamCount = 0, backup = '';
   const read = file => {
@@ -123,7 +124,8 @@ function migrateTeamPathIdentities({ stateDir, log = console.log }) {
       }
     }
     log(`[TEAM_PATH_ID_MIGRATION] outcome=done converted=${teamCount} bindings=${planned.length - teamCount} backup=${JSON.stringify(backup || 'none')}`);
-    return { converted: teamCount, bindings: planned.length - teamCount, backup };
+    const selection = migrateTeamFolderSelections({ stateDir, docsDir, local: true, log });
+    return { converted: teamCount, bindings: planned.length - teamCount, backup, selection };
   } catch (error) {
     log(`[TEAM_PATH_ID_MIGRATION] outcome=failed reason=conversion_failed backup=${JSON.stringify(backup || 'none')}`);
     throw new Error(`Could not prepare Team folders. No local server was started. Backup: ${backup || 'none'}.`);

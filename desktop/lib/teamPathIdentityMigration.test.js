@@ -23,6 +23,7 @@ test('pre-start Team conversion backs up identities and member baselines once, r
     const bindingFile = path.join(state, 'team-working', 'member', 'binding.json');
     const bases = { 'docs/a.txt': { version: { hash: 'keep-base' } } };
     write(bindingFile, { project_id: team.project_id, folder_id: folderID, remote_user: 'member', local_folder: copy, files: bases });
+    write(path.join(state, 'ownership', 'projects.json'), {projects: {owned: {product:'work', project_id:team.project_id, owner_id:'owner', local_root:copy}}});
     const original = fs.readFileSync(file), originalBinding = fs.readFileSync(bindingFile), logs = [];
     const result = migrateTeamPathIdentities({ stateDir: state, log: line => logs.push(line) });
     assert.equal(result.converted, 1); assert.equal(result.bindings, 1);
@@ -41,7 +42,10 @@ test('pre-start Team conversion backs up identities and member baselines once, r
     assert.equal(migrateTeamPathIdentities({ stateDir: state, log: line => logs.push(line) }).converted, 0);
     assert.deepEqual(fs.readFileSync(file), once);
     assert.equal(fs.readdirSync(path.join(state, 'backups')).length, 1);
-    assert.equal(logs.length, 2);
+    assert.equal(logs.filter(line => line.startsWith('[TEAM_PATH_ID_MIGRATION]')).length, 2);
+    assert.equal(logs.filter(line => line.startsWith('[TEAM_FOLDER_SELECTION_MIGRATION]')).length, 1);
+    assert.equal(converted.folder.whole, undefined);
+    assert.deepEqual(converted.folder.folders.map(p=>p.path), ['docs']);
 
     // A bad second record must not partially migrate the first or create a
     // misleading backup receipt. Linked private content is not traversed.
