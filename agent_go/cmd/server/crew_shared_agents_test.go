@@ -333,26 +333,51 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	thread := ""
 	select {
 	case session := <-turns:
-		if session != coach.SessionID {
-			t.Fatalf("wrong target session: %s", session)
+		thread = session
+		if session == coach.SessionID || session == callerTab.SessionID || session == "" {
+			t.Fatalf("published agent did not isolate its sender thread: %s", session)
 		}
 	case <-time.After(deliveryTimeout):
 		t.Fatal("Team delivery did not reach target")
 	}
 	inbox := result["inbox_id"].(string)
-	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: coach.ConversationKey, SessionID: coach.SessionID}}
+	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: sharedThreadKey("team", "coach", "other"), SessionID: thread}}
 	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Reply to the private caller", inbox, "team-reply"); err != nil {
 		t.Fatal(err)
 	}
+	// The reply belongs to the admitted inbox, not a turn or read grant in
+	// the asker's private Crew. Its agent reads the same normal reply address.
+	got, err := f.api.readAgentMessages(otherCtx, "other", caller, inbox, 0, 30, 0)
+	if err != nil || !strings.Contains(fmt.Sprint(got), "Reply to the private caller") {
+		t.Fatalf("published reply missing from admitted inbox: %v %v", got, err)
+	}
 	select {
 	case session := <-turns:
-		if session != callerTab.SessionID {
-			t.Fatalf("reply went to %s instead of original chat", session)
-		}
-	case <-time.After(deliveryTimeout):
-		t.Fatal("reply did not reach original chat")
+		t.Fatalf("published reply started a private caller turn: %s", session)
+	default:
+	}
+	contact, _, found, err := callerAgentMailboxConversation(otherCtx, inbox, "other", caller)
+	if err != nil || !found {
+		t.Fatalf("admitted published inbox missing: %v", err)
+	}
+	publisher := contact.Endpoints[1]
+	native := receiver
+	native.Chat = &codeChat{Key: coach.ConversationKey, SessionID: coach.SessionID}
+	if messageEndpointMatches(publisher, "owner", native) || messageCallerTeamAgentID("owner", receiver) != "" {
+		t.Fatal("a published thread borrowed its native Main identity")
+	}
+	forged := contact
+	forged.Endpoints[1].ReplyInbox = "another-inbox"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("published reply escaped its admitted inbox")
+	}
+	forged = contact
+	forged.Endpoints[1].PublishedAsker = "another-person"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("published reply changed its asker")
 	}
 	wrong := caller
 	wrong.Chat = &codeChat{Key: "calling:chat:someone-else", SessionID: "another-session"}
@@ -393,6 +418,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	if _, err := f.api.resolveTeamAgentTarget(otherCtx, target, shared.ID); err == nil {
 		t.Fatal("removed member could send")
+	}
+	if _, err := f.api.readAgentMessages(otherCtx, "other", caller, inbox, 0, 30, 0); err == nil {
+		t.Fatal("a leaver read the published reply inbox")
 	}
 	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Late reply", inbox, "team-revoked"); err == nil {
 		t.Fatal("reply bypassed membership revocation")

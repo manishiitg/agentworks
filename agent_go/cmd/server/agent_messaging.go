@@ -48,6 +48,10 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	// Published replies are inbox authority, not access to the asker's Crew.
+	PublishedAgent string `json:"published_agent,omitempty"`
+	PublishedAsker string `json:"published_asker,omitempty"`
+	ReplyInbox     string `json:"reply_inbox,omitempty"`
 	TeamAgentID    string `json:"team_agent_id,omitempty"`
 	ConditionJob   string `json:"condition_job,omitempty"`
 	NamedAgentID   string `json:"named_agent_id,omitempty"`
@@ -291,6 +295,9 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	}
 	if normalizeInternalProfileID(c.Stamp.ProfileID) != e.Profile {
 		return false
+	}
+	if e.PublishedAgent != "" {
+		return e.ReplyInbox != "" && e.Session != "" && c.Chat != nil && c.Chat.Key == e.ChatKey && c.Chat.SessionID == e.Session
 	}
 	if e.TeamAgentID != "" {
 		return messageCallerTeamAgentID(userID, c) == e.TeamAgentID
@@ -547,7 +554,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	dest := c.Endpoints[1-side]
-	if err = recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
+	if err = recheckAgentConversationContact(ctx, *c); err != nil {
 		agentMessageMu.Unlock()
 		return nil, err
 	}
@@ -594,7 +601,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		m.Text = m.File.message(message)
 	}
-	if dest.External {
+	if dest.External || c.Endpoints[side].PublishedAgent != "" {
 		m.Delivery = "stored"
 	}
 	if dest.NamedAgentID != "" {
@@ -629,6 +636,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	agentMessageMu.Unlock()
 	if err != nil {
 		return nil, err
+	}
+	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
+		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
 	}
 	api.kickAgentMessages(id)
 	return out, nil
@@ -912,7 +922,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			lane := laneValue.(*sync.Mutex)
 			lane.Lock()
 			steer := false
-			if dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
+			if !publishedConversation(conv) && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
 				// Same-person agent communications enter the running owner turn;
 				// restricted or other-person communications wait for their own turn.
 				current := conv
@@ -1140,6 +1150,9 @@ func acquireAgentMessageAuthority(ctx context.Context, session string) (func(), 
 }
 
 func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConversation, m agentMessage) (string, error) {
+	if publishedConversation(c) {
+		return api.deliverPublishedAgentMessage(ctx, c, m)
+	}
 	dest := c.Endpoints[1-m.From]
 	source := c.Endpoints[m.From]
 	// Old native-chat addresses must not bypass the Team's registry route
@@ -1170,6 +1183,15 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
+	}
+	if !IsLocalMode() && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+		routed, changed, err := api.routePublishedAgentMessage(ctx, c, m, source, dest, teamRoute)
+		if err != nil {
+			return "", err
+		}
+		if changed {
+			return api.deliverPublishedAgentMessage(ctx, routed, m)
+		}
 	}
 	// A teammate asks from shared context, never by starting/forking the
 	// maker's CLI. Own-agent messages keep the normal real-turn path.
