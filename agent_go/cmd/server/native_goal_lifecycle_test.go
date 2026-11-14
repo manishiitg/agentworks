@@ -276,9 +276,23 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	// Owner live regression: an unsupported /goal is information, not a failed
 	// native turn. Check the same admitted HTTP and internal/MCP input paths.
 	muse := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "muse-cli", "display_name": "Muse test account", "auth_method": "cli_login"})
-	req.Provider, req.ModelID, req.ConnectionID, req.Query = "muse-cli", "muse-cli", muse.ID, "/goal Task"
+	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	museModel := ""
+	for _, option := range profile.Runtime.ProviderOptions {
+		if option.Provider == "muse-cli" {
+			museModel = option.ModelID
+			break
+		}
+	}
+	if museModel == "" {
+		t.Fatal("fixture Crew does not offer Muse")
+	}
+	req.Provider, req.ModelID, req.ConnectionID, req.Query = "muse-cli", museModel, muse.ID, "/goal Task"
 	req.LLMConfigSource = llmConfigSourceAgentProfile // the same saved project selection the composer submits
-	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: "muse-cli"}}
+	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: museModel}}
 	info := send("owner")
 	var notice struct {
 		Status  string `json:"status"`
