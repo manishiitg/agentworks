@@ -421,20 +421,9 @@ func TestBuildBridgeMCPConfigReadyFileFallsBackToRandomPathWithoutAWorkingDir(t 
 	}
 }
 
-// PLAT-186 follow-up (post-implementation review, 2026-08-23). Making the
-// ready-file path stable per working directory made it unsafe when two
-// sessions with the same MCP config run concurrently in one working
-// directory -- a case pi-cli deliberately allows
-// (acquirePiWorkspaceMCPConfigLease, multi-llm-provider-go). Both launches'
-// os.Remove/write/read would race on the same shared path, and
-// WaitForMCPReadyFile's plain existence check is satisfied by whichever
-// bridge writes first, not necessarily the caller's own -- reintroducing
-// the exact cold-turn tool-unavailable race the marker exists to prevent,
-// specifically for concurrent launches.
-//
-// Fails before the fix (both calls always returned the identical stable
-// path with no concurrency awareness at all); passes after.
-func TestBuildBridgeMCPConfigReadyFileFallsBackToPrivatePathForConcurrentLaunchesInSameWorkingDir(t *testing.T) {
+// PLAT-746-941: interleaved chat builds randomized the readiness path,
+// changing the Codex launch fingerprint even though its tools were unchanged.
+func TestBuildBridgeMCPConfigReadyFileStablePerChatAcrossInterleavedBuilds(t *testing.T) {
 	t.Setenv("MCP_BRIDGE_BINARY", "/usr/local/bin/mcpbridge")
 	t.Setenv("MCP_API_URL", "http://localhost:8080")
 	t.Setenv("MCP_API_TOKEN", "test-token-123")
@@ -462,47 +451,29 @@ func TestBuildBridgeMCPConfigReadyFileFallsBackToPrivatePathForConcurrentLaunche
 		return readyFile
 	}
 
-	stablePath := filepath.Join(workingDir, ".mcpbridge-ready.marker")
-
-	// First launch for this working directory (session A): no prior
-	// acquisition on record, so it gets the stable, cache-friendly path.
 	first := readyFileFor("session-A")
-	if first != stablePath {
-		t.Fatalf("first launch MCP_READY_FILE = %q, want the stable path %q", first, stablePath)
-	}
-
-	// Session A itself repeating in the same working directory, immediately
-	// after -- NOT concurrent with itself, so it must keep getting the
-	// stable path back. This is the case the guard must never break: it is
-	// the entire mechanism PLAT-186's fix depends on.
-	firstAgain := readyFileFor("session-A")
-	if firstAgain != stablePath {
-		t.Fatalf("session A's own repeated launch MCP_READY_FILE = %q, want the stable path %q -- the concurrency guard must never defeat same-session reuse", firstAgain, stablePath)
-	}
-
-	// A DIFFERENT session (session B) for the SAME working directory,
-	// immediately after -- simulating a genuinely concurrent session
-	// (pi-cli allows this for matching configs). It must NOT reuse the
-	// path session A is plausibly still waiting on.
 	second := readyFileFor("session-B")
-	if second == stablePath {
-		t.Fatal("session B reused the stable path while session A's readiness wait may still be in flight -- this is exactly the race the concurrency guard exists to prevent")
+	if first == second {
+		t.Fatal("different chats shared a readiness marker")
 	}
-	if second == first {
-		t.Fatalf("session B's private path (%q) collided with session A's path", second)
+	// Interleaved agent builds in the same workspace must not randomize the
+	// original chat's launch configuration or delete another chat's marker.
+	if err := os.WriteFile(second, []byte("ready"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := readyFileFor("session-A"); got != first {
+		t.Fatal("returning chat changed its readiness path")
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatal("another chat's marker was removed", err)
+	}
+	if got := readyFileFor("session-B"); got != second {
+		t.Fatal("second chat changed its readiness path")
+	}
+	if readyFileFor("") == readyFileFor("") {
+		t.Fatal("unidentified launches shared a marker")
 	}
 
-	// Once the concurrency window has genuinely elapsed, a later launch from
-	// yet another session is safe to reuse the stable path again --
-	// simulated directly rather than sleeping in a unit test.
-	piReadyMarkerLastAcquired.Store(workingDir, piReadyMarkerAcquisition{
-		sessionID:  "session-A",
-		acquiredAt: time.Now().Add(-2 * piReadyMarkerConcurrencyWindow),
-	})
-	third := readyFileFor("session-C")
-	if third != stablePath {
-		t.Fatalf("session C's launch (after the concurrency window elapsed) MCP_READY_FILE = %q, want the stable path %q back", third, stablePath)
-	}
 }
 
 func TestBuildBridgeMCPConfigFailsWhenWorkingDirectoryIsUnusable(t *testing.T) {

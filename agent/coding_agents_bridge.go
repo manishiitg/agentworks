@@ -11,8 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -22,52 +20,6 @@ import (
 // DefaultToolOutputFolder is the folder under the agent working directory where the coding-agent
 // bridge saves tool output that is too large to return inline.
 const DefaultToolOutputFolder = "tool_output_folder"
-
-// piReadyMarkerAcquisition records who most recently received the STABLE
-// readiness-marker path for a given working directory, and when.
-type piReadyMarkerAcquisition struct {
-	sessionID  string
-	acquiredAt time.Time
-}
-
-// piReadyMarkerLastAcquired tracks, per working directory, the last
-// acquisition of the STABLE readiness-marker path for that directory.
-// PLAT-186 follow-up: pi-cli deliberately allows two sessions with the same
-// MCP config to run concurrently in one working directory
-// (acquirePiWorkspaceMCPConfigLease in multi-llm-provider-go). Making the
-// marker path stable made that unsafe -- two concurrent launches sharing one
-// path race on os.Remove/write/read, and WaitForMCPReadyFile's plain
-// os.Stat check is satisfied by whichever bridge writes first, not
-// necessarily the caller's own.
-//
-// This is a time-windowed, self-cleaning guard against that, keyed by
-// session identity so it does NOT defeat the common, legitimate case of the
-// SAME session's own repeated/resumed launches (which must stay stable to
-// keep pi-mcp-adapter's cache valid at all -- that is the entire point of
-// PLAT-186): a launch reusing the same sessionID as the directory's last
-// acquisition always gets the stable path back, however soon it repeats. A
-// DIFFERENT (or empty/unknown) sessionID arriving within the readiness
-// wait's own window is treated as a plausibly-concurrent, different
-// session, and falls back to a private, uniquely-named marker instead of
-// risking the shared one -- the exact old (pre-PLAT-186) per-launch
-// behavior, still fully safe, just without that one launch's caching
-// benefit.
-//
-// A real happens-before lock spanning the actual readiness wait would be
-// more precise, but that wait happens inside a different package
-// (multi-llm-provider-go's adapter), reached only through an options
-// callback -- there is no clean synchronous hook here to release a real
-// lock at exactly the right moment, and a lock that's held too long or
-// released on the wrong path risks a deadlock, which is a strictly worse
-// failure mode than this heuristic's worst case (one launch loses a caching
-// optimization).
-var piReadyMarkerLastAcquired sync.Map
-
-// piReadyMarkerConcurrencyWindow must cover the longest a concurrent launch
-// could plausibly still be mid readiness-wait. codingready.DefaultMCPReadyWait
-// is 30s (multi-llm-provider-go/pkg/codingready); this adds a safety margin
-// for process-launch overhead on top of it.
-const piReadyMarkerConcurrencyWindow = 45 * time.Second
 
 // BridgeToolDef is the serialized tool definition for the MCP bridge binary.
 type BridgeToolDef struct {
@@ -361,63 +313,17 @@ func (a *Agent) buildBridgeMCPConfig() (string, error) {
 	// Claude Code swallows the subprocess stderr, so without this there is no
 	// record of why the bridge failed (e.g. an unreadable MCP_TOOLS_FILE, parse errors, crashes).
 	bridgeEnv["MCP_BRIDGE_LOG"] = os.TempDir() + "/mcpbridge.log"
-	// Readiness-marker path: the bridge creates it on tools/list (tools
-	// connected); the adapter waits for it before a cold session's first
-	// prompt. This path also becomes part of the MCP server config that
-	// pi-mcp-adapter hashes to decide whether its on-disk tool-metadata
-	// cache -- and therefore whether "directTools" native tool registration
-	// -- is still valid for this launch (PLAT-186). A path that differs on
-	// every launch defeats that hash unconditionally, regardless of
-	// anything else being configured correctly, forcing every pi-cli call
-	// through the fragile double-JSON-encoded "mcp" proxy wrapper instead
-	// of native per-tool schemas -- confirmed as the structural cause of a
-	// live incident where the model malformed that encoding and failed a
-	// whole run.
-	//
-	// Use a path that's STABLE per (workspace, agent) identity instead, and
-	// get the "a stale marker from a prior session can never falsely
-	// satisfy this session's gate" guarantee a different way: delete any
-	// leftover file at that fixed path immediately before this launch,
-	// rather than never reusing the name. We control both the deletion and
-	// the launch ordering, so this is the same guarantee, just earned
-	// differently. Falls back to the original random-path behavior when
-	// there is no stable working directory to anchor to -- there is no
-	// cache-stability benefit to protect in that case anyway, since a
-	// fresh temp directory never had a prior cache entry either.
+	// A marker belongs to one chat, not the most recent chat in a workspace.
+	// Other chats cannot satisfy or delete this chat's readiness signal.
 	a.bridgeReadyFile = ""
-	if workingDir := strings.TrimSpace(a.codingAgentArtifactDir()); workingDir != "" {
-		now := time.Now()
-		useStablePath := true
-		if last, ok := piReadyMarkerLastAcquired.Load(workingDir); ok {
-			prior := last.(piReadyMarkerAcquisition)
-			sameSession := a.sessionID != "" && prior.sessionID == a.sessionID
-			if !sameSession && now.Sub(prior.acquiredAt) < piReadyMarkerConcurrencyWindow {
-				// A DIFFERENT (or unidentified) session acquired this working
-				// directory's stable marker recently enough that it may still
-				// be mid readiness-wait. Do not risk sharing it -- fall back
-				// to a private path for THIS launch only. The SAME session
-				// reusing its own directory is never treated as concurrent
-				// with itself, however soon it repeats -- that stability is
-				// the entire point of PLAT-186's fix.
-				useStablePath = false
-			}
-		}
-		if useStablePath {
-			piReadyMarkerLastAcquired.Store(workingDir, piReadyMarkerAcquisition{sessionID: a.sessionID, acquiredAt: now})
-			readyPath := filepath.Join(workingDir, ".mcpbridge-ready.marker")
-			_ = os.Remove(readyPath)
-			a.bridgeReadyFile = readyPath
-			bridgeEnv["MCP_READY_FILE"] = readyPath
-		} else if f, tmpErr := os.CreateTemp("", "mcpbridge-ready-*.marker"); tmpErr == nil {
-			readyPath := f.Name()
-			_ = f.Close()
-			_ = os.Remove(readyPath)
-			a.bridgeReadyFile = readyPath
-			bridgeEnv["MCP_READY_FILE"] = readyPath
-		} else {
-			logger.Warn("Failed to allocate MCP readiness marker; cold-turn tool-connect gate disabled for this launch",
-				loggerv2.Error(tmpErr))
-		}
+	workingDir := strings.TrimSpace(a.codingAgentArtifactDir())
+	if workingDir != "" && strings.TrimSpace(a.sessionID) != "" {
+		sum := sha256.Sum256([]byte(a.sessionID))
+		readyPath := filepath.Join(workingDir, ".mcpbridge-ready-"+hex.EncodeToString(sum[:16])+".marker")
+		_ = os.Remove(readyPath)
+		a.bridgeReadyFile = readyPath
+		bridgeEnv["MCP_READY_FILE"] = readyPath
+		logger.Info("[CODING_BRIDGE] readiness configured", loggerv2.String("session", a.sessionID), loggerv2.String("mode", "chat_stable"))
 	} else if f, tmpErr := os.CreateTemp("", "mcpbridge-ready-*.marker"); tmpErr == nil {
 		readyPath := f.Name()
 		_ = f.Close()
@@ -425,8 +331,7 @@ func (a *Agent) buildBridgeMCPConfig() (string, error) {
 		a.bridgeReadyFile = readyPath
 		bridgeEnv["MCP_READY_FILE"] = readyPath
 	} else {
-		logger.Warn("Failed to allocate MCP readiness marker; cold-turn tool-connect gate disabled for this launch",
-			loggerv2.Error(tmpErr))
+		logger.Warn("Failed to allocate MCP readiness marker; cold-turn tool-connect gate disabled for this launch", loggerv2.Error(tmpErr))
 	}
 	// Pass per-agent virtual tool scope so the bridge can route get_api_spec
 	// to the correct agent's handler (prevents parent/child overwrite)
