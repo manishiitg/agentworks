@@ -68,6 +68,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		return map[string]interface{}{"agents": []map[string]interface{}{}}, nil
 	}
 	agents := []map[string]interface{}{}
+	savedGroups, _ := updateMenuGroups(ctx, nil)
 	here, _ := ctx.Value(directoryThisCrewKey{}).(string)
 	thisCrew := ""
 	// The same rows on the website and over MCP: the person's live access decides, not connection scopes.
@@ -142,6 +143,13 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 					}
 					chats = append(chats, map[string]interface{}{"chat_id": a.ID, "name": a.Name, "purpose": a.Purpose, "owner_name": person.Name, "shared_by": person.Name, "yours": person.You, "can_write": person.You, "place": a.Place})
 					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": a.Address, "target": row["id"], "crew_id": id, "chat_id": a.ID, "name": a.Name, "crew_name": name, "relation": relation, "shared_by": person.Name, "purpose": a.Purpose, "presence": firstNonEmptyTrimmed(a.PlaceLabel, a.StatusLabel, "Runs when messaged"), "your_access": "run", "reach": "messages action=send(target=<id>) from any of your own chats"})
+					if person.You {
+						names := savedGroups.agentGroupNames(id, a.ChatKey)
+						if len(names) > 0 {
+							chats[len(chats)-1]["group_names"] = names
+							agents[len(agents)-1]["group_names"] = names
+						}
+					}
 				}
 			}
 			row["chats"] = chats
@@ -243,9 +251,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	registryMu.Unlock()
 	if preferenceErr == nil {
 		annotateDirectoryHiddenAgents(agents, preferences, desktopMachineID())
-		if saved, err := updateMenuGroups(ctx, nil); err == nil {
-			annotateDirectoryAgentGroups(agents, saved, preferences, desktopMachineID())
-		}
+		annotateDirectoryAgentGroups(agents, savedGroups, preferences, desktopMachineID())
 	}
 	sort.SliceStable(agents, func(i, j int) bool {
 		rank := func(row map[string]interface{}) int {
