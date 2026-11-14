@@ -95,6 +95,13 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 		accepted := make([]crewTeamAgent, 0, len(people[i].Agents))
 		for _, discovered := range people[i].Agents {
 			a := &discovered
+			// An agent without a chat yet (a Mac Main that is not ready) has no stable
+			// identity to bind. Saving it would leave a row the check above refuses,
+			// which made the whole Team registry unavailable until fixed by hand.
+			if a.ChatKey == "" {
+				log.Printf("[CREW_TEAM] project=%s event=agent_registry_row_refused person=%s tab=%q reason=%q", t.ProjectID, people[i].UserID, a.Tab, "agent has no chat yet")
+				continue
+			}
 			tab := a.Tab
 			if crewTeamMainAgentWithKey(current, people[i].UserID, a.ChatKey, ownerMainKey) || tab == macMainTab {
 				tab = macMainTab
