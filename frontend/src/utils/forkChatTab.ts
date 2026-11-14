@@ -5,6 +5,8 @@ import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 import { openAgentTab } from './openAgentTab'
 import type { AgentProfileSideChat } from '../services/api-types'
 
+import { refreshMenuGroups } from '../components/workspace/MenuGroups'
+
 export const chatForkedEvent = 'agentworks:chat-forked'
 type ForkedChat = AgentProfileSideChat & { engine: string; provider: string; model_id: string; connection_id?: string; reasoning_effort?: string; native_resume: boolean; next: string }
 type ForkFeedback = { pending: boolean; error?: string }
@@ -36,6 +38,8 @@ export async function forkChatTab(tabId: string): Promise<void> {
   useForkFeedback.setState(state => ({ byTab: { ...state.byTab, [pendingKey]: { pending: true } } }))
   try {
     const { data: chat } = await api.post<ForkedChat>('/api/agent-profiles/work/conversation/fork', { conversation_key: source.metadata.agentProfileConversationKey })
+    if (!isChatIdentityCurrent(identity)) return
+    await refreshMenuGroups()
     if (!isChatIdentityCurrent(identity)) return
     const store = useChatStore.getState()
     const id = await store.createChatTab(chat.name, {

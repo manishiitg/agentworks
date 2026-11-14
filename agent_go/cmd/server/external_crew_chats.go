@@ -48,7 +48,7 @@ func externalChatName(args map[string]any) (string, error) {
 }
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use sessions action=ask from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. fork: copy a caller-owned chat_id into an independent tab, carrying saved history and native context where possible; optional name; no turn starts. Prefer fork for related work needing context. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or preview removal of an agent (including Main); confirm with removal_confirmation and removal_choices only after the person approves the named effects. Conditional when_removed dependencies need a choice only when their prerequisite is removed. side_rename: give a side chat a new name (chat_id, name); talk in it with workspace action=ask chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes idle_compaction and, for a Claude chat, claude_terminal (true: the native Claude Code terminal; false: the chat view) for that chat; without engine only they change. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex/Cursor CLI conversations for the exact folder and available original accounts. native_preview: preview messages for a native_id from that list. native_resume: open native_id in a private tab; Claude/Codex copy independently, Cursor CLI continues the same conversation (close it in Cursor before sending here); no turn starts. Human confirmations remain in the chat.", true, false, map[string]any{
+	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use sessions action=ask from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. fork: copy a caller-owned chat_id into an independent tab, carrying saved history and native context where possible; optional name; no turn starts. Prefer fork for related work needing context. Forks inherit the parent's personal sidebar group. list includes group_names: your personal organization, not access, context or Team membership. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or preview removal of an agent (including Main); confirm with removal_confirmation and removal_choices only after the person approves the named effects. Conditional when_removed dependencies need a choice only when their prerequisite is removed. side_rename: give a side chat a new name (chat_id, name); talk in it with workspace action=ask chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. set_model also takes idle_compaction and, for a Claude chat, claude_terminal (true: the native Claude Code terminal; false: the chat view) for that chat; without engine only they change. list with chat_id adds that chat's context (tokens used of its window, its account's plan limits, the offered switches). compact: compact one of your chats now (summarise its conversation so the next message costs less); refused while it is busy. fresh: the chat's next message starts a new conversation that carries a short summary of this one; its history stays. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex/Cursor CLI conversations for the exact folder and available original accounts. native_preview: preview messages for a native_id from that list. native_resume: open native_id in a private tab; Claude/Codex copy independently, Cursor CLI continues the same conversation (close it in Cursor before sending here); no turn starts. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":              externalString("Crew ID from workspace action=list. For native_list/native_preview before creation, use root_path instead."),
 		"root_path":            externalString("For native_list/native_preview before creating a Crew: full existing folder path on your own Mac, instead of crew_id. Requires permission to create a Crew. Preview only; create the Crew with this folder, then native_resume to open the chosen conversation."),
 		"recent_only":          map[string]any{"type": "boolean", "description": "For native_resume: explicitly import recent messages into a new provider conversation instead of copying native context. Use only when the person chooses this alternative. Older context stays in the original chat."},
@@ -76,17 +76,18 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 }
 
 type externalCrewChat struct {
-	OwnerID   string `json:"owner_id,omitempty"`
-	OwnerName string `json:"owner_name,omitempty"`
-	CanWrite  bool   `json:"can_write"`
-	Purpose   string `json:"purpose,omitempty"`
-	Shared    bool   `json:"shared,omitempty"`
-	IsMain    bool   `json:"is_main"`
-	ChatID    string `json:"chat_id"`
-	Name      string `json:"name"`
-	SessionID string `json:"session_id"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-	key       string
+	GroupNames []string `json:"group_names,omitempty"`
+	OwnerID    string   `json:"owner_id,omitempty"`
+	OwnerName  string   `json:"owner_name,omitempty"`
+	CanWrite   bool     `json:"can_write"`
+	Purpose    string   `json:"purpose,omitempty"`
+	Shared     bool     `json:"shared,omitempty"`
+	IsMain     bool     `json:"is_main"`
+	ChatID     string   `json:"chat_id"`
+	Name       string   `json:"name"`
+	SessionID  string   `json:"session_id"`
+	UpdatedAt  string   `json:"updated_at,omitempty"`
+	key        string
 }
 
 // crewChats lists the caller's live chats with a Crew: main first.
@@ -135,6 +136,13 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 			chat.Name = tab.Identity.Name
 		}
 		chats = append(chats, chat)
+	}
+	if saved, err := updateMenuGroups(r.Context(), nil); err == nil {
+		for i := range chats {
+			if chats[i].OwnerID == userID {
+				chats[i].GroupNames = saved.agentGroupNames(crewID, chats[i].key)
+			}
+		}
 	}
 	sort.SliceStable(chats, func(i, j int) bool {
 		if chats[i].IsMain != chats[j].IsMain {

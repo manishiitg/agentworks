@@ -19,6 +19,8 @@ const useMenuGroupsStore = create<Saved & { loaded: boolean; error: string; set:
   fail: error => set({ error }),
 }))
 
+export function refreshMenuGroups() { return loadGroups() }
+
 const fromServer = (result: MenuGroups): Saved => ({ agent_groups: result.agent_groups || [], groups: result.groups || [], filter: (result.filter || 'all') as MenuFilter, network: result.network || '' })
 
 let loading: Promise<void> | null = null
