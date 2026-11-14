@@ -310,7 +310,11 @@ async function loadTabEvents(
   }
   const currentStore = useChatStore.getState()
   const eventsNow = currentStore.getTabEvents(sessionId)
-  const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id))
+  const goalSnapshotSequence = response.native_goal_snapshot?.sequence
+  const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id) && !(
+    event.type === 'native_goal_updated' && typeof goalSnapshotSequence === 'number' &&
+    typeof event.sequence === 'number' && event.sequence <= goalSnapshotSequence
+  ))
   const previousPagination = currentStore.tabHistoryPagination?.[sessionId]
   const previousHasMore = currentStore.tabHasMoreOlderEvents?.[sessionId]
   const oldestSequence = response.oldest_sequence

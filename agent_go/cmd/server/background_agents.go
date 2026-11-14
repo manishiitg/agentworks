@@ -2693,7 +2693,11 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	if api.botManager != nil {
 		api.botManager.PrepareSyntheticTurn(sessionID)
 	}
-	goalRestore := api.pauseNativeGoalForWake(sessionID)
+	goalRestore, goalPauseErr := api.pauseNativeGoalForWake(sessionID)
+	if goalPauseErr != nil {
+		log.Printf("[AGENT_GOAL] session=%s action=skipped reason=wake_pause_unconfirmed", sessionID)
+		return false
+	}
 	goalRestoreHandled := false
 	defer func() {
 		if !goalRestoreHandled {
