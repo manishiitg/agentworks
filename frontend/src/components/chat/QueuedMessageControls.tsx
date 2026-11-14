@@ -1,6 +1,21 @@
+import type { PendingQueuedMessage } from '../../../shared/session/types'
 import React, { useEffect, useState } from 'react'
 import { CircleAlert, Clock, Loader2 } from 'lucide-react'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
+
+/** Only an explicit server receipt clears a stale queue snapshot. */
+export function queuedMessageDelivered(metadata?: Record<string, unknown>): boolean {
+  if (metadata?.delivery_status === 'unconfirmed' || metadata?.confirmation === 'failed' || metadata?.confirmation === 'accepted_but_unflushed') return false
+  return metadata?.confirmation === 'confirmed' || metadata?.delivery_status === 'sent_to_cli' || metadata?.delivery_status === 'next_turn_started'
+}
+
+export function queuedMessageReason(message: PendingQueuedMessage): string {
+  return message.delivery_error || message.queue_detail || (message.refreshing || message.queue_reason === 'refreshing'
+    ? "Sends after the chat restarts with the Crew's latest setup."
+    : message.steering ? 'Delivering to the current reply'
+      : message.queue_reason === 'starting' ? 'The agent is starting or resuming. Your message sends automatically.'
+        : message.queue_reason === 'running' ? 'Waiting for the current reply' : 'Sends next')
+}
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
 
@@ -24,17 +39,13 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const controls = useQueuedMessageControlsStore(state => sessionId ? state.bySession[sessionId] : undefined)
   const message = clientId ? controls?.messages[clientId] : undefined
-  if (!controls || !message?.message_id || (message.can_manage !== true && message.can_dismiss !== true)) return null
+  if (queuedMessageDelivered(metadata) || !controls || !message?.message_id || (message.can_manage !== true && message.can_dismiss !== true)) return null
   if (message.can_manage !== true) return <button type="button" disabled={controls.busyMessageId === message.message_id}
     onClick={() => controls.act(message, 'remove')} className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40">Dismiss</button>
   const refreshing = Boolean(message.refreshing && !message.delivery_error)
   const pending = Boolean(message.steering || controls.busyMessageId === message.message_id)
   const disabled = pending || Boolean(controls.busyMessageId)
-  const reason = message.delivery_error || message.queue_detail || (refreshing
-    ? 'This Crew changed (for example a new function), so the chat restarts with it after the current reply, then your message goes in'
-    : message.steering ? 'Delivering to the current reply'
-      : message.queue_reason === 'starting' ? 'The agent is starting or resuming. Your message sends automatically.'
-        : message.queue_reason === 'running' ? 'Waiting for the current reply' : 'Sends next')
+  const reason = queuedMessageReason(message)
   const position = message.queue_position && message.queue_position > 1 ? `${ordinal(message.queue_position)} in line` : ''
   const link = 'text-primary hover:underline disabled:opacity-40 disabled:no-underline'
   const parts: React.ReactNode[] = []
@@ -54,12 +65,13 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   )
 }
 
-/** One short line under a queued message when it needs attention: delivery unconfirmed, or waiting for the chat to restart with the Crew's latest setup. */
+/** Keep actionable delivery failures; ordinary queue reasons live on the clock. */
 export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
+  if (queuedMessageDelivered(metadata)) return null
   if (!message) return metadata?.delivery_status === 'unconfirmed' ? <p className="mt-0.5 text-[11px] text-amber-500">Delivery unconfirmed. It will not be sent again automatically.</p> : null
-  const text = message.delivery_error ? `Delivery unconfirmed. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : message.refreshing ? "Sends after the chat restarts with the Crew's latest setup." : ''
+  const text = message.delivery_error ? `Delivery unconfirmed. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : ''
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
 
@@ -67,8 +79,9 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
 export const QueuedInboxStatus: React.FC<{ sessionId?: string; metadata?: Record<string, unknown> }> = ({ sessionId, metadata }) => {
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
+  if (queuedMessageDelivered(metadata)) return null
   if (!message) return metadata?.delivery_status === 'unconfirmed' ? <span title="Delivery unconfirmed" aria-label="Delivery unconfirmed" className="inline-flex items-center gap-1 text-amber-500"><CircleAlert aria-hidden="true" className="h-3.5 w-3.5" /></span> : null
-  const reason = message.delivery_error || message.queue_detail || 'Waiting for the current reply'
+  const reason = queuedMessageReason(message)
   const Icon = message.delivery_error ? CircleAlert : Clock
   return <span title={reason} aria-label={reason} className="inline-flex items-center gap-1 text-amber-500"><Icon aria-hidden="true" className="h-3.5 w-3.5" /><QueuedWaitingAge since={message.waiting_since} /></span>
 }

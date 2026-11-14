@@ -32,3 +32,30 @@ it('shows an unconfirmed incoming steer without queue controls or a spinner', as
     expect(host.querySelector('button')).toBeNull()
   } finally { await act(async () => root.unmount()) }
 })
+
+// A durable receipt outranks an older queue poll; never infer delivery from age.
+it('keeps the restart reason on the clock and clears stale queue presentation on delivery', async () => {
+  const { useQueuedMessageControlsStore } = await import('../../stores/useQueuedMessageControlsStore')
+  const { DeliveryTick } = await import('../events/system/DeliveryTick')
+  const host = document.createElement('div'), root = createRoot(host)
+  const pending = { client_message_id: 'm', message_id: 'queue-m', content: 'Hello', can_manage: true, refreshing: true }
+  const actQueue = vi.fn()
+  useQueuedMessageControlsStore.getState().set('s', { messages: { m: pending }, busyMessageId: null, canEdit: true, editable: true, act: actQueue })
+  const render = (receipt: Record<string, unknown>) => <><DeliveryTick sessionId="s" metadata={receipt} /><QueuedInboxStatus sessionId="s" metadata={receipt} /><QueuedMessageNotice sessionId="s" metadata={receipt} /></>
+  try {
+    await act(async () => root.render(render({ client_message_id: 'm', delivery_status: 'queued_for_turn' })))
+    expect(host.textContent).not.toContain('restarts')
+    expect(host.querySelector('[data-testid="delivery-tick"]')?.getAttribute('title')).toContain('restarts')
+    for (const receipt of [{ delivery_status: 'sent_to_cli' }, { confirmation: 'confirmed' }]) {
+      await act(async () => root.render(render({ client_message_id: 'm', ...receipt })))
+      expect(host.querySelector('p')).toBeNull()
+      expect(host.querySelector('[title*="restarts"]')).toBeNull()
+    }
+    await act(async () => {
+      useQueuedMessageControlsStore.getState().set('s', { messages: { m: { ...pending, delivery_error: 'Not confirmed by the agent.' } }, busyMessageId: null, canEdit: true, editable: true, act: actQueue })
+      root.render(render({ client_message_id: 'm', delivery_status: 'unconfirmed' }))
+    })
+    expect(host.textContent).toContain('Delivery unconfirmed')
+    expect(actQueue).not.toHaveBeenCalled()
+  } finally { await act(async () => root.unmount()); useQueuedMessageControlsStore.getState().set('s', undefined) }
+})
