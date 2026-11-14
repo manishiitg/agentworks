@@ -1241,6 +1241,7 @@ func (api *StreamingAPI) markSessionStoppedAs(sessionID string, phase RuntimePha
 	api.stoppedSessionsMu.Lock()
 	api.stoppedSessions[sessionID] = true
 	api.stoppedSessionsMu.Unlock()
+	api.cancelUsageLimitRecovery(sessionID, "stopped")
 	// Stop also drops background-work wakes still waiting for this chat.
 	dropQueuedNativeWakes(sessionID, "stopped")
 	if api.runtimeCoordinator != nil {

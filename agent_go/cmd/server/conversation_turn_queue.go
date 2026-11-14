@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"maps"
 	"net/http"
 	"path/filepath"
@@ -147,7 +148,6 @@ type queuedConversationTurn struct {
 	BatchID       string                      `json:"batch_id,omitempty"`
 	Batch         []queuedConversationTurn    `json:"-"`
 	RetryAt       *time.Time                  `json:"retry_at,omitempty"`
-	LimitRetried  bool                        `json:"limit_retried,omitempty"`
 	ID            string                      `json:"id"`
 	ComposerInput bool                        `json:"composer_input,omitempty"`
 	UserID        string                      `json:"user_id"`
@@ -265,6 +265,9 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	if err := api.writeConversationTurnQueue(storageCtx, userID, turns); err != nil {
 		return queuedConversationTurn{}, 0, err
 	}
+	if personQueuedRequest(turn) {
+		api.cancelUsageLimitRecovery(sessionID, "person_message_queued")
+	}
 	position := 0
 	for _, pending := range turns {
 		if pending.SessionID == sessionID && pending.StartedAt == nil && pending.DeliveryError == "" {
@@ -341,6 +344,19 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			turns = pruned
 		}
 
+		usagePruned, usageErr := api.pruneUsageLimitContinues(ctx, owner, turns)
+		if usageErr != nil {
+			lock.Unlock()
+			return queuedConversationTurn{}, false, usageErr
+		}
+		if len(usagePruned) != len(turns) {
+			if err := api.writeConversationTurnQueue(ctx, owner, usagePruned); err != nil {
+				lock.Unlock()
+				return queuedConversationTurn{}, false, err
+			}
+		}
+		turns = usagePruned
+
 		head := conversationQueueHead(turns, owner, sessionID, time.Now())
 		if head.ID != "" {
 			heads = append(heads, head)
@@ -380,6 +396,9 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 	}
 	claimed, updated := api.claimQueuedBatch(turns, oldest, other, time.Now().UTC())
 	if claimed.ID != "" {
+		if ok, err := api.consumeUsageLimitContinue(ctx, oldest.UserID, claimed); err != nil || !ok {
+			return queuedConversationTurn{}, false, err
+		}
 		if err := api.writeConversationTurnQueue(ctx, oldest.UserID, updated); err != nil {
 			return queuedConversationTurn{}, false, err
 		}
@@ -457,10 +476,24 @@ func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, 
 		logTurnQueue("cannot read queue for %s: %v", userID, err)
 		return queuedConversationTurn{}, false
 	}
+	pruned, err := api.pruneUsageLimitContinues(ctx, userID, turns)
+	if err != nil {
+		return queuedConversationTurn{}, false
+	}
+	if len(pruned) != len(turns) {
+		if err := api.writeConversationTurnQueue(ctx, userID, pruned); err != nil {
+			return queuedConversationTurn{}, false
+		}
+	}
+	turns = pruned
+
 	head := conversationQueueHead(turns, userID, sessionID, time.Now())
 	for i := range turns {
 		if turns[i].ID != head.ID || turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" || (turns[i].RetryAt != nil && time.Now().Before(*turns[i].RetryAt)) {
 			continue
+		}
+		if ok, err := api.consumeUsageLimitContinue(ctx, userID, turns[i]); err != nil || !ok {
+			return queuedConversationTurn{}, false
 		}
 		now := time.Now().UTC()
 		turns[i].StartedAt = &now
@@ -801,6 +834,19 @@ func (api *StreamingAPI) endIdleTurnForRuntimeChange(sessionID, occupant string,
 
 func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTurn) {
 	members := queuedBatchMembers(turn)
+	if !api.usageLimitContinuationCurrent(context.Background(), turn) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := api.removeConversationTurn(ctx, turn); err != nil {
+			log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=failed reason=cancel_queue_write_failed", turn.SessionID, turn.ID)
+		}
+		cancel()
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=skipped reason=superseded_before_start", turn.SessionID, turn.ID)
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueDraining, turn.SessionID)
+		api.conversationTurnQueueMu.Unlock()
+		api.kickConversationTurnQueue(turn.SessionID)
+		return
+	}
 	prepared, err := api.prepareQueuedBatch(context.Background(), turn, time.Now())
 	var result internalSessionTurnResult
 	if err == nil {
@@ -844,30 +890,26 @@ func (api *StreamingAPI) finishQueuedConversationTurn(turn queuedConversationTur
 	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	if err != nil {
-		// A failure may precede the normal user echo, or follow partial work.
-		// Keep failures for explicit resolution, except the one typed incoming Claude quota retry.
-		// Persist the no-replay state before publishing failure. A crash or
-		// failed queue write must not publish a verdict recovery can contradict.
-		retryAt := time.Time{}
-		if !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "canceled") {
-			retryAt = api.incomingQuotaRetryAt(turn, result.QueryID)
-		}
-		if !retryAt.IsZero() {
-			if persistErr := api.deferIncomingQuotaTurn(storageCtx, turn, retryAt); persistErr != nil {
-				logTurnQueue("cannot persist quota wait for %s: %v", turn.ID, persistErr)
-			} else {
-				logTurnQueue("turn %s waits for Claude reset at %s (one retry)", turn.ID, retryAt.Format(time.RFC3339))
-			}
-		} else if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
+		// Preserve the failed original for explicit resolution. Typed quota
+		// recovery has its own synthetic continuation, never a replay here.
+		if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
 			logTurnQueue("cannot persist failed turn %s: %v", turn.ID, persistErr)
 		} else {
 			api.recordFailedQueuedConversationUserMessage(turn)
 		}
+
 	} else if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
 		logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
 		err = removeErr
 	}
 	cancel()
+	if turn.Request.TriggeredBy == usageLimitContinueTrigger {
+		action, reason := "done", "turn_completed"
+		if err != nil {
+			action, reason = "failed", "turn_failed"
+		}
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=%s reason=%s", turn.SessionID, turn.ID, action, reason)
+	}
 	api.conversationTurnQueueMu.Lock()
 	waiter := api.conversationTurnQueueWaiters[turn.ID]
 	delete(api.conversationTurnQueueWaiters, turn.ID)
@@ -1039,7 +1081,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 
 		turns, _ = api.pruneRestartContinues(turns)
 		for i := range turns {
-			if turns[i].Steering || (turns[i].LimitRetried && turns[i].StartedAt != nil) {
+			if turns[i].Steering {
 				// An interrupted steer may have reached the CLI. Never replay it blindly.
 				turns[i].DeliveryError = "Delivery unconfirmed after restart. Check the chat before resending."
 				turns[i].Steering = false
@@ -1291,72 +1333,6 @@ func (api *StreamingAPI) wakeConversationQueueAt(sessionID string, at time.Time)
 		api.conversationTurnQueueMu.Unlock()
 		api.kickConversationTurnQueue(sessionID)
 	})
-}
-
-// Read only typed metadata for this exact execution/native turn. Never infer a reset from error prose.
-func (api *StreamingAPI) incomingQuotaRetryAt(turn queuedConversationTurn, queryID string) time.Time {
-	if turn.LimitRetried || queryID == "" || api.eventStore == nil ||
-		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] != "agent_message" {
-		return time.Time{}
-	}
-	api.trackedWorkflowExecutionsMux.RLock()
-	nativeTurnID := ""
-	if execution := api.trackedWorkflowExecutions[queryID]; execution != nil && execution.SessionID == turn.SessionID {
-		nativeTurnID = execution.Metadata["native_turn_id"]
-	}
-	api.trackedWorkflowExecutionsMux.RUnlock()
-	all := api.eventStore.GetAllEventsRaw(turn.SessionID)
-	for i := len(all) - 1; i >= 0; i-- {
-		event := all[i]
-		if event.Type != "unified_completion" || event.Data == nil {
-			continue
-		}
-		matched := event.ExecutionID == queryID
-		if nativeTurnID != "" {
-			matched = retainedCompletionTurnID(event) == nativeTurnID
-		}
-		if !matched {
-			continue
-		}
-		raw, _ := json.Marshal(event.Data.Data)
-		var completion struct {
-			Provider string `json:"provider"`
-			Metadata struct {
-				Code    string `json:"error_code"`
-				RetryAt string `json:"retry_at"`
-			} `json:"metadata"`
-		}
-		if json.Unmarshal(raw, &completion) != nil {
-			return time.Time{}
-		}
-		if completion.Metadata.Code != "quota_exhausted" || (completion.Provider != "claude-code" && turn.Request.Provider != "claude-code") {
-			return time.Time{}
-		}
-		at, err := time.Parse(time.RFC3339, completion.Metadata.RetryAt)
-		if err == nil {
-			return at
-		}
-		return time.Time{}
-	}
-	return time.Time{}
-}
-
-func (api *StreamingAPI) deferIncomingQuotaTurn(ctx context.Context, turn queuedConversationTurn, at time.Time) error {
-	lock := productConversationRegistryMutex(conversationTurnQueuePath(turn.UserID))
-	lock.Lock()
-	defer lock.Unlock()
-	turns, err := api.readConversationTurnQueue(ctx, turn.UserID)
-	if err != nil {
-		return err
-	}
-	for i := range turns {
-		if turns[i].ID == turn.ID {
-			turns[i].StartedAt, turns[i].RetryAt = nil, &at
-			turns[i].Steering, turns[i].LimitRetried, turns[i].DeliveryError = false, true, ""
-			return api.writeConversationTurnQueue(ctx, turn.UserID, turns)
-		}
-	}
-	return fmt.Errorf("queued delivery no longer exists")
 }
 
 // A delayed incoming head preserves incoming order, but never blocks a person's new message.

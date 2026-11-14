@@ -1291,7 +1291,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const envelope = event.data as unknown as Record<string, unknown> | undefined
     const inner = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
     const payload = (inner.data ?? inner) as Record<string, unknown>
-    const message = typeof payload.message === 'string' ? payload.message : ''
+    const resetAt = typeof payload.retry_at === 'string' ? new Date(payload.retry_at) : null
+    const message = event.type === 'usage_limit_notice' && resetAt && Number.isFinite(resetAt.getTime())
+      ? `Usage limit reached. I'll continue at ${resetAt.toLocaleString()}.`
+      : typeof payload.message === 'string' ? payload.message : ''
     return message ? <CompactWrapper compact={compact}>
       <div role="status" className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">{message}</div>
     </CompactWrapper> : null
@@ -1316,7 +1319,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   // the next turn. Keep the copy user-facing: "steered" and provider routing
   // described the implementation but made a successful notification look
   // like an unexplained diagnostic.
-  if (event.type === 'work_folder_notice' || event.type === 'restart_continue_notice') {
+  if (event.type === 'work_folder_notice' || event.type === 'restart_continue_notice' || event.type === 'usage_limit_notice') {
     const envelope = event.data as unknown as Record<string, unknown> | undefined
     const payload = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
     const message = typeof payload.message === 'string' ? payload.message : ''

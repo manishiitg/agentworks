@@ -12,7 +12,7 @@ import (
 // Only ordinary ready person/agent deliveries combine. Explicit live steering,
 // restart continuations and quota retries keep their own dispatch semantics.
 func (api *StreamingAPI) queuedBatchEligible(turn queuedConversationTurn) bool {
-	if turn.StartedAt != nil || turn.Steering || turn.DeliveryError != "" || turn.RetryAt != nil || turn.LimitRetried || turn.Request.TriggeredBy == "restart_continue" {
+	if turn.StartedAt != nil || turn.Steering || turn.DeliveryError != "" || turn.RetryAt != nil || (turn.Request.TriggeredBy == "restart_continue" || turn.Request.TriggeredBy == usageLimitContinueTrigger) {
 		return false
 	}
 	if !personQueuedRequest(turn) && turn.Principal.DeliveredMessage["source"] != "agent_message" {

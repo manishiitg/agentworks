@@ -371,35 +371,6 @@ func TestFailedIncomingDismissRequiresOwnPerson(t *testing.T) {
 	}
 }
 
-func TestIncomingQuotaWaitSurvivesStalePruningAndCannotStartEarly(t *testing.T) {
-	api := newConversationTurnQueueTestAPI(map[string]string{})
-	ctx := context.Background()
-	reset := time.Now().Add(time.Hour)
-	turn := queuedConversationTurn{ID: "incoming", UserID: "owner", SessionID: "chat", CreatedAt: time.Now().Add(-time.Hour),
-		RetryAt: &reset, LimitRetried: true, Principal: queuedConversationPrincipal{DeliveredMessageUser: "owner", DeliveredMessageSession: "chat", DeliveredMessage: map[string]interface{}{"source": "agent_message"}}}
-	if len(dropStaleWaitingTurns([]queuedConversationTurn{turn}, time.Now())) != 1 {
-		t.Fatal("quota wait pruned")
-	}
-	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := api.claimNextConversationTurn(ctx, "owner", "chat"); ok {
-		t.Fatal("started before reset")
-	}
-	past := time.Now().Add(-time.Second)
-	turn.RetryAt = &past
-	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
-		t.Fatal(err)
-	}
-	claimed, ok := api.claimNextConversationTurn(ctx, "owner", "chat")
-	if !ok || claimed.RetryAt != nil || !claimed.LimitRetried {
-		t.Fatalf("retry claim: %+v %v", claimed, ok)
-	}
-	if !api.incomingQuotaRetryAt(claimed, "unused").IsZero() {
-		t.Fatal("second automatic retry allowed")
-	}
-}
-
 // A provider cooldown must not trap the person's follow-up behind incoming deliveries.
 func TestQuotaWaitingHeadLetsOnlyComposerMessagesPass(t *testing.T) {
 	now := time.Now()
