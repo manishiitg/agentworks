@@ -39,6 +39,13 @@ with tempfile.TemporaryDirectory(prefix='shell-context-',dir=pathlib.Path(__file
   assert run('echo BACK')[1]==['echo BACK']
   # An untraced subshell produces no command marker: never reuse the last label.
   assert run('(echo SUBSHELL)')[1]==[]
+  # A background job is not complete just because the prompt returned.
+  assert run('sleep 1 &')[2]==[]
+  run('wait')
+  # Replacing a DEBUG trap is the person's choice; never reinstall ours.
+  run("trap ':' DEBUG")
+  assert run('echo CUSTOM_TRAP')[1]==[]
+  assert b"trap -- ':' DEBUG" in run('trap -p DEBUG')[0]
   print('PASS: real Bash command fences, compound/pipeline, failure, redirect, omitted history, disabled history, subshell refusal')
  finally:
   os.write(fd,b'exit\n');read();os.close(fd);os.waitpid(pid,0)
