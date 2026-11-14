@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	pathpkg "path"
 	"path/filepath"
@@ -46,6 +47,10 @@ func (api *StreamingAPI) deleteDurableChatSessions(sessionIDs []string) error {
 	}
 	if err := api.eventStore.DeleteDurableChatSessions(ready); err != nil {
 		errs = append(errs, fmt.Errorf("delete durable chats: %w", err))
+	} else {
+		for _, sessionID := range ready {
+			common.RevokeProcessBridgeCredential(sessionID, "chat_deleted")
+		}
 	}
 	return errors.Join(errs...)
 }

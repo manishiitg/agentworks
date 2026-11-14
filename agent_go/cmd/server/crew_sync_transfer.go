@@ -318,12 +318,6 @@ func discardCapturedCrewPayloads(s *crewsync.Snapshot) {
 	}
 }
 
-func cleanupCrewPayloads(id, pair, transfer, direction string) {
-	if d, e := crewTransferDir(id, pair, transfer, direction); e == nil {
-		_ = os.RemoveAll(d)
-	}
-}
-
 // Retire an obsolete transfer record, not its files, baselines or conversation.
 // The next capture writes only the current descriptor format.
 func moveOldCrewTransfer(path, id string) (string, error) {

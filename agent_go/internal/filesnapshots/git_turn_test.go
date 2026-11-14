@@ -97,6 +97,7 @@ func TestDirtyTurnReusesPrivateIndexAcrossReplies(t *testing.T) {
 			if linked {
 				dir = "feature"
 				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
+				f.s.WorkingDir = filepath.Join(f.s.Root, dir)
 			}
 			f.put(dir+"/a.txt", "dirty-a\n")
 			f.put(dir+"/b.txt", "dirty-b\n")
@@ -286,6 +287,7 @@ func TestGitTurnEmptyRepositoryAndNewWorktree(t *testing.T) {
 	}
 	// A newly discovered checkout with a pre-existing commit is not a whole
 	// project of added files. It really appears after the before-capture.
+	f.s.WorkingDir = filepath.Join(f.s.Root, "second")
 	if _, err := f.s.BeginGitTurn(t.Context(), "new-worktree"); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +324,8 @@ func TestGitTurnCapturesFirstCommitCreatedDuringReply(t *testing.T) {
 
 // PLAT-746-319: capture discovery skipped linked worktrees, and ordinary files
 // had no path at all. Both must produce private diffs and scoped Undo.
-func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
+// PLAT-746-876: only the working linked checkout is captured, not sibling scratch worktrees.
+func TestTurnCapturesWorkingLinkedWorktreeAndOrdinaryFilesButSkipsSiblingWorktrees(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		name := "ordinary"
 		if linked {
@@ -335,6 +338,12 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 				f.repo("app", map[string]string{"a.txt": "before\n", "gone.txt": "removed\n"})
 				dir = "feature"
 				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
+				f.git("app", "worktree", "add", "--quiet", "-b", "sibling", filepath.Join(f.s.Root, "sibling"))
+				f.s.WorkingDir = filepath.Join(f.s.Root, dir, "nested")
+				if err := os.MkdirAll(f.s.WorkingDir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				f.put("sibling/a.txt", "unrelated dirty before\n")
 			} else {
 				f.put(dir+"/a.txt", "before\n")
 				f.put(dir+"/gone.txt", "removed\n")
@@ -347,6 +356,9 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.put(dir+"/a.txt", "after\n")
+			if linked {
+				f.put("sibling/a.txt", "unrelated dirty after\n")
+			}
 			f.put(dir+"/new.txt", "added\n")
 			if err := os.Remove(filepath.Join(f.s.Root, dir, "gone.txt")); err != nil {
 				t.Fatal(err)
@@ -358,6 +370,14 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 			r, err := f.s.FinishGitTurn(t.Context(), "reply")
 			if err != nil {
 				t.Fatal(err)
+			}
+			if linked {
+				if _, found := r.GitTurn["sibling"]; found {
+					t.Fatal("unrelated linked worktree was captured")
+				}
+				if _, found := r.GitTurn["app"]; !found {
+					t.Fatal("ordinary repository was excluded")
+				}
 			}
 			all := func(string) bool { return true }
 			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", all)
@@ -544,6 +564,96 @@ func TestTurnSlowCheckoutKeepsHealthyReplyChanges(t *testing.T) {
 	}
 }
 
+// PLAT-746-319: a U+202F filename produced a Go \u escape that Git rejects,
+// failing every reply capture for the newly imported project.
+func TestGitTurnKeepsUnicodeFilename(t *testing.T) {
+	f := newCrew(t)
+	name := "report 2026.md"
+	repo := "repo 2026"
+	f.repo(repo, map[string]string{name: "committed\n"})
+	paths := []string{name, repo + "/" + name}
+	for _, p := range paths {
+		f.put(p, "before\n")
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "unicode"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		f.put(p, "after\n")
+	}
+	r, err := f.s.FinishGitTurn(t.Context(), "unicode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 2 {
+		t.Fatalf("Unicode changes lost: %v %+v", err, c.Changes)
+	}
+	for _, p := range paths {
+		diff, err := f.s.CompareSaved(t.Context(), []string{r.ID}, p, "", func(string) bool { return true })
+		if err != nil || !strings.Contains(diff.Diff, "+after") || !strings.Contains(diff.Diff, "-before") {
+			t.Fatalf("saved Unicode diff: %v %+v", err, diff)
+		}
+	}
+	plan, err := f.s.PlanUndo(t.Context(), r.ID, func(string) bool { return true }, func(string) bool { return true })
+	if err != nil || len(plan.Restore) != 2 || len(plan.Skipped) != 0 {
+		t.Fatalf("Unicode Undo paths lost: %v %+v", err, plan)
+	}
+}
+
+// PLAT-746-319: a parent-folder import contained 123k backup/untracked paths.
+// Bound those sets without losing a healthy checkout or inventing deletions
+// when the ordinary-file prefix stops fitting at the next boundary.
+func TestTurnFileLimitKeepsHealthyCheckoutAndOmitsUnknownLooseDiff(t *testing.T) {
+	f := newCrew(t)
+	f.repo("huge", map[string]string{"tracked.txt": "original"})
+	f.repo("z-project", map[string]string{"edit.txt": "original"})
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("huge/untracked-%05d", i), "")
+	}
+	f.put("note.md", "before")
+	f.put("z-project/edit.txt", "before")
+	before, err := f.s.BeginGitTurn(t.Context(), "limited")
+	if err != nil || !turnFileLimited(before.BeforeCapture) || len(before.GitTurn) != 1 {
+		t.Fatalf("large untracked checkout was not bounded: %v %+v", err, before.BeforeCapture)
+	}
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("backup/copy-%05d", i), "")
+	}
+	f.put("z-project/edit.txt", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "limited")
+	if err != nil || after.Status != "partial" || after.AfterCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("large ordinary set lost healthy capture: %v %+v", err, after.AfterCapture)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("bounded prefix invented or lost changes: %v %+v", err, comparison.Changes)
+	}
+	if after.AfterCapture.ImportedBytes > 20 {
+		t.Fatalf("read large untracked/backup contents: %+v", after.AfterCapture)
+	}
+	// PR1807 P1: a nested checkout hidden by the before walk's cap must not
+	// turn pre-existing dirty bytes into this reply's changes or Undo targets.
+	f.repo("m-parent/nested", map[string]string{"old.txt": "committed"})
+	f.put("m-parent/nested/old.txt", "pre-existing dirty work")
+	before, err = f.s.BeginGitTurn(t.Context(), "recovered")
+	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("before discovery was not capped: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "backup")); err != nil {
+		t.Fatal(err)
+	}
+	f.put("z-project/edit.txt", "third")
+	after, err = f.s.FinishGitTurn(t.Context(), "recovered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err = f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("recovered checkout claimed old dirty work: %v %+v", err, comparison.Changes)
+	}
+}
+
 // PLAT-746: every reply in a large project warned "exceeded the capture size
 // limit" because files changed by others before the reply did not fit the
 // before capture, even when the reply never touched them. Warn only when a
@@ -589,6 +699,49 @@ func TestTurnCaptureLimitWarnsOnlyForFilesTheReplyChanged(t *testing.T) {
 			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
 			if err != nil || len(c.Changes) != 1 || c.Changes[0].Path != "notes.txt" {
 				t.Fatalf("want only the edited note, got %v %+v", err, c.Changes)
+			}
+		})
+	}
+}
+
+// PLAT-746-876: a Crew-root cwd must not select every nested scratch worktree.
+func TestCrewRootTurnSkipsBothDirtyLinkedWorktreesAndCapturesMainRepo(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		name := "default-root"
+		if explicit {
+			name = "explicit-root"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newCrew(t)
+			f.repo("app", map[string]string{"a.txt": "committed\n"})
+			for _, dir := range []string{"first", "second"} {
+				f.git("app", "worktree", "add", "--quiet", "-b", dir, filepath.Join(f.s.Root, dir))
+				f.put(dir+"/a.txt", "dirty before\n")
+			}
+			if explicit {
+				f.s.WorkingDir = f.s.Root
+			}
+			f.put("app/a.txt", "main before\n")
+			f.backdateAll()
+			before, err := f.s.BeginGitTurn(t.Context(), "root-reply")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, dir := range []string{"app", "first", "second"} {
+				f.put(dir+"/a.txt", "changed during reply\n")
+			}
+			after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, record := range []Record{before, after} {
+				if _, found := record.GitTurn["app"]; !found || len(record.GitTurn) != 1 {
+					t.Fatalf("capture must select only the main repo: %+v", record.GitTurn)
+				}
+			}
+			c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+			if err != nil || len(c.Changes) != 1 || c.Changes[0].Checkout == nil || c.Changes[0].Checkout.Root != "app" {
+				t.Fatalf("main change missing or scratch changes captured: %v %+v", err, c)
 			}
 		})
 	}

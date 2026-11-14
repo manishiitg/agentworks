@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,7 +13,6 @@ import (
 
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
@@ -116,19 +116,30 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 			visibleUsers[text] = count
 		}
 	}
+	currentOccurrences := make(map[string]bool)
+	for _, message := range current {
+		if message.NativeID != "" {
+			currentOccurrences[message.NativeID] = true
+		}
+	}
 	now := time.Now()
 	published := 0
 	for index, message := range refreshed {
+		occurrenceKnown := message.NativeID != "" && len(currentOccurrences) > 0
+		if occurrenceKnown && currentOccurrences[message.NativeID] {
+			continue
+		}
+
 		if includeUsers && (message.Role == "human" || message.Role == "user") {
 			text := strings.TrimSpace(builderConversationMessageText(message))
 			if text == "" {
 				continue
 			}
 			refreshedUsers[text]++
-			if refreshedUsers[text] <= currentUsers[text] || refreshedUsers[text] <= visibleUsers[text] {
+			if !occurrenceKnown && (refreshedUsers[text] <= currentUsers[text] || refreshedUsers[text] <= visibleUsers[text]) {
 				continue
 			}
-			id := fmt.Sprintf("native-transcript-sync-user-%s-%d", sessionID, index)
+			id := nativeRecoveredMessageID(sessionID, message, index, true)
 			user := agentevents.NewUserMessageEvent(0, text, "user")
 			user.Timestamp = now
 			user.Metadata = map[string]interface{}{"source": "native_transcript_sync", "message_id": id, "delivery_status": "sent_to_cli", "recovered_live": true}
@@ -149,7 +160,7 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 		}
 		refreshedCounts[key]++
 		ordinal := refreshedCounts[key]
-		if ordinal <= currentCounts[key] || ordinal <= eventCounts[key] {
+		if !occurrenceKnown && (ordinal <= currentCounts[key] || ordinal <= eventCounts[key]) {
 			continue
 		}
 
@@ -171,7 +182,7 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 		agentEvent.SessionID = sessionID
 		agentEvent.Component = "coding_agent"
 		api.eventStore.AddEvent(sessionID, storeevents.Event{
-			ID:              fmt.Sprintf("native-transcript-sync-%s-%d", sessionID, index),
+			ID:              nativeRecoveredMessageID(sessionID, message, index, false),
 			Type:            string(agentevents.StreamingChunk),
 			Timestamp:       now,
 			SessionID:       sessionID,
@@ -184,6 +195,19 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID stri
 		log.Printf("[CHAT_HISTORY] Published recovered native assistant reply to live chat session=%s history_index=%d chars=%d", sessionID, index, len(text))
 	}
 	return published
+}
+
+// A display index moves when the bounded journal window slides; the source
+// occurrence does not. Hash it so journal paths/content never enter event IDs.
+func nativeRecoveredMessageID(sessionID string, message builderConversationMessage, index int, user bool) string {
+	prefix := "native-transcript-sync-"
+	if user {
+		prefix += "user-"
+	}
+	if message.NativeID != "" {
+		return fmt.Sprintf("%s%s-%x", prefix, sessionID, sha256.Sum256([]byte(message.NativeID)))
+	}
+	return fmt.Sprintf("%s%s-%d", prefix, sessionID, index)
 }
 
 func builderConversationRoleIsAssistant(role string) bool {
@@ -354,11 +378,8 @@ func readNativeTranscriptMessagesForHome(provider, nativeSessionID, workingDir s
 		if nativeSessionID == "" {
 			return nil, time.Time{}, "", false, nil
 		}
-		transcript, found, err := agycli.ReadNativeTranscript(nativeSessionID, accountHome...)
-		if err != nil || !found {
-			return nil, time.Time{}, "", false, err
-		}
-		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
+		// A recent window, extended incrementally (native_history_agy.go), like the Claude and Codex journals.
+		return readRecentAgyTranscript(nativeSessionID, accountHome...)
 	case "claude-code":
 		if nativeSessionID == "" || workingDir == "" {
 			return nil, time.Time{}, "", false, nil
@@ -534,75 +555,57 @@ func claudeNativeTranscriptProjectSlug(workingDir string) string {
 // since, converted to the same builderConversationMessage shape the rest of
 // the builder conversation log already uses.
 func readNewClaudeTranscriptMessages(path string, since time.Time) ([]builderConversationMessage, time.Time, error) {
-	data, err := os.ReadFile(path)
+	return readRecentNativeTranscript(path, "claude-code", since)
+}
+
+func parseClaudeTranscriptLine(line []byte) (builderConversationMessage, time.Time, bool) {
+	var entry claudeTranscriptEntry
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	if entry.Type != "user" && entry.Type != "assistant" && entry.Type != "attachment" {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	// Native helper notifications use a user-role storage envelope. They
+	// never represent a person typing into the terminal and must not enter
+	// ObserveNativeInput or its human-message recovery path.
+	if entry.Type == "user" && ((entry.Origin != nil && entry.Origin.Kind == "task-notification") || entry.TurnOrigin == "task_notification") {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, entry.Timestamp)
 	if err != nil {
-		return nil, time.Time{}, err
+		return builderConversationMessage{}, time.Time{}, false
 	}
 
-	var messages []builderConversationMessage
-	maxTimestamp := since
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var entry claudeTranscriptEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-		if entry.Type != "user" && entry.Type != "assistant" && entry.Type != "attachment" {
-			continue
-		}
-		// Native helper notifications use a user-role storage envelope. They
-		// never represent a person typing into the terminal and must not enter
-		// ObserveNativeInput or its human-message recovery path.
-		if entry.Type == "user" && ((entry.Origin != nil && entry.Origin.Kind == "task-notification") || entry.TurnOrigin == "task_notification") {
-			continue
-		}
-		ts, err := time.Parse(time.RFC3339Nano, entry.Timestamp)
-		if err != nil {
-			continue
-		}
-		if !ts.After(since) {
-			continue
-		}
-		role := "ai"
-		if entry.Type == "user" {
-			role = "human"
-		}
-		text := ""
-		if entry.Type == "attachment" {
-			var attachment claudeTranscriptAttachment
-			if len(entry.Attachment) == 0 || json.Unmarshal(entry.Attachment, &attachment) != nil ||
-				attachment.Type != "queued_command" || !attachment.HumanTurn || attachment.Origin == nil ||
-				!strings.EqualFold(strings.TrimSpace(attachment.Origin.Kind), "human") {
-				continue
-			}
-			role = "human"
-			text = unwrapClaudeQueuedCommandPrompt(attachment.Prompt)
-		} else {
-			if len(entry.Message) == 0 {
-				continue
-			}
-			var msg claudeTranscriptMessage
-			if err := json.Unmarshal(entry.Message, &msg); err != nil {
-				continue
-			}
-			text = extractClaudeTranscriptText(msg.Content)
-		}
-		if text == "" || isClaudeLocalCommandMessage(role, text) {
-			continue
-		}
-
-		messages = append(messages, builderConversationMessage{
-			Role:  role,
-			Parts: []builderConversationPart{{Text: text}},
-		})
-		if ts.After(maxTimestamp) {
-			maxTimestamp = ts
-		}
+	role := "ai"
+	if entry.Type == "user" {
+		role = "human"
 	}
-	return messages, maxTimestamp, nil
+	text := ""
+	if entry.Type == "attachment" {
+		var attachment claudeTranscriptAttachment
+		if len(entry.Attachment) == 0 || json.Unmarshal(entry.Attachment, &attachment) != nil ||
+			attachment.Type != "queued_command" || !attachment.HumanTurn || attachment.Origin == nil ||
+			!strings.EqualFold(strings.TrimSpace(attachment.Origin.Kind), "human") {
+			return builderConversationMessage{}, time.Time{}, false
+		}
+		role = "human"
+		text = unwrapClaudeQueuedCommandPrompt(attachment.Prompt)
+	} else {
+		if len(entry.Message) == 0 {
+			return builderConversationMessage{}, time.Time{}, false
+		}
+		var msg claudeTranscriptMessage
+		if err := json.Unmarshal(entry.Message, &msg); err != nil {
+			return builderConversationMessage{}, time.Time{}, false
+		}
+		text = extractClaudeTranscriptText(msg.Content)
+	}
+	if text == "" || isClaudeLocalCommandMessage(role, text) {
+		return builderConversationMessage{}, time.Time{}, false
+	}
+
+	return builderConversationMessage{Role: role, Parts: []builderConversationPart{{Text: text}}}, ts, true
 }
 
 // Claude Code records a prompt typed while the agent is busy as a

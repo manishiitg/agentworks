@@ -46,7 +46,7 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
     const origin = getOrigin();
     if (!origin || event.sender !== getWindow()?.webContents || !isAppFrame(event.senderFrame, event.sender, getAppOrigin())) throw new Error('Use the main app window.');
     if (id !== 'local' && !/^[a-f0-9]{32}$/.test(id)) throw new Error('Unknown connection.');
-    if (typeof route !== 'string' || !/^\/(?:crew(?:\/projects\/[a-zA-Z0-9_-]+)?|workflows(?:\/[a-zA-Z0-9_-]+)?|goals|home)$/.test(route)) throw new Error('Unknown project.');
+    if (typeof route !== 'string' || !/^\/(?:crew(?:\/projects\/[a-zA-Z0-9_-]+(?:\/dashboard)?)?|workflows(?:\/[a-zA-Z0-9_-]+)?|goals|home)(?:\?(?:agent|view)=[a-zA-Z0-9_%.-]+(?:&(?:agent|view)=[a-zA-Z0-9_%.-]+)*)?$/.test(route)) throw new Error('Unknown project.');
     connection = id;
     // Reopening discards per-server singleton caches and event readers. Work
     // continues on its server. The connection never comes from an app URL.

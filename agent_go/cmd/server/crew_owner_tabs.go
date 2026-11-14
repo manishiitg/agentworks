@@ -102,19 +102,6 @@ func crewTabWriteError(ctx context.Context, caller, profile, key, workspace stri
 	return nil
 }
 
-// Called after project admission, for the default address only. The main
-// owner's address keeps routing channels; a co-owner's default is their own
-// durable named tab. Rotating its conversation keeps the same owner and name.
-func crewOwnerDefaultBinding(caller string, binding productConversationBinding) productConversationBinding {
-	if owner, ok := crewProjectOwnerID(binding.WorkspacePath); ok && owner != caller && crewIsCoOwner(binding.WorkspacePath, caller) {
-		binding.ProjectMainChatKey = crewOwnerDefaultChatKey(binding.ResourceID, caller)
-		if binding.ConversationKey == binding.ResourceID {
-			binding.ConversationKey = binding.ProjectMainChatKey
-		}
-	}
-	return binding
-}
-
 func crewConversationTabAccess(ctx context.Context, caller string, profile agentprofiles.Profile, conversation ProductConversationRecord) (string, string, bool) {
 	people := crewOwnerTabPeople(caller, conversation.WorkspacePath)
 	if len(people) == 0 {
@@ -237,6 +224,9 @@ func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) 
 }
 
 func crewQueryTabWriteError(ctx context.Context, caller, profile, workspace, session string) error {
+	if refusal := chatTerminalTurnRefusal(session); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
 	if len(crewOwnerTabPeople(caller, workspace)) == 0 {
 		return nil
 	}

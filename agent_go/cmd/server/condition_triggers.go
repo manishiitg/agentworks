@@ -534,7 +534,10 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	if cfg.Target.Kind != "agent" {
 		return c.dispatchTarget(ctx, job, caller, cfg, ev, key)
 	}
-	chatID := firstNonEmptyTrimmed(cfg.Target.ChatID, codeChatMainName)
+	chatID := strings.TrimSpace(cfg.Target.ChatID)
+	if cfg.GitHubPR == nil && (chatID == "" || chatID == codeChatMainName) {
+		return "", conditiontrigger.PermanentError{Err: errors.New("choose an existing agent for this Watcher")}
+	}
 	chatKey := job.ProjectID
 	// chat_id "new" opens one side chat (tab) per event. Its id comes from the event's stable key, so a
 	// retried dispatch finds the same tab instead of opening another.
@@ -543,11 +546,11 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		sum := sha256.Sum256([]byte(job.ID() + "|" + key))
 		chatID = hex.EncodeToString(sum[:4])
 	}
-	// atChatLimit: the project has no room for another side chat, so a "new chat" event goes to the main
-	// chat with a note saying why instead of being refused (a watcher must not dead-end after its Nth match).
-	atChatLimit := false
 	if cfg.GitHubPR != nil {
 		chatKey = cfg.GitHubPR.ChatKey
+		if !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
+			return "", conditiontrigger.PermanentError{Err: errors.New("the original PR Watcher agent was removed")}
+		}
 	} else if chatID != codeChatMainName {
 		chatKey += codeChatSideMarker + chatID
 		switch {
@@ -556,9 +559,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 			return "", conditiontrigger.PermanentError{Err: errors.New("watcher target chat was closed or deleted; open the watcher's chat setting and choose another chat")}
 		default:
 			if sideChatCount(ctx, job) >= externalCrewMaxSideChats {
-				atChatLimit = true
-				newTab = false
-				chatID, chatKey = codeChatMainName, job.ProjectID
+				return "", conditiontrigger.PermanentError{Err: errors.New("this Crew has no room for a new agent; choose an existing agent for the Watcher or remove an unused one")}
 			}
 		}
 	}
@@ -587,9 +588,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		kind = "untrusted email data"
 	}
 	text := cfg.Target.Message + "\n\n[Condition event " + ev.ID + "; " + kind + "]\n" + string(payload)
-	if atChatLimit {
-		text = fmt.Sprintf("[This watcher opens a new chat for each event, but the project already has %d side chats, so this event arrived in the main chat. Close a side chat to give it room.]\n\n", externalCrewMaxSideChats) + text
-	}
+
 	receipt, err := c.s.api.sendAgentMessage(ctx, job.UserID, caller, target, text, "", key)
 	if err != nil {
 		return "", err

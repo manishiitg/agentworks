@@ -1,8 +1,7 @@
 import { stripRetiredLLMFallbacks } from '../utils/retiredLLMFallbacks'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { LLMConfiguration, AgentLLMConfiguration, SavedLLM, LLMModel, DelegationTierConfig, LLMProvider } from '../services/api-types'
-import type { DelegationTierDefaultsStatus } from '../utils/llmOnboarding'
+import type { LLMConfiguration, AgentLLMConfiguration, SavedLLM, LLMModel, LLMProvider } from '../services/api-types'
 import type { LLMOption } from '../types/llm'
 import type { StoreActions } from './types'
 import { llmConfigService, type ModelMetadata, type ProviderManifestEntry, type DynamicModelsResponse } from '../services/llm-config-api'
@@ -168,12 +167,6 @@ interface LLMState extends StoreActions {
   getProviderInfo: (id: string) => ProviderManifestEntry | undefined
   getProviderDynamicModels: (provider: string, full?: boolean) => Promise<DynamicModelsResponse | null>
 
-  // Delegation tier configuration
-  delegationTierConfig: DelegationTierConfig | null
-  delegationTierDefaultsStatus: DelegationTierDefaultsStatus
-  setDelegationTierConfig: (config: DelegationTierConfig | null) => void
-  loadDelegationTierDefaults: () => Promise<void>
-
   // Lock state from backend (not persisted; re-read on each load)
   llmConfigLocked: boolean
   lockedProviders: string[]
@@ -270,10 +263,6 @@ export const useLLMStore = create<LLMState>()(
           }
         },
 
-        // Delegation tier config
-        delegationTierConfig: null,
-        delegationTierDefaultsStatus: 'idle',
-
         // Supported providers (always load fresh from backend, default to all)
         supportedProviders: SUPPORTED_PROVIDERS_FALLBACK,
         providerCapabilities: {},
@@ -327,49 +316,6 @@ export const useLLMStore = create<LLMState>()(
 
         setShowLLMModal: (show) => {
           set({ showLLMModal: show })
-        },
-
-        setDelegationTierConfig: (config) => {
-          set({ delegationTierConfig: config })
-          // Fire-and-forget sync to server so bot sessions can use it
-          if (config) {
-            agentApi.saveDelegationTierConfig(
-              config as unknown as Record<string, unknown>,
-            ).catch(() => {})
-          }
-        },
-
-        loadDelegationTierDefaults: async () => {
-          if (get().delegationTierDefaultsStatus === 'loading') return
-          set({ delegationTierDefaultsStatus: 'loading' })
-          try {
-            // Try to load saved config from workspace file first
-            try {
-              const saved = await agentApi.getDelegationTierConfig()
-              const hasSaved = saved && (saved.provider || saved.main || saved.high || saved.medium || saved.low ||
-                (saved.custom && Object.keys(saved.custom as object).length > 0))
-              if (hasSaved) {
-                set({
-                  delegationTierConfig: saved as unknown as DelegationTierConfig,
-                  delegationTierDefaultsStatus: 'loaded',
-                })
-                return
-              }
-            } catch {
-              // file not saved yet, fall through to env var defaults
-            }
-            // Fall back to env var defaults
-            const defaults = await llmConfigService.getDelegationTierDefaults()
-            const hasDefaults = defaults.main || defaults.high || defaults.medium || defaults.low ||
-              (defaults.custom && Object.keys(defaults.custom).length > 0)
-            if (hasDefaults) {
-              set({ delegationTierConfig: defaults })
-            }
-            set({ delegationTierDefaultsStatus: 'loaded' })
-          } catch (error) {
-            console.warn('Failed to load delegation tier defaults:', error)
-            set({ delegationTierDefaultsStatus: 'error' })
-          }
         },
 
         // Library management
@@ -703,7 +649,6 @@ export const useLLMStore = create<LLMState>()(
           workflowPrimaryConfig: stripRetiredLLMFallbacks(state.workflowPrimaryConfig),
           workflowAgentConfig: sanitizeAgentConfig(state.workflowAgentConfig),
           // showLLMModal (the Providers page) is not persisted: people land on their product.
-          delegationTierConfig: stripRetiredLLMFallbacks(state.delegationTierConfig),
           // DO NOT persist defaultsLoaded - this should be reset on each app load
         }),
         // Migration: copy legacy config to mode-specific configs on first load
@@ -711,7 +656,6 @@ export const useLLMStore = create<LLMState>()(
           if (state) {
             // Older builds persisted the Providers page as open.
             state.showLLMModal = false
-            state.delegationTierConfig = stripRetiredLLMFallbacks(state.delegationTierConfig)
             state.primaryConfig = normalizePrimaryConfig(state.primaryConfig)
             state.chatPrimaryConfig = normalizePrimaryConfig(state.chatPrimaryConfig)
             state.workflowPrimaryConfig = normalizePrimaryConfig(state.workflowPrimaryConfig)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -27,7 +29,7 @@ var crewTeamJoining sync.Map
 func crewTeamJoinKey(connection, project string) string { return connection + "\x00" + project }
 
 // crewTeamDefaultJoinFolder is ~/AgentWorks/<Crew name>, with the name made safe for a folder: the shared files keep
-// the Crew's own layout inside it (team/…, or the Whole Crew).
+// the Crew's own layout inside it (team/…, code/…).
 func crewTeamDefaultJoinFolder(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -46,9 +48,11 @@ func crewTeamDefaultJoinFolder(name string) (string, error) {
 	return filepath.Join(home, "AgentWorks", clean), nil
 }
 
-// crewTeamJoinFolderOK: an absolute folder outside the app's private state that is new or empty, so the team's files
-// never merge into unrelated local work.
-func crewTeamJoinFolderOK(folder string) (string, error) {
+// crewTeamJoinFolderOK: an absolute folder outside the app's private state. It may hold the person's own files when
+// the Team shares named folders (owner, 10 Nov): only those folders, skills/ and the setup file sync, so each must be
+// absent or empty and everything else stays on this Mac, untouched and never uploaded.
+// If the shared folders are not known yet, require a new or empty folder.
+func crewTeamJoinFolderOK(folder string, shared *crewTeamFolder) (string, error) {
 	if !filepath.IsAbs(folder) {
 		return "", fmt.Errorf("choose a folder on this Mac")
 	}
@@ -71,18 +75,75 @@ func crewTeamJoinFolderOK(folder string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(entries) > 0 {
-		return "", fmt.Errorf("choose an empty folder, so your other files stay out of the team's folder")
+	if len(entries) == 0 {
+		return folder, nil
+	}
+	if shared == nil || len(shared.Folders) == 0 {
+		return "", fmt.Errorf("the shared folders are not known yet; choose an empty folder so your other files stay untouched")
+	}
+	for _, rel := range append(slices.Clone(shared.Folders), "skills", crewTeamSetupFile) {
+		path := filepath.Join(folder, filepath.FromSlash(rel))
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("this folder already has %s, which the team uses; choose another folder", rel)
+		}
+		if inside, err := os.ReadDir(path); err != nil {
+			return "", err
+		} else if len(inside) > 0 {
+			return "", fmt.Errorf("this folder already has files in %s/, which the team shares; choose a folder without %s/ or move those files first", rel, rel)
+		}
 	}
 	return folder, nil
+}
+
+// crewTeamJoinShared is what the Team shares, from the invite (or the Team, when already a member); nil if unknown.
+func crewTeamJoinShared(r *http.Request, user string, c desktopConnection, project string) *crewTeamFolder {
+	var list struct {
+		Invites []crewTeamInvite `json:"invites"`
+	}
+	if crewTeamRemoteJSON(r.Context(), user, c, http.MethodGet, "/api/crew-teams", nil, &list) == nil {
+		for _, invite := range list.Invites {
+			if invite.ProjectID == project && invite.CanAddToMac {
+				return &invite.Folder
+			}
+		}
+	}
+	var team crewTeam
+	if crewTeamRemoteJSON(r.Context(), user, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &team) == nil && team.Folder.shared() {
+		return &team.Folder
+	}
+	return nil
 }
 
 func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
 	}
+	api.joinCrewTeamOnMac(w, r)
+}
+
+// joinCrewTeamOnMac is called only by the desktop gate or an admitted own chat.
+func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	connectionID, project := mux.Vars(r)["connection"], mux.Vars(r)["project"]
+	if r.Method == http.MethodPost {
+		request := uuid.NewString()
+		capture := &crewTeamJoinResponse{ResponseWriter: w}
+		w = capture
+		logProject := ""
+		if crewTeamClientID(project) {
+			logProject = project
+		}
+		log.Printf("[TEAM_JOIN] request_id=%s project=%s event=started", request, logProject)
+		defer capture.finish(request, logProject)
+		r = r.WithContext(context.WithValue(r.Context(), crewTeamJoinLogKey{}, request))
+	}
 	if !crewTeamClientID(project) {
 		externalError(w, 400, "invalid_team", "Choose a team invite.")
 		return
@@ -93,13 +154,16 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 			externalError(w, 409, "folder_unavailable", err.Error())
 			return
 		}
-		externalJSON(w, map[string]any{"folder": folder})
+		targets, err := api.crewTeamJoinTargets(r.Context(), claims)
+		if err != nil {
+			externalError(w, 409, "projects_unavailable", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"folder": folder, "projects": targets, "instructions_notice": crewTeamJoinInstructionsNotice})
 		return
 	}
-	var input struct {
-		Folder string `json:"folder"`
-	}
-	if json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&input) != nil {
+	var input crewTeamJoinChoice
+	if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&input) != nil {
 		externalError(w, 400, "invalid_request", "Choose where the team's folder goes on this Mac.")
 		return
 	}
@@ -108,7 +172,64 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 		externalError(w, 409, "team_connection_required", err.Error())
 		return
 	}
+	var agents *[]crewTeamJoinAgent
+	skillRoot := ""
+	chatInstructions := ""
+	backupNote := ""
+	projectName := ""
+	if input.LocalProject != "" {
+		target, roots, err := api.crewTeamJoinTarget(r.Context(), claims, input.LocalProject)
+		if err != nil {
+			externalError(w, 400, "invalid_project", err.Error())
+			return
+		}
+		if !target.CanJoin {
+			externalError(w, 409, "project_online", target.Reason)
+			return
+		}
+		if !input.Confirm {
+			externalError(w, 409, "instructions_notice", crewTeamJoinInstructionsNotice)
+			return
+		}
+		if copy := crewTeamMemberCopy(project); copy != "" && copy != input.LocalProject {
+			externalError(w, 409, "team_copy_exists", "This Team already has a project on this Mac. Open that project instead.")
+			return
+		}
+		selected := map[string]bool{}
+		for _, key := range input.Agents {
+			selected[key] = true
+		}
+		choices := []crewTeamJoinAgent{}
+		for _, a := range target.Agents {
+			choices = append(choices, crewTeamJoinAgent{Tab: a.Tab, Name: a.Name, InTeam: selected[a.Tab]})
+			delete(selected, a.Tab)
+		}
+		if len(selected) > 0 {
+			externalError(w, 400, "invalid_agents", "Choose agents from the selected project.")
+			return
+		}
+		agents = &choices
+		input.Folder = roots.Files
+		skillRoot = filepath.Join(roots.Resources, "skills")
+		chatInstructions = target.chatInstructions
+		projectName = target.Name
+	}
+
+	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
+	// on the same card instead of having joined with no folder.
+	shared := crewTeamJoinShared(r, claims.UserID, c, project)
+	if input.LocalProject == "" && input.Folder != "" {
+		if _, err := crewTeamJoinFolderOK(input.Folder, shared); err != nil {
+			externalError(w, 400, "invalid_folder", strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".")
+			return
+		}
+	}
 	key := crewTeamJoinKey(c.ID, project)
+	kind := "new"
+	if input.LocalProject != "" {
+		kind = "existing"
+	}
+	log.Printf("[TEAM_JOIN] request_id=%s project=%s event=target_chosen target=%s local_project=%s", crewTeamJoinRequestID(r.Context()), project, kind, input.LocalProject)
 	crewTeamJoining.Store(key, true)
 	defer crewTeamJoining.Delete(key)
 	var team crewTeam
@@ -128,7 +249,10 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 				return
 			}
 		}
-		if folder, err = crewTeamJoinFolderOK(folder); err != nil {
+		if input.LocalProject == "" {
+			folder, err = crewTeamJoinFolderOK(folder, &team.Folder)
+		}
+		if err != nil {
 			externalError(w, 400, "invalid_folder", "Joined the team, but "+err.Error()+". Pick another folder in the team's Sync view.")
 			return
 		}
@@ -137,24 +261,119 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 			err = os.MkdirAll(dir, 0o700)
 		}
 		if err == nil {
-			err = saveCrewTeamLocal(dir, crewTeamLocal{FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
-				Root: folder, Status: "pending"})
+			if skillRoot == "" {
+				skillRoot = filepath.Join(folder, ".agentworks", "skills")
+			}
+			b := crewTeamLocal{SkillRoot: skillRoot, FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
+				Root: folder, LocalProject: input.LocalProject, Status: "pending", Mounted: true, ProtectPrivate: input.LocalProject != ""}
+			if input.LocalProject != "" {
+				projectPresent := fileExists(filepath.Join(folder, "PROJECT_INSTRUCTIONS.md"))
+				setupPresent := fileExists(filepath.Join(folder, crewTeamSetupFile))
+				err = backupCrewTeamJoinSetup(folder, chatInstructions)
+				if err == nil {
+					log.Printf("[TEAM_JOIN] request_id=%s project=%s local_project=%s event=backups_saved chat_settings=true project_file_present=%t setup_file_present=%t", crewTeamJoinRequestID(r.Context()), project, input.LocalProject, projectPresent, setupPresent)
+					backupNote = crewTeamJoinBackupNote(projectName)
+				} else {
+					backupNote = " Some instruction files may already be in (before team) backups; review them before retrying with another project."
+				}
+			}
+			if err == nil {
+				err = b.reconcileMounts(team.Folder)
+			}
+			if err == nil {
+				err = saveCrewTeamLocal(dir, b)
+			}
 		}
 		if err != nil {
-			externalError(w, 500, "folder_unavailable", "Joined the team, but its folder could not be set up on this Mac: "+err.Error())
+			externalError(w, 500, "folder_unavailable", "Joined the team, but its folder could not be set up on this Mac: "+err.Error()+backupNote)
 			return
 		}
 		out["folder"] = folder
 	}
 	// One working copy (owner, 5 Nov): after Add to my Mac this member's agents in this Crew work on this Mac.
 	folder, _ := out["folder"].(string)
-	local, err := api.addCrewTeamToMac(r.Context(), claims, c, project, team, folder)
+	local, err := api.addCrewTeamToMacChosen(r.Context(), claims, c, project, team, folder, input.LocalProject, agents)
 	if err != nil {
 		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_failed reason=%q", project, err)
-		externalError(w, 409, "mac_copy_failed", "Joined the team, but its Crew could not be set up on this Mac: "+err.Error())
+		externalError(w, 409, "mac_copy_failed", "Joined the team, but its Crew could not be set up on this Mac: "+err.Error()+backupNote)
 		return
 	}
 	out["project_id"], out["where"] = local, "mac"
+	log.Printf("[TEAM_JOIN] request_id=%s project=%s local_project=%s event=paired", crewTeamJoinRequestID(r.Context()), project, local)
 	log.Printf("[CREW_TEAM_LOCAL] project=%s event=joined_on_mac folder_set=%t", project, out["folder"] != nil)
 	externalJSON(w, out)
+}
+
+// Both UI and chat submit the same target/agent choices to the join handler.
+type crewTeamJoinChoice struct {
+	Folder       string   `json:"folder"`
+	LocalProject string   `json:"local_project,omitempty"`
+	Agents       []string `json:"agents"`
+	Confirm      bool     `json:"confirm"`
+}
+
+func backupCrewTeamJoinSetup(root, chatInstructions string) error {
+	for n := 1; ; n++ {
+		suffix := " (before team)"
+		if n > 1 {
+			suffix = fmt.Sprintf(" (before team %d)", n)
+		}
+		backup := filepath.Join(root, "CHAT_INSTRUCTIONS"+suffix+".md")
+		f, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString(chatInstructions)
+		closeErr := f.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		break
+	}
+
+	for _, name := range []string{"PROJECT_INSTRUCTIONS.md", crewTeamSetupFile} {
+		from := filepath.Join(root, name)
+		info, err := os.Lstat(from)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("the existing %s must be a regular file", name)
+		}
+		ext := filepath.Ext(name)
+		base := strings.TrimSuffix(name, ext)
+		for n := 1; ; n++ {
+			suffix := " (before team)"
+			if n > 1 {
+				suffix = fmt.Sprintf(" (before team %d)", n)
+			}
+			to := filepath.Join(root, base+suffix+ext)
+			if _, err = os.Lstat(to); err == nil {
+				continue
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+			if err = os.Rename(from, to); err != nil {
+				return err
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func crewTeamJoinBackupNote(existing string) string {
+	if existing == "" {
+		return ""
+	}
+	return fmt.Sprintf(" Your original project and chat instructions have (before team) backups in %q; keep them if you retry with another project.", existing)
 }

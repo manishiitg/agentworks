@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -58,6 +59,8 @@ type ImageGenerationConfig struct {
 	Primary *ImageGenerationModelConfig `json:"primary,omitempty"`
 }
 
+var workspaceReadClient = &http.Client{Timeout: 5 * time.Second}
+
 // readWorkspaceFile reads a file from the workspace API using the given workspaceURL.
 // Returns (content, true, nil) if found, ("", false, nil) if not found, or ("", false, err) on error.
 func readWorkspaceFile(ctx context.Context, workspaceURL, filePath string) (string, bool, error) {
@@ -74,8 +77,10 @@ func readWorkspaceFile(ctx context.Context, workspaceURL, filePath string) (stri
 		return "", false, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	started := time.Now()
+	defer func() { workspacereads.Record(ctx, filePath, time.Since(started)) }()
+	// One shared client: a new client per read opened a new connection for every read.
+	resp, err := workspaceReadClient.Do(req)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to call workspace API: %w", err)
 	}
@@ -162,20 +167,6 @@ func writeWorkspaceFile(ctx context.Context, workspaceURL, filePath, content str
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
-}
-
-// LoadDelegationTierConfig reads delegation tier config (plain JSON) from the workspace.
-// Returns (nil, false, nil) if the file doesn't exist.
-func LoadDelegationTierConfig(ctx context.Context, workspaceURL string) (map[string]interface{}, bool, error) {
-	content, exists, err := readWorkspaceFile(ctx, workspaceURL, "config/delegation-tier-config.json")
-	if err != nil || !exists {
-		return nil, exists, err
-	}
-	var cfg map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &cfg); err != nil {
-		return nil, false, fmt.Errorf("failed to parse tier config: %w", err)
-	}
-	return cfg, true, nil
 }
 
 // MultiAgentChatCapabilities is the typed view of the `capabilities` block in

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
+import { assistantReplyText, pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 
 // The rail is the hierarchy: every agent and sub-agent owns its own terminal.
@@ -206,6 +206,15 @@ describe('selectTerminalEvents — owned terminal (workflow step, message-sequen
 })
 
 describe('selectTerminalEvents — main agent', () => {
+  it('places an incoming queued AgentBridge card at its original time, not the pending-send tail (PLAT-746)', () => {
+    const incoming = evt({
+      id: 'incoming', session_id: 's1', type: 'user_message', timestamp: '2026-11-11T10:00:00Z',
+      data: { data: { content: 'Earlier incoming message', metadata: { provisional: true, source: 'agent_message', client_message_id: 'incoming' } } } as never,
+    })
+    const newer = evt({ id: 'reply', session_id: 's1', type: 'unified_completion', timestamp: '2026-11-11T11:00:00Z', data: { data: { final_result: 'Newer reply' } } as never })
+    expect(selectTerminalEvents([newer, incoming], null).map(event => event.id)).toEqual(['incoming', 'reply'])
+  })
+
   it.each([null, terminal({ session_id: 's1', owner_id: 'main:s1', execution_kind: 'main_agent' })])(
     'keeps quick sends in order while the first durable echo replaces its pending row',
     (main) => {
@@ -549,6 +558,22 @@ describe('buildTranscriptItems', () => {
     ])
     expect(items.map(i => i.kind)).toEqual(['event', 'tools', 'event'])
     expect((items[1] as Extract<TranscriptItem, { kind: 'tools' }>).toolCount).toBe(2)
+  })
+
+  // PLAT-746-898: Codex wrote its reply while a command was still running;
+  // the command's end landed after the text and its card lost its input.
+  it('attaches a tool end that arrives after reply text to the card holding its start', () => {
+    const call = { tool_call_id: 'exec-1', tool_name: 'exec_command' }
+    const items = buildTranscriptItems([
+      evt({ id: 't1', session_id: 's1', type: 'tool_call_start', data: { data: { ...call, tool_params: { arguments: '{"cmd":"git status"}' } } } }),
+      evt({ id: 'm1', session_id: 's1', type: 'agent_message' }),
+      evt({ id: 't2', session_id: 's1', type: 'tool_call_end', data: { data: { ...call, result: '' } } }),
+    ])
+    expect(items.map(i => i.kind)).toEqual(['tools', 'event'])
+    const pairs = pairToolCalls((items[0] as Extract<TranscriptItem, { kind: 'tools' }>).events)
+    expect(pairs).toHaveLength(1)
+    expect(pairs[0].status).toBe('ok')
+    expect(pairs[0].args).toContain('git status')
   })
 
   it('folds a tool end whose start was not retained into the batch instead of a standalone card', () => {
@@ -1529,4 +1554,77 @@ describe('steered question and one-chunk reply in one batch', () => {
     const rows = items.map(item => item.kind === 'event' ? item.event.type : item.kind)
     expect(rows).toEqual(['user_message', 'unified_completion'])
   })
+})
+
+
+it('keeps unframed completion at its own server sequence without changing its append cursor', () => {
+  const first = evt({ id: 'first', session_id: 's1', type: 'user_message', sequence: 1, data: { content: 'Start' } as never })
+  const steer = evt({ id: 'steer', session_id: 's1', type: 'user_message', sequence: 10, data: { content: 'Follow-up' } as never })
+  const reply = evt({ id: 'reply', session_id: 's1', type: 'agent_end', sequence: 20, generation_id: 'stream-start', generation_start_sequence: 2,
+    data: { result: '```ts\nconst name = 1\n```', status: 'completed' } as never })
+  const next = evt({ id: 'next', session_id: 's1', type: 'agent_end', sequence: 30, generation_id: 'next-start', generation_start_sequence: 21,
+    data: { result: 'New generation', status: 'completed' } as never })
+  const restored = JSON.parse(JSON.stringify([first, steer, reply, next])) as PollingEvent[]
+  expect(selectTerminalEvents(restored, null).map(event => event.id)).toEqual(['first', 'steer', 'reply', 'next'])
+  expect(restored[2].sequence).toBe(20)
+  expect((restored[2].data as unknown as { result: string }).result).toBe('```ts\nconst name = 1\n```')
+})
+
+// PLAT-746-928: block A began before delivery and finishes intact above the
+// question; block B begins afterwards, below it, both live and JSON restored.
+it('keeps native blocks whole around a delivered steer and hides only the aggregate reply', () => {
+  const snapshot = (id: string, start: number, sequence: number, block: string, content: string) => evt({
+    id, session_id: 's1', type: 'streaming_chunk', execution_id: 'main:s1', execution_kind: 'main_agent',
+    generation_id: `start-${block}`, generation_start_sequence: start, sequence,
+    data: { data: { content, source: 'transcript', is_delta: false, metadata: { assistant_block_id: block, assistant_block_phase: 'end' } } } as never,
+  })
+  const first = '    Indented code stays exact.\n\nBefore delivery.\n\n```ts\nconst value = 1\n```\nThis block finishes intact.'
+  const events = [
+    snapshot('a', 2, 6, 'native-a', first),
+    evt({ id: 'steer', session_id: 's1', type: 'user_message', sequence: 4, data: { data: { content: 'Change direction', metadata: { delivery_status: 'sent_to_cli' } } } as never }),
+    snapshot('b', 7, 9, 'native-b', 'After delivery.'),
+    evt({ id: 'done', session_id: 's1', type: 'unified_completion', sequence: 10, generation_id: 'start-native-b', generation_start_sequence: 7, reply_blocks_complete: true,
+      data: { data: { final_result: `${first}\n\nAfter delivery.`, status: 'completed' } } as never }),
+  ]
+  const aggregate = evt({ id: 'aggregate', session_id: 's1', type: 'llm_generation_end', sequence: 9.5,
+    generation_id: 'start-native-b', generation_start_sequence: 7, reply_blocks_complete: true,
+    data: { data: { content: `${first}\n\nAfter delivery.` } } as never })
+  const realEnvelope = [...events.slice(0, 3), aggregate, events[3]]
+  for (const rows of [realEnvelope, JSON.parse(JSON.stringify(realEnvelope)) as PollingEvent[]]) {
+    const selected = selectTerminalEvents(rows, undefined)
+    const items = buildTranscriptItems(selected).filter(item => item.kind === 'event')
+    expect(items.map(item => item.kind === 'event' ? item.event.id : '')).toEqual(['a-update', 'steer', 'b-update'])
+    const a = items[0]
+    expect(a.kind === 'event' && assistantReplyText(a.event)).toBe(first)
+  }
+  const mixed = [...events.slice(0,3), { ...events[3], reply_blocks_complete: false, reply_remainder: 'Only the unframed remainder.' }]
+  const mixedItems = buildTranscriptItems(selectTerminalEvents(mixed, undefined)).filter(item => item.kind === 'event')
+  expect(mixedItems.map(item => item.kind === 'event' ? item.event.id : '')).toEqual(['a-update','steer','b-update','done'])
+  const remainder = mixedItems[3]
+  expect(remainder.kind === 'event' && assistantReplyText(remainder.event)).toBe('Only the unframed remainder.')
+  // Identical text in different native blocks is not a duplicate response.
+  const twins = [snapshot('same-a', 2, 3, 'a', 'Done.'), snapshot('same-b', 4, 5, 'b', 'Done.')]
+  expect(buildTranscriptItems(selectTerminalEvents(twins, undefined)).filter(item => item.kind === 'event')).toHaveLength(2)
+})
+
+// PLAT-746-943: Cursor supplies thinking and tools before a final completion,
+// but no native block ID. An old generation start must not lift the final
+// answer above that generation's later thinking/steps, live or on reload.
+it('keeps Cursor thinking and tool errors before its unframed final answer live and restored', () => {
+  const shape = { session_id: 'cursor-chat', execution_id: 'main:cursor-chat', execution_kind: 'main_agent' }
+  const rows = [
+    evt({ ...shape, id: 'question', type: 'user_message', sequence: 10, data: { data: { content: 'Finish the work' } } as never }),
+    evt({ ...shape, id: 'thinking-early', type: 'conversation_thinking', sequence: 11, data: { data: { thinking: 'Inspecting the work', is_delta: false } } as never }),
+    evt({ ...shape, id: 'tool-error', type: 'tool_call_error', sequence: 20, data: { data: { tool_name: 'inspect', error: 'Needs another attempt', tool_call_id: 'call' } } as never }),
+    evt({ ...shape, id: 'thinking-later', type: 'conversation_thinking', sequence: 21, data: { data: { thinking: 'Trying the corrected approach', is_delta: false } } as never }),
+    evt({ ...shape, id: 'final', type: 'unified_completion', sequence: 30, generation_id: 'cursor-start', generation_start_sequence: 12, data: { data: { final_result: 'Done.', status: 'completed' } } as never }),
+  ]
+  for (const events of [rows, JSON.parse(JSON.stringify(rows)) as PollingEvent[]]) {
+    const selected = selectTerminalEvents(events, undefined)
+    expect(selected.map(event => event.id)).toEqual(['question', 'thinking-early', 'tool-error', 'thinking-later', 'final'])
+    const items = buildTranscriptItems(selected)
+    const last = items.at(-1)
+    expect(last?.kind === 'event' && last.event.id).toBe('final')
+    expect(items.some(item => item.kind === 'thinking' && item.text.includes('corrected approach'))).toBe(true)
+  }
 })

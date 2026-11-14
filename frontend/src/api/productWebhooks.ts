@@ -10,9 +10,14 @@ export interface ProductAPITrigger {
   auth_mode: 'bearer' | 'github' | ''
   path: string
   secret?: string
+  chat_id?: string
   run_destination: 'chat' | 'isolated' | 'new'
   kind?: string
   caller?: { type: string; id: string; profile_id?: string }
+  /** One plain line from the server: what this webhook starts ("Sends a message to Main"). */
+  starts?: string
+  /** The server's "Changed by <name>, <date>": who last changed this webhook, else who made it. */
+  changed_by?: string
 }
 
 /** One place a trigger's messages can run, from the server's shared list of choices. */
@@ -32,7 +37,7 @@ export const productWebhooksApi = {
   save: (scope: ProductTriggerScope, trigger: ProductAPITrigger, rotateSecret = false) => axios.put<ProductAPITrigger>(`/api/product-webhooks/${encodeURIComponent(trigger.id)}`, {
     profile_id: scope.profileId, project_id: scope.projectId, name: trigger.name,
     message: trigger.message, enabled: trigger.enabled, auth_mode: trigger.auth_mode,
-    run_destination: trigger.run_destination,
+    run_destination: trigger.run_destination, chat_id: trigger.chat_id,
     rotate_secret: rotateSecret,
   }, config()).then(response => response.data),
   delete: (scope: ProductTriggerScope, id: string) => axios.delete(`/api/product-webhooks/${encodeURIComponent(id)}`, {

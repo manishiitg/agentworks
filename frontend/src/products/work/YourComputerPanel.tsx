@@ -11,34 +11,28 @@ import { Switch } from '../../components/ui/Switch'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
-import { AskButton, TeamTab, teamCard } from './TeamTab'
+import { AskButton, teamCard } from './TeamTab'
+import { ShareCrew } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
-import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { MacAgentBridge } from './MacAgentBridge'
-import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
+import { OnlineAgentsCard, type OnlineAgentPlacement } from './OnlineAgentsCard'
+import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
-// Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
-// and, when it finished, where the Mac folder is kept.
-type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
+type MoveReport = { place?: CloudState; message?: string }
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 type ServerCopy = { name: string; detail: string }
 /** The Access page's shape, written by the server (crew_access_page.go): which tabs, whether this app holds the Mac's
  * controls ("mac") or shows the Mac-only rows as text, those rows' text, and the extra sections. */
-type AccessTab = { id: CrewAccessSection; label: string; detail?: string }
+type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' }
 type AccessText = { line: string; note?: string }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
-type MacCard = { online: boolean; status: string; line: string }
-type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
+type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
+type SyncStatus = MoveReport & { binding: Binding | null; placements?: Record<string, OnlineAgentPlacement>; on_server?: ServerCopy[]; shared_agents?: number
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
-// The move's own steps, as the server reports them (astra, PLAT-856-509).
-type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
-const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
-type Readiness = { fits: boolean; estimated_seconds: number; secrets?: number; measurement: { dependency_files?: string[]; files: number; bytes: number; max_files: number; max_bytes: number; max_file_bytes: number; largest_folders?: { path: string; bytes: number }[]; files_over_limit?: string[] } }
-const sizeLabel = (bytes: number) => bytes >= 1 << 30 ? `${(bytes / (1 << 30)).toFixed(1)} GB` : bytes >= 1 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : 'under 1 MB'
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
@@ -51,8 +45,8 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'dashboard' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; path?: string; ask?: string; target?: string; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents_label?: string; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
-type PlaceEntry = { place?: CloudState; chatOnly?: boolean; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'dashboard' | 'public' | 'folder' | 'clash'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+type PlaceEntry = { place?: CloudState; chatOnly?: boolean; chatOnlyLine?: string; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -64,14 +58,16 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; chat_only?: boolean; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; chat_only?: boolean; chat_only_line?: string; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
           const asking = data.asking || []
           const chatOnly = data.chat_only === true
-          if (!data.place || (data.place === created.place && chatOnly === Boolean(created.chatOnly) && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
+          const chatOnlyLine = typeof data.chat_only_line === 'string' && data.chat_only_line ? data.chat_only_line : undefined
+          if (!data.place || (data.place === created.place && chatOnly === Boolean(created.chatOnly) && chatOnlyLine === created.chatOnlyLine && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
           created.place = data.place
           created.chatOnly = chatOnly
+          created.chatOnlyLine = chatOnlyLine
           created.shared = shared
           created.asking = asking
           created.listeners.forEach(notify => notify(data.place))
@@ -104,6 +100,17 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
     return watchCrewPlace(projectId, setState)
   }, [enabled, projectId])
   return state
+}
+
+/** The server's one line above the chat of your own Mac copy opened through the server (owner, 12 Nov). */
+export function useCrewChatOnlyLine(projectId?: string): string | undefined {
+  const [line, setLine] = useState<string>()
+  useEffect(() => {
+    setLine(undefined)
+    if (!projectId) return
+    return watchCrewPlace(projectId, () => setLine(placeCache.get(projectId)?.chatOnlyLine))
+  }, [projectId])
+  return line
 }
 
 /** The server's flag: this person reaches their own Mac Crew through the server, so the screen is its chat alone. */
@@ -155,39 +162,36 @@ const tintedIcons = new Map<string, LucideIcon>()
  * server's crew-sync reply decides it: the tabs, and whether this app holds the Mac's controls (the Mac app's own Crew)
  * or shows those rows as text (the website, or a Crew from a server); then the People and Dashboards tabs and laptop
  * access where the server lists them. */
-export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
-  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} /></div>
+export function YourComputerPanel({ projectId, sessionId, workspacePath, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} onBack={onBack} /></div>
 }
 
-function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; onBack?: () => void }) {
   const team = useTeamTab(projectId).view?.team
   const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
+  // The last Online tab is remembered per Crew in this browser (owner, 5 Nov); Team is its own page, opened from its
+  // menu row or by an agent asking for its sharing, so it is never the remembered tab.
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team' || saved === 'dashboards') return saved } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'agentbridge' || saved === 'publish' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
     return 'mac'
   })
-  const setSection = (next: CrewAccessSection) => { setSectionState(next); try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
+  const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
   const [publishConnection, setPublishConnection] = useState('')
   useEffect(() => {
     const openTeam = (event: Event) => { const detail = (event as CustomEvent<{ projectId: string; section?: CrewAccessSection }>).detail; if (detail?.projectId === projectId) setSection(detail.section || 'team') }
     window.addEventListener('agentworks:open-crew-access', openTeam)
     return () => window.removeEventListener('agentworks:open-crew-access', openTeam)
   }, [projectId])
-  const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
-  const name = tab?.metadata?.agentProfileProjectTitle || 'this'
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [busy, setBusy] = useState(false)
-  const [busyAction, setBusyAction] = useState('')
-  const [moved, setMoved] = useState<MoveReport | null>(null)
   const [reaching, setReaching] = useState(false)
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'move'>('')
+  const [open, setOpen] = useState<'' | 'code'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -200,50 +204,27 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
   const here = status?.access_here === 'mac'
   const binding = status?.binding
   const online = binding?.editing === 'server'
-  const moving = busyAction === 'server' || binding?.pending_action === 'server' || status?.place === 'moving'
-  // Before moving online, the Mac says whether this Crew fits (the server decides the numbers).
-  const [readiness, setReadiness] = useState<Readiness>()
-  useEffect(() => {
-    if (online || !here) return
-    const abort = new AbortController()
-    void api.get<Readiness>(`/api/crew-sync/${encodeURIComponent(projectId)}/readiness`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setReadiness(data) }).catch(() => {})
-    return () => abort.abort()
-  }, [projectId, online, here])
-  const tooBig = !online && readiness?.fits === false
   const target = binding?.connection_id || publishConnection || (connections.length === 1 ? connections[0].id : '')
   // A network is named by its server's address, such as agents.example.com.
   const networkName = (id?: string) => { const item = connections.find(c => c.id === id); try { return item ? new URL(item.server).host : '' } catch { return item?.name || '' } }
   const reach = (via: string) => { setAsking(false); setReaching(true); void run('relay', via).finally(() => setReaching(false)) }
   const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
-  const run = async (action: 'server' | 'relay' | 'offline', via = target) => {
-    setBusy(true); setBusyAction(action); setError('')
+  const run = async (action: 'relay' | 'offline', via = target) => {
+    setBusy(true); setError('')
     try {
-      const reply = await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
-      if (action === 'server' && reply?.place === 'online') setMoved(reply)
-      if (action !== 'server') teamChanged()
+      await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
+      teamChanged()
       return true
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
-    finally { setBusy(false); setBusyAction(''); setReload(value => value + 1); refreshCrewPlace(projectId) }
+    finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
   }
-  const move = async (share: boolean) => {
-    setOpen('')
-    if (await run('server') && share && link) window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')
-  }
-  const minutes = readiness ? Math.max(1, Math.round(readiness.estimated_seconds / 60)) : 0
-  const facts = readiness && !tooBig ? { size: sizeLabel(readiness.measurement.bytes), time: `about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` } : undefined
   const way = (title: string, line: string, action: ReactNode) => <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 py-2.5 text-sm">
     <div className="min-w-0 flex-1"><p className="font-semibold">{title}</p><p className="text-[12.5px] text-muted-foreground">{line}</p></div>
     <div className="flex flex-wrap items-center gap-1.5">{action}</div>
   </div>
   // Website and phone: the Mac app opens its Crew on the paired server; the website is that server.
   const reachLink = here ? link : `${window.location.origin}/crew/projects/${encodeURIComponent(projectId)}`
-  // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
-  const [doneSeen, setDoneSeen] = useState(false)
-  const done = online && Boolean(moved) && !doneSeen
-  // Publish's full-page steps run where the Mac's controls are (the Mac app).
-  const step: MoveStep | '' = !here ? '' : open === 'move' && !online ? 'confirm' : moving ? 'moving' : done ? 'done' : ''
-  useEffect(() => { onFullScreen?.(step !== ''); return () => onFullScreen?.(false) }, [step, onFullScreen])
   // Esc goes back too, unless the person is typing or a dialog is open.
   useEffect(() => {
     if (!onBack) return
@@ -255,14 +236,28 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
   }, [onBack])
-  if (step) return <PublishCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
-    onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
+  const pairedConnection = connections.find(item => item.id === binding?.connection_id)
+  const pairedServer = binding?.peer_server || pairedConnection?.server
+  let pairedHost = ''
+  try { pairedHost = pairedServer ? new URL(pairedServer).host : '' } catch { /* Invalid saved address has no display host. */ }
+  const pairedName = pairedConnection?.name || pairedHost
+
   const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
-  const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
-  // A tab the server does not list for this person (a teammate has the Team tab only) falls back to its first one.
+  // Two pages from one reply (owner, 11 Nov: Share split into Team and Online): the server puts each tab in a group; the
+  // Team page shows the team tab, the Online page the rest. A tab the server does not list for this person falls back
+  // to its page's first one.
+  const page = section === 'team' ? 'team' : 'online'
+  const allTabs = (status?.access_tabs || []).filter(item => item.id !== 'dashboards' && item.id !== 'artifacts').map(item => ({ ...item, tone }))
+  const pageTabs = allTabs.filter(item => (item.group || 'online') === page)
+  const tabs = pageTabs.length ? pageTabs : allTabs
   const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
   const needsServer = here && !connections.length && !online
+  // Old tab links and saved choices resolve to this standalone page, not Online.
+  if (section === 'artifacts') return <section aria-label="Artifacts page" className="space-y-3 text-sm">
+    {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+    <CrewDashboardsTab projectId={projectId} />
+  </section>
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
   // A row only the Mac can change, as the server words it here.
@@ -278,9 +273,9 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
   }
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
-    <div className="flex items-stretch gap-2">
+    {(tabs.length > 1 || shown !== 'team') && <div className="flex items-stretch gap-2">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-    {tabs.length > 1 && <div role="tablist" aria-label="Share" className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
+    {tabs.length > 1 && <div role="tablist" aria-label={page === 'team' ? 'Team' : 'Online'} className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={shown === item.id} tabIndex={shown === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
@@ -290,7 +285,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
         <span className="block font-semibold">{item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
       </button>)}
     </div>}
-    </div>
+    </div>}
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
     {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
@@ -309,10 +304,17 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{status.access_mac?.status}</span>
             {status.access_mac_locked
               ? <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3" />{status.access_mac_locked}</span>
-              : here ? !moving && <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+              : here ? <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
                 : <span title="Turn this off in the Mac app."><Switch aria-label="Mac online" checked disabled /></span>}
           </div>
-          <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>
+          {connections.length > 1 && pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
+          <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}</p>
+          {status.access_mac?.kept && <p className="text-xs text-muted-foreground">{status.access_mac.kept}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>}
+          {!!status.access_mac?.reach?.length && <div aria-label="Who can reach this Crew" className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Who can reach this Crew</p>
+            <dl className="divide-y divide-border text-[12.5px]">{status.access_mac.reach.map(row => <div key={row.who} className="grid grid-cols-[38%_1fr] gap-2 py-1.5">
+              <dt className="font-medium">{row.who}</dt><dd className="text-muted-foreground">{row.how}</dd></div>)}</dl>
+          </div>}
           {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border pt-2.5">
             <p className="text-xs text-muted-foreground">Which network?</p>
             {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start rounded-full px-3.5" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
@@ -327,29 +329,31 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projec
           </div>
           {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this Crew in a browser or on your phone.</p>}
         </section>
-        {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
-        <MacAgentBridge projectId={projectId} />
+
       </>}
+    </section>}
+    {!(here && needsServer) && shown === 'agentbridge' && <section role="tabpanel" id={`crew-access-panel-${projectId}-agentbridge`} aria-labelledby={`crew-access-${projectId}-agentbridge`} className="space-y-3">
+      <MacAgentBridge projectId={projectId} />
+    </section>}
+    {shown === 'online-agents' && <section role="tabpanel" id={`crew-access-panel-${projectId}-online-agents`} aria-labelledby={`crew-access-${projectId}-online-agents`} className="space-y-3">
+      {binding ? <OnlineAgentsCard key={`${projectId}:${binding.connection_id || ''}:${binding.peer_project_id}`} projectId={projectId}
+          placements={status.placements} connection={here ? binding.connection_id : undefined}
+          serverProject={binding.peer_project_id} network={pairedName || network} website={reachLink} /> : <div className="space-y-2 rounded-xl border border-border p-3"><h3 className="font-semibold">Online agents</h3><p className="text-[12.5px] text-muted-foreground">Connect this Crew to a server from Mac online to see its online agents.</p><Button size="sm" variant="outline" onClick={() => setSection('mac')}>Open Mac online</Button></div>}
     </section>}
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       <div className="flex justify-end"><AskButton projectId={projectId} card="publish" /></div>
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
-      <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
-        <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>
-          <p className="text-[12.5px] text-muted-foreground">{online ? `Runs on ${network}. Your Mac keeps a backup copy.` : `Moves this Crew to ${network} for good: all its agents, chats, memory, skills, files and schedules. It then runs there with your Mac on or off; your Mac keeps a backup copy.`}</p>
-          {!online && tooBig && <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p>}
-        </div>
-        {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
-      </div>
-      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
+      {online && <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
+        <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p><p className="text-[12.5px] text-muted-foreground">Runs on {network}. Your Mac keeps a copy of its folder.</p></div>
+        <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button>
+      </div>}
+      {!online && binding?.connection_id && <div className="rounded-xl border border-border p-3"><p className="font-semibold">One agent</p>
+        <p className="text-[12.5px] text-muted-foreground">Open the agent's menu and choose Run online. It makes a separate online agent, named with · online, that runs only on {network}; the agent itself stays on this Mac.</p></div>}
     </section>}
-    {/* One Team tab everywhere (owner, 5 Nov): the server's /tab reply decides its rows. The Mac app's own Crew adds its
-        Mac online switch, and turns the Team on through the Mac while Mac online is off. */}
+    {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
+        turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <TeamTab projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined} />
-    </section>}
-    {!(here && needsServer) && shown === 'dashboards' && <section role="tabpanel" id={`crew-access-panel-${projectId}-dashboards`} aria-labelledby={`crew-access-${projectId}-dashboards`} className="space-y-3">
-      <CrewDashboardsTab projectId={projectId} />
+      <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
@@ -368,59 +372,6 @@ function SignInToServer({ onConnected }: { onConnected: () => void }) {
   </section>
 }
 
-/** The Move online step: size and time, what moves, then the owner's click. One-way (owner, 3 Nov). */
-type MoveStep = 'confirm' | 'moving' | 'done'
-
-/** Move online, as one full-page step (owner, 3 Nov mockup): what moves and what stays, size and time, then progress
- * from the move's own report, then done. One-way, no extra gates. */
-function PublishCrewScreen({ step, name, facts, tooBig, status, backup, error, onCancel, onMove, onOpen }: { step: MoveStep; name: string; facts?: { size: string; time: string }; tooBig: boolean; status: SyncStatus | null; backup?: string; error: string; onCancel: () => void; onMove: () => void; onOpen: () => void }) {
-  const box = (title: string, items: string[]) => <div className="flex-1 rounded-2xl border border-border p-3"><p className="mb-1.5 text-xs font-medium text-muted-foreground">{title}</p><ul className="space-y-1 text-[13px]">{items.map(item => <li key={item}>{item}</li>)}</ul></div>
-  if (step === 'done') return <section aria-label="Crew published" className="flex flex-col items-center gap-3 py-10 text-center text-sm">
-    <Cloud className="h-10 w-10 text-primary" aria-hidden="true" />
-    <p className="text-base font-semibold">"{name}" is online</p>
-    <p className="max-w-sm text-[13px] text-muted-foreground">It works even when your Mac is off.{backup ? ` This Mac keeps a backup copy in "${backup.split('/').pop()}".` : ''}</p>
-    <Button className="rounded-full px-3.5" onClick={onOpen}>Open it</Button>
-  </section>
-  if (step === 'moving') {
-    const total = status?.bytes_total || 0, done = status?.bytes_done || 0
-    // Each shown step covers some of the move's phases; without a phase (an older server) the bytes decide the first.
-    const at = status?.phase ? MOVE_PHASES.indexOf(status.phase) : total > 0 && done >= total ? 2 : 0
-    const state = (first: number, last: number): 'done' | 'now' | 'next' => at > last ? 'done' : at >= first ? 'now' : 'next'
-    const steps: [string, 'done' | 'now' | 'next'][] = [['Files and database', state(0, 1)], ['Chats and agents', state(2, 2)], ['Schedules, watchers, dashboards', state(3, 4)], ['Ready online', state(5, 6)]]
-    return <section aria-label="Publishing Crew" className="space-y-4 py-4 text-sm">
-      <p className="text-base font-semibold">Publishing "{name}"…</p>
-      <p className="text-[13px] text-muted-foreground">If it's interrupted, it picks up where it left off.</p>
-      <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${total ? Math.min(100, Math.round(done * 100 / total)) : 5}%` }} /></div>
-      {total > 0 && <p className="text-[13px] tabular-nums">{sizeLabel(done)} <span className="text-muted-foreground">of {sizeLabel(total)}</span></p>}
-      <ul className="space-y-1 text-[13px]">{steps.map(([label, state]) => <li key={label} className={state === 'next' ? 'text-muted-foreground' : ''}>{state === 'done' ? '✓' : state === 'now' ? '●' : '○'} {label}</li>)}</ul>
-      {status?.schedules_paused && <p className="text-[13px] text-muted-foreground">{status.message || 'Its schedules wait until the move finishes.'}</p>}
-      {error && <p className="text-[13px] text-amber-600">It stopped. Your work is kept. <button type="button" className="underline" onClick={onMove}>Retry Publish Crew</button></p>}
-    </section>
-  }
-  return <section aria-label={`Publish ${name}`} className="space-y-4 py-2 text-sm">
-    <div><p className="text-base font-semibold">Publish "{name}"</p><p className="text-[13px] text-muted-foreground">It will live online from now on, and work even when your Mac is off.</p></div>
-    <div className="flex items-center justify-center gap-4 py-2 text-center text-xs text-muted-foreground">
-      <span className="flex flex-col items-center gap-1"><Laptop className="h-7 w-7 text-foreground" aria-hidden="true" />On this Mac<span>now</span></span>
-      <span aria-hidden="true" className="text-lg">→</span>
-      <span className="flex flex-col items-center gap-1"><Cloud className="h-7 w-7 text-primary" aria-hidden="true" />Online<span>after the move</span></span>
-    </div>
-    {tooBig ? <p className="text-[13px] text-amber-600">It's too big to move online. Move large folders out of this Crew first.</p> : <>
-      <div className="flex flex-col gap-2 sm:flex-row">{box('Moves', ['Files and its database', 'All its chats and agents', 'Schedules and watchers', 'Dashboards and functions'])}{box('Stays on this Mac', ['A backup copy of the folder', 'Apps and sign-ins installed only here'])}</div>
-      <MoveFacts facts={facts} />
-      <p className="text-[13px] text-amber-600">You can't move it back to this Mac. Afterwards you open it from Online, like any online Crew.</p>
-    </>}
-    {error && <p className="text-[13px] text-amber-600">{error}</p>}
-    <div className="flex justify-end gap-2"><Button className="rounded-full px-3.5" variant="outline" onClick={onCancel}>Cancel</Button><Button className="rounded-full px-3.5" disabled={tooBig || !facts} onClick={onMove}>Publish Crew</Button></div>
-  </section>
-}
-
-function MoveFacts({ facts }: { facts?: { size: string; time: string } }) {
-  if (!facts) return <p className="text-xs text-muted-foreground">Checking its size…</p>
-  return <div className="space-y-0.5 rounded-lg bg-muted/40 px-3 py-2 text-[13px]">
-    <div className="flex justify-between"><span className="text-muted-foreground">Size</span>{facts.size}</div>
-    <div className="flex justify-between"><span className="text-muted-foreground">Time</span>{facts.time}</div>
-  </div>
-}
 
 /** A QR code of the Crew's link, drawn on this Mac (no network call). */
 function LinkCode({ link }: { link: string }) {

@@ -8,12 +8,13 @@ description: "Use before creating or changing a schedule or watcher for a Crew."
 Skills to read first: `panel-automations`, then `schedules` or `watchers`.
 
 - **List first.** Before creating, list the existing schedules and watchers of that Crew so you never duplicate one.
-- **Schedules:** `automations` actions `list`, `create`, and `update` with `scope=schedule` manage this Crew's schedules. A Crew schedule carries exactly one self-contained message. Leave `chat_id` empty so it runs in your main chat; set it only for a tab the person made and asked you to use.
+- **Schedules:** use `automations` with `scope=schedule`. A Crew schedule either runs its Python workflow with saved settings and inputs, or sends a message to an agent. Inspect the current schema before saving. A new message schedule defaults to its own persistent chat; the person can choose an existing chat instead. If they did not say, ask “its own chat, or an existing chat?” Preserve existing destinations.
 - **Write the message so it needs no human answer:** what to check, what to report, what not to touch. Never ask a question in an unattended message.
-- **Time them after the thing they watch:** just after its scheduled run, not at the same minute. Never make a daily schedule depend on a weekly one.
+- **Dependencies:** use the saved after condition, outcome, delay and deadline when work must wait for another run. Read the timing procedure; do not substitute guessed clock times for an explicit dependency.
 - **Watchers** (`automations` actions `list`, `create`, `update` with `scope=watcher`): for a condition that should wake you, such as a results page going stale, a reply arriving, or a target missed. A watcher is a small deterministic check, at least five minutes apart, with a stable request_id; list first and update instead of adding a second one.
 - **After you set one up,** say what it will catch and when it first fires. Do not create a check and delete it in the same turn.
-- Schedules never catch up; a missed slot is simply missed.
+- Ordinary missed clock slots do not catch up. An occurrence already waiting for a dependency retains its original time and deadline; it expires at its deadline or the end of its scheduled local day. Run now is an explicit real run that ignores timing and dependencies.
+- There is one global scheduler pause. Read the schedules timing procedure for administrator status/pause/resume actions. Never resume it just to test a change.
 - Re-enabling a schedule the person paused is the person's decision.
 
 ## PR checks, deployments and autofix
@@ -26,7 +27,7 @@ Use the existing Watcher with `github_pr` instead of a Python script. List first
 
 After starting a Watcher, confirm it briefly and end this reply. Do not wait in a foreground shell loop, `sleep`, or a blocking task-output call; those keep the person’s next message queued. The Watcher delivers meaningful results to this chat independently.
 
-For other native Claude background work, start it with `run_in_background:true`, report that it started, and end the reply. Do not turn a background task back into a foreground wait. A running background task alone must not be described as an unfinished answer.
+For other native Claude background work, start it with `run_in_background:true`, report that it started, and end the reply. When your answer needs its result (tests, a build), call `wait_for_background_tasks` before you end the reply; never wait in a shell loop or `sleep`. Do not turn a background task back into a foreground wait for dev servers, watchers or PR checks. A running background task alone must not be described as an unfinished answer.
 
 - `checks`: wait for all registered checks on the current PR commit, report once and finish. Pending checks can take30 minutes or longer. No check registered yet means keep waiting.
 - `deployment`: wait for GitHub deployment records for that commit, report once and finish. A provider must report deployment status to GitHub; a green build alone is not proof of deployment.

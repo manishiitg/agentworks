@@ -4,22 +4,20 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
-// What teammates see of an agent's chat (owner, 6 Nov, the decisions log): an agent can stay shared while its chat is
-// not, or not live. The agent's own person chooses, per agent:
+// What teammates see of an agent's chat (owner, 6 Nov, the decisions log; the saved-only choice was removed 9 Nov): an
+// agent can stay shared while its chat is not. The agent's own person chooses, per agent:
 //
-//	Live chat (default, unset)  history and live updates while the agent works
-//	Chat history                the saved conversation, refreshed when a turn ends; nothing of a running turn
-//	Just the agent              listed with its status and askable; the chat is refused
+//	Live (default, unset)  history and live updates while the agent works
+//	Hidden                 listed with its status and askable; the chat is refused
 //
-// Teammates still ask the agent through their own thread in all three. Every reader asks agentChatShare; the history
-// reads themselves are in crew_team_chat_history.go.
+// Teammates still ask the agent through their own thread in both. Every reader asks agentChatShare.
 const (
-	crewChatShareLive    = ""
-	crewChatShareHistory = "history"
-	crewChatShareAgent   = "agent"
+	crewChatShareLive  = ""
+	crewChatShareAgent = "agent"
 )
 
 // crewTeamChatShareLabel and crewChatShareOptions are the choice on the viewer's own agent row.
@@ -30,9 +28,9 @@ type crewChatShareOption struct {
 	Label string `json:"label"`
 }
 
-var crewChatShareOptions = []crewChatShareOption{{crewChatShareLive, "Live chat"}, {crewChatShareHistory, "Chat history"}, {crewChatShareAgent, "Just the agent"}}
+var crewChatShareOptions = []crewChatShareOption{{crewChatShareLive, "Live chat"}, {crewChatShareAgent, "Just the agent"}}
 
-// crewChatShareName is a share's plain name, as the choice shows it; "" when it is not one of the three.
+// crewChatShareName is a share's plain name, as the choice shows it; "" when it is not one of the two.
 func crewChatShareName(share string) string {
 	for _, option := range crewChatShareOptions {
 		if option.Value == share {
@@ -47,55 +45,29 @@ func crewChatPrivateLine(person string) string {
 	return crewPersonShortName(person) + " keeps this chat private. You can still ask this agent."
 }
 
-// crewChatHistoryLine is the screen's note for a teammate in Chat history, and what a refused live read says.
-func crewChatHistoryLine(person string) string {
-	return crewPersonShortName(person) + " shares this chat's history. Live view is off."
-}
-
 // agentChatShare is what other people in the Team see of this agent's chat. The key is any name of the agent
-// (crewTeamRuleKey); a Main is one agent under all its names, like In team / Only me, and the stricter name wins.
+// (crewTeamRuleKey); there is one rule per registered agent.
 func (t crewTeam) agentChatShare(ctx context.Context, person, key string) string {
-	rules := t.AgentRules[person]
-	if len(rules) == 0 {
-		return crewChatShareLive
-	}
-	stored := crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key))
-	main := crewTeamMainAgent(t, person, stored)
-	share := crewChatShareLive
-	for name, rule := range rules {
-		if rule.ChatShare != crewChatShareLive && (name == stored || main && crewTeamMainAgent(t, person, name)) {
-			if rule.ChatShare == crewChatShareAgent {
-				return crewChatShareAgent
-			}
-			share = rule.ChatShare
-		}
-	}
-	return share
+	return t.agentRule(person, crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key))).ChatShare
 }
 
-// anyChatLimit: someone in this Team limits a chat, so a read needs the fuller look.
 func (t crewTeam) anyChatLimit() bool {
-	for _, rules := range t.AgentRules {
-		for _, rule := range rules {
-			if rule.ChatShare != crewChatShareLive {
-				return true
-			}
+	for _, a := range t.Agents {
+		if a.Rule.ChatShare != crewChatShareLive {
+			return true
 		}
 	}
 	return false
 }
 
-// crewChatRefusal is a read of a limited chat: whose agent, which, and what they share (history or just the agent).
+// crewChatRefusal is a read of a Hidden chat: whose agent and which.
 type crewChatRefusal struct {
-	project, person, agent, share string
+	project, person, agent string
 }
 
 // refuse logs the read and answers with the line the screen shows.
 func (c *crewChatRefusal) refuse(w http.ResponseWriter, viewer string) {
 	code, line := "chat_private", crewChatPrivateLine(c.person)
-	if c.share == crewChatShareHistory {
-		code, line = "chat_live_off", crewChatHistoryLine(c.person)
-	}
 	log.Printf("[CREW_TEAM] project=%s event=member_watch_refused reason=%s user=%s of=%s agent=%s", c.project, code, logUsernameForUserID(viewer), logUsernameForUserID(c.person), c.agent)
 	externalError(w, http.StatusForbidden, code, line)
 }
@@ -104,35 +76,25 @@ func (c *crewChatRefusal) refuse(w http.ResponseWriter, viewer string) {
 // person limits its chat. It stands before the relay's reads and the Mac-off reads (crewMacOffRead).
 func (api *StreamingAPI) crewMacChatLimit(r *http.Request, project, conversation string) *crewChatRefusal {
 	t, err := readCrewTeam(project)
-	if err != nil || !t.anyChatLimit() {
+	if os.IsNotExist(err) || err == nil && !t.anyChatLimit() {
 		return nil
+	}
+	if err != nil {
+		return &crewChatRefusal{project: project, person: ownerOfCrewProjectID(project), agent: conversation}
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, conversation)
 	if person == "" || person == GetUserIDFromContext(r.Context()) {
 		return nil
 	}
-	if share := t.agentChatShare(r.Context(), person, tab); share != crewChatShareLive {
-		return &crewChatRefusal{project: project, person: person, agent: tab, share: share}
+	if t.agentChatShare(r.Context(), person, tab) != crewChatShareLive {
+		return &crewChatRefusal{project: project, person: person, agent: tab}
 	}
 	return nil
 }
 
-// crewSessionChatPrivate is a refusal when this server chat is Just the agent for the caller.
+// crewSessionChatPrivate is a refusal when this server chat is Hidden for the caller.
 func (api *StreamingAPI) crewSessionChatPrivate(r *http.Request, session string) *crewChatRefusal {
-	if limit := api.crewSessionChatLimit(r, session); limit != nil && limit.share == crewChatShareAgent {
-		return limit
-	}
-	return nil
-}
-
-// crewSessionChatSavedRead is a refusal for a read of the saved conversation file. That file is written when a turn
-// ends, so Chat history may read it; while a turn runs a steering message can already be in it (persistLiveInputUserMessage).
-func (api *StreamingAPI) crewSessionChatSavedRead(r *http.Request, session string) *crewChatRefusal {
-	limit := api.crewSessionChatLimit(r, session)
-	if limit != nil && limit.share == crewChatShareHistory && !api.sessionTurnRunning(session) {
-		return nil
-	}
-	return limit
+	return api.crewSessionChatLimit(r, session)
 }
 
 // crewSessionChatLimit is the same as crewMacChatLimit for a chat kept on this server: an agent of a Crew on the server, a
@@ -157,7 +119,13 @@ func (api *StreamingAPI) crewSessionChatLimit(r *http.Request, session string) *
 		}
 		project := crewResourceProjectID(record.ConversationKey)
 		t, err := readCrewTeam(project)
-		if err != nil || !t.anyChatLimit() {
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return &crewChatRefusal{project: project, person: owner, agent: record.ConversationKey}
+		}
+		if !t.anyChatLimit() {
 			continue
 		}
 		key := record.ConversationKey
@@ -168,8 +136,8 @@ func (api *StreamingAPI) crewSessionChatLimit(r *http.Request, session string) *
 			}
 			key = firstNonEmptyTrimmed(tab, key)
 		}
-		if share := t.agentChatShare(r.Context(), owner, key); share != crewChatShareLive {
-			return &crewChatRefusal{project: project, person: owner, agent: key, share: share}
+		if t.agentChatShare(r.Context(), owner, key) != crewChatShareLive {
+			return &crewChatRefusal{project: project, person: owner, agent: key}
 		}
 	}
 	return nil

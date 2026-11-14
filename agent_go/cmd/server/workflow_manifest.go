@@ -197,7 +197,8 @@ type WorkflowManifest struct {
 
 // WorkflowCapabilities stores workflow-wide agent and tool configuration.
 type WorkflowCapabilities struct {
-	SelectedServers []string `json:"selected_servers"`
+	GitHubConnectionID string   `json:"github_connection_id,omitempty"`
+	SelectedServers    []string `json:"selected_servers"`
 	// ChosenVaultAppsOnly is "Use all my apps automatically" switched off: only the Vault apps in SelectedServers
 	// are used. Off (the default) means every Vault app the person may use (owner decision 2026-10-27, PLAT-856-394).
 	ChosenVaultAppsOnly       bool                           `json:"chosen_vault_apps_only,omitempty"`
@@ -403,29 +404,7 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 			return fmt.Errorf("after_schedule_ids[%d] cannot be empty", i)
 		}
 	}
-	for _, dependencyID := range scheduleDependencyIDs(schedule) {
-		if dependencyID == schedule.ID {
-			return fmt.Errorf("schedule dependencies cannot reference the schedule itself")
-		}
-	}
-	switch strings.TrimSpace(schedule.AfterTerminalStatus) {
-	case "", "completed", "any_terminal":
-	default:
-		return fmt.Errorf("after_terminal_status must be completed or any_terminal")
-	}
-	if schedule.AfterDelayMinutes < 0 {
-		return fmt.Errorf("after_delay_minutes cannot be negative")
-	}
-	if deadline := strings.TrimSpace(schedule.DependencyDeadline); deadline != "" {
-		if _, err := time.Parse("15:04", deadline); err != nil {
-			return fmt.Errorf("dependency_deadline must be HH:MM in the schedule timezone")
-		}
-	}
-	if len(scheduleDependencyIDs(schedule)) == 0 &&
-		(strings.TrimSpace(schedule.AfterTerminalStatus) != "" || schedule.AfterDelayMinutes != 0 || strings.TrimSpace(schedule.DependencyDeadline) != "") {
-		return fmt.Errorf("after_terminal_status, after_delay_minutes, and dependency_deadline require after_schedule_id or after_schedule_ids")
-	}
-	return nil
+	return scheduleWhenAfter(schedule).Validate(schedule.ID)
 }
 
 func scheduleAllowsParallel(schedule WorkflowSchedule) bool {
@@ -643,16 +622,27 @@ func ValidateManifest(m *WorkflowManifest) error {
 			dependencies[sched.ID] = dependencyIDs
 		}
 	}
+	return validateScheduleDependencyGraph(dependencies, nil)
+}
+
+// Both workflow manifests and Crew timer edits validate the complete graph
+// before saving; individually valid timers can still depend on each other.
+func validateScheduleDependencyGraph(dependencies map[string][]string, names map[string]string) error {
 	visitState := make(map[string]uint8, len(dependencies))
+	var path []string
 	var visit func(string) error
 	visit = func(scheduleID string) error {
 		switch visitState[scheduleID] {
 		case 1:
-			return fmt.Errorf("schedule dependency cycle includes %q", scheduleID)
+			from := firstNonEmptyTrimmed(names[path[len(path)-1]], path[len(path)-1])
+			to := firstNonEmptyTrimmed(names[scheduleID], scheduleID)
+			return fmt.Errorf("schedule dependency cycle: %q waits for %q. Remove %q from %q's prerequisite schedules, then save again", from, to, to, from)
 		case 2:
 			return nil
 		}
 		visitState[scheduleID] = 1
+		path = append(path, scheduleID)
+		defer func() { path = path[:len(path)-1] }()
 		for _, dependencyID := range dependencies[scheduleID] {
 			if err := visit(dependencyID); err != nil {
 				return err

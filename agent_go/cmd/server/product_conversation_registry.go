@@ -138,9 +138,6 @@ type ProductAgentIdentity struct {
 	// Unpinned takes this side tab off the strip into the Agents menu; every tab starts pinned (owner, 2026-10-20), so
 	// the saved bit is the opposite one and no tab needs a migration.
 	Unpinned bool `json:"unpinned,omitempty"`
-	// OnlyMe is the old place of Only me, read only by migrateCrewTeamAgentChoices; the Team record keeps it now
-	// (crew_team_in_team.go). Delete it with that migration.
-	OnlyMe bool `json:"only_me,omitempty"`
 	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
 	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
 	ConnectionID    string `json:"connection_id,omitempty"`
@@ -337,17 +334,21 @@ func (store productConversationRegistryStore) setSideChatOrder(ctx context.Conte
 	if document.Agents == nil {
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
-	prefix := productConversationRegistryEntryKey(profileID, projectID) + codeChatSideMarker
+	project := productConversationRegistryEntryKey(profileID, projectID)
+	// A tab is a side chat or a message schedule's own chat (listed with the side chats).
+	isTab := func(entryKey string) bool {
+		return strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
+	}
 	positions := map[string]int{}
 	for i, key := range conversationKeys {
 		entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(key))
-		if _, ok := document.Entries[entryKey]; !ok || !strings.HasPrefix(entryKey, prefix) {
+		if _, ok := document.Entries[entryKey]; !ok || !isTab(entryKey) {
 			return fmt.Errorf("that tab is not open in this project")
 		}
 		positions[entryKey] = i + 1
 	}
 	for entryKey := range document.Entries {
-		if !strings.HasPrefix(entryKey, prefix) {
+		if !isTab(entryKey) {
 			continue
 		}
 		identity := document.Agents[entryKey]
@@ -376,8 +377,9 @@ func (store productConversationRegistryStore) setSideChatPinned(ctx context.Cont
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
-	prefix := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID)) + codeChatSideMarker
-	if _, ok := document.Entries[entryKey]; (!ok && !otherOwners) || !strings.HasPrefix(entryKey, prefix) {
+	project := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
+	isTab := strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
+	if _, ok := document.Entries[entryKey]; (!ok && !otherOwners) || !isTab {
 		return fmt.Errorf("that tab is not open in this project")
 	}
 	identity, saved := document.Agents[entryKey]
@@ -403,7 +405,7 @@ func (store productConversationRegistryStore) agentIdentities(ctx context.Contex
 	out := map[string]ProductAgentIdentity{}
 	main := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
 	for entryKey, identity := range document.Agents {
-		if entryKey == main || strings.HasPrefix(entryKey, main+":chat:") {
+		if entryKey == main || strings.HasPrefix(entryKey, main+":chat:") || strings.HasPrefix(entryKey, main+scheduleOwnChatMarker) {
 			out[strings.TrimPrefix(entryKey, strings.TrimSpace(profileID)+"/")] = identity
 		}
 	}
@@ -462,6 +464,52 @@ func rememberPreviousConversation(document *productConversationRegistryDocument,
 	document.Previous[entryKey] = kept
 }
 
+// keepHandback preserves the selected server session before starting its kept
+// copy afresh. The expected-session check and history update are one operation;
+// the caller has already decided whether this hand back is allowed.
+func (store productConversationRegistryStore) keepHandback(ctx context.Context, owner, pair string, record ProductConversationRecord) error {
+	path := productConversationRegistryPath(owner)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	doc, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	entry := productConversationRegistryEntryKey(crewProfileID, record.ConversationKey)
+	current, ok := doc.Entries[entry]
+	if !ok || current.SessionID != record.SessionID {
+		return nil
+	}
+	rememberPreviousConversation(&doc, entry, current)
+	now := time.Now().UTC()
+	current.SessionID = "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(pair+"/handback-kept/"+record.ConversationKey+"/"+now.Format(time.RFC3339Nano))).String()
+	current.UpdatedAt = now.Format(time.RFC3339Nano)
+	doc.Entries[entry] = current
+	return store.writeDocument(ctx, path, doc)
+}
+
+// crewWorkspaceChats selects the owner's current Crew records in one workspace.
+// It includes isolated agent threads as the standby copy requires; projectChats
+// intentionally excludes those threads and cannot replace this selection.
+func (store productConversationRegistryStore) crewWorkspaceChats(ctx context.Context, owner, workspace string) ([]ProductConversationRecord, error) {
+	path := productConversationRegistryPath(owner)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	doc, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	out := []ProductConversationRecord{}
+	for _, record := range doc.Entries {
+		if record.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(record.WorkspacePath) == workspace && record.SessionID != "" {
+			out = append(out, record)
+		}
+	}
+	return out, nil
+}
+
 func (store productConversationRegistryStore) loadDocument(ctx context.Context, path string) (productConversationRegistryDocument, error) {
 	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{}}
 	raw, exists, err := store.read(ctx, path)
@@ -515,6 +563,7 @@ func (store productConversationRegistryStore) removeSlot(ctx context.Context, us
 	}
 	delete(document.Entries, entryKey)
 	delete(document.Previous, entryKey)
+	delete(document.Agents, entryKey)
 	document.Version = productConversationRegistryVersion
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return nil, err
@@ -569,7 +618,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 		if entryKey == main || (strings.HasPrefix(entryKey, side) && len(entryKey) > len(side) && !strings.Contains(entryKey[len(side):], ":")) {
 			mainKey, known := mainKeys[record.WorkspacePath]
 			if !known {
-				mainKey = projectID // Transitional legacy display until first resolve migrates it.
+				mainKey = "" // Main comes only from the saved role pointer.
 				if raw, found, readErr := store.read(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json"); readErr != nil {
 					return nil, readErr
 				} else if found {
@@ -577,12 +626,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 					if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 						return nil, err
 					}
-					// A Run person keeps their own unmigrated root; an owner's
-					// shared manifest must not take that caller's main role away.
-					_, ownLegacyRoot := document.Entries[main]
-					if manifest.MainChatKey != "" && !ownLegacyRoot {
-						mainKey = manifest.MainChatKey
-					}
+					mainKey = manifest.MainChatKey
 				}
 				mainKeys[record.WorkspacePath] = mainKey
 			}
@@ -591,6 +635,45 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 		}
 	}
 	return chats, nil
+}
+
+// scheduleOwnChatMarker sits between a project and a message schedule's id in the key of that schedule's own chat
+// ("<project>:schedule:<schedule id>", isolatedAutomationConversationKey). A new chat each run adds the run's id, so
+// only the one kept across runs has a single id after the marker.
+const scheduleOwnChatMarker = ":schedule:"
+
+// isScheduleOwnChatKey reports a message schedule's own chat, kept across runs (owner, 9 Nov: listed with the Crew's
+// chats). Function, webhook and new-chat-each-run conversations stay out of chat lists.
+func isScheduleOwnChatKey(key string) bool {
+	project, id, ok := strings.Cut(strings.TrimSpace(key), scheduleOwnChatMarker)
+	return ok && project != "" && !strings.Contains(project, ":") && id != "" && !strings.Contains(id, ":")
+}
+
+// scheduleOwnChats returns the person's message-schedule own chats of one project that have a conversation yet,
+// keyed by conversation key.
+func (store productConversationRegistryStore) scheduleOwnChats(ctx context.Context, userID, profileID, projectID string) (map[string]ProductConversationRecord, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" || strings.Contains(projectID, ":") {
+		return nil, fmt.Errorf("project id is required")
+	}
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]ProductConversationRecord{}
+	prefix := productConversationRegistryEntryKey(profileID, projectID) + scheduleOwnChatMarker
+	for entryKey, record := range document.Entries {
+		key := strings.TrimPrefix(entryKey, strings.TrimSpace(profileID)+"/")
+		if strings.TrimSpace(record.SessionID) == "" || !strings.HasPrefix(entryKey, prefix) || !isScheduleOwnChatKey(key) {
+			continue
+		}
+		out[key] = record
+	}
+	return out, nil
 }
 
 // switchTo makes an earlier conversation the slot's live one again; the one
@@ -789,6 +872,11 @@ func (store productConversationRegistryStore) resolveOrCreate(
 	binding productConversationBinding,
 	preferredSessionID string,
 ) (ProductConversationRecord, error) {
+	var err error
+	binding, err = store.resolveProjectMainAddress(ctx, userID, profile, binding)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
@@ -891,6 +979,12 @@ func (store productConversationRegistryStore) rotate(
 	profile agentprofiles.Profile,
 	binding productConversationBinding,
 ) (ProductConversationRecord, error) {
+	// The Crew's own key addresses its Main; starting it again needs a Main to start. Like resolveOrCreate, this never
+	// creates one (optional Main, PLAT-746-966): a Crew without a Main answers "Main isn't ready" and nothing is written.
+	var addressErr error
+	if binding, addressErr = store.resolveProjectMainAddress(ctx, userID, profile, binding); addressErr != nil {
+		return ProductConversationRecord{}, addressErr
+	}
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
@@ -1228,7 +1322,7 @@ func resolveProductProjectBinding(ctx context.Context, userID string, profile ag
 	if err != nil {
 		return binding, err
 	}
-	return defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, userID, profile, binding)
+	return binding, nil
 }
 
 // errProjectNotFound marks "no such project in this root", as opposed to a project that is there and broken
@@ -1325,7 +1419,7 @@ func resolveProductProjectBindingInRoot(
 			strings.TrimSpace(manifest.ID) != resourceProjectID {
 			continue
 		}
-		if strings.TrimSpace(manifest.Title) == "" || strings.TrimSpace(manifest.SessionID) == "" {
+		if strings.TrimSpace(manifest.Title) == "" {
 			return productConversationBinding{}, fmt.Errorf("project %q has an incomplete product manifest", resourceProjectID)
 		}
 		if isProjectProfileID(profile.ID) {
@@ -1360,8 +1454,8 @@ func resolveProductProjectBindingInRoot(
 			Description:                 strings.TrimSpace(manifest.Description),
 			AuthoritativeSessionID:      strings.TrimSpace(manifest.SessionID),
 			ProjectLLMConfig:            manifest.Capabilities.LLMConfig,
-			ProjectSelectedServers:      runtimeAppSelection(manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),
-			ProjectSelectedSkills:       append([]string(nil), manifest.Capabilities.SelectedSkills...),
+			ProjectSelectedServers:      teamWayServers(ctx, workspacePath, manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),
+			ProjectSelectedSkills:       appendUniqueStrings(append([]string(nil), manifest.Capabilities.SelectedSkills...), teamHomeSkills(ctx, workspacePath)...),
 			ProjectWorkflowContextPaths: append([]string(nil), firstNonEmptyStrings(manifest.WorkflowContextPaths, manifest.Capabilities.WorkflowContextPaths)...),
 			// No user switch for a Crew or a Code (user, 2026-09-29): native
 			// agent tools are always on, even where an older project stored

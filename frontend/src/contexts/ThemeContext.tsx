@@ -1,10 +1,12 @@
 import React, { useEffect } from 'react'
+import { useAppearanceStore } from '../stores/useAppearanceStore'
 import { ThemeContext, type Theme } from './ThemeContext'
 
-const FORCED_THEME: Theme = 'dark'
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const theme = FORCED_THEME
+  const profile = useAppearanceStore(state => state.profile)
+  useEffect(() => { document.documentElement.dataset.appearance = profile }, [profile])
+  const theme: Theme = profile
+  const setTheme = useAppearanceStore(state => state.setProfile)
 
   useEffect(() => {
     // Apply theme to document
@@ -17,11 +19,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('theme', theme)
   }, [theme])
 
-  const toggleTheme = () => undefined
-
-  const setTheme = (_newTheme: Theme) => {
-    void _newTheme
-  }
+  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light')
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>

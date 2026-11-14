@@ -207,10 +207,10 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if got, want := crewTeamMemberFilesPath("ann", root), root+"/team-copies/ann"; got != want {
 		t.Fatalf("member Files root on a Mac Crew = %q, want %q", got, want)
 	}
-	// team-copies/ is never shared or synced, Whole Crew included, and Files lists only a member's own copy.
-	whole := crewTeamFolder{ID: "f2", Whole: true}
-	if whole.holds("team-copies/ann/notes.md") || whole.walks("team-copies") || crewTeamAllowed("team-copies/ann/notes.md") || !whole.holds("notes.md") {
-		t.Fatal("team-copies/ is part of the Whole Crew share")
+	// team-copies/ is never shared or synced, even if explicitly selected, and Files lists only a member's own copy.
+	selected := crewTeamFolder{ID: "f2", Folders: []string{"team", "team-copies"}}
+	if selected.holds("team-copies/ann/notes.md") || selected.walks("team-copies") || crewTeamAllowed("team-copies/ann/notes.md") || !selected.holds("team/notes.md") {
+		t.Fatal("team-copies/ is part of a Team share")
 	}
 	for _, tc := range []struct {
 		entry, listing, user string

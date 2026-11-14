@@ -8,8 +8,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/commandlabel"
 )
 
 // NEVER_SHOW_EVENTS contains event types that should NEVER be shown in any mode
@@ -267,19 +269,24 @@ func pruneEventsForRetention(events []Event, maxEvents int) ([]Event, int) {
 // Event represents a generic event that can be stored and retrieved
 // Both MCP agent and orchestrator events now use the same AgentEvent structure
 type Event struct {
-	UsageExecutionID  string             `json:"usage_execution_id,omitempty"`
-	ID                string             `json:"id"`
-	Type              string             `json:"type"`
-	Timestamp         time.Time          `json:"timestamp"`
-	Data              *events.AgentEvent `json:"data,omitempty"` // Use AgentEvent directly - both systems compatible
-	Error             string             `json:"error,omitempty"`
-	SessionID         string             `json:"session_id,omitempty"`
-	ExecutionID       string             `json:"execution_id,omitempty"`
-	ParentExecutionID string             `json:"parent_execution_id,omitempty"`
-	ExecutionKind     string             `json:"execution_kind,omitempty"`
-	TerminalOwnerID   string             `json:"terminal_owner_id,omitempty"`
-	TerminalID        string             `json:"terminal_id,omitempty"`
-	Sequence          int64              `json:"sequence,omitempty"`
+	ReplyRemainder          *string            `json:"reply_remainder,omitempty"`
+	ReplyBlocksComplete     bool               `json:"reply_blocks_complete,omitempty"`
+	GenerationID            string             `json:"generation_id,omitempty"`
+	GenerationStartSequence int64              `json:"generation_start_sequence,omitempty"`
+	ReplyToAgentMessageID   string             `json:"reply_to_agent_message_id,omitempty"`
+	UsageExecutionID        string             `json:"usage_execution_id,omitempty"`
+	ID                      string             `json:"id"`
+	Type                    string             `json:"type"`
+	Timestamp               time.Time          `json:"timestamp"`
+	Data                    *events.AgentEvent `json:"data,omitempty"` // Use AgentEvent directly - both systems compatible
+	Error                   string             `json:"error,omitempty"`
+	SessionID               string             `json:"session_id,omitempty"`
+	ExecutionID             string             `json:"execution_id,omitempty"`
+	ParentExecutionID       string             `json:"parent_execution_id,omitempty"`
+	ExecutionKind           string             `json:"execution_kind,omitempty"`
+	TerminalOwnerID         string             `json:"terminal_owner_id,omitempty"`
+	TerminalID              string             `json:"terminal_id,omitempty"`
+	Sequence                int64              `json:"sequence,omitempty"`
 }
 
 // UnmarshalJSON restores the EventData interface as a lossless generic payload.
@@ -323,7 +330,20 @@ func (e Event) MarshalJSON() ([]byte, error) {
 		"session_id": e.SessionID,
 	}
 
+	if e.ReplyRemainder != nil {
+		result["reply_remainder"] = *e.ReplyRemainder
+	}
+	if e.ReplyBlocksComplete {
+		result["reply_blocks_complete"] = true
+	}
+	if e.GenerationID != "" {
+		result["generation_id"] = e.GenerationID
+		result["generation_start_sequence"] = e.GenerationStartSequence
+	}
 	// Add error if it exists
+	if e.ReplyToAgentMessageID != "" {
+		result["reply_to_agent_message_id"] = e.ReplyToAgentMessageID
+	}
 	if e.Error != "" {
 		result["error"] = e.Error
 	}
@@ -659,6 +679,7 @@ type Subscriber struct {
 type EventStore struct {
 	events              map[string][]Event // sessionID -> events
 	terminalEvents      map[string]map[string][]Event
+	generationPositions map[string]generationPosition
 	nextSequence        map[string]int64
 	sessionStartIndices map[string]int    // sessionID -> startIndex (offset for events in memory)
 	sessionOwners       map[string]string // sessionID -> userID
@@ -983,6 +1004,10 @@ func (es *EventStore) AddEvent(sessionID string, event Event) {
 // acceptance boundary. Canonical producer bridges use this method so a failed
 // append can stop or retry upstream delivery.
 func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
+	return es.addEventChecked(sessionID, event, true)
+}
+
+func (es *EventStore) addEventChecked(sessionID string, event Event, hydrate bool) error {
 	if isUsageOnlyEvent(event) {
 		return nil // for the cost ledger only; never a chat event (see usage_only_event.go)
 	}
@@ -998,7 +1023,12 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 	if es.holdForDeferredSteer(sessionID, event) {
 		return nil
 	}
-	err := es.addEventUnheld(sessionID, event)
+	var err error
+	if hydrate {
+		err = es.addEventUnheld(sessionID, event)
+	} else {
+		err = es.appendEventWithoutReplay(sessionID, event)
+	}
 	if err == nil {
 		es.signalAnswerEnded(sessionID, event)
 	}
@@ -1007,6 +1037,21 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 
 func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	es.hydrateSession(sessionID)
+	return es.appendEventUnheld(sessionID, event)
+}
+
+// Serialize the no-replay append with a concurrent first UI hydration, so its
+// tail cannot overwrite an accepted neutral end. Release before callbacks.
+func (es *EventStore) appendEventWithoutReplay(sessionID string, event Event) error {
+	es.hydrateMu.Lock()
+	release := sync.OnceFunc(es.hydrateMu.Unlock)
+	defer release()
+	return es.appendEventUnheldWithRelease(sessionID, event, release)
+}
+func (es *EventStore) appendEventUnheld(sessionID string, event Event) error {
+	return es.appendEventUnheldWithRelease(sessionID, event, nil)
+}
+func (es *EventStore) appendEventUnheldWithRelease(sessionID string, event Event, release func()) error {
 	// The per-session lock spans sequence assignment, the durable append and the
 	// in-memory insert, so a session's events stay ordered while mu is released
 	// around SQLite I/O. It is released before callbacks and SSE fan-out, as mu
@@ -1032,6 +1077,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	event.ensureExecutionOwnership(sessionID, es.events[sessionID])
 	es.stampExpectedClientUserMessage(sessionID, &event)
 	es.stampExpectedSender(sessionID, &event)
+	es.stampAgentReply(sessionID, &event)
 	if event.TerminalOwnerID == "" {
 		event.TerminalOwnerID = ResolveTerminalOwnerID(sessionID, event, nil)
 	}
@@ -1044,6 +1090,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	} else if event.Sequence > es.nextSequence[sessionID] {
 		es.nextSequence[sessionID] = event.Sequence
 	}
+	es.stampGenerationPosition(sessionID, &event)
 	projected, durable := projectDurableChatEvent(event)
 	journal := es.durableJournal
 	storesChat := journal != nil && es.persistenceClasses[sessionID] == SessionPersistenceInteractiveChat
@@ -1102,6 +1149,19 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		es.nextSequence[sessionID] = event.Sequence
 	}
 
+	if event.GenerationID != "" && (event.Type == "streaming_start" || event.Type == "llm_generation_end" || event.Type == "agent_end" || event.Type == "unified_completion") {
+		position := es.generationPositions[sessionID]
+		unframedBytes := 0
+		if position.remainder != nil {
+			unframedBytes = position.remainder.complete.Len() + position.remainder.pending.Len()
+		}
+		remainderBytes := 0
+		if event.ReplyRemainder != nil {
+			remainderBytes = len(*event.ReplyRemainder)
+		}
+		log.Printf("[CHAT_GENERATION] session=%s type=%s row=%s generation=%s start_sequence=%d append_sequence=%d reply_blocks_complete=%t block_count=%d native_block_id=%s unframed_bytes=%d remainder_bytes=%d", sessionID, event.Type, event.ID, event.GenerationID, event.GenerationStartSequence, event.Sequence, event.ReplyBlocksComplete, len(position.blocks), position.blockID, unframedBytes, remainderBytes)
+	}
+
 	// A replacing terminal snapshot supersedes the previous one of its terminal (event_memory.go).
 	es.supersedeTerminalSnapshot(sessionID, event)
 
@@ -1144,6 +1204,9 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	eventAddedCallback := es.eventAddedCallback
 	es.mu.Unlock()
 	unlockSession()
+	if release != nil {
+		release()
+	}
 
 	// Update session activity (call outside lock to avoid potential deadlock)
 	if activityCallback != nil && sessionID != "" {
@@ -1668,6 +1731,7 @@ func (es *EventStore) RemoveSession(sessionID string) {
 	delete(es.events, sessionID)
 	delete(es.terminalEvents, sessionID)
 	delete(es.nextSequence, sessionID)
+	delete(es.generationPositions, sessionID)
 	delete(es.sessionStartIndices, sessionID)
 	delete(es.sessionOwners, sessionID)
 	delete(es.persistenceClasses, sessionID)
@@ -1717,6 +1781,7 @@ func (es *EventStore) cleanupInactiveSessions() {
 			delete(es.events, sessionID)
 			delete(es.terminalEvents, sessionID)
 			delete(es.nextSequence, sessionID)
+			delete(es.generationPositions, sessionID)
 		}
 	}
 }
@@ -1750,42 +1815,6 @@ func (es *EventStore) GetStats() map[string]interface{} {
 		"total_events":   totalEvents,
 		"max_events":     es.maxEvents,
 	}
-}
-
-// DelegationStartEventData implements events.EventData for delegation_start
-type DelegationStartEventData struct {
-	DelegationID      string   `json:"delegation_id"`
-	Depth             int      `json:"depth"`
-	Instruction       string   `json:"instruction"`
-	ReasoningLevel    string   `json:"reasoning_level,omitempty"`
-	ModelID           string   `json:"model_id,omitempty"`
-	Servers           []string `json:"servers,omitempty"`
-	BackgroundAgentID string   `json:"background_agent_id,omitempty"`
-	AgentTemplate     string   `json:"agent_template,omitempty"`
-	Timestamp         string   `json:"timestamp"`
-}
-
-func (d *DelegationStartEventData) GetEventType() events.EventType {
-	return events.EventType("delegation_start")
-}
-
-// DelegationEndEventData implements events.EventData for delegation_end
-type DelegationEndEventData struct {
-	DelegationID string  `json:"delegation_id"`
-	Depth        int     `json:"depth"`
-	Result       string  `json:"result"`
-	Error        string  `json:"error,omitempty"`
-	Success      bool    `json:"success"`
-	Timestamp    string  `json:"timestamp"`
-	InputTokens  int64   `json:"input_tokens,omitempty"`
-	OutputTokens int64   `json:"output_tokens,omitempty"`
-	ToolCalls    int64   `json:"tool_calls,omitempty"`
-	Duration     string  `json:"duration,omitempty"`
-	TotalCostUSD float64 `json:"total_cost_usd,omitempty"`
-}
-
-func (d *DelegationEndEventData) GetEventType() events.EventType {
-	return events.EventType("delegation_end")
 }
 
 // GenericEventData is a generic event data type that wraps a map
@@ -1932,6 +1961,9 @@ func sweepTurnHeartbeats(now time.Time) {
 			continue
 		}
 		line := fmt.Sprintf("[TURN] session=%s still_running age=%s last_chunk_age=%s chunks=%d", b.session, b.age.Round(time.Second), b.sinceChunk.Round(time.Second), b.chunks)
+		if b.chunks == 0 {
+			line += " text_status=no_text_yet"
+		}
 		if extra := turnDiagnosticsFor(b.session); extra != "" {
 			line += " " + extra
 		}
@@ -2037,9 +2069,12 @@ func logStreamingChunkTelemetry(sessionID string, event Event) {
 // so an unpaired call is exactly the defect our tests cannot currently catch.
 
 type toolCallTelemetry struct {
-	owner     string
-	name      string
-	startedAt time.Time
+	commandLabel     string
+	nativeStartedAt  time.Time
+	owner            string
+	name             string
+	startedAt        time.Time
+	nativeCompletion bool
 }
 
 var (
@@ -2049,8 +2084,9 @@ var (
 	// runtime from the provider's own record. Injected rather than imported so
 	// this package stays free of provider knowledge; cmd/server owns the
 	// Claude Code implementation (PLAT-141).
-	toolResultResolver   ToolResultResolver
-	toolResultResolverMu sync.RWMutex
+	toolCompletionAuthority func(sessionID, toolID, name string) bool
+	toolResultResolver      ToolResultResolver
+	toolResultResolverMu    sync.RWMutex
 
 	// settleInFlight stops one turn from scheduling two settle passes. A turn
 	// emits BOTH agent_end and unified_completion, so the handler started a
@@ -2085,11 +2121,26 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 	}
 	switch d := event.Data.Data.(type) {
 	case *events.ToolCallStartEvent:
+		toolResultResolverMu.RLock()
+		authority := toolCompletionAuthority
+		toolResultResolverMu.RUnlock()
+		nativeCompletion := authority != nil && authority(sessionID, d.ToolCallID, d.ToolName)
+		// Keep only the existing bounded display label, not an arguments object. Parse only
+		// bounded native exec inputs, before taking the shared telemetry lock.
+		label := ""
+		if nativeCompletion && d.ToolName == "exec_command" && len(d.ToolParams.Arguments) <= 64*1024 {
+			var input struct {
+				Cmd string `json:"cmd"`
+			}
+			if json.Unmarshal([]byte(d.ToolParams.Arguments), &input) == nil {
+				label = commandlabel.Label(input.Cmd)
+			}
+		}
 		toolCallsMu.Lock()
 		if openToolCall[sessionID] == nil {
 			openToolCall[sessionID] = map[string]*toolCallTelemetry{}
 		}
-		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now()}
+		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now(), nativeCompletion: nativeCompletion, commandLabel: label, nativeStartedAt: event.Timestamp}
 		open := len(openToolCall[sessionID])
 		toolCallsMu.Unlock()
 		log.Printf("[TOOL] session=%s START id=%s name=%s args_len=%d open=%d",
@@ -2144,7 +2195,11 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 		toolCallsMu.Lock()
 		pending := make(map[string]*toolCallTelemetry, len(openToolCall[sessionID]))
 		for id, tc := range openToolCall[sessionID] {
-			pending[id] = tc
+			// PLAT-746-891: a Codex command may outlive its answer. Only
+			// its native completion can close it; turn end is not tool end.
+			if !tc.nativeCompletion {
+				pending[id] = tc
+			}
 		}
 		toolCallsMu.Unlock()
 		toolCallsMu.Lock()
@@ -2165,10 +2220,6 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 			log.Printf("[TOOL] session=%s turn ended with %d tool call(s) open -- waiting %s for late results: %s",
 				sessionID, len(pending), toolCallSettleGrace, strings.Join(names, ", "))
 			go es.settleAfterGrace(sessionID, event, pending)
-		} else {
-			toolCallsMu.Lock()
-			delete(openToolCall, sessionID)
-			toolCallsMu.Unlock()
 		}
 	}
 }
@@ -2412,4 +2463,80 @@ func (es *EventStore) Stats(top int) EventStoreStats {
 		stats.Largest = stats.Largest[:top]
 	}
 	return stats
+}
+
+// nativeCommandOutputTail keeps a long command output (a build log) from
+// becoming a multi-MB chat event: it keeps the last liveArtifactSummaryBytes,
+// the same bound a spilled chat row keeps, because a command's result is at
+// its end.
+func nativeCommandOutputTail(output string) string {
+	if len(output) <= liveArtifactSummaryBytes {
+		return output
+	}
+	tail := output[len(output)-liveArtifactSummaryBytes:]
+	for len(tail) > 0 && !utf8.RuneStart(tail[0]) {
+		tail = tail[1:]
+	}
+	return "[earlier output cut]\n" + tail
+}
+
+// SetToolCompletionAuthority identifies native commands whose process lifecycle
+// is reported independently of the reply. Install once during server setup.
+func SetToolCompletionAuthority(authority func(sessionID, toolID, name string) bool) {
+	toolResultResolverMu.Lock()
+	toolCompletionAuthority = authority
+	toolResultResolverMu.Unlock()
+}
+
+// CompleteNativeTool closes only a command we observed starting in this chat.
+// Replayed native records and ordinary tools cannot manufacture completions.
+// output is the command's own output from its native completion, so a command
+// that outlived its reply still shows what it printed (PLAT-746-899).
+// It reports whether it closed a command, so the caller can follow up once.
+func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time, failed bool, output string) bool {
+	toolCallsMu.Lock()
+	tc := openToolCall[sessionID][toolID]
+	if tc == nil || !tc.nativeCompletion {
+		toolCallsMu.Unlock()
+		return false
+	}
+	// The normal end-event path removes the entry. Native observers are serial.
+	name, startedAt := tc.name, tc.startedAt
+	toolCallsMu.Unlock()
+	if at.IsZero() {
+		at = time.Now()
+	}
+	output = nativeCommandOutputTail(output)
+	event := Event{ID: "native-command-end:" + toolID, Type: "tool_call_end", Timestamp: at, SessionID: sessionID,
+		Data: &events.AgentEvent{Type: events.EventType("tool_call_end"), Timestamp: at, SessionID: sessionID,
+			Data: &events.ToolCallEndEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Result: output}}}
+	if failed {
+		message := "Native command exited unsuccessfully."
+		if output != "" {
+			message += "\n\n" + output
+		}
+		event.Type = "tool_call_error"
+		event.Data.Type = events.EventType("tool_call_error")
+		event.Data.Data = &events.ToolCallErrorEvent{ToolName: name, ToolCallID: toolID, Duration: at.Sub(startedAt), Error: message}
+	}
+	es.AddEvent(sessionID, event)
+	return true
+}
+
+// NativeCommand is an actual provider-owned command, not an ordinary tool.
+type NativeCommand struct {
+	ID, Name, Label string
+	StartedAt       time.Time
+}
+
+func (es *EventStore) OpenNativeCommands(sessionID string) []NativeCommand {
+	toolCallsMu.Lock()
+	defer toolCallsMu.Unlock()
+	var result []NativeCommand
+	for id, call := range openToolCall[sessionID] {
+		if call.nativeCompletion {
+			result = append(result, NativeCommand{ID: id, Name: call.name, Label: call.commandLabel, StartedAt: call.nativeStartedAt})
+		}
+	}
+	return result
 }

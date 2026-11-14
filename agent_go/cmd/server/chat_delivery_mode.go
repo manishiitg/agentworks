@@ -21,8 +21,15 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	api.conversationTurnQueueMu.Lock()
 	refreshing := api.conversationTurnQueueRuntimeChange[sessionID]
 	api.conversationTurnQueueMu.Unlock()
-	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) || api.launchedAgentProfileDiffers(sessionID) {
+	if sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) {
 		return "refreshing", false
+	}
+	refreshing = refreshing || req.RestartCodingCLI || api.launchedAgentProfileDiffers(sessionID)
+	state := func(allowed bool) (string, bool) {
+		if refreshing {
+			return "refreshing", allowed
+		}
+		return "running", allowed
 	}
 	api.runningAgentsMux.RLock()
 	agent := api.runningAgents[sessionID]
@@ -40,7 +47,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 					if !api.liveSteerProviderTransportReady(sessionID, provider) {
 						return api.blockedQueuedTurnReason(sessionID), false
 					}
-					return "running", !req.DisableLiveInputDelivery
+					return state(!req.DisableLiveInputDelivery)
 				}
 			}
 		}
@@ -55,7 +62,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	if !occupied {
 		return "waiting", false
 	}
-	return "running", !req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID)
+	return state(!req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID))
 }
 
 // PLAT-746: a busy lane or missing live-input transport is not startup evidence.
@@ -98,12 +105,17 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		if !ok {
 			continue
 		}
+		if turn.RetryAt != nil {
+			message.QueueReason, message.QueueDetail = "provider_limit", "Waiting for Claude's limit to reset"
+			message.CanSteer = false
+			continue
+		}
 		message.QueueReason, message.CanSteer = api.queuedMessageDeliveryState(sessionID, turn.Request)
 		message.Refreshing = message.QueueReason == "refreshing"
 		message.QueueDetail = api.queuedMessageWaitDetail(sessionID, message.QueueReason)
 		// Steer now is only for a message the person queued on purpose (queue mode). In steer mode the server hands the
 		// message in by itself as soon as it can, so offering the button there only adds a choice.
-		if message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
+		if !message.CanManage || message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
 			message.CanSteer = false
 		}
 	}
@@ -113,7 +125,7 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 // Queue access is already checked by pendingQueuedMessages (PLAT-746-313).
 func (api *StreamingAPI) queuedMessageWaitDetail(sessionID, reason string) string {
 	if reason == "refreshing" {
-		return "Waiting for this chat to restart with its updated setup"
+		return "Updated setup applies next turn. You can steer into the current reply."
 	}
 	if idleCompacts.running(sessionID) != nil {
 		return "Waiting for this chat to finish tidying its context"
@@ -190,6 +202,12 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 		return
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	if !websiteDeviceClaims(GetUserFromContext(r.Context())) {
+		for i := range messages {
+			messages[i].CanDismiss = false
+		}
+	}
+
 	if messages == nil {
 		messages = []PendingQueuedMessage{}
 	}
@@ -207,7 +225,7 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || (!personTypedQueuedTurn(turn) && (steer || !websiteDeviceClaims(GetUserFromContext(ctx)) || !dismissibleIncomingTurn(turn))) {
 			continue
 		}
 		if turn.StartedAt != nil {
@@ -288,7 +306,7 @@ func (api *StreamingAPI) retryQueuedConversationMessage(ctx context.Context, use
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || !personTypedQueuedTurn(turn) {
 			continue
 		}
 		if turn.StartedAt != nil || turn.Steering || turn.DeliveryError == "" {
@@ -435,4 +453,23 @@ func (api *StreamingAPI) launchedAgentProfileDiffers(sessionID string) bool {
 	current, known := api.lastAgentProfileKeyBySession[sessionID]
 	launched, launchKnown := api.launchedAgentProfileKeyBySession[sessionID]
 	return known && launchKnown && current != "" && launched != current
+}
+
+// Only the server-recorded delivery identity, never a model-supplied inbox or
+// trigger string, makes an agent message eligible for owner live input.
+func ownAgentDeliveryForSteering(ctx context.Context, req QueryRequest) bool {
+	if req.AgentMessageFromOtherPerson || req.SharedAgentSender != "" || req.PinRunMode || req.CrewGuestCaller != "" {
+		return false
+	}
+	if own, _ := ctx.Value(desktopAppOwnDeliveryKey{}).(bool); own {
+		return true
+	}
+	claims := GetUserFromContext(ctx)
+	stamp, _ := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
+	sender, _ := stamp["sender_user_id"].(string)
+	return claims != nil && sender != "" && sender == claims.UserID
+}
+
+func (api *StreamingAPI) deferPendingSetupForLiveInput(ctx context.Context, req QueryRequest, sessionID string, otherRole bool) bool {
+	return !otherRole && api.conversationTurnOccupied(sessionID) && shouldTryRetainedDeliveryBeforeQueue(ctx, req, sessionID)
 }

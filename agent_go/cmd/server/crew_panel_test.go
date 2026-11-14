@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,14 +15,13 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
-	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // PLAT-856-542: a slow section cannot hold the other sections hostage; cached
-// data is isolated by caller/chat and an explicit denial removes it.
+// data is isolated by caller and access, and an explicit denial removes it.
 func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	cache := crewPanelCache{}
-	key := crewPanelCacheKey{caller: "owner", project: "crew", chat: "private-chat", authority: "current"}
+	key := crewPanelCacheKey{caller: "owner", project: "crew", authority: "current"}
 	quick := crewPanelSource{id: "changes", title: "Changes", allowed: true, read: func(context.Context) (crewPanelSection, error) {
 		return crewPanelSection{Rows: []crewPanelRow{{ID: "repo", Label: "Project"}}}, nil
 	}}
@@ -51,7 +51,7 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	if time.Since(start) > time.Second || !out[0].Stale || len(out[0].Rows) != 1 || out[1].Error != "" {
 		t.Fatalf("fanout: %+v", out)
 	}
-	for _, changed := range []crewPanelCacheKey{{caller: "another", project: key.project, chat: key.chat, authority: key.authority}, {caller: key.caller, project: key.project, chat: "another-chat", authority: key.authority}, {caller: key.caller, project: key.project, chat: key.chat, authority: "revoked"}} {
+	for _, changed := range []crewPanelCacheKey{{caller: "another", project: key.project, authority: key.authority}, {caller: key.caller, project: key.project, authority: "revoked"}} {
 		got := cache.collect(t.Context(), changed, []crewPanelSource{slow}, time.Millisecond)
 		if len(got[0].Rows) != 0 {
 			t.Fatal("cached private data crossed scope")
@@ -75,6 +75,25 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got[0].Rows) != 0 {
 		t.Fatal("section not admitted")
 	}
+	// PLAT-746-513: pending reads back off and stop; stale failures cannot
+	// restart a fast polling loop in every connected browser tab.
+	for attempt, minimum := range []int64{100, 250, 500, 1000, 0} {
+		reply := crewPanelReply{Sections: []crewPanelSection{{ID: "workflow", refreshAt: time.Now()}}}
+		applyCrewPanelRefresh(&reply, strconv.Itoa(attempt))
+		if attempt == 4 {
+			if reply.RefreshAfterMS != 0 || reply.RefreshNote == "" {
+				t.Fatal("pending panel retry budget was unlimited")
+			}
+		} else if reply.RefreshAfterMS < minimum || reply.RefreshAttempt != attempt+1 {
+			t.Fatalf("pending panel retry backoff: %+v", reply)
+		}
+	}
+	stale := crewPanelReply{Sections: []crewPanelSection{{ID: "workflow", Stale: true, refreshAt: time.Now().Add(-time.Second)}}}
+	applyCrewPanelRefresh(&stale, "0")
+	if stale.RefreshAfterMS < 2000 {
+		t.Fatal("stale workflow snapshot requested a fast polling loop")
+	}
+
 }
 
 // Exercise the actual HTTP route and normal Crew resolver, including a warm
@@ -85,11 +104,34 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f.write(t, externalCommandCrewRoot+"/db/reports/example.html", "<html><title>Example result</title></html>")
+	// PLAT-746-513 / Codex1730: one workflow with three timers and a
+	// webhook stays one workflow; starts keep their automation classification.
+	f.api.scheduler = &SchedulerService{api: f.api}
+	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
+	child := crewExecutableBinding{ID: "panel-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/panel-workflow", Kind: "script"}
+	if err := registerCrewExecutable(child); err != nil {
+		t.Fatal(err)
+	}
+	manifest := NewWorkflowManifest("Example workflow")
+	manifest.ID, manifest.CreatedBy = child.ID, "owner"
+	manifest.Schedules = []WorkflowSchedule{
+		{ID: "timer-one", Name: "First timer", ScheduleType: "cron", CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: true},
+		{ID: "timer-two", Name: "Second timer", ScheduleType: "cron", CronExpression: "0 10 * * *", Timezone: "UTC", Enabled: false},
+		{ID: "timer-three", Name: "Third timer", ScheduleType: "cron", CronExpression: "0 11 * * *", Timezone: "UTC", Enabled: true},
+		{ID: "incoming", Name: "Incoming webhook", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "opaque-fixture"}},
+	}
+	if err := WriteWorkflowManifest(t.Context(), child.Root, manifest); err != nil {
+		t.Fatal(err)
+	}
+
 	router := mux.NewRouter()
 	router.HandleFunc("/api/crews/{project}/panel", f.api.handleCrewPanel).Methods("GET")
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
-	call := func(c *UserClaims) *httptest.ResponseRecorder {
+	call := func(c *UserClaims, attempt ...int) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", "/api/crews/team/panel", nil)
+		if len(attempt) > 0 {
+			r.URL.RawQuery = "refresh_attempt=" + strconv.Itoa(attempt[0])
+		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, c))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
@@ -102,6 +144,76 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	var result crewPanelReply
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
+	}
+	counts := map[string]int{}
+	var workflowDetail string
+	for _, section := range result.Sections {
+		switch section.ID {
+		case "workflow":
+			counts[section.ID] = len(section.Rows)
+			if len(section.Rows) == 1 {
+				workflowDetail = section.Rows[0].Detail
+			}
+		case "schedules", "webhooks":
+			if section.Error != "" {
+				t.Fatalf("trigger section failed: %+v", section)
+			}
+			counts[section.ID] = len(section.Rows)
+			for _, row := range section.Rows {
+				if row.Destination != "workflow" {
+					t.Fatalf("workflow start lost its navigation: %+v", row)
+				}
+			}
+		}
+	}
+	if counts["workflow"] != 1 || counts["schedules"] != 3 || counts["webhooks"] != 1 || result.Details["workflow"] != workflowDetail || result.Details["schedules:schedules"] != "2 on · 1 paused" || result.Details["schedules:triggers"] != "1 on" || result.Details["automations"] != "4" {
+		t.Fatalf("workflow starts misclassified: counts=%v details=%v", counts, result.Details)
+	}
+	t.Logf("PANEL_TRIGGERS workflows=%d timers=%d webhooks=%d timers_detail=%q webhooks_detail=%q", counts["workflow"], counts["schedules"], counts["webhooks"], result.Details["schedules:schedules"], result.Details["schedules:triggers"])
+	// A connected session notification inside the cache window must provide
+	// a bounded trailing read, rather than freeze a completed run as running.
+	setRun := func(status string) {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]string{"status": status, "started_at": "2026-11-09T00:00:00Z"})
+		if err := writeFileToWorkspace(t.Context(), child.Root+"/runs/run-live/run_metadata.json", string(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expireWorkflow := func() {
+		f.api.crewPanels.mu.Lock()
+		defer f.api.crewPanels.mu.Unlock()
+		for key, value := range f.api.crewPanels.entries {
+			if key.project == "team" && key.section == "workflow" {
+				value.at = time.Now().Add(-6 * time.Second)
+				f.api.crewPanels.entries[key] = value
+			}
+		}
+	}
+	readPanel := func(attempt int) crewPanelReply {
+		t.Helper()
+		response := call(claims, attempt)
+		var panel crewPanelReply
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &panel) != nil {
+			t.Fatalf("lifecycle panel: %d %s", response.Code, response.Body)
+		}
+		return panel
+	}
+	setRun("running")
+	expireWorkflow()
+	if running := readPanel(0); !running.Busy || running.RefreshAfterMS != 0 {
+		t.Fatalf("fresh running panel: %+v", running)
+	}
+	setRun("completed")
+	publishSessionsChanged()
+	cached := readPanel(0)
+	if cached.Busy && (cached.RefreshAfterMS <= 0 || cached.RefreshAttempt != 1) {
+		t.Fatalf("notification cached running without trailing read: %+v", cached)
+	}
+	// Advance the server snapshot clock, not a five-second test sleep.
+	expireWorkflow()
+	settled := readPanel(cached.RefreshAttempt)
+	if settled.Busy || settled.RefreshAfterMS != 0 || !strings.Contains(settled.Details["workflow"], "last run finished") {
+		t.Fatalf("trailing read did not settle: %+v", settled)
 	}
 	found := false
 	for _, section := range result.Sections {
@@ -183,31 +295,8 @@ func TestCrewPanelAutomationKindSummaries(t *testing.T) {
 	if got["schedules:conditions"] != "None yet" {
 		t.Fatalf("an empty loaded list should say so: %q", got["schedules:conditions"])
 	}
-	if _, has := got["schedules:triggers"]; has {
-		t.Fatalf("a list that failed to load must not claim it is empty: %v", got)
-	}
-}
-
-// The Automations menu: a workflow row and the Inbox line (On counts as an automation, Off does not), and the workflow
-// line says steps and the newest run in plain words.
-func TestCrewPanelWorkflowAndInboxSummaries(t *testing.T) {
-	now := time.Now()
-	done := now.Add(-2 * time.Hour)
-	steps := map[string]todo_creation_human.PythonStepEvidence{"a": {}, "b": {}, "c": {}, "d": {}}
-	line := crewPanelWorkflowLine([]RunFolderInfo{{Name: "run-2", Metadata: &RunMetadata{Status: "completed", CompletedAt: &done, PythonSteps: steps}}}, now)
-	if line != "4 steps · last run finished 2h ago" {
-		t.Fatalf("workflow line: %q", line)
-	}
-	if got := crewPanelWorkflowLine(nil, now); got != "Not run yet" {
-		t.Fatalf("no runs: %q", got)
-	}
-	off := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "Off"}}}})
-	if off["schedules:email"] != "Off" || off["automations"] != "" {
-		t.Fatalf("an Off inbox must be listed but not counted: %v", off)
-	}
-	on := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "On · a@example.com · 0 messages this week", Connected: true}}}, {ID: "workflow", Rows: []crewPanelRow{{Destination: "workflow", Detail: line}}}})
-	if on["automations"] != "On · a@example.com · 0 messages this week" || on["workflow"] != line {
-		t.Fatalf("on inbox and workflow: %v", on)
+	if got["schedules:triggers"] != "Could not load" {
+		t.Fatalf("a list that failed to load must say so, not claim it is empty: %v", got)
 	}
 }
 
@@ -255,5 +344,79 @@ func TestCrewInboxSwitchIsOwnerOnlyAndPanelFollows(t *testing.T) {
 	}
 	if row, err := env.api.crewPanelInboxRow(ctx, root); err != nil || !row.Connected || row.Detail != "On · 0 messages this week" {
 		t.Fatalf("row after on: %+v %v", row, err)
+	}
+}
+
+// PLAT-746-840: a known Crew's activity must not invalidate every expanded Crew.
+func TestSessionNoticeScopesKnownCrewAndKeepsUnknownRefresh(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	f.api.activeSessions = map[string]*ActiveSessionInfo{"known": {WorkspacePath: externalCommandCrewRoot}}
+	sub := livefeed.Default.Subscribe()
+	defer livefeed.Default.Unsubscribe(sub)
+	f.api.publishSessionChanged("known")
+	notices, resync := sub.Drain()
+	if resync || len(notices) != 1 || notices[0].Kind != livefeed.Sessions || notices[0].Project != "team" {
+		t.Fatalf("known Crew notice: %+v resync=%v", notices, resync)
+	}
+	f.api.publishSessionChanged("unknown")
+	notices, resync = sub.Drain()
+	if resync || len(notices) != 1 || notices[0].Project != "" || notices[0].Kind != livefeed.Sessions {
+		t.Fatalf("unknown session lost broad refresh: %+v resync=%v", notices, resync)
+	}
+}
+
+// A background section shows its last snapshot at once once it is older than refreshFor, reads the new one off the
+// request, and never starts a second read while one is running (the Git status over every checkout took ~5 s per panel read).
+func TestCrewPanelBackgroundSectionServesLastSnapshotWhileRefreshing(t *testing.T) {
+	cache := &crewPanelCache{}
+	key := crewPanelCacheKey{caller: "u", project: "p", authority: "a"}
+	release, reads := make(chan struct{}), make(chan int, 8)
+	label := "old"
+	source := crewPanelSource{id: "changes", title: "Changes", allowed: true, refreshFor: time.Minute, background: true, timeout: 5 * time.Second,
+		read: func(ctx context.Context) (crewPanelSection, error) {
+			reads <- 1
+			if label == "new" {
+				<-release
+			}
+			return crewPanelSection{Rows: []crewPanelRow{{ID: "r", Label: label}}}, nil
+		}}
+	cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second) // first read waits and fills the cache
+	key.section = "changes"
+	cache.mu.Lock()
+	old := cache.entries[key]
+	old.at = time.Now().Add(-2 * time.Minute)
+	cache.entries[key] = old
+	cache.mu.Unlock()
+	key.section = ""
+	label = "new"
+	for i := 0; i < 3; i++ {
+		start := time.Now()
+		got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+		if time.Since(start) > time.Second || len(got[0].Rows) != 1 || got[0].Rows[0].Label != "old" {
+			t.Fatalf("read %d did not serve the last snapshot at once: %+v after %s", i, got, time.Since(start))
+		}
+	}
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+		if got[0].Rows[0].Label == "new" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background read never replaced the snapshot")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := len(reads); n != 2 { // the first read and exactly one background read
+		t.Fatalf("source read %d times, want 2", n)
+	}
+	// A Git action or turn end after the snapshot drops it: the next read shows a current one, not the old rows.
+	label = "committed"
+	crewPanelChangesDirty.Store(key.project, time.Now())
+	t.Cleanup(func() { crewPanelChangesDirty.Delete(key.project) })
+	if got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second); got[0].Rows[0].Label != "committed" {
+		t.Fatalf("a snapshot older than the last Git action was shown: %+v", got[0].Rows)
 	}
 }

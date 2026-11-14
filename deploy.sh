@@ -77,7 +77,18 @@ esac
 # Build once, deploy everywhere (PLAT-426): helpers for the build host (see deploy/common/build-once.sh).
 # shellcheck disable=SC1091
 # Hosts, ports and addresses are private: the deployments repo's deploy.env (PLAT-719). Environment variables override it.
-DEPLOY_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}/deploy.env"
+DEPLOY_SETTINGS_DIR="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}"
+# Agents push the private settings repository from their own worktrees and nobody updates this checkout, so it fell a month
+# behind and deploys read old server settings. Fast-forward it to its remote first; a checkout with local edits, local commits
+# or no network keeps what it has and says so.
+if git -C "$DEPLOY_SETTINGS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git -C "$DEPLOY_SETTINGS_DIR" pull -q --ff-only >/dev/null 2>&1; then
+    :
+  else
+    echo "Note: could not update the deployment settings in $DEPLOY_SETTINGS_DIR to the latest; using them as they are." >&2
+  fi
+fi
+DEPLOY_ENV_FILE="$DEPLOY_SETTINGS_DIR/deploy.env"
 # shellcheck source=/dev/null
 [[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
 source "$REPO_ROOT/deploy/common/build-once.sh"
@@ -196,11 +207,11 @@ product_config_dir() {
 # One real AgentWorks tool call per configured company provider, over the server's public MCP, in a dedicated smoke
 # Crew. It reports PASS/FAIL per provider and never fails a deploy. The private products/<name>/smoke.env names the
 # saved login on this computer (SMOKE_LOGIN, from `agentworks login --name`) and the Crew (SMOKE_WORKSPACE=work:<id>);
-# without it nothing runs. DEPLOY_SMOKE=0 skips it for one deploy.
+# without it nothing runs. Opt-in (owner, 9 Nov: "yes opt in"): it runs only with DEPLOY_SMOKE=1, for a batch end or a slot/provider change.
 post_deploy_smoke() {
   local product="$1" config
   config="$(deployments_dir)/products/$product/smoke.env"
-  [[ "${DEPLOY_SMOKE:-1}" != 0 ]] || { echo "==> [$product] Smoke check skipped (DEPLOY_SMOKE=0)."; return 0; }
+  [[ "${DEPLOY_SMOKE:-0}" == 1 ]] || { echo "==> [$product] Smoke check skipped (opt-in: DEPLOY_SMOKE=1 runs it)."; return 0; }
   [[ -f "$config" ]] || { echo "==> [$product] Smoke check not set up (no products/$product/smoke.env)."; return 0; }
   (
     # shellcheck disable=SC1090

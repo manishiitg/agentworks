@@ -1,4 +1,8 @@
+import { NativeGoalRow } from './NativeGoal'
+import { CodingAgentPlan } from './CodingAgentPlan'
+import { NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
 import React from 'react'
+import { openAppProduct } from '../../utils/appNavigation'
 import { nativeActivityText } from '../../utils/nativeActivityText'
 import { WorkingStatus } from '../chat/WorkingStatus'
 import { InspectExecutionButton } from '../chat/InspectExecutionButton'
@@ -314,6 +318,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     )
   }
 
+  if (event.type === 'native_goal_updated') return <NativeGoalRow event={event} onSendMessage={onSendMessage} />
+
+  if (event.type === 'coding_agent_plan') return <CodingAgentPlan event={event} />
+
   // Type-safe event rendering using discriminated unions
   // Each case uses isEventType for type narrowing, then getEventData for typed access
 
@@ -413,6 +421,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   if (event.type === 'coding_agent_native_activity') {
     const envelope = event.data as { data?: { record?: Record<string, unknown> } } | undefined
     const record = envelope?.data?.record || {}
+    if (record.work_id && ['helper', 'background_command'].includes(String(record.kind))) return <NativeBackgroundTaskLine record={record} />
     const content = nativeActivityText(record)
     if (!content) return null
     return <CompactWrapper compact={compact}><div className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">{content}</div></CompactWrapper>
@@ -480,6 +489,22 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
         </div>
       </CompactWrapper>
     )
+  }
+  if (event.type === 'chat_forked') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const name = typeof data.source_name === 'string' ? data.source_name : 'another chat'
+    const project = typeof data.source_project_id === 'string' ? data.source_project_id : ''
+    const chat = typeof data.source_chat_id === 'string' ? data.source_chat_id : ''
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked from {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}</span><span className="flex-1 border-t border-border" /></div>
+  }
+  if (event.type === 'chat_model_changed') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const model = typeof data.model === 'string' ? data.model : ''
+    const previous = typeof data.previous_model === 'string' ? data.previous_model : ''
+    const effort = typeof data.effort === 'string' && data.effort ? ` · ${data.effort}` : ''
+    const oldEffort = typeof data.previous_effort === 'string' && data.previous_effort ? ` · ${data.previous_effort}` : ''
+    if (!model) return null
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Next reply: {previous && `${previous}${oldEffort} → `}{model}{effort}</span><span className="flex-1 border-t border-border" /></div>
   }
   if (event.type === 'context_compaction') {
     return <ContextCompactionEventDisplay event={event} />
@@ -1297,6 +1322,19 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   // the next turn. Keep the copy user-facing: "steered" and provider routing
   // described the implementation but made a successful notification look
   // like an unexplained diagnostic.
+  if (event.type === 'chat_image_notice' || event.type === 'native_goal_notice' || event.type === 'work_folder_notice' || event.type === 'restart_continue_notice' || event.type === 'usage_limit_notice') {
+    const envelope = event.data as unknown as Record<string, unknown> | undefined
+    const inner = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
+    const payload = (inner.data ?? inner) as Record<string, unknown>
+    const resetAt = typeof payload.retry_at === 'string' ? new Date(payload.retry_at) : null
+    const message = event.type === 'usage_limit_notice' && resetAt && Number.isFinite(resetAt.getTime())
+      ? `Usage limit reached. I'll continue at ${resetAt.toLocaleString()}.`
+      : typeof payload.message === 'string' ? payload.message : ''
+    return message ? <CompactWrapper compact={compact}>
+      <div role="status" className="text-sm text-muted-foreground">{message}</div>
+    </CompactWrapper> : null
+  }
+
   if (isEventType(event, 'auto_notification_steered')) {
     const fields = getEventData(event)
     const rawName = fields.name || ''

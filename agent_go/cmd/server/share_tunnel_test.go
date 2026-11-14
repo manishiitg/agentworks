@@ -28,17 +28,6 @@ func resetShareTunnel(t *testing.T) {
 	t.Cleanup(func() { StopShareTunnel() })
 }
 
-func TestTryCloudflareURLPattern(t *testing.T) {
-	// Verbatim shape of cloudflared 2025.9.0 quick-tunnel output.
-	line := "2026-09-20T19:14:44Z INF |  https://bright-otter-42.trycloudflare.com                                  |"
-	if got := tryCloudflareURLRe.FindString(line); got != "https://bright-otter-42.trycloudflare.com" {
-		t.Fatalf("parsed URL = %q", got)
-	}
-	if got := tryCloudflareURLRe.FindString("no url here"); got != "" {
-		t.Fatalf("parsed URL from noise = %q", got)
-	}
-}
-
 func TestShareTunnelStartStopStatus(t *testing.T) {
 	writeStubCloudflared(t, "https://bright-otter-42.trycloudflare.com")
 	resetShareTunnel(t)

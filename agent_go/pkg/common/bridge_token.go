@@ -30,6 +30,8 @@ import (
 // that inherits the server's environment must not be able to mint a token
 // for another session.
 
+// Ordinary bounded executions use signed session tokens. Kept host processes
+// use an in-memory, exact-generation lease (bridge_process_lease.go).
 const bridgeTokenPrefix = "mcps2."
 
 // bridgeTokenLifetime bounds how long a leaked token stays usable within one
@@ -61,6 +63,7 @@ func NewBridgeTokenSecret() string {
 func SetBridgeTokenSecret(secret string) {
 	bridgeTokenMu.Lock()
 	defer bridgeTokenMu.Unlock()
+	resetProcessBridgeCredentialsLocked()
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		bridgeTokenKey = nil
@@ -87,6 +90,9 @@ func bridgeTokenMAC(key []byte, sessionID, issuedHour string) []byte {
 // session tokens are not configured or the session is empty.
 func BridgeTokenForSession(sessionID string) string {
 	sessionID = strings.TrimSpace(sessionID)
+	if token, managed := processBridgeTokenForSession(sessionID); managed {
+		return token
+	}
 	bridgeTokenMu.RLock()
 	key := bridgeTokenKey
 	bridgeTokenMu.RUnlock()
@@ -101,12 +107,15 @@ func BridgeTokenForSession(sessionID string) string {
 // IsBridgeSessionToken reports whether token has the session-token shape
 // (not whether it is valid).
 func IsBridgeSessionToken(token string) bool {
-	return strings.HasPrefix(strings.TrimSpace(token), bridgeTokenPrefix)
+	return strings.HasPrefix(strings.TrimSpace(token), bridgeTokenPrefix) || strings.HasPrefix(strings.TrimSpace(token), processBridgeTokenPrefix)
 }
 
 // VerifyBridgeToken returns the session a valid session token was minted for.
 func VerifyBridgeToken(token string) (string, bool) {
 	token = strings.TrimSpace(token)
+	if strings.HasPrefix(token, processBridgeTokenPrefix) {
+		return verifyProcessBridgeToken(token)
+	}
 	if !strings.HasPrefix(token, bridgeTokenPrefix) {
 		return "", false
 	}

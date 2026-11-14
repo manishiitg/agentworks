@@ -218,17 +218,3 @@ func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
 	}
 
 }
-
-func TestViewerCommandsPreserveSelectedRuntime(t *testing.T) {
-	session := "workflow-1111111111111111--browser"
-	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "")
-	if args := browserViewerLaunchArgs(session); !strings.Contains(strings.Join(args, " "), "--no-sandbox") {
-		t.Fatal("managed viewer omitted native launch flags", args)
-	}
-	browser.BindViewerCDPPort(session, 9222)
-	defer browser.BindViewerCDPPort(session, 0)
-	args := strings.Join(browserViewerLaunchArgs(session), " ")
-	if !strings.Contains(args, "--cdp") || strings.Contains(args, "--profile") || strings.Contains(args, "--args") {
-		t.Fatal("local viewer switched to managed Chrome", args)
-	}
-}

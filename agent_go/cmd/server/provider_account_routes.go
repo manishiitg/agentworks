@@ -305,7 +305,19 @@ func (api *StreamingAPI) createProviderConnection(w http.ResponseWriter, r *http
 			return
 		}
 	}
-	if request.AuthMethod == "cli_login" {
+	if request.AuthMethod == providerAuthServerLogin {
+		// Signed in once on this server, used by the owner's server agents and Mac (personal_server_login.go).
+		if !serverLoginOffered(request.Provider) {
+			http.Error(w, "this server cannot hold a "+providerAccountProductName(request.Provider)+" login; add it with a browser login or a key", http.StatusBadRequest)
+			return
+		}
+		placeholder, err := newServerLoginPlaceholder()
+		if err != nil {
+			http.Error(w, "cannot create the account", http.StatusInternalServerError)
+			return
+		}
+		record.AuthMethod, record.Credential, record.Sharing = providerAuthServerLogin, placeholder, nil
+	} else if request.AuthMethod == "cli_login" {
 		record.AuthMethod = "cli_login"
 		record.Credential = ""
 	} else if request.Provider == "claude-code" {
@@ -321,6 +333,12 @@ func (api *StreamingAPI) createProviderConnection(w http.ResponseWriter, r *http
 	if err != nil {
 		http.Error(w, "cannot load provider connections", http.StatusInternalServerError)
 		return
+	}
+	if record.AuthMethod == providerAuthServerLogin {
+		if err := serverLoginAccountCheck(records, record); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 	}
 	if err := saveProviderConnections(r.Context(), append(records, record)); err != nil {
 		http.Error(w, "cannot save provider connection", http.StatusInternalServerError)
@@ -443,6 +461,12 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 			}
 			records = append(records[:i], records[i+1:]...)
 		} else {
+			// A login the server holds for its owner is theirs alone (one person's subscription, used only by their
+			// own agents) and has no key to change.
+			if record.AuthMethod == providerAuthServerLogin && (request.Credential != nil || request.Sharing != nil && request.Sharing.Mode != providerSharingPrivate) {
+				http.Error(w, "this account is signed in on the server for you alone; it cannot be shared or given a key", http.StatusBadRequest)
+				return
+			}
 			if request.DisplayName != nil {
 				name, err := validProviderAccountName(request.DisplayName)
 				if err != nil {
@@ -479,6 +503,10 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 			}
 			if home, err := providerConnectionHome(id); err == nil {
 				_ = os.RemoveAll(filepath.Dir(home))
+			}
+			if target.AuthMethod == providerAuthServerLogin {
+				modelProxyFor(target.OwnerUserID).signOut(target.Provider)
+				log.Printf("[SERVER_LOGIN] %s's own %s login removed with account %s", target.OwnerUserID, target.Provider, id)
 			}
 			log.Printf("[PROVIDER_ACCOUNT] %s removed account %s (owner %s)", userID, id, target.OwnerUserID)
 		} else if request.AllowedModels != nil {

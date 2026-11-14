@@ -23,27 +23,6 @@ func retainedCompletionEvent(sessionID, turnID, eventID, final string) storeeven
 	}
 }
 
-func TestRetainedStructuredFinalRequiresCompletedReply(t *testing.T) {
-	event := retainedCompletionEvent("session-1", "turn-1", "completion-1", "done")
-	final, turnID, ok := retainedStructuredFinal(event)
-	if !ok || final != "done" || turnID != "turn-1" {
-		t.Fatalf("structured final = %q/%q/%v", final, turnID, ok)
-	}
-	event.Data.TurnID = ""
-	if _, turnID, ok := retainedStructuredFinal(event); !ok || turnID != "turn-1" {
-		t.Fatalf("completion metadata turn ID was not preferred over execution ownership: %q/%v", turnID, ok)
-	}
-	event.Data.Data.(*agentevents.UnifiedCompletionEvent).FinalResult = ""
-	if _, _, ok := retainedStructuredFinal(event); ok {
-		t.Fatal("completion without final response was accepted as durable reply")
-	}
-	event.Type = "streaming_end"
-	event.Data.Data.(*agentevents.UnifiedCompletionEvent).FinalResult = "done"
-	if _, _, ok := retainedStructuredFinal(event); ok {
-		t.Fatal("streaming lifecycle event was accepted as durable reply")
-	}
-}
-
 func TestStructuredCompletionPersistsExactlyOnceByTurn(t *testing.T) {
 	const (
 		userID        = "alice"

@@ -1,6 +1,8 @@
+import { useAuthStore } from '../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { lazy, Suspense, useState } from 'react'
-import { CalendarClock, Webhook } from 'lucide-react'
+import { CalendarClock } from 'lucide-react'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
@@ -10,16 +12,14 @@ import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { openWorkflowPresetPage } from '../utils/workflowSessionRestore'
 import type { TriggerOwner } from './scheduler/GlobalTriggersView'
 
-const Schedules = lazy(() => import('./scheduler/WorkflowScheduleRunsPanel'))
+const Schedules = lazy(() => import('./scheduler/SimpleSchedulesOverview'))
 const Triggers = lazy(() => import('./scheduler/GlobalTriggersView'))
 type OverviewTab = 'schedules' | 'triggers'
-const tabs = [
-  { id: 'schedules' as const, label: 'Schedules', icon: CalendarClock },
-  { id: 'triggers' as const, label: 'Triggers', icon: Webhook },
-]
-
 /** Shared schedules and triggers overview, opened from the top-bar icon. */
 export default function SchedulesPage() {
+  const user = useAuthStore(state => state.user?.id)
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const initialSearch = useAppStore(state => state.schedulesSearchScope === `${workspace}:${user || ''}` ? state.schedulesSearchQuery : '')
   const showSchedules = useAppStore(state => state.showSchedulesOverview)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const setShowSchedulesOverview = useAppStore(state => state.setShowSchedulesOverview)
@@ -54,20 +54,14 @@ export default function SchedulesPage() {
 
   return (
     <section aria-label="Schedules and triggers" className="flex h-full min-h-0 flex-col bg-background">
-      <WorkspacePageHeader page="schedules" title="Schedules and triggers" icon={CalendarClock} below={
-        <div role="tablist" aria-label="Schedules and triggers" className="flex flex-wrap gap-1">
-          {tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-            <tab.icon className="h-3.5 w-3.5" />{tab.label}
-          </button>)}
-        </div>
-      } />
-      <div role="tabpanel" className="min-h-0 flex-1">
+      <WorkspacePageHeader page="schedules" title={activeTab === 'schedules' ? 'Schedules' : 'Triggers'} icon={CalendarClock}>
+        {activeTab === 'triggers' && <button type="button" onClick={() => setActiveTab('schedules')} className="ml-auto rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground">Schedules</button>}
+      </WorkspacePageHeader>
+      <div role="region" aria-label={activeTab === 'schedules' ? 'Schedule list' : 'Trigger list'} className="min-h-0 flex-1">
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
-          {activeTab === 'schedules' && <Schedules key={productSurface} embedded active={showSchedules && !showProviders}
+          {activeTab === 'schedules' && <Schedules key={productSurface} initialSearch={initialSearch} active={showSchedules && !showProviders}
             onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'}
-            productProfileId={isCrew ? 'work' : undefined} />}
+            onTriggers={() => setActiveTab('triggers')} />}
           {activeTab === 'triggers' && <Triggers key={productSurface} kind={isCrew ? 'crew' : 'workflow'}
             onOpen={openTriggerOwner} />}
         </Suspense>

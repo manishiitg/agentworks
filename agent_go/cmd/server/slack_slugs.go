@@ -7,6 +7,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
@@ -25,6 +26,9 @@ import (
 // A channel reaches its allowed list (default first); a DM reaches the app's
 // targets the matched person can reach with their own access. Codes never
 // answer in channels.
+
+// slackMissingTargetsLogged holds the targets already logged as missing in this process.
+var slackMissingTargetsLogged sync.Map
 
 // slackRoutingHooksFor wires services.SlackRoutingHooks to this server.
 func (api *StreamingAPI) slackRoutingHooksFor() *services.SlackRoutingHooks {
@@ -118,9 +122,13 @@ func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegis
 			ref.WorkspacePath = foldCrewRootForStoredReference(ref.WorkspacePath)
 		}
 		// A target whose workflow or Crew was deleted is not offered; its stale registry entry must not show up as a
-		// button named after a folder.
+		// button named after a folder. The entry is kept: it records which channel went to which product, and a
+		// moved product's routes are re-pointed from it (PLAT-746-848). Logged once per target per process, since
+		// every agent tool build lists the targets.
 		if !slackTargetExists(ctx, ref) {
-			log.Printf("[SLACK_TARGETS] dropped %s: its workflow or Crew no longer exists", ref.WorkspacePath)
+			if _, seen := slackMissingTargetsLogged.LoadOrStore(ref.WorkspacePath, struct{}{}); !seen {
+				log.Printf("[SLACK_TARGETS] skipped %s: its workflow or Crew no longer exists (entry kept)", ref.WorkspacePath)
+			}
 			continue
 		}
 		out = append(out, slackNamedTargetStored(ctx, registry, ref, stored))

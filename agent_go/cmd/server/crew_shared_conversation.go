@@ -29,10 +29,23 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			return true
 		}
 	}
+	if api.externalTeamAnswerRead(w, r, action, args, manifest.ID, chat.OwnerID, chat.Key) {
+		return true
+	}
 	after := externalInt(args, "after", 0)
 	out := map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": chat.Key, "name": chat.Name, "purpose": chat.Purpose, "can_write": false, "shared": true}
 	if action == "ask" {
 		target := triggerTarget{Kind: triggerCallerCrew, Path: project.Binding.WorkspacePath, Label: chat.Name, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: chat.OwnerID, Chat: chat}
+		if team, e := readCrewTeam(manifest.ID); e == nil && crewTeamAgentsVisible(team, claims.UserID) {
+			if agent, ok := team.registeredAgent(chat.OwnerID, chat.Key); ok && agent.InTeam {
+				var resolveErr error
+				target, resolveErr = api.resolveTeamAgentTarget(r.Context(), target, agent.ID)
+				if resolveErr != nil {
+					externalCommunicationError(w, 403, "agent_unavailable", resolveErr)
+					return true
+				}
+			}
+		}
 		caller, err := api.externalMessageCaller(r.Context(), claims, args)
 		if err != nil {
 			externalCommunicationError(w, 400, "message_refused", err)

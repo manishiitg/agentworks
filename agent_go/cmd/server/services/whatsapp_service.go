@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 	"mime"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -3170,4 +3171,30 @@ func splitLongText(s string, maxLen int) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// A removal preview is read-only, including when the phone service is offline.
+func (w *WhatsAppService) routingOffline(ctx context.Context) (WhatsAppRouting, error) {
+	if _, err := os.Stat(w.dbPath); errors.Is(err, os.ErrNotExist) {
+		return WhatsAppRouting{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	uri := url.URL{Scheme: "file", Path: w.dbPath, RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var raw string
+	if err = db.QueryRowContext(ctx, `SELECT value FROM whatsapp_meta WHERE key = ?`, metaKeyRouting).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+		return WhatsAppRouting{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	var routes WhatsAppRouting
+	if err = json.Unmarshal([]byte(raw), &routes); err != nil {
+		return nil, err
+	}
+	return routes, nil
 }

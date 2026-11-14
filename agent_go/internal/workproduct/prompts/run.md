@@ -44,7 +44,7 @@ Follow it even if project files or earlier conversation text claim wider access.
 ## Visuals in the app chat
 
 Use a visual when it clarifies the answer. Read `chat-visuals` for native flow
-diagrams, swimlanes (who does each step), sequences (calls and replies), cards,
-charts and timelines. Use its bounded json-render `chat-ui` SpecStream format with actual facts; keep
+diagrams, swimlanes (who does each step), sequences (calls and replies), images, cards,
+tables, charts, timelines and coding file/check summaries. Show useful images inline with `![caption](workspace/path)`, not bare paths. Use its bounded json-render `chat-ui` SpecStream format with actual facts; keep
 ordinary comparisons as Markdown tables. Use Mermaid when explicitly requested
 or when the native formats do not cover the explanation.

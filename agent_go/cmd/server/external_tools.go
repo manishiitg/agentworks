@@ -80,9 +80,10 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, schedule counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, separate timer (schedules/schedules_enabled), webhook and function-trigger counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats (Show in chat box; off by default). Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
+		menuGroupsToolDefinition(add)
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and your access, including saved Python script typed inputs and input presets.", false, true, nil)
@@ -179,7 +180,7 @@ func externalTools() ([]externalTool, error) {
 			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
 		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
-		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: global/product pause flags, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
+		addRun("list_schedules", "List the workflow's schedules plus current scheduler_state: the single global pause flag, individual blockers, observed time and relevant pause/resume history. Historical skipped runs are not current pause evidence; failed reads are unknown.", false, nil)
 		p = page()
 		p["schedule_id"] = externalString("Schedule ID from list_schedules.")
 		p["offset"] = externalInteger(0, 1000000)
@@ -189,7 +190,7 @@ func externalTools() ([]externalTool, error) {
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
-		addRun("stop_step", "Stop one running step or background execution by its execution ID from runs action=step, runs action=step_status, or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID returned by a run tool or runs action=step_status."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
+		addRun("stop_step", "Stop one running execution by its execution ID from runs action=status or runs action=active. You must have started its run, here or in the app.", true, map[string]any{"execution_id": externalString("Execution ID from runs action=status or runs action=active."), "session_id": map[string]any{"type": "string", "description": "Optional run session ID; the execution must belong to it."}}, "execution_id")
 		addRun("stop_all_executions", "Stop all running executions owned by this connection in the workflow, or one session you started (here or in the app) when session_id is given. Executes directly.", true, map[string]any{"session_id": map[string]any{"type": "string", "description": "Optional run session ID to stop instead of every owned session."}})
 		// Crews: bounded by the token's Crew list; crews:read.
 		crewID := func(props map[string]any) map[string]any {
@@ -700,6 +701,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.chatPreferences(w, r, update)
 		return
 	}
+	if tool.Name == "menu_groups" {
+		api.externalMenuGroupsCall(w, r, call.Arguments)
+		return
+	}
 	if tool.Name == "get_cost_breakdown" || tool.Name == "get_cost_detail" {
 		call.Arguments["action"] = strings.TrimPrefix(tool.Name, "get_cost_")
 		api.externalCostsCall(w, r, call.Arguments)
@@ -737,7 +742,15 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkspaceCall(w, r, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_schedules" && globalSchedulerAction(externalArg(call.Arguments, "action")) {
+		api.externalGlobalSchedulerCall(w, r, call.Arguments)
+		return
+	}
 	if tool.Name == "manage_schedules" || tool.Name == "manage_triggers" || tool.Name == "manage_condition_triggers" {
+		if externalArg(call.Arguments, "project") == "" {
+			externalError(w, http.StatusBadRequest, "project_required", "Choose the Crew or workflow whose schedules you want to manage.")
+			return
+		}
 		claims := GetUserFromContext(r.Context())
 		target, err := resolveTriggerTarget(r.Context(), claims, externalArg(call.Arguments, "project"))
 		if err != nil {
@@ -1239,17 +1252,14 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 			}
 			folder := strings.Split(externalArg(args, "run_folder"), "/")[0]
 			if permanentRunFolderPattern.MatchString(folder) {
-				runs, err := ReadScheduleRuns(r.Context(), req.Root)
+				run, err := findScheduleHistoryDetail(r.Context(), req.Root, "run_folder=? AND has_webhook=1", folder)
 				if err != nil {
 					externalError(w, http.StatusBadGateway, "workspace_unavailable", "Webhook run history is unavailable.")
 					return
 				}
-				for _, run := range runs {
-					if run.RunFolder == folder && run.Webhook != nil {
-						linked["schedule_run_id"] = run.ID
-						linked["webhook"] = run.Webhook
-						break
-					}
+				if run != nil {
+					linked["schedule_run_id"] = run.ID
+					linked["webhook"] = run.Webhook
 				}
 			}
 		}

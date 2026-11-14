@@ -901,12 +901,6 @@ func (api *StreamingAPI) finalQueryTurnConnection(_ context.Context, req QueryRe
 	return api.queryTurnConnectionForSession(req, sessionID)
 }
 
-// delegationProviderAccountScope is a sub-agent's account scope: the
-// principal of the parent turn and the parent's workspace and product.
-func delegationProviderAccountScope(principal string, parentReq QueryRequest) providerAccountScope {
-	return providerAccountScope{Principal: principal, WorkspacePath: parentReq.SelectedFolder, Product: parentReq.AgentProfileID}
-}
-
 // serverDefaultConnectionID is the marker a model naming no account resolves
 // through (see llmguard.WithServerAccountAdmission).
 func serverDefaultConnectionID(provider string) string {

@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
-import { ChevronRight, Folder, Loader2, X } from 'lucide-react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
+import { ArrowLeft, ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
@@ -7,12 +7,14 @@ import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
-import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
-const CrewFunctionsView = lazy(() => import('../../components/automation/CrewFunctionsView'))
+import { TeamActivity } from './TeamActivity'
+import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
-import { TeamFolderChangeDialog } from './TeamFolderChangeDialog'
+import { TeamWizard } from './TeamWizard'
+import { TeamWayCard } from './TeamWay'
 
 type Person = { id: string; username: string; email?: string }
 
@@ -54,7 +56,7 @@ export function AskButton({ projectId, card, prompt, label = 'Ask' }: { projectI
     onClick={() => { if (!sendToMain(projectId, text)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>{label}</button>
 }
 
-/** One read of the Crew's folders through the server (a size: path=…, or whole=1); undefined until it answers. */
+/** One read of the Crew's folders through the server (a size: path=…); undefined until it answers. */
 function useFolderSize(target: TeamTarget, query?: string) {
   const [size, setSize] = useState<TeamFolderListing>()
   useEffect(() => {
@@ -73,9 +75,32 @@ function useFolderSize(target: TeamTarget, query?: string) {
  * and says what this person may change, and its /folders reads the Crew's folders where the Crew is; this only shows
  * them and sends the person's choices.
  */
-export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?: () => void }) {
+/** The Team page. agents is the Agents tab's content (ShareCrew's own agents and actions, owner 12 Nov). */
+export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: string; onTurnOn?: () => void; onBack?: () => void; agents?: ReactNode }) {
   const state = useTeamTab(projectId)
+  const tabId = useId()
+  const [section, setSection] = useState<{ project: string; tab: CrewTeamSection } | undefined>(() => {
+    const requested = pendingCrewTeamSection(projectId)
+    return requested ? { project: projectId, tab: requested } : undefined
+  })
+  useEffect(() => {
+    const requested = pendingCrewTeamSection(projectId)
+    if (requested) setSection({ project: projectId, tab: requested })
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; teamSection?: CrewTeamSection }>).detail
+      if (detail?.projectId === projectId && detail.teamSection) setSection({ project: projectId, tab: detail.teamSection })
+    }
+    window.addEventListener('agentworks:open-crew-access', open)
+    return () => window.removeEventListener('agentworks:open-crew-access', open)
+  }, [projectId])
   const { view, target, error } = state
+  const [notice, setNotice] = useState('') // the server's line after a partly saved wizard, until dismissed
+  useEffect(() => {
+    const show = (event: Event) => setNotice(String((event as CustomEvent).detail || ''))
+    window.addEventListener('agentworks:team-notice', show)
+    return () => window.removeEventListener('agentworks:team-notice', show)
+  }, [])
+  const [noTeam, setNoTeam] = useState(false) // step 1 "No": nothing is saved, the normal tab shows until it is reopened
   // The Mac app's own Crew before Mac online pairs it: the Team is off, and turning it on turns Mac online on too.
   if (state.unbound) return <section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
@@ -88,21 +113,38 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
   </section>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
+  const selected = team.on ? (section?.project === projectId ? section.tab : 'activity') : 'people'
+  if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
-    {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
-    <PeopleCard view={view} target={target} projectId={projectId} />
-    {team.on && <>
-      <CrewWhereRow projectId={projectId} />
-      <SharesCard view={view} target={target} projectId={projectId} />
-      <AgentsCard view={view} target={target} projectId={projectId} />
-      <FunctionsCard projectId={projectId} />
-      {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
-      {team.folder_access && <section aria-label="Sync" className={card}>
-        <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
-        <TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} />
-      </section>}
-      {view.can_leave && <LeaveTeam target={target} />}
-    </>}
+    {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
+    {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
+    {team.on && <div className="flex items-stretch gap-2">
+      {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+      <div role="tablist" aria-label="Team" className="grid min-w-0 flex-1 grid-cols-4 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm">
+        {(['people', 'agents', 'activity', 'sync'] as const).map(tab => <button key={tab} type="button" role="tab"
+          id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
+          tabIndex={selected === tab ? 0 : -1}
+          onClick={() => setSection({ project: projectId, tab })}
+          onKeyDown={event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+            event.preventDefault()
+            const order: CrewTeamSection[] = ['people', 'agents', 'activity', 'sync']
+            const next = event.key === 'Home' ? order[0] : event.key === 'End' ? order[3] : order[(order.indexOf(tab) + (event.key === 'ArrowLeft' ? 3 : 1)) % 4]
+            setSection({ project: projectId, tab: next })
+            document.getElementById(`${tabId}-${next}`)?.focus()
+          }}
+          className={`min-w-0 rounded-lg px-2 py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
+          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync' })[tab]}</span>
+
+        </button>)}
+      </div>
+    </div>}
+    <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
+      {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <TeamWayCard target={target} projectId={projectId} />}{team.on && <CrewWhereRow projectId={projectId} />}</>}
+      {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
+      {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
+    </div>
   </div>
 }
 
@@ -124,7 +166,7 @@ function NeverOnlinePeople({ projectId }: { projectId: string }) {
 
 const changeLabel = (to: CrewPeopleChange['level'], from: string) => to === 'none' ? 'Remove' : from === 'none' ? 'Add' : 'Move'
 
-/** The confirm box for one person's change (owner, 6 Nov, same kind as the Whole Crew box): the server's summary, what
+/** The confirm box for one person's change (owner, 6 Nov): the server's summary, what
  * they gain and lose, and its notes. Nothing is saved until the confirm button. needsDashboard is the server's plain
  * refusal when the Crew has no dashboard yet, with the one button that creates the standard one. */
 function PeopleChangeDialog({ ask, saving, error, onCancel, onConfirm }: { ask: { name: string; level: CrewPeopleChange['level']; preview: CrewPeoplePreview; needsDashboard?: string }; saving: boolean; error: string; onCancel: () => void; onConfirm: (createDashboard: boolean) => void }) {
@@ -164,41 +206,16 @@ function PeopleChangeDialog({ ask, saving, error, onCancel, onConfirm }: { ask: 
   </ModalPortal>
 }
 
-/** The People card (owner, 6 Nov, approved mockup): the Team switch, and one list of everyone with their level, as the
- * server's /people writes it (Works with me is the Team, Dashboards only is the Crew's Share). Adding someone or moving
- * them between levels always asks first with what they gain or lose; the server keeps both records and every line. */
-function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
-  const { team } = view
-  const [people, setPeople] = useState<CrewPeopleView>()
-  const [directory, setDirectory] = useState<Person[]>([])
-  const [adding, setAdding] = useState(false)
-  const [search, setSearch] = useState('')
-  const [chosen, setChosen] = useState<Person>()
-  const [level, setLevel] = useState<CrewPeopleLevelKey>('works')
+type PeopleAsk = { person: string; name: string; level: CrewPeopleChange['level']; preview: CrewPeoplePreview; needsDashboard?: string }
+
+/** One People change, shared by the Team's People card and the Dashboards tab's list (owner's Team Module Manager,
+ * 12 Nov): first the server says what the person gains and loses; only a yes in the box saves it. */
+function usePeopleChange(target: TeamTarget, onApplied: () => void) {
   const [note, setNote] = useState('')
-  const [ask, setAsk] = useState<{ person: string; name: string; level: CrewPeopleChange['level']; preview: CrewPeoplePreview; needsDashboard?: string }>()
+  const [ask, setAsk] = useState<PeopleAsk>()
   const [askError, setAskError] = useState('')
-  const { pending, error, setError, run } = useSave()
-  useEffect(() => {
-    let active = true
-    const load = () => void crewPeople(target).then(data => { if (active) setPeople(data) }).catch(e => { if (active) setError(teamFailure(e).message) })
-    load()
-    window.addEventListener('agentworks:team-updated', load)
-    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
-  }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!adding) return
-    let active = true
-    const read = async () => {
-      if (!target.connection) return (await api.get<{ users: Person[] }>('/api/users/directory', { skipSessionContext: true })).data
-      const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}/api/users/directory`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
-      if (!response.ok) throw new Error('The company directory is unavailable.')
-      return response.json() as Promise<{ users: Person[] }>
-    }
-    void read().then(data => { if (active) setDirectory(data.users || []) }).catch(e => { if (active) setError(teamError(e)) })
-    return () => { active = false }
-  }, [adding, target.connection, target.project]) // eslint-disable-line react-hooks/exhaustive-deps
-  // One change: first the server says what the person gains and loses; only a yes in the box saves it.
+  const saving = useSave()
+  const { run } = saving
   const propose = (person: string, name: string, to: CrewPeopleChange['level']) => run(`change:${person}`, async () => {
     setNote(''); setAskError('')
     const reply = await changeCrewPerson(target, { person, level: to })
@@ -210,12 +227,99 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     setAskError('')
     try {
       const reply = await changeCrewPerson(target, { person: ask.person, level: ask.level, confirm: true, create_dashboard: createDashboard })
-      setAsk(undefined); setChosen(undefined); setAdding(false); setSearch(''); setNote(reply.note || '')
+      setAsk(undefined); setNote(reply.note || ''); onApplied()
     } catch (cause) {
       const failure = teamFailure(cause)
       if (failure.code === 'dashboard_needed') setAsk({ ...ask, needsDashboard: failure.message }); else setAskError(failure.message)
     }
   })
+  const cancel = () => { setAsk(undefined); setAskError('') }
+  return { ...saving, note, setNote, ask, askError, propose, apply, cancel }
+}
+
+/** The People list the server writes, re-read whenever the Team changes. */
+function usePeopleView(target: TeamTarget, onError: (message: string) => void) {
+  const [people, setPeople] = useState<CrewPeopleView>()
+  useEffect(() => {
+    let active = true
+    const load = () => void crewPeople(target).then(data => { if (active) setPeople(data) }).catch(e => { if (active) onError(teamFailure(e).message) })
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  return people
+}
+
+/** The company's people, read once the "Add a person" box opens. */
+function useCompanyDirectory(target: TeamTarget, open: boolean, onError: (message: string) => void) {
+  const [directory, setDirectory] = useState<Person[]>([])
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    const read = async () => {
+      if (!target.connection) return (await api.get<{ users: Person[] }>('/api/users/directory', { skipSessionContext: true })).data
+      const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}/api/users/directory`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+      if (!response.ok) throw new Error('The company directory is unavailable.')
+      return response.json() as Promise<{ users: Person[] }>
+    }
+    void read().then(data => { if (active) setDirectory(data.users || []) }).catch(e => { if (active) onError(teamError(e)) })
+    return () => { active = false }
+  }, [open, target.connection, target.project]) // eslint-disable-line react-hooks/exhaustive-deps
+  return directory
+}
+
+/** One person: name, note, whether they are active, and how they use this Crew (a choice only where the server offers one). */
+function PersonLine({ person, people, activity, pending, closed, onMove }: { person: CrewPeoplePerson; people: CrewPeopleView; activity?: TeamTabPerson; pending: string; closed: boolean; onMove: (to: CrewPeopleChange['level']) => void }) {
+  const levelOf = (key: CrewPeopleLevelKey) => people.levels.find(item => item.key === key)
+  const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
+  const saving = pending === `change:${person.user_id}`
+  return <div className={`flex items-center gap-2 py-2 ${saving ? 'opacity-60' : ''}`}>
+    <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
+      {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
+      {/* Where they are and when (owner, 13 Nov): shown as text, not only as the dot's tooltip. */}
+      {activity?.active_label && <span className="block truncate text-xs text-muted-foreground">{activity.active_label}</span>}
+    </span>
+    {activity && <span className="flex shrink-0 items-center"><Dot on={activity.active} /></span>}
+    {options.length > 0 && !closed
+      ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={saving}>{null}</Saving>
+        <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) onMove(next) }}
+          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+          <option value={person.level}>{person.level_label}</option>
+          {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
+        </select></span>
+      : !person.owner && <span className="shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
+  </div>
+}
+
+/** The "Add a person" box: find someone in the company (and, where the server offers it, "everyone on this server"), then ask. */
+function AddPerson({ target, pending, known, onPick, everyone }: { target: TeamTarget; pending: string; known: Set<string>; onPick: (id: string, name: string) => void; everyone?: { label: string; onPick: () => void } }) {
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+  const [failure, setFailure] = useState('')
+  const directory = useCompanyDirectory(target, adding, setFailure)
+  const pick = (id: string, name: string) => { setAdding(false); setSearch(''); onPick(id, name) }
+  return <>
+    <span className="inline-flex items-center gap-2"><button type="button" disabled={Boolean(pending)} onClick={() => setAdding(!adding)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a person</button></span>
+    {adding && <div className="rounded-xl border border-border bg-popover">
+      <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+      {everyone && everyone.label.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(false); setSearch(''); everyone.onPick() }} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{everyone.label}</button>}
+      <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => pick(p.id, shortName(p.username))} className="block w-full px-3 py-2 text-left text-xs hover:bg-muted">{shortName(p.username)}</button>)}</div>
+      {failure && <p role="alert" className="px-3 py-2 text-xs text-destructive">{failure}</p>}
+    </div>}
+  </>
+}
+
+/** The People card (owner, 6 Nov, approved mockup): the Team switch and the Team's members, as the server's /people
+ * writes them (Works with me is the Team). People who only open the dashboards are not listed here: one line says how many,
+ * and opens Online > Dashboards, where they are listed (owner's Team Module Manager, 12 Nov). Adding someone or moving
+ * them always asks first with what they gain or lose; the server keeps both records and every line. */
+function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
+  const { team } = view
+  const change = usePeopleChange(target, () => undefined)
+  const { pending, error, setError, run, note, setNote, ask, askError, propose, apply, cancel } = change
+  const people = usePeopleView(target, setError)
   const turn = (on: boolean) => run('team', async () => {
     setNote('')
     // The owner's own Mac app switches through its Mac, which applies the record at once.
@@ -223,73 +327,62 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     setNote(result.folder_created ? 'Made an empty team/ folder to share.' : '')
   })
   const everyone = people ? [people.owner, ...people.people] : []
-  const known = new Set(everyone.map(person => person.user_id))
-  const levelOf = (key: CrewPeopleLevelKey) => people?.levels.find(item => item.key === key)
+  const known = new Set([...everyone, ...(people?.dashboard_people || [])].map(person => person.user_id))
   const live = (id: string) => view.people.find(person => person.user_id === id)
   const closed = Boolean(people?.blocked)
-  const personRow = (person: CrewPeoplePerson) => {
-    const activity = live(person.user_id)
-    const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
-    return <div key={person.user_id} className={`flex items-start gap-2 py-2 ${pending === `change:${person.user_id}` ? 'opacity-60' : ''}`}>
-      <span aria-hidden="true" className="mt-0.5 grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">{person.name}{person.you && <span className="text-muted-foreground"> · you</span>}{person.invited && <span className="text-muted-foreground"> · invited</span>}</span>
-        <span className="block text-xs text-muted-foreground">{person.line}</span>
-      </span>
-      {activity?.active_label && <span className="mt-0.5 shrink-0 text-xs text-muted-foreground"><Dot on={activity.active} />{activity.active_label}</span>}
-      {options.length > 0 && !closed
-        ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={pending === `change:${person.user_id}`}>{null}</Saving>
-          <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) void propose(person.user_id, person.name, next) }}
-            className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-            <option value={person.level}>{person.level_label}</option>
-            {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
-          </select></span>
-        : <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
-    </div>
-  }
   return <section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">People</h3>
-      <span className="text-xs text-muted-foreground">{team.on && view.people.length > 1 ? `${view.people.length} people` : 'Only you'}</span>
       <AskButton projectId={projectId} card="team" />
-      {view.can_switch ? <><Saving on={pending === 'team'}>{null}</Saving><Switch aria-label="Team" disabled={Boolean(pending)} checked={team.on} onCheckedChange={on => void turn(on)} /></>
-        : <span className="text-xs text-muted-foreground">{team.on ? 'On' : 'Off'}</span>}
+      {view.can_switch && <><Saving on={pending === 'team'}>{null}</Saving><Switch aria-label="Team" disabled={Boolean(pending)} checked={team.on} onCheckedChange={on => void turn(on)} /></>}
     </div>
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
     {people && <>
-      <p className="text-xs text-muted-foreground">{people.intro}</p>
+      {people.intro && <p className="text-xs text-muted-foreground">{people.intro}</p>}
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
-      <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(personRow)}</div>
-      {people.put_online && <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{people.put_online}</span>
-        <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section: 'mac' } }))}>Put it online</Button></div>}
-      {people.can_add && !closed && <>
-        <span className="inline-flex items-center gap-2"><button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(!adding); setChosen(undefined) }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a person</button></span>
-        {adding && !chosen && <div className="rounded-xl border border-border bg-popover">
-          <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
-          {people.add_everyone && people.add_everyone.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => void propose('everyone', people.add_everyone || '', 'dashboards')} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{people.add_everyone}</button>}
-          <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => { setChosen(p); setLevel(levelOf('works')?.available ? 'works' : 'dashboards') }} className="block w-full px-3 py-2 text-left text-xs hover:bg-muted">{shortName(p.username)}</button>)}</div>
-        </div>}
-        {adding && chosen && <div role="radiogroup" aria-label={`How ${shortName(chosen.username)} uses this Crew`} className="space-y-2 rounded-xl border border-border p-3 text-xs">
-          <p className="font-medium">How should {shortName(chosen.username)} use this Crew?</p>
-          {people.levels.map(item => <label key={item.key} className={`flex items-start gap-2 ${item.available ? '' : 'opacity-60'}`}>
-            <input type="radio" name={`level-${projectId}`} checked={level === item.key} disabled={!item.available || Boolean(pending)} onChange={() => setLevel(item.key)} className="mt-0.5" />
-            <span><span className="block font-medium">{item.label}</span><span className="block text-muted-foreground">{item.available ? item.line : item.why}</span></span>
-          </label>)}
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" disabled={Boolean(pending)} onClick={() => setChosen(undefined)}>Back</Button>
-            <Button size="sm" disabled={Boolean(pending) || !levelOf(level)?.available} onClick={() => void propose(chosen.id, shortName(chosen.username), level)}><Saving on={pending === `change:${chosen.id}`}>{null}</Saving>Continue</Button>
-          </div>
-        </div>}
-      </>}
+      <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
+      {people.more_dashboards && <button type="button" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'dashboards')} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
+      {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
       {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">What each level gets</summary>
-        <table className="mt-1.5 w-full text-left"><thead><tr><th className="py-0.5 pr-2 font-medium" /><th className="py-0.5 pr-2 font-medium">Dashboards only</th><th className="py-0.5 font-medium">Works with me</th></tr></thead>
-          <tbody>{people.gets.map(row => <tr key={row.label} className="border-t border-border"><td className="py-0.5 pr-2">{row.label}</td><td className="py-0.5 pr-2">{row.dashboards_only}</td><td className="py-0.5">{row.works_with_me}</td></tr>)}</tbody></table>
+        <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+          {people.gets.map(level => <div key={level.title} className="rounded-xl border border-border px-3.5 py-3">
+            <p className="text-sm font-semibold text-foreground">{level.title}</p>
+            <p className="mb-2 text-xs">{level.tagline}</p>
+            {level.items.map(item => <p key={item.text} className="flex gap-2 py-0.5 text-[13px] text-foreground">
+              <span aria-hidden="true" className={item.yes ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/60'}>{item.yes ? '✓' : '✕'}</span>
+              <span className="sr-only">{item.yes ? 'Included:' : 'Not included:'}</span>{item.text}
+            </p>)}
+          </div>)}
+        </div>
       </details>}
     </>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={() => { setAsk(undefined); setAskError('') }} onConfirm={createDashboard => void apply(createDashboard)} />}
+    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}
+  </section>
+}
+
+/** The people who only open this Crew's dashboards and ask it (the Crew's Share to chosen people), listed on the Online
+ * page's Dashboards tab (owner's Team Module Manager, 12 Nov). The server's /people writes every line and what each
+ * person may be moved to (only the owner changes it); a Crew that is not online yet shows nothing. */
+export function DashboardPeopleCard({ target }: { target: TeamTarget }) {
+  const change = usePeopleChange(target, () => undefined)
+  const { pending, error, setError, note, ask, askError, propose, apply, cancel } = change
+  const people = usePeopleView(target, setError)
+  if (!people || people.kind !== 'server') return error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null
+  const known = new Set([people.owner, ...people.people, ...people.dashboard_people].map(person => person.user_id))
+  const everyone = people.add_everyone ? { label: people.add_everyone, onPick: () => void propose('everyone', people.add_everyone || '', 'dashboards') } : undefined
+  return <section aria-label="Who can open the dashboards" className={card}>
+    <h3 className="font-semibold">Who can open the dashboards</h3>
+    <p className="text-xs text-muted-foreground">People here open all this Crew's dashboards and can ask it. They see no files. People who work in the Crew with you are under Team.</p>
+    {note && <p className="text-xs text-muted-foreground">{note}</p>}
+    {people.dashboard_people.length === 0
+      ? <p className="text-xs text-muted-foreground">No one yet.</p>
+      : <div className="divide-y divide-border">{people.dashboard_people.map(person => <PersonLine key={person.user_id} person={person} people={people} pending={pending} closed={false} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>}
+    {people.can_share && <AddPerson target={target} pending={pending} known={known} everyone={everyone} onPick={(id, name) => void propose(id, name, 'dashboards')} />}
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}
   </section>
 }
 
@@ -302,8 +395,19 @@ function FolderRow({ folder, target, canRemove, saving, disabled, onRemove }: { 
   </div>
 }
 
-/** What the team shares: Folders or the Whole Crew. The Crew's owner switches it, after the server's confirm box
- * (owner, 6 Nov: Whole Crew asks first), and stops sharing a folder (can_choose; never the last one, can_remove_folder); anyone in the Team adds one with "+ Share this folder"
+/** "They work in: team/ · change" (owner, 9 Nov mock): the shared folders in one line; change opens the folder card. */
+function FolderLine({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
+  const [open, setOpen] = useState(false)
+  const { folder } = view.team
+  const where = (folder.folders || []).map(item => `${item.path}/`).join(', ') || 'no folder yet'
+  return <div className="space-y-2">
+    <p className="px-1 text-xs text-muted-foreground">They work in: <span className="text-foreground">{where}</span> · <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-primary hover:underline">{open ? 'done' : 'change'}</button></p>
+    {open && <SharesCard view={view} target={target} projectId={projectId} />}
+  </div>
+}
+
+/** What the team shares: chosen folders only.
+ * Only the owner stops sharing a folder (never the last one); anyone in the Team adds one with "+ Share this folder"
  * (can_add_folder), picked from the Crew's folders the server lists where the Crew is. While a Mac Crew's Mac is off
  * the server says so, and the folder is named instead (the server makes it when the Mac is back). */
 function SharesCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
@@ -313,8 +417,6 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   const [parent, setParent] = useState('')
   const [listing, setListing] = useState<TeamFolderListing>()
   const [name, setName] = useState('')
-  const [change, setChange] = useState<TeamFolderChange>()
-  const choose = view.can_choose
   useEffect(() => {
     if (!picking) return
     let active = true
@@ -322,37 +424,28 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     void teamFolders(target, `path=${encodeURIComponent(parent)}`).then(data => { if (active) setListing(data) }).catch(e => { if (active) setError(teamError(e)) })
     return () => { active = false }
   }, [picking, parent, target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  const whole = useFolderSize(target, team.folder.whole ? 'whole=1' : undefined)
-  const folders = team.folder.folders || []
+  const entries = team.folder.folders || []
+  const folders = entries.map(entry => entry.path)
   const save = (key: string, next: Team) => run(key, () => saveTeam(target, next))
   const add = async (folder: string) => {
     const clean = folder.trim().replace(/^\/+|\/+$/g, '')
     if (!clean || folders.includes(clean)) return
-    if (await save('add', { ...team, folder: { folders: [...folders, clean] } })) { setPicking(false); setName('') }
+    if (await save('add', { ...team, folder: { folders: [...entries, { id: '', path: clean }] } })) { setPicking(false); setName('') }
   }
   return <section aria-label="What the team shares" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">What the team shares</h3>
       <AskButton projectId={projectId} card="shares" />
-      {!choose ? <span className="text-xs text-muted-foreground">{team.folder.whole ? 'Whole Crew' : 'Folders'}</span>
-        : <div role="radiogroup" aria-label="What the team shares" className="flex overflow-hidden rounded-md border border-border text-xs">
-        {([[false, 'Folders'], [true, 'Whole Crew']] as const).map(([value, label]) => {
-          const on = Boolean(team.folder.whole) === value
-          return <button key={label} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)}
-            onClick={() => { if (!on) void run(`share:${label}`, async () => setChange(await teamFolderChange(target, value))) }}
-            className={`inline-flex items-center gap-1 px-2.5 py-0.5 disabled:cursor-not-allowed ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted disabled:opacity-50'}`}><Saving on={pending === `share:${label}`}>{null}</Saving>{label}</button>
-        })}
-      </div>}
+      <span className="text-xs text-muted-foreground">Shared folders</span>
     </div>
-    {team.folder.whole ? <p className="text-xs text-muted-foreground">The whole <b className="text-foreground">{team.name}</b> folder{whole?.files ? `: ${sizeLine(whole)}` : ''}. Everyone in the Team reads and edits it.</p>
-      : <div className="space-y-1.5">
-        {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={view.can_remove_folder} saving={pending === `remove:${folder}`} disabled={Boolean(pending)}
-          onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: folders.filter(f => f !== folder) } })} />)}
-        {!folders.length && <p className="text-xs text-muted-foreground">Nothing is shared yet{choose ? ': add a folder, or share the Whole Crew' : ''}.</p>}
-        {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
-          onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
-      </div>}
-    {picking && !team.folder.whole && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
+    <div className="space-y-1.5">
+      {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={view.can_remove_folder} saving={pending === `remove:${folder}`} disabled={Boolean(pending)}
+        onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: entries.filter(f => f.path !== folder) } })} />)}
+      {!folders.length && <p className="text-xs text-muted-foreground">Add a folder to share with the Team.</p>}
+      {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
+        onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
+    </div>
+    {picking && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
       {listing?.offline ? <>
         <p>{listing.offline}</p>
         <form className="flex items-center gap-2" onSubmit={e => { e.preventDefault(); void add(name) }}>
@@ -369,101 +462,16 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         </>}
       </>}
     </div>}
+    {team.folder_note && <p className="text-xs text-muted-foreground">{team.folder_note}</p>}
     <p className="text-xs text-muted-foreground">Not shared: your chats and memory, app files, passwords and keys.</p>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {change && <TeamFolderChangeDialog change={change} saving={pending === 'confirm'} onCancel={() => setChange(undefined)}
-      onConfirm={() => void save('confirm', { ...team, folder: change.whole ? { whole: true } : { folders: [] } }).then(() => setChange(undefined))} />}
   </section>
-}
-
-/** What the Team can call (owner, 8 Nov: functions go on Share, not Automations). One view for everyone the Crew is
- * shared with; the server says whether the viewer may change them (can_manage). */
-function FunctionsCard({ projectId }: { projectId: string }) {
-  return <section aria-label="Functions" className={card}>
-    <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
-      <CrewFunctionsView embedded scope={{ profileId: 'work', projectId }} onEdit={message => { if (!sendToMain(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }} />
-    </Suspense>
-  </section>
-}
-
-/** The agent sharing list (owner, 6 Nov, approved mockups): only the viewer's own agents, as the server marks them
- * (mine). Teammates' agents stay in the tab bar. The same rows in the Mac app and on the website. */
-function AgentsCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
-  const { pending, error, run } = useSave()
-  const agents = view.agents.filter(agent => agent.mine)
-  const visibility = (key: string, inTeam: boolean) => run(`agent:${key}`, async () => {
-    await teamRequest({ project: target.project, connection: target.connection }, '/agent-visibility', 'POST', { agent_key: key, in_team: inTeam })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  })
-  return <section aria-label="Agents" className={card}>
-    <div className="flex items-center gap-2">
-      <h3 className="flex-1 font-semibold">Agents</h3>
-      <AskButton projectId={projectId} card="agents" />
-    </div>
-    {view.agents_line && <p className="text-xs text-muted-foreground">{view.agents_line}</p>}
-    {agents.map(agent => <AgentRow key={agent.key} agent={agent} target={target} projectId={projectId} switching={pending === `agent:${agent.key}`} busy={Boolean(pending)} onShare={on => void visibility(agent.key, on)} />)}
-    {!agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-  </section>
-}
-
-// The status line's colour by the server's tone (crewAlwaysOnPlaceLabel): quiet grey unless something needs attention.
-const toneText: Record<string, string> = { wait: 'text-amber-700 dark:text-amber-300', server: 'text-sky-700 dark:text-sky-300' }
-
-/** One of the viewer's own agents (owner, 6 Nov, approved "calmer rows" mock): its name and one "Shared" switch, one
- * quiet status line the server words (place_label, coloured by place_tone only when it needs attention), and, while
- * shared, "Teammates can [Answer only | Make changes]", "Teammates see [Live chat | Chat history | Just the agent]" (its
- * words and choices from the server) and a Rules link. Purpose stays in the agent's own chat. Every
- * save goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
-function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; switching: boolean; busy: boolean; onShare: (on: boolean) => void }) {
-  const [rules, setRules] = useState(false)
-  const { pending, error, run } = useSave()
-  const save = (key: string, change: { can_make_changes?: boolean; chat_share?: string }) => run(key, async () => {
-    await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  })
-  const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
-  const status = agent.place_label || (!agent.in_team ? agent.not_shared_line : '') || ''
-  return <div className="space-y-1 border-t border-border pt-2">
-    <div className="flex items-center gap-2 text-[13px]">
-      <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b></span>
-      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
-        Shared<Saving on={switching}>{null}</Saving>
-        <Switch aria-label={`${agent.name}: shared`} checked={agent.in_team} disabled={locked || busy} onCheckedChange={onShare} />
-      </span>
-    </div>
-    {status && <p className={`text-xs ${toneText[agent.place_tone || ''] || 'text-muted-foreground'}`}>{status}</p>}
-    {agent.in_team && agent.can_edit_rule && <div className="flex flex-wrap items-center gap-2 text-xs">
-      {agent.can_make_changes !== undefined && <>
-        <label htmlFor={`can-${agent.key}`} className="text-muted-foreground">Teammates can</label>
-        <select id={`can-${agent.key}`} value={agent.can_make_changes ? 'change' : 'answer'} disabled={Boolean(pending)}
-          onChange={e => void save('can', { can_make_changes: e.target.value === 'change' })}
-          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-          <option value="answer">Answer only</option>
-          <option value="change">Make changes</option>
-        </select>
-        <Saving on={pending === 'can'}>{null}</Saving>
-      </>}
-      {agent.chat_share_options && <>
-        <label htmlFor={`see-${agent.key}`} className="text-muted-foreground">{agent.chat_share_label}</label>
-        <select id={`see-${agent.key}`} value={agent.chat_share} disabled={Boolean(pending)}
-          onChange={e => void save('see', { chat_share: e.target.value })}
-          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-          {agent.chat_share_options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <Saving on={pending === 'see'}>{null}</Saving>
-      </>}
-      <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{agent.has_rule ? '1 rule…' : 'Rules…'}</button>
-    </div>}
-    {agent.in_team && rules && <AgentDetails agent={agent} target={target} projectId={projectId} />}
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-  </div>
 }
 
 /** One agent's rule when others ask (owner, 5 Nov mockup "When others ask"): what it uses, as the server lists it (the
  * person's own sign-ins marked yours, sent only to them), and what it does when someone else asks. Its own person edits
  * the rule; everyone else reads the server's summary line. */
-function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
+export function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
   const [rule, setRule] = useState(agent.when_others_ask || '')
   const { pending, error, run } = useSave()
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
@@ -480,7 +488,8 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
     </div>
     <div className="mt-1 flex flex-wrap gap-1.5">
       {uses.map(use => <span key={`${use.kind}:${use.name}`} className="rounded-full border border-border px-2 py-px text-xs">{use.name}{use.personal ? ' · yours' : ''}</span>)}
-      {!uses.length && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
+      {agent.uses_note && <span className="text-xs text-muted-foreground">{agent.uses_note}</span>}
+      {!uses.length && !agent.uses_note && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
     </div>
     <p className={label}>{agent.can_edit_rule ? 'When someone else asks' : 'When you ask it'}</p>
     <p className="rounded-md bg-muted/60 px-2.5 py-2 text-[12.5px] text-muted-foreground">{agent.when_others_line}</p>
@@ -495,14 +504,36 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
   </div>
 }
 
-function LeaveTeam({ target }: { target: TeamTarget }) {
+/** What teammates' agents use from the owner: one quiet line that opens the server's card (closed by default). */
+function LentFold({ lent, target, projectId }: { lent: TeamLent; target: TeamTarget; projectId: string }) {
+  const [open, setOpen] = useState(false)
+  return <div>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground">
+      {lent.title}<ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+    </button>
+    {open && <div className="mt-2"><LentCard lent={lent} target={target} titled={false} ask={<AskButton projectId={projectId} card="lent" />} /></div>}
+  </div>
+}
+
+/** The one Leave control, a full-width button at the end of the Team page (shown when the server says the viewer may leave). */
+export function LeaveTeam({ target, confirm }: { target: TeamTarget; confirm?: string }) {
   const { pending, error, run } = useSave()
+  // The first click only asks, in place; Leave sends the request.
+  const [asking, setAsking] = useState(false)
   const leave = () => run('leave', async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/leave', 'POST', {})
     openAppPage('/home')
   })
   return <div className="space-y-1">
-    <Button variant="outline" disabled={Boolean(pending)} onClick={() => void leave()}><Saving on={pending === 'leave'}>{null}</Saving>Leave Team</Button>
+    {asking
+      ? <div className="space-y-2 rounded-xl border border-border px-4 py-3 text-sm">
+          <p>{confirm || "Leave this Team? You'll lose access to its files and agents."}</p>
+          <div className="flex gap-2">
+            <Button variant="destructive" disabled={Boolean(pending)} onClick={() => void leave()}><Saving on={pending === 'leave'}>{null}</Saving>Leave</Button>
+            <Button variant="outline" disabled={Boolean(pending)} onClick={() => setAsking(false)}>Cancel</Button>
+          </div>
+        </div>
+      : <Button variant="outline" className="w-full py-3 text-[15px] font-semibold" onClick={() => setAsking(true)}>Leave this Team</Button>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }

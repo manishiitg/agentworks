@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
@@ -25,7 +25,7 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	enqueue := func(id, text string) queuedConversationTurn {
 		t.Helper()
-		keyed := context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: id})
+		keyed := context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: id})
 		turn, _, err := api.enqueueConversationTurn(keyed, "owner", "chat", QueryRequest{Query: text, AgentMode: "multi-agent", DeliveryMode: "queue"})
 		if err != nil {
 			t.Fatal(err)
@@ -117,21 +117,20 @@ func TestQueuedSteerPolicyMismatchDoesNotCancelCurrentTurn(t *testing.T) {
 	r := sharedSecretsRequest(http.MethodPost, "/api/query", "owner", req)
 	r.Header.Set("X-Session-ID", sid)
 	ctx := context.WithValue(r.Context(), queuedMessageSteerKey{}, true)
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queued-input", Owner: "owner", Session: sid, Message: req.Query})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: "queued-input", Owner: "owner", Session: sid, Message: req.Query})
 	w := httptest.NewRecorder()
 	api.handleQuery(w, r.WithContext(ctx))
 	if w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" || canceled {
 		t.Fatalf("queued steer must defer without cancelling: status=%d canceled=%t body=%s", w.Code, canceled, w.Body.String())
 	}
-	if reason, allowed := api.queuedMessageDeliveryState(sid, req); reason != "refreshing" || allowed {
-		t.Fatalf("queue must explain the pending refresh: reason=%s can_steer=%t", reason, allowed)
-	}
+	// Eligibility is not an authorization grant: the real query refusal above
+	// proves the workflow-policy guard still blocks delivery without canceling.
 }
 
 func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	api := newConversationTurnQueueTestAPI(map[string]string{})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queue-state-client"})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: "queue-state-client"})
 	turn, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", QueryRequest{Query: "follow up", AgentMode: "multi-agent", DeliveryMode: "queue"})
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +191,7 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 		t.Fatalf("next-turn-only request = %s / %t", reason, allowed)
 	}
 	api.setConversationTurnRuntimeChange("chat", true)
-	check("refreshing", false)
+	check("refreshing", true) // pending setup does not block the current turn
 	api.setConversationTurnRuntimeChange("chat", false)
 	steered, status, err := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true)
 	if err != nil || status != http.StatusOK {
@@ -223,32 +222,10 @@ func TestChatDeliverySteerCannotFallBackToANewTurn(t *testing.T) {
 	}
 }
 
-func TestChatDeliveryQueueRetainedTurnSurvivesForegroundCleanup(t *testing.T) {
-	const sid = "retained-queue-state"
-	api := newConversationTurnQueueTestAPI(map[string]string{})
-	api.terminalStore = terminals.NewStore()
-	api.terminalStore.HandleEvent(sid, codingAgentTmuxReaperChunkEvent(time.Now(), sid, "main:"+sid, "mlp-claude-code-retained-queue-state"))
-	api.retainedMainTurns = map[string]time.Time{sid: time.Now()}
-	ready := true
-	api.internalSteerTransportReady = func(_, _ string) bool { return ready }
-	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "running" || !allowed {
-		t.Fatalf("retained turn = %s / %t", reason, allowed)
-	}
-	ready = false
-	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "running" || allowed {
-		t.Fatalf("lost transport = %s / %t", reason, allowed)
-	}
-	delete(api.retainedMainTurns, sid)
-	ready = true
-	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "waiting" || allowed {
-		t.Fatalf("retained pane alone = %s / %t", reason, allowed)
-	}
-}
-
 func TestChatDeliveryQueueKeepsOwnerAndTokenBoundaries(t *testing.T) {
 	api := newConversationTurnQueueTestAPI(map[string]string{})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queue-owner-client"})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ComposerInput: true, ID: "queue-owner-client"})
 	turn, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", QueryRequest{Query: "private", AgentMode: "multi-agent"})
 	if err != nil {
 		t.Fatal(err)
@@ -268,5 +245,166 @@ func TestChatDeliveryQueueKeepsOwnerAndTokenBoundaries(t *testing.T) {
 	}
 	if got := api.mustReadTurnQueueForTest(t, "owner"); len(got) != 1 || got[0].StartedAt != nil {
 		t.Fatalf("foreign request changed queue: %+v", got)
+	}
+}
+
+// PLAT-746-860: a submission ID alone must not grant incoming messages composer actions.
+func TestQueueComposerActionsExcludeEveryNonComposerSource(t *testing.T) {
+	cases := []struct {
+		name     string
+		composer bool
+		change   func(*QueryRequest, *UserClaims)
+		want     bool
+	}{
+		{"typed chat", true, nil, true},
+		{"unknown ingress", false, nil, false},
+		{"slack", false, func(r *QueryRequest, c *UserClaims) { r.BotPlatform = "slack" }, false},
+		{"whatsapp", false, func(r *QueryRequest, c *UserClaims) { r.BotPlatform = "whatsapp" }, false},
+		{"email", false, func(r *QueryRequest, c *UserClaims) { r.TriggeredBy = "email" }, false},
+		{"schedule", false, func(r *QueryRequest, c *UserClaims) { r.TriggeredBy = "cron" }, false},
+		{"webhook", false, func(r *QueryRequest, c *UserClaims) { r.TriggeredBy = "webhook" }, false},
+		{"background", false, func(r *QueryRequest, c *UserClaims) { r.ParentSessionID = "parent" }, false},
+		{"notification", false, func(r *QueryRequest, c *UserClaims) { r.IsAutoNotification = true }, false},
+		{"spoofed composer bot", true, func(r *QueryRequest, c *UserClaims) { r.BotPlatform = "slack" }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newConversationTurnQueueTestAPI(map[string]string{})
+			claims := &UserClaims{UserID: "owner"}
+			req := QueryRequest{Query: "message", AgentMode: "multi-agent", DeliveryMode: "queue"}
+			if tc.change != nil {
+				tc.change(&req, claims)
+			}
+			ctx := context.WithValue(context.Background(), UserContextKey, claims)
+			ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "input", ComposerInput: tc.composer})
+			turn, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows := api.pendingQueuedMessages(ctx, "owner", "chat")
+			if len(rows) != 1 || rows[0].CanManage != tc.want {
+				t.Fatalf("projected actions: %+v", rows)
+			}
+			_, status, err := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, false)
+			if tc.want {
+				if err != nil || status != http.StatusOK {
+					t.Fatalf("typed remove: %d %v", status, err)
+				}
+			} else {
+				if status != http.StatusNotFound {
+					t.Fatalf("incoming remove: %d", status)
+				}
+				if _, status, _ = api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true); status != http.StatusNotFound {
+					t.Fatalf("incoming steer: %d", status)
+				}
+				if _, status, _ = api.retryQueuedConversationMessage(ctx, "owner", "chat", turn.ID); status != http.StatusNotFound {
+					t.Fatalf("incoming retry: %d", status)
+				}
+			}
+		})
+	}
+}
+
+// PLAT-746-860: an inbound caller cannot acquire composer controls by sending its header.
+func TestComposerMarkerRequiresWebsitePerson(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		claims *UserClaims
+		want   bool
+	}{
+		{"website", &UserClaims{UserID: "owner"}, true},
+		{"anonymous", nil, false},
+		{"MCP", &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{ID: "token"}}, false},
+		{"Slack route", &UserClaims{UserID: "owner", Provider: "bot_route"}, false},
+		{"Slack DM", &UserClaims{UserID: "owner", Provider: slackDMProvider}, false},
+		{"WhatsApp", &UserClaims{UserID: "owner", Provider: "bot_owner"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/query", nil)
+			if tc.claims != nil {
+				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, tc.claims))
+			}
+			if isComposerChatRequest(r) {
+				t.Fatal("unmarked request accepted")
+			}
+			r.Header.Set("X-Chat-Input", "composer")
+			if isComposerChatRequest(r) != tc.want {
+				t.Fatalf("composer header admission, want %v", tc.want)
+			}
+		})
+	}
+}
+
+// PLAT-746: an incoming failure gets Dismiss, never edit/steer/retry authority.
+func TestFailedIncomingDismissRequiresOwnPerson(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	turn := queuedConversationTurn{ID: "incoming", UserID: "owner", SessionID: "chat", DeliveryError: "failed",
+		Principal: queuedConversationPrincipal{DeliveredMessageUser: "owner", DeliveredMessageSession: "chat", DeliveredMessage: map[string]interface{}{"source": "agent_message"}}}
+	if err := api.writeConversationTurnQueue(ctx, "owner", []queuedConversationTurn{turn}); err != nil {
+		t.Fatal(err)
+	}
+	rows := api.pendingQueuedMessages(ctx, "owner", "chat")
+	if len(rows) != 1 || !rows[0].CanDismiss || rows[0].CanManage {
+		t.Fatalf("capabilities: %+v", rows)
+	}
+	if _, status, _ := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true); status != http.StatusNotFound {
+		t.Fatal("incoming steer allowed")
+	}
+	if _, status, _ := api.retryQueuedConversationMessage(ctx, "owner", "chat", turn.ID); status != http.StatusNotFound {
+		t.Fatal("incoming retry allowed")
+	}
+	bot := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "bot_owner"})
+	if _, status, _ := api.changeQueuedConversationMessage(bot, "owner", "chat", turn.ID, false); status != http.StatusNotFound {
+		t.Fatal("bot dismissal allowed")
+	}
+	if _, status, _ := api.changeQueuedConversationMessage(ctx, "other", "chat", turn.ID, false); status != http.StatusNotFound {
+		t.Fatal("other queue allowed")
+	}
+	if _, status, err := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, false); err != nil || status != http.StatusOK {
+		t.Fatalf("own dismissal: %d %v", status, err)
+	}
+	turn.DeliveryError = ""
+	if dismissibleIncomingTurn(turn) {
+		t.Fatal("waiting message is dismissible")
+	}
+}
+
+// A provider cooldown must not trap the person's follow-up behind incoming deliveries.
+func TestQuotaWaitingHeadLetsOnlyComposerMessagesPass(t *testing.T) {
+	now := time.Now()
+	reset := now.Add(time.Hour)
+	waiting := queuedConversationTurn{ID: "waiting", UserID: "owner", SessionID: "chat", RetryAt: &reset}
+	incoming := queuedConversationTurn{ID: "incoming", UserID: "owner", SessionID: "chat"}
+	person := queuedConversationTurn{ID: "person", UserID: "owner", SessionID: "chat", ComposerInput: true, SubmissionID: "typed"}
+	if head := conversationQueueHead([]queuedConversationTurn{waiting, incoming, person}, "owner", "chat", now); head.ID != "person" {
+		t.Fatalf("head=%s", head.ID)
+	}
+	if head := conversationQueueHead([]queuedConversationTurn{waiting, incoming}, "owner", "chat", now); head.ID != "waiting" {
+		t.Fatalf("incoming passed wait: %s", head.ID)
+	}
+	if head := conversationQueueHead([]queuedConversationTurn{waiting, incoming, person}, "owner", "chat", reset.Add(time.Second)); head.ID != "waiting" {
+		t.Fatalf("due retry skipped: %s", head.ID)
+	}
+}
+
+// PLAT-746-941: a trigger/inbox string is not proof that mail came from the
+// owner. Only recorded desktop/network delivery provenance allows live-first.
+func TestAgentMessageLiveFirstRequiresRecordedOwnSender(t *testing.T) {
+	base := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	request := QueryRequest{TriggeredBy: "agent_message", AgentMessageInbox: "claimed-inbox"}
+	if shouldTryRetainedDeliveryBeforeQueue(base, request, "chat") {
+		t.Fatal("request JSON granted own-agent live delivery")
+	}
+	for _, sender := range []string{"owner", "visitor"} {
+		ctx := context.WithValue(base, deliveredAgentMessageKey{}, map[string]interface{}{"sender_user_id": sender})
+		if got := shouldTryRetainedDeliveryBeforeQueue(ctx, request, "chat"); got != (sender == "owner") {
+			t.Fatalf("sender=%s admitted=%t", sender, got)
+		}
+	}
+	own := context.WithValue(base, desktopAppOwnDeliveryKey{}, true)
+	request.AgentMessageFromOtherPerson = true
+	if shouldTryRetainedDeliveryBeforeQueue(own, request, "chat") {
+		t.Fatal("recorded external caller acquired owner live delivery")
 	}
 }

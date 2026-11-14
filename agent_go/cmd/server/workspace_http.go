@@ -15,6 +15,9 @@ var workspaceHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 	// wsalias: an old spelling of a moved Crew's path is translated before the request leaves (PLAT-442 step 4).
 	Transport: wsalias.Transport(wsauth.Transport(&http.Transport{
+		// These are internal workspace API calls. Avoid compressing JSON only
+		// to inflate it again in the agent; browser responses keep their gzip.
+		DisableCompression:  true,
 		MaxIdleConns:        50,
 		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,

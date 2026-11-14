@@ -45,6 +45,7 @@ type chatSubmissionStore struct {
 type chatSubmissionContextKey struct{}
 type chatSubmissionContext struct {
 	ID, Owner, Session, Message string
+	ComposerInput               bool
 	// handle lets a dispatch that outlives the HTTP response (live input to a
 	// busy CLI) record its real outcome after the early "accepted" reply.
 	handle *chatSubmissionHandle
@@ -78,6 +79,11 @@ func submissionStateForResponse(status int, body []byte) string {
 	}
 	var response map[string]interface{}
 	if json.Unmarshal(body, &response) == nil {
+		if status == http.StatusServiceUnavailable {
+			if failure, ok := response["error"].(map[string]interface{}); ok && failure["code"] == "workspace_unavailable" {
+				state = "retryable"
+			}
+		}
 		if response["delivery_status"] == "sent_to_cli" {
 			state = "delivery_confirmed"
 		}
@@ -226,6 +232,10 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 				log.Printf("[CHAT_SUBMISSION] Reconciled submission %s as not delivered after its retained tmux closed; retrying through a resumed turn", previous.ID)
 			}
 		}
+		if exists && previous.State == "retryable" {
+			exists = false
+			log.Printf("[CHAT_SUBMISSION] session=%s submission=%s action=retry reason=workspace_unavailable", session, id)
+		}
 		if exists && previous.State == "rejected" && storedSubmissionWasTurnRunning(previous) {
 			// turn_running proves the message was never sent or queued, so a
 			// retry (same key, or the same queued-delivery identity) safely
@@ -333,7 +343,7 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(status)
 		_, _ = w.Write(capture.body.Bytes())
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, handle: handle}))
+	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, ComposerInput: isComposerChatRequest(r), handle: handle}))
 	return capture, r, finish, true
 }
 
@@ -403,6 +413,10 @@ func replayChatSubmissionOutcome(w http.ResponseWriter, record chatSubmissionRec
 	if record.HTTPStatus < 100 || record.HTTPStatus > 599 || record.Response == "" {
 		http.Error(w, "Incomplete durable submission outcome", http.StatusServiceUnavailable)
 		return
+	}
+	if record.HTTPStatus == http.StatusForbidden {
+		w.Header().Set("X-Query-Refusal-Reason", "submission_outcome_replay")
+		log.Printf("[QUERY_ADMISSION] session=%s submission=%s action=refused reason=submission_outcome_replay original_status=%d", record.Session, record.ID, record.HTTPStatus)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(record.HTTPStatus)
@@ -488,8 +502,8 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	messages, maxTimestamp, _, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
-	if err != nil || !ok || maxTimestamp.IsZero() {
+	messages, maxTimestamp, transcriptPath, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
+	if err != nil || !ok || maxTimestamp.IsZero() || !nativeHistoryCanProveAbsence(provider, transcriptPath) {
 		return false
 	}
 	want := strings.TrimSpace(record.Message)
@@ -504,7 +518,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 func writeSubmissionUncertain(w http.ResponseWriter, id string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": "delivery_uncertain", "delivery_status": "delivery_uncertain", "submission_id": id, "message": fmt.Sprintf("Submission %s is durable but delivery is uncertain. Reconcile this submission before sending it again.", id)})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "delivery_uncertain", "delivery_status": "delivery_uncertain", "submission_id": id, "message": "Not sure the last message was delivered. Check this chat before sending it again."})
 }
 
 // ListUnresolvedChatSubmissions exposes durable accepted input for recovery.
@@ -755,4 +769,9 @@ func submissionProjectConversationFiles(ctx context.Context, folder string) ([]s
 	paths := []string{}
 	collectWorkspaceFilePaths(listing, &paths)
 	return paths, nil
+}
+
+// The marker describes a UI submission; the authenticated person identity is still required.
+func isComposerChatRequest(r *http.Request) bool {
+	return r.Header.Get("X-Chat-Input") == "composer" && websiteDeviceClaims(GetUserFromContext(r.Context()))
 }

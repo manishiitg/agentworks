@@ -1,3 +1,5 @@
+import { collapseNativeGoals } from './nativeGoal'
+import { collapseCodingAgentPlans } from './codingAgentPlan'
 import { collapseContextCompactions } from './contextCompaction'
 import { normalizeTranscriptChunkEvents } from '../transcriptChunkUpdates'
 import { getOwnedTerminalOwnerKeys, getTerminalOwnerPayload } from './eventOwnership'
@@ -66,6 +68,7 @@ function isKeptInteraction(event: PollingEvent, keep?: ReadonlySet<string>): boo
 }
 
 const NON_TRANSCRIPT_TYPES = new Set([
+  'next_prompt', // Ephemeral composer suggestion, never a reply or step.
   'token_usage',
   'status_line',
   // The server's phase is rendered by the Working line, never as a transcript
@@ -631,10 +634,17 @@ function dropAdjacentFrontendUserEchoes(events: PollingEvent[]): PollingEvent[] 
 }
 
 function isTranscriptEvent(event: PollingEvent): boolean {
+  // PLAT-746-941: only the server-owned background projection is visible;
+  // ordinary native tool/usage diagnostics still do not split tool batches.
+  if (event.type === 'coding_agent_native_activity') {
+    const record = eventFields(event).record as Record<string, unknown> | undefined
+    return Boolean(record && typeof record.work_id === 'string' && record.work_id && ['helper', 'background_command'].includes(String(record.kind)))
+  }
   if (NON_TRANSCRIPT_TYPES.has(event.type || '')) return false
   if (isRunToolEnd(event)) return false
   if (isContainerTranscriptNoise(event)) return false
   if (isAgentItemWrapperEvent(event)) return false
+  if (event.type === 'llm_generation_end' && event.reply_blocks_complete) return false
   if (event.type === 'agent_end' || event.type === 'unified_completion') {
     const fields = eventFields(event)
     const failed = fields.success === false || Boolean(textField(fields.error)) || Boolean(interruptedCompletionMessage(fields.metadata))
@@ -643,7 +653,9 @@ function isTranscriptEvent(event: PollingEvent): boolean {
     // the conversation look like a trace log. Retained coding-agent turns in
     // particular emit an empty unified_completion solely to settle the live
     // terminal lifecycle; it is transport state, not a chat message.
-    if (!failed && !answerText(event)) return false
+    // The server confirmed these native blocks are already durable carriers;
+    // retain the aggregate lifecycle event in history, not a second reply.
+    if (!failed && (event.reply_blocks_complete || !answerText(event))) return false
   }
   return true
 }
@@ -905,6 +917,15 @@ function isOwnTerminalLifecycleStart(event: PollingEvent, terminal: TerminalSnap
   return true
 }
 
+export function transcriptServerPosition(event: PollingEvent): number | undefined {
+  // Only an actual native block began at this position. A whole-generation
+  // completion (Cursor and other unframed transports) arrives after its own
+  // thinking/tools; anchoring it to streaming_start makes that work read backwards.
+  const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+  if (metadata?.assistant_block_id && event.generation_id && typeof event.generation_start_sequence === 'number' && event.generation_start_sequence > 0) return event.generation_start_sequence
+  return typeof event.sequence === 'number' && event.sequence > 0 ? event.sequence : undefined
+}
+
 function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
   // Pending sends have local timestamps, not a position in the server's
   // transcript yet. Keep them in a stable tail until their durable echoes
@@ -912,14 +933,23 @@ function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
   // sorts below the second pending send, briefly reversing two quick sends.
   // Proven events still keep the server's order (including a reply that was
   // already in progress when a person sent a follow-up).
-  const pending = (event: PollingEvent) => event.type === 'user_message' &&
-    (eventFields(event).metadata as Record<string, unknown> | undefined)?.provisional === true
+  const pending = (event: PollingEvent) => {
+    const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+    // Incoming queue cards use the server's original queued_at timestamp, not
+    // a local send time. A failed old delivery must not stay below newer replies.
+    return event.type === 'user_message' && metadata?.provisional === true && metadata.source !== 'agent_message'
+  }
   const pendingOrder = Number(pending(a)) - Number(pending(b))
   if (pendingOrder) return pendingOrder
-  // The main chat survives server restarts; EventStore's per-session sequence
-  // counter does not. Comparing those counters across restored and live events
-  // placed yesterday's replies below today's work. Prefer the event timestamp
-  // here, retaining sequence as a tie-breaker for same-time messages.
+  // New generation carriers keep the server's first position, while the
+  // append sequence remains untouched for history/SSE cursors. Only compare
+  // server positions for the new anchored carriers when both exist; unmarked
+  // legacy/imported pairs can have pre-restart counters and retain their
+  // recorded ordering rather than acquiring an invented sequence.
+  const aSequence = transcriptServerPosition(a)
+  const bSequence = transcriptServerPosition(b)
+  const anchored = Boolean(a.generation_id || b.generation_id)
+  if (anchored && aSequence !== undefined && bSequence !== undefined && aSequence !== bSequence) return aSequence - bSequence
   const aTime = Date.parse(a.timestamp || '')
   const bTime = Date.parse(b.timestamp || '')
   if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime
@@ -1028,10 +1058,15 @@ const COMPLETION_ANSWER_TYPES = new Set([
   'background_agent_completed',
 ])
 
-function answerText(event: PollingEvent): string {
+export function assistantReplyText(event: PollingEvent): string {
+  if (typeof event.reply_remainder === 'string') return event.reply_remainder
   const fields = eventFields(event)
+  const metadata = fields.metadata as Record<string, unknown> | undefined
+  if (metadata?.assistant_block_id && typeof fields.content === 'string') return fields.content
   return textField(fields.content) || textField(fields.final_result) || textField(fields.result)
 }
+
+function answerText(event: PollingEvent): string { return assistantReplyText(event) }
 
 function comparableAnswer(text: string): string {
   return text.replace(/\s+/g, ' ').trim().toLowerCase()
@@ -1065,7 +1100,7 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
   let turn = 0
   for (const event of events) {
     if (event.type === 'user_message') turn += 1
-    if (!COMPLETION_ANSWER_TYPES.has(event.type || '')) continue
+    if (event.reply_blocks_complete || !COMPLETION_ANSWER_TYPES.has(event.type || '')) continue
     const text = comparableAnswer(answerText(event))
     if (text) {
       const answers = completionAnswersByTurn.get(turn) || []
@@ -1094,6 +1129,9 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
       lastCompletion = { executionID, text, turnID }
       return true
     }
+
+    const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+    if (metadata?.assistant_block_id) return true
 
     const completionAnswers = (completionAnswersByTurn.get(turn) || [])
       .filter(done => !distinctServerTurns(done.turnID, eventTurnID(event)))
@@ -1124,6 +1162,10 @@ function dropRepeatedAssistantResponses(events: PollingEvent[]): PollingEvent[] 
       return true
     }
     if (event.type !== 'llm_generation_end' && !COMPLETION_ANSWER_TYPES.has(event.type || '')) return true
+    // Known native blocks can contain identical text. Their server identities,
+    // not string equality, own deduplication.
+    const metadata = eventFields(event).metadata as Record<string, unknown> | undefined
+    if (metadata?.assistant_block_id) { previous = null; return true }
     const text = comparableAnswer(answerText(event))
     if (!text) return true
     const execution = lifecycleExecutionID(event)
@@ -1138,7 +1180,7 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
   // Filter wrapper noise before lifecycle deduplication. Otherwise a generic
   // completion can supersede the richer delegated completion and then be
   // removed itself, accidentally hiding both records.
-  const transcriptEvents = collapseContextCompactions(withRunLaunchResults(normalizeTranscriptChunkEvents(events))).filter(isTranscriptEvent)
+  const transcriptEvents = collapseContextCompactions(withRunLaunchResults(normalizeTranscriptChunkEvents(collapseCodingAgentPlans(collapseNativeGoals(events))))).filter(isTranscriptEvent)
   const visibleEvents = dropRepeatedAssistantResponses(dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
     dropDuplicateExecutionPromptMessages(collapseCompletedLifecycleStarts(transcriptEvents)),
   ))))
@@ -1200,7 +1242,51 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
     })
   }
 
-  return items
+  return attachLateToolEnds(items)
+}
+
+// A coding CLI can keep a command running while it writes its reply (Codex
+// does), so the command's end arrives after that text, in a later batch with
+// no start, and its card loses its input. Move such an end, by tool_call_id,
+// to the batch that holds its start so the one card shows input, output and
+// status (PLAT-746-898).
+function attachLateToolEnds(items: TranscriptItem[]): TranscriptItem[] {
+  const startBatch = new Map<string, Extract<TranscriptItem, { kind: 'tools' }>>()
+  const out: TranscriptItem[] = []
+  for (const item of items) {
+    if (item.kind !== 'tools') {
+      out.push(item)
+      continue
+    }
+    const kept: PollingEvent[] = []
+    for (const event of item.events) {
+      const type = event.type || ''
+      const callID = TOOL_CALL_TYPES.has(type) && type !== 'tool_call_start' ? textField(toolCallField(event, 'tool_call_id')) : ''
+      const owner = callID ? startBatch.get(callID) : undefined
+      if (owner) {
+        owner.events = [...owner.events, event]
+        continue
+      }
+      kept.push(event)
+    }
+    let batch: Extract<TranscriptItem, { kind: 'tools' }> | null = item
+    if (kept.length !== item.events.length) {
+      const toolCount = countRealToolCalls(kept)
+      batch = toolCount > 0 ? { ...item, events: kept, toolCount } : null
+      if (!batch) {
+        for (const event of kept) out.push({ kind: 'event', key: event.id || `evt-${out.length}`, event })
+        continue
+      }
+    }
+    for (const event of batch.events) {
+      if (event.type === 'tool_call_start') {
+        const callID = textField(toolCallField(event, 'tool_call_id'))
+        if (callID) startBatch.set(callID, batch)
+      }
+    }
+    out.push(batch)
+  }
+  return out
 }
 
 // A step run or a full-workflow run is the workflow's own headline action, not

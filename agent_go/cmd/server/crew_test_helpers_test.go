@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -61,6 +62,32 @@ func materializeWorkspaceFixtureFile(t *testing.T, workspace *mockWorkspaceAPI, 
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(file, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Seed saved registry data to exercise selection/access rules for existing
+// duplicate records. New creation must use registerCrewExecutable and refuse it.
+func seedSavedCrewExecutableForTest(t *testing.T, binding crewExecutableBinding) {
+	t.Helper()
+	crewExecutablesMu.Lock()
+	defer crewExecutablesMu.Unlock()
+	binding.Root = crewExecutableKey(binding.Root)
+	if binding.RuntimeRoot == "" {
+		binding.RuntimeRoot = "automations/" + binding.ID
+	}
+	file, err := crewExecutableFile(binding.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 }

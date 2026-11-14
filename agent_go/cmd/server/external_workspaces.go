@@ -15,12 +15,34 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync"}},
-		"sync_action":  map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac; server to move it online."},
-		"network":      externalString("For sync_action=reach_on with several networks: the network's name."),
-		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
-		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. git_action offers the same Source Control actions: draft_commit writes editable text only; commit uses message and optional all; push uses this Crew’s selected GitHub account; draft_pr returns editable title/body/base and a pinned head; open_pr requires those checked fields and expected_head and never pushes implicitly. Drafts require your own session_id in this Crew and use one small tool-free request on its account. add_context captures an owned Crew browser element or terminal selection into ordinary attachments; context_op=probe returns its current browser_session and document_token, then add uses that token with x/y. For terminal, probe terminal_tab first for actual completed command IDs; add requires command_id, selected text and start_line/end_line. Never invent a command from output. It never clicks the page or sends a chat message. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":          map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "search_messages", "open_editor", "git_action", "add_context"}},
+		"context_source":  map[string]any{"type": "string", "enum": []string{"browser", "terminal"}, "description": "add_context: source selection. Only the Crew owner can capture its browser or terminal."},
+		"terminal_tab":    map[string]any{"type": "integer", "minimum": 1, "maximum": 3, "description": "add_context terminal: exact terminal tab, 1 to 3. Probe returns only observed command metadata, never starts a shell."},
+		"command_id":      externalString("add_context terminal add: exact completed command ID returned by this terminal's probe; never a command string."),
+		"start_line":      map[string]any{"type": "integer", "minimum": 0, "description": "add_context terminal: selected first line in the observed terminal buffer."},
+		"end_line":        map[string]any{"type": "integer", "minimum": 0, "description": "add_context terminal: selected last line in the observed terminal buffer."},
+		"text":            externalString("add_context terminal add: selected untrusted terminal output, at most 16 KiB; no command inference."),
+		"context_op":      map[string]any{"type": "string", "enum": []string{"probe", "add"}, "description": "add_context: probe first; add captures x/y and returns ordinary attachment references without sending."},
+		"browser_session": externalString("add_context: exact source from the probe result, never an address or a new browser."),
+		"document_token":  externalString("add_context: current document_token returned by probe. A changed page must be picked again."),
+		"x":               map[string]any{"type": "number", "minimum": 0, "maximum": 4096, "description": "add_context: picked page x in CSS pixels."},
+		"y":               map[string]any{"type": "number", "minimum": 0, "maximum": 4096, "description": "add_context: picked page y in CSS pixels."},
+		"sync_action":     map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac; server to move it online."},
+		"network":         externalString("For sync_action=reach_on with several networks: the network's name."),
+		"workspace_id":    externalString("Crew workspace ID from workspace action=list."),
+		"name":            externalString("Project or new chat name."), "message": externalString("Message for ask."),
+		"git_op": map[string]any{"type": "string", "enum": []string{"delivery_capabilities", "draft_commit", "commit", "push", "prepare_pr", "draft_pr", "open_pr"}},
+		"all":    map[string]any{"type": "boolean", "description": "git_action commit/draft_commit: include all current tracked changes; otherwise staged only. New unstaged files are read as bounded excerpts, never staged by drafting."},
+		"title":  externalString("git_action open_pr: reviewed title."), "body": externalString("git_action open_pr: reviewed description."),
+		"base":            externalString("git_action draft_pr/open_pr: target branch; draft_pr defaults to GitHub default branch."),
+		"expected_head":   externalString("git_action open_pr: exact head from the reviewed draft_pr result."),
+		"editor":          map[string]any{"type": "string", "enum": []string{"vscode", "cursor", "zed", "jetbrains"}, "description": "open_editor: chosen local editor; omit to use your saved choice. JetBrains means IntelliJ IDEA."},
+		"repo":            externalString("open_editor/git_action: repository root relative to the Crew files root, as returned by files git_status."),
+		"file":            externalString("open_editor: current file relative to repo; omit for the project folder."),
+		"line":            map[string]any{"type": "integer", "minimum": 1, "maximum": 10000000, "description": "open_editor: line in the current file."},
+		"remember":        map[string]any{"type": "boolean", "description": "open_editor: save the explicitly chosen editor for your next opens."},
+		"cursor":          externalString("next_cursor from search_messages to continue its bounded scan."),
 		"query_id":        externalString("Exact Ask turn returned by ask/read_chat. Keep it when polling or answering a pending question."),
 		"request_id":      externalString("Pending question from your own Ask turn. Answer with reply_input; clients supporting MCP elicitation may show a form."),
 		"answers":         map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"id": externalString("Question id."), "selected_labels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "other_text": externalString("Custom answer when the question allows it.")}, "required": []any{"id"}}, "maxItems": 12},
@@ -30,10 +52,13 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"kind":            externalString("create: goal, crew or relay. read_saved_chat: raw (default) or summary."),
 		"idempotency_key": projectCreateDefinition().InputSchema["properties"].(map[string]any)["idempotency_key"],
 		"offset":          externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
-		"conversation_key": externalString("Exact conversation key from this Crew’s tab list."),
-		"chat_id":          externalString("Tab id from chats. Selected shared agents accept attributed ask/message_chat and read_chat from sharing onward. Other co-owner tabs allow read_chat/message_chat. Tab controls belong to their owner."),
-		"inbox_id":         externalString("For message_chat: existing agent reply address, when continuing a conversation."),
-		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
+		"conversation_key":     externalString("Exact conversation key from this Crew’s tab list."),
+		"preview_removal":      map[string]any{"type": "boolean", "description": "close_chat: preview linked work without deleting anything."},
+		"removal_confirmation": externalString("close_chat: current server preview confirmation, supplied only after the person approves its listed effects."),
+		"removal_choices":      map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "close_chat: each active dependency ID mapped to remove or an offered destination key; when_removed dependencies apply only when their prerequisite is removed."},
+		"chat_id":              externalString("Tab id from chats. Selected shared agents accept attributed ask/message_chat and read_chat from sharing onward. Other co-owner tabs allow read_chat/message_chat. Tab controls belong to their owner."),
+		"inbox_id":             externalString("For message_chat: existing agent reply address, when continuing a conversation."),
+		"query":                externalString("Optional list filter; search_messages: message text to find (2 to 200 characters)."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
 		"before_seq": externalInteger(1, 1<<30),
 		"tool_name":  externalString("For chat_tool: exact native name from chat_tools."),
@@ -56,6 +81,14 @@ func externalWorkspaceAllowed(claims *UserClaims) bool {
 }
 
 func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
+	return api.externalWorkspaceBinding(ctx, claims, raw, resolveCrewProjectBinding)
+}
+
+func (api *StreamingAPI) readExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
+	return api.externalWorkspaceBinding(ctx, claims, raw, readCrewProjectBinding)
+}
+
+func (api *StreamingAPI) externalWorkspaceBinding(ctx context.Context, claims *UserClaims, raw string, bind func(context.Context, string, agentprofiles.Profile, string, string) (crewProjectBinding, error)) (crewProjectBinding, productProjectManifest, bool) {
 	if api == nil || api.agentProfiles == nil || claims == nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
@@ -71,7 +104,7 @@ func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *U
 	if err != nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
-	binding, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, id, "")
+	binding, err := bind(ctx, claims.UserID, profile, id, "")
 	if err != nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
@@ -120,6 +153,23 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, map[string]any{"workspace_id": crewProfileID + ":" + crew.CrewID, "crew_id": crew.CrewID, "chat_id": "main", "name": agentWorksName, "created": crew.Created,
 			"next": "Talk to it with workspace action=ask and this workspace_id; for its schedules pass project=crew_id. In the app it is AgentWorks in the Crew list."})
+		return
+	}
+
+	if action == "add_context" {
+		api.externalWorkspaceAddContext(w, r, args)
+		return
+	}
+	if action == "git_action" {
+		api.externalWorkspaceGitAction(w, r, args)
+		return
+	}
+	if action == "open_editor" {
+		api.externalWorkspaceEditor(w, r, args)
+		return
+	}
+	if action == "search_messages" {
+		api.externalSearchChatMessages(w, r, args)
 		return
 	}
 
@@ -253,6 +303,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 	claims := GetUserFromContext(r.Context())
 	items := []map[string]any{}
 	seen := map[string]bool{}
+	liveReads := map[string]map[string]crewTeamLiveView{}
 	product := crewProduct
 	if !workspaceOriginAllowed(claims, product.ProfileID) {
 		externalJSON(w, map[string]any{"workspaces": items})
@@ -309,15 +360,38 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
 			}
 			item["location"] = "server"
+			if IsLocalMode() {
+				if live := crewTeamLocalNavigationLive(r.Context(), claims.UserID, doc.ID, liveReads); live != nil {
+					item["team_live"] = live
+				}
+			} else if team, err := readCrewTeam(doc.ID); err == nil && crewTeamAgentsVisible(team, claims.UserID) {
+				item["team_live"] = crewTeamLiveFor(r.Context(), team, teamAgentsByPerson(r.Context(), team, claims.UserID), claims.UserID)
+			}
+			// A Team member's working copy on this Mac says whose Crew it is (owner, 10 Nov).
+			if IsLocalMode() {
+				if line := readCrewTeamState(doc.ID).sharedLine(); line != "" {
+					item["shared_line"] = line
+				}
+
+			}
 			// The person's own AgentWorks agent: the left menu pins it apart from the server's Crews.
 			if binding.OwnerID == claims.UserID && doc.ID == agentWorksCrewID(claims.UserID) {
 				item["personal_agent"] = true
 			}
 			// A Team member's row says where their own agents here work (owner, 5 Nov: one working copy).
+			// Someone else's Crew says whose it is in the same one line as a Team copy on a Mac.
 			if binding.OwnerID != claims.UserID {
+				line := "Shared by " + firstNonEmptyTrimmed(item["owner_name"].(string), "a teammate")
 				if where := crewTeamWhereFor(doc.ID, claims.UserID); where != "" {
 					item["where"] = where
+					suffix := map[string]string{"mac": " · On your Mac", "web": " · On the web"}[where]
+					if where == "mac" && relay != nil {
+						// Another person's Mac Crew: the Mac in this row is theirs, not yours (owner, 12 Nov).
+						suffix = " · On their Mac"
+					}
+					line += suffix
 				}
+				item["shared_line"] = line
 			}
 			// The owner sees how many of this Crew's agents others can message (PLAT-856-509).
 			if n := len(readMacSharedAgents(doc.ID)); n > 0 && binding.OwnerID == claims.UserID {
@@ -370,7 +444,10 @@ func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		api.listExternalWorkspaces(w, r, args, true)
+		encoded, _ := json.Marshal(args)
+		writeSharedRead(w, r, "workspaces\x00"+claims.UserID+"\x00"+string(encoded), func(w http.ResponseWriter, r *http.Request) {
+			api.listExternalWorkspaces(w, r, args, true)
+		})
 		return
 	}
 	api.externalWorkspaceCall(w, r, args)

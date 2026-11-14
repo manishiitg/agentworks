@@ -21,5 +21,5 @@ Build when the person asks or agrees. Create or update the Crew and its saved wo
 
 ## Choosing the kind
 - **Crew:** a place where the person works with agents, files, skills and dashboards.
-- **Workflow:** a saved Python routine in a Crew, with typed inputs and presets. It can run on a schedule or through a published function. Reuse an existing Crew when it already fits.
+- **Workflow:** a saved Python routine in a Crew, with typed inputs and presets. It can run on a schedule or through a published function. Reuse an existing Crew when it already fits. List its workflow first: one Crew has one workflow; another task becomes an input-selected path in it, not a second workflow.
 When unsure, suggest the simpler one.

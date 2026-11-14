@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"html"
 	"io"
 	"os"
 	"path"
@@ -27,55 +26,6 @@ const Prefix = "db/reports/managed/"
 
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 var revisionID = regexp.MustCompile(`^[a-f0-9]{64}$`)
-var documentTitle = regexp.MustCompile(`(?is)<title\b[^>]*>\s*([^<]+?)\s*</title>`)
-
-// Names come from authored metadata/HTML, never from another discovery tree.
-func authoredDashboardTitles(root *os.Root, guard *wf.FolderGuard) map[string]string {
-	titles := map[string]string{}
-	const manifestPath = "db/reports/views.json"
-	if guard != nil && !guard.Allows(manifestPath, false) {
-		return titles
-	}
-	var manifest struct {
-		Views []struct{ Path, Title string }
-	}
-	if readJSON(root, manifestPath, &manifest) != nil {
-		return titles
-	}
-	for _, view := range manifest.Views {
-		p := strings.TrimLeft(strings.TrimSpace(view.Path), "/")
-		if !strings.Contains(p, "/") {
-			p = "db/reports/" + p
-		}
-		clean, err := wf.CleanRelative(p)
-		if err == nil && clean == p && strings.HasPrefix(p, "db/reports/") && strings.HasSuffix(p, ".html") && strings.TrimSpace(view.Title) != "" {
-			titles[p] = strings.TrimSpace(view.Title)
-		}
-	}
-	return titles
-}
-
-func authoredDashboardTitle(root *os.Root, p string, titles map[string]string) string {
-	if title := titles[p]; title != "" {
-		return title
-	}
-	// Follow the same no-symlink file rule as snapshot/manifest reads. Read only
-	// the head of the already-admitted document; large scripts need not be read.
-	if checkParents(root, p) == nil {
-		if info, err := root.Lstat(p); err == nil && info.Mode().IsRegular() {
-			if file, err := root.Open(p); err == nil {
-				data, err := io.ReadAll(io.LimitReader(file, 64<<10))
-				file.Close()
-				if match := documentTitle.FindSubmatch(data); err == nil && len(match) > 1 {
-					if title := strings.Join(strings.Fields(html.UnescapeString(string(match[1]))), " "); title != "" {
-						return title
-					}
-				}
-			}
-		}
-	}
-	return strings.TrimSuffix(path.Base(p), ".html")
-}
 
 type Request struct {
 	Root             string            `json:"root"`
@@ -110,6 +60,7 @@ type Dashboard struct {
 	Managed      bool     `json:"managed"`
 }
 type Result struct {
+	Deleted      bool        `json:"deleted,omitempty"`
 	Dashboards   []Dashboard `json:"dashboards,omitempty"`
 	Dashboard    *Dashboard  `json:"dashboard,omitempty"`
 	Snapshot     *Snapshot   `json:"snapshot,omitempty"`
@@ -159,7 +110,7 @@ func renderFile(id, rev, p string) string {
 	}
 	return Prefix + id + "/" + rev + "/" + p
 }
-func readJSON(root *os.Root, p string, out any) error {
+func readJSON(root *projectRoot, p string, out any) error {
 	if err := checkParents(root, p); err != nil {
 		return err
 	}
@@ -178,7 +129,7 @@ func readJSON(root *os.Root, p string, out any) error {
 	d := json.NewDecoder(io.LimitReader(f, MaxBytes+1))
 	return d.Decode(out)
 }
-func safeParents(root *os.Root, p string) error {
+func safeParents(root *projectRoot, p string) error {
 	project, err := root.Stat(".")
 	if err != nil {
 		return err
@@ -210,7 +161,7 @@ func safeParents(root *os.Root, p string) error {
 	}
 	return nil
 }
-func atomicWrite(root *os.Root, p string, data []byte) error {
+func atomicWrite(root *projectRoot, p string, data []byte) error {
 	if err := safeParents(root, p); err != nil {
 		return err
 	}
@@ -261,12 +212,12 @@ func summary(s state, snap Snapshot, draft bool) Dashboard {
 	}
 	return d
 }
-func loadState(root *os.Root, id string) (state, error) {
+func loadState(root *projectRoot, id string) (state, error) {
 	var s state
 	err := readJSON(root, StatePath(id), &s)
 	return s, err
 }
-func loadSnapshot(root *os.Root, id, rev string) (Snapshot, error) {
+func loadSnapshot(root *projectRoot, id, rev string) (Snapshot, error) {
 	var s Snapshot
 	if !revisionID.MatchString(rev) {
 		return s, fail(404, "dashboard revision not found")
@@ -300,30 +251,12 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		return out, err
 	}
 	defer release()
-	docsRoot, err := os.OpenRoot(docs)
-	if err != nil {
-		return out, err
-	}
-	defer docsRoot.Close()
-	// Reject links in every project-root component, not merely escapes from docs.
-	current := ""
-	for _, part := range strings.Split(clean, "/") {
-		current = path.Join(current, part)
-		info, e := docsRoot.Lstat(current)
-		if e != nil {
-			return out, e
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return out, fail(403, "unsafe project root")
-		}
-	}
-	root, err := docsRoot.OpenRoot(clean)
+	root, err := openProjectRoot(docs, clean)
 	if err != nil {
 		return out, err
 	}
 	defer root.Close()
 	if req.Action == "list" {
-		titles := authoredDashboardTitles(root, req.Guard)
 		dir, e := root.Open("db/reports/.dashboard-state")
 		if e == nil {
 			entries, e := dir.ReadDir(-1)
@@ -336,6 +269,9 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 					continue
 				}
 				s, e := loadState(root, entry.Name())
+				if os.IsNotExist(e) {
+					continue // Deleted records leave their revision files in place.
+				}
 				if e != nil {
 					return out, e
 				}
@@ -357,44 +293,6 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		}
 		if e != nil && !os.IsNotExist(e) {
 			return out, e
-		}
-		// Existing authored documents are discoverable without moving or rewriting them.
-		var walk func(string, int) error
-		walk = func(p string, depth int) error {
-			dir, e := root.Open(p)
-			if os.IsNotExist(e) {
-				return nil
-			}
-			if e != nil {
-				return e
-			}
-			defer dir.Close()
-			entries, e := dir.ReadDir(-1)
-			if e != nil && !errors.Is(e, io.EOF) {
-				return e
-			}
-			for _, v := range entries {
-				if strings.HasPrefix(v.Name(), ".") || v.Name() == "managed" || v.Name() == "preview" || v.Type()&os.ModeSymlink != 0 {
-					continue
-				}
-				f := path.Join(p, v.Name())
-				if v.IsDir() {
-					if depth > 0 {
-						if e = walk(f, depth-1); e != nil {
-							return e
-						}
-					}
-				} else if strings.HasSuffix(strings.ToLower(f), ".html") {
-					if req.Guard != nil && !req.Guard.Allows(f, false) {
-						continue
-					}
-					out.Dashboards = append(out.Dashboards, Dashboard{ID: f, Title: authoredDashboardTitle(root, f, titles), DocumentPath: f})
-				}
-			}
-			return nil
-		}
-		if err = walk("db/reports", 3); err != nil {
-			return out, err
 		}
 		sort.Slice(out.Dashboards, func(i, j int) bool { return out.Dashboards[i].ID < out.Dashboards[j].ID })
 		return out, nil
@@ -485,6 +383,17 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 	}
 	if !req.IncludeDraft {
 		return out, fail(403, "project edit access required")
+	}
+	// PLAT-750-50: deleting a definition never deletes its revision files or runs.
+	if req.Action == "delete" {
+		if req.Guard != nil && !req.Guard.Allows(StatePath(req.ID), true) {
+			return out, fail(403, "outside connection write grants")
+		}
+		if err := root.Remove(StatePath(req.ID)); err != nil {
+			return out, err
+		}
+		out.Deleted = true
+		return out, nil
 	}
 	if req.Action != "create" && req.ExpectedRevision != s.Draft {
 		return out, fail(409, "dashboard revision conflict; reread before editing")
@@ -648,7 +557,7 @@ func assetBytes(p, content string) ([]byte, error) {
 	return data, nil
 }
 
-func checkParents(root *os.Root, p string) error {
+func checkParents(root *projectRoot, p string) error {
 	current := ""
 	for _, part := range strings.Split(path.Dir(p), "/") {
 		current = path.Join(current, part)

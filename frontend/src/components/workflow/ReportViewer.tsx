@@ -211,17 +211,21 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   if (!allowedDocumentPath) return null
   let questions: ReportDocument['questions']
   let liveHTML: string | undefined
+  // An explicit immutable revision is resolved by the server, including its
+  // current draft permission check. Current publication links keep their Ask widgets.
+  const explicitRevision = /^db\/reports\/managed\/[^/]+\/[a-f0-9]{64}\//.test(allowedDocumentPath)
   if (dashboardConversation && allowedDocumentPath.startsWith('db/reports/managed/')) {
     const slug = allowedDocumentPath.split('/')[3]
-    const { data: discovery } = await api.post<{ resource_id?: string }>('/api/dashboards', { workspace: workspacePath, action: 'get', dashboard_id: slug })
-    if (discovery.resource_id) {
+    const { data: discovery } = await api.post<{ resource_id?: string; dashboard?: { published_revision?: string } }>('/api/dashboards', { workspace: workspacePath, action: 'get', dashboard_id: slug })
+    const currentPublication = discovery.dashboard?.published_revision
+    if (discovery.resource_id && (!explicitRevision || allowedDocumentPath.startsWith(`db/reports/managed/${slug}/${currentPublication}/`))) {
       const { data: view } = await api.get<{ resource_id: string; project_id: string; product: string; dashboard: { published_revision: string }; capability: DashboardQuestionCapability; live_page?: { document_path: string; html: string } }>(`/api/dashboards/${encodeURIComponent(discovery.resource_id)}`)
       // Authored pages keep their captured publication. The server may supply
       // current HTML for its untouched automatic page on the stable URL.
       if (view.live_page && allowedDocumentPath === view.live_page.document_path) {
         allowedDocumentPath = view.live_page.document_path
         liveHTML = view.live_page.html
-      } else {
+      } else if (!explicitRevision) {
         allowedDocumentPath = `db/reports/managed/${slug}/${view.dashboard.published_revision}/index.html`
       }
       questions = { resourceId: view.resource_id, revision: view.dashboard.published_revision, projectId: view.project_id, workspacePath, capability: view.capability, product: view.product }

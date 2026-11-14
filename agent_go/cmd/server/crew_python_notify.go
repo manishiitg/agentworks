@@ -23,7 +23,7 @@ func (r *crewWorkflowResources) NotifyScript(ctx context.Context, workspace, ses
 		return "", nil
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
-	if !ok || owner != r.userID || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
+	if !ok || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
 		return "", fmt.Errorf("this Crew's execution owner is unavailable")
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
@@ -34,7 +34,7 @@ func (r *crewWorkflowResources) NotifyScript(ctx context.Context, workspace, ses
 	if scheduler == nil {
 		scheduler = &SchedulerService{api: r.crews.api}
 	}
-	sctx := buildScheduleContext(workspace, manifest, WorkflowSchedule{Name: manifest.Label, ChatID: "main"})
+	sctx := buildScheduleContext(workspace, manifest, WorkflowSchedule{Name: manifest.Label})
 
 	caller, callerUser := sessionID, r.userID
 	if parent := virtualtools.GetParentChat(sessionID); parent != nil {
@@ -73,15 +73,8 @@ func (r *crewWorkflowResources) NotifyScript(ctx context.Context, workspace, ses
 			}
 		}
 	}
-	if target == nil {
-		// Timer origins already point at the saved chat above. With no usable
-		// origin (for example an external webhook), the Crew's Main chat is
-		// the existing fallback; no arbitrary recipient can be selected here.
-		target, err = scheduler.openCrewAutomationChat(ctx, sctx)
-		if err != nil {
-			return "", err
-		}
-	}
+	// No originating agent means progress stays in the automation's run log.
+	// A notification never creates Main or chooses another agent on its own.
 	if target == nil || strings.TrimSpace(target.SessionID) == "" {
 		return "", nil
 	}

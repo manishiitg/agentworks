@@ -7,24 +7,24 @@ import {
 } from '../../products/productSurfaceConfig'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 
-/** Match the current Vault management route's product and administrator checks. */
-export function OpenVaultButton({
-  panel = 'secrets',
-}: {
-  panel?: 'secrets' | 'servers'
-}) {
+/** Same management admission for inline Vault and its standalone route link. */
+export function useCanManageVault() {
   const allowed = useAuthStore((state) => state.user?.allowed_products)
   const admin = useAuthStore(
     (state) =>
       state.user?.is_admin === true ||
       (state.isMultiUserModeChecked && !state.isMultiUserMode),
   )
-  if (
-    !admin ||
-    !gatewayBaseUrl() ||
-    !visibleProductSurfaceIDs(allowed).includes('mcp-gateway')
-  )
-    return null
+  return admin && Boolean(gatewayBaseUrl()) && visibleProductSurfaceIDs(allowed).includes('mcp-gateway')
+}
+
+/** Match the current Vault management route's product and administrator checks. */
+export function OpenVaultButton({
+  panel = 'secrets',
+}: {
+  panel?: 'secrets' | 'servers'
+}) {
+  if (!useCanManageVault()) return null
   return (
     <Button
       variant="ghost"

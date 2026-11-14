@@ -145,7 +145,7 @@ function AgentDirectory() {
           <h2 className="break-words text-sm font-semibold">{agent.label || agent.agent_name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}<span className="mx-2" aria-hidden="true">·</span><span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${agent.online ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />{agent.availability_label}</span></p>
         </button>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-xs" title={agent.visibility_label === 'Published' ? 'People signed into this network can find and message this agent.' : 'Only you and your own agents can find and message this agent.'}>{agent.visibility_label}</span>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-xs" title={agent.visibility_label === 'Discoverable' ? 'People signed into this network can find and message this agent.' : 'Only you and your own agents can find and message this agent.'}>{agent.visibility_label}</span>
         <AgentAddress target={agent.target} />
       </article>)}
     </div> : agents.length > 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : null}

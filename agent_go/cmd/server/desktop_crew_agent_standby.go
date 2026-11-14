@@ -8,6 +8,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -145,16 +146,11 @@ func crewStandbyWireKey(project, key string) string {
 
 // crewStandbyRecords are the owner's conversations in this Crew, from this Mac's chat registry.
 func crewStandbyRecords(roots crewroot.Roots) []ProductConversationRecord {
-	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(roots.Owner))
+	out, err := defaultProductConversationRegistryStore().crewWorkspaceChats(context.Background(), roots.Owner, roots.Virtual)
 	if err != nil {
 		return nil
 	}
-	out := []ProductConversationRecord{}
-	for _, record := range doc.Entries {
-		if record.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(record.WorkspacePath) == roots.Virtual && record.SessionID != "" {
-			out = append(out, record)
-		}
-	}
+
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
 	return out
 }
@@ -203,6 +199,20 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	if err != nil {
 		return
 	}
+	// Clear/reassert terminal receipts before the writer early-return, so a
+	// recovered chat cannot stay paused merely because another chat ran here.
+	for _, record := range crewStandbyRecords(roots) {
+		if crewAgentPublishTab(crewStandbyWireKey(roots.ID, record.ConversationKey)) != tab {
+			continue
+		}
+		if marker, err := readChatTerminal(record.SessionID); err == nil && marker.Receipt != "" {
+			if err = api.syncTerminalStandby(ctx, record, marker); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
+				retry(record.SessionID)
+				api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
+				continue
+			}
+		}
+	}
 	// What only this Mac has goes with the first check, so the server's note for its turns names it (names only; a
 	// list that cannot be read now keeps the server's last one).
 	var macOnly []crewTeamMacOnlyItem
@@ -245,7 +255,10 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	failed := false
 	for _, record := range crewStandbyRecords(roots) {
 		key := crewStandbyWireKey(roots.ID, record.ConversationKey)
-		if crewAgentPublishTab(key) != tab || primed && !dirty[record.SessionID] {
+		if crewAgentPublishTab(key) != tab {
+			continue
+		}
+		if primed && !dirty[record.SessionID] {
 			continue
 		}
 		started := time.Now()
@@ -295,6 +308,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		}
 		if err == nil {
 			item.Conversation = conversation
+			item.MacLogin = api.crewStandbyMacLogin(ctx, record)
 			answer, err = call("standby_store", []crewStandbySendItem{item})
 		}
 		if err != nil {
@@ -303,7 +317,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 			skip("send_failed")
 			break
 		}
-		log.Printf("[ALWAYS_ON] project=%s tab=%s event=standby_sent bytes=%d ms=%d result=%s revision=%d", project, tab, bytes, time.Since(started).Milliseconds(), answer.Event, answer.Revision)
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=standby_sent bytes=%d ms=%d result=%s revision=%d mac_login=%s", project, tab, bytes, time.Since(started).Milliseconds(), answer.Event, answer.Revision, crewMacLoginKind(item.MacLogin))
 	}
 	if !failed {
 		crewStandbyMu.Lock()

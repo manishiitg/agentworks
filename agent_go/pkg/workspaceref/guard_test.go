@@ -52,7 +52,7 @@ var usersDirAllowlist = map[string]string{
 	"cmd/server/product_secrets_migration.go":      "one-shot on-disk migration of per-user secrets files",
 	"cmd/server/product_owner.go":                  "startup scan registering Crew/Code owners from the on-disk per-user tree, with anchored symlink-refusing opens (PLAT-449, PLAT-450)",
 	"cmd/server/durable_chat_migration_command.go": "one-shot migration reading the owner out of legacy on-disk chat paths",
-	"cmd/server/virtual-tools/delegation_tools.go": "const fallback Chats folder; a const cannot call PhysicalPath",
+	"cmd/server/virtual-tools/session_context.go":  "const fallback Chats folder; a const cannot call PhysicalPath",
 	"pkg/chathistory/fs_store.go":                  "physical storage layer of per-user secrets (on-disk path)",
 	"pkg/workspace/client.go":                      "folder-guard rewrite at the workspace API client boundary (unsanitized user id, see PLAT-435 ticket)",
 	"pkg/workspace/diff_patch_workspace_file.go":   "first-segment check on a client path that is already workspace-root-qualified",

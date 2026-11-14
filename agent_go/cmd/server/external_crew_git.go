@@ -75,11 +75,12 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 		}
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), workspaceGitTimeout)
+	ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase), workspaceGitTimeout)
 	defer cancel()
 	if op == "status" {
 		repos := []workspaceGitRepo{}
-		for _, repo := range workspaceGitStatusRepos(ctx, realBase) {
+		all, more := workspaceGitStatusRepos(ctx, realBase)
+		for _, repo := range all {
 			if !readable(repo.Root) {
 				continue
 			}
@@ -92,7 +93,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 			repo.Files = files
 			repos = append(repos, repo)
 		}
-		externalJSON(w, map[string]any{"repos": repos})
+		externalJSON(w, map[string]any{"repos": repos, "more_repos": more})
 		return
 	}
 	repoRel := strings.Trim(externalArg(args, "repo"), "/")
@@ -118,7 +119,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 	read := r.Clone(r.Context())
 	read.URL = &url.URL{Path: "/api/workspace-git", RawQuery: q.Encode()}
 	recorder := httptest.NewRecorder()
-	serveWorkspaceGitRead(recorder, read, ctx, repoDir, roots.Owner)
+	serveWorkspaceGitRead(recorder, read, context.WithValue(ctx, githubProjectRootKey{}, roots.Virtual), repoDir, roots.Owner)
 	if recorder.Code != http.StatusOK {
 		var refusal struct {
 			Error string `json:"error"`

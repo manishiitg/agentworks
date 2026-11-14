@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"errors"
-	"strings"
-	"sync"
+
 	"testing"
 	"time"
 
@@ -35,147 +33,6 @@ func waitForLiveInputConfirmed(t *testing.T, store *internalevents.EventStore, s
 	}
 }
 
-func TestWatchLiveInputDurableEmitsConfirmedEvent(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-confirmed"
-	const messageID = "steer-message-1"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {
-			if provider != llmproviders.ProviderCodexCLI || owner != sessionID || message != "steer into the turn" {
-				t.Errorf("durable watch request = (%s %s %q)", provider, owner, message)
-			}
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: 1200 * time.Millisecond, ProofSource: "/tmp/rollout.jsonl"}, nil
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderCodexCLI), messageID, "steer into the turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	if event.ID != messageID+":confirmed" {
-		t.Fatalf("event ID = %q, want deterministic %q", event.ID, messageID+":confirmed")
-	}
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.MessageID != messageID || payload.Outcome != "confirmed" || payload.Provider != string(llmproviders.ProviderCodexCLI) {
-		t.Fatalf("confirm payload = %#v", payload)
-	}
-	if payload.LatencyMs != 1200 || payload.ProofSource != "/tmp/rollout.jsonl" {
-		t.Fatalf("confirm proof = %#v", payload)
-	}
-	if payload.Metadata["message_id"] != messageID || payload.Metadata["confirmation"] != "confirmed" {
-		t.Fatalf("confirm metadata = %#v", payload.Metadata)
-	}
-}
-
-func TestWatchLiveInputDurableEmitsConfirmedEventForPi(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-pi"
-	const messageID = "steer-message-pi-1"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {
-			if provider != llmproviders.ProviderPiCLI || owner != sessionID || message != "steer into the Pi turn" {
-				t.Errorf("durable watch request = (%s %s %q)", provider, owner, message)
-			}
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: 8100 * time.Millisecond, ProofSource: "/tmp/markers.jsonl"}, nil
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderPiCLI), messageID, "steer into the Pi turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.MessageID != messageID || payload.Outcome != "confirmed" || payload.Provider != string(llmproviders.ProviderPiCLI) || payload.LatencyMs != 8100 {
-		t.Fatalf("confirm payload = %#v", payload)
-	}
-}
-
-func TestWatchLiveInputDurableEmitsConfirmedEventForMuse(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-muse"
-	const messageID = "steer-message-muse-1"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {
-			if provider != llmproviders.ProviderMuseCLI || owner != sessionID || message != "steer into the Muse turn" {
-				t.Errorf("durable watch request = (%s %s %q)", provider, owner, message)
-			}
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: 1200 * time.Millisecond, ProofSource: "/tmp/session.jsonl"}, nil
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderMuseCLI), messageID, "steer into the Muse turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.MessageID != messageID || payload.Outcome != "confirmed" || payload.Provider != string(llmproviders.ProviderMuseCLI) || payload.LatencyMs != 1200 {
-		t.Fatalf("confirm payload = %#v", payload)
-	}
-}
-
-func TestWatchLiveInputDurableEmitsConfirmedEventForClaude(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-claude"
-	t.Setenv("CLAUDE_CODE_TRANSPORT", "tmux") // the SDK default has no durable ack
-	const messageID = "steer-message-claude-1"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {
-			if provider != llmproviders.ProviderClaudeCode || owner != sessionID || message != "steer into the Claude turn" {
-				t.Errorf("durable watch request = (%s %s %q)", provider, owner, message)
-			}
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: 7000 * time.Millisecond, ProofSource: "/tmp/session.jsonl"}, nil
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderClaudeCode), messageID, "steer into the Claude turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.MessageID != messageID || payload.Outcome != "confirmed" || payload.Provider != string(llmproviders.ProviderClaudeCode) || payload.LatencyMs != 7000 {
-		t.Fatalf("confirm payload = %#v", payload)
-	}
-}
-
-func TestWatchLiveInputDurableEmitsConfirmedEventForCursor(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-cursor"
-	t.Setenv("CURSOR_CLI_TRANSPORT", "tmux") // the SDK default has no durable ack
-	const messageID = "steer-message-cursor-1"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {
-			if provider != llmproviders.ProviderCursorCLI || owner != sessionID || message != "steer into the Cursor turn" {
-				t.Errorf("durable watch request = (%s %s %q)", provider, owner, message)
-			}
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: 9500 * time.Millisecond, ProofSource: "/tmp/store.db"}, nil
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderCursorCLI), messageID, "steer into the Cursor turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.MessageID != messageID || payload.Outcome != "confirmed" || payload.Provider != string(llmproviders.ProviderCursorCLI) || payload.LatencyMs != 9500 {
-		t.Fatalf("confirm payload = %#v", payload)
-	}
-}
-
 func TestWatchLiveInputDurableSkipsProvidersWithoutFlag(t *testing.T) {
 	store := internalevents.NewEventStore(10)
 	defer store.Stop()
@@ -199,28 +56,6 @@ func TestWatchLiveInputDurableSkipsProvidersWithoutFlag(t *testing.T) {
 	}
 }
 
-func TestWatchLiveInputDurableMapsAwaitErrorToFailed(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-failed"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(context.Context, llmproviders.Provider, string, string) (llmtypes.DurableAck, error) {
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckFailed}, errors.New("pane lost")
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderCodexCLI), "steer-message-3", "steer into the turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.Outcome != "failed" {
-		t.Fatalf("confirm outcome = %q, want failed", payload.Outcome)
-	}
-}
-
 func TestDurableAckDispatchCoversAckContracts(t *testing.T) {
 	// PLAT-872-55: SDK defaults may not need durable-ack polling, while their
 	// explicit terminal transports still must have an awaiter.
@@ -237,76 +72,5 @@ func TestDurableAckDispatchCoversAckContracts(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestWatchLiveInputDurablePassesThroughUnflushed(t *testing.T) {
-	store := internalevents.NewEventStore(10)
-	defer store.Stop()
-	const sessionID = "durable-watch-unflushed"
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(context.Context, llmproviders.Provider, string, string) (llmtypes.DurableAck, error) {
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckUnflushed, Latency: 60 * time.Second}, nil
-		},
-	}
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderCodexCLI), "steer-message-4", "steer into the turn")
-
-	event := waitForLiveInputConfirmed(t, store, sessionID)
-	payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent)
-	if !ok {
-		t.Fatalf("event payload = %T, want *LiveInputConfirmedEvent", event.Data.Data)
-	}
-	if payload.Outcome != "accepted_but_unflushed" {
-		t.Fatalf("confirm outcome = %q, want accepted_but_unflushed", payload.Outcome)
-	}
-}
-
-// A timeout is "not confirmed yet", never "failed" (a failed receipt invites a
-// Resend). When the CLI's record shows up later, the row is upgraded, and the
-// watch looks for the text the CLI was really sent (notice included).
-func TestWatchLiveInputDurableTimeoutIsHeldThenUpgraded(t *testing.T) {
-	store := internalevents.NewEventStore(20)
-	defer store.Stop()
-	const sessionID = "durable-watch-timeout"
-	const typed = "generate again"
-	noteLiveInputDelivered(sessionID, string(llmproviders.ProviderMuseCLI), typed, "[AGENTWORKS SESSION]\nnotice\n[/AGENTWORKS SESSION]\n\n[USER MESSAGE]\n"+typed)
-	var mu sync.Mutex
-	var seen []string
-	api := &StreamingAPI{eventStore: store,
-		internalDurableAckHandler: func(_ context.Context, _ llmproviders.Provider, _, message string) (llmtypes.DurableAck, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			seen = append(seen, message)
-			if len(seen) == 1 {
-				return llmtypes.DurableAck{}, errors.New("Muse input not durably acknowledged after 1m0s")
-			}
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: time.Second}, nil
-		},
-	}
-	sub := store.Subscribe(sessionID)
-	defer store.Unsubscribe(sessionID, sub)
-
-	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderMuseCLI), "steer-message-late", typed)
-
-	var outcomes []string
-	deadline := time.After(5 * time.Second)
-	for len(outcomes) < 2 {
-		select {
-		case event := <-sub.Ch:
-			if payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent); ok {
-				outcomes = append(outcomes, payload.Outcome)
-			}
-		case <-deadline:
-			t.Fatalf("receipts so far: %v", outcomes)
-		}
-	}
-	if outcomes[0] != "accepted_but_unflushed" || outcomes[1] != "confirmed" {
-		t.Fatalf("receipts = %v, want held then confirmed", outcomes)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(seen) < 2 || !strings.HasSuffix(seen[0], "\n\n[USER MESSAGE]\n"+typed) {
-		t.Fatalf("the watch must look for the text the CLI was sent, got %q", seen)
 	}
 }

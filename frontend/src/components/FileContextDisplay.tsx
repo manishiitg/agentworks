@@ -1,11 +1,10 @@
+import { useState } from 'react'
+import type { FileContextItem } from '../stores/types'
+import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
+import { ContextAttachmentPreview } from './chat/ContextAttachmentPreview'
 import { FileText, Folder, X } from 'lucide-react'
 import { WorkspaceImage } from './ui/WorkspaceImage'
 
-interface FileContextItem {
-  name: string
-  path: string
-  type: 'file' | 'folder'
-}
 
 interface FileContextDisplayProps {
   attachmentMode?: boolean
@@ -17,17 +16,24 @@ interface FileContextDisplayProps {
 }
 
 export default function FileContextDisplay({ attachmentMode = false, files, onRemoveFile, onClearAll, agentMode, isRequiredFolderSelected }: FileContextDisplayProps) {
+  const [preview, setPreview] = useState<{ path: string; identity: number }>()
+  const previewFile = preview && isChatIdentityCurrent(preview.identity) ? files.find(file => file.path === preview.path) : undefined
   if (files.length === 0) {
     return null
   }
 
   if (attachmentMode) {
-    return <div aria-label="Attachments" className="flex gap-2 overflow-x-auto px-2 pt-2 pb-1">
-      {files.map(file => {
-        const name = file.name || file.path.split('/').filter(Boolean).pop() || 'File'
+    const groupedImages = new Set(files.flatMap(file => file.context?.previewPath ? [file.context.previewPath] : []))
+    return <div className="px-2 pt-2 pb-1">
+      <div aria-label="Attachments" className="flex gap-2 overflow-x-auto">
+      {files.filter(file => !groupedImages.has(file.path)).map(file => {
+        const name = file.context?.label || file.name || file.path.split('/').filter(Boolean).pop() || 'File'
         const image = file.type === 'file' && /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(file.path)
         return <div key={file.path} title={name} className={`relative shrink-0 overflow-hidden rounded-xl border border-border bg-muted ${image ? 'h-24 w-24' : 'flex h-14 max-w-56 items-center gap-2 pl-3 pr-9'}`}>
-          {image ? <WorkspaceImage path={file.path} alt={name} className="h-full w-full object-cover" /> : <>
+          {file.context ? <button type="button" onClick={() => setPreview({ path: file.path, identity: captureChatIdentity() })} className="flex min-w-0 items-center gap-2 text-left" aria-label={`View ${name}`}>
+            {file.context.previewPath && files.some(child => child.path === file.context?.previewPath) ? <WorkspaceImage path={file.context.previewPath} alt="Selected page element" className="h-11 w-14 rounded object-cover" /> : <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />}
+            <span className="truncate text-sm">{name}</span>
+          </button> : image ? <WorkspaceImage path={file.path} alt={name} className="h-full w-full object-cover" /> : <>
             {file.type === 'folder' ? <Folder className="h-5 w-5 shrink-0 text-muted-foreground" /> : <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />}
             <span className="truncate text-sm">{name}</span>
           </>}
@@ -36,6 +42,8 @@ export default function FileContextDisplay({ attachmentMode = false, files, onRe
           </button>
         </div>
       })}
+      </div>
+      {previewFile && preview && <ContextAttachmentPreview key={preview.path} file={previewFile} identity={preview.identity} onClose={() => setPreview(undefined)} />}
     </div>
   }
 

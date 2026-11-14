@@ -90,13 +90,29 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 		return body, nil
 	}
-	if _, bound, rootErr := localCrewRoots(ref.Root); bound && rootErr == nil {
-		if err := register("manage_crew_chats", "Recognize this existing local folder (project_context), list your own native Claude/Codex conversations (native_list), preview its history (native_preview), or copy a chosen native_id into its own private tab (native_resume). Found files are not a claim that they were loaded. The original account and current permissions apply; opening never starts a model turn.", map[string]any{
-			"action":    map[string]any{"type": "string", "enum": []string{"project_context", "native_list", "native_preview", "native_resume"}},
+	if schedulerAdminAllowed(claims) {
+		if err := register("manage_schedules", "Read the pause for all schedules (scheduler_status), pause every schedule (pause_all), or resume every schedule (resume_all). This is one company-wide switch, not a pause for this Crew. Administrator only; change it only when the person asks.", map[string]any{
+			"action": map[string]any{"type": "string", "enum": []string{"scheduler_status", "pause_all", "resume_all"}},
+		}, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
+			w := httptest.NewRecorder()
+			api.externalGlobalSchedulerCall(w, r, args)
+			return responseText(w)
+		}); err != nil {
+			return err
+		}
+	}
+	{
+		actions := []string{"terminal", "continue_here"}
+		if _, bound, err := localCrewRoots(ref.Root); bound && err == nil {
+			actions = append(actions, "project_context", "native_list", "native_preview", "native_resume")
+		}
+		if err := register("manage_crew_chats", "Recognize this existing local folder (project_context), list your own native Claude/Codex conversations (native_list), preview its history (native_preview), or copy a chosen native_id into its own private tab (native_resume). Found files are not a claim that they were loaded. The original account and current permissions apply; opening never starts a model turn. terminal shows the command for your own Claude chat; continue_here recovers its original chat here instead of the terminal copy.", map[string]any{
+			"action":    map[string]any{"type": "string", "enum": actions},
 			"native_id": externalString("Opaque id from native_list; required for native_preview or native_resume."),
+			"chat_id":   externalString("For terminal or continue_here: your own chat ID from sessions list."),
 		}, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
 			switch externalArg(args, "action") {
-			case "project_context", "native_list", "native_preview", "native_resume":
+			case "project_context", "native_list", "native_preview", "native_resume", "terminal", "continue_here":
 			default:
 				return "", errors.New("Choose project_context, native_list, native_preview or native_resume.")
 			}

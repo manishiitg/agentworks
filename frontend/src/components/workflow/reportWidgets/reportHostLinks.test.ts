@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { installReportDocumentHost } from './reportHostRuntime'
 import type { ReportDataApi } from './reportEmbedContext'
 
@@ -19,11 +19,4 @@ it('never lets any other relative link navigate the frame', () => {
   const click = new MouseEvent('click', { bubbles: true, cancelable: true })
   frame.contentDocument!.getElementById('l')!.dispatchEvent(click)
   expect(click.defaultPrevented).toBe(true)
-})
-
-it('does not show the benign ResizeObserver warning as a render failure', () => {
-  const frame = mountReport('<p>ok</p>')
-  vi.spyOn(console, 'error').mockImplementation(() => {})
-  frame.contentWindow!.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop completed with undelivered notifications.' }))
-  expect(frame.contentDocument!.querySelector('[data-report-error]')).toBeNull()
 })

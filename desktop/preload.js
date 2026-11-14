@@ -12,6 +12,12 @@ const desktopConnection = ipcRenderer.sendSync('get-desktop-connection');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getDesktopConnection: () => desktopConnection,
+  isNotificationWindowActive: () => ipcRenderer.sendSync('get-notification-window-active'),
+  onNotificationWindowActiveChanged: (callback) => {
+    const handler = (_event, focused) => callback(focused === true);
+    ipcRenderer.on('notification-window-active-changed', handler);
+    return () => ipcRenderer.removeListener('notification-window-active-changed', handler);
+  },
   getDesktopApiBaseUrl: () => ipcRenderer.sendSync('get-desktop-api-origin'),
   openDesktopConnection: (id, route) => ipcRenderer.invoke('open-desktop-connection', id, route),
   isWalkthroughDismissed: key => walkthroughDismissals.has(key),
@@ -39,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setDockBadge: (text) => ipcRenderer.send('set-dock-badge', text),
   setRunningActivity: (payload) => ipcRenderer.send('set-running-activity', payload),
   openExternal: (url) => ipcRenderer.send('open-external', url),
+  openEditor: (payload) => ipcRenderer.invoke('open-editor', payload),
   printToPDF: (filename) => ipcRenderer.invoke('print-to-pdf', filename),
   saveFlowImage: (payload) => ipcRenderer.invoke('save-flow-image', payload),
   captureFlowImage: (payload) => ipcRenderer.invoke('capture-flow-image', payload),

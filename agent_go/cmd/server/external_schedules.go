@@ -20,20 +20,58 @@ import (
 // function triggers). The older list_schedules, trigger_schedule and
 // get_schedule_runs stay for workflows.
 
-var externalScheduleActions = []any{"list", "create", "update", "delete", "enable", "disable", "run_now", "stop", "runs"}
+var externalScheduleActions = []any{"list", "create", "update", "delete", "enable", "disable", "run_now", "stop", "runs", "scheduler_status", "pause_all", "resume_all"}
 
 // Targeting fields the server sets itself; a caller's copy is ignored.
 var externalScheduleTargetFields = []string{"workspace_path", "entity_type", "product_profile_id", "product_project_id", "id"}
 
 func externalScheduleDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_schedules", "List, create, change, delete, enable, disable, run now, stop, or read the run history of a workflow's or Crew's schedules (not Flows: they use function triggers). Pass project. Changes need the owner, as on the Schedules page; run_now and stop need run access.", true, false, map[string]any{
-		"project":     externalString("Project ID or name."),
+	add("manage_schedules", "List, create, change, delete, enable, disable, run now, stop, or read the run history of a workflow's or Crew's schedules (not Flows: they use function triggers). Project actions require project and keep their current owner/run rules. scheduler_status, pause_all and resume_all take no project and manage the ONE pause for ALL schedules; administrator access and users:manage consent required. Ask an administrator to change that pause from Schedules. For a Crew, Run now starts it immediately and ignores the schedule and its dependencies.", true, false, map[string]any{
+		"project":     externalString("Project ID or name; required for project actions, omitted for scheduler_status, pause_all and resume_all."),
 		"action":      map[string]any{"type": "string", "enum": externalScheduleActions},
 		"schedule_id": externalString("Schedule ID from action list; required except for list and create."),
-		"schedule":    map[string]any{"type": "object", "description": "For repeating work use schedule_type=cron, cron_expression and timezone: every 5 minutes is */5 * * * *, every hour is 0 * * * *. For one-time work use schedule_type=calendar and calendar_items with explicit dates/time; it does not repeat. A Crew schedule may give run_at instead (RFC3339 with an offset, in the future). Confirm timing_summary from the saved reply. For create and update: the schedule's fields, as the Schedules page saves them. name, schedule_type (cron or calendar), cron_expression, timezone, calendar_items, enabled, messages (a Crew schedule needs exactly one), description; a Crew schedule also chat_id (the tab it runs in, from workspace action=chats; empty is the main chat); a workflow schedule with messages also run_destination (new: a new conversation each time, the default; chat: the owner's chat named by chat_id, empty for the main chat or a tab id from run_destinations in list; isolated: the schedule's own conversation, kept across runs); workflows also input_preset, inputs, route_selections, collision_policy, after_schedule_ids. update replaces the fields you send."},
+		"schedule":    map[string]any{"type": "object", "description": "For repeating work use schedule_type=cron, cron_expression and timezone: every 5 minutes is */5 * * * *, every hour is 0 * * * *. For one-time work use schedule_type=calendar and calendar_items with explicit dates/time; it does not repeat. A Crew schedule may give run_at instead (RFC3339 with an offset, in the future). Confirm timing_summary from the saved reply. For create and update: the schedule's fields, as the Schedules page saves them. name, schedule_type (cron or calendar), cron_expression, timezone, calendar_items, enabled, messages (one message for a Crew chat timer), or target_workflow_id for a saved Python workflow in that Crew with input_preset, inputs and route_selections; do not add messages to a workflow timer; description; a Crew message schedule also says where the message goes: run_destination isolated (its own chat: a new chat for this schedule that every run continues, listed with the Crew's chats; the default when neither run_destination nor chat_id is given) or run_destination chat (an existing chat: chat_id from workspace action=chats for one of the Crew's chats, empty for the main chat). When the person did not say, ask them before creating it: its own chat, or an existing chat (which one)? A workflow schedule with messages also run_destination (new: a new conversation each time, the default; chat: the owner's chat named by chat_id, empty for the main chat or a tab id from run_destinations in list; isolated: the schedule's own conversation, kept across runs); workflows also input_preset, inputs, route_selections, collision_policy. Both support after_schedule_ids, after_terminal_status (completed or any_terminal), after_delay_minutes and dependency_deadline (HH:MM in the schedule timezone). update replaces the fields you send."},
 		"limit":       externalInteger(1, 200),
 		"offset":      externalInteger(0, 1000000),
-	}, "action", "project")
+	}, "action")
+}
+
+// A global schedule action has no project selector. Project-bound connections
+// cannot use a company-wide administrator operation.
+func globalSchedulerAction(action string) bool {
+	return action == "scheduler_status" || action == "pause_all" || action == "resume_all"
+}
+
+func globalSchedulerMember(name string) bool {
+	action, ok := agentSourceAction(name)
+	return ok && action.Source == "manage_schedules" && globalSchedulerAction(action.SourceAction)
+}
+
+func schedulerAdminAllowed(claims *UserClaims) bool {
+	return externalUsersAllowed(claims) && (claims.AccessToken == nil || claims.AccessToken.ProjectKind == "")
+}
+
+func (api *StreamingAPI) externalGlobalSchedulerCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	if !schedulerAdminAllowed(GetUserFromContext(r.Context())) {
+		externalError(w, http.StatusForbidden, "admin_required", "Only an administrator can manage the pause for all schedules. Ask an administrator to change it from Schedules.")
+		return
+	}
+	action := externalArg(args, "action")
+	method, handler := http.MethodGet, getSchedulerConfigHandler(api.scheduler)
+	var body any
+	if action == "pause_all" || action == "resume_all" {
+		method, handler = http.MethodPut, updateSchedulerConfigHandler(api.scheduler)
+		body = SchedulerConfig{GloballyPaused: action == "pause_all", PausedBy: "chat-or-mcp"}
+	} else if action != "scheduler_status" {
+		externalError(w, http.StatusBadRequest, "invalid_action", "Choose scheduler_status, pause_all or resume_all.")
+		return
+	}
+	status, result := scheduleHandler(r, requireAdmin(handler), method, "/api/scheduler/config", nil, nil, body)
+	if status == http.StatusForbidden {
+		externalError(w, status, "admin_required", "Ask an administrator to manage the pause for all schedules from Schedules.")
+		return
+	}
+	externalScheduleRespond(w, status, result)
 }
 
 type externalScheduleTarget struct {

@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -65,27 +66,61 @@ func running(exited chan struct{}) bool {
 	}
 }
 
-var companyProxy = struct {
+// modelProxyInstance is one running proxy with its own logins: the company's (owner "") for "Use from the Mac app",
+// or one person's own (PLAT-856-441, "sign in once on the server"), so a person's login is never pooled with anyone
+// else's (the proxy lets every holder of its key use every login in its folder).
+type modelProxyInstance struct {
 	sync.Mutex
+	owner   string
 	cmd     *exec.Cmd
 	exited  chan struct{}
 	port    int
 	key     string
 	signIns map[string]*modelProxySignIn
 	catalog map[string]cachedCatalog
-}{signIns: map[string]*modelProxySignIn{}, catalog: map[string]cachedCatalog{}}
+}
+
+var companyProxy = &modelProxyInstance{signIns: map[string]*modelProxySignIn{}, catalog: map[string]cachedCatalog{}}
+
+var personalProxies = struct {
+	sync.Mutex
+	byOwner map[string]*modelProxyInstance
+}{byOwner: map[string]*modelProxyInstance{}}
+
+// modelProxyFor is the company's proxy (owner "") or one person's own.
+func modelProxyFor(owner string) *modelProxyInstance {
+	if owner == "" {
+		return companyProxy
+	}
+	personalProxies.Lock()
+	defer personalProxies.Unlock()
+	p := personalProxies.byOwner[owner]
+	if p == nil {
+		p = &modelProxyInstance{owner: owner, signIns: map[string]*modelProxySignIn{}, catalog: map[string]cachedCatalog{}}
+		personalProxies.byOwner[owner] = p
+	}
+	return p
+}
 
 type cachedCatalog struct {
 	body []byte
 	at   time.Time
 }
 
-func modelProxyDir() (string, error) {
+func modelProxyDir() (string, error) { return companyProxy.dir() }
+
+// dir is the proxy's private folder (config, logins, log): the company's, or people/<hash of the person> for a
+// person's own, all under the app account's home where no AI program on the server can read.
+func (p *modelProxyInstance) dir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	dir := filepath.Join(home, ".local", "state", "agentworks", "model-proxy")
+	if p.owner != "" {
+		sum := sha256.Sum256([]byte(p.owner))
+		dir = filepath.Join(dir, "people", hex.EncodeToString(sum[:8]))
+	}
 	if err := os.MkdirAll(filepath.Join(dir, "auth"), 0o700); err != nil {
 		return "", err
 	}
@@ -121,9 +156,12 @@ func modelProxyLoginFiles(dir, provider string) []string {
 	return files
 }
 
-// modelProxySignedInAs is the email of the proxy's login for a program, or "" when it has none.
-func modelProxySignedInAs(provider string) string {
-	dir, err := modelProxyDir()
+// modelProxySignedInAs is the email of the company proxy's login for a program, or "" when it has none.
+func modelProxySignedInAs(provider string) string { return companyProxy.signedInAs(provider) }
+
+// signedInAs is the email of this proxy's login for a program, or "" when it has none.
+func (p *modelProxyInstance) signedInAs(provider string) string {
+	dir, err := p.dir()
 	if err != nil {
 		return ""
 	}
@@ -146,18 +184,21 @@ func modelProxySignedInAs(provider string) string {
 	return ""
 }
 
-// companyModelProxyUpstream starts the proxy if needed and returns its address and client key.
-func companyModelProxyUpstream() (string, string, bool) {
+// companyModelProxyUpstream starts the company proxy if needed and returns its address and client key.
+func companyModelProxyUpstream() (string, string, bool) { return companyProxy.upstream() }
+
+// upstream starts this proxy if needed and returns its address and client key.
+func (p *modelProxyInstance) upstream() (string, string, bool) {
 	binary := modelProxyBinary()
 	if binary == "" {
 		return "", "", false
 	}
-	companyProxy.Lock()
-	defer companyProxy.Unlock()
-	if companyProxy.cmd != nil && running(companyProxy.exited) {
-		return fmt.Sprintf("http://127.0.0.1:%d", companyProxy.port), companyProxy.key, true
+	p.Lock()
+	defer p.Unlock()
+	if p.cmd != nil && running(p.exited) {
+		return fmt.Sprintf("http://127.0.0.1:%d", p.port), p.key, true
 	}
-	dir, err := modelProxyDir()
+	dir, err := p.dir()
 	if err != nil {
 		log.Printf("[MODEL_PROXY] cannot prepare its folder: %v", err)
 		return "", "", false
@@ -188,7 +229,7 @@ func companyModelProxyUpstream() (string, string, bool) {
 		return "", "", false
 	}
 	exited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(exited); log.Printf("[MODEL_PROXY] proxy exited") }()
+	go func() { _ = cmd.Wait(); close(exited); log.Printf("[MODEL_PROXY] proxy exited%s", p.logOwner()) }()
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	for i := 0; i < 50; i++ {
 		if conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond); err == nil {
@@ -197,9 +238,32 @@ func companyModelProxyUpstream() (string, string, bool) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	companyProxy.cmd, companyProxy.exited, companyProxy.port, companyProxy.key = cmd, exited, port, key
-	log.Printf("[MODEL_PROXY] started on 127.0.0.1:%d", port)
+	p.cmd, p.exited, p.port, p.key = cmd, exited, port, key
+	log.Printf("[MODEL_PROXY] started on 127.0.0.1:%d%s", port, p.logOwner())
 	return base, key, true
+}
+
+// restart stops this proxy, if running, so the next upstream() starts it on its current logins.
+func (p *modelProxyInstance) restart() {
+	p.Lock()
+	cmd, exited := p.cmd, p.exited
+	p.cmd = nil
+	p.Unlock()
+	if cmd != nil && cmd.Process != nil && running(exited) {
+		_ = cmd.Process.Kill()
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
+// logOwner names a person's own proxy in log lines (never their login).
+func (p *modelProxyInstance) logOwner() string {
+	if p.owner == "" {
+		return ""
+	}
+	return " (own proxy of " + p.owner + ")"
 }
 
 // modelProxyEnv is a plain environment for the proxy: no server secrets.
@@ -219,24 +283,32 @@ var modelProxyURLPattern = regexp.MustCompile(`https://\S+`)
 // startModelProxySignIn runs the proxy's own sign-in for a program and returns the link and code to approve.
 // The sign-in keeps waiting for approval (up to its own timeout); the running proxy picks up the saved login.
 func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
+	return companyProxy.startSignIn(provider)
+}
+
+// startSignIn runs this proxy's own sign-in for a program (see startModelProxySignIn).
+func (p *modelProxyInstance) startSignIn(provider string) (*modelProxySignIn, error) {
 	login, ok := modelProxyLogins[provider]
 	binary := modelProxyBinary()
 	if !ok || binary == "" {
+		if p.owner != "" {
+			return nil, fmt.Errorf("this server cannot hold a %s login", providerAccountProductName(provider))
+		}
 		return nil, fmt.Errorf("this server cannot lend %s to the Mac app", providerAccountProductName(provider))
 	}
-	if _, _, ok := companyModelProxyUpstream(); !ok {
+	if _, _, ok := p.upstream(); !ok {
 		return nil, fmt.Errorf("the model proxy did not start")
 	}
-	dir, err := modelProxyDir()
+	dir, err := p.dir()
 	if err != nil {
 		return nil, err
 	}
-	companyProxy.Lock()
-	if current := companyProxy.signIns[provider]; current != nil && running(current.exited) && time.Since(current.Started) < 10*time.Minute {
-		companyProxy.Unlock()
+	p.Lock()
+	if current := p.signIns[provider]; current != nil && running(current.exited) && time.Since(current.Started) < 10*time.Minute {
+		p.Unlock()
 		return current, nil
 	}
-	companyProxy.Unlock()
+	p.Unlock()
 	cmd := exec.Command(binary, "--config", filepath.Join(dir, "config.yaml"), login.flag, "--no-browser")
 	cmd.Dir = dir
 	cmd.Env = modelProxyEnv()
@@ -260,7 +332,7 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 		for scanner.Scan() {
 			line := scanner.Text()
 			// URL and Code are read by the status page while this writes them: both under the proxy's lock.
-			companyProxy.Lock()
+			p.Lock()
 			if signIn.URL == "" {
 				signIn.URL = strings.TrimRight(modelProxyURLPattern.FindString(line), ".,)")
 			}
@@ -268,7 +340,7 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 				signIn.Code = modelProxyCodePattern.FindString(line)
 			}
 			ready := signIn.URL != "" && (signIn.Code != "" || login.callback)
-			companyProxy.Unlock()
+			p.Unlock()
 			if ready {
 				select {
 				case found <- struct{}{}:
@@ -278,24 +350,24 @@ func startModelProxySignIn(provider string) (*modelProxySignIn, error) {
 		}
 		_ = cmd.Wait()
 		close(signIn.exited)
-		log.Printf("[MODEL_PROXY] %s sign-in ended (signed in: %v)", provider, modelProxySignedInAs(provider) != "")
+		log.Printf("[MODEL_PROXY] %s sign-in ended (signed in: %v)%s", provider, p.signedInAs(provider) != "", p.logOwner())
 	}()
 	go func() { time.Sleep(10 * time.Minute); _ = cmd.Process.Kill() }()
 	select {
 	case <-found:
 	case <-time.After(20 * time.Second):
-		companyProxy.Lock()
+		p.Lock()
 		started := signIn.URL != ""
-		companyProxy.Unlock()
+		p.Unlock()
 		if !started {
 			_ = cmd.Process.Kill()
 			return nil, fmt.Errorf("the sign-in did not start; try again")
 		}
 	}
-	companyProxy.Lock()
-	companyProxy.signIns[provider] = signIn
-	companyProxy.Unlock()
-	log.Printf("[MODEL_PROXY] %s sign-in started", provider)
+	p.Lock()
+	p.signIns[provider] = signIn
+	p.Unlock()
+	log.Printf("[MODEL_PROXY] %s sign-in started%s", provider, p.logOwner())
 	return signIn, nil
 }
 
@@ -414,20 +486,8 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 			}
 		case "sign_out":
 			// A sign-in still waiting for approval is ended first, so approving its link later signs nothing in.
-			companyProxy.Lock()
-			if signIn := companyProxy.signIns[provider]; signIn != nil {
-				if signIn.cmd.Process != nil && running(signIn.exited) {
-					_ = signIn.cmd.Process.Kill()
-				}
-				delete(companyProxy.signIns, provider)
-			}
-			companyProxy.Unlock()
 			_ = os.Remove(lendFile(provider))
-			if dir, err := modelProxyDir(); err == nil {
-				for _, file := range modelProxyLoginFiles(dir, provider) {
-					_ = os.Remove(file)
-				}
-			}
+			companyProxy.signOut(provider)
 			log.Printf("[MODEL_PROXY] %s signed out by %s", provider, GetUserFromContext(r.Context()).UserID)
 		case "finish":
 			// The address the Claude sign-in ended on, typed into the waiting sign-in.
@@ -460,12 +520,38 @@ func (api *StreamingAPI) handleModelProxyMacApp(w http.ResponseWriter, r *http.R
 		}
 	}
 	status := modelProxyProgramStatus{Available: true, SignedInAs: companyLendingLabel(r.Context(), provider)}
-	companyProxy.Lock()
-	if signIn := companyProxy.signIns[provider]; signIn != nil && running(signIn.exited) && status.SignedInAs == "" {
-		// A copy taken under the lock: the sign-in's reader may still be filling it in.
-		snapshot := *signIn
-		status.SigningIn = &snapshot
+	if status.SignedInAs == "" {
+		status.SigningIn = companyProxy.signingIn(provider)
 	}
-	companyProxy.Unlock()
 	desktopJSON(w, status)
+}
+
+// signOut ends a sign-in still waiting for approval (so approving its link later signs nothing in) and removes this
+// proxy's saved logins for the program.
+func (p *modelProxyInstance) signOut(provider string) {
+	p.Lock()
+	if signIn := p.signIns[provider]; signIn != nil {
+		if signIn.cmd.Process != nil && running(signIn.exited) {
+			_ = signIn.cmd.Process.Kill()
+		}
+		delete(p.signIns, provider)
+	}
+	p.Unlock()
+	if dir, err := p.dir(); err == nil {
+		for _, file := range modelProxyLoginFiles(dir, provider) {
+			_ = os.Remove(file)
+		}
+	}
+}
+
+// signingIn is a copy of the program's sign-in still waiting for approval, or nil. The copy is taken under the lock:
+// the sign-in's reader may still be filling it in.
+func (p *modelProxyInstance) signingIn(provider string) *modelProxySignIn {
+	p.Lock()
+	defer p.Unlock()
+	if signIn := p.signIns[provider]; signIn != nil && running(signIn.exited) {
+		snapshot := *signIn
+		return &snapshot
+	}
+	return nil
 }

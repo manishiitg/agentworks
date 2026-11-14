@@ -18,7 +18,7 @@ export function workflowProjectMenuItems({ isMultiUser = false, allowedProducts,
   const add = (view: WorkspaceViewId, group: ProjectMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  add('report', 'Build', 'Dashboards', LayoutDashboard)
+  add('report', 'Build', 'Artifacts', LayoutDashboard)
 
   add('mcp', 'Build', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)

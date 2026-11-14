@@ -24,13 +24,14 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	router.HandleFunc("/api/project-ask/conversation", f.api.handleProjectAskConversation).Methods(http.MethodPost)
 	server := httptest.NewServer(AuthMiddleware(router))
 	defer server.Close()
+	selectedAgent := ""
 	call := func(user string) (int, map[string]any) {
 		t.Helper()
 		token, err := GenerateJWT(user, user, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		raw, _ := json.Marshal(map[string]any{"workspace": externalCommandCrewRoot})
+		raw, _ := json.Marshal(map[string]any{"workspace": externalCommandCrewRoot, "agent_key": selectedAgent})
 		request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/project-ask/conversation", bytes.NewReader(raw))
 		request.Header.Set("Authorization", "Bearer "+token)
 		response, err := server.Client().Do(request)
@@ -44,6 +45,39 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 			t.Fatalf("bad response: %s", body)
 		}
 		return response.StatusCode, out
+	}
+	status, empty := call("owner")
+	if status != 200 || empty["choose_agent"] != true {
+		t.Fatalf("empty Crew must offer a choice, not create Main: %d %v", status, empty)
+	}
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedAgent = "team:chat:chosen"
+	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, selectedAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, ""); err != nil {
+		t.Fatal(err)
+	}
+	// Sharing a Crew alone does not share an agent.
+	selectedAgent = ""
+	if status, none := call("other"); status != 200 || none["choose_agent"] != true || len(none["agents"].([]any)) != 0 {
+		t.Fatalf("unshared agent exposed: %d %v", status, none)
+	}
+	selectedAgent = "team:chat:chosen"
+	identity, _ := projectIdentityOf(externalCommandCrewRoot)
+	if err = defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		id := projectOwnerKey(identity.Product, identity.Folder)
+		record := projects[id]
+		record.SharedAgents = []string{selectedAgent}
+		projects[id] = record
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 	status, owner := call("owner")
 	if status != 200 {

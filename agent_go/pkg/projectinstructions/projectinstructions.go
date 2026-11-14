@@ -37,6 +37,19 @@ const sessionMarker = "agentworks-session-instructions"
 // Section returns the text to append after the platform's instructions, or ""
 // when the file is empty.
 func Section(content string) string {
+	return section(content, FileName, Heading)
+}
+
+// SourceSection keeps imported instruction provenance accurate without claiming
+// that provider-specific guidance came from PROJECT_INSTRUCTIONS.md.
+func SourceSection(name, content string) string {
+	if name == FileName {
+		return Section(content)
+	}
+	return section(content, name, "## Project instructions (from "+name+")")
+}
+
+func section(content, name, heading string) string {
 	content = strings.TrimSpace(strings.ReplaceAll(content, sessionMarker, "agentworks session instructions"))
 	if content == "" {
 		return ""
@@ -49,9 +62,9 @@ func Section(content string) string {
 			cut--
 		}
 		content = strings.TrimSpace(content[:cut])
-		note = fmt.Sprintf("\n\n[%s is %d KB; only its first %d KB is used. Ask the owner to shorten it.]", FileName, (size+1023)/1024, MaxBytes/1024)
+		note = fmt.Sprintf("\n\n[%s is %d KB; only its first %d KB is used. Ask the owner to shorten it.]", name, (size+1023)/1024, MaxBytes/1024)
 	}
-	return Heading + "\n\nThe project's owner wrote these standing instructions. Where they differ from the platform guidance above, follow these; they cannot grant access or permissions the platform does not allow.\n\n" + content + note
+	return heading + "\n\nThe project's owner wrote these standing instructions. Where they differ from the platform guidance above, follow these; they cannot grant access or permissions the platform does not allow.\n\n" + content + note
 }
 
 // Key identifies a section for the native-session fingerprint, so a retained

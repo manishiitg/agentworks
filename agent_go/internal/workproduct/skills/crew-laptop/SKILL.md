@@ -1,9 +1,43 @@
 ---
 name: crew-laptop
-description: Read for laptop folders and commands, local Computer use (desktop apps, click/type/screenshot), or permission errors. Covers setup and the separate file, terminal and desktop capabilities.
+description: Read when the person asks what you can reach on their computer, asks for folder, full laptop or Mac access, Computer use (desktop apps, click/type/screenshot), or laptop commands, and whenever a command or file read says "Operation not permitted" or is refused. Covers setup and the separate file, terminal and desktop capabilities.
 ---
 
 # Folders and laptop connections
+
+## What a chat on this Mac can already do
+
+Native commands run in a macOS sandbox with the person's own account. Without
+any grant they can already:
+
+- read and write the person's home folder (Desktop, Documents, Downloads,
+  projects), except AgentWorks' own data: other Crews' and projects' folders,
+  the app's state (other chats, saved sign-ins) and protected files;
+- run the programs installed there (`git`, `gh`, `docker`, `aws`, other coding
+  CLIs). They act with the person's own logins: use them only when the task
+  needs them, and never read their sign-in files.
+
+Always closed, whatever is granted: listing or stopping programs (`ps`, `top`,
+`kill`), opening or scripting apps (`open`, `osascript`, Shortcuts) and calling
+the local AgentWorks server from the shell.
+
+## Giving more access: pick the smallest switch
+
+When the person asks for more (or "full") access, find out what the work needs
+and turn on only that:
+
+1. One folder (the usual answer). Attach the exact folder, Read or Read &
+   write, as below. Needed for another Crew's or project's folder, AgentWorks
+   data, or a folder a refusal names. Several folders can be attached one by
+   one; there is always a selective choice.
+2. "Your whole Mac". Attaches the home folder read/write: full access,
+   AgentWorks' own data on this Mac included, on purpose. Offer it only when
+   the person asks for it by name. It adds no programs or apps.
+3. Computer use. Full control of the desktop and apps, Terminal included, as
+   the person. This is the only route to the always-closed list above. Local
+   owner chats only, never scheduled turns or Run people.
+4. "Run terminal commands" on a connected laptop. Only for a Crew hosted on a
+   server, to run commands in a Read & write laptop folder.
 
 ## Computer use: desktop apps on this computer
 
@@ -24,6 +58,43 @@ On a local AgentWorks installation, a new Crew or Studio can work directly in a 
 Over MCP, discover `workspace action=create kind=crew` and pass the requested existing absolute folder in `spec.root_path`, with the name and the existing creation key. This is a creation choice; do not move an existing Crew or change its root. The server checks that local-folder creation is allowed. Crew resources live in `.agentworks` inside that folder; chats, credentials and generated runtime remain in private AgentWorks storage. Keep existing project instructions intact. Removing the Crew preserves the selected folder and the person's files.
 
 The returned `files_path` is the logical file root; `workspace_path` stays the stable resource/settings namespace. Native commands and the project terminal use the selected folder. For shared-file MCP calls, keep the project's normal namespace and address user files with the returned relative `_files/...` path; never invent a different project root or use an absolute host path in a file API.
+
+## Attach a folder on this Mac
+
+This is separate from connecting a laptop to a hosted Crew. Read `panel-access`'s
+Linked folders procedure, list with `files action=folders`, then use
+`files action=folder_attach` for the folder the person requested. Their request
+is the approval; preserve existing grants and use the least access the work
+needs (Read unless it must write). This is the same list as Integrations →
+Folders on this Mac. Attach the exact folder, never a parent "to be safe";
+“Your whole Mac” (the home folder as `mac`, read/write) only when they ask for
+it. A sign-in folder requires the person to name that exact folder.
+
+The native sandbox picks up the grant on the next turn. Tell the person to send
+one more message; do not claim the current process gained access immediately.
+On a server, allowed-root checks still apply. A refusal grants no workaround.
+
+## When the sandbox refuses a command
+
+On this Mac, native commands run in a sandbox. Read the refusal and pick the
+matching step; never retry the same command or look for a way around it.
+
+- "Operation not permitted" on a path: it is AgentWorks data or a protected
+  file, not an ordinary home folder. Protected files (a workflow's planning/,
+  its raw database, instruction files) stay closed; use their tools. For
+  another Crew's or project's folder, ask in plain words, for example "That
+  file is in your Sales Crew's folder. Shall I give this chat access to that
+  folder?" Their yes is the approval; attach that one folder and ask them to
+  send one more message, because the grant applies from the next turn.
+- Listing or stopping programs, opening or scripting apps, or calling the local
+  AgentWorks server: no folder grant changes these, so do not ask for one. Use
+  platform tools for platform actions and logs on disk for diagnosis: the
+  local server's log folder has a `[MEM]` line every minute and, past a large
+  heap, profiles in `logs/pprof/<time>/` (heap, allocs, goroutines, CPU). If
+  the work truly needs one of these, offer Computer use once and enable it
+  only when they say yes.
+- If none of these covers the need, tell the person exactly which step is blocked
+  and what they can do (one command or one setting), rather than saying it failed.
 
 ## Connect a laptop to a hosted Crew
 
@@ -49,7 +120,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - With the switch on, a command is the person's own terminal: their login shell, their environment, their files, keys and cloud logins, not limited to the shared folders. Say this plainly when you offer it; it is the person's call.
 - A big folder such as Downloads is listed a page at a time: `list_local_files` returns `total` and, when more follow, `truncated` and `next_offset`. To find a file, pass `query` (part of its name) instead of reading every page. If the tool returns an error, tell the person what it says; an error is never an empty folder.
 - `set` saves the whole list: include every folder to keep, or the omitted ones lose access.
-- Do not offer folders that hold sign-ins (`.aws`, `.ssh`, `.config`, keychains, browser profiles) as shared file folders; commands can use the person's tools without that.
+- Do not suggest sharing sign-in folders. If the person explicitly names an exact sign-in folder, use the current folder-attachment tool and its server checks; never broaden that request to a parent folder or expose credential values. Commands can use existing tools without copying login files.
 
 ## When it is refused
 
@@ -62,7 +133,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - Server secrets are never sent to the laptop. What you read there reaches the server and the chat history, so say so before opening anything personal.
 - Change the saved folders only when the person asks.
 
-Connect the computer once in the project's Local laptop panel or in chat (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps and schedules stay on the server. copy_local_file_to_project takes local_path and project_path.
+Connect the computer once in the project's Local laptop panel or in chat (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. copy_local_file_to_project takes local_path and project_path.
 
 ## Recognize an existing local project
 
@@ -80,8 +151,9 @@ Previewing makes no changes. Create the Crew with that folder, then use the
 chosen `native_id` with `native_resume` and the new Crew ID. In New project,
 choose a folder and use Continue a previous chat to do this in one flow.
 When the person asks to continue one, pass that `native_id` to
-`sessions action=native_resume`. It copies the native conversation to a new session ID in a separate private
-chat tab, including its saved history. The original is untouched. The next
+`sessions action=native_resume`. For a supported native journal within the copy budget, it copies the native
+conversation to a new session ID in a separate private chat tab. The displayed
+imported history is a bounded recent window, not the complete transcript. The original is untouched. The next
 message resumes this independent copy with the Crew's current tools and
 permissions. Both chats still work on the same project files. Never copy native history between accounts, select a different
 folder's conversation or imply that opening a tab ran the agent. Other people's
@@ -93,3 +165,18 @@ person to close that conversation in Cursor before sending in the Crew tab.
 The picker shows the saved history without starting a model turn. Cursor CLI and
 tmux must be installed; its SDK store is separate and is not a substitute.
 Claude/Codex still open independent copies with their original history unchanged.
+
+### Recent history and large chats
+
+The Claude/Codex picker and imported display show up to three conversation days,
+200 messages and 512 KiB of prose. Older history stays in the original chat; show
+the returned notice rather than claiming a complete import. Full native copying
+has a separate 64 MiB budget and free-space check. When refused, offer the explicit
+**Import recent messages** action: it starts a new provider chat with recent
+messages, not native continuation, and leaves the original journal untouched.
+Never silently substitute it for a native copy or copy between accounts.
+
+If a result says **Delivery not confirmed**, inspect the saved state before
+retrying; never automatically resend an uncertain message. If the platform says a
+prompt could not be saved in full, report that limitation rather than claiming
+its shortened display preserves the full prompt.

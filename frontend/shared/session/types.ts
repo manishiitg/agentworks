@@ -6,6 +6,7 @@ import type { PollingEventSchema } from '../../src/generated/event-types'
 
 export type PollingEvent = PollingEventSchema & {
   id: string
+  reply_to_agent_message_id?: string
   parent_id?: string
   hierarchy_level?: number
   span_id?: string
@@ -17,6 +18,10 @@ export type PollingEvent = PollingEventSchema & {
   execution_kind?: string
   terminal_owner_id?: string
   terminal_id?: string
+  reply_remainder?: string
+  reply_blocks_complete?: boolean
+  generation_id?: string
+  generation_start_sequence?: number
   sequence?: number
   component?: string
   event_index?: number
@@ -83,9 +88,16 @@ export interface GetEventsResponse {
   latest_sequence?: number
   // The viewer's queued messages the CLI has not taken yet (restore reads only).
   pending_messages?: PendingQueuedMessage[]
+  native_goal_snapshot?: PollingEvent
 }
 
 export interface PendingQueuedMessage {
+  requested_skill_id?: string
+  /** Present only when the server says this pending row has waited at least 15 minutes. */
+  waiting_since?: string
+  attachment_paths?: string[]
+  attachment_pending?: boolean
+  display_metadata?: Record<string, unknown>
   message_id?: string
   steering?: boolean
   delivery_error?: string
@@ -95,9 +107,11 @@ export interface PendingQueuedMessage {
   queue_position?: number
   /** The chat is being updated (new version or settings) before this message can go in. */
   refreshing?: boolean
-  queue_reason?: 'starting' | 'running' | 'waiting' | 'refreshing'
+  queue_reason?: 'starting' | 'running' | 'waiting' | 'refreshing' | 'provider_limit'
   /** Server-projected source of the work this message is waiting for. */
   queue_detail?: string
+  can_manage: boolean
+  can_dismiss?: boolean
   can_steer?: boolean
   /** Handed to its turn; the chat shows it as being sent until the turn's user row arrives. */
   started?: boolean

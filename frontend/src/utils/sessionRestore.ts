@@ -310,7 +310,11 @@ async function loadTabEvents(
   }
   const currentStore = useChatStore.getState()
   const eventsNow = currentStore.getTabEvents(sessionId)
-  const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id))
+  const goalSnapshotSequence = response.native_goal_snapshot?.sequence
+  const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id) && !(
+    event.type === 'native_goal_updated' && typeof goalSnapshotSequence === 'number' &&
+    typeof event.sequence === 'number' && event.sequence <= goalSnapshotSequence
+  ))
   const previousPagination = currentStore.tabHistoryPagination?.[sessionId]
   const previousHasMore = currentStore.tabHasMoreOlderEvents?.[sessionId]
   const oldestSequence = response.oldest_sequence
@@ -321,6 +325,12 @@ async function loadTabEvents(
     : []
   // A provisional bubble survives only until its durable row is on the page.
   const restored = [...olderLoaded, ...keepUnechoedProvisionals(response.events, eventsNow)]
+
+  if (response.native_goal_snapshot) {
+    // Projection is not a page row: do not let an old goal's journal sequence
+    // rewind history pagination. Concurrent live events are appended below.
+    restored.push({ ...response.native_goal_snapshot, id: `native-goal-snapshot:${sessionId}`, sequence: undefined })
+  }
   restored.push(...pendingQueuedProvisionals(response.pending_messages, restored, sessionId))
   chatStore.setTabEvents(sessionId, resolveLiveInputConfirmations(restored))
   if (concurrentEvents.length > 0) appendRestoredLiveTail(sessionId, concurrentEvents)

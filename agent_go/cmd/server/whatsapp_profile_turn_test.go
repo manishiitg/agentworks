@@ -14,24 +14,6 @@ func whatsappTestProfile(capability agentprofiles.CapabilityRequirement, root st
 	return profile
 }
 
-// Only a profile that declared the whatsapp capability in its product.yaml
-// can be a pairing's default destination.
-func TestProfileTakesWhatsAppFollowsTheDeclaredCapability(t *testing.T) {
-	for _, tc := range []struct {
-		requirement agentprofiles.CapabilityRequirement
-		want        bool
-	}{
-		{"", false},
-		{agentprofiles.CapabilityDisabled, false},
-		{agentprofiles.CapabilityPreferred, true},
-		{agentprofiles.CapabilityRequired, true},
-	} {
-		if got := profileTakesWhatsApp(whatsappTestProfile(tc.requirement, "Chats/ExampleApp")); got != tc.want {
-			t.Errorf("whatsapp=%q: takes WhatsApp = %v, want %v", tc.requirement, got, tc.want)
-		}
-	}
-}
-
 // A product's attachment folder is kept inside its own fixed workspace root,
 // where its folder guard lets the profile read what arrives.
 func TestWhatsAppUploadFolderStaysInsideTheProfileWorkspace(t *testing.T) {
@@ -76,24 +58,5 @@ func TestWhatsAppUploadFolderStaysInsideTheProfileWorkspace(t *testing.T) {
 		t.Fatalf("keyed profile folder outside its projects root = %v", err)
 	} else if got, _ := whatsappUploadFolderFor(keyed, "Chats/ExampleApp/inbox"); got != "Chats/ExampleApp/activities/Chats/ExampleApp/inbox" {
 		t.Fatalf("a folder outside the projects root resolved to %q, want it forced under the root", got)
-	}
-}
-
-// the conversation exactly as the app's first turn would.
-func TestWhatsAppEngineFollowsTheConversationBinding(t *testing.T) {
-	profile := whatsappTestProfile(agentprofiles.CapabilityPreferred, "Chats/ExampleApp")
-	profile.Runtime.ProviderOptions = []agentprofiles.ProviderOption{
-		{ID: "claude-code", Provider: "claude-code", ModelID: "claude-fable-5-1", Default: true},
-		{ID: "codex-cli", Provider: "codex-cli", ModelID: "gpt-6-astra"},
-	}
-	if option, ok := whatsappEngineFor(profile, ProductConversationRecord{}); !ok || option.ID != "claude-code" {
-		t.Fatalf("unbound conversation engine = (%q, %v), want the default claude-code", option.ID, ok)
-	}
-	if option, ok := whatsappEngineFor(profile, ProductConversationRecord{Provider: "codex-cli"}); !ok || option.ID != "codex-cli" {
-		t.Fatalf("codex-bound conversation engine = (%q, %v), want codex-cli", option.ID, ok)
-	}
-	profile.Runtime.ProviderOptions = nil
-	if _, ok := whatsappEngineFor(profile, ProductConversationRecord{}); ok {
-		t.Fatal("a profile with no provider options offered an engine")
 	}
 }

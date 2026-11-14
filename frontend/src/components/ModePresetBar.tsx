@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import NotifyBell from './topbar/NotifyBell'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
 import { Settings, Copy, Eye } from 'lucide-react'
@@ -20,9 +19,9 @@ import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { dedupeServerNames } from '../utils/mcpServerAlias'
-import { GlobalActivityMonitor } from './GlobalActivityMonitor'
+import { TeamMonitor } from './workspace/TeamMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
-import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
+import { ProductTopBar, ProductTopBarMain } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
@@ -89,7 +88,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
   // Workflow creation follows the existing account permission.
   const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, 'agentworks'))
-  const schedulerPaused = useGlobalSchedulerPaused(productSurface)
+  const schedulerPaused = useGlobalSchedulerPaused()
   // Use toolList to get all available servers, not just enabled ones
   const toolList = useMCPStore(state => state.toolList)
   const availableServers = React.useMemo(() =>
@@ -448,7 +447,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
           {/* Product and current automation */}
           <ProductTopBarMain>
             {/* Product-level navigation stays separate from AgentWorks modes. */}
-            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
+            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <TeamMonitor />}
 
             {productControl}
 
@@ -571,7 +570,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
               })()}
             </div>
           </ProductTopBarMain>
-          {!activityMonitorInWorkspace && <ProductTopBarActions><NotifyBell /></ProductTopBarActions>}
 
       </ProductTopBar>
 

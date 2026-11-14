@@ -27,7 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share publishes this chat's agent to the network (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare takes it back; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share turns on discovery for this chat's agent (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare turns discovery off; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -184,7 +184,10 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name      string `json:"agent_name"`
+			Name      string `json:"name"`
+			AgentName string `json:"agent_name"`
+			Address   string `json:"id"`
+			Target    string `json:"target"`
 			Label     string `json:"label"`
 			ID        string `json:"agent_id"`
 			Provider  string `json:"provider"`
@@ -202,6 +205,24 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	}
 	if json.Unmarshal(raw, &data) != nil {
 		return "Agent roster unavailable."
+	}
+	for i := range data.Agents {
+		a := &data.Agents[i]
+		if a.Name == "" {
+			a.Name = a.AgentName
+		}
+		if a.Name == "" {
+			a.Name = a.Label
+		}
+		if a.Label == "" {
+			a.Label = a.Name
+		}
+		if a.Address == "" {
+			a.Address = a.Target
+		}
+		if a.Address == "" && a.AgentName != "" {
+			a.Address = "agent:" + a.AgentName
+		}
 	}
 	sort.SliceStable(data.Agents, func(i, j int) bool {
 		if data.Agents[i].Online != data.Agents[j].Online {
@@ -249,9 +270,9 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		}
 		shared := ""
 		if a.Published {
-			shared = " | published to the network"
+			shared = " | discoverable on the network"
 		}
-		fmt.Fprintf(&b, "%s | agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")
@@ -260,7 +281,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		b.WriteString(clean(data.Hint) + "\n")
 	}
 	if len(data.Hosted) > 0 {
-		b.WriteString("\nChats inside AgentWorks (they can't receive messages yet):\n")
+		b.WriteString("\nChats inside AgentWorks:\n")
 		for _, h := range data.Hosted {
 			fmt.Fprintf(&b, "agent:%s | %s | %s\n", clean(h.Name), clean(h.Display), clean(h.Why))
 		}
@@ -532,6 +553,9 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	}
 	if chosen.host == "" {
 		return errors.New("cannot verify the provider process")
+	}
+	if handled, err := returnTerminalChat(ctx, o, chosen); handled {
+		return err
 	}
 	if installPlugin && chosen.provider != "pi" {
 		if err = installAgentPlugin(ctx, o, chosen.provider); err != nil {
@@ -1228,11 +1252,11 @@ func loginLabel(server string) string {
 // which a coding agent may do for its own exact session when the person asked.
 func shareCommand(o *options, unshare bool) *cobra.Command {
 	var agent string
-	use, short := "share [@LOGIN]", "Publish an agent to the network (everyone on the server can find and message it)"
+	use, short := "share [@LOGIN]", "Turn on discovery for an agent (everyone on the server can find and message it)"
 	if unshare {
-		use, short = "unshare [@LOGIN]", "Take an agent back from the network (only you and your agents can reach it)"
+		use, short = "unshare [@LOGIN]", "Turn off discovery for an agent (only you and your agents can reach it)"
 	}
-	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "An agent is connected (reachable only by you and your own agents) or published to the network (everyone on the server can find and message it). Messages from other people's agents arrive marked as untrusted. @LOGIN acts on a network this chat joined with --also.", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "An agent is connected (reachable only by you and your own agents) or discoverable on the network (everyone on the server can find and message it). Messages from other people's agents arrive marked as untrusted. @LOGIN acts on a network this chat joined with --also.", RunE: func(cmd *cobra.Command, args []string) error {
 		network := ""
 		if len(args) == 1 {
 			var ok bool
@@ -1312,12 +1336,12 @@ func shareResultText(raw json.RawMessage) string {
 	}
 	switch data.State {
 	case "published":
-		return fmt.Sprintf("agent:%s is published to the network. Everyone on the server can find and message it; their messages arrive marked as untrusted.", data.Agent)
+		return fmt.Sprintf("Discovery is on for agent:%s. Everyone on the server can find and message it; their messages arrive marked as untrusted.", data.Agent)
 	case "unpublished":
 		if !data.WasPublished {
-			return fmt.Sprintf("agent:%s was not published.", data.Agent)
+			return fmt.Sprintf("Discovery was already off for agent:%s.", data.Agent)
 		}
-		return fmt.Sprintf("agent:%s is no longer published. Only you and your own agents can reach it.", data.Agent)
+		return fmt.Sprintf("Discovery is off for agent:%s. Only you and your own agents can reach it.", data.Agent)
 	}
 	return "AgentWorks sent back an unexpected result, so this may not have changed anything. Check with /agentworks agents."
 }

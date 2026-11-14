@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
 )
@@ -45,6 +46,8 @@ func vaultPersonRequest(ctx context.Context, person, method, path string, payloa
 }
 
 func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool, method, path string, payload []byte) ([]byte, error) {
+	status := 0
+	defer logSlowVaultRequest(ctx, "service", time.Now(), &status)
 	target, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
 		return nil, errors.New("Vault service is not configured")
@@ -68,6 +71,7 @@ func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool,
 		return nil, errors.New("Vault service unavailable")
 	}
 	defer resp.Body.Close()
+	status = resp.StatusCode
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
 	if err != nil || len(body) > 2*1024*1024 {
 		return nil, errors.New("invalid Vault response")
@@ -81,6 +85,9 @@ func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool,
 			return nil, fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, strings.TrimSpace(refusal.Error))
 		}
 		return nil, fmt.Errorf("Vault operation failed (%d)", resp.StatusCode)
+	}
+	if method != http.MethodGet && method != http.MethodHead {
+		invalidateCrewTeamVaultDisplays()
 	}
 	return body, nil
 }
@@ -294,6 +301,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			}
 			log.Printf("[VAULT_SIGNIN] connection=%s app=%s sign-in finished after %s ok=%t detail=%q", id, name, time.Since(started).Round(time.Second), success, shown)
 			recordVaultSignInOutcome(id, started, success, shown)
+			livefeed.Default.PublishToUser(livefeed.VaultConnections, userID, "")
 			if sessionID == "" {
 				return
 			}

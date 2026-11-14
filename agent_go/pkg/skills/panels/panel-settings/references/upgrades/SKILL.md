@@ -1,9 +1,12 @@
-# Upgrades
+# Old workflow upgrade records
 
-These temporary tools complete the remaining one-time upgrades for older Goals and will be removed once every Goal has moved. Deployment handles saved step-shape preparation.
+Old contract stamps and upgrade ladders are not current authoring tools. Do not
+call removed migration/status/stamp actions or edit planning/config files to hide
+an old banner. Existing files and records can be inspected only through current
+authorized readers; their presence does not mean the old plan can run.
 
-Use get_contract_upgrades to see exactly what is owed. Read the migration instructions and current plan/config before applying the admitted migration tools. Stamp set_workflow_contract_version only after the required changes and checks; never stamp merely to hide an upgrade banner. Preserve the person’s plan and recorded behavior decisions. Read status again after completion.
-
-The upgrade stamp and named repairs change only the version, browser mode or Crew connection location. They leave schedules, inputs and other settings unchanged; review any required code or guide edits separately before stamping.
-
-For a small path or comment change in a large file, use a targeted exact-match edit or programmatic replacement; never regenerate the whole file. Before stamping, diff every changed file against its before-edit copy, report its name and added/removed line counts, and restore unrelated changes before proceeding. Keep temporary comparison copies outside live code and guide folders.
+For repeatable work, read `python-workflows`: the Crew has one saved Python
+workflow with typed inputs, task paths and ordinary helper files. Conversion of
+remaining old data is an operator task with its own approved scope and backup,
+not an automatic chat repair. Explain the actual unsupported state and next
+supported step without claiming a source change is deployed or data migrated.

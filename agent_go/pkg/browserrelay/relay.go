@@ -774,7 +774,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		return
 	}
 	if hello.Scope == "" && hello.BrowserID != "" {
-		m.serveAccountBrowser(conn, hello, authorize, displayName)
+		m.serveAccountBrowser(conn, hello, browserPlatform(r.UserAgent()), authorize, displayName)
 		return
 	}
 	m.mu.Lock()
@@ -806,15 +806,12 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		m.rejectConnectionCode(conn, hello.Version, "access_denied")
 		return
 	}
-	available := m.availableProjects(hello.Token, authorize)
-	names := newProjectNames(g, displayName)
-	defer names.close()
-	available = names.cached(available)
+	// The account-control connection owns the project directory. A scoped
+	// connection must check only its selected target, not reread every other
+	// project's manifests on connect and on every heartbeat (PLAT-746-962).
 	var name string
-	for _, p := range available {
-		if p.Scope == g.Scope {
-			name = p.Name
-		}
+	if displayName != nil {
+		name = displayName(g.User, g.Label, g.ProfileID)
 	}
 	m.mu.Lock()
 	// Reset may have revoked the code while the workspace access check ran.
@@ -879,7 +876,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	}
 	notifyChange(b.key)
 	defer b.close()
-	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Diagnostics: true})
 	b.mu.Unlock()
 	if err != nil {
 		return
@@ -900,15 +897,11 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 			return
 		}
 
-		var projects []projectGrant
-		if e.Type == "ping" {
-			projects = names.cached(m.availableProjects(hello.Token, authorize))
-		}
 		b.mu.Lock()
 		switch e.Type {
 		case "ping":
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			err = conn.WriteJSON(envelope{Type: "pong", Projects: projects})
+			err = conn.WriteJSON(envelope{Type: "pong"})
 		case "tabs":
 			if e.ClientID != "" {
 				if client := b.clients[e.ClientID]; client != nil && e.Tabs >= 0 && e.Tabs <= 32 {

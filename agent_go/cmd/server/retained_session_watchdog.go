@@ -14,12 +14,26 @@ import (
 
 type retainedTurnIdentity struct {
 	ID string
+	// Captured from the accepted Session, independently of any terminal UI.
+	Provider, Transport, NativeSessionID string
 	// Captured before provider delivery, not when its acknowledgement returns.
 	// A replay may identify Run's handoff but must never answer a newer input.
 	AcceptedAt time.Time
 	// Run completion promises a subsequent SDK lifecycle; a replay of Run's
 	// completion must not claim that follow-up merely because its ID is new.
 	FollowupFrom string
+}
+
+// nativeDescriptor is lifecycle data only. It is never inserted in the terminal
+// store or presented as a terminal. TUI transports retain their existing path.
+func (identity retainedTurnIdentity) nativeDescriptor(sessionID string) (terminals.Snapshot, bool) {
+	switch identity.Transport {
+	case "msp", "sdk", "app-server", "acp", "rpc":
+		if identity.Provider != "" {
+			return terminals.Snapshot{SessionID: sessionID, ExecutionKind: "main_agent", Status: terminals.Status{ProviderLabel: identity.Provider}}, true
+		}
+	}
+	return terminals.Snapshot{}, false
 }
 
 func (identity retainedTurnIdentity) matchesCompletion(event events.Event) bool {
@@ -111,6 +125,11 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 			api.retainedMainTurnsMu.Unlock()
 			if !tracked || !owned || !current.Equal(startedAt) {
 				return
+			}
+			// No terminal is expected for a native Session. Only its exact
+			// completion or the existing inactivity failure may settle it.
+			if snapshot.TerminalID == "" {
+				continue
 			}
 			// The Session owns this turn's completion. When it reports no
 			// active turn and no foreground turn runs, none will ever come

@@ -1,21 +1,11 @@
-import { useState, type ReactNode } from 'react'
-import { ImageOff } from 'lucide-react'
-import { WorkspaceImage } from './WorkspaceImage'
+import type { ReactNode } from 'react'
+import { ChatImage } from './ChatImage'
 import { workspaceCardImage, type ChatCard, type ChatElement } from './chatElementSpec'
-
-function RemoteImage({ src, title }: { src: string; title: string }) {
-  const [failed, setFailed] = useState(false)
-  return failed
-    ? <span className="flex h-full flex-col items-center justify-center gap-2 p-2 text-center text-xs text-muted-foreground"><ImageOff className="h-5 w-5" aria-hidden />Image unavailable</span>
-    : <img src={src} alt={title} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-cover" />
-}
 
 function CardImage({ item, grid }: { item: ChatCard; grid: boolean }) {
   if (!item.image) return null
-  return <div className={grid ? 'aspect-[4/3] w-full shrink-0 overflow-hidden bg-muted' : 'h-32 w-24 shrink-0 overflow-hidden rounded-xl bg-muted sm:h-36 sm:w-28'}>
-    {workspaceCardImage(item.image)
-      ? <WorkspaceImage path={item.image} alt={item.title} className="h-full w-full object-cover" />
-      : <RemoteImage key={item.image} src={item.image} title={item.title} />}
+  return <div className={grid ? 'min-w-0 bg-muted' : 'w-24 shrink-0 bg-muted sm:w-28'}>
+    <ChatImage src={item.image} alt={item.title} workspace={workspaceCardImage(item.image)} className="max-h-80 max-w-full rounded-lg object-contain" />
   </div>
 }
 

@@ -250,7 +250,7 @@ func (s Store) importBaselines(ctx context.Context, r *Record, entries []baselin
 				}
 				ref = ":" + strconv.Itoa(mark)
 			}
-			fmt.Fprintf(w, "M %s %s %s\n", e.mode, ref, strconv.Quote(e.path))
+			fmt.Fprintf(w, "M %s %s %s\n", e.mode, ref, gitQuotePath(e.path))
 		}
 		if _, err = w.WriteString("\ndone\n"); err == nil {
 			err = w.Flush()
@@ -381,7 +381,7 @@ func (s Store) view(ctx context.Context, base string, overlays []overlay) (strin
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "commit %s\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 4\nview\nfrom %s\n", ref, time.Now().Unix(), base)
 	for _, o := range overlays {
-		fmt.Fprintf(&b, "D %s\nM 040000 %s %s\n", strconv.Quote(o.prefix), o.tree, strconv.Quote(o.prefix))
+		fmt.Fprintf(&b, "D %s\nM 040000 %s %s\n", gitQuotePath(o.prefix), o.tree, gitQuotePath(o.prefix))
 	}
 	b.WriteString("\ndone\n")
 	cmd := s.command(ctx, "fast-import", "--quiet", "--done", "--force", "--date-format=raw")

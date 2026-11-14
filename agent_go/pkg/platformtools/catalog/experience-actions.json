@@ -932,6 +932,12 @@
   },
   {
     "family": "account",
+    "name": "subscription_limits",
+    "member": "get_subscription_limits",
+    "description": "Read reported provider plan limits for admitted accounts."
+  },
+  {
+    "family": "account",
     "name": "usage",
     "member": "get_token_usage",
     "description": "Use the current account usage operation."
@@ -1309,6 +1315,54 @@
     "source_action": "storage_move"
   },
   {
+    "family": "workspace",
+    "name": "open_editor",
+    "member": "workspace__open_editor",
+    "description": "Resolve an admitted local Git project, file and line in the chosen editor. No command or app is run by resolving.",
+    "source": "workspace",
+    "source_action": "open_editor"
+  },
+  {
+    "family": "workspace",
+    "name": "git_action",
+    "member": "workspace__git_action",
+    "description": "Draft editable commit and pull request text, commit, push and open a reviewed pull request using the selected project GitHub account.",
+    "source": "workspace",
+    "source_action": "git_action"
+  },
+  {
+    "family": "workspace",
+    "name": "add_context",
+    "member": "workspace__add_context",
+    "description": "Capture an owned Crew browser element as ordinary chat attachments. Probe the current source first; never clicks, sends or queues a message.",
+    "source": "workspace",
+    "source_action": "add_context"
+  },
+  {
+    "family": "workspace",
+    "name": "search_messages",
+    "member": "workspace__search_messages",
+    "description": "Find readable messages in the selected workspace using query and cursor, with snippets and exact message links.",
+    "source": "workspace",
+    "source_action": "search_messages"
+  },
+  {
+    "family": "workspace",
+    "name": "sync",
+    "member": "workspace__sync",
+    "description": "Read or change this Crew\u2019s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
+    "source": "workspace",
+    "source_action": "sync"
+  },
+  {
+    "family": "workspace",
+    "name": "reply_input",
+    "member": "workspace__reply_input",
+    "description": "Answer a pending question from your own Ask turn using its query_id, request_id and answers.",
+    "source": "workspace",
+    "source_action": "reply_input"
+  },
+  {
     "family": "terminal",
     "name": "local_execute",
     "member": "execute_local_shell_command",
@@ -1449,5 +1503,91 @@
     "description": "Use the Crew automation edit operation.",
     "source": "crew_workflows",
     "source_action": "edit"
+  },
+  {
+    "family": "menu_groups",
+    "name": "list",
+    "member": "menu_groups__list",
+    "description": "Show your groups and the Crews in each.",
+    "source": "menu_groups",
+    "source_action": "list",
+    "fields": []
+  },
+  {
+    "family": "menu_groups",
+    "name": "create",
+    "member": "menu_groups__create",
+    "description": "Make a group from a name and, if you like, the Crews to put in it.",
+    "source": "menu_groups",
+    "source_action": "create",
+    "fields": [
+      "name",
+      "projects"
+    ],
+    "required": [
+      "name"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "rename",
+    "member": "menu_groups__rename",
+    "description": "Give a group a new name.",
+    "source": "menu_groups",
+    "source_action": "rename",
+    "fields": [
+      "group",
+      "name"
+    ],
+    "required": [
+      "group",
+      "name"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "delete",
+    "member": "menu_groups__delete",
+    "description": "Delete a group; its Crews stay in the left menu.",
+    "source": "menu_groups",
+    "source_action": "delete",
+    "fields": [
+      "group"
+    ],
+    "required": [
+      "group"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "add",
+    "member": "menu_groups__add",
+    "description": "Put a Crew in a group.",
+    "source": "menu_groups",
+    "source_action": "add",
+    "fields": [
+      "group",
+      "project"
+    ],
+    "required": [
+      "group",
+      "project"
+    ]
+  },
+  {
+    "family": "menu_groups",
+    "name": "remove",
+    "member": "menu_groups__remove",
+    "description": "Take a Crew out of a group.",
+    "source": "menu_groups",
+    "source_action": "remove",
+    "fields": [
+      "group",
+      "project"
+    ],
+    "required": [
+      "group",
+      "project"
+    ]
   }
 ]

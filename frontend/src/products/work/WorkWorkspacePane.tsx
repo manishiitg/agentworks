@@ -1,5 +1,4 @@
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
-import NotifyBell from '../../components/topbar/NotifyBell'
 import { crewMenuTarget, crewProjectMenuItems } from './crewProjectMenu'
 import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
@@ -13,7 +12,7 @@ import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { TooltipProvider } from '../../components/ui/tooltip'
-import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
+import { TeamMonitor } from '../../components/workspace/TeamMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
 import { setWorkspaceViewTarget, useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
@@ -54,7 +53,7 @@ const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ d
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -65,8 +64,10 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ projectId = '', workspacePath, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; tabId?: string; onOpenChat?: () => void; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
+  // Open Crew chats already show activity in the sidebar, across projects.
+  // PLAT-746: do not repeat another open project's agent in the global monitor.
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
-    .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath)
+    .filter(tab => tab.metadata?.agentProfileId === 'work' && !tab.metadata?.isViewOnly)
     .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
   const incomingEmail = useAgentInboxEnabled()
   const user = useAuthStore(state => state.user)
@@ -80,10 +81,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
   ], (key, section) => {
     if (key === 'context') { onViewChange('context'); return }
     const raw = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
-    // Sharing, Where it lives and Connected agents are one Access row now.
-    const legacy = ['mcp:share', 'mcp:computer', 'mcp:agentbridge'].includes(raw) ? 'mcp:access' : raw
     const current = useAuthStore.getState().user
-    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
+    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === raw)
     if (!item || current?.id !== user?.id) return
     useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
     if (item.external) { openProductWorkspace(item.external); return }
@@ -95,8 +94,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
 
   return <div data-tour="work-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
     <TooltipProvider delayDuration={150}>
-      {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
-      {showActivityMonitor && <NotifyBell />}
+      {showActivityMonitor && <TeamMonitor representedSessionIds={representedSessionIds} />}
     </TooltipProvider>
   </div>
 })
@@ -174,6 +172,7 @@ export function WorkBrowserPanel({ tabId, workspacePath }: { tabId: string; work
 
   return (
     <BrowserWorkspacePanel
+      chatContextTabId={product.profileId === 'work' ? tabId : undefined}
       workspacePath={workspacePath}
       onSendToAgent={message => sendWorkspacePaneMessageToChat({ tabId, message })}
       browserMode={browserMode}
@@ -294,11 +293,25 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
         {view === 'files' && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.repoRoot}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialRepoRoot={filesView.repoRoot} initialScope={filesView.uncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>}
-        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
-        {view === 'identity' && <WorkIdentityPanel
+        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} chatContextTabId={product.profileId === 'work' ? tabId : undefined} /></div></div></Suspense>}
+        {(view === 'identity' || view === 'memory') && <WorkIdentityPanel
 
           workspacePath={workspacePath}
           shared={Boolean(shared)}
+          settingsView={view}
+          onSettingsTabChange={tab => {
+            const nextView = tab === 'general' ? 'identity' : 'memory'
+            setWorkspaceViewTarget(nextView, tab)
+            onViewChange(nextView)
+          }}
+          skillsPanel={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
+          memoryPanel={<WorkMemoryPanel
+            workspacePath={workspacePath}
+            onOpenFile={filePath => { void openProjectFile(filePath) }}
+            fileClient={sharedFiles ?? undefined}
+            skillsEnabled={false}
+            embedded
+          />}
           projectId={projectId}
           projectTitle={projectTitle}
           projectDescription={projectDescription}
@@ -332,16 +345,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onAccessPage={setAccessPage}
           onBack={() => onViewChange('context')}
         />}
-        {view === 'memory' && <WorkMemoryPanel
-          workspacePath={workspacePath}
-          onOpenFile={filePath => { void openProjectFile(filePath) }}
-          fileClient={sharedFiles ?? undefined}
-          memoryEnabled={!enabledPanels || enabledPanels.has('memory')}
-          skillsEnabled={!enabledPanels || enabledPanels.has('skills')}
-          skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
-        />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
-          {(view === 'dashboard' || view === 'goals') && <CrewDashboardPanel
+          {view === 'dashboard' && <CrewDashboardPanel
             projectId={projectId}
             workspacePath={workspacePath}
             dashboardConversation

@@ -140,6 +140,20 @@ func (api *StreamingAPI) ensureAgentWorksOnVisit(userID string) {
 }
 
 // isAgentWorksCrew reports whether the project at root is someone's AgentWorks.
+// agentWorksPrivateLine is what every share path says for the person's own AgentWorks project (owner, 10 Nov: "that
+// should remain private always"). The marker is the server-set role in product.json, never the display name.
+const agentWorksPrivateLine = "Your AgentWorks project stays private; share another Crew instead."
+
+// agentWorksPrivateRoot and agentWorksPrivateProject are asked by every path that shares a Crew (Team, people, Run
+// share, public links, Slack bot) before it saves; the answer is the server's, the screens only show the line.
+func agentWorksPrivateRoot(ctx context.Context, root string) bool {
+	return strings.TrimSpace(root) != "" && isAgentWorksCrew(ctx, root)
+}
+
+func agentWorksPrivateProject(ctx context.Context, project string) bool {
+	return agentWorksPrivateRoot(ctx, crewProjectRootByID(project))
+}
+
 func isAgentWorksCrew(ctx context.Context, root string) bool {
 	manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
 	return err == nil && manifest.Role == agentWorksRole

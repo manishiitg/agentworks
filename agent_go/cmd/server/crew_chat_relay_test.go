@@ -362,7 +362,8 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
 	seed := func(conversation string) {
 		t.Helper()
-		if err := writeCrewTeam(team); err != nil {
+		team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+		if err := writeCrewTeamAgentFixture(team); err != nil {
 			t.Fatal(err)
 		}
 		if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
@@ -431,7 +432,9 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 			revoked := team
 			switch revocation {
 			case "only-me":
-				err = writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab}})
+				// Team visibility belongs to the server registry, not relay advertisements.
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: false}})
+				err = writeCrewTeamAgentFixture(revoked)
 			case "removed":
 				revoked.People = nil
 				err = writeCrewTeam(revoked)
@@ -439,8 +442,12 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				revoked.On = false
 				err = writeCrewTeam(revoked)
 			case "chat-private":
-				revoked.AgentRules = map[string]map[string]crewTeamAgentRule{"owner": {macMainTab: {ChatShare: crewChatShareAgent}}}
-				err = writeCrewTeam(revoked)
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+				for id, a := range revoked.Agents {
+					a.Rule.ChatShare = crewChatShareAgent
+					revoked.Agents[id] = a
+				}
+				err = writeCrewTeamAgentFixture(revoked)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -454,5 +461,119 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				t.Fatal("revoked watch received private data")
 			}
 		})
+	}
+}
+
+// PLAT-746-876: status polling reads existing authorized records, never creates Main,
+// and stops accepting a conversation as soon as its registry slot changes.
+func TestDesktopCrewStatusReadsOnlyCurrentOwnedRecords(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := readCrewProjectBinding(ctx, "owner", profile, "team", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(id string) crewChatResult {
+		return f.api.desktopCrewExistingChatStatus(ctx, claims, profile, "team", crewChatCall{Operation: "status", ConversationID: id})
+	}
+	if got := read(""); got.Status != http.StatusNotFound {
+		t.Fatalf("missing Main should remain absent, got %d", got.Status)
+	}
+	store := defaultProductConversationRegistryStore()
+	key := "team:chat:abcdef12"
+	record := ProductConversationRecord{ProfileID: "work", ConversationKey: key, ConversationID: "current", SessionID: "current-session", WorkspacePath: binding.Binding.WorkspacePath, ResourceID: "team"}
+	doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey("work", key): record}}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	f.api.activeSessions = map[string]*ActiveSessionInfo{"current-session": {SessionID: "current-session", UserID: "owner", Status: "completed"}}
+	if got := read("current"); got.Status != http.StatusOK {
+		t.Fatalf("current owned tab refused: %d %s", got.Status, got.Body)
+	}
+	if got := read("foreign"); got.Status != http.StatusConflict {
+		t.Fatalf("unknown conversation accepted: %d", got.Status)
+	}
+
+	// A deleted/absent Main must not block the list or a physical tab (PLAT-746-966).
+	t.Run("relay without Main still lists and resolves owned tabs", func(t *testing.T) {
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+		t.Setenv("DEFAULT_USER_ID", "owner")
+		if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: "https://example.com", User: UserInfo{ID: "remote-owner"}}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "local", Mode: "relay", Editing: "local", PairID: "pair", ConnectionID: "saved", PeerServer: "https://example.com", PeerProjectID: "remote-team"}); err != nil {
+			t.Fatal(err)
+		}
+		tabs := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "tabs"})
+		if tabs.Status != 200 || !bytes.Contains(tabs.Body, []byte("abcdef12")) {
+			t.Fatalf("tabs require absent Main: %d %s", tabs.Status, tabs.Body)
+		}
+		main := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "resolve"})
+		if main.Status != 409 {
+			t.Fatalf("absent Main resolved: %d", main.Status)
+		}
+		tab := f.api.runDesktopCrewChat(ctx, "team", "pair", crewChatCall{Operation: "resolve", Tab: "abcdef12"})
+		if tab.Status != 200 {
+			t.Fatalf("owned tab requires Main: %d %s", tab.Status, tab.Body)
+		}
+		denied := f.api.runDesktopCrewChat(ctx, "team", "foreign-pair", crewChatCall{Operation: "tabs"})
+		if denied.Status != 403 {
+			t.Fatalf("wrong pair admitted: %d", denied.Status)
+		}
+	})
+	// Removing the saved record must invalidate status even though its runtime still exists.
+	doc.Entries = map[string]ProductConversationRecord{}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("current"); got.Status != http.StatusConflict {
+		t.Fatalf("removed tab runtime remained addressable: %d", got.Status)
+	}
+	after, err := store.loadDocument(ctx, productConversationRegistryPath("owner"))
+	if err != nil || len(after.Entries) != 0 {
+		t.Fatalf("status created a conversation: %v", err)
+	}
+}
+
+// PLAT-746-915: an old link without a pair is never live. A lookup for a
+// project the Mac never offered returns "" from the twins map, which equaled
+// the empty pair of a stale binding, so any live socket of the owner made the
+// leftover copy look on. Empty pairs must match nothing.
+func TestCrewMacSocketIgnoresEmptyPair(t *testing.T) {
+	owner := "empty-pair-owner"
+	crewMacSockets.Lock()
+	sock := &crewMacSocket{owner: owner, device: "mac", name: "Mac", twins: map[string]string{"served": "pair-1"}, lastSeen: time.Now()}
+	other := &crewMacSocket{owner: owner, device: "other-mac", name: "Other", twins: map[string]string{"served": "pair-1"}, lastSeen: time.Now()}
+	crewMacSockets.byDevice[owner+"/mac"] = sock
+	crewMacSockets.byDevice[owner+"/other-mac"] = other
+	crewMacSockets.Unlock()
+	t.Cleanup(func() {
+		crewMacSockets.Lock()
+		delete(crewMacSockets.byDevice, owner+"/mac")
+		delete(crewMacSockets.byDevice, owner+"/other-mac")
+		crewMacSockets.Unlock()
+	})
+	if got := crewMacSocketFor(owner, "served", "pair-1"); got == nil {
+		t.Fatal("live socket offering the pair was not routed")
+	}
+	if got := crewMacSocketFor(owner, "served", ""); got != nil {
+		t.Fatal("empty pair matched a served project")
+	}
+	if got := crewMacSocketFor(owner, "never-offered", ""); got != nil {
+		t.Fatal("stale link without a pair looked live")
+	}
+	if got := crewMacSocketFor(owner, "never-offered", "pair-1"); got != nil {
+		t.Fatal("unoffered project matched another project's pair")
+	}
+	if got := crewMacSocketServing(sock, "never-offered", ""); got != "" {
+		t.Fatalf("stale link looked served by another Mac: %q", got)
+	}
+	if got := crewMacLastSeen(owner, "never-offered", ""); !got.IsZero() {
+		t.Fatalf("stale link had a last-seen time: %v", got)
 	}
 }

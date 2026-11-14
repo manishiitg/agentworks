@@ -50,32 +50,52 @@ func chatProbeProvider(provider string) string {
 // probedChatLimits is the plan use of one account, asked of its provider when the chat itself reported none.
 // owner is the chat's tab owner; the account must be one they may run on. "" connectionID means the chat's
 // account is not known, so nothing is asked rather than guessing one.
-func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) []chatUsageLimit {
+func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string, requestedBy ...string) []chatUsageLimit {
 	provider, connectionID = chatProbeProvider(provider), strings.TrimSpace(connectionID)
 	if provider == "" || connectionID == "" {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), chatUsageProbeTimeout)
-	defer cancel()
 	environment, ok := api.chatUsageProbeAccount(ctx, owner, provider, connectionID)
 	if !ok {
+		cancel()
 		return nil
 	}
 	key := provider + "|" + connectionID
 	chatUsageProbes.mu.Lock()
-	if cached, found := chatUsageProbes.results[key]; found && time.Now().Before(cached.expires) {
+	cached := chatUsageProbes.results[key]
+	if time.Now().Before(cached.expires) || chatUsageProbes.running[key] {
 		chatUsageProbes.mu.Unlock()
+		cancel()
 		return cached.limits
-	}
-	if chatUsageProbes.running[key] {
-		chatUsageProbes.mu.Unlock()
-		return nil
 	}
 	chatUsageProbes.running[key] = true
 	chatUsageProbes.mu.Unlock()
 
+	by := owner
+	if len(requestedBy) > 0 && requestedBy[0] != "" {
+		by = requestedBy[0]
+	}
+	log.Printf("[ACCOUNT_LIMITS] action=probe account=%s provider=%s owner=%s by=%s", connectionID, provider, owner, by)
+
+	// PLAT-746-876: a provider quota request took 5–6 seconds on chat-context GET.
+	// Keep authorization above the cache read; only the probe moves off the request.
+	go func() {
+		defer cancel()
+		refreshChatUsageProbe(ctx, key, owner, provider, connectionID, environment)
+	}()
+	return cached.limits
+}
+
+func refreshChatUsageProbe(ctx context.Context, key, owner, provider, connectionID string, environment func() []string) {
 	started := time.Now()
 	usage, err := readNativeAccountUsage(ctx, provider, nativeUsageEnvironment(provider, environment()))
+	// Keep the complete selected-account snapshot for Limits. The chat chip
+	// below remains a deliberately reduced projection. Failed probes never erase
+	// known native windows, and a newer live event wins over this request's start.
+	if err == nil {
+		subscriptionLimits.put(provider, connectionID, "probe", started, usage.Windows)
+	}
 	var limits []chatUsageLimit
 	for _, window := range usage.Windows {
 		var resets time.Time
@@ -93,12 +113,14 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) 
 		}
 	}
 	chatUsageProbes.mu.Lock()
+	if err != nil {
+		limits = chatUsageProbes.results[key].limits
+	}
 	chatUsageProbes.results[key] = chatUsageProbeResult{limits: limits, expires: time.Now().Add(ttl)}
 	delete(chatUsageProbes.running, key)
 	chatUsageProbes.mu.Unlock()
 	// Provider errors can carry account details; log only the outcome.
 	log.Printf("[CHAT_USAGE] probe provider=%s account=%s owner=%s success=%t windows=%d shown=%d reason=%s elapsed_ms=%d", provider, connectionID, owner, err == nil, len(usage.Windows), len(limits), reason, time.Since(started).Milliseconds())
-	return limits
 }
 
 // chatProbeWindowName maps the quota request's window labels to the names the chip knows. Windows of one model

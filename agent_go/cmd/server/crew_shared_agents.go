@@ -180,6 +180,12 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 // The original recipient's Share grant admits this contact, including replies.
 // The caller can keep their own conversation private.
 func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessageEndpoint) error {
+	if agent.TeamAgentID != "" {
+		if _, _, err := resolveTeamMessageEndpoint(ctx, agent, caller.UserID); err != nil {
+			return admissionRefused("Team agent unavailable or access removed")
+		}
+		return nil
+	}
 	if agent.Kind != triggerCallerCrew || agent.ChatKey == "" || strings.HasPrefix(agent.ChatKey, "messages:") || crewProjectOwnedByCaller(caller.UserID, agent.Path) {
 		return nil
 	}
@@ -191,4 +197,26 @@ func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessa
 
 func logSharedCrewAgent(user, key, action string) {
 	log.Printf("[CREW_SHARED_AGENT] user=%q chat=%q action=%s", sanitizeUserIDForPath(user), key, action)
+}
+
+// Remove only this agent's public listing; preserve the Crew's audience and
+// every other agent. Called by the same confirmed removal used by UI and MCP.
+func removeCrewSharedAgent(root, key string) error {
+	identity, ok := projectIdentityOf(root)
+	if !ok {
+		return nil
+	}
+	return defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		id := projectOwnerKey(identity.Product, identity.Folder)
+		record, exists := projects[id]
+		if !exists {
+			return false, nil
+		}
+		before := len(record.SharedAgents)
+		record.SharedAgents = slices.DeleteFunc(record.SharedAgents, func(agent string) bool { return agent == key })
+		_, hadSince := record.SharedAgentSince[key]
+		delete(record.SharedAgentSince, key)
+		projects[id] = record
+		return before != len(record.SharedAgents) || hadSince, nil
+	})
 }

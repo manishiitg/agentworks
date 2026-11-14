@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -229,6 +230,9 @@ func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) 
 	}
 	if b.Transport == "sdk" {
 		if err := llmtypes.PrepareCodingSDK(ctx, b.Provider, nil); err != nil {
+			return err
+		}
+		if err := noderuntime.EnsureDefault(ctx); err != nil {
 			return err
 		}
 		if _, err := exec.LookPath("node"); err != nil {

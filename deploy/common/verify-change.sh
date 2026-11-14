@@ -122,6 +122,9 @@ run() { # run <label> <command...>: prints the last lines of the output when it 
     cp "$log" "$kept" 2>/dev/null && echo "full log kept on the build host: $kept" >&2
     fail "$label"
   fi
+  # Focused tests may publish non-sensitive measurements explicitly. Keep
+  # these visible on success too: step.log is overwritten by the next step.
+  grep -E 'VERIFY-METRIC: ' "$log" || true
 }
 
 go_needed=false; frontend_needed=false

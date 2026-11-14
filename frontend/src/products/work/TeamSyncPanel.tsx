@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { useChatStore } from '../../stores/useChatStore'
@@ -6,7 +6,6 @@ import { activateTab } from '../../utils/activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../../utils/workspacePaneChat'
 import { desktopRequest } from '../../services/desktopConnections'
 import { teamError, teamRequest, type TeamClash, type TeamEvent, type TeamTabSync, type TeamTarget } from './teamApi'
-import { takeCrewSync } from './MacSharedAgents'
 
 /** One sync round: one person's files sent (or removed) together, so a first upload is one row, not hundreds (owner,
  * 5 Nov). Events come newest first; a gap of over a minute, another person or another kind starts a new round.
@@ -55,9 +54,6 @@ const clock = (time: string) => new Date(time).toLocaleString([], { month: 'shor
 /** The shared folder's sync: in the Mac app this Mac's own copy (from its sync client), elsewhere the server's line for
  * this person (server, from the Team tab reply); then clashes, recent rounds and skipped private files. */
 export function TeamSyncPanel({ target, name, projectId, server }: { target: TeamTarget; name?: string; projectId?: string; server?: TeamTabSync }) {
-  // Opened from the side panel's Shared folder row: scroll here once it is on screen.
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => { if (projectId && takeCrewSync(projectId)) window.setTimeout(() => root.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 300) }, [projectId])
   const [clashes, setClashes] = useState<TeamClash[]>([])
   const [events, setEvents] = useState<TeamEvent[]>([])
   const [skipped, setSkipped] = useState<string[]>([])
@@ -113,7 +109,7 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
     store.setTabConfig(tab.tabId, { inputText: existing ? `${existing}\n\n${prompt}` : prompt })
     activateTab(tab.tabId); window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
   }
-  return <div ref={root} data-team-sync className="space-y-5 text-sm">
+  return <div data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between gap-2">{status ? <p role="status" className={`text-xs ${status.problem ? 'text-amber-600' : 'text-muted-foreground'}`}>{status.text}</p> : <span />}<button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
     {server?.last && <p className="text-xs text-muted-foreground">{server.last}</p>}
     {progress && <section aria-label="Sync in progress" className="space-y-1.5">

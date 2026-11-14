@@ -33,6 +33,16 @@ func crewCLIMode(readOnly bool) string {
 }
 
 func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewCLIWorkingDir(folder, user, session, provider, readOnly, true)
+}
+
+// Inspection shares the launch's exact local/slot/agent-root identity, but must
+// never create a runtime, repair permissions or write Git configuration.
+func existingCrewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewCLIWorkingDir(folder, user, session, provider, readOnly, false)
+}
+
+func resolveCrewCLIWorkingDir(folder, user, session, provider string, readOnly, prepare bool) (string, error) {
 	var scopeErr error
 	folder, scopeErr = crewAgentRuntimeFolder(folder, user, session)
 	if scopeErr != nil {
@@ -64,7 +74,7 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state
 				runtimeOwner = owner
-				if roots, bound, rootsErr := crewStorageRoots(folder); bound && rootsErr == nil {
+				if roots, bound, rootsErr := crewStorageRoots(folder); prepare && bound && rootsErr == nil {
 					// The Crew's whole folder: its files are a subfolder of it when they are kept apart.
 					top := roots.Resources
 					if !strings.HasPrefix(roots.Files+string(filepath.Separator), top+string(filepath.Separator)) {
@@ -81,12 +91,19 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	if shared, ok := workspaceref.MustParse(strings.TrimSpace(folder)).SharedProject(); ok {
 		legacyRel = crewLegacyKey(shared)
 	}
-	dir, err := cliruntime.PrepareLinkedProjectMoved(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
+	var dir string
+	if prepare {
+		dir, err = cliruntime.PrepareLinkedProjectMoved(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
+	} else {
+		dir, err = cliruntime.ExistingLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
+	}
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
 	}
-	if err := prepareCrewGit(dir, project, provider, runtimeOwner); err != nil {
-		return "", err
+	if prepare {
+		if err := prepareCrewGit(dir, project, provider, runtimeOwner); err != nil {
+			return "", err
+		}
 	}
 	return dir, nil
 }
@@ -119,12 +136,20 @@ func ownerRunsInSlot(owner, runtimeDir string) bool {
 
 func crewCLIWorkspaceInstructions(folder string) string {
 	if roots, bound, err := localCrewRoots(folder); bound && err == nil {
-		return fmt.Sprintf("\nThis Crew works directly in %q. Native file tools and terminal commands start there. Crew skills, memory and reports use %q as their resource root; platform settings, functions, database and chat records stay in private AgentWorks storage. Workspace file tools use %q for the person's files and %q for Crew resources. Keep generated provider configuration and private session data in the supplied private runtime. Preserve the project's existing AGENTS.md, CLAUDE.md and provider configuration.\n", roots.Files, roots.Resources, roots.FilesPath(), roots.Virtual)
+		return fmt.Sprintf("\nThis Crew works directly in %q. Native file tools and terminal commands start there. Crew skills, memory, reports, workflows with their runs and the Crew database live in %q; its schedules, webhooks and functions change only through their tools, and chats and logins stay in private AgentWorks storage. Workspace file tools use %q for the person's files and %q for Crew resources. Keep generated provider configuration and private session data in the supplied private runtime. Preserve the project's existing AGENTS.md, CLAUDE.md and provider configuration.\n", roots.Files, roots.Resources, roots.FilesPath(), roots.Virtual)
 	}
 	return fmt.Sprintf("\nCrew CLI runtime: your current directory holds this session's mode-specific instructions, skills and CLI configuration. `project/` links to the real Crew project at %q. Read project files through `project/<path>`; in Builder, create and edit durable files there too. For commands that require the project as their working directory, cd to that absolute path (`cd <that path> && ...`), never `cd project`, which the CLI's permission check refuses; do not put project outputs in the runtime root. Search and glob tools do not look inside the link unless you name it: always pass `project` (or `project/<folder>`) as the search path, because a search from the current directory finds none of the project's files. Workspace bridge paths remain relative to the real Crew project and must not include `project/`. Keep generated CLI instructions/configuration in the runtime root, preserve the project's own instructions, and obey this session's Run/Builder permissions even when reading project guidance.\n", codingAgentWorkspaceWorkingDir(folder)) + linkedProjectRuntimeSkillInstructions
 }
 
 func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewPrivateRuntimeDir(folder, user, session, provider, readOnly, true)
+}
+
+func existingCrewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewPrivateRuntimeDir(folder, user, session, provider, readOnly, false)
+}
+
+func resolveCrewPrivateRuntimeDir(folder, user, session, provider string, readOnly, prepare bool) (string, error) {
 	roots, bound, err := localCrewRoots(folder)
 	if err != nil || !bound {
 		return "", err
@@ -133,8 +158,13 @@ func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool
 	if err != nil {
 		return "", err
 	}
-	dir, err := cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
-	if err == nil {
+	var dir string
+	if prepare {
+		dir, err = cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
+	} else {
+		dir, err = cliruntime.ExistingMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
+	}
+	if prepare && err == nil {
 		err = prepareCrewGit(dir, roots.Files, provider, user)
 	}
 	return dir, err

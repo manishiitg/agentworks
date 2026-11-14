@@ -25,13 +25,9 @@ export function userInteractiveContinuationFlag(tab: Pick<ChatTab, 'metadata'>):
   return tab.metadata?.userInteractiveContinuation === true ? true : undefined
 }
 
-// Keep narration already on screen above a newly staged message, rather than
-// moving it there later when the durable echo arrives. Delivery still belongs
-// to the server; this only places the text the browser has already displayed.
+// A new input never consumes or seals the active generation's live buffer.
 export function stageOptimisticUserMessage(sessionId: string, message: PollingEvent): void {
-  const chat = useChatStore.getState()
-  const frozen = message.timestamp ? chat.freezeStreamingTextBefore(sessionId, message.timestamp) : null
-  chat.addTabEvents(sessionId, frozen ? [frozen, message] : [message])
+  useChatStore.getState().addTabEvents(sessionId, [message])
 }
 
 export type WorkflowReferenceContext = {
@@ -169,7 +165,6 @@ export function buildQueryRequestPayload(params: {
     cdp_port: isChatWithExtras && effectiveBrowserMode === 'cdp'
       ? (currentTab?.config?.cdpPort || 9222)
       : undefined,
-    delegation_tier_config: undefined,
     selected_skills: isChatWithExtras && currentTab?.config?.selectedSkills?.length
       ? currentTab.config.selectedSkills
       : undefined,
@@ -205,6 +200,8 @@ export function applyAgentProfileBinding(payload: AgentQueryRequest, tab: ChatTa
 export function buildAgentProfileChatRequest(payload: AgentQueryRequest, conversationKey?: string, engine?: string, modelId?: string, reasoningEffort?: string): AgentProfileChatRequest {
   return {
     message: payload.query,
+    ...(payload.requested_skill_id ? { requested_skill_id: payload.requested_skill_id } : {}),
+    ...(payload.pending_attachments?.length ? { pending_attachments: payload.pending_attachments } : {}),
     ...(payload.delivery_mode ? { delivery_mode: payload.delivery_mode } : {}),
     connection_id: payload.connection_id,
     ...(conversationKey ? { conversation_key: conversationKey } : {}),

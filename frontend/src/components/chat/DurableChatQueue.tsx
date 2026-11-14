@@ -1,12 +1,10 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUp, Clock, Loader2, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { clientMessageEventId, isProvisionalUserMessage, userMessageMetadata } from '../../utils/clientMessageIdentity'
-import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
-import { askAIDisplayText } from '../../utils/askAIMessage'
+import { clientMessageEventId, isProvisionalUserMessage, pendingQueuedProvisionals, userMessageMetadata } from '../../utils/clientMessageIdentity'
+import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
 
 export interface DurableChatQueueHandle { recallLatest: () => boolean }
@@ -29,7 +27,7 @@ function markDelivering(sessionId: string, ids: Set<string>) {
 /** This is the server queue, never a second browser dispatch worker. */
 export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   sessionId: string; tabId: string; busy: boolean
-  canEdit?: boolean; onEdit?: (content: string) => void
+  canEdit?: boolean; onEdit?: (content: string, attachments?: string[], requestedSkillId?: string) => void
 }>(function DurableChatQueue({ sessionId, tabId, busy, canEdit = true, onEdit }, ref) {
   const [identity] = useState(captureChatIdentity)
   const [action, setAction] = useState<string | null>(null)
@@ -51,6 +49,11 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   })
   useEffect(() => {
     if (!query.data || !owns()) return
+    // Server deliveries have no sending browser to create their pending card.
+    // Project the authoritative queue through the same identity-based echo path.
+    const store = useChatStore.getState()
+    const pending = pendingQueuedProvisionals(query.data, store.getTabEvents(sessionId), sessionId)
+    if (pending.length) store.addTabEvents(sessionId, pending)
     const currentIds = new Set(query.data.map(message => message.client_message_id))
     const removedIds = new Set(previous.current.filter(message => !message.steering && !currentIds.has(message.client_message_id))
       .map(message => clientMessageEventId(message.client_message_id)))
@@ -67,7 +70,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   }, [query.data, sessionId, owns])
 
   const change = async (message: PendingQueuedMessage, steer: boolean, retry = false, edit = false) => {
-    if (!message.message_id || action || !owns()) return
+    if ((message.can_manage !== true && !(message.can_dismiss === true && !steer && !retry && !edit)) || !message.message_id || action || !owns() || (edit && message.attachment_pending)) return
     setAction(message.message_id)
     setError('')
     try {
@@ -83,7 +86,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
         const id = clientMessageEventId(message.client_message_id)
         store.setTabEvents(sessionId, store.getTabEvents(sessionId).filter(event => event.id !== id || !isProvisionalUserMessage(event)))
       }
-      if (edit) onEdit?.(message.content)
+      if (edit) onEdit?.(message.content, message.attachment_paths, message.requested_skill_id)
       await client.invalidateQueries({ queryKey: key })
     } catch {
       if (owns()) {
@@ -98,41 +101,30 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   const messages = (query.data ?? []).filter(message => !message.started)
   useImperativeHandle(ref, () => ({ recallLatest: () => {
     if (!canEdit || !onEdit || !owns()) return false
-    const message = [...messages].reverse().find(message => message.message_id && !message.steering && !message.delivery_error)
+    const message = [...messages].reverse().find(message => message.can_manage === true && message.message_id && !message.steering && !message.delivery_error && !message.attachment_pending)
     if (!message) return false
     if (!action) void change(message, false, false, true)
     return true
   } }))
-  if (!messages.length && !error && !query.isError) return null
-  return <div className="mb-1 space-y-1" aria-label="Queued messages" aria-live="polite">
-    {(error || query.isError) && <p role="alert" className="text-xs text-amber-500">{error || 'Could not refresh queued messages.'}
-      <button type="button" className="ml-2 underline" onClick={() => void query.refetch()}>Retry</button>
-    </p>}
-    {messages.map(message => {
-      const refreshing = Boolean(message.refreshing && !message.delivery_error)
-      const pending = Boolean(message.steering || action === message.message_id)
-      const Icon = pending || refreshing ? Loader2 : Clock
-      const text = askAIDisplayText(getDisplaySafeUserMessageContent(message.content))
-      const reason = message.queue_reason
-      const description = message.delivery_error || message.queue_detail || (refreshing ? 'This Crew changed (for example a new function), so the chat restarts with it after the current reply, then your message goes in' : message.steering ? 'Delivering to the current task' : reason === 'starting' ? 'The agent is starting or resuming. Your message will send automatically.' : reason === 'running' ? 'Sends automatically when the current turn finishes' : 'Waiting to send automatically')
-      return <div key={message.message_id || message.client_message_id} className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-          <span title={description} className="flex min-w-0 max-w-[45vw] items-center gap-1 text-[11px] font-medium text-amber-500">
-            <Icon className={`h-3 w-3 shrink-0 ${pending || refreshing ? 'animate-spin' : ''}`} />
-            <span className="min-w-0 break-words">{message.delivery_error ? 'Delivery unconfirmed' : refreshing ? 'Sends after the current reply · chat restarts with the Crew\'s latest setup' : message.steering ? 'Steering…' : `${message.queue_detail || (reason === 'starting' ? 'Starting agent · sends when ready' : reason === 'running' ? 'Waiting for the current reply' : 'Queued · sends next')}${message.queue_position && message.queue_position > 1 ? ` · ${message.queue_position} in line` : ''}`}</span>
-          </span>
-          <details className="group min-w-0 text-xs text-foreground">
-            <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
-          </details>
-          {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
-            {onEdit && !message.delivery_error && !message.steering && <button type="button" aria-label="Edit queued message" title={canEdit ? 'Move back to the composer to edit · ↑' : 'Clear the composer to edit this queued message'} disabled={!canEdit || pending || Boolean(action)} onClick={() => void change(message, false, false, true)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" /></button>}
-            {message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false, true)} className="text-primary hover:underline disabled:opacity-40">Retry</button>}
-            {message.can_steer === true && !message.delivery_error && !refreshing && !message.steering && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
-            <button type="button" aria-label="Remove queued message" title="Remove queued message" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
-          </div>}
-        </div>
-        {message.delivery_error && <p className="mt-1 text-[11px] text-muted-foreground">{message.delivery_error}</p>}
-      </div>
-    })}
-  </div>
+  // The queued message's own row in the chat shows its controls (Edit, Steer now, Retry, remove); there is no separate bar.
+  const publish = useQueuedMessageControlsStore(state => state.set)
+  const changeRef = useRef(change)
+  changeRef.current = change
+  const data = query.data
+  useEffect(() => {
+    const byId: Record<string, PendingQueuedMessage> = {}
+    for (const message of data ?? []) if (!message.started && message.client_message_id) byId[message.client_message_id] = message
+    publish(sessionId, {
+      messages: byId,
+      busyMessageId: action,
+      canEdit,
+      editable: Boolean(onEdit),
+      act: (message, kind) => void changeRef.current(message, kind === 'steer', kind === 'retry', kind === 'edit'),
+    })
+  }, [data, action, canEdit, onEdit, sessionId, publish])
+  useEffect(() => () => publish(sessionId, undefined), [sessionId, publish])
+  if (!error && !query.isError) return null
+  return <p role="alert" className="mb-1 text-xs text-amber-500">{error || 'Could not refresh queued messages.'}
+    <button type="button" className="ml-2 underline" onClick={() => void query.refetch()}>Retry</button>
+  </p>
 })

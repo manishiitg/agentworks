@@ -156,7 +156,7 @@ unchanged.
 New native DBOS Relays enable `relay_durability: "dbos"` by default. Existing
 Context-based Python Relays can opt in through the manifest or
 **Identity → General → Crash recovery**. The server uses DBOS 3.2.0 through
-`relaypython.Config.DBOS`, the real Python SDK and the existing Go agent/MCP
+`pythonruntime.Config.DBOS`, the real Python SDK and the existing Go agent/MCP
 mailbox bridge. Existing Relays retain their current executor until explicitly
 enabled. Publish a new version to apply the setting to external API calls.
 This integration runs on Linux/macOS with one SQLite database and one supervised
@@ -202,9 +202,9 @@ Run the real crash/recovery checks from the repository root:
 
 ```sh
 python3 -m venv /tmp/relays-dbos-venv
-/tmp/relays-dbos-venv/bin/python -m pip install -r agent_go/pkg/relaypython/requirements-dbos.txt
+/tmp/relays-dbos-venv/bin/python -m pip install -r agent_go/pkg/pythonruntime/requirements-dbos.txt
 cd agent_go
-RELAY_DBOS_PYTHON=/tmp/relays-dbos-venv/bin/python go test ./pkg/relaypython ./pkg/schedulerstate -count=1 -v
+RELAY_DBOS_PYTHON=/tmp/relays-dbos-venv/bin/python go test ./pkg/pythonruntime ./pkg/schedulerstate -count=1 -v
 ```
 
 Without `RELAY_DBOS_PYTHON`, DBOS integration tests explicitly skip and the normal

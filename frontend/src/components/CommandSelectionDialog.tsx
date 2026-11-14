@@ -1,3 +1,4 @@
+import { visibleNativeGoalCommands } from '../utils/nativeGoalCapability'
 import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore, useId } from 'react'
 import { Terminal, Pencil, Trash2, Plus } from 'lucide-react'
 import type { ModeCategory } from '../stores/useModeStore'
@@ -9,6 +10,7 @@ import { isPlainPickerKey } from '../utils/composerReferences'
 import { useComposerPicker, isComposerPickerEvent, type ComposerPickerProps } from '../hooks/useComposerPicker'
 
 interface CommandSelectionDialogProps extends ComposerPickerProps {
+  nativeGoalSupported?: boolean
   standalone?: boolean
   onSearchQueryChange?: (query: string) => void
   triggerRef?: React.RefObject<HTMLElement | null>
@@ -27,7 +29,10 @@ interface CommandSelectionDialogProps extends ComposerPickerProps {
   onDeleteCommand?: (command: CommandDefinition) => void
   /** A chat-specific list (for example a dashboard's project functions). It replaces the global and personal commands. */
   commands?: CommandDefinition[]
+  skillCommands?: CommandDefinition[]
 }
+
+const EMPTY_SKILL_COMMANDS: CommandDefinition[] = []
 
 export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   isOpen,
@@ -43,7 +48,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   onCreateCommand,
   onEditCommand,
   onDeleteCommand, inputRef, listId, onActiveOptionChange,
-  standalone = false, onSearchQueryChange, triggerRef, commands
+  nativeGoalSupported = false, standalone = false, onSearchQueryChange, triggerRef, commands, skillCommands = EMPTY_SKILL_COMMANDS
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const revision = useSyncExternalStore(subscribeCommands, getCommandRevision)
@@ -66,12 +71,12 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
 
   // Filter commands based on search query and current mode
   const filteredCommands = useMemo(() => {
-    const allCommands = commands ?? (agentProfileId
+    const allCommands = visibleNativeGoalCommands(commands ?? (agentProfileId
       ? getProductAndUserCommands(modeCategory, workshopMode, canWriteWorkflow)
-      : getCommands(modeCategory, workshopMode, canWriteWorkflow))
+      : getCommands(modeCategory, workshopMode, canWriteWorkflow)), nativeGoalSupported)
 
     if (!searchQuery.trim()) {
-      return allCommands
+      return [...allCommands, ...skillCommands]
     }
 
     const query = searchQuery.toLowerCase().trim()
@@ -97,8 +102,8 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
       return a.command.localeCompare(b.command)
     })
 
-    return filtered
-  }, [agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands])
+    return [...filtered, ...skillCommands]
+  }, [nativeGoalSupported, agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands, skillCommands])
 
   useEffect(() => { setSelectedIndex(0) }, [searchQuery, isOpen, filteredCommands])
   useEffect(() => {
@@ -212,7 +217,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
                 {cmd.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-medium">/{cmd.command}</div>
+                <div className="font-medium">{cmd.label || `/${cmd.command}`}</div>
                 <div className="text-xs text-muted-foreground truncate">
                   {cmd.description}
                 </div>

@@ -184,10 +184,6 @@ func saveCrewScriptDefinition(ctx context.Context, binding *crewExecutableBindin
 	if _, err := crewScriptCapabilities(ctx, binding.CrewRoot, definition); err != nil {
 		return err
 	}
-	// Old plan consumers still retain their own source-reference rule.
-	if _, err := crewScriptConsumers(ctx, binding, definition); err != nil {
-		return err
-	}
 	ctx = prepareTeamEdit(ctx, binding.Root, "")
 	raw, err := json.MarshalIndent(definition, "", "  ")
 	if err != nil {

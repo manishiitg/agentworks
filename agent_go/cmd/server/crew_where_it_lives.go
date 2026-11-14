@@ -3,14 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -202,7 +199,7 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 		externalError(w, 409, "published_agents", "This Crew has published agents on the server. Keep it connected to continue using them; you can close the Mac app and those agents will keep running.")
 		return
 	}
-	backup, err := backupCrewRelayTwin(roots)
+	backup, err := backupCrewFolders(roots)
 	if err != nil {
 		log.Printf("[CREW_RELAY] project=%s reach_off refused: backup failed: %v", roots.ID, err)
 		externalError(w, 409, "backup_failed", "It could not be backed up first, so nothing was removed. Try again.")
@@ -219,33 +216,6 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 	crewRelayStreams.forget(claims.UserID, roots.ID)
 	log.Printf("[CREW_RELAY] project=%s reach_off owner=%s pair=%s mac_project=%s backup=%s sync_files_removed=%d", roots.ID, logUsernameForUserID(claims.UserID), pair, b.PeerProjectID, backup, removed)
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID})
-}
-
-// backupCrewRelayTwin keeps a copy of the online copy's folders and pair files under <state>/crew-backups.
-func backupCrewRelayTwin(roots crewroot.Roots) (string, error) {
-	state, err := crewroot.StateRoot()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(state, "crew-backups")
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		return "", err
-	}
-	paths := []string{}
-	for _, path := range []string{roots.Files, roots.Resources, roots.Private} {
-		if _, e := os.Stat(path); path != "" && e == nil && !slices.Contains(paths, path) {
-			paths = append(paths, path)
-		}
-	}
-	matches, _ := filepath.Glob(filepath.Join(state, "crew-sync", roots.ID+"*"))
-	paths = append(paths, matches...)
-	target := filepath.Join(dir, roots.ID+"-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
-	// Unreadable caches (a slot's own sandbox files) are skipped; the archive itself must be written.
-	out, err := exec.Command("tar", append([]string{"czf", target, "--ignore-failed-read"}, paths...)...).CombinedOutput()
-	if info, statErr := os.Stat(target); statErr != nil || info.Size() == 0 {
-		return "", fmt.Errorf("tar: %v %s", err, strings.TrimSpace(string(out)))
-	}
-	return target, nil
 }
 
 // removeCrewSyncFiles removes a Crew's pair files: <id>.json, <id>-files.json and what sits next to them.

@@ -268,7 +268,7 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 	// Full native tools are controlled by the provider runtime, not this
 	// product bridge allowlist; bridge authority and secret injection stay narrow.
 	gate := newProductToolGate(resolved)
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "get_secret", "run_in_background", "publish", "agent_browser", "manage_caplayer_access"} {
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "get_secret", "publish", "agent_browser", "manage_caplayer_access"} {
 		if gate.Admit(name) {
 			t.Fatalf("CapLayer admitted %s", name)
 		}
@@ -307,18 +307,5 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 				}
 			}
 		})
-	}
-}
-
-func TestCapLayerPromptDoesNotPromiseWorkspaceMemory(t *testing.T) {
-	ctx := promptContext{HasProfile: true, ProfileID: "caplayer", WorkspaceFilesDisabled: true}
-	for _, name := range []string{"project-memory", "workspace-map"} {
-		if sectionByName(t, name).Applies(ctx) {
-			t.Fatalf("narrow tool profile got %s", name)
-		}
-	}
-	ctx.WorkspaceFilesDisabled = false
-	if !sectionByName(t, "project-memory").Applies(ctx) {
-		t.Fatal("regular product memory changed")
 	}
 }

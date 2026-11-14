@@ -127,7 +127,7 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 			return "", nil
 		}
 		// The copy itself is in the Crew's folder, team-copies/<member>/ (crew_team_member_copy.go). A copy made after
-		// the Team's shared folder changed (Folders <-> Whole Crew) keeps what is already there, unsent edits
+		// the Team's shared folder changed (chosen folders) keeps what is already there, unsent edits
 		// included: its first download adopts what matches the team and what differs goes up as the member's edit,
 		// as a Mac copy does (previousCrewTeamMemberRoot).
 		root, err := crewTeamMemberCopyRoot(project, member)
@@ -169,10 +169,30 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		return
 	}
 	go func() {
+		repairCrewTeamHomeMembers()
+		busyChecked := map[string]time.Time{}
+		copyChecked := map[string]time.Time{}
+		woken := true
+		var cleaned time.Time
 		clearFalseCrewTeamClashes(ctx)
 		for ctx.Err() == nil {
-			api.removeStaleCrewTeamServerCopies(ctx)
+			if woken || time.Since(cleaned) >= crewTeamCheckAfter(true) {
+				api.removeStaleCrewTeamServerCopies(ctx)
+				cleaned = time.Now()
+			}
 			for _, t := range crewTeamsOnServer() {
+				// Who is working, server chats included: re-read every 15 s at most (a Mac turn's start or end pushes at
+				// once) and sent to the Team's Macs only when it changed (crew_team_push.go).
+				if time.Since(busyChecked[t.ProjectID]) >= 15*time.Second {
+					busyChecked[t.ProjectID] = time.Now()
+					pushCrewTeamBusy(t.ProjectID)
+				}
+				// File and roster changes, plus the existing folder watcher, wake this
+				// loop. An idle server uses the same catch-up interval as a connected Mac.
+				if !woken && time.Since(copyChecked[t.ProjectID]) < crewTeamCheckAfter(true) {
+					continue
+				}
+				copyChecked[t.ProjectID] = time.Now()
 				// A Crew on the server: its own folder is the Team store's copy for members on their Mac.
 				round, done := context.WithTimeout(ctx, 2*time.Minute)
 				api.syncServerCrewTeamStore(round, t)
@@ -201,7 +221,9 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
-			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go)
+				woken = false
+			case <-crewTeamWake: // a watched copy, Team record or shared store changed
+				woken = true
 			}
 		}
 	}()
@@ -249,6 +271,9 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
 			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
 			if t.On && t.Folder.ID == b.FolderID {
+				if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
+					continue
+				}
 				if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
 					log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=final_upload_failed reason=%q", b.Project, logUsernameForUserID(b.RemoteUser), err)
 					continue
@@ -273,6 +298,9 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		if stillTheirs && onMac {
 			// Their last changes go up first; if that fails the copy stays and the next pass tries again.
+			if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
+				continue
+			}
 			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
 			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
 			if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
@@ -280,7 +308,7 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 				continue
 			}
 		}
-		// Only the shared folder changed (Folders <-> Whole Crew): the member still works here. The old record cannot
+		// Only the shared folder changed (chosen folders): the member still works here. The old record cannot
 		// send anything any more (the server refuses a previous folder's copy), so its folder is kept, unsent edits
 		// included, and the new record adopts it right away (syncCrewTeamServerCopy).
 		folderChanged := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID != "" && t.Folder.ID != b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project) && !onMac
@@ -308,6 +336,28 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			done()
 		}
 	}
+}
+
+// PLAT-746-820: a never-downloaded, absent copy has nothing to upload when
+// retiring it. Re-read under the sync lock; never remove its physical root.
+func retireMissingUndownloadedCrewTeamCopy(ctx context.Context, dir string) bool {
+	unlock, err := wf.LockWorkspace(ctx, dir)
+	if err != nil {
+		return false
+	}
+	defer unlock()
+	b, err := readCrewTeamLocal(dir)
+	if err != nil || b.Downloaded || b.Revision != 0 || b.Root == "" {
+		return false
+	}
+	if _, err = os.Lstat(b.Root); !os.IsNotExist(err) {
+		return false // existing files, links and permission failures retain normal handling
+	}
+	if err = os.RemoveAll(dir); err != nil {
+		return false
+	}
+	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=never_downloaded_root_missing", b.Project, logUsernameForUserID(b.RemoteUser))
+	return true
 }
 
 var crewTeamCopyCreating sync.Map

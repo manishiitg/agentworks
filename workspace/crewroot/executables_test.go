@@ -9,8 +9,9 @@ import (
 	"testing"
 )
 
-// PLAT-746-265: automation source cannot collide with app code or capture
-// runtime data, and a project-planted symlink cannot redirect file operations.
+// PLAT-746-265: automation source cannot collide with app code, and a
+// project-planted symlink cannot redirect file operations. PLAT-746-924: its
+// runs and data sit next to its definition, its records in settings/.
 func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		t.Run(fmt.Sprint(local), func(t *testing.T) {
@@ -46,12 +47,14 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 				"planning/plan.json":            filepath.Join(project, ".agentworks/workflows/sequence/planning/plan.json"),
 				"workflow.json":                 filepath.Join(project, ".agentworks/workflows/sequence/workflow.json"),
 				"variables/variables.json":      filepath.Join(project, ".agentworks/workflows/sequence/variables/variables.json"),
-				"planning/changelog/entry.json": filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence/planning/changelog/entry.json"),
-				"db/db.sqlite":                  filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence/db/db.sqlite"),
+				"planning/changelog/entry.json": filepath.Join(project, ".agentworks/workflows/sequence/planning/changelog/entry.json"),
+				"db/db.sqlite":                  filepath.Join(project, ".agentworks/workflows/sequence/db/db.sqlite"),
 				"code/step/main.py":             filepath.Join(project, ".agentworks/code/sequence/step/main.py"),
-				"runs/iteration-10/output.json": filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence", "runs/iteration-10/output.json"),
-				"skills/custom/SKILL.md":        filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence", "skills/custom/SKILL.md"),
-				"knowledgebase/notes/note.md":   filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence", "knowledgebase/notes/note.md"),
+				"runs/iteration-10/output.json": filepath.Join(project, ".agentworks/workflows/sequence/runs/iteration-10/output.json"),
+				"skills/custom/SKILL.md":        filepath.Join(project, ".agentworks/workflows/sequence/skills/custom/SKILL.md"),
+				"knowledgebase/notes/note.md":   filepath.Join(project, ".agentworks/workflows/sequence/knowledgebase/notes/note.md"),
+				"schedules.json":                filepath.Join(project, ".agentworks/settings/workflows/sequence/schedules.json"),
+				"publish/status.json":           filepath.Join(project, ".agentworks/settings/workflows/sequence/publish/status.json"),
 			} {
 				got, err := resolve(binding.Root + "/" + rel)
 				if err != nil || got != want {
@@ -65,7 +68,7 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 			data, _ = json.Marshal(binding)
 			os.WriteFile(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), data, 0600)
 			for _, virtual := range []string{"Workflow/sequence/db/db.sqlite", "Crew/example/db/db.sqlite"} {
-				if got, err := resolve(virtual); err != nil || got != filepath.Join(docs, PrivateDirectory, "crew/db/db.sqlite") {
+				if got, err := resolve(virtual); err != nil || got != filepath.Join(project, ".agentworks/db/db.sqlite") {
 					t.Fatalf("new script did not use the Crew DB: %q %v", got, err)
 				}
 			}
@@ -83,7 +86,7 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 			}
 			saveRouting()
 			for _, virtual := range []string{"Workflow/sequence/db/db.sqlite", "Crew/example/db/db.sqlite", "Crew/example/db/migrations/001.sql"} {
-				want := filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence/db", filepath.Base(virtual))
+				want := filepath.Join(project, ".agentworks/workflows/sequence/db", filepath.Base(virtual))
 				if filepath.Base(virtual) == "001.sql" {
 					want = filepath.Join(filepath.Dir(want), "migrations/001.sql")
 				}
@@ -91,7 +94,7 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 					t.Fatalf("adopted database: %s %q %v want %q", virtual, got, err, want)
 				}
 			}
-			if got, err := resolve("Workflow/sequence/runs/iteration-10/output.json"); err != nil || got != filepath.Join(docs, PrivateDirectory, "crew/workflows/sequence/runs/iteration-10/output.json") {
+			if got, err := resolve("Workflow/sequence/runs/iteration-10/output.json"); err != nil || got != filepath.Join(project, ".agentworks/workflows/sequence/runs/iteration-10/output.json") {
 				t.Fatalf("runtime moved: %q %v", got, err)
 			}
 			for _, corrupt := range []string{"runtime", "owner", "database", "missing"} {
@@ -126,11 +129,11 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 			if _, err := resolve(binding.Root + "/code/main.py"); err == nil {
 				t.Fatal("source symlink escaped project")
 			}
-			runtime := filepath.Join(docs, PrivateDirectory, "crew/workflows")
+			runtime := filepath.Join(project, ".agentworks/workflows")
 			os.MkdirAll(runtime, 0700)
 			os.Symlink(outside, filepath.Join(runtime, "sequence"))
 			if _, err := resolve(binding.Root + "/db/db.sqlite"); err == nil {
-				t.Fatal("runtime symlink escaped private storage")
+				t.Fatal("runtime symlink escaped the Crew folder")
 			}
 			if _, err := resolve(binding.Root + "/planning/../../../../../outside"); err == nil {
 				t.Fatal("traversal escaped source")

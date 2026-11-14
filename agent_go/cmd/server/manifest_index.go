@@ -50,9 +50,6 @@ func noteWorkspaceMutation(filePath string, folder bool) {
 		}
 	case path.Base(clean) == "workflow.json" || path.Base(clean) == "script.json":
 		manifestDirtyFolders.Store(path.Dir(clean), struct{}{})
-	case path.Base(clean) == "schedule-runs.json":
-		noteScheduleSummaryChange()
-		return
 	default:
 		return
 	}
@@ -78,6 +75,10 @@ type manifestStamp struct {
 type manifestIndexEntry struct {
 	stamp    manifestStamp
 	manifest *WorkflowManifest
+	// failed: this workflow.json could not be read. It stays out of the
+	// results and is read again only when the file changes, instead of on
+	// every discovery.
+	failed bool
 }
 
 type workflowManifestIndex struct {
@@ -128,12 +129,21 @@ func (x *workflowManifestIndex) discover(ctx context.Context, freshness time.Dur
 		prev, ok := x.entries[folder]
 		if ok && !full && !dirty && stamp.known && stamp == prev.stamp {
 			next[folder] = prev
-			order = append(order, folder)
+			if !prev.failed {
+				order = append(order, folder)
+			}
+			continue
+		}
+		if ok && prev.failed && !dirty && stamp.known && stamp == prev.stamp {
+			next[folder] = prev // unchanged since it failed; the full re-read does not retry it either
 			continue
 		}
 		manifest, exists, readErr := x.read(ctx, folder)
 		if readErr != nil {
-			log.Printf("[WARN] workflow manifest index: error reading manifest from %s: %v", folder, readErr)
+			log.Printf("[WARN] workflow manifest index: error reading manifest from %s: %v (not retried until it changes)", folder, readErr)
+			if stamp.known {
+				next[folder] = manifestIndexEntry{stamp: stamp, failed: true}
+			}
 			continue
 		}
 		if !exists {
@@ -201,7 +211,7 @@ func listWorkflowFoldersWithManifestStamps(ctx context.Context) ([]string, map[s
 		return nil, nil, err
 	}
 	for _, binding := range bindings {
-		if binding.Kind == "script" || binding.Kind == "workflow" {
+		if binding.Kind == "script" {
 			if !slices.Contains(folders, binding.Root) {
 				folders = append(folders, binding.Root)
 			}

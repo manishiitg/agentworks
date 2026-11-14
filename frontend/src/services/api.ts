@@ -1,3 +1,5 @@
+import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
+import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
 import { remoteSessionPath } from '../utils/remoteSessions'
 import { needsYouDecisions } from '../utils/needsYouDecisions'
@@ -26,6 +28,7 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
     chatIdentityGeneration: generation,
     headers: {
       ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
+      'X-Chat-Input': 'composer',
       'Idempotency-Key': context.submissionId || crypto.randomUUID(),
       ...(context.submittedAtClientTime ? { 'X-Client-Submitted-At': context.submittedAtClientTime } : {}),
       ...(context.continuation ? { 'X-Conversation-Continuation': 'true' } : {}),
@@ -41,7 +44,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 
 // Re-export types for other components to use
 export type {
@@ -518,8 +521,14 @@ api.interceptors.request.use((config) => {
   if (config.chatIdentityGeneration !== undefined) assertChatIdentityCurrent(config.chatIdentityGeneration)
   config.baseURL = getApiBaseUrl()
   config.headers = config.headers || {}
+  Object.assign(config.headers, admissionWindowHeaders())
   // A Team member's chat shown in the Mac app reads from its server (utils/remoteSessions.ts).
-  if (config.url) config.url = remoteSessionPath(config.url)
+  // Those go through the Mac app's own address (getDesktopApiBaseUrl), which carries the app proof the connection proxy
+  // requires; the local base refused them (owner, 10 Nov: a teammate's chat said "Could not load this conversation").
+  if (config.url) {
+    const remotePath = remoteSessionPath(config.url)
+    if (remotePath !== config.url) { config.url = remotePath; config.baseURL = getDesktopApiBaseUrl() }
+  }
 
   // Only add session ID if not already provided
   if (!config.skipSessionContext && config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
@@ -621,6 +630,7 @@ function getUserIdFromToken(token: string): string | null {
 workspaceApi.interceptors.request.use((config) => {
   config.baseURL = getWorkspaceApiBaseUrl()
   config.headers = config.headers || {}
+  Object.assign(config.headers, admissionWindowHeaders())
 
   // Add auth token if available
   const authToken = getAuthToken()
@@ -696,6 +706,9 @@ function uploadFrames(pieces: { id: string; data: Uint8Array }[]): Uint8Array {
   }
   return frames
 }
+
+// One in-flight chat-context read per chat, shared by everyone asking while it is on its way.
+const chatContextReads = new Map<string, Promise<ChatContextView>>()
 
 export const agentApi = {
   startCrewStorageCheck: async (): Promise<{ operation_id: string }> => {
@@ -1221,9 +1234,16 @@ export const agentApi = {
   },
 
   /** This chat's context options as the server decides them (PLAT-872-71); only the chat's owner gets them. */
-  getChatContext: async (sessionId: string): Promise<ChatContextView> => {
-    const response = await api.get('/api/chat-context', { params: { session_id: sessionId } })
-    return response.data.context
+  getChatContext: (sessionId: string): Promise<ChatContextView> => {
+    // Several parts of one chat (usage chip, model menu, terminal toggle, context menu) ask at the same moment;
+    // they share the request already on its way instead of sending 5-6 identical ones (PLAT-746-840).
+    const pending = chatContextReads.get(sessionId)
+    if (pending) return pending
+    const read = api.get('/api/chat-context', { params: { session_id: sessionId } })
+      .then(response => response.data.context as ChatContextView)
+      .finally(() => chatContextReads.delete(sessionId))
+    chatContextReads.set(sessionId, read)
+    return read
   },
 
   /** Changes this chat's context switches or runs compact/fresh; answers with the new view and a message to show. */
@@ -1244,9 +1264,13 @@ export const agentApi = {
     return response.data
   },
 
-  /** Forgets a closed Code side chat (tab) on the server; its history is kept. */
-  closeAgentProfileSideChat: async (profileId: string, conversationKey: string): Promise<void> => {
-    await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey })
+  /** Server-owned removal preview; nothing is deleted until its effects are confirmed. */
+  previewAgentRemoval: async (profileId: string, conversationKey: string) => {
+    const response = await api.post<{ confirmation: string; dependencies: { id: string; kind: string; name: string; can_reassign: boolean; when_removed?: string[] }[]; destinations: { key: string; name: string }[]; effects: string[] }>(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey, preview_removal: true })
+    return response.data
+  },
+  closeAgentProfileSideChat: async (profileId: string, conversationKey: string, confirmation: string, choices: Record<string, string>): Promise<void> => {
+    await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey, removal_confirmation: confirmation, removal_choices: choices })
   },
 
   startNewAgentProfileConversation: async (
@@ -1261,11 +1285,6 @@ export const agentApi = {
   },
 
   // Admin inspection of Code (read-only; every call is audited server-side).
-  adminListCodeWorkspaces: async (): Promise<{ workspaces: CodeAdminWorkspace[] }> => {
-    const response = await api.get('/api/admin/crew/workspaces')
-    return response.data
-  },
-
   adminListCodeFiles: async (ownerId: string, projectId: string): Promise<{ files: SharedProjectFileEntry[]; truncated?: boolean }> => {
     const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/files`)
     return response.data
@@ -1273,16 +1292,6 @@ export const agentApi = {
 
   adminGetCodeFile: async (ownerId: string, projectId: string, path: string): Promise<{ path: string; content: string; binary?: boolean; truncated?: boolean }> => {
     const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/file`, { params: { path } })
-    return response.data
-  },
-
-  adminListCodeChats: async (ownerId: string, projectId: string): Promise<{ chats: CodeAdminChat[] }> => {
-    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats`)
-    return response.data
-  },
-
-  adminGetCodeChat: async (ownerId: string, projectId: string, sessionId: string, userId: string): Promise<{ conversation_history?: Array<{ Role?: string; role?: string; Parts?: Array<Record<string, unknown>>; parts?: Array<Record<string, unknown>> }> }> => {
-    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(sessionId)}`, { params: { user: userId } })
     return response.data
   },
 
@@ -1297,7 +1306,7 @@ export const agentApi = {
   },
 
   /** Minimal app navigation from the current canonical project inventory. */
-  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; icon?: string; owned_by_caller: boolean; owner_name?: string; personal_agent?: boolean; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
+  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; team_live?: TeamLiveView; icon?: string; owned_by_caller: boolean; owner_name?: string; shared_line?: string; personal_agent?: boolean; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
     const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
     const result = response.data
     if (!Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>
@@ -1820,7 +1829,7 @@ export const agentApi = {
 
   // --- Shared bot connector config ("_global": allowed_emails etc.) ---
 
-  getBotConfig: async (): Promise<{ delegation_tier_config?: Record<string, unknown>; default_servers?: string[]; default_skills?: string[]; allowed_emails?: string[] }> => {
+  getBotConfig: async (): Promise<{ default_servers?: string[]; default_skills?: string[]; allowed_emails?: string[] }> => {
     const response = await api.get('/api/bot/config')
     return response.data
   },
@@ -1881,22 +1890,6 @@ export const agentApi = {
     routing: Record<string, WhatsAppRoute>
   ): Promise<{ routing: Record<string, WhatsAppRoute> }> => {
     const response = await api.put('/api/whatsapp/routing', { routing })
-    return response.data
-  },
-
-  // Save delegation tier config to workspace filesystem (shared by chat and bot connector)
-  saveDelegationTierConfig: async (config: Record<string, unknown>, providerApiKeys?: Record<string, string>): Promise<{ success: boolean }> => {
-    await api.put('/api/delegation-tier-config', config)
-    // Save provider API keys to encrypted workspace file if provided
-    if (providerApiKeys && Object.keys(providerApiKeys).length > 0) {
-      await api.put('/api/provider-keys', providerApiKeys).catch(() => {})
-    }
-    return { success: true }
-  },
-
-  // Load delegation tier config from workspace filesystem
-  getDelegationTierConfig: async (): Promise<Record<string, unknown>> => {
-    const response = await api.get('/api/delegation-tier-config')
     return response.data
   },
 
@@ -2044,14 +2037,6 @@ export const agentApi = {
 		return response.data as ReportHumanInputsResponse
 	},
 
-  getGoalMetrics: async (workspacePath: string, signal?: AbortSignal) => {
-    const response = await api.get('/api/workflow/goal-metrics', {
-      params: { workspace_path: workspacePath }, signal,
-    })
-    return response.data as GoalMeasurements
-  },
-
-
 
   /** Confirm, reject, add, extend or close a focus area. */
 
@@ -2126,7 +2111,7 @@ export const agentApi = {
 
   // One helper for every chat attachment: the file goes as chunks (plan, the chunks the server lacks, finish), so no
   // single request is big enough to hit the gateway's limit. The server decides what is allowed and where it goes.
-  uploadCrewChatFile: async (file: File, projectId: string) => {
+  prepareCrewChatFile: async (file: File, projectId: string, scope?: { sessionId: string; conversationKey: string }): Promise<{ attachment: { hash: string; name: string }; upload: () => Promise<{ filepath: string }> }> => {
     const route = `/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`
     const hex = (digest: ArrayBuffer) => Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
     try {
@@ -2137,14 +2122,23 @@ export const agentApi = {
         pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
       }
       const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
-      const plan = await api.post(`${route}/plan`, { file: version })
+      const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
+      const plan = await api.post(`${route}/plan`, { file: version, ...binding })
+      if (scope && plan.data.pending_attachments !== true) {
+        throw new Error('This server needs an update to send while files upload. Ask its owner to update it, then attach the file again.')
+      }
       const missing = new Set<string>(plan.data.missing)
       const send = pieces.filter(piece => missing.delete(piece.id))
-      for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
-        await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
+      return {
+        attachment: { hash: version.hash, name: file.name },
+        upload: async () => {
+          for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
+            await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
+          }
+          const response = await api.post(route, { name: file.name, file: version, ...binding })
+          return response.data
+        },
       }
-      const response = await api.post(route, { name: file.name, file: version })
-      return response.data
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const message = error.response?.data?.error?.message || error.response?.data?.error || error.response?.data?.message
@@ -2152,6 +2146,11 @@ export const agentApi = {
       }
       throw error
     }
+  },
+
+  uploadCrewChatFile: async (file: File, projectId: string): Promise<{ filepath: string }> => {
+    const prepared = await agentApi.prepareCrewChatFile(file, projectId)
+    return prepared.upload()
   },
 
   uploadPlannerFile: async (file: File, folderPath: string, commitMessage?: string) => {

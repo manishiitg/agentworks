@@ -347,6 +347,7 @@
   
   body {
     @apply bg-background text-foreground;
+    font-size: 14px;
     margin: 0;
     min-height: 100dvh;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -1893,4 +1894,158 @@
   .reply-toolbar-checkout-inline, .reply-toolbar-line-counts { display: none; }
   .reply-file-toolbar > div:first-child { gap: 0.25rem; }
   .reply-toolbar-checkout-summary { display: inline-flex; }
+}
+
+/* AgentBridge cards are denser than the main answer; the normal chat scale still applies. */
+.agent-inbox-prose .conversation-markdown p,
+.agent-inbox-prose .conversation-markdown li {
+  font-size: calc(13px * var(--chat-scale, 1));
+  line-height: calc(20px * var(--chat-scale, 1));
+}
+.agent-inbox-prose .conversation-markdown p { margin-bottom: 0.5rem; }
+
+/* Local monospace face follows macOS Tahoe Terminal profile metadata, exported at
+   https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
+   Resolve local macOS fonts only: no Apple font files are shipped/downloaded. */
+@font-face {
+  font-family: "AgentWorks SF Mono Terminal";
+  src: local("SFMonoTerminal-Regular"), local("SF Mono Terminal Regular"), local("SFMono-Regular"), local("SF Mono Regular");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AgentWorks SF Mono Terminal";
+  src: local("SFMonoTerminal-Bold"), local("SF Mono Terminal Bold"), local("SFMono-Bold"), local("SF Mono Bold");
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
+/* App-wide colors inherit into navigation and portaled dialogs. Explicit
+   report/force-light themes still define their own tokens on their boundary. */
+/* Default uses the original .dark palette above, not an alternate dark theme.
+   Keep only the independently approved typography here. */
+html.dark[data-appearance="dark"] {
+  --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+/* Neutral surfaces separate content from chrome without tinting the whole app.
+   Blue is reserved for links/actions/focus; status colors keep their meanings. */
+html.light[data-appearance="light"] {
+  --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --background: 0 0% 98.824%;
+  --foreground: 0 0% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
+  --border: 0 0% 89%;
+  --input: 0 0% 96%;
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: 0 0% 94%;
+  --accent-foreground: var(--foreground);
+  --ring: var(--primary);
+  --success: 124 35% 32%;
+  --warning: 45 60% 32%;
+  --destructive: 7.723 42.986% 49.312%;
+  --destructive-foreground: 0 0% 100%;
+  --info: var(--primary);
+  --diff-add: var(--success);
+  --diff-del: var(--destructive);
+  --chart-1: var(--primary);
+  --chart-2: var(--success);
+  --chart-3: var(--warning);
+  --chart-4: 288.667 40.909% 46%;
+  --chart-5: var(--destructive);
+  --appearance-bold: #171717;
+  --appearance-link: #2563eb;
+  --appearance-code: #262626;
+  --appearance-code-background: #f0f0f0;
+  --appearance-selection: #dbeafe;
+}
+/* Normal conversation text uses the native UI face; monospace is for code only. */
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+  font-size: calc(14px * var(--chat-scale, 1));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown,
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li),
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="transcript-user-bubble"],
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-chat-composer] {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif !important;
+  font-size: calc(14px * var(--chat-scale, 1)) !important;
+  line-height: calc(22px * var(--chat-scale, 1)) !important;
+  font-weight: 400;
+}
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="terminal-clear-view"] {
+  background: hsl(var(--background));
+}
+
+/* Inline paths/names are code labels, not blue emphasis. Keep real link colors. */
+html.dark[data-appearance="dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: #d4d4d4 !important;
+  background-color: rgb(255 255 255 / 0.07) !important;
+}
+
+/* Default keeps the renderer's original chat colors and native text selection. */
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
+  color: hsl(var(--foreground));
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown strong {
+  color: var(--appearance-bold);
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown a {
+  color: var(--appearance-link);
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: var(--appearance-code) !important;
+  background-color: var(--appearance-code-background) !important;
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) ::selection {
+  background-color: var(--appearance-selection);
+  color: hsl(var(--foreground));
+}
+
+/* Code in app settings and file panels follows the profile too. Authored
+   report themes/iframes keep their own typography and colors. */
+html:is([data-appearance="dark"], [data-appearance="light"]) :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) {
+  font-family: var(--runloop-mono);
+}
+
+/* Light needs semantic surfaces; Default keeps the original dark utility colors. */
+html.light[data-appearance="light"] [data-workspace-context-card],
+html.light[data-appearance="light"] [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+/* Native transcript status/tool rows used fixed dark neutral colors. Keep
+   explicit dark dashboard boundaries independent of the app's light profile. */
+html.light[data-appearance="light"] :is(.text-neutral-100, .text-neutral-200, .text-neutral-300, .text-neutral-400, .text-stone-300):not(:where(.dark *, [data-report-theme] *)) {
+  color: hsl(var(--foreground));
+}
+html.light[data-appearance="light"] :is(.bg-neutral-900\/45, .bg-neutral-900\/60, .bg-black\/40):not(:where(.dark *, [data-report-theme] *)) {
+  background-color: hsl(var(--muted));
+}
+
+html.light[data-appearance="light"] :is(.text-cyan-400, .text-sky-300):not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--primary)); }
+html.light[data-appearance="light"] .text-emerald-300:not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--success)); }
+html.light[data-appearance="light"] .text-amber-200:not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--warning)); }
+html.light[data-appearance="light"] :is(.border-neutral-800, .border-neutral-800\/80, .border-neutral-700):not(:where(.dark *, [data-report-theme] *)) { border-color: hsl(var(--border)); }
+
+/* Keep code compact without making whole replies look like terminal output. */
+html[data-appearance] .conversation-markdown :is(code, pre):not(:where(.force-light *, [data-report-theme] *)) {
+  font-family: var(--runloop-mono) !important;
+  font-size: calc(12px * var(--chat-scale, 1)) !important;
+  line-height: calc(20px * var(--chat-scale, 1));
+}
+html[data-appearance] .agent-inbox-prose .conversation-markdown :is(p, li) {
+  font-size: calc(13px * var(--chat-scale, 1)) !important;
+  line-height: calc(20px * var(--chat-scale, 1)) !important;
 }

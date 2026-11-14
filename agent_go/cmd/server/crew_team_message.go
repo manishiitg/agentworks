@@ -19,10 +19,13 @@ import (
 // every message to a Mac agent takes (deliverToMacSharedAgent), which needs the sending agent to be In team.
 
 type crewTeamMessageRequest struct {
+	Operation      string `json:"operation,omitempty"` // empty/send, or read
+	After          int    `json:"after,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
 	FromTab        string `json:"from_tab"`        // the Mac agent sending: "main" or a side tab id
 	ConversationID string `json:"conversation_id"` // its Mac conversation, for its session here
 	Agent          string `json:"agent,omitempty"` // its name, for the other side's view
-	ChatKey        string `json:"chat_key"`        // the member's tab, as the side-chats list names it
+	AgentID        string `json:"agent_id"`        // server-issued Team agent ID, or a reply inbox
 	Message        string `json:"message"`
 	SubmissionID   string `json:"submission_id,omitempty"`
 }
@@ -41,56 +44,105 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	// A reply names the conversation's inbox; sendAgentMessage admits only that conversation's own agents.
 	inbox := ""
-	if strings.HasPrefix(in.ChatKey, "inbox-") {
-		inbox = in.ChatKey
+	if strings.HasPrefix(in.AgentID, "inbox-") {
+		inbox = in.AgentID
 	}
-	var target triggerTarget
-	member := ""
-	if inbox == "" {
-		var ok bool
-		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.ChatKey, claims); !ok {
-			return
-		}
-	}
-	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	// The sending agent's conversation key is the one its Mac is listed under, so the answer comes back to that Mac: the
 	// owner's Mac by the project key, a member's Mac by their own key (crewMacTabRow).
 	key := macSharedAgentChatKey(project, in.FromTab)
 	if claims.UserID != ownerOfCrewProjectID(project) {
 		key = crewMacTabRow(project, crewMacTeamTab{Person: claims.UserID, Tab: in.FromTab}).ConversationKey
 	}
+	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: project, ProfileID: crewProfileID}, Label: firstNonEmptyTrimmed(in.Agent, "Main"),
 		Chat: &codeChat{OwnerID: claims.UserID, IsMain: in.FromTab == macMainTab, Key: key, ID: in.FromTab, Name: firstNonEmptyTrimmed(in.Agent, "Main"), SessionID: crewChatSessionID(project, in.ConversationID)}}
+	if in.Operation == "digest" {
+		digest, err := crewSharedAnswerDigest(project, claims.UserID, in.FromTab)
+		if err != nil {
+			externalError(w, 409, "digest_unavailable", "Could not read this agent's away digest.")
+			return
+		}
+		externalJSON(w, crewSyncReply{TeamMessages: map[string]any{"digest": digest}})
+		return
+	}
+	if in.Operation == "read" {
+		out, err := api.readAgentMessages(ctx, claims.UserID, caller, in.AgentID, in.After, in.Limit, 0)
+		if err != nil {
+			externalError(w, 404, "conversation_unavailable", "Conversation unavailable or access denied.")
+			return
+		}
+		externalJSON(w, crewSyncReply{TeamMessages: out})
+		return
+	}
+	if in.Operation != "" && in.Operation != "send" {
+		externalError(w, 400, "invalid_operation", "Choose send or read.")
+		return
+	}
+	// The pair proves the sender, not its persisted workspace. Stamp the owner's
+	// current server-admitted root before saving the endpoint; an omitted Path
+	// becomes "." and then fails the normal queued crew_binding recheck (951).
+	if claims.UserID == ownerOfCrewProjectID(project) {
+		binding, _, ok := api.readExternalWorkspace(ctx, claims, project)
+		if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
+			log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=sender_workspace", project)
+			externalError(w, 403, "sender_workspace_unavailable", "This Crew is unavailable or its owner changed.")
+			return
+		}
+		caller.Path = binding.Binding.WorkspacePath
+	}
+	var target triggerTarget
+	member := ""
+	if inbox == "" {
+		var ok bool
+		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.AgentID, key, claims); !ok {
+			return
+		}
+	}
 	out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, in.Message, inbox, in.SubmissionID)
 	if err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_message_failed from=%s to_member=%s reason=%q", project, in.FromTab, logUsernameForUserID(member), err)
 		externalError(w, 409, "message_failed", err.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s event=agent_message from=%s to_member=%s chat=%q", project, in.FromTab, logUsernameForUserID(member), in.ChatKey)
+	log.Printf("[CREW_TEAM] project=%s event=agent_message from=%s to_member=%s chat=%q", project, in.FromTab, logUsernameForUserID(member), in.AgentID)
 	externalJSON(w, out)
 }
 
-// crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w.
-func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey string, claims *UserClaims) (triggerTarget, string, bool) {
-	member := crewTeamMemberTab(r.Context(), project, chatKey)
-	if member == "" {
-		// A member's agent on their Mac (crew_team_mac_watch.go), not one of their server tabs.
-		if person, _, ok := crewMemberMacAgentFor(r.Context(), project, chatKey, claims.UserID); ok {
-			member = person
+// crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w. fromKey is the
+// sending agent's own conversation key: one of your agents may message your other In team agents (owner, 12 Nov: an
+// agent and its online copy talk through Team messaging), never itself.
+func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey, fromKey string, claims *UserClaims) (triggerTarget, string, bool) {
+	if !strings.HasPrefix(chatKey, crewTeamAgentIDPrefix) && !crewTeamShortMessageName(chatKey) {
+		shape := "other"
+		if strings.Contains(chatKey, codeChatSideMarker) {
+			shape = "chat_key"
 		}
+		log.Printf("[CREW_TEAM] project=%s event=agent_address_stale id_shape=%s", project, shape)
+		externalError(w, 409, "stale_team_address", "This Team address is out of date. Run messages action=list_agents and use the agent's new id.")
+		return triggerTarget{}, "", false
 	}
-	if member == "" {
-		member = crewTeamOwnerAgent(r.Context(), project, chatKey, claims.UserID)
+	agent, member, lookupErr := crewTeamMessageAgent(r.Context(), project, claims.UserID, chatKey)
+	if lookupErr != nil {
+		shape, id := "name", ""
+		if strings.HasPrefix(chatKey, crewTeamAgentIDPrefix) {
+			shape, id = "registry_id", chatKey
+		}
+		log.Printf("[CREW_TEAM] project=%s event=agent_not_in_team id_shape=%s agent_id=%q", project, shape, id)
+		externalError(w, 409, "team_target_unresolved", lookupErr.Error())
+		return triggerTarget{}, "", false
 	}
-	if member == "" || member == claims.UserID {
-		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
+	chatKey = agent.ID
+	if member == claims.UserID && agent.ChatKey == fromKey {
+		log.Printf("[CREW_TEAM] project=%s event=agent_message_refused reason=self agent_id=%q", project, chatKey)
+		externalError(w, 409, "message_self", "An agent can't message itself. Pick another agent from list_agents.")
 		return triggerTarget{}, "", false
 	}
 	ctx := internalBotRequestContext(r.Context(), claims.UserID)
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workspace:"+crewProfileID+":"+project+"/agent/"+chatKey)
 	if err != nil {
-		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
+		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed key=%q member=%s reason=%q", project, strings.TrimPrefix(chatKey, project+codeChatSideMarker), logUsernameForUserID(member), err)
+		// Membership was admitted above; a target-resolution failure is not a Team removal.
+		externalError(w, 409, "agent_target_failed", crewTeamTargetFailureMessage(err))
 		return triggerTarget{}, "", false
 	}
 	return target, member, true
@@ -116,28 +168,7 @@ func crewTeamMessagePairAdmitted(project, user, pair string) bool {
 	return ok && recorded == pair
 }
 
-// crewTeamOwnerAgent is the Crew owner when key is one of the owner's agents that are In team, read from the same rows the
-// Team tab lists (teamAgentsByPerson), else "". caller is the one asking: others' Only me agents are never in the rows.
-func crewTeamOwnerAgent(ctx context.Context, project, key, caller string) string {
-	t, err := readCrewTeam(project)
-	if err != nil || !t.On || t.OwnerID == "" || ownerOfCrewProjectID(project) != t.OwnerID {
-		return ""
-	}
-	short := strings.TrimPrefix(strings.TrimSpace(key), project+codeChatSideMarker)
-	for _, person := range teamAgentsByPerson(ctx, t, caller) {
-		if !person.Owner {
-			continue
-		}
-		for _, agent := range person.Agents {
-			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || key == project && agent.Tab == macMainTab) {
-				return t.OwnerID
-			}
-		}
-	}
-	return ""
-}
-
-// sendTeamMessageFromMac is send_message on the Mac for a target "team:<local Crew>:<member's chat key>" (list_agents
+// sendTeamMessageFromMac is send_message on the Mac for a target "team:<local Crew>:<agent ID>" (list_agents
 // names it): the message goes to the Crew's online copy through this Mac's pair.
 func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner string, caller triggerLinkCaller, raw, message, submission string) (map[string]any, error) {
 	rest := strings.TrimPrefix(strings.TrimSpace(raw), "team:")
@@ -145,16 +176,28 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 	if !ok || project == "" || chatKey == "" {
 		return nil, fmt.Errorf("use the team agent's id from list_agents")
 	}
-	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
-		return nil, fmt.Errorf("turn on the Team for this Crew first")
-	}
-	connection, err := desktopConnectionFor(owner, b.ConnectionID)
+	reply, err := api.callTeamMessageFromMac(ctx, owner, caller, project, crewTeamMessageRequest{AgentID: chatKey, Message: message, SubmissionID: submission})
 	if err != nil {
 		return nil, err
 	}
+	return map[string]any{"sent": true, "to": chatKey, "inbox_id": reply.InboxID, "note": "Their reply comes back to this chat."}, nil
+}
+
+// Reuse this Crew's pair and the exact sender identity saved at send time.
+// Neither an inbox prefix nor a named-agent identity is involved.
+func (api *StreamingAPI) callTeamMessageFromMac(ctx context.Context, owner string, caller triggerLinkCaller, project string, input crewTeamMessageRequest) (crewSyncReply, error) {
+	b, err := crewroot.ReadSync(project)
+	if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
+		log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=no_team_pairing", project)
+		return crewSyncReply{}, fmt.Errorf("turn on the Team for this Crew first")
+	}
+	connection, err := desktopConnectionFor(owner, b.ConnectionID)
+	if err != nil {
+		return crewSyncReply{}, err
+	}
 	if caller.Chat == nil || caller.Stamp.ID != project {
-		return nil, fmt.Errorf("send to a Team member's agent from an agent of the same Crew")
+		log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=other_crew from_crew=%s", project, caller.Stamp.ID)
+		return crewSyncReply{}, fmt.Errorf("send to a Team member's agent from an agent of the same Crew")
 	}
 	tab := macMainTab
 	if _, id, side := strings.Cut(caller.Chat.Key, codeChatSideMarker); side {
@@ -173,24 +216,55 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 			}
 		}
 	}
-	reply, err := desktopCrewSyncCall(ctx, owner, &connection, b.PeerProjectID, crewSyncRequest{Action: "team_message", PairID: b.PairID,
-		TeamMessage: &crewTeamMessageRequest{FromTab: tab, ConversationID: conversation, Agent: caller.Chat.Name, ChatKey: chatKey, Message: message, SubmissionID: submission}})
-	if err != nil {
-		return nil, err
+	input.FromTab, input.ConversationID, input.Agent = tab, conversation, caller.Chat.Name
+	reply, err := desktopCrewSyncCall(ctx, owner, &connection, b.PeerProjectID, crewSyncRequest{Action: "team_message", PairID: b.PairID, TeamMessage: &input})
+	if err == nil && ((input.Operation == "read" || input.Operation == "digest") && reply.TeamMessages == nil || input.Operation != "read" && input.Operation != "digest" && reply.InboxID == "") {
+		err = fmt.Errorf("the server did not confirm this Team message; retry after updating the app")
 	}
-	return map[string]any{"sent": true, "to": chatKey, "inbox_id": reply.InboxID, "note": "Their reply comes back to this chat."}, nil
+	if err == nil {
+		inbox := reply.InboxID
+		if input.Operation == "read" {
+			inbox = input.AgentID
+		}
+		log.Printf("[CREW_TEAM] project=%s event=team_message_%s from=%s inbox=%s", project, firstNonEmptyTrimmed(input.Operation, "send"), tab, inbox)
+	}
+	return reply, err
+}
+
+func crewTeamMailboxLocalMiss(s agentMessageStore, inbox string, caller triggerLinkCaller) bool {
+	if !IsLocalMode() || caller.Stamp.Type != triggerCallerCrew || caller.Chat == nil || !strings.HasPrefix(inbox, "inbox-") {
+		return false
+	}
+	for _, c := range s.Conversations {
+		if c.ID == inbox {
+			return false
+		}
+	}
+	for _, c := range s.Expired {
+		if c.ID == inbox {
+			return false
+		}
+	}
+	b, err := crewroot.ReadSync(caller.Stamp.ID)
+	return err == nil && b != nil && b.Side == "local" && b.Mode == "relay" && b.PeerProjectID != ""
 }
 
 // crewTeamAddressOnMac is this Mac's send_message target for a Team agent addressed the server's way
-// (workspace:work:<online copy>/agent/<chat key>): "team:<the Crew here paired with that copy>:<chat key>", or "".
+// (workspace:work:<online copy>/agent/<agent ID>): "team:<the Crew here paired with that copy>:<agent ID>", or "".
 func crewTeamAddressOnMac(raw string) string {
-	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), "workspace:"+crewProfileID+":")
-	if !ok {
-		return ""
+	raw = strings.TrimSpace(raw)
+	var project, chatKey string
+	var ok bool
+	if rest, team := strings.CutPrefix(raw, "team:"); team {
+		project, chatKey, ok = strings.Cut(rest, ":")
+	} else if rest, workspace := strings.CutPrefix(raw, "workspace:"+crewProfileID+":"); workspace {
+		project, chatKey, ok = strings.Cut(rest, "/agent/")
 	}
-	project, chatKey, ok := strings.Cut(rest, "/agent/")
 	if !ok || project == "" || chatKey == "" {
 		return ""
+	}
+	if local := crewTeamMemberCopy(project); local != "" {
+		return "team:" + local + ":" + chatKey
 	}
 	if local := crewLocalCopyOf(project); local != "" {
 		return "team:" + local + ":" + chatKey
@@ -198,38 +272,79 @@ func crewTeamAddressOnMac(raw string) string {
 	return ""
 }
 
-// teamMemberAgentRows lists, on the Mac, each Team member's own agents of this person's Mac Crews, read from the
+// teamMemberAgentRows lists, on the Mac, each Team member's own agents of the given Mac Crews, read from the
 // Crew's online copy through the Mac's sign-in (the server decides what the owner may see). Their id is the
-// send_message target "team:<Crew>:<their chat>".
+// send_message target "team:<Crew>:<agent ID>".
 func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]interface{}) []map[string]interface{} {
 	rows := []map[string]interface{}{}
 	for _, crew := range crews {
 		id, _ := crew["id"].(string)
 		name, _ := crew["name"].(string)
-		b, err := crewroot.ReadSync(id)
-		if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" || b.PeerProjectID == "" {
-			continue
+		var team struct {
+			People []crewTeamAgentsPerson `json:"people"`
 		}
-		c, err := desktopConnectionFor(owner, b.ConnectionID)
-		if err != nil {
-			continue
-		}
-		var tabs []AgentProfileSideChat
-		read, done := context.WithTimeout(ctx, 6*time.Second)
-		err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/agent-profiles/"+crewProfileID+"/side-chats?project_id="+url.QueryEscape(b.PeerProjectID), nil, &tabs)
-		done()
-		if err != nil {
-			continue
-		}
-		for _, tab := range tabs {
-			if tab.CanWrite || tab.TabOwnerID == "" || tab.TabOwnerID == owner || tab.ConversationKey == "" {
+		if IsLocalMode() {
+			b, err := crewroot.ReadSync(id)
+			if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" || b.PeerProjectID == "" {
 				continue
 			}
-			person := strings.SplitN(firstNonEmptyTrimmed(tab.TabOwnerName, "Teammate"), "@", 2)[0]
-			rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + tab.ConversationKey,
-				"name": person + "'s " + firstNonEmptyTrimmed(tab.Name, "Main"), "owner": person, "crew_name": name, "purpose": tab.Purpose, "presence": "Runs when messaged",
-				"reach": "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
+			c, err := desktopConnectionFor(owner, b.ConnectionID)
+			if err != nil {
+				continue
+			}
+			read, done := context.WithTimeout(ctx, 6*time.Second)
+			err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/agents", nil, &team)
+			done()
+			if err != nil {
+				continue
+			}
+		} else {
+			t, err := readCrewTeam(id)
+			if err != nil || !crewTeamAgentsVisible(t, owner) {
+				continue
+			}
+			team.People = teamAgentsByPerson(ctx, t, owner)
+		}
+
+		for _, p := range team.People {
+			for _, agent := range p.Agents {
+				// Your own agents on this Mac are its sibling chats; your own server agents (an agent's online copy, owner
+				// 12 Nov) are reached through the Team like a teammate's.
+				if !agent.InTeam || agent.ID == "" || p.You && agent.Place != "server" {
+					continue
+				}
+				kind, title := "Team member's agent", p.Name+"'s "+firstNonEmptyTrimmed(agent.Name, "Main")
+				if p.You {
+					kind, title = "Your agent on the server", "Your "+firstNonEmptyTrimmed(agent.Name, "Main")
+				}
+				target := agent.Address
+				if IsLocalMode() {
+					target = "team:" + id + ":" + agent.ID
+				}
+				if target == "" {
+					continue
+				}
+				rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": kind, "id": target,
+					"name": title, "owner": p.Name, "crew_name": name, "purpose": agent.Purpose,
+					"presence": firstNonEmptyTrimmed(agent.PlaceLabel, agent.StatusLabel, "Runs when messaged"),
+					"reach":    "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
+			}
 		}
 	}
 	return rows
+}
+
+// Only fixed, person-facing resolver errors cross the HTTP boundary. File and
+// registry errors remain in the server log, not in another member's response.
+func crewTeamTargetFailureMessage(err error) string {
+	switch err.Error() {
+	case "Choose a chat_id from list_agents for this Crew", "Choose this Team agent's chat_id from list_agents":
+		return "Could not open that Team agent. Refresh the agent list and use its chat_id."
+	case "This Crew's Team is not available to you", "That agent isn't in this Crew's Team now", "shared agent unavailable or access denied":
+		return "That Team agent is no longer available to you. Refresh the agent list."
+	case "Crew chat runtime unavailable":
+		return "That Team agent's chat is temporarily unavailable. Try again shortly."
+	default:
+		return "Could not open that Team agent. Try again; if it still fails, ask the Crew owner to check the server log."
+	}
 }

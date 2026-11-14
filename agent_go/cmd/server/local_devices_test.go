@@ -24,17 +24,20 @@ func localDeviceTestServer(t *testing.T) (*StreamingAPI, *httptest.Server, *acce
 	t.Helper()
 	tokenTestSetup(t)
 	f := newExternalToolsFixture(t)
-	f.write(t, "Crew/local-test/product.json", `{"schema_version":1,"product":"work","id":"local-test","title":"Laptop test"}`)
-	f.write(t, "Crew/local-test/workflow.json", `{"capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "local-test", ProjectID: "local-test", OwnerID: "owner", CanonicalRoot: "Crew/local-test"}); err != nil {
 		t.Fatal(err)
 	}
 	// Real creation also makes the Crew's private-record folder (df0a2e472); the workspace refuses a Crew without it.
 	private, _ := crewroot.PrivateRoot(f.docs, "local-test")
-	if err := os.MkdirAll(private, 0o700); err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{private, filepath.Join(f.docs, "Crew/local-test")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
+	// Real creation stores manifests in the registered private root, not beside user files.
+	f.write(t, filepath.Join(crewroot.PrivateDirectory, "local-test", "product.json"), `{"schema_version":1,"product":"work","id":"local-test","title":"Laptop test"}`)
+	f.write(t, filepath.Join(crewroot.PrivateDirectory, "local-test", "workflow.json"), `{"capabilities":{}}`)
 	store, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
@@ -157,6 +160,7 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if len(reg.tools) != 0 {
 		t.Fatal("public MCP received local device tools")
 	}
+	toolContext := context.WithValue(t.Context(), UserContextKey, owner)
 	binary := []byte{0, 255, 10, 13, 128}
 	if err := os.WriteFile(filepath.Join(root, "sample.bin"), binary, 0600); err != nil {
 		t.Fatal(err)
@@ -165,14 +169,14 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if err != nil || string(copied.Bytes) != string(binary) {
 		t.Fatalf("binary transfer: %v", err)
 	}
-	if _, err := registrar.tools["copy_local_file_to_project"].exec(t.Context(), map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "uploads/import.bin"}); err != nil {
+	if _, err := registrar.tools["copy_local_file_to_project"].exec(toolContext, map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "uploads/import.bin"}); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := os.ReadFile(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Crew/local-test/uploads/import.bin"))
 	if err != nil || string(stored) != string(binary) {
 		t.Fatalf("Crew writer changed bytes: %v", err)
 	}
-	if _, err := registrar.tools["copy_local_file_to_project"].exec(t.Context(), map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "product.json"}); err == nil {
+	if _, err := registrar.tools["copy_local_file_to_project"].exec(toolContext, map[string]interface{}{"folder": "project", "local_path": "sample.bin", "project_path": "product.json"}); err == nil {
 		t.Fatal("copy overwrote Crew manifest")
 	}
 	for _, name := range []string{"../escape", ".env", "locked/private.key"} {

@@ -47,7 +47,7 @@ func (api *StreamingAPI) handleBullpenAgents(w http.ResponseWriter, r *http.Requ
 	for _, item := range out["agents"].([]map[string]interface{}) {
 		label := "Only you"
 		if item["published"] == true || item["shared"] == true {
-			label = "Published"
+			label = "Discoverable"
 		}
 		availability := "Offline"
 		if item["online"] == true {

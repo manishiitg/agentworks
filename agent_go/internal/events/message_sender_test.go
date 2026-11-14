@@ -1,6 +1,12 @@
 package events
 
-import "testing"
+import (
+	"encoding/json"
+	pkgevents "github.com/manishiitg/mcpagent/events"
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestDeliveredAgentAttributionIsScopedAndDurable(t *testing.T) {
 	const session, text = "chat-delivery", "[Agent message from Autopilot] a request"
@@ -58,4 +64,88 @@ func TestDeliveredAttributionKeepsServerClientID(t *testing.T) {
 			t.Fatalf("%s: sender %v", row.ID, got)
 		}
 	}
+}
+
+// PLAT-746: an incoming queued card must not indent an unrelated reply.
+func TestAgentReplyRequiresExactDeliveredTurnAndClearsForHumanSteer(t *testing.T) {
+	const session = "reply-attribution"
+	// A populated event must serialize every declared wire field. This guards
+	// the manual writer, which previously silently dropped the reply link.
+	wireEvent := journalTestEvent("wire", "review")
+	fields := reflect.ValueOf(&wireEvent).Elem()
+	for i := 0; i < fields.NumField(); i++ {
+		if fields.Field(i).Kind() == reflect.String {
+			fields.Field(i).SetString("present")
+		}
+	}
+	wireEvent.Sequence = 1
+	encoded, err := json.Marshal(wireEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys map[string]interface{}
+	if err := json.Unmarshal(encoded, &keys); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < fields.NumField(); i++ {
+		key := strings.Split(fields.Type().Field(i).Tag.Get("json"), ",")[0]
+		if key != "" && key != "-" {
+			if _, ok := keys[key]; !ok {
+				t.Errorf("declared Event wire field %s is omitted", key)
+			}
+		}
+	}
+
+	store := openClientMessageTestStore(t, session)
+	input := journalTestEvent("agent-input", "review")
+	input.Data.TurnID = "turn-agent"
+	userMessageEventData(&input).Metadata = map[string]interface{}{"source": "agent_message", "message_id": "msg-review"}
+	store.AddEvent(session, input)
+	check := func(id, turn, want string) {
+		t.Helper()
+		reply := Event{ID: id, Type: "unified_completion", Data: pkgevents.NewAgentEvent(NewGenericEventData("unified_completion", map[string]interface{}{"final_result": "reply", "status": "completed"}))}
+		reply.Data.TurnID = turn
+		store.AddEvent(session, reply)
+		rows := durableRows(t, store, session)
+		for _, row := range rows {
+			if row.ID == id {
+				if row.ReplyToAgentMessageID != want {
+					t.Fatalf("%s: got %q want %q", id, row.ReplyToAgentMessageID, want)
+				}
+				// The actual API and journal use Event.MarshalJSON, not struct tags.
+				encoded, err := json.Marshal(row)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var restored Event
+				if err := json.Unmarshal(encoded, &restored); err != nil {
+					t.Fatal(err)
+				}
+				if restored.ReplyToAgentMessageID != want {
+					t.Fatalf("%s: JSON lost reply link: got %q want %q", id, restored.ReplyToAgentMessageID, want)
+				}
+				var wire map[string]interface{}
+				if err := json.Unmarshal(encoded, &wire); err != nil {
+					t.Fatal(err)
+				}
+				if _, exists := wire["reply_to_agent_message_id"]; exists != (want != "") {
+					t.Fatalf("%s: unrelated reply must omit the link", id)
+				}
+				return
+			}
+		}
+		t.Fatalf("missing %s", id)
+	}
+	check("unrelated", "turn-human", "")
+	check("unknown", "", "")
+	check("related", "turn-agent", "msg-review")
+	queued := journalTestEvent("queued", "next incoming")
+	queued.Data.TurnID = "turn-agent"
+	userMessageEventData(&queued).Metadata = map[string]interface{}{"source": "agent_message", "message_id": "msg-queued", "delivery_status": "queued_for_turn"}
+	store.AddEvent(session, queued)
+	check("still-related", "turn-agent", "msg-review")
+	human := journalTestEvent("steer", "answer me")
+	human.Data.TurnID = "turn-agent"
+	store.AddEvent(session, human)
+	check("after-steer", "turn-agent", "")
 }

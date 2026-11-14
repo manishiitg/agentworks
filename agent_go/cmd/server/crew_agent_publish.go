@@ -236,7 +236,7 @@ func crewAgentPublishIncludes(selection crewAgentPublishSelection, key string, d
 	}
 	paths := selection.Paths
 	if area == "resources" {
-		paths = append(slices.Clone(paths), "skills", "memory", "MEMORY.md", "PROJECT_INSTRUCTIONS.md", "AGENTS.md", "CLAUDE.md")
+		paths = append(slices.Clone(paths), "skills", "memory", "MEMORY.md", "AGENTS.md", "CLAUDE.md")
 	}
 	for _, p := range paths {
 		if p == "." || rel == p || strings.HasPrefix(rel, p+"/") || directory && strings.HasPrefix(p, rel+"/") {
@@ -360,4 +360,10 @@ func (api *StreamingAPI) crewAgentPublishRecord(ctx context.Context, claims *Use
 		return record, identity, fmt.Errorf("finish or stop this agent's reply before publishing")
 	}
 	return record, identity, nil
+}
+
+// crewAgentPublishProgram is the AI program an agent runs: its chat's, else the one chosen for it (a new Run online
+// copy of an agent whose program cannot copy chats has no native session yet).
+func crewAgentPublishProgram(record ProductConversationRecord, identity ProductAgentIdentity) string {
+	return firstNonEmptyTrimmed(record.Provider, identity.Engine)
 }

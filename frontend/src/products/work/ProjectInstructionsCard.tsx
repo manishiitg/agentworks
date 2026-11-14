@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import { Textarea } from '../../components/ui/Textarea'
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import { responseContent } from '../../utils/plannerFiles'
 
 /** The project's own instructions file; the server appends it below the platform's instructions (PLAT-692). */
@@ -12,8 +12,11 @@ export const PROJECT_INSTRUCTIONS_FILE = 'PROJECT_INSTRUCTIONS.md'
 const PROJECT_INSTRUCTIONS_MAX_BYTES = 32 * 1024
 
 /** Code and Crew "Project instructions" editor (owners only), reading and writing PROJECT_INSTRUCTIONS.md at the project root. */
-export function ProjectInstructionsCard({ workspacePath }: { workspacePath: string }) {
+type InstructionFile = { name: string; bytes: number; method: 'injected' | 'native' | 'found' }
+export function ProjectInstructionsCard({ workspacePath, projectId, provider, model }: { workspacePath: string; projectId?: string; provider?: string; model?: string }) {
   const path = `${workspacePath.replace(/\/+$/, '')}/${PROJECT_INSTRUCTIONS_FILE}`
+  const [files, setFiles] = useState<InstructionFile[]>([])
+  const [folderError, setFolderError] = useState('')
   const [saved, setSaved] = useState('')
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
@@ -42,6 +45,18 @@ export function ProjectInstructionsCard({ workspacePath }: { workspacePath: stri
     return () => { cancelled = true }
   }, [path])
 
+  useEffect(() => {
+    const abort = new AbortController()
+    setFiles([]); setFolderError('')
+    if (!projectId || !provider) return
+    void api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, instruction_status: true, provider, model }, signal: abort.signal }).then(({ data }) => {
+      if (!abort.signal.aborted) setFiles(data.files || [])
+    }).catch(cause => {
+      if (!abort.signal.aborted && cause?.response?.status !== 404) setFolderError('Folder instruction details are unavailable.')
+    })
+    return () => abort.abort()
+  }, [projectId, provider, model, saved])
+
   const bytes = new TextEncoder().encode(draft).length
   const dirty = draft !== saved
   const save = async () => {
@@ -65,6 +80,12 @@ export function ProjectInstructionsCard({ workspacePath }: { workspacePath: stri
       description="Added to the end of the agent's instructions on every message; the platform's own instructions stay above it."
     >
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
+      {files.length > 0 && <div className="space-y-1 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Found in the project folder</p>
+        {files.map(file => <p key={file.name}><span className="font-mono">{file.name}</span> · {file.method === 'injected' ? 'Will be added to the agent’s instructions' : file.method === 'native' ? 'Handled by the selected AI program; reading is not confirmed' : 'Found only; not added for this AI program'}{file.method === 'injected' && file.bytes > PROJECT_INSTRUCTIONS_MAX_BYTES ? ' · first 32 KB only' : ''}</p>)}
+        <p>Based on the selected AI program for the next turn. Folder-specific rules keep their scope. Existing files are not changed.</p>
+      </div>}
+      {folderError && <p className="text-xs text-muted-foreground">{folderError}</p>}
       <Textarea
         aria-label="Project instructions"
         value={draft}

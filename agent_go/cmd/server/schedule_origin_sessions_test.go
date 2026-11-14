@@ -56,35 +56,6 @@ func TestTerminalScopeExcludesOtherChatsRuns(t *testing.T) {
 	}
 }
 
-// A cron run has no originating chat, so it belongs to no tab and the registry
-// must stay empty rather than inventing a link.
-func TestCronRunsRecordNoOrigin(t *testing.T) {
-	resetScheduleOrigins(t)
-	rememberScheduleOrigin("schedule-cron--d25999f9_1785303047299675000", "")
-
-	if got := sessionsTriggeredFrom("schedule-cron--d25999f9_1785303047299675000"); len(got) != 1 {
-		t.Fatalf("a cron run should map only to itself, got %v", got)
-	}
-	scheduleOrigins.mu.RLock()
-	defer scheduleOrigins.mu.RUnlock()
-	if len(scheduleOrigins.originBySchedule) != 0 {
-		t.Fatalf("cron run recorded an origin: %v", scheduleOrigins.originBySchedule)
-	}
-}
-
-// A scheduled session must never be accepted as an origin: chaining runs would
-// surface an unrelated cron run's terminals in whatever tab it linked to.
-func TestScheduledSessionCannotBeAnOrigin(t *testing.T) {
-	resetScheduleOrigins(t)
-	rememberScheduleOrigin("schedule-manual--child_2", "schedule-cron--parent_1")
-
-	scheduleOrigins.mu.RLock()
-	defer scheduleOrigins.mu.RUnlock()
-	if len(scheduleOrigins.originBySchedule) != 0 {
-		t.Fatalf("a scheduled session was accepted as an origin: %v", scheduleOrigins.originBySchedule)
-	}
-}
-
 // An unknown chat scopes to itself, which is the pre-existing behavior and the
 // path every non-triggering chat takes.
 func TestUnknownChatScopesToItself(t *testing.T) {

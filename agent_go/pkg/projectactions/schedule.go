@@ -16,10 +16,19 @@ type Project struct {
 	ID   string `json:"id"`
 }
 
+// Actor is who made a change to an automation, with the name they had then (owner, 10 Nov: a Team member may change
+// a Crew's automations; the record says who). The run still happens as the Crew's owner.
+type Actor struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	At   string `json:"at"`
+}
+
 // Action separates the two things a caller can do, without selecting a second
 // execution mode. Conversation is only the Crew's existing isolated destination.
 type Action struct {
 	Type         string `json:"type"`
+	WorkflowID   string `json:"workflow_id,omitempty"`
 	Step         string `json:"step,omitempty"`
 	Tab          string `json:"tab,omitempty"`
 	Function     string `json:"function,omitempty"`
@@ -31,6 +40,35 @@ type After struct {
 	Outcome      string   `json:"outcome,omitempty"`
 	DelayMinutes int      `json:"delay_minutes,omitempty"`
 	Deadline     string   `json:"deadline,omitempty"`
+}
+
+// Validate keeps dependency settings identical for every product clock.
+func (a *After) Validate(scheduleID string) error {
+	if a == nil {
+		return nil
+	}
+	if len(a.Schedules) == 0 {
+		return fmt.Errorf("choose a prerequisite schedule before setting its outcome, delay or deadline")
+	}
+	for _, id := range a.Schedules {
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(id) == scheduleID {
+			return fmt.Errorf("prerequisite schedules must be named and cannot include this schedule itself")
+		}
+	}
+	switch strings.TrimSpace(a.Outcome) {
+	case "", "completed", "any_terminal":
+	default:
+		return fmt.Errorf("after_terminal_status must be completed or any_terminal")
+	}
+	if a.DelayMinutes < 0 {
+		return fmt.Errorf("after_delay_minutes cannot be negative")
+	}
+	if deadline := strings.TrimSpace(a.Deadline); deadline != "" {
+		if _, err := time.Parse("15:04", deadline); err != nil {
+			return fmt.Errorf("dependency_deadline must be HH:MM in the schedule timezone")
+		}
+	}
+	return nil
 }
 
 type Date struct {
@@ -58,6 +96,9 @@ type Schedule struct {
 	Input   json.RawMessage `json:"input"`
 	RunAs   string          `json:"run_as"`
 	Enabled bool            `json:"enabled"`
+	// CreatedBy and UpdatedBy: who made and who last changed it.
+	CreatedBy *Actor `json:"created_by,omitempty"`
+	UpdatedBy *Actor `json:"updated_by,omitempty"`
 }
 
 type Schedules struct {
@@ -105,5 +146,5 @@ func (s Schedule) Validate() error {
 	if !json.Valid(s.Input) {
 		return fmt.Errorf("schedule input must be JSON")
 	}
-	return nil
+	return s.When.After.Validate(s.ID)
 }

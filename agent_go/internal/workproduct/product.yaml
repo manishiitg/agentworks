@@ -54,7 +54,6 @@ profile:
     - dashboard
     - memory
     - costs
-    - background-work
     - workspace-ui
   # project scope, not global: global scope (1) makes provider_options
   # non-authoritative and (2) skips this
@@ -89,8 +88,8 @@ profile:
         kind: identity_updated
         render: product.refresh
     - id: work.custom-commands
-  # Crew reuses the platform coding and background-agent surfaces (shell,
-  # guarded file patching, browser, secrets, web research, run_in_background).
+  # Crew reuses the platform coding surfaces (shell, guarded file patching,
+  # browser, secrets, web research).
   # Its only product-specific wrappers are folder grants and message-only
   # project schedules; its saved Python workflow uses the direct start tool.
   tool_policy:
@@ -120,10 +119,10 @@ profile:
     # itself and are not governed by this list.
   # Product slash commands submit instructions in the current chat.
   commands:
-    - name: deep work
-      description: Plan a complex task, then carry it through with agents as needed
-      icon: brain
-      file: commands/deep-work.md
+    - name: goal
+      description: Work toward an objective using the program’s native goal feature
+      icon: target
+      file: commands/goal.md
   runtime:
     # Managed data uses the same direct bridge in Builder and Run. Registration
     # and session access decide whether the database family has reads or writes.
@@ -160,7 +159,7 @@ profile:
       - id: pi-cli
         label: Pi CLI
         provider: pi-cli
-        model_id: google/gemini-3.8-flash
+        model_id: google/gemini-4-hydrogen
         reasoning_efforts: [low, medium, high, xhigh]
         options:
           reasoning_effort: high
@@ -174,8 +173,8 @@ profile:
       - id: agy-cli
         label: Antigravity CLI (Alpha)
         provider: agy-cli
-        model_id: gemini-3.8-flash-high
-        reasoning_efforts: [low, medium, high]
+        model_id: gemini-4-hydrogen-high
+        reasoning_efforts: [low, medium, high, xhigh]
         options:
           reasoning_effort: high
     # The default option is also declared in the common runtime fields so the

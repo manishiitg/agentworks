@@ -1,13 +1,15 @@
+import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
+import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 import { getDesktopApiBaseUrl, getAuthToken } from './api'
 import type { AuthUser } from './api'
 
 export type DesktopConnection = { id: string; name: string; server: string; user?: AuthUser }
-export type DesktopProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; personal_agent?: boolean }
+export type DesktopProject = { team_live?: TeamLiveView; id: string; name: string; kind: 'crew' | 'goal'; icon?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_line?: string; personal_agent?: boolean }
 export type DesktopInventory = { status: 'connected' | 'sign_in' | 'unavailable'; projects: DesktopProject[] }
 
 export async function desktopRequest<T>(path = '', method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/desktop-connections${path}`, {
-    method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
+    method, headers: { ...admissionWindowHeaders(), Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }).catch(() => { throw new Error('Could not reach the local app. Check that the backend is running, then try again.') })
   if (!response.ok) {

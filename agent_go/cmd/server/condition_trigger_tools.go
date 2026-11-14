@@ -60,6 +60,9 @@ func conditionView(s productschedule.Schedule) map[string]interface{} {
 	out := map[string]interface{}{}
 	_ = json.Unmarshal(b, &out)
 	out["id"], out["name"], out["enabled"], out["cron_expression"], out["timezone"] = s.ID, s.Name, s.Enabled, s.CronExpression, s.Timezone
+	if line := automationChangedByLine(s.CreatedBy, s.UpdatedBy); line != "" {
+		out["changed_by"] = line
+	}
 	revision, _ := json.Marshal(s)
 	out["revision"] = conditiontrigger.Hash(string(revision))
 	return out
@@ -67,6 +70,7 @@ func conditionView(s productschedule.Schedule) map[string]interface{} {
 
 func (c *conditionService) manage(ctx context.Context, owner, profile, project string, args map[string]interface{}) (interface{}, error) {
 	actor := owner
+	ctx = withAutomationActor(ctx, actor) // the Watcher's record names the person, though it is saved as the Crew owner
 	if isProjectProfileID(profile) {
 		if projectOwner, err := c.s.projectBuilderOwner(ctx, owner, profile, project); err == nil {
 			// Owners manage one Crew configuration, including its saved Watchers.
@@ -212,18 +216,9 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if err != nil {
 			return nil, err
 		}
-		runs, err := ReadScheduleRuns(ctx, job.WorkspacePath)
+		checks, _, err := ListScheduleRuns(ctx, job.WorkspacePath, job.ID(), 20, 0)
 		if err != nil {
 			return nil, err
-		}
-		checks := []ScheduleRunEntry{}
-		for _, run := range runs {
-			if run.ScheduleID == job.ID() {
-				checks = append(checks, run)
-			}
-		}
-		if len(checks) > 20 {
-			checks = checks[len(checks)-20:]
 		}
 		pending := conditiontrigger.Pending(l)
 		if l.Rows == nil {
@@ -352,10 +347,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 						return nil, errors.New("open the originating Crew chat before starting this PR watch")
 					}
 				} else {
-					cfg.Target.ChatID = chats.Self.ID
-					if cfg.GitHubPR != nil && chats.Self.IsMain {
-						cfg.Target.ChatID = codeChatMainName
-					}
+					cfg.Target.ChatID = strings.TrimPrefix(chats.Self.Key, base.ProjectID+codeChatSideMarker)
 				}
 			}
 		}
@@ -363,7 +355,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		var source string
 		if cfg.GitHubPR != nil {
 			if actor != owner {
-				return nil, errors.New("the Crew owner must create this PR watcher with their GitHub account and chat")
+				return nil, fmt.Errorf("Ask %s to create this PR watcher with their GitHub account.", crewPersonShortName(owner))
 			}
 			prior := job.Schedule.Condition
 			if action == "create" {

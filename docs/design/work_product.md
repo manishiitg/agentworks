@@ -162,9 +162,6 @@ Audit logs should record sign-ins, session lifecycle events, commands, file chan
   terminal switch, persistence, resume, interruption, and approval behavior.
 - Globally installed Claude Code and Codex CLIs with thin launch/control integrations and runtime selection.
 - Streaming conversation with attachments, steering, interruption, approvals, and requests for user input.
-- Background coding tasks reuse AgentWorks' `run_in_background` lifecycle: the
-  child inherits the project guard and attached skills, the chat stays usable,
-  and completion or failure returns through the same automatic-notification path.
 - File explorer, preview/editor, and diff review inside the project folder.
 - A retained native CLI terminal with the same conversation/terminal switch as
   AgentWorks, plus command visibility subject to permissions.
@@ -280,7 +277,7 @@ same feature.
 The initial shared feature catalog includes `files`, `browser`, `secrets`,
 `mcp`, `skills`, `attached-folders`, `workflow-references`, `terminal`,
 `models`, `schedules`, `bots`, `database`, `dashboard`, `costs`,
-`background-work`, `live-chat`, `voice`, and the base `coding` bundle. A feature
+`live-chat`, `voice`, and the base `coding` bundle. A feature
 may depend on another feature; for example, Dashboard resolves Database and
 Files before adding its viewer, tools, skill, and instructions. Explicitly
 disabling a required dependency is a manifest error rather than a partially

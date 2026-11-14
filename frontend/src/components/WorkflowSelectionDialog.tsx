@@ -279,7 +279,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
               role="option"
               aria-label={workflow.label}
               aria-selected={selectedWorkflow === workflow}
-              title={[workflow.secondaryLabel, workflow.shared ? 'Shared with you · Open from Dashboards' : '', workflow.workspacePath].filter(Boolean).join('\n') || workflow.label}
+              title={[workflow.secondaryLabel, workflow.shared ? 'Shared with you · Open from Artifacts' : '', workflow.workspacePath].filter(Boolean).join('\n') || workflow.label}
               data-reference-row
               className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-sm transition-colors ${
                 selectedWorkflow === workflow

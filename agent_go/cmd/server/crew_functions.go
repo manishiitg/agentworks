@@ -1315,7 +1315,15 @@ func (api *StreamingAPI) beginCrewFunctionNotification(parentReq QueryRequest, s
 	}
 	notifier.OnExecutionStart(todo_creation_human.WorkshopExecutionStart{
 		ID: executionID, ParentExecutionID: parentExecutionID, Name: name,
-		Kind: "trigger_auto_notify", Cancel: cancel,
+		Kind: "trigger_auto_notify", Cancel: func() {
+			cancel()
+			if call.TargetKind == triggerCallerWorkflow && api.scheduler != nil {
+				call.mu.Lock()
+				runID := call.RunID
+				call.mu.Unlock()
+				api.scheduler.stopChatWorkflowRun(runID, call.TriggerID)
+			}
+		},
 		Metadata: map[string]string{
 			"execution_type": "function-call-auto-notify",
 			"call_id":        call.ID,
@@ -1812,7 +1820,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if err != nil {
 			return "", err
 		}
-		if !isCaller(call, caller) {
+		if !isCaller(call, caller) || call.UserID != userID {
 			return "", fmt.Errorf("only the caller of function call %s can ask for an update", call.ID)
 		}
 		if call.TargetKind != triggerCallerCrew {

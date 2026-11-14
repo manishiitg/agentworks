@@ -13,13 +13,18 @@ export function connectedWorkHistoryScope(): string {
 
 /** Presentation history only. The current destination inventory decides access. */
 export const useProjectMenuHistoryStore = create<{
+  recentAgents: Record<string, string[]>
+  visitAgent: (scope: string, tab: string) => void
   recent: Record<string, string[]>
   startHere: Record<string, string[]>
   pinned: Record<string, string[]>
   setPinned: (scope: string, destination: string, pinned: boolean) => void
+  movePinned: (scope: string, destination: string, target: string) => void
   seedStartHere: (scope: string, destinations: string[]) => void
   visit: (scope: string, destination: string) => void
 }>()(persist(set => ({
+  recentAgents: {},
+  visitAgent: (scope, tab) => set(state => !scope || state.recentAgents[scope]?.[0] === tab ? state : ({ recentAgents: { ...state.recentAgents, [scope]: [tab, ...(state.recentAgents[scope] || []).filter(id => id !== tab)].slice(0, PROJECT_MENU_RECENT_LIMIT) } })),
   recent: {},
   startHere: {},
   pinned: {},
@@ -28,6 +33,15 @@ export const useProjectMenuHistoryStore = create<{
     const previous = state.pinned[scope] || []
     if (previous.includes(destination) === pinned) return state
     return { pinned: { ...state.pinned, [scope]: pinned ? [...previous, destination] : previous.filter(id => id !== destination) } }
+  }),
+  movePinned: (scope, destination, target) => set(state => {
+    const previous = state.pinned[scope] || []
+    const from = previous.indexOf(destination)
+    const to = previous.indexOf(target)
+    if (!scope || from < 0 || to < 0 || from === to) return state
+    const ordered = [...previous]
+    ;[ordered[from], ordered[to]] = [ordered[to], ordered[from]]
+    return { pinned: { ...state.pinned, [scope]: ordered } }
   }),
   seedStartHere: (scope, destinations) => set(state => {
     if (!scope || Object.hasOwn(state.startHere, scope)) return state
@@ -47,5 +61,5 @@ export const useProjectMenuHistoryStore = create<{
     setItem: (key, value) => { try { window.localStorage.setItem(key, value) } catch { /* History is optional. */ } },
     removeItem: key => { try { window.localStorage.removeItem(key) } catch { /* History is optional. */ } },
   })),
-  partialize: state => ({ recent: state.recent, startHere: state.startHere, pinned: state.pinned }),
+  partialize: state => ({ recentAgents: state.recentAgents, recent: state.recent, startHere: state.startHere, pinned: state.pinned }),
 }))

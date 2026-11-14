@@ -6,13 +6,16 @@ import { Switch } from '../../components/ui/Switch'
 import { teamError, teamRequest, useTeamTab } from './teamApi'
 import { AskButton, Saving, teamCard } from './TeamTab'
 import { askAgentPurpose } from './AgentSharingRow'
+import { ProjectAgentBridgePanel } from '../../components/workspace/ProjectAgentBridgePanel'
+import { fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
+import { useChatStore } from '../../stores/useChatStore'
 
-/** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
+/** The AgentBridge tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
  * Team tab reply (crew_team_tab.go agentbridge), the same on the Mac app and the website. Only the switch is
- * clickable; an agent with no purpose shows Set purpose instead (the server says which). The Mac app switches on its
+ * clickable; an agent with no purpose keeps its disabled Discovery switch with a Set purpose explanation (the server says which). The Mac app switches on its
  * own Mac (crew-sync public / only_my_agents); the website asks the server, which passes it to the Mac and refuses
  * with a plain line while the Mac is offline (crew_team_agentbridge.go). The card always shows (owner, 6 Nov), with a
- * plain line while there are no rows. Each row has its own Copy line for the owner's coding apps (owner, 6 Nov: one
+ * plain line while there are no rows. Each public row has its own Copy line for the owner's coding apps (owner, 6 Nov: one
  * line per agent), worded by the server (copy_line), disabled with the server's reason when there is none. */
 export function MacAgentBridge({ projectId }: { projectId: string }) {
   const state = useTeamTab(projectId)
@@ -29,10 +32,10 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
       window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     } catch (cause) { setError(teamError(cause)) } finally { setBusy('') }
   }
-  return <section aria-label="AgentBridge" className={teamCard}>
+  return <><section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
-    <p className="text-[12.5px] text-muted-foreground">AgentBridge lets AI agents message each other. Your own coding apps (Claude Code, Codex, Cursor) can always reach each agent with its Copy line.</p>
-    <p className="text-[12.5px] text-muted-foreground">Turn an agent Public and other people's agents on this server can find it by its purpose and ask it things. It answers as you, following your rules for when others ask.</p>
+    <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Your agents already talk to each other</b>: Claude Code, Codex and Cursor on your computers, and your Crews on this Mac and your servers, all signed in as you. Nothing to set up.</p>
+    <p className="text-[12.5px] text-muted-foreground">Turn on <b className="font-medium text-foreground">Discovery</b> so other people’s agents can find and message this agent. It answers as you, following your rules for when others ask. Its messages go through your server; its files and chats stay here.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
@@ -42,17 +45,36 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
           <div className="min-w-0 flex-1">
             <p className="flex min-w-0 items-center gap-1.5 text-[13px]"><b className="truncate">{agent.name}</b>
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
-            <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet. Other agents need one to know what to ask it.'}</p>
+            {bridge.needs_purpose
+              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>: needed for discovery. Your own agents use it to pick who to ask.</p>
+              : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}
           </div>
-          <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />
-          {bridge.needs_purpose
-            ? <button type="button" className="shrink-0 text-[12.5px] text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>
-            : <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: Public on AgentBridge`} checked={bridge.public} disabled={!bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>}
+          {bridge.public && <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />}
+          <label className="flex shrink-0 items-center gap-2 text-[12.5px]">
+            <span>Discovery</span>
+            <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: discovery on AgentBridge`} aria-describedby={bridge.needs_purpose ? `agentbridge-purpose-${agent.tab}` : undefined} checked={bridge.public} disabled={bridge.needs_purpose || !bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>
+          </label>
         </div>
       })}
     </div>
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </section>
+  {state.target && <section aria-label="Agents on your network" className={teamCard}>
+    <h3 className="font-semibold">Agents on your network</h3>
+    <p className="text-[12.5px] text-muted-foreground">Every agent you can message from your chats.</p>
+    <ProjectAgentBridgePanel target={`workspace:work:${projectId}`} view="network" onAsk={message => {
+      if (!fillMainDraft(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'info')
+    }} onSend={message => {
+      const store = useChatStore.getState()
+      const owned = (tab: (typeof store.chatTabs)[string] | undefined) => tab?.metadata?.agentProfileProjectId === projectId && !tab.metadata.isViewOnly && tab.metadata.agentProfileTabCanWrite !== false
+      const active = store.chatTabs[store.activeTabId || '']
+      const source = owned(active) ? active : Object.values(store.chatTabs).find(tab => owned(tab) && tab.metadata?.agentProfileIsMainChat)
+      if (!source) throw new Error('Open your own agent chat in this Crew, then try again.')
+      if (source.config?.inputText?.trim() || source.config?.fileContext?.length) throw new Error('Your chat has an unfinished draft. Send or clear it first, then try again. Your message here is kept.')
+      if (!sendToTab(source.tabId, message)) throw new Error('Could not open your agent chat. Your message here is kept.')
+    }} />
+  </section>}
+  </>
 }
 
 /** One agent's line for the owner's coding app (Claude Code, Codex, Cursor), as the server words it. */
@@ -63,6 +85,6 @@ function CopyLine({ line, why, name }: { line?: string; why?: string; name: stri
     try { await navigator.clipboard.writeText(line); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
     catch { window.prompt('Copy this into your coding app:', line) }
   }
-  return <Button className="h-7 shrink-0 rounded-full px-3" size="sm" variant="outline" disabled={!line} title={line ? 'Paste in Claude Code, Codex or Cursor' : why}
+  return <Button className="h-7 shrink-0 rounded-full px-3" size="sm" variant="outline" disabled={!line} title={line ? 'Copy network, Crew, agent and connection instructions' : why}
     aria-label={`${name}: copy line for your coding app`} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy line'}</Button>
 }

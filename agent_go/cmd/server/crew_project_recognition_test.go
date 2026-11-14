@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -104,8 +105,8 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	}
 	const project = "local-example"
 	const virtual = "Crew/local-example"
-	f.write(t, "_system/crew-data/"+project+"/product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
-	f.write(t, "_system/crew-data/"+project+"/workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
+	writeLocalCrewSettings(t, root, "product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
+	writeLocalCrewSettings(t, root, "workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: project, ProjectID: project, OwnerID: "default", Shared: true, Private: true, CanonicalRoot: virtual, LocalRoot: root}); err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +247,32 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if runtime.WorkshopMode != crewCLIMode(false) || runtime.AgentToolsMode != normalizeAgentToolsMode(currentProfile.Runtime.AgentTools.Mode) || runtime.AgentSessionHandle.Provider.WorkingDir != wantCwd {
 		t.Fatal("resume changed Crew mode or canonical cwd")
 	}
+	// PLAT-746-531: bounded history cannot prove an uncertain prompt absent.
+	binding := runtime.AgentSessionHandle.Provider
+	_, _, importedPath, importedFound, importedErr := nativeTranscriptMessagesForBinding("claude-code", runtime.ExternalSessionID, binding.WorkingDir, binding.RuntimeDir, "")
+	if importedErr != nil || !importedFound {
+		t.Fatalf("imported transcript: %v", importedErr)
+	}
+	record := chatSubmissionRecord{Owner: "default", Session: response.SessionID, Project: virtual, Message: "never submitted", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	if !f.api.canRetryUncertainChatSubmission(context.Background(), record) {
+		t.Fatal("complete transcript did not prove non-delivery")
+	}
+	writeClaudeChatTurns(t, importedPath, strings.Repeat("long accepted prompt ", 2000))
+	if f.api.canRetryUncertainChatSubmission(context.Background(), record) {
+		t.Fatal("truncated prompt authorized an uncertain resend")
+	}
+	// The original can grow after import without blocking its existing copy.
+	growing, growErr := os.OpenFile(path, os.O_WRONLY, 0600)
+	if growErr != nil {
+		t.Fatal(growErr)
+	}
+	if _, growErr = growing.Seek(128<<20, 0); growErr == nil {
+		_, growErr = growing.WriteString("\n")
+	}
+	growing.Close()
+	if growErr != nil {
+		t.Fatal(growErr)
+	}
 	w = request(http.MethodPost, "", body, owner)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), response.SessionID) {
 		t.Fatalf("reopen not stable: %d %s", w.Code, w.Body.String())
@@ -315,6 +342,49 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	recognitionWrite(t, filepath.Join(filepath.Dir(cursorPath), "meta.json"), fmt.Sprintf(`{"schemaVersion":1,"cwd":%q}`, newRoot))
 	if gone := request(http.MethodGet, cursorPreview, "", owner); gone.Code != 404 {
 		t.Fatal("Cursor preview trusted the hash over metadata")
+	}
+
+	// PLAT-746: a large journal must never enter the native-copy path before
+	// previewing. Recent-only is an explicit new chat, not native continuation.
+	largeID := "33333333-3333-4333-8333-333333333333"
+	largePath := filepath.Join(filepath.Dir(path), largeID+".jsonl")
+	recognitionWrite(t, largePath, fmt.Sprintf(`{"type":"user","sessionId":%q,"cwd":%q,"timestamp":"2026-10-27T10:00:00Z","message":{"content":"Old work"}}`+"\n", largeID, root))
+	large, err := os.OpenFile(largePath, os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = large.Seek(128<<20, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err = large.WriteString("\n" + fmt.Sprintf(`{"type":"user","sessionId":%q,"cwd":%q,"timestamp":"2026-11-09T10:00:00Z","message":{"content":"Recent work"}}`+"\n", largeID, root))
+	large.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeKey := localNativeSessionKey(localNativeSource{Provider: "claude-code", ConnectionID: "global:claude-code"}, largeID)
+	largeQuery := "?project_id=" + project + "&native_id=" + largeKey
+	if got := request(http.MethodGet, largeQuery, "", owner); got.Code != 200 || !strings.Contains(got.Body.String(), "Recent work") || strings.Contains(got.Body.String(), `"text":"Old work"`) {
+		t.Fatalf("large preview: %d %s", got.Code, got.Body.String())
+	}
+	largeBody := fmt.Sprintf(`{"project_id":%q,"id":%q}`, project, largeKey)
+	if got := request(http.MethodPost, "", largeBody, owner); got.Code != 422 || !strings.Contains(got.Body.String(), "native_copy_unavailable") {
+		t.Fatalf("large native copy was not refused before staging: %d", got.Code)
+	}
+	recentBody := fmt.Sprintf(`{"project_id":%q,"id":%q,"recent_only":true}`, project, largeKey)
+	got := request(http.MethodPost, "", recentBody, owner)
+	if got.Code != 200 || !strings.Contains(got.Body.String(), `"recent_only":true`) {
+		t.Fatalf("recent import: %d %s", got.Code, got.Body.String())
+	}
+	var recent struct {
+		SessionID string `json:"session_id"`
+	}
+	_ = json.Unmarshal(got.Body.Bytes(), &recent)
+	rawRecent, err := ReadChatHistoryConversation("default", recent.SessionID, virtual)
+	if err != nil || len(rawRecent) > nativeHistoryTextBytes || !strings.Contains(string(rawRecent), "Recent work") || strings.Contains(string(rawRecent), `"Text":"Old work"`) || strings.Contains(string(rawRecent), `"external_session_id"`) {
+		t.Fatalf("recent import claimed old context or expanded history: bytes=%d err=%v", len(rawRecent), err)
+	}
+	if info, err := os.Stat(largePath); err != nil || info.Size() < 128<<20 {
+		t.Fatal("large native original changed")
 	}
 
 }

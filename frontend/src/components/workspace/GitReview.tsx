@@ -35,8 +35,10 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const [revision, setRevision] = useState(0)
   const folder = workspacePath.split('/').filter(Boolean).pop() || 'Project'
   const repoName = (root: string) => root || folder
+  // Server-provided grouping: a worktree names the repository it belongs to.
+  const checkoutLabel = (item: GitRepo) => `${repoName(item.root)} · ${item.branch}${item.worktree && item.repository ? ` · worktree of ${item.repository}` : ''}`
   const recentRepo = recentRepos.map(root => repos.find(item => item.root === root)).find(item => item !== undefined)
-  const repo = repos.find(item => item.root === repoRoot) ?? repos.find(item => item.used_in_chat) ?? recentRepo ?? repos[0]
+  const repo = repos.find(item => item.root === repoRoot) ?? recentRepo ?? repos[0]
 
   useEffect(() => {
     if (scope !== 'branch') return
@@ -59,14 +61,14 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const baseSha = compare?.base_sha, headSha = compare?.head_sha
 
   const refresh = () => { setError(''); onRefresh(); setRevision(value => value + 1) }
-  const repoLabel = (root: string) => root || 'the Crew folder'
+  const rootLabel = (root: string) => root || 'the Crew folder'
   // Changes for the selected file, and how a clicked line is named in the
   // message to this chat (repo, file, side, line and which comparison).
   const sourceFor = (current: Row) => !current.path.endsWith('/') ? {
     load: () => scope === 'branch' && baseSha && headSha
       ? workspaceGitApi.branchDiff(workspacePath, current.repo, current.path, baseSha, headSha)
       : workspaceGitApi.diff(workspacePath, current.repo, current.path),
-    lineContext: ({ side, line }: { side: string; line: number }) => `In ${repoLabel(current.repo)}, file ${current.path}, ${side} line ${line} (${scope === 'branch' && baseSha && headSha
+    lineContext: ({ side, line }: { side: string; line: number }) => `In ${rootLabel(current.repo)}, file ${current.path}, ${side} line ${line} (${scope === 'branch' && baseSha && headSha
       ? `branch ${compare?.branch || 'this version'} compared with ${compare?.base}, ${baseSha.slice(0, 7)}..${headSha.slice(0, 7)}`
       : 'changes not committed yet, compared with the latest commit'}):`,
   } : undefined
@@ -103,12 +105,12 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
       {scopeSwitch}
       {scope === 'uncommitted' && repos.length > 1 && <label className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">Worktree
         <select aria-label="Worktree" className={select} value={repoRoot === null ? '*' : `repo:${repoRoot}`} onChange={event => { setRepoRoot(event.target.value === '*' ? null : event.target.value.slice(5)); setBase(''); setSelected(null) }}>
-          <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{repoName(item.root)} · {item.branch}</option>)}
+          <option value="*">All worktrees</option>{repos.map(item => <option key={item.root} value={`repo:${item.root}`}>{checkoutLabel(item)}</option>)}
         </select></label>}
       {scope === 'branch' && <>
         <label className="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">Worktree
-          <select aria-label="Worktree" title={`${repoName(repo.root)} · ${repo.branch}`} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
-            {repos.map(item => <option key={item.root} value={item.root}>{repoName(item.root)} · {item.branch}{item.used_in_chat ? ' · This chat' : ''}</option>)}
+          <select aria-label="Worktree" title={checkoutLabel(repo)} value={repo.root} className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground sm:max-w-md" onChange={event => { setRepoRoot(event.target.value); setBase(''); setSelected(null) }}>
+            {repos.map(item => <option key={item.root} value={item.root}>{checkoutLabel(item)}</option>)}
           </select>
         </label>
         <span className="flex-1" />

@@ -21,7 +21,14 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		}
 		for side, endpoint := range conversation.Endpoints {
 			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
+				if err := recheckAgentConversationContact(ctx, conversation); err != nil {
+					return agentMessageEndpoint{}, err
+				}
 				peer := conversation.Endpoints[1-side]
+				peer, err = publishedAgentAuthorizationPeer(ctx, peer)
+				if err != nil {
+					return agentMessageEndpoint{}, err
+				}
 				peerClaims := claims
 				// The hosted chat opened this inbox with this exact attached
 				// agent. Answering it is mail, not a grant of product tools.
@@ -29,7 +36,7 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
-				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send); err != nil {
+				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims); err != nil {
 					if send {
 						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
 					}
@@ -88,6 +95,14 @@ func messagePeerView(claims *UserClaims, send bool) *UserClaims {
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
+	// A published sender thread is mail to an admitted audience, not a grant of
+	// Crew tools to an attached agent's messaging-only connection.
+	if peer.PublishedAgent != "" && token != nil && token.BoundAgentID != "" {
+		if _, err := publishedAgentAuthorizationPeer(ctx, peer); err == nil && claims.UserID == peer.PublishedAsker && namedAgentOperationAllowed(claims, send) {
+			return nil
+		}
+		return denied
+	}
 	if peer.External {
 		if peer.UserID != claims.UserID && peer.ShareID != "" {
 			return api.externalAuthorizeSharedPeer(ctx, claims, peer, send)
@@ -102,12 +117,16 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		return nil
 	}
-	// A person may contact a shared Mac agent through their attached chat just as on the website.
+	// An attached chat may contact a shared Mac agent, including its own person's published Mac agent.
 	// Check the current audience before the own-hosted-chat receive guard: this is an explicit share,
 	// and the attached connection carries messaging permissions, not general Crew tool permissions.
-	if peer.Kind == triggerCallerCrew && peer.UserID != claims.UserID && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+	if peer.Kind == triggerCallerCrew && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+		if ownerOfCrewProjectID(peer.ID) != peer.UserID {
+			return denied
+		}
 		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
 		_, reason := macSharedAgentForAgent(peer.ID, tab, claims.UserID, peer.UserID)
+
 		if reason == "" && token != nil {
 			if token.BoundAgentID != "" {
 				if !namedAgentOperationAllowed(claims, send) {
@@ -383,7 +402,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			out["chats_inside_agentworks"] = items
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); !slices.ContainsFunc(list, func(a map[string]interface{}) bool { _, other := a["owner"]; return other }) {
-			out["hint"] = "Agents of other people appear here once they publish them to the network. Ask the other person to tell their agent to publish it (agentworks share)."
+			out["hint"] = "Agents of other people appear here once discovery is on for them. Ask the other person to tell their agent to turn on discovery (agentworks share)."
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); slices.ContainsFunc(list, func(a map[string]interface{}) bool {
 			_, other := a["owner"]
@@ -500,7 +519,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
 		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner published to the network, for an initial send."),
+		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner made discoverable on the network, for an initial send."),
 		"message":                externalString("Message to send; required for action send."),
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),

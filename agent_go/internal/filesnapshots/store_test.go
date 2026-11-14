@@ -30,6 +30,22 @@ func TestLargeTreeReachesIgnoreFilteringAndCapturesChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// PLAT-746-924: a Crew's runs, database and records live in its .agentworks; a snapshot never walks them.
+	runs := filepath.Join(s.Root, ".agentworks", "runs", "run-1")
+	if err := os.MkdirAll(runs, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5000; i++ {
+		if err := os.WriteFile(filepath.Join(runs, fmt.Sprintf("log-%04d.txt", i)), []byte("log"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(s.Root, ".agentworks", "settings"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Root, ".agentworks", "settings", "schedules.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	file := filepath.Join(s.Root, "source.txt")
 	if err := os.WriteFile(file, []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)

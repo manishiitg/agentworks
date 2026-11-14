@@ -17,7 +17,6 @@ var builtinToolCategories = map[string]bool{
 	"workspace_image_gen":  true,
 	"workspace_image_edit": true,
 	"human_tools":          true,
-	"delegation_tools":     true,
 	"workflow":             true,
 	"workflow_creator":     true,
 	"knowledgebase_tools":  true,

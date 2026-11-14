@@ -404,6 +404,8 @@ func shouldSkipAuth(path string) bool {
 		"/api/human-feedback/gmail/auth/callback",
 		"/api/downloads/",           // Chrome CDP launcher zip (macOS)
 		"/api/desktop-model-proxy/", // A program on the Mac; the handler checks loopback and the account's own key
+		// A program on this server on a server-login account; the handler checks the account's own key.
+		"/api/personal-model-proxy/",
 		mcpOAuthRegisterPath,
 		mcpOAuthAuthorizePath,
 		mcpOAuthTokenPath,

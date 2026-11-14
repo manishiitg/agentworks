@@ -1,8 +1,8 @@
 import { codingProviderName } from '../../utils/codingProviderName'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
+import AccountLimits from './AccountLimits'
 import CostsOverview from './CostsOverview'
-import ConversationsOverview from './ConversationsOverview'
 import { ServersOverview } from './ProvidersOverview'
 import { takeServersPageRequest } from '../workspace/ConnectedServersMenuItem'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
@@ -15,7 +15,6 @@ import {
   Cpu,
   DollarSign,
   KeyRound,
-  MessageSquare,
   Server,
   Loader2,
   RefreshCw,
@@ -37,6 +36,8 @@ import type { ProviderSetupAction, ProviderSetupSession } from '../../services/l
 
 interface CodingProvidersPanelProps {
   embedded?: boolean
+  /** The Settings Add account dialog has no second navigation sidebar. */
+  accountSetup?: boolean
   isOpen: boolean
   onClose: () => void
   allowedProviderIds?: readonly string[]
@@ -140,7 +141,7 @@ function ProviderListStatus({ provider, viaServer = false }: { provider: Provide
   )
 }
 
-export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, allowedProviderIds, product, welcomeSetup = false, initialProviderId }: CodingProvidersPanelProps) {
+export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, accountSetup = false, allowedProviderIds, product, welcomeSetup = false, initialProviderId }: CodingProvidersPanelProps) {
   const welcomeBack = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!isOpen || !welcomeSetup) return
@@ -151,7 +152,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'chats'>(() => takeServersPageRequest() ? 'servers' : 'provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'limits'>(() => takeServersPageRequest() ? 'servers' : 'provider')
   useEffect(() => {
     const show = () => { takeServersPageRequest(); setView('servers') }
     window.addEventListener('show-servers-page', show)
@@ -196,7 +197,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     window.addEventListener('provider-connections-changed', load)
     return () => window.removeEventListener('provider-connections-changed', load)
   }, [onThisMac, isOpen])
-  useEffect(() => { if (!canReview) setView(current => current === 'costs' || current === 'chats' ? 'provider' : current) }, [canReview])
+  useEffect(() => { if (!canReview) setView(current => current === 'costs' ? 'provider' : current) }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 
   const refresh = useCallback(async () => {
@@ -320,6 +321,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             </div>
             <button type="button" onClick={closePanel} aria-label="Close AI setup" className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-gray-400 dark:hover:bg-gray-800"><X className="h-5 w-5" aria-hidden="true" /></button>
           </header>}
+          {accountSetup && <div className="flex shrink-0 justify-end border-b border-border p-2"><button type="button" aria-label="Close account setup" onClick={closePanel} className="rounded-md p-2 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button></div>}
           {embedded && <WorkspacePageHeader page="providers" title="AI models & accounts" icon={Cpu} onBack={closePanel} />}
           {error && (
             <div className="mx-4 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 sm:mx-6">
@@ -329,8 +331,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             </div>
           )}
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[14rem_minmax(0,1fr)]">
-            <aside className="border-b border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30 md:overflow-y-auto md:border-b-0 md:border-r md:p-3">
+          <div className={accountSetup ? 'min-h-0 flex-1 overflow-y-auto' : 'grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[14rem_minmax(0,1fr)]'}>
+            {!accountSetup && <aside className="border-b border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30 md:overflow-y-auto md:border-b-0 md:border-r md:p-3">
               <div className="mb-1 flex min-h-8 items-center justify-between gap-1 pl-2">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Available providers</span>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -384,13 +386,14 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                 </div>
                 </>
               )}
+              <button type="button" onClick={() => setView('limits')} aria-pressed={view === 'limits'} className="mt-4 rounded-lg border px-3 py-2 text-left text-sm font-medium dark:text-gray-100">Subscription limits</button>
               {onThisMac && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Servers</div>
                 {macNavItem('servers')}
               </>}
               {canReview && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Review</div>
-                {([{ id: 'costs', label: 'Costs', icon: DollarSign }, { id: 'chats', label: 'Conversations', icon: MessageSquare }] as const).map(item => (
+                {([{ id: 'costs', label: 'Costs', icon: DollarSign }] as const).map(item => (
                   <button type="button" key={item.id} data-tour={`providers-${item.id}`} onClick={() => setView(item.id)} aria-pressed={view === item.id}
                     className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${view === item.id ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
                     <div className="flex min-h-6 items-center gap-2">
@@ -403,12 +406,12 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
               </>}
               {/* Product defaults screen removed (2026-09-30): the Runs on choice when creating a
                   workflow, Crew or Code replaces it. AGENTWORKS_PRODUCT_DEFAULTS still applies. */}
-            </aside>
+            </aside>}
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
+              {view === 'limits' && <AccountLimits />}
               {view === 'servers' && <ServersOverview providers={orderedProviders} />}
               {canReview && view === 'costs' && <CostsOverview />}
-              {canReview && view === 'chats' && <ConversationsOverview />}
               {selectedProvider && <ConfirmationDialog
                 isOpen={confirmSharedSetup}
                 onClose={() => setConfirmSharedSetup(false)}
@@ -449,7 +452,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   </div>
 
                   <div data-tour="provider-accounts">
-                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={codingProviderName(selectedProvider)} product={product} addRequest={selectedProvider.id === 'pi-cli' ? keyRequest : 0} />
+                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={codingProviderName(selectedProvider)} product={product} addRequest={accountSetup ? 1 + keyRequest : selectedProvider.id === 'pi-cli' ? keyRequest : 0} />
                   </div>
 
                   {selectedProvider.deprecated && selectedProvider.deprecation_reason && (

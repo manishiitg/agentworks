@@ -367,3 +367,42 @@ func TestDurableSSEDeliversCompletionPublishedAfterANewerEvent(t *testing.T) {
 		t.Fatalf("the completion published after a newer event was dropped: %s", body)
 	}
 }
+
+// PLAT-746-838: durable reconnect restores completed rows AND the active
+// prefix, whose 657 bytes existed before the subscriber opened.
+func TestDurableSSEReconnectIncludesActivePrefixWithoutMovingDurableCursor(t *testing.T) {
+	journal, err := events.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := events.NewEventStore(200)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	const sid = "prefix-chat"
+	if err := store.SetSessionPersistenceClass(sid, events.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	store.AddEvent(sid, events.Event{ID: "prompt", Type: "user_message", Timestamp: time.Now(), ExecutionKind: "main", Data: pkgevents.NewAgentEvent(pkgevents.NewUserMessageEvent(1, "question", "user"))})
+	store.AddEvent(sid, events.Event{ID: "start", Type: "streaming_start", Timestamp: time.Now(), ExecutionKind: "main", Data: pkgevents.NewAgentEvent(&pkgevents.StreamingStartEvent{})})
+	for i := 1; i <= 45; i++ {
+		size := 14
+		if i == 45 {
+			size = 41
+		}
+		store.AddEvent(sid, events.Event{ID: fmt.Sprintf("piece-%d", i), Type: "streaming_chunk", Timestamp: time.Now(), ExecutionKind: "main", Data: pkgevents.NewAgentEvent(&pkgevents.StreamingChunkEvent{Content: strings.Repeat("a", size), ChunkIndex: i, Source: "content", IsDelta: true})})
+	}
+	api := &StreamingAPI{eventStore: store, runtimeCoordinator: NewRuntimeCoordinator(), activeSessions: map[string]*ActiveSessionInfo{sid: {SessionID: sid, Status: "running", CreatedAt: time.Now()}}}
+	req := httptest.NewRequest("GET", "/api/sessions/"+sid+"/events/stream?durable_chat=1&since=0&working_set=session", nil)
+	req = mux.SetURLVars(req, map[string]string{"session_id": sid})
+	ctx, cancel := context.WithTimeout(req.Context(), 100*time.Millisecond)
+	defer cancel()
+	w := httptest.NewRecorder()
+	api.handleSSEStream(w, req.WithContext(ctx))
+	body := w.Body.String()
+	if !strings.Contains(body, `"id":"start"`) || !strings.Contains(body, `"id":"piece-1"`) || !strings.Contains(body, `"id":"piece-45"`) {
+		t.Fatalf("active prefix was not replayed: %s", body)
+	}
+	if strings.Count(body, "id: ") != 1 || !strings.Contains(body, "id: 1\n") {
+		t.Fatalf("token replay changed the durable cursor: %s", body)
+	}
+}

@@ -130,11 +130,9 @@ func (api *StreamingAPI) notifyChatFor(ctx context.Context, job notifyJob) notif
 	}
 	chat.project = crewResourceProjectID(key)
 	chat.agent = "Main"
-	chat.route = "/crew/projects/" + url.PathEscape(chat.project)
+	chat.route = notifyChatRoute(chat.project, key)
 	if isSideChatConversationKey(key) {
 		chat.agent = firstNonEmptyTrimmed(tab.Identity.Name, "An agent")
-		_, side, _ := strings.Cut(key, codeChatSideMarker)
-		chat.route += "?agent=" + url.QueryEscape(side)
 	}
 	if raw, exists, err := readFileFromWorkspace(ctx, strings.TrimRight(tab.Record.WorkspacePath, "/")+"/product.json"); err == nil && exists {
 		var manifest productProjectManifest
@@ -235,7 +233,7 @@ func (api *StreamingAPI) notifyDeliver(ctx context.Context, user string, device 
 			})
 		}
 	}()
-	if notifyFocused(device.ID, user, job.session) {
+	if notifyFocused(device.ID, user, job.session, device.Kind == notifyKindMac) {
 		result, reason = "skipped", "focused"
 		return
 	}
@@ -414,4 +412,13 @@ func notifyRelayStream(ctx context.Context, owner string, c desktopConnection, d
 		case <-time.After(15 * time.Second):
 		}
 	}
+}
+
+// An explicit Main matters too: a project-only route restores the last agent.
+func notifyChatRoute(project, key string) string {
+	agent := "main"
+	if isSideChatConversationKey(key) {
+		_, agent, _ = strings.Cut(key, codeChatSideMarker)
+	}
+	return "/crew/projects/" + url.PathEscape(project) + "?agent=" + url.QueryEscape(agent)
 }

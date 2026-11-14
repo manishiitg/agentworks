@@ -134,7 +134,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "MCP is enabled. Read the attached `panel-access` skill before managing MCP servers. Distinguish platform connection setup from project selection and use only connected, explicitly selected servers.",
 	},
 	"skills": {
-		Tools:           []string{"list_skills", "search_skills", "install_skill", "import_skill", "uninstall_skill", "update_project_skill_selection"},
+		Tools:           []string{"list_skills", "search_skills", "install_skill", "import_skill", "uninstall_skill", "update_project_skill_selection", "discover_native_skills", "import_native_skill", "list_invocable_skills"},
 		Skills:          []string{"panel-data"},
 		UIPanels:        []string{"skills"},
 		Capabilities:    map[string]CapabilityRequirement{"skill_selection": CapabilityPreferred},
@@ -200,7 +200,7 @@ var featureCatalog = map[string]featureDefinition{
 	},
 	"dashboard": {
 		Dependencies:    []string{"database", "files"},
-		Tools:           []string{"upload_dashboard_asset", "validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard", "set_dashboard_public_link"},
+		Tools:           []string{"upload_dashboard_asset", "validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "delete_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard", "set_dashboard_public_link"},
 		Skills:          []string{"panel-dashboard"},
 		UIPanels:        []string{"dashboard"},
 		PromptExtension: "A visual Dashboard is enabled. Read the attached panel-dashboard skill before editing. Use hosted React TSX with shared shadcn/Recharts: dashboard action=catalog, dashboard actions, validate/preview, then publish. Use TSX for live dashboards and HTML for a quick shareable page; JSON dashboards are not supported. Use current project data, Ask, functions and sharing. Do not create a separate app/dev server unless requested.",
@@ -212,11 +212,6 @@ var featureCatalog = map[string]featureDefinition{
 	"costs": {
 		Tools:    []string{"get_crew_costs"},
 		UIPanels: []string{"costs"},
-	},
-	"background-work": {
-		Tools:           []string{"run_in_background", "query_agent", "list_background_agents", "terminate_agent"},
-		Skills:          []string{"background-work"},
-		PromptExtension: "Background work is enabled. Read the attached `background-work` skill before delegating. Delegate only bounded independent tasks, rely on automatic completion notifications, and do not poll unless the user asks for status.",
 	},
 	"workspace-ui": {
 		Tools:           []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"},
@@ -326,13 +321,13 @@ func ResolveFeatures(profile *Profile) error {
 // project product (internal/workproduct/skills). Their text names the
 // product with {{product}}, filled from that product's product.yaml name.
 var FeatureSkillTemplates = map[string]bool{
-	"work-ui-control": true, "background-work": true,
+	"work-ui-control": true,
 }
 
 // FeatureSkillName is the registered name of a shared feature skill for one
 // product. Crew (profile work) keeps the original names; every other product
 // gets its own rendered copy, "<profile>-<base>" (code-mcp,
-// code-background-work). Skills outside FeatureSkillTemplates are global and
+// code-ui-control). Skills outside FeatureSkillTemplates are global and
 // keep their name.
 func FeatureSkillName(profileID, name string) string {
 	profileID = strings.TrimSpace(profileID)

@@ -220,6 +220,34 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 201, c)
 	})
+	// Copy (PLAT-746-1026): one API-key or no-login connection goes from the actor's own vault into a Team vault, inside
+	// the Vault service, so the credential never reaches the host's caller or a chat. The member keeps their own
+	// connection; the Team stores the key once. A personal sign-in (OAuth) is never copied: each person signs in.
+	route("/api/vaults/{id}/connectors/{cid}/copy", func(w http.ResponseWriter, r *http.Request, actor string) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			ToVault string `json:"to_vault"`
+			ToOwner string `json:"to_owner"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		c, err := a.copyVaultConnector(ctx, actor, r.PathValue("id"), r.PathValue("cid"), in.ToVault, in.ToOwner)
+		if err != nil {
+			status := 400
+			if errors.Is(err, errVaultCopyForbidden) {
+				status = 403
+			}
+			writeErr(w, status, err)
+			return
+		}
+		writeJSON(w, 201, c)
+	})
 	route("/api/vaults/{id}/connectors/{cid}/credentials", func(w http.ResponseWriter, r *http.Request, actor string) {
 		if r.Method != http.MethodPut {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -347,4 +375,57 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]string{"status": "synced"})
 	})
+}
+
+var errVaultCopyForbidden = errors.New("only an owner of both vaults can do that")
+
+// copyVaultConnector copies a non-OAuth connection's upstream address, scheme and credential into toVault. The host has
+// already checked that actor is a current member of the Team that owns toVault (toOwner); here the actor must own the
+// source vault and toOwner (a team-<project> account) the destination, and an OAuth connection is refused.
+func (a *Admin) copyVaultConnector(ctx context.Context, actor, fromVault, connectorID, toVault, toOwner string) (store.Connector, error) {
+	if toVault == "" || toOwner == "" || toVault == fromVault {
+		return store.Connector{}, errors.New("choose another vault to copy into")
+	}
+	// Only a Team's own account (team-<project>) can be the destination, so a wrong or forged body can never copy a
+	// key into another person's vault.
+	if !strings.HasPrefix(toOwner, "team-") || toOwner == actor {
+		return store.Connector{}, errVaultCopyForbidden
+	}
+	if !a.Store.VaultConnectorOwnedBy(actor, fromVault, connectorID) || !a.Store.VaultOwnedBy(toOwner, toVault) {
+		return store.Connector{}, errVaultCopyForbidden
+	}
+	src, ok := a.Store.GetConnector(connectorID)
+	if !ok {
+		return store.Connector{}, errors.New("unknown connector")
+	}
+	if src.OAuthServer != "" || src.OAuthCredentialID != "" {
+		return store.Connector{}, errors.New("this connection uses a personal sign-in: each person signs in themselves")
+	}
+	// Bearer, Basic and custom headers keep their whole credential in the stored bytes plus the scheme, so they copy
+	// completely. Anything else is refused with a reason instead of making a copy that fails when used.
+	switch src.AuthScheme {
+	case "", "Bearer", "Basic", "Headers":
+	default:
+		return store.Connector{}, errors.New("this connection's sign-in type cannot be shared with the Team yet")
+	}
+	var suffix [4]byte
+	var c store.Connector
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if _, err = rand.Read(suffix[:]); err != nil {
+			return store.Connector{}, err
+		}
+		c, err = a.addConnectorCustomFor(ctx, toVault, src.Provider, src.Label, "t"+hex.EncodeToString(suffix[:]), src.UpstreamURL, a.Store.ConnectorBearer(connectorID), src.AuthScheme, src.Transport)
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			break
+		}
+	}
+	if err != nil {
+		return store.Connector{}, err
+	}
+	if err := a.Store.VaultAttachConnector(toOwner, toVault, c.ID); err != nil {
+		_ = a.DeleteConnector(c.ID)
+		return store.Connector{}, err
+	}
+	return c, nil
 }

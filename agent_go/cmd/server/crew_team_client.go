@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,13 +29,20 @@ import (
 )
 
 type crewTeamLocal struct {
-	FolderID     string `json:"folder_id"`
-	Connection   string `json:"connection"`
-	Project      string `json:"project_id"`
-	LocalProject string `json:"local_project_id,omitempty"`
-	RemoteUser   string `json:"remote_user"`
-	Client       string `json:"client"`
-	Root         string `json:"local_folder"`
+	FolderID       string                   `json:"folder_id"`
+	Connection     string                   `json:"connection"`
+	Project        string                   `json:"project_id"`
+	LocalProject   string                   `json:"local_project_id,omitempty"`
+	RemoteUser     string                   `json:"remote_user"`
+	Client         string                   `json:"client"`
+	Root           string                   `json:"local_folder"`
+	SkillRoot      string                   `json:"skill_root,omitempty"`
+	ScanSkillsOnly bool                     `json:"-"`
+	SkipSkillTree  bool                     `json:"-"`
+	Mounted        bool                     `json:"mounted,omitempty"`
+	ProtectPrivate bool                     `json:"protect_private,omitempty"`
+	Mounts         map[string]crewTeamMount `json:"mounts,omitempty"`
+	OwnedPaths     map[string]crewTeamMount `json:"owned_paths,omitempty"`
 	// Files is what this copy last had in step with the team, including the
 	// identity/stat stamp observed while reading that version's contents.
 	Files    map[string]crewTeamLocalFile `json:"files"`
@@ -87,6 +95,22 @@ func readCrewTeamLocal(dir string) (crewTeamLocal, error) {
 	return b, e
 }
 func saveCrewTeamLocal(dir string, b crewTeamLocal) error {
+	if saved, err := readCrewTeamLocal(dir); err == nil {
+		last, err := time.Parse(time.RFC3339Nano, saved.LastSynced)
+		age := time.Since(last)
+		// PLAT-746-820: successful idle rounds change only this heartbeat.
+		// Keep it roughly current without rewriting the file baselines every round.
+		saved.LastSynced = b.LastSynced
+		if err == nil && age >= 0 && age < 10*time.Minute {
+			// Compare the persisted representation: omitempty slices become nil
+			// on reload, whereas a scan returns an allocated empty slice.
+			previous, previousErr := json.Marshal(saved)
+			next, nextErr := json.Marshal(b)
+			if previousErr == nil && nextErr == nil && bytes.Equal(previous, next) {
+				return nil
+			}
+		}
+	}
 	err := fsutil.WriteJSONAtomic(filepath.Join(dir, "binding.json"), b, 0600)
 	if err == nil {
 		publishCrewPanelChanged(b.LocalProject)
@@ -129,8 +153,9 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 			if err != nil {
 				return dir, b, err
 			}
-			// The Team syncs relative to the Crew's own folder (Whole Crew or chosen folders inside it).
+			// The Team syncs relative to the Crew's own folder (chosen folders inside it).
 			b.Root = roots.Files
+			b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
 			b.LocalProject = rec.ProjectID
 			break
 		}
@@ -179,11 +204,21 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 		return cancel
 	}
 	go func() {
+		// Each network is paced on its own (owner, 10 Nov: one network without a live relay socket kept every Team of
+		// every network on the quick check, about once every 7 s each): one that can tell this Mac of a change is
+		// checked once a minute, one that cannot every few seconds, and a wake (a push or a local change) checks all.
+		checked := map[string]time.Time{}
+		woken := true
 		for ctx.Err() == nil {
 			owner := GetDefaultUserID()
 			connections, e := readDesktopConnections(owner)
+			pushed := true // every server with a Team here has a live relay socket to tell this Mac of changes
 			if e == nil {
 				for _, c := range connections {
+					if _, live := desktopRelayLive.Load(c.ID); live && !woken && time.Since(checked[c.ID]) < crewTeamCheckAfter(true) {
+						continue
+					}
+					checked[c.ID] = time.Now()
 					check, stop := context.WithTimeout(ctx, 15*time.Second)
 					var out struct {
 						Teams []crewTeam `json:"teams"`
@@ -193,7 +228,19 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 					if e != nil {
 						continue
 					}
+					if _, live := desktopRelayLive.Load(c.ID); len(out.Teams) > 0 && !live {
+						pushed = false
+					}
 					for _, t := range out.Teams {
+						// A member's copy names whose Crew it is; copies joined before the name was kept get it here.
+						if t.OwnerID != c.User.ID {
+							if local := crewTeamMemberCopy(t.ProjectID); local != "" {
+								name, network := strings.SplitN(t.OwnerName, "@", 2)[0], crewTeamNetworkName(c)
+								if saved := readCrewTeamState(local); name != "" && (saved.SharedBy != name || saved.SharedFrom != network) {
+									_ = writeCrewTeamState(local, func(s *crewTeamLocalState) { s.SharedBy, s.SharedFrom = name, network })
+								}
+							}
+						}
 						// The owner's Mac follows its Crew's Team record, changed from anywhere (crew_team_apply.go).
 						if t.OwnerID == c.User.ID {
 							if local := crewLocalProjectForTeam(owner, c, t.ProjectID); local != "" && readCrewTeamState(local).TeamOn != t.On {
@@ -225,15 +272,27 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 					}
 				}
 			}
+			woken = false
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(5 * time.Second):
-			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go)
+			case <-time.After(crewTeamCheckAfter(pushed)):
+			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go), or the server said a teammate's did
+				woken = true
 			}
 		}
 	}()
 	return cancel
+}
+
+// crewTeamCheckAfter is the timed check for teammates' changes and Team records. When every server with a Team here
+// has this Mac's relay socket open, each tells the Mac of a change at once (crew_team_push.go) and the check only
+// catches a missed note; otherwise it stays quick.
+func crewTeamCheckAfter(pushed bool) time.Duration {
+	if pushed {
+		return 60 * time.Second
+	}
+	return 5 * time.Second
 }
 
 // crewTeamMacRound is one round of a Mac copy with its Crew's setup (crew_team_setup.go): this Crew's setup changes go
@@ -241,11 +300,16 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 // folder (review 5 Nov: a new member's blank setup replaced the owner's).
 func (api *StreamingAPI) crewTeamMacRound(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
 	local := crewTeamLocalCrew(*b)
-	api.reconcileCrewTeamSetup(ctx, owner, local, b.Root, dir, b.Downloaded)
+	if local != "" {
+		if roots, e := api.crewSyncRoots(ctx, &UserClaims{UserID: owner, Username: owner}, local); e == nil {
+			b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
+		}
+	}
+	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
 	if err := syncCrewTeamLocal(ctx, owner, c, dir, b); err != nil {
 		return err
 	}
-	api.reconcileCrewTeamSetup(ctx, owner, local, b.Root, dir, b.Downloaded)
+	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
 	return nil
 }
 
@@ -259,7 +323,11 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	}
 	defer unlock()
 	if fresh, err := readCrewTeamLocal(dir); err == nil {
+		skills := b.SkillRoot
 		*b = fresh
+		if skills != "" {
+			b.setSkillRoot(skills)
+		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -302,6 +370,29 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 	if !team.FolderAccess {
 		return fmt.Errorf("shared folder access was removed; downloaded files stay on this computer")
 	}
+	// A member's working copy always uses the Team's named identities. Adopt
+	// already-acknowledged files on initialization; private paths have no base.
+	if c.User.ID != team.OwnerID && !b.Mounted {
+		b.Mounted = true
+		b.Mounts = map[string]crewTeamMount{}
+		for _, p := range team.Folder.mounts() {
+			for rel := range b.Files {
+				if crewTeamUnder(rel, p.Path) {
+					b.Mounts[p.ID] = crewTeamMount{Remote: p.Path, Local: p.Path}
+					break
+				}
+			}
+		}
+	}
+	if e = b.reconcileOwnedPaths(ctx, owner, c, &team); e != nil {
+		return e
+	}
+	if e = b.reconcileMounts(team.Folder); e != nil {
+		return e
+	}
+	if e = saveCrewTeamLocal(dir, *b); e != nil {
+		return e
+	}
 	route := "/api/crew-teams/" + url.PathEscape(b.Project)
 	query := "?folder_id=" + url.QueryEscape(b.FolderID)
 	// 1. What changed here goes up: plan, the chunks the server lacks, commit; at most crewTeamCommitBatch files a time.
@@ -313,8 +404,12 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		started, key := time.Now(), crewTeamScanKey(*b, team.Folder)
 		watch := crewTeamWatchFor(dir, b.Root)
 		plan := watch.take(key)
-		if !plan.idle() {
-			scan, e = crewTeamScanChanged(ctx, b, team.Folder, plan.changed, plan.rules)
+		if !plan.idle() || b.separateSkills() {
+			changed := plan.changed
+			if plan.idle() {
+				changed = map[string]bool{}
+			}
+			scan, e = crewTeamScanChanged(ctx, b, team.Folder, changed, plan.rules)
 		}
 		// Settle metadata after a touch/racy recheck without advancing any
 		// changed version's acknowledgement before the upload succeeds.
@@ -341,8 +436,8 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		}
 		watch.done(b.Project, key, plan, scan, errors.Join(e, uploadErr, saveErr, retryErr))
 		if !plan.idle() {
-			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d reused=%d read_files=%d read_bytes=%d unstable=%d changes=%d chunks_sent=%d ms=%d",
-				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, scan.reused, scan.readFiles, scan.readBytes, scan.unstable, len(scan.changes), chunks, time.Since(started).Milliseconds())
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d reused=%d read_files=%d read_bytes=%d unstable=%d changes=%d chunks_sent=%d ms=%d fallback_copies=%d",
+				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, scan.reused, scan.readFiles, scan.readBytes, scan.unstable, len(scan.changes), chunks, time.Since(started).Milliseconds(), crewTeamFallbackCopies.Load())
 		}
 		if e != nil {
 			return crewTeamStep("scan", e)
@@ -357,6 +452,20 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		var page crewTeamChangesReply
 		if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/changes"+query, crewTeamSyncRequest{Client: b.Client, Since: b.Revision}, &page); e != nil {
 			return crewTeamStep("changes", e)
+		}
+		if page.CatchUp {
+			// Use the existing first-download reconciliation: local edited bytes
+			// stay here, against the server's current base, for the next upload.
+			b.Downloaded = false
+			pending = true // reconciliation may preserve edits made after the upload scan
+		}
+		if b.Mounted {
+			if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, route, nil, &team); e != nil {
+				return e
+			}
+			if e = b.reconcileMounts(team.Folder); e != nil {
+				return e
+			}
 		}
 		b.FolderOnPurpose = page.OnPurpose // the server names what the folder holds on purpose
 		skipped, err := crewTeamDownload(ctx, owner, c, route, query, dir, b, page.Files)
@@ -373,6 +482,24 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 			break
 		}
 		b.Revision = page.Through
+		if page.CatchUp {
+			b.Status = "pending"
+			if e = saveCrewTeamLocal(dir, *b); e != nil {
+				return e
+			}
+			if errors.Is(uploadErr, errCrewTeamHistoryCatchUp) {
+				uploadErr = nil
+			}
+			// Reconcile can preserve local edits without a filesystem change event.
+			// Scan them on the next round before reporting this copy up to date.
+			watch := crewTeamWatchFor(dir, b.Root)
+			watch.mu.Lock()
+			watch.full = true
+			watch.mu.Unlock()
+			crewTeamWakeSoon()
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=catch_up_applied revision=%d", b.Project, b.Client, b.Revision)
+			continue // only a subsequent normal delta may report synchronized
+		}
 		if !page.More && !b.Downloaded {
 			// From now on this copy also sends its changes (a copy that already held the team's files adopted them).
 			b.Downloaded = true
@@ -403,9 +530,10 @@ type crewTeamScanResult struct {
 	changes   []crewTeamChange
 	entries   map[string]crewTeamLocalFile // the new state of each changed path (absent for a removal)
 	sources   map[string]chunkSource
-	dirs      []string // folders the scan entered: what a watcher watches ("" is the copy's folder)
-	stated    int      // files whose size and time were read
-	reused    int      // stable file versions reused without reading contents
+	dirNames  map[string]int // entry counts per listed folder for global watcher accounting
+	dirs      []string       // folders the scan entered: what a watcher watches ("" is the copy's folder)
+	stated    int            // files whose size and time were read
+	reused    int            // stable file versions reused without reading contents
 	readFiles int
 	readBytes int64
 	unstable  int  // retry these files next round without blocking other transfers
@@ -416,7 +544,7 @@ type crewTeamScanResult struct {
 
 // crewTeamScan finds what changed in this copy since it was last in step: a file with a trusted unchanged stamp
 // is not read; any other is chunked. Only what the share holds is looked at (crewTeamAllowed, Sync it
-// anyway, Whole Crew or the chosen folders, .gitignore), as the old capture did.
+// anyway, the chosen folders, .gitignore), as the old capture did.
 func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (crewTeamScanResult, error) {
 	return crewTeamScanChanged(ctx, b, share, nil, false)
 }
@@ -425,10 +553,75 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 // each is in, and a path marked true (made, removed or renamed: maybe a folder) with all it holds. changed nil reads
 // the whole copy. rules is whether the folder had a .gitignore at its last full scan.
 func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
-	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}}
+	if !b.separateSkills() {
+		return crewTeamScanCore(ctx, b, share, changed, rules)
+	}
+	normal := *b
+	normal.SkipSkillTree = true
+	primary, err := crewTeamScanCore(ctx, &normal, share, changed, rules)
+	b.TooLarge = normal.TooLarge
+	if err != nil {
+		return primary, err
+	}
+	skills := *b
+	skills.Root = filepath.Dir(b.SkillRoot)
+	skills.SkillRoot = ""
+	skills.ScanSkillsOnly = true
+	skills.SkipSkillTree = false
+	if err = os.MkdirAll(filepath.Join(skills.Root, "skills"), 0755); err != nil {
+		return primary, err
+	}
+	watch := crewTeamWatchFor(b.SkillRoot, skills.Root)
+	plan := watch.take(crewTeamScanKey(skills, share))
+	if plan.idle() {
+		return primary, nil
+	}
+	extra, err := crewTeamScanCore(ctx, &skills, share, plan.changed, plan.rules)
+	watch.done(b.Project, crewTeamScanKey(skills, share), plan, extra, err)
+	if len(extra.changes) > 0 || extra.unstable > 0 {
+		watch.mu.Lock()
+		watch.full = true
+		watch.mu.Unlock()
+	}
+	b.TooLarge = skills.TooLarge
+	if err != nil {
+		return primary, err
+	}
+	for key, entry := range extra.entries {
+		primary.entries[key] = entry
+	}
+	for key, source := range extra.sources {
+		source.root = skills.Root
+		primary.sources[key] = source
+	}
+	primary.changes = append(primary.changes, extra.changes...)
+	primary.readFiles += extra.readFiles
+	primary.readBytes += extra.readBytes
+	primary.stated += extra.stated
+	primary.reused += extra.reused
+	primary.unstable += extra.unstable
+	return primary, nil
+}
+
+func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
+	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}, dirNames: map[string]int{}}
 	op := b.onPurpose()
 	full := changed == nil
-	enters := func(rel string) bool { return crewsync.Allowed(crewTeamKey(rel), true) && share.walks(rel) }
+	skippedSkills := map[string]bool{}
+	enters := func(rel string) bool {
+		if b.SkipSkillTree && crewTeamUnder(rel, "skills") {
+			return false
+		}
+		if b.ScanSkillsOnly && rel != "skills" && !strings.HasPrefix(rel, "skills/") {
+			return false
+		}
+		allowed := crewsync.Allowed(crewTeamKey(rel), true) && b.walksDisk(rel, share)
+		if b.Mounted && crewTeamUnder(rel, "skills") && !allowed && !skippedSkills[rel] {
+			crewTeamLogPrivateSkill(b, rel)
+			skippedSkills[rel] = true
+		}
+		return allowed
+	}
 	// targets: folder -> whether everything under it is read (deep), or only its own files.
 	targets := map[string]bool{"": full}
 	if !full {
@@ -467,6 +660,7 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 		entries, err := os.ReadDir(filepath.Join(b.Root, filepath.FromSlash(rel)))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				out.dirNames[rel] = 0
 				listed[rel], deep[rel] = true, true // gone (or a file): what was under it is checked below
 				return nil
 			}
@@ -475,6 +669,7 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 		again := listed[rel]
 		if !again {
 			out.names += len(entries)
+			out.dirNames[rel] = len(entries)
 		}
 		listed[rel] = true
 		deep[rel] = deep[rel] || recurse
@@ -555,23 +750,23 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 			return out, err
 		}
 	}
-	var ignored map[string]bool
-	var err error
-	if full {
-		ignored, out.rules, err = crewTeamIgnored(ctx, b.Root)
-	} else {
-		out.rules = rules
-		ignored = map[string]bool{}
-		if rules {
-			paths := make([]string, 0, len(files))
-			for _, f := range files {
-				paths = append(paths, f.rel)
-			}
-			ignored, err = crewTeamCheckIgnore(ctx, b.Root, paths)
+	// The share's .gitignore files apply to the files this listing read: one walk, full or watched. A full scan
+	// learns whether the folder has rules from the names it listed; a watched round also notices a .gitignore that
+	// arrived inside a new folder. Git reads the rules from disk itself, so checking only these paths changes nothing.
+	out.rules = rules && !full
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.rel)
+		if path.Base(f.rel) == ".gitignore" {
+			out.rules = true
 		}
 	}
-	if err != nil {
-		return out, err
+	ignored := map[string]bool{}
+	if out.rules {
+		var err error
+		if ignored, err = b.checkIgnore(ctx, paths); err != nil {
+			return out, err
+		}
 	}
 	// covered: a file of the copy this scan read the folder of, so its absence means it is gone.
 	covered := func(rel string) bool {
@@ -596,19 +791,27 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team. A file that is
 	// still here but this copy leaves out (ignored, outside the share) is not this copy's to remove (review 5 Nov).
 	for _, rel := range b.TooLarge {
-		if !covered(rel) {
+		if b.SkipSkillTree && crewTeamUnder(rel, "skills") || b.ScanSkillsOnly && !crewTeamUnder(rel, "skills") {
+			tooLarge = append(tooLarge, rel)
+			continue
+		}
+		if !covered(b.diskRel(rel)) {
 			tooLarge = append(tooLarge, rel) // a folder this round did not read keeps its notice
 		}
 	}
 	b.TooLarge = tooLarge
 	for rel, known := range b.Files {
-		if !covered(rel) && !slices.Contains(b.StopSyncing, rel) {
+		if b.SkipSkillTree && crewTeamUnder(rel, "skills") || b.ScanSkillsOnly && !crewTeamUnder(rel, "skills") {
 			continue
 		}
-		gone := !present[rel]
-		if gone && slices.ContainsFunc(left, func(dir string) bool { return strings.HasPrefix(rel, dir+"/") }) {
+		if b.diskRel(rel) == "" || !covered(b.diskRel(rel)) && !slices.Contains(b.StopSyncing, rel) {
+			continue
+		}
+		disk := b.diskRel(rel)
+		gone := !present[disk]
+		if gone && slices.ContainsFunc(left, func(dir string) bool { return strings.HasPrefix(disk, dir+"/") }) {
 			// Inside a folder the walk left out (its names were not read): only a file that is really gone.
-			info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+			info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(disk)))
 			gone = err != nil || !info.Mode().IsRegular()
 		}
 		if !seen[rel] && gone || slices.Contains(b.StopSyncing, rel) {
@@ -643,7 +846,17 @@ func crewTeamParent(rel string) string {
 // crewTeamScanFile reuses only a stable full stamp, including change-time,
 // identity and mode; preserving a file's size/mtime cannot hide an edit.
 func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanResult, rel string, d fs.DirEntry, ignored map[string]bool, share crewTeamFolder, seen map[string]bool, tooLarge *[]string) {
-	if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(rel) || !crewTeamAllowed(rel, op) {
+	remote := b.remoteRel(rel)
+	if remote == "" && b.Mounted && strings.HasPrefix(rel, "skills/") {
+		crewTeamLogPrivateSkill(b, rel)
+	}
+	if b.SkipSkillTree && crewTeamUnder(remote, "skills") || b.ScanSkillsOnly && !crewTeamUnder(remote, "skills") {
+		return
+	}
+	if remote == "" {
+		return
+	}
+	if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(remote) || !crewTeamAllowed(remote, op) {
 		return
 	}
 	info, err := d.Info()
@@ -654,16 +867,16 @@ func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanR
 	if info.Size() > publication.MaxFileBytes {
 		// Over the per-file limit: left out and named in the status, so it never blocks the rest (it stays here,
 		// and the team's earlier version of it stays on the team).
-		*tooLarge = append(*tooLarge, rel)
+		*tooLarge = append(*tooLarge, remote)
 		return
 	}
-	seen[rel] = true
-	known, had := b.Files[rel]
+	seen[remote] = true
+	known, had := b.Files[remote]
 	if had && known.Stamp.Reusable(crewsync.StampOf(info), known.ReadAt) {
 		out.reused++
 		return
 	}
-	entry, sources, err := readCrewTeamVersion(b.Root, rel, op, known.Version)
+	entry, sources, err := readCrewTeamVersion(b.Root, rel, b.diskPurpose(), known.Version)
 	if err != nil {
 		if errors.Is(err, errCrewTeamFileChanged) {
 			out.unstable++ // watcher.done retries; this file's acknowledged version stays unchanged
@@ -677,11 +890,11 @@ func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanR
 	}
 	out.readFiles++
 	out.readBytes += entry.Version.Size
-	out.entries[rel] = entry
+	out.entries[remote] = entry
 	if had && crewTeamSameVersion(known.Version, entry.Version) {
 		return // touched/racy, not changed: settle its stamp after the scan
 	}
-	out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash, After: &entry.Version})
+	out.changes = append(out.changes, crewTeamChange{Path: remote, Before: known.Version.Hash, After: &entry.Version})
 }
 
 // crewTeamUpload sends this copy's changes in batches: plan, the missing chunks in frames of at most
@@ -701,7 +914,7 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 		batch := scan.changes[start:min(start+crewTeamCommitBatch, len(scan.changes))]
 		// The same change set retried (a commit whose reply was lost) carries the same transfer id, so the server's
 		// receipt answers it instead of applying a stale base over a newer edit (review 5 Nov #7).
-		request := crewTeamSyncRequest{Client: b.Client, TransferID: crewTeamChangeSetID(b.Client, b.Revision, batch), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
+		request := crewTeamSyncRequest{Client: b.Client, Since: b.Revision, TransferID: crewTeamChangeSetID(b.Client, b.Revision, batch), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
 		var plan struct {
 			Missing []string `json:"missing"`
 		}
@@ -757,11 +970,17 @@ const crewTeamDownloadBatch = 200
 // own unchanged files or fetched, into private staging, before any file is written. It reports whether a file was
 // left alone.
 func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, route, query, dir string, b *crewTeamLocal, files []crewTeamRemoteFile) (bool, error) {
-	op := b.onPurpose()
+	op := b.diskPurpose()
+	files = slices.DeleteFunc(files, func(f crewTeamRemoteFile) bool { return f.Version == nil && b.diskRel(f.Path) == "" })
+	for _, f := range files {
+		if b.diskRel(f.Path) == "" {
+			return false, fmt.Errorf("the Team has not supplied a folder identity for %s", f.Path)
+		}
+	}
 	// holds reuses only a trusted stamp; changed identities/modes or racy
 	// timestamps require a stable content read before overwriting local work.
 	holds := func(rel string, known crewTeamLocalFile) bool {
-		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		info, err := os.Lstat(filepath.Join(b.diskRoot(rel), filepath.FromSlash(b.diskRel(rel))))
 		if err != nil || !info.Mode().IsRegular() {
 			return false
 		}
@@ -771,7 +990,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		if info.Size() != known.Version.Size {
 			return false
 		}
-		entry, _, err := readCrewTeamVersion(b.Root, rel, op, known.Version)
+		entry, _, err := readCrewTeamVersion(b.diskRoot(rel), b.diskRel(rel), op, known.Version)
 		if err != nil || !crewTeamSameVersion(entry.Version, known.Version) {
 			return false
 		}
@@ -782,7 +1001,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 	unchanged := func(rel string) bool {
 		known, had := b.Files[rel]
 		if !had {
-			_, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+			_, err := os.Lstat(filepath.Join(b.diskRoot(rel), filepath.FromSlash(b.diskRel(rel))))
 			return os.IsNotExist(err)
 		}
 		return holds(rel, known)
@@ -801,9 +1020,10 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 			skipped = true
 			continue
 		}
-		if err := removeCrewTeamFile(b.Root, f.Path); err != nil {
+		if err := removeCrewTeamFile(b.diskRoot(f.Path), b.diskRel(f.Path)); err != nil {
 			return skipped, crewTeamStep("write", err)
 		}
+		b.receivedMountPath(f.Path, true)
 		delete(b.Files, f.Path)
 	}
 	writes := []crewTeamRemoteFile{}
@@ -844,7 +1064,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		var offset int64
 		for _, ch := range known.Version.Chunks {
 			if _, ok := local[ch.ID]; !ok {
-				local[ch.ID] = chunkSource{path: rel, offset: offset, size: ch.Len}
+				local[ch.ID] = chunkSource{root: b.diskRoot(rel), path: b.diskRel(rel), offset: offset, size: ch.Len}
 			}
 			offset += ch.Len
 		}
@@ -929,16 +1149,17 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 				writer.CloseWithError(copyErr)
 			}(*f.Version)
 			writeStarted := time.Now()
-			err = writeCrewTeamFile(ctx, b.Root, f.Path, reader, *syncFile(*f.Version), op)
+			err = writeCrewTeamFile(ctx, b.diskRoot(f.Path), b.diskRel(f.Path), reader, *syncFile(*f.Version), op)
 			reader.Close()
 			if err != nil {
 				return crewTeamStep("write", err)
 			}
-			info, statErr := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(f.Path)))
+			info, statErr := os.Lstat(filepath.Join(b.diskRoot(f.Path), filepath.FromSlash(b.diskRel(f.Path))))
 			if statErr != nil {
 				return crewTeamStep("write", statErr)
 			}
 			b.Files[f.Path] = crewTeamLocalFile{Stamp: crewsync.StampOf(info), ReadAt: writeStarted, Version: *f.Version}
+			b.receivedMountPath(f.Path, false)
 			log.Printf("[CREW_TEAM_LOCAL] project=%s actor=%s client=%s path=%q event=received", b.Project, b.RemoteUser, b.Client, f.Path)
 		}
 		return nil

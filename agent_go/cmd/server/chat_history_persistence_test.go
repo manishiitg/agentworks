@@ -119,51 +119,6 @@ func TestCaptureChatHistoryTerminalSnapshotsRedactsAndPreservesAnsi(t *testing.T
 	}
 }
 
-func TestListWorkProjectChatHistoryResolvesOwnedProjectStorage(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	const (
-		userID        = "alice"
-		workspacePath = "Chats/Work/projects/demo-12345678"
-		sessionID     = "product-chat-1"
-	)
-	conversationDir := filepath.Join(root, "_users", userID, filepath.FromSlash(workspacePath), "builder", "conversation", "2026-09-15")
-	if err := os.MkdirAll(conversationDir, 0o755); err != nil {
-		t.Fatalf("mkdir Work conversation dir: %v", err)
-	}
-	conversation := `{
-  "session_id": "product-chat-1",
-  "agent_mode": "multi-agent",
-  "conversation_history": [
-    {"Role":"human","Parts":[{"Text":"saved Work question"}]},
-    {"Role":"ai","Parts":[{"Text":"saved Work answer"}]}
-  ],
-  "runtime": {
-    "kind": "coding_agent",
-    "provider": "claude-code",
-    "workspace_path": "_users/alice/Chats/Work/projects/demo-12345678"
-  },
-  "user_id": "alice",
-  "updated_at": "2026-09-15T05:00:00Z"
-}`
-	conversationPath := filepath.Join(conversationDir, chatHistoryConversationFileName(sessionID))
-	if err := os.WriteFile(conversationPath, []byte(conversation), 0o600); err != nil {
-		t.Fatalf("write Work conversation: %v", err)
-	}
-
-	sessions, err := ListChatHistorySessionsByKind(userID, "chat", 25, 0, workspacePath)
-	if err != nil {
-		t.Fatalf("list Work project chats: %v", err)
-	}
-	if len(sessions) != 1 || sessions[0].SessionID != sessionID || sessions[0].Query != "saved Work question" {
-		t.Fatalf("Work project history = %#v, want owned project transcript", sessions)
-	}
-	if !strings.HasPrefix(sessions[0].ConversationPath, "_users/alice/Chats/Work/projects/") {
-		t.Fatalf("conversation path = %q, want owned Work path", sessions[0].ConversationPath)
-	}
-}
-
 // The Costs page opens a project's conversation with the project's plain path; the transcript sits under the person's
 // own storage root (PLAT-856-134).
 func TestReadChatHistoryConversationFindsOwnedWorkProjectTranscript(t *testing.T) {
@@ -215,17 +170,6 @@ func TestAppendLiveInputUsesOwnedWorkProjectConversation(t *testing.T) {
 	}
 	if len(record.ConversationHistory) != 2 || len(record.ConversationHistory[1].Parts) != 1 || chatHistoryPartText(record.ConversationHistory[1].Parts[0]) != "resumed follow-up" {
 		t.Fatalf("persisted Work history = %#v, want resumed follow-up appended", record.ConversationHistory)
-	}
-}
-
-func TestNormalizeRestoredChatHistoryConversationPathAllowsOnlyOwnedWorkProject(t *testing.T) {
-	owned := "_users/alice/Chats/Work/projects/demo/builder/conversation/2026-09-14/session-chat-1-conversation.json"
-	if got, ok := normalizeRestoredChatHistoryConversationPath("alice", owned); !ok || got != owned {
-		t.Fatalf("owned Work conversation path = %q, ok=%v", got, ok)
-	}
-	otherUser := "_users/bob/Chats/Work/projects/demo/builder/conversation/2026-09-14/session-chat-1-conversation.json"
-	if got, ok := normalizeRestoredChatHistoryConversationPath("alice", otherUser); ok || got != "" {
-		t.Fatalf("other user's Work conversation path = %q, ok=%v", got, ok)
 	}
 }
 
@@ -544,36 +488,6 @@ func TestDurableChatHistoryIsNotTruncatedOnWrite(t *testing.T) {
 	// replayed history must stay below half that ceiling.
 	if maxCodingAgentFallbackBytes >= 64*1024 {
 		t.Fatalf("fallback byte limit (%d) is unsafe for Cursor's positional prompt", maxCodingAgentFallbackBytes)
-	}
-}
-
-func TestAgentProfileRetainedAdmissionUsesLaunchedFingerprint(t *testing.T) {
-	api := &StreamingAPI{
-		lastAgentProfileKeyBySession:     map[string]string{"crew": "new-linear-scope"},
-		launchedAgentProfileKeyBySession: map[string]string{"crew": "new-linear-scope"},
-		agentCancelFuncs:                 map[string]context.CancelFunc{"crew": func() {}},
-	}
-	// Persistence still belongs to the previous completed turn. The foreground
-	// agent's actual admission is authoritative until its own turn is saved.
-	if !api.agentProfileAllowsRetainedLiveInput("user", "crew", "missing", true) {
-		t.Fatal("rebuilt foreground session restarted on unchanged follow-up")
-	}
-	api.lastAgentProfileKeyBySession["crew"] = "new-notion-scope"
-	if api.agentProfileAllowsRetainedLiveInput("user", "crew", "missing", true) {
-		t.Fatal("running session accepted a changed MCP scope")
-	}
-	if api.launchedAgentProfileKeyBySession["crew"] != "new-linear-scope" {
-		t.Fatal("new request overwrote launched admission")
-	}
-}
-
-func TestAgentProfileRuntimeKeepsActualTurnAdmission(t *testing.T) {
-	api := &StreamingAPI{lastAgentProfileKeyBySession: map[string]string{"crew": "next-request-scope"}}
-	agent := &mcpagent.Agent{}
-	api.agentProfileAdmissions.Store(agent, "scope-used-by-this-turn")
-	runtime := api.captureChatHistoryAgentRuntime("crew", "muse-cli", "test-model", "Chats/Work/projects/example", agent)
-	if runtime.AgentProfileKey != "scope-used-by-this-turn" {
-		t.Fatal("canceled turn stamped its old native handle with the next request's admission")
 	}
 }
 

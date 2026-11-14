@@ -1,0 +1,276 @@
+import { useEffect, useState } from 'react'
+import { ArrowLeft, Bot, X } from 'lucide-react'
+import { Switch } from '../../components/ui/Switch'
+import { Button } from '../../components/ui/Button'
+import ModalPortal from '../../components/ui/ModalPortal'
+import { useChatStore } from '../../stores/useChatStore'
+import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { openAgentTab } from '../../utils/openAgentTab'
+import { useCrewAgentsStore } from '../../components/chat/AgentCard'
+import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
+import { openCrewAccess } from './MacSharedAgents'
+import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
+
+/** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
+const toMain = (projectId: string, draft: string) => {
+  if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error')
+}
+
+/**
+ * The Team page (owner, 11 Nov: Share split into Team and Online; 12 Nov: Share agents moved into Team › Agents). It
+ * prints the server's /share reply: the team option's title, line and status, the Team (the first-time wizard,
+ * People, Activity, Sync), and the Agents tab: Ask and actions per agent. With the Team off there are no tabs, so the
+ * agents follow People. The server writes every line and says what this person may change; the page prints it and
+ * sends their change to the existing routes. The same page for the owner and every teammate.
+ */
+export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; onBack?: () => void; onTurnOn?: () => void }) {
+  const state = useTeamTab(projectId)
+  const { target } = state
+  const [page, setPage] = useState<CrewSharePage>()
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (!target) return
+    let active = true
+    const load = () => void crewSharePage(target).then(data => { if (active) { setPage(data); setError('') } }).catch(e => { if (active) setError(teamFailure(e).message) })
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch.
+  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} />
+  if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
+  const option = page.options.find(item => item.key === 'team')
+  if (!option) return null
+  // With the Team on, the Team page starts with its tabs and the back arrow beside them, like every other side panel
+  // page (owner, 11 Nov: "follow what we have everywhere"; YourComputerPanel, 4 Nov: no title row).
+  const teamOn = !!state.view?.team.on
+  const teamTabs = teamOn && !state.view?.new_team
+  const agents = <ShareAgents page={page} target={target} projectId={projectId} onPeople={() => openCrewAccess(projectId, '', 'team', 'people')} />
+  return <div className="space-y-3">
+    {!teamTabs && <div className="flex items-start gap-2 px-1">
+      {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>}
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[17px] font-semibold">{option.title}</h2>
+        <p className="text-[13px] text-muted-foreground">{option.line}</p>
+      </div>
+      <span className={`shrink-0 whitespace-nowrap pt-1 text-xs ${option.on ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{option.status}</span>
+    </div>}
+    {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
+    <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} agents={agents} />
+    {!teamOn && !state.view?.new_team && agents}
+    {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
+  </div>
+}
+
+/** Opens a teammate's agent by its chat key: its open tab, else the closed agent the left menu lists. */
+function openTeammateAgent(key: string) {
+  const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === key)
+  if (tab) { openAgentTab(tab.tabId); return }
+  const closed = useCrewAgentsStore.getState().closed.find(agent => agent.key === key)
+  if (closed) { void closed.open(); return }
+  useChatStore.getState().addToast('Open it from the agents menu (⌄) next to your tabs.', 'info')
+}
+
+/** Team › Agents: one card per own agent (Ask), the Crew's actions, teammates' agents, then "Who can use these". */
+function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
+  const [wizard, setWizard] = useState('')
+  const shared = page.shared_with_you || []
+  return <div className="space-y-2.5">
+    {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents</p>}
+    {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
+    {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
+    <ShareActions group={page.actions_group} target={target} projectId={projectId} onWizard={setWizard} />
+    {/* Teammates' agents: one row each with who shared it; no switches, they belong to the teammate. */}
+    {shared.length > 0 && <>
+      <p className="px-1 pt-2 text-xs font-medium text-muted-foreground">Teammates' agents</p>
+      {shared.flatMap(person => person.items.map(item => {
+        const body = <>
+          <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">{person.name.slice(0, 1).toUpperCase()}</span>
+          <span className="min-w-0 flex-1"><span className="block font-medium">{item.name}</span><span className="block truncate text-xs text-muted-foreground">{person.name} · {item.line}</span></span>
+          <span className="shrink-0 text-right text-xs text-muted-foreground">{item.can}</span>
+        </>
+        const row = 'flex w-full items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-left text-sm'
+        // A teammate's agent opens like it does from the agents menu (owner, 12 Nov); an action stays a plain line.
+        return item.key
+          ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(item.key!)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
+          : <div key={person.name + item.name + item.line} className={row}>{body}</div>
+      }))}
+    </>}
+    <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
+    {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}
+  </div>
+}
+
+function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; target: TeamTarget; projectId: string }) {
+  const { view } = useTeamTab(projectId)
+  const [pending, setPending] = useState('')
+  const [error, setError] = useState('')
+  const [rules, setRules] = useState(false)
+  const where = { project: target.project, connection: target.connection }
+  const run = async (key: string, save: () => Promise<unknown>) => {
+    setPending(key); setError('')
+    try { await save() } catch (e) { setError(teamFailure(e).message) } finally { setPending('') }
+  }
+  const updated = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: agent.key, in_team: on }); updated() })
+  const rule = (key: string, change: { can_make_changes?: boolean; chat_share?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
+  const ask = agent.ask
+  // The rule editor (When others ask) stays one click away, on the viewer's own agent.
+  const row = view?.agents.find(item => item.key === agent.key && item.mine)
+  const busy = Boolean(pending)
+  return <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
+    <div className="flex items-center gap-2.5 px-4 py-3.5">
+      <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Bot className="h-4 w-4" /></span>
+      <span className="min-w-0 truncate text-[17px] font-semibold">{agent.name}</span>
+      {agent.line && <span title={agent.hint || undefined} className="whitespace-nowrap text-[13px] text-muted-foreground">· {agent.line}</span>}
+    </div>
+    {ask && <>
+      <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+        <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold">{ask.title}</span><span className="block text-[13px] text-muted-foreground">{ask.line}</span></span>
+        <span title={ask.fixed || undefined} className="inline-flex shrink-0 items-center gap-1.5">
+          <Saving on={pending === 'ask'}>{null}</Saving>
+          <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
+        </span>
+      </div>
+      {(ask.note || (!ask.can_change && ask.fixed)) && <p className="px-4 pb-3 text-[13px] text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
+      {ask.on && ask.can_edit && <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-muted-foreground">{ask.changes_label}</p>
+          <div role="radiogroup" aria-label={ask.changes_label} className="grid gap-2">
+            {ask.changes_options.map(option => <button key={option.label} type="button" role="radio" aria-checked={ask.can_make_changes === option.value} disabled={busy}
+              onClick={() => { if (ask.can_make_changes !== option.value) void rule('can', { can_make_changes: option.value }) }}
+              className={`flex gap-2.5 rounded-xl border px-3 py-2.5 text-left ${ask.can_make_changes === option.value ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/40'}`}>
+              <span aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 rounded-full border-2 ${ask.can_make_changes === option.value ? 'border-primary bg-primary' : 'border-muted-foreground/50'}`} />
+              <span><span className="block text-sm font-semibold">{option.label}</span><span className="block text-[13px] text-muted-foreground">{option.line}</span></span>
+            </button>)}
+          </div>
+          <Saving on={pending === 'can'}>{null}</Saving>
+        </div>
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-muted-foreground">{ask.chat_share_label}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span role="radiogroup" aria-label={ask.chat_share_label} className="inline-flex overflow-hidden rounded-lg border border-border">
+              {ask.chat_share_options.map(option => <button key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy}
+                onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
+                className={`px-3 py-1 text-[13px] ${ask.chat_share === option.value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{option.label}</button>)}
+            </span>
+            <Saving on={pending === 'see'}>{null}</Saving>
+            {row && <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-[13px] text-primary hover:underline">{ask.rules_label}</button>}
+          </div>
+        </div>
+        {rules && row && <AgentDetails agent={row} target={target} projectId={projectId} />}
+      </div>}
+    </>}
+    {error && <p role="alert" className="px-4 pb-3 text-xs text-destructive">{error}</p>}
+  </div>
+}
+
+/** The one Actions group: every action once, each with what it starts, its inputs, its switch and who can ask. */
+function ShareActions({ group, target, projectId, onWizard }: { group: CrewShareActionsGroup; target: TeamTarget; projectId: string; onWizard: (name: string) => void }) {
+  const [pending, setPending] = useState('')
+  const [error, setError] = useState('')
+  const turn = async (item: CrewShareAction, on: boolean) => {
+    setPending(`${item.target}:${item.name}`); setError('')
+    try { await setCrewAction(target, { target: item.target, name: item.name, on }) } catch (e) { setError(teamFailure(e).message) } finally { setPending('') }
+  }
+  return <div className="rounded-xl border border-border px-3.5 py-3 text-sm">
+    <p className="text-[15px] font-semibold">{group.title}</p>
+    <p className="text-xs text-muted-foreground">{group.line}</p>
+    {group.rows.map(item => <div key={`${item.target}:${item.name}`} className="flex items-center gap-3 border-t border-border pt-2 mt-2">
+      <span className="min-w-0 flex-1" title={item.line || undefined}>
+        <span className="block font-medium">{item.title}</span>
+        <span className="block text-xs text-muted-foreground">{item.starts}</span>
+        {item.inputs.length > 0 && <span className="mt-0.5 flex flex-wrap gap-1">
+          {item.inputs.map(input => <span key={input} className="rounded-full border border-border px-2 py-px text-[11px] text-muted-foreground">{input}</span>)}
+        </span>}
+        <span className="mt-0.5 block text-xs text-muted-foreground">{item.who}</span>
+      </span>
+      <span title={item.fixed || undefined} className="inline-flex shrink-0 items-center gap-1.5">
+        <Saving on={pending === `${item.target}:${item.name}`}>{null}</Saving>
+        <Switch aria-label={`${item.title}: on`} checked={item.on} disabled={!item.can_change || Boolean(pending)} onCheckedChange={on => void turn(item, on)} />
+      </span>
+    </div>)}
+    {group.setup_ask && <button type="button" onClick={() => toMain(projectId, group.setup_ask || '')} className="mt-2 text-[13px] text-primary hover:underline">✦ Ask AI to set up an action</button>}
+    {group.wizard_for && <button type="button" onClick={() => onWizard(group.wizard_for || '')} className="mt-2 text-[13px] text-primary hover:underline">+ Set up an action</button>}
+    {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
+  </div>
+}
+
+// The wizard's answers become the words of a draft in Main; the Crew's AI builds the action from them and shows it in
+// chat before anything is saved. The page saves nothing.
+const GETS_BACK = [
+  { label: 'A short written answer', words: 'a short written answer' },
+  { label: 'A file (report, sheet)', words: 'a file (report, sheet)' },
+  { label: 'Just “done”, with a link to the run', words: 'just “done”, with a link to the run' },
+]
+const WHO_ASKS = [
+  { label: 'Your team', words: 'my team' },
+  { label: 'Other Crews you choose', words: 'other Crews I choose' },
+  { label: 'Apps connected to you (Claude, ChatGPT)', words: 'apps connected to me (Claude, ChatGPT)' },
+]
+
+/** The first-time action wizard (owner, 9 Nov mock): what it should do, what people give it, what they get back and
+ * who can ask; "Ask AI to build it" opens the Crew's Main with a draft built from the answers. */
+function ActionWizard({ name, projectId, onClose }: { name: string; projectId: string; onClose: () => void }) {
+  const [step, setStep] = useState(1)
+  const [job, setJob] = useState('')
+  const [details, setDetails] = useState<string[]>([''])
+  const [back, setBack] = useState(0)
+  const [who, setWho] = useState(0)
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [onClose])
+  const finish = () => {
+    const given = details.map(item => item.trim()).filter(Boolean)
+    toMain(projectId, `Set up an action for ${name}: ${job.trim()}. People give: ${given.length ? given.join(', ') : 'nothing'}. They get back: ${GETS_BACK[back].words}. Who can ask: ${WHO_ASKS[who].words}. Show me the action before you save it.`)
+    onClose()
+  }
+  const choice = (items: { label: string }[], chosen: number, choose: (index: number) => void, label: string) => <div role="radiogroup" aria-label={label} className="space-y-2">
+    {items.map((item, index) => <button key={item.label} type="button" role="radio" aria-checked={chosen === index} onClick={() => choose(index)}
+      className={`block w-full rounded-lg border px-3 py-2 text-left text-sm ${chosen === index ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>{item.label}</button>)}
+  </div>
+  return <ModalPortal>
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={`Set up an action for ${name}`} onClick={event => event.stopPropagation()} className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card text-sm shadow-md">
+        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+          <div aria-hidden="true" className="flex flex-1 gap-1.5">{[1, 2, 3, 4].map(n => <i key={n} className={`h-1 flex-1 rounded ${n <= step ? 'bg-primary' : 'bg-border'}`} />)}</div>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-2 p-4">
+          {step === 1 && <>
+            <h3 className="text-base font-semibold">What should {name} do?</h3>
+            <p className="text-[13px] text-muted-foreground">An action is one job people can ask for. Describe it in a sentence.</p>
+            <input autoFocus aria-label="What it should do" value={job} onChange={event => setJob(event.target.value)} placeholder="Write a weekly summary of team feedback" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            <p className="text-xs text-muted-foreground">Examples: “Review a pull request”, “Summarise this week's sales”, “Draft a reply to a customer”.</p>
+          </>}
+          {step === 2 && <>
+            <h3 className="text-base font-semibold">What do people give it?</h3>
+            <p className="text-[13px] text-muted-foreground">The details someone fills in each time. Leave empty if it needs nothing.</p>
+            {details.map((item, index) => <input key={index} aria-label={`Detail ${index + 1}`} value={item} placeholder={index === 0 ? 'Week (for example 2026-W45)' : 'Another detail'}
+              onChange={event => setDetails(details.map((old, at) => at === index ? event.target.value : old))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />)}
+            <button type="button" onClick={() => setDetails([...details, ''])} className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-left text-sm text-primary hover:bg-muted">+ Add another detail</button>
+          </>}
+          {step === 3 && <>
+            <h3 className="text-base font-semibold">What do they get back?</h3>
+            <p className="text-[13px] text-muted-foreground">What the person receives when it is done.</p>
+            {choice(GETS_BACK, back, setBack, 'What they get back')}
+          </>}
+          {step === 4 && <>
+            <h3 className="text-base font-semibold">Who can ask for it?</h3>
+            <p className="text-[13px] text-muted-foreground">It runs as you, for this job only.</p>
+            {choice(WHO_ASKS, who, setWho, 'Who can ask for it')}
+            <p className="text-xs text-muted-foreground">Next, the Crew's AI builds the action from your answers. You see it in chat before anything is saved.</p>
+          </>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+          <Button size="sm" variant="outline" disabled={step === 1} onClick={() => setStep(step - 1)}>Back</Button>
+          {step < 4
+            ? <Button size="sm" disabled={step === 1 && !job.trim()} onClick={() => setStep(step + 1)}>Next</Button>
+            : <Button size="sm" onClick={finish}>Ask AI to build it</Button>}
+        </div>
+      </div>
+    </div>
+  </ModalPortal>
+}

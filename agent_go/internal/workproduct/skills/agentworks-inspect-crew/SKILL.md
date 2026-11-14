@@ -12,7 +12,7 @@ Start from the Crew's instructions and what the person told you: a Crew has no s
 - Its chats and tabs: `sessions` action `list` where authorized (never open a tab); earlier conversations through `panel-runs` (chat history). To message it or a tab: `messages` action `list_agents`, then `messages` action `send` with the right `chat_id`. A stored message is not finished work; read the reply with `messages` action `read`.
 - Its schedules and watchers: `automations` action `list` with `scope=schedule` and with `scope=watcher` for this Crew. Skills: `panel-automations`, `schedules`, `watchers`.
 - Its connections and secrets: skill `panel-access` (names only, never values).
-- A Crew linked to you is read and write: look, but change nothing unless the person has said you may act on it.
+- A linked Crew keeps its effective runtime/file grants; a link does not prove write access. Inspect what is permitted and change only within the person’s request.
 
 ## What to check
 1. **Instructions:** do they still say what the person wants; anything stale, contradictory, or too long to follow.

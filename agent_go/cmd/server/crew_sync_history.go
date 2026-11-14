@@ -37,6 +37,36 @@ type crewHandoffConversation struct {
 	History        []llmtypes.MessageContent `json:"conversation_history"`
 	Native         *sessiontransfer.Bundle   `json:"native,omitempty"`
 	Notice         string                    `json:"-"`
+	// ServerAccount, set only by the server for a Backup import, is the account the person chose for their agents
+	// on this server (crew_server_account.go); it is tried first for the native session's program.
+	ServerAccount string `json:"-"`
+}
+
+// Metadata for an explicitly selected agent belongs to the project, not Main.
+// This does not create a registry entry or choose a replacement agent.
+func (api *StreamingAPI) crewHandoffProjectTemplate(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
+	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
+	binding, err := resolveProductProjectBinding(ctx, claims.UserID, profile, project)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
+	applyCrewNativeToolPolicy(&profile, true, binding.ProjectNativeAgentTools)
+	template := ProductConversationRecord{ProfileID: profile.ID, WorkspacePath: binding.WorkspacePath, ResourceID: project, handoffAgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)}
+	key := crewOwnerMainChatKey(project)
+	if key != "" {
+		doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID))
+		if err != nil {
+			return template, err
+		}
+		record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, key)]
+		if exists && validProjectMainRecord(claims.UserID, profile.ID, project, binding.WorkspacePath, record) {
+			template.ConversationKey, template.ConversationID = key, record.ConversationID
+		}
+	}
+	return template, nil
 }
 
 func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims, project string) (ProductConversationRecord, error) {
@@ -45,13 +75,7 @@ func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims
 		return ProductConversationRecord{}, err
 	}
 	binding, err := resolveProductProjectBinding(ctx, claims.UserID, profile, project)
-	if errors.Is(err, errProjectNotFound) && claims.UserID != ownerOfCrewProjectID(project) {
-		// A Team member's own agent answering from the server (crew_standby_runas.go): their Main in this Crew is the
-		// one their own registry gives a joined member (crewOwnerDefaultBinding), never the owner's.
-		if crew, e := resolveCrewProjectBinding(ctx, claims.UserID, profile, project, ""); e == nil {
-			binding, err = crewOwnerDefaultBinding(claims.UserID, crew.Binding), nil
-		}
-	}
+
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
@@ -186,6 +210,9 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	// A new paired Crew may otherwise inherit an unrelated company default.
 	if in.Native != nil {
 		identity := doc.Agents[key]
+		if in.ServerAccount != "" {
+			identity.Engine, identity.ConnectionID = in.Native.Provider, in.ServerAccount
+		}
 		if chosen, reason := api.crewNativeDestination(ctx, claims, roots, current, identity, in.ModelID, in.Native.Provider); chosen != nil {
 			current.Provider, current.ModelID, current.ConnectionID = in.Native.Provider, chosen.ModelID, chosen.ConnectionID
 			if doc.Agents == nil {

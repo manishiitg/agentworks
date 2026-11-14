@@ -1,6 +1,7 @@
 package events
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -167,5 +168,54 @@ func TestTurnMarkerBeyondTheRecentWindowIsStillFound(t *testing.T) {
 	}
 	if all := es.LastEventsRaw(session, 100000); len(all) != len(es.GetAllEventsRaw(session)) {
 		t.Fatalf("asking for more than exist returns all of them, got %d", len(all))
+	}
+}
+
+// PLAT-746-930: ending one model/text stream must not free a still-running turn.
+func TestGenerationAndStreamEndsDoNotCloseTurn(t *testing.T) {
+	for _, end := range []string{"unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error"} {
+		t.Run(end, func(t *testing.T) {
+			es := NewEventStore(100)
+			defer es.Stop()
+			es.EnableTurnPhase()
+			session := "turn-boundary-" + end
+			add(es, session, "user_message", nil)
+			for _, typ := range []string{"llm_generation_end", "streaming_end", "tool_call_start", "tool_call_end", "llm_generation_start"} {
+				add(es, session, typ, nil)
+				if !es.TurnInProgress(session) || !es.PersistedTurnOpen(session) {
+					t.Fatalf("%s ended the turn before %s", typ, end)
+				}
+			}
+			add(es, session, "coding_agent_question", nil)
+			phase, _, _ := es.TurnPhaseSnapshot(session)
+			if phase != turnPhaseWaitingForYou || !es.TurnInProgress(session) {
+				t.Fatal("waiting for an answer is not a completed turn")
+			}
+			add(es, session, end, nil)
+			if es.TurnInProgress(session) || es.PersistedTurnOpen(session) {
+				t.Fatalf("%s did not close both live and persisted turn state", end)
+			}
+		})
+	}
+}
+
+// PLAT-746-987: native Pi retry completion clears retrying but never revives an ended turn.
+func TestTurnPhaseTracksNativeRetryWithoutRevivingFinishedTurn(t *testing.T) {
+	es := NewEventStore(100)
+	defer es.Stop()
+	es.EnableTurnPhase()
+	session := "native-pi-retry"
+	add(es, session, "user_message", nil)
+	add(es, session, "retry_attempt", mcpevents.NewRetryAttemptEvent(0, 0, 3, "example-model", "pi-cli", "native_retry_start", false, time.Second, "The provider request is being retried."))
+	add(es, session, "retry_attempt", mcpevents.NewRetryAttemptEvent(0, 0, 3, "example-model", "pi-cli", "native_retry_end", true, 0, ""))
+	got := phaseEvents(es, session)
+	if len(got) < 3 || !strings.HasPrefix(got[len(got)-1], "running:") {
+		t.Fatalf("native retry never cleared: %v", got)
+	}
+	add(es, session, "unified_completion", nil)
+	before := len(phaseEvents(es, session))
+	add(es, session, "retry_attempt", mcpevents.NewRetryAttemptEvent(0, 0, 3, "example-model", "pi-cli", "native_retry_end", true, 0, ""))
+	if len(phaseEvents(es, session)) != before {
+		t.Fatal("late native retry end invented an active turn")
 	}
 }

@@ -331,7 +331,7 @@ func (s Store) compose(ctx context.Context, ref string, checkouts []*checkout) e
 		fmt.Fprintf(&b, "M 040000 %s \"\"\n", loose.tree)
 	}
 	for _, c := range mounted {
-		fmt.Fprintf(&b, "M 040000 %s %s\n", c.tree, strconv.Quote(c.prefix))
+		fmt.Fprintf(&b, "M 040000 %s %s\n", c.tree, gitQuotePath(c.prefix))
 	}
 	if loose != nil && !looseBase {
 		index := s.indexFile(loose.key)
@@ -346,7 +346,7 @@ func (s Store) compose(ctx context.Context, ref string, checkouts []*checkout) e
 			meta, name, ok := strings.Cut(string(e), "\t")
 			fields := strings.Fields(meta)
 			if ok && len(fields) == 3 {
-				fmt.Fprintf(&b, "M %s %s %s\n", fields[0], fields[1], strconv.Quote(name))
+				fmt.Fprintf(&b, "M %s %s %s\n", fields[0], fields[1], gitQuotePath(name))
 			}
 		}
 	}

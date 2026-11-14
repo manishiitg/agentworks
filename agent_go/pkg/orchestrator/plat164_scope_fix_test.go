@@ -106,8 +106,9 @@ func TestAppendBackgroundAgentTranscriptEventSkipsWhenNoHeaderExists(t *testing.
 // (createBackgroundAgentTranscript already wrote the "running" header), so a
 // granular event from the bridge appends into that same file.
 func TestAppendBackgroundAgentTranscriptEventAppendsWhenHeaderAlreadyExists(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	const sessionID = "session-1"
+	// This fixture exercises a remote-only workspace, not an empty local mount.
+	t.Setenv("WORKSPACE_DOCS_PATH", "")
+	sessionID := t.Name()
 	const agentID = "workshop-background-task-abc"
 	path := orchevents.BackgroundAgentTranscriptPath("Workflow/test-workspace", sessionID, agentID)
 

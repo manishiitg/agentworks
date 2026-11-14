@@ -32,7 +32,7 @@ An agent may explicitly request a durable wakeup to check again later. The timer
 prompts another turn; it does not resend the question. Received messages do not
 cancel reminders automatically. An agent explicitly cancels or reschedules them.
 Simultaneous timer and message deliveries are serialized for one conversation.
-Timers run on the one-minute scheduler tick and respect global/product pauses.
+Timers run on the one-minute scheduler tick and respect the single global scheduler pause.
 A started delivery interrupted by restart is recorded as interrupted and is not
 automatically resent; agents inspect the receiving transcript before deciding to retry.
 

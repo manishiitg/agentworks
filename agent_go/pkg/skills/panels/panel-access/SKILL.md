@@ -87,7 +87,7 @@ Start with the person's request and the current product. Read only the relevant 
 
 - Sharing: read `references/sharing/SKILL.md` when needed.
 - Owners: read `references/owners/SKILL.md` when needed.
-- A Crew on this Mac (reach, move online, links, who can message its agents): read `references/crew-on-mac/SKILL.md` when needed.
+- A Crew on this Mac (reach, run online, links, who can message its agents): read `references/crew-on-mac/SKILL.md` when needed.
 - Team: read `references/team/SKILL.md` when needed.
 - MCP access: read `references/mcp-access/SKILL.md` when needed.
 - Vault: read `references/vault/SKILL.md` when needed.

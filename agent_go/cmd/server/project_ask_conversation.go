@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -21,6 +22,7 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 	}
 	var body struct {
 		Workspace string `json:"workspace"`
+		AgentKey  string `json:"agent_key,omitempty"`
 		AsUser    bool   `json:"as_user,omitempty"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
@@ -68,13 +70,73 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 			return
 		}
 		profileID = profile.ID
-		key, name := target.ID, ""
-		if target.Edit && body.AsUser {
-			key = target.ID + codeChatSideMarker + "asuser-main"
-			name = "As a user"
+		type choice struct {
+			Key  string `json:"key"`
+			Name string `json:"name"`
 		}
+		choices := []choice{}
 		if target.Edit && !body.AsUser {
 			mode = "builder"
+			tabs, e := defaultProductConversationRegistryStore().projectChats(r.Context(), claims.UserID, profile.ID, target.ID)
+			if e != nil {
+				externalError(w, 503, "agents_unavailable", "Could not load this Crew's agents.")
+				return
+			}
+			identities, e := defaultProductConversationRegistryStore().agentIdentities(r.Context(), claims.UserID, profile.ID, target.ID)
+			if e != nil {
+				externalError(w, 503, "agents_unavailable", "Could not load this Crew's agents.")
+				return
+			}
+			for _, tab := range tabs {
+				if ordinaryProjectChatKey(target.ID, tab.ConversationKey) {
+					choices = append(choices, choice{tab.ConversationKey, firstNonEmptyTrimmed(identities[tab.ConversationKey].Name, tab.Title, "Agent")})
+				}
+			}
+		} else {
+			agents, e := crewShareAgents(r.Context(), claims.UserID, target.Root, false)
+			if e != nil {
+				externalError(w, 503, "agents_unavailable", "Could not load this Crew's shared agents.")
+				return
+			}
+			for _, agent := range agents {
+				choices = append(choices, choice{agent.ChatID, agent.Name})
+			}
+		}
+		key, name := strings.TrimSpace(body.AgentKey), ""
+		if key == "" {
+			candidate := crewOwnerMainChatKey(target.ID)
+			for _, item := range choices {
+				if item.Key == candidate {
+					key = candidate
+				}
+			}
+		}
+		if key == "" {
+			message := "Choose an agent to answer."
+			if len(choices) == 0 {
+				if target.Edit && !body.AsUser {
+					message = "Create an agent in this Crew before asking a question."
+				} else {
+					message = "The owner has not shared an agent for this Crew."
+				}
+			}
+			externalJSON(w, map[string]any{"choose_agent": true, "agents": choices, "message": message})
+			return
+		}
+		allowed := false
+		for _, item := range choices {
+			if item.Key == key {
+				allowed = true
+				name = item.Name
+			}
+		}
+		if !allowed {
+			externalError(w, 404, "agent_unavailable", "Choose an agent shared with you in this Crew.")
+			return
+		}
+		if target.Edit && body.AsUser {
+			key = target.ID + codeChatSideMarker + "asuser-" + strings.TrimPrefix(key, target.ID+codeChatSideMarker)
+			name = "As a user"
 		}
 
 		// An unrelated active tab's transport headers cannot choose this chat.

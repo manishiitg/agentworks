@@ -489,7 +489,7 @@ type ProfileTurnFunc func(ctx context.Context, userID string, msg BotIncomingMes
 
 // SessionFollowUpFunc is the function signature for injecting a follow-up message into a running session.
 // It calls handleQuery with the same session ID but does NOT block on completion.
-// The reqMap contains the full session config (servers, skills, delegation mode, API keys, etc.)
+// The reqMap contains the full session config (servers, skills, API keys, etc.)
 // so the follow-up agent is configured identically to the initial session.
 type SessionFollowUpFunc func(ctx context.Context, reqMap map[string]interface{}, sessionID string, userID string) error
 
@@ -3389,16 +3389,7 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 
 	}
 
-	// Load delegation tier config from workspace file — same source as multiagent chat.
-	// server.go resolves the orchestrator model from this at request time via resolveDelegationTierConfig.
 	if m.workspaceURL != "" {
-		if tierConfig, exists, err := LoadDelegationTierConfig(context.Background(), m.workspaceURL); err != nil {
-			log.Printf("[BOT_MANAGER] Warning: failed to load tier config from workspace: %v", err)
-		} else if exists && len(tierConfig) > 0 {
-			req["delegation_tier_config"] = tierConfig
-			log.Printf("[BOT_MANAGER] Loaded delegation tier config from workspace file")
-		}
-
 		// Load provider API keys from the workspace encrypted file and inject
 		// them into llm_config so handleQuery can use them for all providers.
 		if apiKeys, exists, err := LoadProviderKeys(context.Background(), m.workspaceURL); err != nil {

@@ -7,7 +7,6 @@ import {
   FileText,
   Fingerprint,
   Hand,
-  Target,
   LayoutDashboard,
   Monitor,
   Server,
@@ -61,7 +60,7 @@ export type WorkspaceViewDef = {
 const VIEWS = [
   { id: 'context', kind: 'inspector', label: 'Project menu', icon: Settings2, pane: true },
   // -- canvas / preview (dispatched by WorkspaceViewHost) ------------------
-  { id: 'report', kind: 'preview', label: 'Dashboard', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
+  { id: 'report', kind: 'preview', label: 'Artifacts', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
   // -- inspectors (toolbar "views" cluster, in button order) ---------------
   { id: 'costs', kind: 'inspector', label: 'Costs and usage', icon: DollarSign, toolbarGroup: 'views', pane: true },
   { id: 'execution-logs', kind: 'inspector', label: 'Run logs', icon: FileText, toolbarGroup: 'views', pane: true },
@@ -76,7 +75,6 @@ const VIEWS = [
   // so the legacy `toolbarGroup: 'setup'` here
   // is categorization only -- nothing filters on it the way `views` and
   // `capabilities` are filtered into their auto-rendered clusters below.
-  { id: 'goals', kind: 'inspector', label: 'Goals & metrics', icon: Target, toolbarGroup: 'setup', pane: true },
   { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'setup', pane: true },
   // Access (share this workflow / manage users) opens in the pane like the
   // rest of Setup, not a modal (user request 2026-09-03). Button is hand-built

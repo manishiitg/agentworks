@@ -1,0 +1,157 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+)
+
+// PLAT-746, PR1730 review: checked agents must override saved Only me choices, including Main.
+func TestCrewTeamSetupExplicitAgentChoices(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	ctx := context.Background()
+	main := crewOwnerDefaultChatKey("team", "owner")
+	selected, hidden := "team"+codeChatSideMarker+"selected", "team"+codeChatSideMarker+"hidden"
+	entries := map[string]ProductConversationRecord{}
+	for _, key := range []string{main, selected, hidden} {
+		entries[productConversationRegistryEntryKey(crewProfileID, key)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, SessionID: key + "-session"}
+	}
+	if err := defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: entries}); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh, off Team has no registry yet. The wizard GET discovers and
+	// registers its owner's agents before returning selectable IDs.
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	options := httptest.NewRecorder()
+	f.api.handleCrewTeamSetup(options, adminRequest(http.MethodGet, "/api/crew-teams/team/setup", "", &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
+	var view crewWizardView
+	if options.Code != http.StatusOK || json.Unmarshal(options.Body.Bytes(), &view) != nil || len(view.Agents) != 3 {
+		t.Fatalf("fresh off-Team wizard: %d %s", options.Code, options.Body.String())
+	}
+	previous, err := readCrewTeam("team")
+	if err != nil || previous.On || len(previous.Agents) != 3 {
+		t.Fatalf("wizard did not register agents while Team stayed off: %+v %v", previous, err)
+	}
+	for _, agent := range view.Agents {
+		if err := setCrewTeamAgentChoice(ctx, "team", "owner", agent.Key, true); err != nil {
+			t.Fatalf("fresh off-Team owner choice refused: %v", err)
+		}
+	}
+	for _, key := range []string{main, selected} {
+		if err := setCrewTeamAgentChoice(ctx, "team", "owner", key, false); err != nil {
+			t.Fatalf("off-Team choice refused: %v", err)
+		}
+	}
+	previous, err = readCrewTeam("team")
+	if err != nil || previous.On {
+		t.Fatalf("choosing agents turned Team on: %v", err)
+	}
+	if agents := crewWizardAgents(ctx, previous); len(agents) != 3 {
+		t.Fatalf("fixture must expose Main and both side agents: %+v", agents)
+	}
+	selectedAgent, _ := previous.registeredAgent("owner", selected)
+	w := httptest.NewRecorder()
+	f.api.handleCrewTeamSetup(w, adminRequest(http.MethodPost, "/api/crew-teams/team/setup", `{"agents":["`+selectedAgent.ID+`"]}`, &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("Finish: %d %s", w.Code, w.Body.String())
+	}
+	saved, err := readCrewTeam("team")
+	if err != nil || !saved.On || !saved.agentInTeam("owner", main) || !saved.agentInTeam("owner", selected) || saved.agentInTeam("owner", hidden) {
+		t.Fatalf("Finish did not apply checked and unchecked choices: %+v (%v)", saved.Agents, err)
+	}
+
+	saved.People = append(saved.People, crewTeamPerson{UserID: "other"})
+	if err := writeCrewTeam(saved); err != nil {
+		t.Fatal(err)
+	}
+	// PLAT-746: setup may turn the Team on before its Mac pushes agent metadata.
+	// The registry already owns the IDs the wizard listed; choices must work now.
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-team"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, person := range teamAgentsByPerson(ctx, saved, "owner") {
+		if person.UserID == "owner" && len(person.Agents) != 0 {
+			t.Fatal("fixture unexpectedly has a pushed Mac agent list")
+		}
+	}
+	hiddenAgent, _ := saved.registeredAgent("owner", hidden)
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", hiddenAgent.ID, true); err != nil {
+		t.Fatalf("own registered agent refused before Mac push: %v", err)
+	}
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", selectedAgent.ID, false); err != nil {
+		t.Fatalf("another registered shared agent must allow hiding this one: %v", err)
+	}
+	if _, _, err := crewTeamOwnAgent(ctx, "team", "other", hiddenAgent.ID); !errors.Is(err, errCrewTeamAgentNotYours) {
+		t.Fatalf("other person admitted to agent choice: %v", err)
+	}
+	mainAgent, _ := saved.registeredAgent("owner", main)
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", mainAgent.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := setCrewTeamAgentChoice(ctx, "team", "owner", hiddenAgent.ID, false); !errors.Is(err, errCrewTeamLastShared) {
+		t.Fatalf("last shared agent rule lost: %v", err)
+	}
+}
+
+// PLAT-746, PR1730 review: missing-dashboard consent must leave the Team off, then Finish may create and share it.
+func TestCrewTeamSetupDashboardConsentBeforeSaving(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","email":"owner@example.com","role":"editor","products":["work"]},{"id":"other","username":"other","email":"other@example.com","role":"editor","products":["work"]}]}`)
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	call := func(user string, create bool) *httptest.ResponseRecorder {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"people": []map[string]string{{"user_id": "other", "level": crewPeopleDashboards}}, "create_dashboard": create})
+		w := httptest.NewRecorder()
+		f.api.handleCrewTeamSetup(w, adminRequest(http.MethodPost, "/api/crew-teams/team/setup", string(body), &UserClaims{UserID: user, Username: user}, map[string]string{"project": "team"}))
+		return w
+	}
+	if w := call("other", true); w.Code != http.StatusForbidden {
+		t.Fatalf("another person completed owner's setup: %d %s", w.Code, w.Body.String())
+	}
+	w := call("owner", false)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("missing dashboard: %d %s", w.Code, w.Body.String())
+	}
+	var failure struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil || failure.Error.Code != "dashboard_needed" {
+		t.Fatalf("missing creation choice: %s (%v)", w.Body.String(), err)
+	}
+	before, err := readCrewTeamOrNew("team", "owner")
+	if err != nil || !crewTeamIsNew(before, "owner") || crewSharedWithOthers(externalCommandCrewRoot) {
+		t.Fatalf("setup changed access before consent: %+v (%v)", before, err)
+	}
+	listed, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: externalCommandCrewRoot, Action: "list", IncludeDraft: true})
+	if err != nil || len(listed.Dashboards) != 0 {
+		t.Fatalf("dashboard created before consent: %+v (%v)", listed, err)
+	}
+	if w = call("owner", true); w.Code != http.StatusOK {
+		t.Fatalf("confirmed Finish: %d %s", w.Code, w.Body.String())
+	}
+	saved, err := readCrewTeam("team")
+	if err != nil || !saved.On || !hasPublishedDashboard(context.Background(), externalCommandCrewRoot) {
+		t.Fatalf("confirmed Team/dashboard not ready: %+v (%v)", saved, err)
+	}
+	record, _ := defaultProjectOwners().Lookup("work", "test-team")
+	if !slices.Contains(record.RunPeople, "other") || slices.ContainsFunc(saved.People, func(p crewTeamPerson) bool { return p.UserID == "other" }) {
+		t.Fatalf("Dashboards only did not retain its distinct access: run people=%v, team people=%v", record.RunPeople, saved.People)
+	}
+}

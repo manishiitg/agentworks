@@ -15,11 +15,10 @@ The reference covers both paths using available capabilities; it prescribes no v
 
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
-It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
+It is the same canonical authoring procedure as panel-dashboard in Crew. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
 and shared widget/API examples. Use dashboard action=catalog for the current
-component contracts. The sections below cover this Goal's own report data and
-runtime; a dashboard edit does not authorize plan or execution changes.
+component contracts. The sections below cover this project's own report data and
+runtime; a dashboard edit does not authorize workflow source or execution changes.
 
 ### HTML page contract
 
@@ -514,17 +513,18 @@ of this project's published functions. Mark it with the function's name:
 
 The host shows a form built from the function's input schema, with the optional
 `data-report-action-defaults` JSON (an object) pre-filled and editable. The
-person presses Run; it runs as the signed-in person and shows the result in the
-dialog. The page cannot run a function itself: there is no script method, only
+person presses Run; the request is attributed to them and the declared Action
+uses its configured owner execution access. The dialog shows the result; the
+caller does not acquire those credentials. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
 are the designer's choice. Both Crew project origins and workflow dashboards
 support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
-server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
+server when called.
 
 
 Dashboard `sendChatMessage(message, {requestId})` uses the current person's normal project chat, including standalone links and shared recipients. It does not select a workflow Builder tab by a path. A queued receipt is acceptance, not a finished action: show progress/results from the existing chat, function call or data refresh. Ask widgets and direct message buttons use the same conversation. Keep placement and appearance in the designer's control.
 
-Relay `FunctionButton` uses its active published version and input schema (the object argument is normally named `INPUT`). New draft code or function declarations do not change the shared form until published. Existing sharing and live function checks still decide who can call; a removed share stops access. Use the current function catalog rather than inventing a function or a second Python runner.
+An Action button uses the current callable definition and declared input contract. A draft dashboard is not a new publication or an access grant; current sharing/function checks still decide who can call. Use the returned function catalog rather than inventing another runner.

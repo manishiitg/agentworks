@@ -29,7 +29,7 @@ func dashboardFailure(status int, message string) error {
 	return &wf.FileError{Status: status, Message: message}
 }
 func dashboardMutation(action string) bool {
-	return action == "create" || action == "update" || action == "publish" || action == "restore"
+	return action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete"
 }
 
 // dashboardExportAction renders the dashboard in the server's browser with the caller's data.
@@ -377,6 +377,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	if claims.AccessToken != nil {
 		req.Guard = claims.AccessToken.FileGuard
 	}
+	if args.Action == "delete" {
+		api.deleteDashboard(w, r, target, req)
+		return
+	}
 	if args.Action == "get" || args.Action == "validate" || args.Action == "preview" || args.Action == "link" {
 		req.Action = "get"
 		if args.Document != "" {
@@ -446,28 +450,6 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" {
-		// Goals retain their starting dashboard. Crew discovery never creates one;
-		// its owner can explicitly create one when sharing.
-		// Run requests, bounded file connections, Local projects and published
-		// laptop source never acquire writes through catalog discovery.
-		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && target.Kind == "workflow" {
-			publication, err := readPublishedProject(r.Context(), target.Root)
-			if err != nil {
-				dashboardError(w, err)
-				return
-			}
-			if publication == nil {
-				if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
-					dashboardError(w, err)
-					return
-				}
-				result, err = dashboardWorkspaceRequest(r.Context(), req)
-				if err != nil {
-					dashboardError(w, err)
-					return
-				}
-			}
-		}
 		rows := []map[string]any{}
 		resources := []dashboardQuestionDiscovery{}
 		for _, d := range result.Dashboards {

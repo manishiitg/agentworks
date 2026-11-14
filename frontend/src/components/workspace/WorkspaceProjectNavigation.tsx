@@ -1,9 +1,5 @@
 import { Braces, CalendarClock, Mail, MessageCircle, Plug, Slack, Webhook, Zap } from 'lucide-react'
-import { useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
-import { useAuthStore } from '../../stores/useAuthStore'
 import { workspaceIntegrationShortcuts } from './workspaceIntegrationShortcuts'
-import { WorkspaceContextRow as Row } from './WorkspaceContextCard'
-import type { ProjectStatus } from './useProjectStatus'
 
 
 export function projectConnectionSections(options: Parameters<typeof workspaceIntegrationShortcuts>[0]) {
@@ -31,37 +27,4 @@ export function projectAutomationSections({ triggers = true, incomingEmail = fal
     ...PROJECT_AUTOMATIONS.filter(item => (triggers || item.id === 'schedules')),
     ...(incomingEmail ? [{ id: 'email', label: 'Inbox', icon: Mail }] : []),
   ]
-}
-
-const countText = (value?: number) => (value === undefined ? undefined : value ? String(value) : 'None')
-
-export function WorkspaceAutomationRows({ onOpen, triggers = true, counts, excludeSchedules = false }: { onOpen: (section: string) => void; triggers?: boolean; counts?: ProjectStatus; excludeSchedules?: boolean }) {
-  const byId: Record<string, number | undefined> = { schedules: counts?.schedules, conditions: counts?.conditions, triggers: counts?.triggers, functions: counts?.functions }
-  return <div role="group" aria-label="Automations" className="mt-1 space-y-1 border-t border-border/60 pt-2">
-    {projectAutomationSections({ triggers }).filter(item => !excludeSchedules || item.id !== 'schedules').map(item =>
-      <Row key={item.id} icon={item.icon} detail={countText(byId[item.id])} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
-  </div>
-}
-
-/** Inbox is a way to reach the project, so it sits with the other channels. */
-export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackBot = true, slackAccountStatus, slackBotStatus, whatsappStatus, emailStatus, onOpenEmail }: { onOpen: (section: string) => void; slack: boolean; whatsapp: boolean; slackBot?: boolean; slackAccountStatus?: string; slackBotStatus?: string; whatsappStatus?: string; emailStatus?: string; onOpenEmail?: () => void }) {
-  const incomingEmail = useAgentInboxEnabled()
-  return <div role="group" aria-label="Channels" className="mt-1 space-y-1 border-t border-border/60 pt-2">
-    {projectChannelSections(slack, whatsapp).flatMap(item => [
-      ...(item.id === 'slack' ? [
-        <Row key="slack-account" icon={item.icon} detail={slackAccountStatus} onClick={() => onOpen('slack')}>Slack as me</Row>,
-        ...(slackBot ? [<Row key="slack-bot" icon={item.icon} detail={slackBotStatus} onClick={() => onOpen('slack')}>Slack bot</Row>] : []),
-      ] : [<Row key={item.id} icon={item.icon} detail={item.id === 'whatsapp' ? whatsappStatus : undefined} onClick={() => onOpen(item.id)}>{item.label}</Row>]),
-    ])}
-    {onOpenEmail && incomingEmail && <Row icon={Mail} detail={emailStatus} onClick={onOpenEmail}>Inbox</Row>}
-  </div>
-}
-
-/** Uses the same already-admitted connection options as the existing panels. */
-export function WorkspaceConnectionRows({ onOpen, workMode = false, enabledPanels, details }: { onOpen: (section: string) => void; workMode?: boolean; enabledPanels?: Set<string>; details?: Record<string, string | undefined> }) {
-  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const options = projectConnectionSections({ allowedProducts, workMode, enabledPanels, onOpen })
-  return <>
-    {options.map(item => <Row key={item.id} icon={item.icon} detail={details?.[item.id]} onClick={item.onClick}>{item.label}</Row>)}
-  </>
 }

@@ -1,13 +1,13 @@
 import { useChatStore } from '../../stores/useChatStore'
 import { teamAgentFor, teamAgentForTab, useTeamTab } from './teamApi'
 
-/** The server's lines for a teammate's chat: private replaces it, note sits above it (Chat history); "" for the viewer's own tabs. */
+/** The server's lines for a teammate's chat: private replaces it; "" for the viewer's own tabs. */
 export function useChatShareLines(tabId?: string | null) {
   const tab = useChatStore(state => (tabId ? state.chatTabs[tabId] : undefined))
   const watching = tab?.metadata?.agentProfileTabCanWrite === false
   const team = useTeamTab(watching ? tab?.metadata?.agentProfileProjectId : undefined)
   const agent = watching ? teamAgentFor(team.view?.agents, tab?.metadata?.agentProfileConversationKey) : undefined
-  return { private: agent?.chat_private_line || '', note: agent?.chat_share_note || '' }
+  return { private: agent?.chat_private_line || '' }
 }
 
 /** A new chat's light empty state (owner, 3 Nov): the tab's name and one line, plus, for your own agent In team, one

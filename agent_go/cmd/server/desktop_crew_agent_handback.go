@@ -294,7 +294,7 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 		if crewHandbackImportForTest != nil {
 			err = crewHandbackImportForTest(roots, item.Key, &history)
 		} else {
-			main, e := api.crewHandoffMain(ctx, claims, roots.ID)
+			main, e := api.crewHandoffProjectTemplate(ctx, claims, roots.ID)
 			if e != nil {
 				return "", 0, e
 			}
@@ -332,7 +332,7 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 			}
 			record = &created
 		}
-		main, e := api.crewHandoffMain(ctx, claims, roots.ID)
+		main, e := api.crewHandoffProjectTemplate(ctx, claims, roots.ID)
 		if e != nil {
 			return "", 0, e
 		}

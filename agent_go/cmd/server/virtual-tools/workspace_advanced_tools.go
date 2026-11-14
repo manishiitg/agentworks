@@ -289,8 +289,7 @@ type generateTextLLMResult struct {
 }
 
 // WorkflowLLMTierConfig is the resolved high/medium/low model set from one
-// workflow manifest. It is intentionally distinct from DelegationTierConfig,
-// which belongs to the general multi-agent delegation feature.
+// workflow manifest.
 type WorkflowLLMTierConfig struct {
 	APIKeys *llm.ProviderAPIKeys
 	High    *TierModel

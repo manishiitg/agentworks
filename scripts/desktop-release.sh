@@ -3,23 +3,25 @@ set -euo pipefail
 
 REPO="manishiitg/agentworks"
 GH_USER="manishiitg"
-MAIN_BRANCH="main"
+SOURCE_BRANCH="dev"
 WORKFLOW_NAME="Desktop DMG"
 
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/desktop-release.sh [--dry-run] v1.25.81
+  scripts/desktop-release.sh [--dry-run] [--from <commit>] v1.25.81
 
 What it does:
   - uses the stored manishiitg token without switching the active gh account
-  - prepares from canonical origin/main in an isolated temporary worktree
+  - prepares from origin/dev (or --from <commit>, e.g. one that passed a manual
+    Desktop DMG run) in an isolated temporary worktree; main is never touched
   - verifies the version is newer than the current Latest release
   - commits the matching desktop package/package-lock version
   - generates release notes from commits since the previous published release
-  - pushes main and the version tag
+  - pushes a release/<tag> branch and the version tag (never main)
   - waits for the Desktop DMG workflow
   - publishes the workflow-created draft release with the generated notes
+  - merges the version bump into dev through a pull request
 EOF
 }
 
@@ -33,10 +35,14 @@ require_cmd() {
 }
 
 dry_run=false
-if [[ "${1:-}" == "--dry-run" ]]; then
-  dry_run=true
-  shift
-fi
+from_ref=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) dry_run=true; shift ;;
+    --from) [[ $# -ge 2 ]] || die "--from needs a commit"; from_ref="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
 
 version_arg="${1:-}"
 if [[ -z "$version_arg" || "$version_arg" == "-h" || "$version_arg" == "--help" ]]; then
@@ -106,7 +112,7 @@ if ! grep -Eiq '^X-Oauth-Scopes:.*workflow' <<<"$auth_headers"; then
   die "the stored $GH_USER token needs workflow scope; refresh it with: gh auth switch -h github.com -u $GH_USER && gh auth refresh -h github.com -s workflow"
 fi
 
-echo "==> Checking main branch"
+echo "==> Checking the local checkout"
 if [[ -n "$(git status --porcelain)" ]]; then
   die "working tree is dirty; commit or stash changes before release"
 fi
@@ -127,9 +133,14 @@ case "$origin_url" in
     ;;
 esac
 
-git fetch origin "$MAIN_BRANCH" --tags
-remote_head="$(git rev-parse "origin/$MAIN_BRANCH")"
-echo "==> Preparing exact origin/main revision $remote_head"
+git fetch origin "$SOURCE_BRANCH" --tags
+if [[ -n "$from_ref" ]]; then
+  remote_head="$(git rev-parse --verify "$from_ref^{commit}")" || die "unknown commit: $from_ref"
+  git merge-base --is-ancestor "$remote_head" "origin/$SOURCE_BRANCH" || die "$from_ref is not on origin/$SOURCE_BRANCH"
+else
+  remote_head="$(git rev-parse "origin/$SOURCE_BRANCH")"
+fi
+echo "==> Preparing exact $SOURCE_BRANCH revision $remote_head"
 release_tmp_root="$(mktemp -d)"
 release_worktree="$release_tmp_root/repo"
 git worktree add --detach --quiet "$release_worktree" "$remote_head"
@@ -165,7 +176,7 @@ fi
 echo "==> Building changelog"
 notes_file="$(mktemp)"
 {
-  echo "Desktop release $tag."
+  echo "Desktop alpha release $tag, built from dev $remote_head (alpha: dev is not frozen; P0/P1 and security findings block a release, P2 findings do not)."
   echo
   cat <<INSTALL
 ## Install (macOS, Apple Silicon)
@@ -258,8 +269,9 @@ fi
 echo "==> Creating tag $tag"
 git tag -a "$tag" -m "Release $tag"
 created_tag="$tag"
-echo "==> Atomically pushing main and $tag"
-git push --atomic origin "HEAD:refs/heads/$MAIN_BRANCH" "refs/tags/$tag"
+release_branch="release/$tag"
+echo "==> Atomically pushing $release_branch and $tag (main is not touched)"
+git push --atomic origin "HEAD:refs/heads/$release_branch" "refs/tags/$tag"
 push_succeeded=true
 
 head_sha="$(git rev-parse HEAD)"
@@ -293,10 +305,10 @@ published_id="$(awk '$2 == "false" { print $1; exit }' <<<"$release_rows")"
 draft_id="$(awk '$2 == "true" { print $1; exit }' <<<"$release_rows")"
 
 if [[ -n "$published_id" ]]; then
-  gh release edit "$tag" --repo "$REPO" --title "$version" --notes-file "$notes_file" --latest
+  gh release edit "$tag" --repo "$REPO" --title "$version alpha" --notes-file "$notes_file" --latest
 elif [[ -n "$draft_id" ]]; then
   gh api -X PATCH "repos/$REPO/releases/$draft_id" \
-    -f name="$version" \
+    -f name="$version alpha" \
     -f body="$(cat "$notes_file")" \
     -F draft=false \
     -F prerelease=false \
@@ -328,3 +340,13 @@ done
 
 release_url="$(gh release view "$tag" --repo "$REPO" --json url --jq .url)"
 echo "==> Published: $release_url"
+
+# Keep dev's desktop metadata at the latest release: the release branch is the
+# source dev commit plus at most the version bump.
+if [[ "$(git rev-parse HEAD)" != "$remote_head" ]]; then
+  echo "==> Merging the version bump into $SOURCE_BRANCH"
+  bump_pr="$(gh pr create --repo "$REPO" --base "$SOURCE_BRANCH" --head "$release_branch" \
+    --title "desktop: version $version (released)" \
+    --body "Version bump for the $tag Mac release, tagged from $SOURCE_BRANCH $remote_head.")"
+  gh pr merge "$bump_pr" --repo "$REPO" --merge || echo "warning: merge $bump_pr into $SOURCE_BRANCH by hand"
+fi

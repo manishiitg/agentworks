@@ -1,3 +1,8 @@
+import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
+import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
+import { chatForkedEvent } from '../../utils/forkChatTab'
+import { workConversationKey, workOpeningAgentKey } from '../../utils/workConversationKey'
+import { openAgentTab } from '../../utils/openAgentTab'
 import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
 import { listenForProjectIntegrationNavigation } from '../../utils/projectIntegrationNavigation'
@@ -6,7 +11,7 @@ import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
-import { currentProductRoute, routeView } from '../../utils/productRoutes'
+import { currentProductRoute, productRoutePath, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
@@ -45,7 +50,7 @@ import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
-import { useCrewChatOnly } from './YourComputerPanel'
+import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { localFileError } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
@@ -83,18 +88,19 @@ import {
 const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
-  history: 'history', context: 'context', report: 'dashboard', goals: 'goals', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
+  history: 'history', context: 'context', report: 'dashboard', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
-  // ?view=share and ?view=slack open the Access page on that section (links from the Mac app's Where it lives).
-  share: 'mcp', slack: 'mcp',
+  // ?view=share, ?view=slack and ?view=dashboards open the Access page on that section (links from the Mac app's Where
+  // it lives, and dashboard links).
+  share: 'mcp', slack: 'mcp', dashboards: 'mcp',
   // Legacy agent + preference ids land on the consolidated Setup views.
   llm: 'identity', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  history: 'Chat history', context: 'Context', report: 'Dashboard', goals: 'Progress', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
+  history: 'Chat history', context: 'Context', report: 'Dashboard', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
   suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
-  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack',
+  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack', dashboards: 'Artifacts',
 }
 
 function workPresentationView(view: WorkWorkspaceView): WorkUIPresentationView {
@@ -194,6 +200,13 @@ function selectedProjectIdFor(product: ProjectProductConfig): string | null {
 // product has its own cache and still refreshes from the server on entry.
 const workSessionLists = new Map<string, WorkSession[]>()
 
+/** In-memory inventory only, scoped like the mounted surface; never an access grant. */
+export function cachedWorkSession(projectId: string): WorkSession | undefined {
+  const user = useAuthStore.getState().user?.id ?? 'local'
+  const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  return workSessionLists.get(`work:${workspace}:${user}`)?.find(session => session.id === projectId)
+}
+
 function useWorkSessions(product: ProjectProductConfig) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const userId = useAuthStore(state => state.user?.id ?? 'local')
@@ -245,7 +258,15 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [product, selectedId, allowedProducts, setSelectedId, updateSessions])
+  }, [product, allowedProducts, setSelectedId, updateSessions])
+
+  // Known projects are already in memory. Only an externally-created selection
+  // needs an extra inventory refresh; clicking between known projects does not.
+  const missingSelectedId = selectedId && !sessions.some(item => item.id === selectedId) ? selectedId : null
+  useEffect(() => {
+    if (loading || !missingSelectedId) return
+    void refresh().catch(() => {})
+  }, [loading, missingSelectedId, refresh])
 
   const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, rootPath?: string) => {
     const session = await createWorkSession(title, description, icon, product, runsOn, rootPath)
@@ -371,6 +392,7 @@ export function useWorkChatTab(
   onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection) => void | Promise<void>,
 ) {
   const [failure, setFailure] = useState<{ projectId: string; message: string } | null>(null)
+  const [preparedProject, setPreparedProject] = useState<string | null>(null)
   // Subscribe to the two tab ids this hook needs, never to chatTabs itself:
   // the chat input saves its draft into its tab's config, and a whole-map
   // subscription re-rendered the Work surface (and the workspace pane beside
@@ -379,12 +401,25 @@ export function useWorkChatTab(
   const globalPageOpen = useAppStore(state => state.adminPage !== null || state.showSchedulesOverview || state.showWorkflowsOverview)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const { canonicalTabId, activeProjectTabId } = useChatStore(useShallow(state => selectWorkChatTabIds(state, sessionId)))
+  // The route boundary keeps this admitted project mounted while the next link is checked.
+  // Retain its displayed chat, not its Main fallback, if global selection moves ahead of the surface.
+  const displayedChat = useRef<{ projectId: string; tabId: string } | null>(null)
+  useLayoutEffect(() => {
+    if (sessionId && activeProjectTabId) displayedChat.current = { projectId: sessionId, tabId: activeProjectTabId }
+  }, [sessionId, activeProjectTabId])
   const sessionRef = useRef(session)
   const legacyRuntimeHandlerRef = useRef(onLegacyRuntimeDiscovered)
   sessionRef.current = session
   legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
-  useWorkChatModels(product.profileId, projectId, session?.llmConfig, canonicalTabId)
+  useWorkChatModels(product.profileId, projectId, session?.llmConfig)
+  const [routeRevision, setRouteRevision] = useState(0)
+  useEffect(() => {
+    const onRoute = () => setRouteRevision(value => value + 1)
+    window.addEventListener('popstate', onRoute)
+    return () => window.removeEventListener('popstate', onRoute)
+  }, [])
+
 
   useEffect(() => {
     const target = sessionRef.current
@@ -397,14 +432,38 @@ export function useWorkChatTab(
         await waitForChatStoreHydration()
         if (cancelled) return
 
+        // Opening a project is not permission to create an agent. Only resolve
+        // an existing Main; other agents are projected by WorkChatTabs below.
+        const agents = await agentApi.listAgentProfileSideChats(product.profileId, target.id, true)
+        if (cancelled) return
+        setPreparedProject(target.id)
+        if (!agents.some(agent => agent.is_main)) {
+          const state = useChatStore.getState()
+          for (const tab of Object.values(state.chatTabs)) {
+            if (belongsToWorkProject(tab, target.id) && tab.metadata?.agentProfileIsMainChat) {
+              state.setTabMetadata(tab.tabId, { agentProfileIsMainChat: false })
+            }
+          }
+          setFailure(current => current?.projectId === target.id ? null : current)
+          return
+        }
         const chatStore = useChatStore.getState()
+        // The route boundary still checks project access. A prepared local Main does not need
+        // resolving/recreating whenever the person returns to an already-open project.
+        const prepared = Object.values(chatStore.chatTabs).find(tab => tab.metadata?.agentProfileId === product.profileId &&
+          tab.metadata?.agentProfileProjectId === target.id && tab.metadata?.agentProfileConversationKey === target.id &&
+          tab.metadata?.agentProfileIsMainChat && tab.metadata?.agentProfileMCPSelectionInitialized && tab.sessionId)
+        if (prepared) { setFailure(current => current?.projectId === target.id ? null : current); return }
         const savedRuntime = workLLMSelectionFromConfig(target.llmConfig)
         const savedServers = target.selectedServers.length > 0 ? target.selectedServers : ['NO_SERVERS']
         const savedSkills = target.selectedSkills
         const conversation = await agentApi.resolveAgentProfileConversation(product.profileId, {
           conversation_key: target.id,
+          requested_agent: workOpeningAgentKey(product.profileId, target.id, currentProductRoute()),
         })
         if (cancelled) return
+
+        if (conversation.choose_agent) return
 
         const previousActiveWasMain = Boolean(chatStore.activeTabId && chatStore.chatTabs[chatStore.activeTabId]?.metadata?.agentProfileIsMainChat && belongsToWorkProject(chatStore.chatTabs[chatStore.activeTabId], target.id))
         for (const tab of Object.values(chatStore.chatTabs)) {
@@ -421,7 +480,7 @@ export function useWorkChatTab(
           agentProfileIdentityName: target.identity?.name,
           agentProfileChatContract: 'profile-v1',
           agentProfileBuilder: false,
-          agentProfileIsMainChat: true,
+          agentProfileIsMainChat: conversation.is_main_chat === true,
           agentProfileTabOwnerID: conversation.tab_owner_id,
           agentProfileTabOwnerName: conversation.tab_owner_name,
           agentProfileTabCanWrite: conversation.can_write,
@@ -451,9 +510,9 @@ export function useWorkChatTab(
         if (matching) chatStore.setTabMetadata(matching.tabId, projectMetadata)
 
         const previousActiveTabId = useChatStore.getState().activeTabId
-        const canonicalTabId = await chatStore.createChatTab('Chat', projectMetadata, conversation.session_id)
+        const canonicalTabId = await chatStore.createChatTab('Chat', projectMetadata, conversation.session_id, { activate: false })
         if (cancelled) return
-        // createChatTab activates the primary; keep a side chat the user picked (PLAT-571).
+        // Resolve Main without activating it over a side chat the person picked (PLAT-571).
         const keepActive = !previousActiveWasMain && workTabToKeepActive(useChatStore.getState().chatTabs, previousActiveTabId, target.id, canonicalTabId)
         if (keepActive) activateTab(keepActive)
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
@@ -469,7 +528,9 @@ export function useWorkChatTab(
         if (cancelled) return
         setFailure(current => current?.projectId === target.id ? null : current)
       } catch (cause) {
-        if (!cancelled) setFailure({ projectId: target.id, message: cause instanceof Error ? cause.message : `Could not open ${product.noun}.` })
+        const detail = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
+        const message = typeof detail === 'string' ? detail : detail?.message
+        if (!cancelled) setFailure({ projectId: target.id, message: message || (cause instanceof Error ? cause.message : `Could not open ${product.noun}.`) })
       }
     }
     void prepare()
@@ -513,18 +574,76 @@ export function useWorkChatTab(
   useLayoutEffect(() => {
     // Resolving a chat after navigating here must not dismiss the requested
     // Users, Providers or Schedules page. Activate it when returning to work.
+    const route = currentProductRoute()
+    // A pending cross-project link belongs to the destination. The old mounted surface must not
+    // overwrite its selected agent with this project's Main while admission is still in flight.
+    if (route?.surface === product.profileId && route.id && route.id !== projectId) return
+    const requestedAgent = route?.surface === product.profileId && route.id === projectId ? route.agent : undefined
+    if (requestedAgent && projectId) {
+      const key = workConversationKey(projectId, requestedAgent)
+      const state = useChatStore.getState()
+      const existing = Object.values(state.chatTabs).find(tab => belongsToWorkProject(tab, projectId || '') && tab.metadata?.agentProfileConversationKey === key && !tab.metadata?.isViewOnly)
+      if (existing && state.activeTabId !== existing.tabId) activateTab(existing.tabId)
+      if (requestedAgent !== 'main') return
+    }
     if (canonicalTabId && !activeProjectTabId && !globalPageOpen && !showProviders) activateTab(canonicalTabId)
-  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders])
+  }, [activeProjectTabId, canonicalTabId, globalPageOpen, showProviders, product.profileId, projectId, routeRevision])
+  const destination = currentProductRoute()
+  const departing = destination?.surface === product.profileId && !!destination.id && destination.id !== projectId
+  const displayed = displayedChat.current
+  const retainedTabId = displayed && displayed.projectId === projectId ? displayed.tabId : undefined
+  const retainedTab = retainedTabId ? useChatStore.getState().chatTabs[retainedTabId] : undefined
+  const previousProjectTabId = retainedTab && belongsToWorkProject(retainedTab, projectId || '') ? retainedTabId : null
+  const requestedAgent = destination?.surface === product.profileId && destination.id === projectId ? destination.agent : undefined
+  const activeConversation = activeProjectTabId ? useChatStore.getState().chatTabs[activeProjectTabId]?.metadata?.agentProfileConversationKey : undefined
+  const awaitingRequestedAgent = !!projectId && !!requestedAgent && requestedAgent !== 'main' && activeConversation !== workConversationKey(projectId, requestedAgent)
   return {
-    // A previously prepared Crew tab is safe to display immediately while its
-    // durable binding is revalidated in the background.
-    tabId: activeProjectTabId ?? canonicalTabId ?? null,
+    // Do not flash Main while the specifically requested agent is being restored.
+    tabId: departing ? activeProjectTabId ?? previousProjectTabId : awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
     canonicalTabId: canonicalTabId ?? null,
+    projectReady: preparedProject === projectId,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
 }
 
-export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity }: {
+const workAgentLists = new Map<string, { listed: AgentProfileSideChat[]; mainPurpose?: string }>()
+
+/** Seed the list from the route's fresh server check before mounting the next project. */
+export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideChat[]) {
+  const user = useAuthStore.getState().user?.id ?? 'local'
+  const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  const key = JSON.stringify([workspace, user, 'work', projectId])
+  const main = rows.find(row => row.is_main)
+  // Main is one of the server's agent rows, listed like every other (PLAT-746-885).
+  workAgentLists.set(key, { listed: rows, mainPurpose: main ? main.purpose || '' : undefined })
+}
+
+// Shared project setup is independent of any agent's browser tab.
+function workProjectChatSeed(session: WorkSession, profileId: string) {
+  const runtime = workLLMSelectionFromConfig(session.llmConfig)
+  return {
+    metadata: {
+      mode: 'multi-agent' as const,
+      agentProfileId: profileId,
+      agentProfileWorkspace: session.workspacePath,
+      agentProfileProjectId: session.id,
+      agentProfileProjectTitle: session.title,
+      agentProfileProjectIcon: session.identity?.icon,
+      agentProfileIdentityName: session.identity?.name,
+      agentProfileChatContract: 'profile-v1' as const,
+      agentProfileBuilder: false,
+      ...(runtime ? { agentProfileEngine: runtime.provider, agentProfileConnectionID: runtime.connectionId,
+        agentProfileModelID: runtime.modelId, agentProfileReasoningEffort: runtime.reasoningEffort } : {}),
+    },
+    config: { selectedServers: session.selectedServers.length ? session.selectedServers : ['NO_SERVERS'], selectedSkills: session.selectedSkills },
+  }
+}
+
+export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity, projectSession, createRequest = 0, importRequest = 0, onImportAvailabilityChange }: {
+  projectSession: WorkSession
+  createRequest?: number
+  importRequest?: number
+  onImportAvailabilityChange?: (projectId: string) => void
   projectId: string
   projectName: string
   canonicalTabId: string
@@ -536,7 +655,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
   })))
+  const projectSeed = workProjectChatSeed(projectSession, profileId)
   const [importLocalChat, setImportLocalChat] = useState(false)
+  const [discoverSkills, setDiscoverSkills] = useState(false)
+  useEffect(() => { if (importRequest) setImportLocalChat(true) }, [importRequest])
   const [localImportProject, setLocalImportProject] = useState('')
   useEffect(() => {
     const abort = new AbortController()
@@ -548,18 +670,28 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     }
     return () => abort.abort()
   }, [allowSideChats, profileId, projectId])
+  useEffect(() => {
+    onImportAvailabilityChange?.(localImportProject)
+    return () => onImportAvailabilityChange?.('')
+  }, [localImportProject, onImportAvailabilityChange])
   const [opening, setOpening] = useState(false)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
   // Which agents this project has, their names, order and pins come from the server's list (the person's
   // product-conversations record, also changed over MCP). A browser tab is only the open window of a listed chat: a tab
   // the server does not list is not shown, whatever this browser remembered about it. null = not loaded yet.
-  const [listed, setListed] = useState<AgentProfileSideChat[] | null>(null)
-  // The person's own Main chat's purpose, for its purpose icon (undefined: not theirs or not loaded).
-  const [mainPurpose, setMainPurpose] = useState<string | undefined>()
+  const userId = useAuthStore(state => state.user?.id ?? 'local')
+  const workspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const listCacheKey = JSON.stringify([workspaceId, userId, profileId, projectId])
+  const [listed, setListed] = useState<AgentProfileSideChat[] | null>(() => workAgentLists.get(listCacheKey)?.listed ?? null)
+  // Reuse only this account/connection/project's last server list while refreshing.
+  const [mainPurpose, setMainPurpose] = useState<string | undefined>(() => workAgentLists.get(listCacheKey)?.mainPurpose)
+  useEffect(() => {
+    if (listed) workAgentLists.set(listCacheKey, { listed, mainPurpose })
+  }, [listCacheKey, listed, mainPurpose])
   const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
-    .map(chat => allTabs.find(tab => tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)))
+    .map(chat => allTabs.find(tab => belongsToWorkProject(tab, projectId) && tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)))
     .filter((tab): tab is ChatTab => !!tab)
   const tabs = [
     ...(chatTabs[canonicalTabId] ? [chatTabs[canonicalTabId]] : []),
@@ -575,8 +707,18 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (tab && ((tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0) || (tab.metadata?.agentProfileTabPinned !== false) !== (chat.pinned !== false))) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0, agentProfileTabPinned: chat.pinned !== false })
     }
   }
+  useEffect(() => {
+    const onFork = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; chat: AgentProfileSideChat }>).detail
+      if (detail?.projectId !== projectId) return
+      setListed(current => [...(current || []).filter(row => row.conversation_key !== detail.chat.conversation_key), detail.chat])
+      void syncRef.current()
+    }
+    window.addEventListener(chatForkedEvent, onFork)
+    return () => window.removeEventListener(chatForkedEvent, onFork)
+  }, [projectId])
   const projectActivity = useChatStore(state => workProjectActivity(state.activeSessionsCache, tabs, projectId))
-  const selectTab = (nextTabId: string) => { activateTab(nextTabId) }
+  const selectTab = (nextTabId: string) => { openAgentTab(nextTabId) }
   const closeProjectTab = (closingTabId: string) => {
     void closeWorkspaceChatTab(closingTabId, canonicalTabId).catch(() => {
       useChatStore.getState().addToast('Could not stop this agent. Try closing it again.', 'error')
@@ -595,8 +737,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const openSideChat = async (requestedName: string) => {
     const name = requestedName.trim()
     if (!name || opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return false
-    const primary = chatTabs[canonicalTabId]
-    if (!primary) return false
+    const primary = projectSeed
     setOpening(true)
     try {
       const id = globalThis.crypto.randomUUID().slice(0, 8)
@@ -620,6 +761,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         agentProfileMCPSelectionInitialized: true,
       }, conversation.session_id)
       chatStore.renameTab(tabId, name)
+      openAgentTab(tabId)
       chatStore.setTabConfig(tabId, {
         selectedServers: primary.config.selectedServers,
         selectedSkills: primary.config.selectedSkills,
@@ -656,11 +798,13 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         if (cancelled) return
         const main = rows.find(chat => chat.is_main)
         setMainPurpose(main ? main.purpose || '' : undefined)
-        const listed = rows.filter(chat => !chat.is_main)
+        // Main is one of the server's agent rows, listed like every other (PLAT-746-885): a browser tab whose
+        // main-chat mark was lost no longer hides it.
+        const listed = rows
         for (const chat of listed) {
           const state = useChatStore.getState()
-          const primary = state.chatTabs[canonicalTabId]
-          if (cancelled || openingRef.current || !primary) return
+          const primary = workProjectChatSeed(projectSession, profileId)
+          if (cancelled || openingRef.current) return
           const tabs = Object.values(state.chatTabs)
           const existing = tabs.find(tab => tab.metadata?.isViewOnly !== true && (tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id))
           if (existing) {
@@ -676,10 +820,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
             // from this strip; the server's list decides which project and product the chat is in.
-            if (existing.metadata?.agentProfileConversationKey !== chat.conversation_key || existing.metadata?.agentProfileIsMainChat || existing.metadata?.agentProfileId !== profileId || existing.metadata?.agentProfileProjectId !== projectId) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id,
+            if (existing.metadata?.agentProfileConversationKey !== chat.conversation_key || !!existing.metadata?.agentProfileIsMainChat !== (chat.is_main === true) || existing.metadata?.agentProfileId !== profileId || existing.metadata?.agentProfileProjectId !== projectId) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id,
             agentProfileTabOwnerName: chat.tab_owner_name,
             agentProfileTabCanWrite: chat.can_write,
-            agentProfileConversationKey: chat.conversation_key, agentProfileIsMainChat: false, agentProfileId: profileId, agentProfileProjectId: projectId })
+            agentProfileConversationKey: chat.conversation_key, agentProfileIsMainChat: chat.is_main === true, agentProfileId: profileId, agentProfileProjectId: projectId })
             if (chat.agent_id) {
               state.setTabMetadata(existing.tabId, { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id })
             }
@@ -692,7 +836,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             ...primary.metadata,
             // A Mac Crew's tabs are the Mac's, like its Main.
             agentProfileChatLocation: chat.chat_location === 'mac' ? 'mac' : undefined,
-            agentProfileIsMainChat: false,
+            agentProfileIsMainChat: chat.is_main === true,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,
             agentProfileTabOwnerName: chat.tab_owner_name,
@@ -717,14 +861,29 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // transcript. ChatArea loads history only when that tab is selected.
         if (cancelled) return
         setListed(listed)
-        const requestedAgent = new URLSearchParams(window.location.search).get('agent')
-        if (requestedAgent && requestedAgent !== 'main') {
-          const wanted = `${projectId}:chat:${requestedAgent}`
-          const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === wanted)
-          if (tab) {
-            activateTab(tab.tabId)
-            const url = new URL(window.location.href); url.searchParams.delete('agent')
-            window.history.replaceState(window.history.state, '', url)
+        const currentState = useChatStore.getState()
+        const active = currentState.activeTabId ? currentState.chatTabs[currentState.activeTabId] : undefined
+        const destination = currentProductRoute()
+        if (!canonicalTabId && (!active || !belongsToWorkProject(active, projectId)) && destination?.id === projectId && !destination.agent) {
+          const first = listed[0]
+          const next = first && Object.values(currentState.chatTabs).find(tab => tab.metadata?.agentProfileConversationKey === first.conversation_key)
+          if (next) activateTab(next.tabId)
+        }
+        // A different Crew's link can be checking access while this strip is
+        // still mounted. Only consume an agent deep link for this Crew.
+        const route = currentProductRoute()
+        const requestedAgent = route?.surface === profileId && route.id === projectId ? new URLSearchParams(window.location.search).get('agent') : null
+        if (requestedAgent) {
+          const wanted = workConversationKey(projectId, requestedAgent)
+          const tab = Object.values(useChatStore.getState().chatTabs).find(item => belongsToWorkProject(item, projectId) && !item.metadata?.isViewOnly && item.metadata?.agentProfileConversationKey === wanted)
+          const available = requestedAgent === 'main' || listed.some(chat => chat.conversation_key === wanted)
+          if (tab && available) {
+            if (useChatStore.getState().activeTabId !== tab.tabId) activateTab(tab.tabId)
+          } else if (!available) {
+            // The fresh server list no longer contains the requested chat.
+            // Replace its stale route; do not wait forever for a removed tab.
+            window.history.replaceState({}, '', productRoutePath({ ...route!, agent: 'main' }))
+            activateTab(canonicalTabId)
           }
         }
 
@@ -742,14 +901,23 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     window.addEventListener('focus', onFocus)
     // Create can select the new Crew before its native copy finishes. The
     // subsequent agent deep link must refresh this already-mounted strip too.
-    window.addEventListener('popstate', onFocus)
+    const onHistory = () => {
+      const route = currentProductRoute()
+      if (route?.surface !== profileId || route.id !== projectId) return
+      const key = workConversationKey(projectId, route.agent)
+      const state = useChatStore.getState()
+      const existing = Object.values(state.chatTabs).find(tab => belongsToWorkProject(tab, projectId) && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileConversationKey === key)
+      if (existing) { if (state.activeTabId !== existing.tabId) activateTab(existing.tabId); return }
+      void sync()
+    }
+    window.addEventListener('popstate', onHistory)
     return () => {
       cancelled = true
       window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
-      window.removeEventListener('popstate', onFocus)
+      window.removeEventListener('popstate', onHistory)
     }
-  }, [allowSideChats, canonicalTabId, profileId, projectId])
+  }, [allowSideChats, canonicalTabId, profileId, projectId, projectSession])
   // An agent here that saved its name or purpose (set_my_agent_identity): list again so every place shows it now.
   const watchedSessions = [canonicalSessionId, ...(listed || []).map(chat => chat.session_id)].filter((id): id is string => !!id).join(' ')
   useEffect(() => {
@@ -774,8 +942,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   }, [allowSideChats, watchedSessions])
   const openImportedChat = async (chat: ImportedLocalChat) => {
     const state = useChatStore.getState()
-    const primary = state.chatTabs[canonicalTabId]
-    if (!primary) throw new Error('Open the project again to continue this chat.')
+    const primary = projectSeed
     let tab = Object.values(state.chatTabs).find(item => item.metadata?.agentProfileConversationKey === chat.conversation_key)
     if (!tab) {
       const id = await state.createChatTab(chat.name, {
@@ -793,23 +960,25 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     }
     setListed(current => [...(current || []).filter(row => row.conversation_key !== chat.conversation_key), { ...chat, pinned: true }])
     if (!tab) throw new Error('Could not open the imported chat. Try again.')
-    activateTab(tab.tabId)
+    openAgentTab(tab.tabId)
     void syncRef.current()
   }
-  return <><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
+  return <><AgentRemovalDialog projectId={projectId} /><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} createRequest={createRequest} projectId={projectId}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
     onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
+    onDiscoverSkills={allowSideChats ? () => setDiscoverSkills(true) : undefined}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
       // The list pass opens a tab for every agent the server lists; then switch to this one.
       await syncRef.current()
       const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === chat.conversation_key)
       if (!tab) throw new Error('Could not open this agent. Try again.')
-      activateTab(tab.tabId)
+      openAgentTab(tab.tabId)
     }}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
     onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />
     {importLocalChat && <LocalChatPicker key={projectId} projectId={projectId} onClose={() => setImportLocalChat(false)} onImported={openImportedChat} />}
+    {discoverSkills && <DiscoverSkillsDialog key={projectSession.workspacePath} workspacePath={projectSession.workspacePath} close={() => setDiscoverSkills(false)} />}
   </>
 }
 
@@ -877,12 +1046,14 @@ function WorkTopBarControl({
               </button>
             </div>
           ))}
-          {sessions.some(session => session.shared?.canBuild) && (
+          {/* Every Crew shared with you, Dashboards only included, as in the left sidebar (owner, 9 Nov); opening a
+              Dashboards only Crew shows its dashboard. */}
+          {sessions.some(session => session.shared) && (
             <div aria-hidden="true" className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {product.listsSharedProjects && !product.hasIdentity ? 'Shared with you' : 'Shared with you'}
             </div>
           )}
-          {sessions.filter(session => session.shared?.canBuild).map(session => (
+          {sessions.filter(session => session.shared).map(session => (
             <div
               key={`shared:${session.product}:${session.id}`}
               className={`flex items-center rounded-md text-sm transition-colors ${session.product === selected?.product && session.id === selected?.id ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700'}`}
@@ -920,7 +1091,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (!selected || isWorkSessionRun(selected)) return
     await updateLLMConfig(selected.id, selection)
   }, [selected, updateLLMConfig])
-  const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
+  const [createAgentRequest, setCreateAgentRequest] = useState(0)
+  const [importAgentRequest, setImportAgentRequest] = useState(0)
+  const [importAvailableProject, setImportAvailableProject] = useState('')
+  const { tabId, canonicalTabId, projectReady, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
 
   // A browser reload loses transient tab metadata while the durable references
   // remain in workflow.json. Force the first follow-up through the full profile
@@ -979,7 +1153,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
-  useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined }, viewNavigationRevision)
+  const conversationKey = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata?.agentProfileConversationKey : undefined)
+  const requestedRoute = currentProductRoute()
+  const selectedAgent = selected && conversationKey?.startsWith(`${selected.id}:chat:`) ? conversationKey.slice(`${selected.id}:chat:`.length)
+    : selected && conversationKey?.startsWith(`${selected.id}:schedule:`) ? conversationKey.slice(selected.id.length + 1)
+    : selected && conversationKey === selected.id ? 'main'
+      : requestedRoute?.surface === product.profileId && requestedRoute.id === selected?.id ? requestedRoute.agent : undefined
+  useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined, agent: selectedAgent }, viewNavigationRevision)
   const pendingWorkflowRun = useWorkflowRunNavigation(state => state.target)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
@@ -1030,7 +1210,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
-  const { private: chatPrivateLine, note: chatShareNote } = useChatShareLines(tabId)
+  const chatOnlyLine = useCrewChatOnlyLine(product.profileId === 'work' && chatOnly ? selected?.id : undefined)
+  const { private: chatPrivateLine } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   useEffect(() => {
@@ -1094,7 +1275,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-chat-usage', open)
     return () => window.removeEventListener('agentworks:open-chat-usage', open)
   }, [selected?.id, workspacePanels, selectWorkspaceView])
-  // openCrewAccess / openCrewSync (an agent's "Sharing…", the side panel's Access lines) open the one Access page, the
+  // openCrewAccess (an agent's "Sharing…", the side panel's Access lines) open the one Access page, the
   // same full panel in the Mac app and on the website; it then opens the asked tab (and scrolls to Sync).
   useEffect(() => {
     const open = (event: Event) => {
@@ -1106,15 +1287,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-crew-access', open)
     return () => window.removeEventListener('agentworks:open-crew-access', open)
   }, [selected?.id, isShared, selectWorkspaceView])
-  // "Works once this Crew is online. [Move online]" opens Where it lives (useMacCrew.tsx).
-  useEffect(() => {
-    const open = (event: Event) => {
-      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id) return
-      openWorkPresentationView('mcp', 'computer')
-    }
-    window.addEventListener('agentworks:open-where-it-lives', open)
-    return () => window.removeEventListener('agentworks:open-where-it-lives', open)
-  }, [selected?.id, openWorkPresentationView])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -1230,7 +1402,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   if (initialRouteView.current === undefined) {
     const route = currentProductRoute()
     const view = route?.surface === product.profileId && route.id ? normalizeWorkWorkspaceView(route.view) : null
-    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: 'slack-bot' } as Record<string, string>)[route.view ?? ''] } : null
+    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: 'slack-bot', dashboards: 'dashboards' } as Record<string, string>)[route.view ?? ''] } : null
   }
   const routeSuppliedView = selected
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))
@@ -1341,7 +1513,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       let imported: ImportedLocalChat | undefined
       if (localChat && rootPath) {
         try {
-          const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { project_id: created.id, id: localChat.id })
+          const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { project_id: created.id, id: localChat.id, recent_only: !!localChat.recent_only })
           if (!isCurrent()) return
           imported = data
         } catch {
@@ -1485,14 +1657,14 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
+              tabs={!isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} createRequest={createAgentRequest} importRequest={importAgentRequest} onImportAvailabilityChange={setImportAvailableProject} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
               toolbar={<><WorkWorkspaceToolbar tabId={tabId ?? undefined} onOpenChat={openChatPane} projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
-                        {chatShareNote && <p role="status" className="border-b border-border px-3 py-1.5 text-center text-xs text-muted-foreground">{chatShareNote}</p>}
+                        {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <div className="min-h-0 flex-1">
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
@@ -1509,7 +1681,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       </div>
                   ) : (
                     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
-                      <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>
+                      {projectReady ? <div className="max-w-sm space-y-4"><h2 className="text-lg font-medium text-foreground">Add your first agent</h2><p>Your project is ready. Create an agent to start working{importAvailableProject === selected?.id ? ', or import an existing chat.' : '.'}</p><div className="flex flex-wrap justify-center gap-3"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => setCreateAgentRequest(value => value + 1)}>Create agent</button>{importAvailableProject === selected?.id && <button type="button" className="rounded-md border px-4 py-2" onClick={() => setImportAgentRequest(value => value + 1)}>Import a chat</button>}</div></div> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
                     </div>
                   )}
               </>}
@@ -1527,7 +1699,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                 chatVisible={chatOpen && !isShared}
                 onToggleChat={() => setChatOpen(value => !value)}
               /> : null}><>
-                  {tabId || isWorkSessionRun(selected) ? (
+                  {projectReady || tabId || isWorkSessionRun(selected) ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}

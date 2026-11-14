@@ -65,3 +65,79 @@ func TestIdleCompactionTurnIsNeverQueued(t *testing.T) {
 		t.Fatal("an idle compaction turn was accepted into the conversation queue")
 	}
 }
+
+// PLAT-746-880: a waiting message caused early compaction to reject its own
+// dispatch reservation, then (after taking the lane) reject the same backlog.
+func TestQueuedCompactionDoesNotRefuseItsOwnReservationOrBacklog(t *testing.T) {
+	const sessionID = "queued-compact-regression"
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.Background()
+	if _, _, err := api.enqueueConversationTurn(ctx, "person-1", sessionID, QueryRequest{Query: "next message", AgentMode: "multi-agent"}); err != nil {
+		t.Fatal(err)
+	}
+	api.conversationTurnQueueDraining[sessionID] = true
+	run := newIdleCompactRun()
+	run.beforeQueued = true
+	if !api.reserveQueuedCompaction(sessionID, run) {
+		t.Fatal("could not reserve early compaction")
+	}
+	t.Cleanup(func() {
+		idleCompacts.end(sessionID, run)
+		compactBeforeQueuedAttempts.Delete(sessionID)
+	})
+	if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
+		t.Fatalf("compaction would refuse its own reservation: %s", by)
+	}
+	// The registered compaction still holds the waiting message, even though
+	// the dispatcher reservation is released.
+	api.kickConversationTurnQueue(sessionID)
+	if !api.conversationTurnHasBacklog("person-1", sessionID) || api.conversationTurnDispatchPending(sessionID) {
+		t.Fatal("queued input must stay waiting behind the reserved compaction")
+	}
+	release, ok := api.tryLockSessionInputLane(sessionID, 0)
+	if !ok {
+		t.Fatal("early compaction could not take the free input lane")
+	}
+	defer release() // cleanup runs after this; compaction still holds the queue
+	compactCtx := context.WithValue(ctx, idleCompactRunKey{}, run)
+	if shouldYieldToConversationBacklog(compactCtx) {
+		t.Fatal("early compaction would reject the waiting message backlog after taking the lane")
+	}
+	if !shouldYieldToConversationBacklog(ctx) || !shouldYieldToConversationBacklog(context.WithValue(ctx, idleCompactRunKey{}, newIdleCompactRun())) {
+		t.Fatal("ordinary input and idle-sweep compaction must still yield to waiting messages")
+	}
+	if !api.conversationTurnOccupied(sessionID) {
+		t.Fatal("the active compaction lane must still exclude competing turns")
+	}
+}
+
+// PLAT-746-880: a refused compaction used to erase its cooldown, so each
+// queue wake immediately tried again while the current reply was still running.
+func TestRefusedQueuedCompactionRetainsCooldownWhileTurnRuns(t *testing.T) {
+	const session = "compact-refusal-cooldown"
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	release, ok := api.tryLockSessionInputLane(session, 0)
+	if !ok {
+		t.Fatal("could not occupy input lane")
+	}
+	defer release()
+	run := newIdleCompactRun()
+	run.beforeQueued = true
+	if !api.reserveQueuedCompaction(session, run) {
+		t.Fatal("could not reserve racing compaction")
+	}
+	t.Cleanup(func() { idleCompacts.end(session, run); compactBeforeQueuedAttempts.Delete(session) })
+	api.runIdleCompaction(session, "person-1", idleCompactChat{personReq: QueryRequest{Query: "last message", AgentMode: "multi-agent"}}, 310000, 0, run)
+	if _, ok := compactBeforeQueuedAttempts.Load(session); !ok {
+		t.Fatal("refused attempt erased its cooldown")
+	}
+	attempts := 1
+	for i := 0; i < 1000; i++ {
+		if api.compactBeforeQueuedTurn(session) {
+			attempts++
+		}
+	}
+	if attempts != 1 {
+		t.Fatalf("running turn caused %d compaction attempts", attempts)
+	}
+}

@@ -138,6 +138,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			ctx = validated
 			copy = *GetUserFromContext(ctx)
 		} else if access := userAccessForClaims(&copy); access.Disabled || directoryUserIsUnknown(&copy) {
+			common.RevokeProcessBridgeCredential(authoritySession, "account_unavailable")
 			return nil, fmt.Errorf("%s account is unavailable", tool)
 		}
 		access, err := api.conversationTargetAccess(ctx, req)
@@ -145,6 +146,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			return nil, err
 		}
 		if access == WorkflowAccessNone || (!readOnly && access == WorkflowAccessRead) {
+			common.RevokeProcessBridgeCredential(authoritySession, "access_changed")
 			return nil, fmt.Errorf("%s session permissions changed; start a new turn", tool)
 		}
 		if !builderProductSelection(&copy).AllowsTool(tool) || readOnly && accessTokenRunToolDenied(&copy, tool) {
@@ -166,7 +168,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 
 		action := ""
 		switch tool {
-		case "publish_dashboard", "publish_relay":
+		case "publish_dashboard", "delete_dashboard", "publish_relay":
 			action = "publish"
 		}
 		if action != "" && strings.HasPrefix(req.SelectedFolder, "Workflow/") {

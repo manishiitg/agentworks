@@ -31,7 +31,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	// The watched Main tab uses its physical key, not the AgentBridge address.
 	mainKey := originalMainChatKey("team", "main-conversation")
-	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+mainKey+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+mainKey+`"}`)
 	registry := defaultProductConversationRegistryStore()
 	document, err := registry.loadDocument(t.Context(), productConversationRegistryPath("owner"))
 	if err != nil {
@@ -73,7 +73,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		t.Fatal(err)
 	}
 	for _, pointer := range []string{promotedKey, originalMainChatKey("team", "another-owner"), mainKey} {
-		f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+pointer+`"}`)
+		f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+pointer+`"}`)
 		for name, route := range map[string]func(string, string) string{"standby": crewStandbyTabForKey, "shared": macSharedAgentTab} {
 			if got := route("team", promotedKey); (got == macMainTab) != (pointer == promotedKey) {
 				t.Fatalf("%s promoted chat with pointer %q routed as %q", name, pointer, got)
@@ -89,8 +89,8 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	// Main off (owner, 6 Nov): a message to the Crew itself reaches the first shared agent, not an unshared Main. A key
 	// naming Main stays Main, and a Main public on AgentBridge is still shared.
 	mainOff := team
-	mainOff.AgentChoices = map[string]map[string]bool{"owner": {macMainTab: false}}
-	if err := writeCrewTeam(mainOff); err != nil {
+	mainOff.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: false}})
+	if err := writeCrewTeamAgentFixture(mainOff); err != nil {
 		t.Fatal(err)
 	}
 	withHelper := []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}, {Tab: "helper01", Name: "Helper", Audience: "team"}}
@@ -110,7 +110,10 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if tab := macSharedAgentTab("team", "team"); tab != macMainTab {
 		t.Fatalf("a Main public on AgentBridge lost the Crew's messages to %q", tab)
 	}
-	if err := writeCrewTeam(team); err != nil {
+	// Membership writes preserve agent settings. Restore Main explicitly before
+	// exercising reconnect delivery and membership revocation below.
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: true}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {

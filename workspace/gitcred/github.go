@@ -4,6 +4,7 @@
 // Several layers set git configuration for one command: the sandbox's excludes file, the slot's protection
 // (safe.directory, and hooks and fsmonitor off), a connected GitHub account's credential helper. Every layer appends
 // at index GIT_CONFIG_COUNT and raises the count; none skips or resets, or one silently drops the other's settings.
+// The one deliberate reset is the GitHub credential helper list (see githubHelperPairs).
 package gitcred
 
 import (
@@ -16,6 +17,12 @@ const SecretEnv = "SECRET_GITHUB_TOKEN"
 
 // credentialHelper answers git's "get" for https://github.com with the token in GH_TOKEN.
 const credentialHelper = `!f() { test "$1" = get || exit 0; printf 'username=x-access-token\npassword=%s\n' "$GH_TOKEN"; }; f`
+
+// githubHelperPairs empties git's helper list for github.com before adding ours. Without the empty entry git also
+// runs helpers from system config (Homebrew's osxkeychain) and asks them to store the token after a push: from a
+// sandboxed CLI with a private home that shows the person a "Keychain Not Found" popup, and elsewhere it copies the
+// connected account's token into their keychain.
+var githubHelperPairs = []string{"credential.https://github.com.helper", "", "credential.https://github.com.helper", credentialHelper}
 
 // AppendGitConfig returns env with key/value pairs added to git's environment configuration after the entries it
 // already has, and the count raised to match.
@@ -51,7 +58,7 @@ func WithGitHub(env []string) []string {
 		return env
 	}
 	env = append(env, "GH_TOKEN="+token)
-	return AppendGitConfig(env, "credential.https://github.com.helper", credentialHelper)
+	return AppendGitConfig(env, githubHelperPairs...)
 }
 
 // AddGitHub is WithGitHub for an environment kept as a map (a coding CLI's launch environment); a later layer, such
@@ -66,7 +73,10 @@ func AddGitHub(env map[string]string) {
 	if count < 0 {
 		count = 0
 	}
-	env["GIT_CONFIG_KEY_"+strconv.Itoa(count)] = "credential.https://github.com.helper"
-	env["GIT_CONFIG_VALUE_"+strconv.Itoa(count)] = credentialHelper
-	env["GIT_CONFIG_COUNT"] = strconv.Itoa(count + 1)
+	for i := 0; i+1 < len(githubHelperPairs); i += 2 {
+		env["GIT_CONFIG_KEY_"+strconv.Itoa(count)] = githubHelperPairs[i]
+		env["GIT_CONFIG_VALUE_"+strconv.Itoa(count)] = githubHelperPairs[i+1]
+		count++
+	}
+	env["GIT_CONFIG_COUNT"] = strconv.Itoa(count)
 }

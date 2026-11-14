@@ -36,7 +36,7 @@ export function applyWorkChatModels(profileId: string, projectId: string, models
   }
 }
 
-export function useWorkChatModels(profileId: string, projectId: string | undefined, config: PresetLLMConfig | undefined, canonicalTabId: string | undefined) {
+export function useWorkChatModels(profileId: string, projectId: string | undefined, config: PresetLLMConfig | undefined) {
   const account = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const identity = captureChatIdentity()
@@ -48,7 +48,7 @@ export function useWorkChatModels(profileId: string, projectId: string | undefin
       if (!isChatIdentityCurrent(identity)) throw new Error('Chat account changed.')
       return data
     },
-    enabled: Boolean(projectId && canonicalTabId),
+    enabled: Boolean(projectId),
     refetchOnWindowFocus: true,
   })
   // Opening a Crew writes the Crew's model onto its main tab, sometimes after the server's per-chat

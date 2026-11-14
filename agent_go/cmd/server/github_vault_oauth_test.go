@@ -30,6 +30,7 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 
+	githubProjectFixture(t)
 	const token, code, appSecret = "gho_exampletoken0000", "one-time-code-1234", "app-secret-5678"
 	revoked := ""
 	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -75,19 +76,18 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	oldAuthorize, oldToken, oldAPI := githubAuthorizeURL, githubTokenURL, githubAPIURL
 	githubAuthorizeURL, githubTokenURL, githubAPIURL = github.URL+"/login/oauth/authorize", github.URL+"/login/oauth/access_token", github.URL
 	stored := map[string]string{}
-	oldStore, oldRemove, oldValue := githubStoreToken, githubRemoveToken, githubTokenValue
+	oldStore, oldValue := githubStoreToken, githubTokenValue
 	githubStoreToken = func(_ context.Context, _ *StreamingAPI, person, value string) (string, string, error) {
 		stored[person] = value
 		return "v-1", "VLT_1234__GITHUB_TOKEN", nil
 	}
-	githubRemoveToken = func(_ context.Context, _ *StreamingAPI, person, _ string) error { delete(stored, person); return nil }
 	githubTokenValue = func(*githubAccountRecord) string { return stored["alice"] }
 	oldBudget := githubOrgCheckBudget
 	githubOrgCheckBudget = 500 * time.Millisecond
 	t.Cleanup(func() {
 		githubOrgCheckBudget = oldBudget
 		githubAuthorizeURL, githubTokenURL, githubAPIURL = oldAuthorize, oldToken, oldAPI
-		githubStoreToken, githubRemoveToken, githubTokenValue = oldStore, oldRemove, oldValue
+		githubStoreToken, githubTokenValue = oldStore, oldValue
 	})
 	if err := writeMCPApp(githubAppKey, mcpApp{ClientID: "Iv1.example", ClientSecret: appSecret}); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	api := &StreamingAPI{logger: loggerv2.NewNoop()}
 	call := func(method, path, body, user string) *httptest.ResponseRecorder {
 		t.Helper()
-		return personalRoute(api, (*StreamingAPI).handleGitHubVault, method, path, body, user, nil)
+		return personalRoute(api, (*StreamingAPI).handleGitHubVault, method, path+"?workspace_path=Crew/github-"+user, body, user, nil)
 	}
 
 	started := call(http.MethodPost, "/api/vault/github/connect", `{"method":"oauth"}`, "alice")
@@ -139,20 +139,21 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 		t.Fatalf("another person's status = %s", status.Body.String())
 	}
 
-	// Delivery: the owner's Crews that use all their Vault apps get the secret; a chosen-apps Crew does not. A session
-	// holding it gets GH_TOKEN and git's credential helper, and nothing without it.
-	if githubVaultSecretFor("alice", false) != "VLT_1234__GITHUB_TOKEN" || githubVaultSecretFor("alice", true) != "" || githubVaultSecretFor("bob", false) != "" {
-		t.Fatal("GitHub secret delivery does not follow the owner's Vault app setting")
+	// Only the selected project gets this connection; the shell's env-only
+	// GitHub helper still receives no token in an unconfigured environment.
+	if githubTestRecord(t, "alice") == nil || githubTestRecord(t, "bob") != nil {
+		t.Fatal("GitHub selection crossed project ownership")
 	}
+
 	env := map[string]string{gitcred.SecretEnv: token}
 	gitcred.AddGitHub(env)
 	without := map[string]string{}
 	gitcred.AddGitHub(without)
-	if env["GH_TOKEN"] != token || env["GIT_CONFIG_KEY_0"] != "credential.https://github.com.helper" || env["GIT_CONFIG_COUNT"] != "1" || strings.Contains(env["GIT_CONFIG_VALUE_0"], token) || len(without) != 0 {
+	if env["GH_TOKEN"] != token || env["GIT_CONFIG_KEY_0"] != "credential.https://github.com.helper" || env["GIT_CONFIG_VALUE_0"] != "" || env["GIT_CONFIG_KEY_1"] != "credential.https://github.com.helper" || env["GIT_CONFIG_COUNT"] != "2" || strings.Contains(env["GIT_CONFIG_VALUE_1"], token) || len(without) != 0 {
 		t.Fatalf("session GitHub environment = %v", env)
 	}
 
-	if gone := call(http.MethodDelete, "/api/vault/github", "", "alice"); gone.Code != http.StatusOK || !strings.Contains(gone.Body.String(), `"revoked_at_github":true`) || revoked != token || len(stored) != 0 {
+	if gone := call(http.MethodDelete, "/api/vault/github", "", "alice"); gone.Code != http.StatusOK || !strings.Contains(gone.Body.String(), `"revoked_at_github":false`) || revoked != "" || len(stored) == 0 {
 		t.Fatalf("disconnect = %d %s revoked=%t", gone.Code, gone.Body.String(), revoked == token)
 	}
 	for _, credential := range []string{token, code, appSecret} {

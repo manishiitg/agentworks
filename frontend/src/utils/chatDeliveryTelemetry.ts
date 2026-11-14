@@ -196,24 +196,60 @@ export function recordTabMarkTelemetry(sessionId: string, tabId: string, status:
 }
 
 let viewSwitchStartedAt = 0
-/** The moment a person asks to switch between the chat and the terminal view; the paint after it is timed against this. */
-export function markViewSwitchStart(): void {
+let viewSwitchWanted = ''
+let viewSwitchAdmittedAt = 0
+let viewSwitchID = ''
+let viewSwitchActivatedBy = ''
+/** A click that is not painted within this long is dropped, not timed against an unrelated later switch. */
+const VIEW_SWITCH_EXPIRES_MS = 15_000
+/** The moment a person selects an agent or switches chat/terminal view; the paint after it is timed against this.
+ * `wantedConversation` is the conversation key the click asked for, so the log shows whether another chat (Main) painted first. */
+export function markViewSwitchStart(wantedConversation = ''): void {
   viewSwitchStartedAt = typeof performance !== 'undefined' ? performance.now() : 0
+  viewSwitchID = `${getPageID()}:${Math.round(viewSwitchStartedAt)}`
+  viewSwitchWanted = wantedConversation
+  viewSwitchAdmittedAt = 0
+  viewSwitchActivatedBy = ''
 }
-/** The start mark, read once: 0 when no switch was asked for since the last read. */
-export function takeViewSwitchStart(): number {
-  const at = viewSwitchStartedAt
+/** Code that selects a chat while a click is pending: the first such caller is named in the log (function names only),
+ * so a chat shown before the one asked for can be traced to what selected it (PLAT-746-840). */
+export function noteViewSwitchActivation(conversation = ''): void {
+  if (!viewSwitchStartedAt || typeof performance === 'undefined') return
+  if (performance.now() - viewSwitchStartedAt > VIEW_SWITCH_EXPIRES_MS) return
+  // Every selection while the click is pending, in order: the first one alone showed the asked chat, hiding what
+  // replaced it with Main afterwards (PLAT-746-840). Anonymous frames show as "?" so a listener is still visible.
+  const callers = (new Error().stack || '').split('\n').slice(1)
+    .map(line => line.includes(' at ') ? (/at (?:async )?([\w$.]+) \(/.exec(line)?.[1] || '?') : '')
+    .filter(name => name && !/^(noteViewSwitchActivation|switchTab|activateTab|set|setState|Object\.\w+)$/.test(name))
+  const ms = Math.round(performance.now() - viewSwitchStartedAt)
+  const entry = `${conversation === viewSwitchWanted ? 'asked' : 'other'}@${ms}:${callers.slice(0, 5).join('<')}`
+  viewSwitchActivatedBy = (viewSwitchActivatedBy ? `${viewSwitchActivatedBy} | ${entry}` : entry).slice(0, 400)
+}
+/** The route for the pending click passed the server's access check and was activated. */
+export function markViewSwitchAdmitted(): void {
+  if (viewSwitchStartedAt && !viewSwitchAdmittedAt && typeof performance !== 'undefined') viewSwitchAdmittedAt = performance.now()
+}
+/** The pending click, unchanged: startedAt is 0 when none was asked for or it is too old to still mean this paint. */
+export function readViewSwitch(): { startedAt: number; wanted: string; admittedAt: number; activatedBy: string; switchID: string } {
+  const expired = typeof performance !== 'undefined' && performance.now() - viewSwitchStartedAt > VIEW_SWITCH_EXPIRES_MS
+  return { startedAt: expired ? 0 : viewSwitchStartedAt, wanted: viewSwitchWanted, admittedAt: viewSwitchAdmittedAt, activatedBy: viewSwitchActivatedBy, switchID: viewSwitchID }
+}
+/** The click has been timed against the chat it asked for. */
+export function clearViewSwitch(): void {
   viewSwitchStartedAt = 0
-  return at
+  viewSwitchWanted = ''
+  viewSwitchAdmittedAt = 0
+  viewSwitchActivatedBy = ''
 }
 
-/** Content-free timings of the chat/terminal switch, so a slow switch shows up in the server log with its numbers.
- * view_switch: the click to the first paint of the new view (what = chat or terminal); terminal_ready: one of the terminal's own
+/** Content-free timings of agent and chat/terminal switches, so a slow switch shows up in the server log with its numbers.
+ * view_switch: the click to the first paint of the new view (what = chat or terminal). When the click asked for one agent the
+ * status says as_asked or other_first (another chat painted before it) and, after a link was opened, admitNNN (ms to its access check); terminal_ready: one of the terminal's own
  * loads (metadata, metadata_cached, history or first rendered stream_seed). */
-export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number) {
+export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number, status?: string, source?: string) {
   if (typeof window === 'undefined' || !sessionId) return
   if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
-  queue.push({ sequence: ++sequence, phase, session_id: sessionId, tab_id: tabId, transport: what, elapsed_ms: Math.round(elapsedMs),
+  queue.push({ sequence: ++sequence, phase, session_id: sessionId, tab_id: tabId, transport: what, elapsed_ms: Math.round(elapsedMs), ...(status ? { delivery_status: status } : {}), ...(source ? { delivery_source: source } : {}),
     client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
   if (timer === undefined) timer = window.setTimeout(flush, 100)
 }
@@ -251,4 +287,10 @@ export function recordChatDeliveryTelemetry(
   }
   if (queue.length === 0 || timer !== undefined) return
   timer = window.setTimeout(flush, 100)
+}
+
+/** Correlation only: requests overlapping admission, not proof they caused it. */
+export function admissionWindowHeaders(): Record<string, string> {
+  const pending = readViewSwitch()
+  return pending.startedAt && !pending.admittedAt ? { 'X-Client-Switch': pending.switchID } : {}
 }

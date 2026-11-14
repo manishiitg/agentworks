@@ -11,10 +11,11 @@ export interface FileGitSource {
   openFile: (path: string) => void | Promise<void>
   readFile: (path: string) => Promise<string>
   remoteAction?: (op: 'pull' | 'push') => GitAction
+  delivery?: boolean
   writable?: boolean
 }
 const defaultSource: FileGitSource = {
-  store: useWorkspaceGitStore, api: workspaceGitApi, openFile: openWorkspaceFile,
+  store: useWorkspaceGitStore, api: workspaceGitApi, delivery: true, openFile: openWorkspaceFile,
   readFile: async path => String((await agentApi.getPlannerFileContent(path)).data?.content ?? ''),
 }
 export const FileGitContext = createContext<FileGitSource>(defaultSource)

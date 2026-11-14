@@ -38,8 +38,6 @@ PRIVATE_FIELDS = {"binding_root", "store_root", "session_id", "external_session_
 SKILLS = {"code-" + name: "work-" + name for name in
           ("mcp", "integrations", "workflow-files", "skills", "schedules-and-bots", "dashboard", "ui-control")}
 
-SKILLS["code-background-work"] = "background-work"
-
 
 def scopes(values):
     result = []

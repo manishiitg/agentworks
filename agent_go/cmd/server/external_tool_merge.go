@@ -35,6 +35,7 @@ var externalToolMerges = []externalToolMerge{
 	{"needs_you", "Find and answer the questions waiting on you. Current question, decision and product access still applies.", platformMergeActions("needs_you")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
+	{"menu_groups", "Your own left menu groups: names you give to some of your Crews, to show only those in the left menu. Changes only your menu.", platformMergeActions("menu_groups")},
 	{"workflow", "Find workflows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_script_outline"}, {"save_inputs", "save_script_inputs"},
 	}},
@@ -55,9 +56,9 @@ var externalToolMerges = []externalToolMerge{
 	{"terminal", "Use the existing project terminal, execution history or granted laptop connection.", platformMergeActions("terminal")},
 	{"ui", "Open and inspect the current app's views using its existing browser acknowledgement.", platformMergeActions("ui")},
 	{"media", "Create or show images, documents and other media with the current provider and presentation tools.", platformMergeActions("media")},
-	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files, chats and the audit log.", [][2]string{
+	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files and the audit log.", [][2]string{
 		{"workspaces", "list_review_workspaces"}, {"costs", "get_review_costs"}, {"files", "list_review_files"}, {"file", "read_review_file"},
-		{"chats", "list_review_chats"}, {"chat", "read_review_chat"}, {"audit", "get_review_audit"},
+		{"audit", "get_review_audit"},
 	}},
 }
 
@@ -576,7 +577,7 @@ func projectServiceTool(name string) bool {
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
 		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",
 		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "project_functions_calls",
-		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
+		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "get_review_audit":
 		return true
 	}
 	return false

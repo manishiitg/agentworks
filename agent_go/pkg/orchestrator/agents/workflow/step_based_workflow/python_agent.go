@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -277,7 +277,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			return nil, nil, err
 		}
 		pool, executors := hcpo.filterOrdinaryStepTools(hcpo.WorkspaceTools, hcpo.WorkspaceToolExecutors)
-		functionSelection := strings.HasPrefix(requested, agentworksproduct.ExecutionFunctionTools().Category+":")
+		functionSelection := strings.HasPrefix(requested, projectfunctions.ExecutionTools().Category+":")
 		if functionSelection {
 			var err error
 			pool, executors, err = hcpo.pythonFunctionTools(ctx, saved.StepID)
@@ -310,7 +310,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 				if err := json.Unmarshal(raw, &schema); err != nil {
 					return nil, nil, err
 				}
-				selection.Scripts = append(selection.Scripts, mcpagent.ToolDefinition{Name: name, Description: tool.Function.Description, InputSchema: schema, DisplayGroup: agentworksproduct.ExecutionFunctionTools().Category, Execute: execute})
+				selection.Scripts = append(selection.Scripts, mcpagent.ToolDefinition{Name: name, Description: tool.Function.Description, InputSchema: schema, DisplayGroup: projectfunctions.ExecutionTools().Category, Execute: execute})
 			} else {
 				saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, requested)
 			}

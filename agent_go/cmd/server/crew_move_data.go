@@ -48,7 +48,7 @@ func crewMoveRecordPath(roots crewroot.Roots, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !found || !crewroot.Within(roots.Private, p) {
+	if !found || !crewroot.Within(roots.Automation, p) && !crewroot.Within(roots.Private, p) {
 		return "", fmt.Errorf("Crew settings storage is unavailable")
 	}
 	return p, nil
@@ -188,6 +188,14 @@ func (api *StreamingAPI) captureCrewMoveData(ctx context.Context, claims *UserCl
 			}
 			closeWorkflowPolicyCLI(record.SessionID, record.Provider, "moving Crew online")
 			conversation, err := api.captureCrewHandoffConversation(ctx, claims, roots, record, selection.Tab != "")
+			if err != nil && selection.Tab != "" {
+				// An agent whose program cannot copy its own chat (a Run online copy of a Muse or Cursor agent) goes with
+				// its saved history; the server's first reply starts that program's own session from it.
+				if c, e := api.captureCrewHandoffConversation(ctx, claims, roots, record); e == nil && c != nil && len(c.History) > 0 {
+					log.Printf("[CREW_AGENT_PUBLISH] project=%s tab=%s native=none mode=history reason=%q", roots.ID, selection.Tab, err.Error())
+					conversation, err = c, nil
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -241,13 +249,16 @@ func crewMoveKey(key string, h crewMoveHeader, destination, main string) (string
 	if h.AgentTab != "" && crewAgentTargetMatches(key, h) {
 		return crewAgentPublishKey(destination, h.AgentTab), nil
 	}
-	if key == h.MainKey || key == h.SourceID || key == "" {
+	if strings.HasPrefix(key, h.SourceID+codeChatSideMarker) && productConversationKeyPattern.MatchString(key) {
+		return destination + strings.TrimPrefix(key, h.SourceID), nil
+	}
+	if key == h.SourceID || key == "" {
+		if main == "" {
+			return "", errChooseProjectAgent
+		}
 		return main, nil
 	}
-	if !strings.HasPrefix(key, h.SourceID+":") || !productConversationKeyPattern.MatchString(key) {
-		return "", fmt.Errorf("a moved chat has an invalid Crew address")
-	}
-	return destination + strings.TrimPrefix(key, h.SourceID), nil
+	return "", fmt.Errorf("a moved chat has an invalid Crew address")
 }
 
 func (api *StreamingAPI) disableCrewMoveSchedules(ctx context.Context, roots crewroot.Roots, statePath string) error {
@@ -366,16 +377,26 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 			// available destination account; archives retain the destination default.
 			if h.AgentTab != "" {
 				identity.ConnectionID = h.AccountID
-				identity.Engine = chat.Conversation.Native.Provider
+				if chat.Conversation.Native != nil {
+					identity.Engine = chat.Conversation.Native.Provider
+				}
 				identity.ModelID = chat.Conversation.ModelID
 			}
 			if identity.Engine != "" {
-				if chosen, _ := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine); chosen != nil {
+				chosen, reason := api.crewNativeDestination(ctx, claims, roots, current, identity, identity.ModelID, identity.Engine)
+				if chosen == nil && h.AgentTab != "" && chat.Conversation.Native == nil {
+					// History only: there is no session to resume, so any model the account allows on this server will do.
+					if model, _, e := resolveAccountModel(withModelLimitPerson(ctx, claims.UserID), identity.Engine, identity.ConnectionID, ""); e == nil {
+						chosen, reason = api.crewNativeDestination(ctx, claims, roots, current, identity, model, identity.Engine)
+					}
+				}
+				if chosen != nil {
 					identity = *chosen
 				} else {
 					if h.AgentTab != "" {
 						lock.Unlock()
-						return fmt.Errorf("the selected server account cannot resume this agent")
+						log.Printf("[CREW_AGENT_PUBLISH] project=%s tab=%s program=%s model=%s result=refused reason=%q", roots.ID, h.AgentTab, identity.Engine, identity.ModelID, reason)
+						return fmt.Errorf("the selected server account cannot resume this agent: %s", reason)
 					}
 					identity.Engine, identity.ModelID, identity.ConnectionID = current.Provider, current.ModelID, current.ConnectionID
 				}
@@ -390,7 +411,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 				return err
 			}
 			current.handoffAgentToolsMode = main.handoffAgentToolsMode
-			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, map[bool]crewImportMode{true: crewImportNative, false: crewImportAny}[h.AgentTab != ""])
+			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, crewMoveImportMode(h.AgentTab, chat.Conversation))
 		}
 		if err := api.importCrewMoveCallers(ctx, claims, roots, h, pair, main.ConversationKey); err != nil {
 			return err
@@ -730,23 +751,14 @@ func rebindCrewMoveWatcher(s *projectactions.Schedule, h crewMoveHeader, destina
 	return nil
 }
 
-func crewMoveNotice(statePath string) string {
-	message := "Your agents, chats and schedules are available online."
-	_ = readCrewMoveData(statePath, func(h crewMoveHeader, chat *crewMoveChat) error {
-		if chat != nil {
-			return nil
-		}
-		if len(h.Webhooks) > 0 {
-			message += " Webhooks have new URLs and credentials; open Webhooks to connect callers."
-		}
-		for _, s := range h.Schedules {
-			var input scheduleExecutionInput
-			if json.Unmarshal(s.Input, &input) == nil && input.Condition != nil && (input.Condition.PersonalGmail() || input.Condition.GitHubPR != nil) {
-				message += " Account-based watchers are paused until you choose their accounts online."
-				break
-			}
-		}
-		return nil
-	})
-	return message
+// crewMoveImportMode: a whole-Crew move takes what it can; one agent's publish needs its native session, or continues
+// from its saved history when it came without one (its program cannot copy a chat, crewAgentPublishProgram).
+func crewMoveImportMode(tab string, c *crewHandoffConversation) crewImportMode {
+	switch {
+	case tab == "":
+		return crewImportAny
+	case c != nil && c.Native == nil:
+		return crewImportNativeElseHistory
+	}
+	return crewImportNative
 }

@@ -1,3 +1,4 @@
+import { useBrowserContextPicker } from './useBrowserContextPicker'
 import { useEffect, useRef, useState } from 'react'
 import { BrowserChrome, browserIconButtonClass, browserActionButtonClass, type BrowserTab } from './BrowserChrome'
 import { useBrowserClipboard } from './useBrowserClipboard'
@@ -106,7 +107,7 @@ export type BrowserEmptyStateActions = {
   canStart: boolean
 }
 
-export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection, overview, overviewFooter }: { workspacePath: string | null; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; overview?: (actions: BrowserEmptyStateActions) => ReactNode; overviewFooter?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
+export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection, overview, overviewFooter, chatContextTabId }: { chatContextTabId?: string; workspacePath: string | null; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; overview?: (actions: BrowserEmptyStateActions) => ReactNode; overviewFooter?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
   const hasOverview = Boolean(overview)
   const [overviewOpen, setOverviewOpen] = useState(hasOverview)
   const viewerVisible = !hasOverview || !overviewOpen
@@ -189,6 +190,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
   const viewport = useRef({ width: 1280, height: 720 })
   const screencast = useRef<ScreencastGeometry | undefined>(undefined)
   const screen = useRef<HTMLImageElement>(null)
+  const contextPickActive = useRef(false)
   const keyboardTarget = useRef<HTMLTextAreaElement>(null)
   const [browserPlatform, setBrowserPlatform] = useState('linux')
   const clipboard = useBrowserClipboard(`${workspacePath}:${session}`, interactive, send)
@@ -489,6 +491,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     if (!image || !interactive) return
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
+      if (contextPickActive.current) return
       const rect = image.getBoundingClientRect()
       const ws = socket.current
       if (!rect.width || !rect.height || ws?.readyState !== WebSocket.OPEN) return
@@ -537,7 +540,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
   }
   useEffect(() => () => { if (moveTimer.current) clearTimeout(moveTimer.current) }, [])
   function mouse(event: MouseEvent<HTMLImageElement>, eventType: string) {
-    if (!interactive) return
+    if (!interactive || contextPickActive.current) return
     // No frame yet: the page size and painted area are still unknown, so any
     // coordinate would be a guess against the 1280x720 default (PLAT-776).
     if (!frame) return
@@ -559,6 +562,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     send({ type: 'input_mouse', eventType, ...mapped, button: ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
   }
   function keyboard(event: KeyboardEvent<HTMLTextAreaElement>, eventType: string) {
+    if (contextPickActive.current) { event.preventDefault(); return }
     if (!interactive) return
     const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey ? event.key.toLowerCase() : ''
     if (shortcut === 'v') return // Let the focused local textarea receive the native paste event.
@@ -632,6 +636,34 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     send({ type: 'close_tab', tab: tab.tabId })
     if (!tab.active && activeTab) send({ type: 'switch_tab', tab: activeTab.tabId })
   }
+  const contextPicker = useBrowserContextPicker({
+    tabId: chatContextTabId,
+    browserSession: session,
+    enabled: Boolean(chatContextTabId && viewerVisible && connected && canControl && displayFrame && !retainedFrame && !replayURL),
+    sourceKey: `${workspacePath}:${session}:${activeTab?.tabId}:${address}:${viewport.current.width}:${viewport.current.height}`,
+    point,
+    onBegin: () => {
+      contextPickActive.current = true
+      keyboardTarget.current?.blur()
+      pendingMove.current = null
+      if (moveTimer.current) clearTimeout(moveTimer.current)
+      moveTimer.current = null
+      setClipboardMenu(null)
+    },
+    outline: bounds => {
+      const image = screen.current
+      if (!image || !image.naturalWidth || !image.naturalHeight) return undefined
+      const box = image.getBoundingClientRect()
+      const fw = image.naturalWidth, fh = image.naturalHeight
+      const scale = Math.min(box.width / fw, box.height / fh)
+      const factor = screencast.current?.pageScaleFactor
+      const inFrame = factor && factor >= 0.1 && factor <= 10
+        ? { x: Math.max(0, (fw - viewport.current.width * factor) / 2) + bounds.x * factor, y: Math.max(0, (screencast.current?.offsetTop ?? 0) * factor) + bounds.y * factor, width: bounds.width * factor, height: bounds.height * factor }
+        : { x: bounds.x * fw / viewport.current.width, y: bounds.y * fw / viewport.current.width, width: bounds.width * fw / viewport.current.width, height: bounds.height * fw / viewport.current.width }
+      return { left: (box.width - fw * scale) / 2 + inFrame.x * scale, top: (box.height - fh * scale) / 2 + inFrame.y * scale, width: inFrame.width * scale, height: inFrame.height * scale }
+    },
+  })
+  contextPickActive.current = contextPicker.active
   const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!interactive} className="h-7 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
   const expandToggle = !minimal && Boolean(displayFrame || replayURL) && (
     <button type="button" aria-pressed={expanded} aria-label={expanded ? 'Exit expanded view' : 'Expand browser'} title={expanded ? 'Exit expanded view (Esc)' : 'Expand browser'} className={iconButtonClass} onClick={() => setExpanded(value => !value)}>
@@ -692,7 +724,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
   if (overview && overviewOpen) {
     const live = sessions.filter(item => item.state !== 'completed')
     const replays = sessions.filter(item => item.state === 'completed')
-    const sessionRows = (items: BrowserSession[]) => <ul className="space-y-1">{items.map(item => <li key={item.browser_session}><button type="button" className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => chooseBrowser(item.browser_session)}><Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.label || (item.kind === 'playwright' ? 'Script browser' : 'Private browser')}</span><span className="shrink-0 text-muted-foreground">{item.state === 'completed' ? 'Replay' : 'Live'}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></button></li>)}</ul>
+    const sessionRows = (items: BrowserSession[]) => <ul className="space-y-1">{items.map(item => <li key={item.browser_session}><button type="button" className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2" onClick={() => chooseBrowser(item.browser_session)}><Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{item.label || (item.kind === 'playwright' ? 'Script browser' : 'Browser on the server')}</span><span className="shrink-0 text-muted-foreground">{item.state === 'completed' ? 'Replay' : 'Live'}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></button></li>)}</ul>
     return <section className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-label="Browser workspace">
       <WorkspaceViewHeader icon={Monitor} title="Browser" />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" aria-label="Browser content">
@@ -715,9 +747,10 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
           title="Browser"
           context={<>{browserPicker}<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status" title={singleBrowserLabel}><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}</span>{lastAction}</>}
           actions={<>
-            {overview && <button type="button" className={tertiaryButtonClass} onClick={() => { setOverviewOpen(true); setExpanded(false); setMenuOpen(false) }}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Browsers</button>}
+            {overview && <button type="button" className={tertiaryButtonClass} onClick={() => { setOverviewOpen(true); setExpanded(false); setMenuOpen(false) }}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Browser</button>}
             {startToggle}
             {recordingIndicator}
+            {contextPicker.button}
             {pageSizeToggle}
             {replayURL && <a href={replayURL} download="playwright-replay.mp4" className={tertiaryButtonClass}>Download video</a>}
             {recordingNote}
@@ -731,7 +764,8 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
 
       {replayURL ? <video controls preload="metadata" src={replayURL} poster={lastPlaywrightFrame?.workspace === workspacePath && lastPlaywrightFrame.session === session ? lastPlaywrightFrame.frame : undefined} aria-label="Playwright test recording" className="min-h-0 w-full flex-1 bg-black object-contain" /> : displayFrame ? <div className="live-browser-viewport relative min-h-0 flex-1 bg-black/90">
         <img ref={screen} src={displayFrame} alt={retainedFrame ? "Last Playwright test frame" : "Live server browser viewport"} draggable={false} tabIndex={-1} className="live-browser-frame absolute inset-0 block h-full w-full select-none object-contain outline-none focus:ring-2 focus:ring-inset focus:ring-ring" onMouseDown={event => mouse(event, 'mousePressed')} onMouseUp={event => mouse(event, 'mouseReleased')} onMouseMove={event => mouse(event, 'mouseMoved')} onContextMenu={event => { event.preventDefault(); if (interactive) { const rect = event.currentTarget.getBoundingClientRect(); setClipboardMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 160)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 80)) }) } }} />
-        <textarea ref={keyboardTarget} aria-label="Browser keyboard input" defaultValue=" " onFocus={event => event.currentTarget.select()} onCut={event => event.preventDefault()} tabIndex={interactive ? 0 : -1} readOnly={!interactive} className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none opacity-0" onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} onPaste={clipboard.paste} onCopy={event => { event.preventDefault(); void clipboard.copy() }} />
+        {contextPicker.overlay}
+        <textarea ref={keyboardTarget} aria-label="Browser keyboard input" defaultValue=" " onFocus={event => event.currentTarget.select()} onCut={event => event.preventDefault()} tabIndex={interactive && !contextPicker.active ? 0 : -1} readOnly={!interactive || contextPicker.active} className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none opacity-0" onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} onPaste={clipboard.paste} onCopy={event => { event.preventDefault(); void clipboard.copy() }} />
         {interactive && clipboardMenu && <div role="menu" aria-label="Browser clipboard" className="absolute z-20 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md" style={{ left: clipboardMenu.x, top: clipboardMenu.y }}>
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.copy() }}>Copy</button>
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.pasteFromClipboard() }}>Paste</button>

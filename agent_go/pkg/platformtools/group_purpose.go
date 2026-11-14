@@ -19,6 +19,7 @@ var groupPurpose = map[string]string{
 	"integrations": "Google and Slack connections: connect accounts, grant access, and set up the Slack bot and its routes.",
 	"mcp":          "MCP servers (outside apps and services) this project can use: find, add, connect and manage them.",
 	"media":        "Generate or edit images, documents and video.",
+	"menu_groups":  "Your own left menu groups: list them, create, rename or delete a group, and add or remove a Crew by name.",
 	"messages":     "Messages and email: send to another agent, Slack or email, read the agent mailbox and inbox, and set up channels.",
 	"models":       "Which AI model this project uses: list, test and change it.",
 	"needs_you":    "Decisions waiting for a person (the Needs you list): create, list, answer or dismiss them.",

@@ -166,6 +166,30 @@ func TestWorkspaceSkillsLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(docs, "Workflow/mine/skills/new/assets/image.bin")); err != nil {
 		t.Fatal("Crew uninstall changed a workflow")
 	}
+
+	// A Team's online home reads the Team Crew's own skills (skills_from), read-only: listed with their files, never
+	// removed or written through the home, and only another Crew can be named.
+	write("Crew/home/product.json", []byte(`{"product":"work","id":"home"}`))
+	write("Crew/team/skills/team-skill/SKILL.md", skill("team-skill"))
+	write("Crew/team/skills/team-skill/notes.md", []byte("notes"))
+	from := `"workspace_path":"Crew/home","skills_from":"Crew/team"`
+	if !strings.Contains(string(call("/list", `{`+from+`}`, 200)), `"folder_name":"team-skill"`) || !strings.Contains(string(call("/files", `{`+from+`,"name":"team-skill"}`, 200)), "notes.md") {
+		t.Fatal("the home does not read the Team Crew's own skill")
+	}
+	if strings.Contains(string(call("/list", `{"workspace_path":"Crew/home"}`, 200)), "team-skill") {
+		t.Fatal("a Crew without skills_from sees another Crew's skills")
+	}
+	call("/delete", `{`+from+`,"name":"team-skill"}`, 200)
+	if _, err := os.Stat(filepath.Join(docs, "Crew/team/skills/team-skill/SKILL.md")); err != nil {
+		t.Fatal("the home removed the Team Crew's skill")
+	}
+	// Same name in both: the home's own skill wins, as a workflow's does over its Crew's.
+	write("Crew/team/skills/clash/SKILL.md", []byte("---\nname: clash\ndescription: team\n---\nTeam version.\n"))
+	write("Crew/home/skills/clash/SKILL.md", []byte("---\nname: clash\ndescription: home\n---\nHome version.\n"))
+	if listed := string(call("/list", `{`+from+`}`, 200)); !strings.Contains(listed, "Home version.") || strings.Contains(listed, "Team version.") {
+		t.Fatal("the Team Crew's skill overrode the home's own skill of the same name")
+	}
+	call("/list", `{"workspace_path":"Crew/home","skills_from":"Workflow/mine"}`, 400)
 }
 
 func TestWorkspaceSkillsRefuseEscapesAndManagedUninstall(t *testing.T) {

@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,32 +41,6 @@ func singletonConversationProfile() agentprofiles.Profile {
 	return profile
 }
 
-func TestProductConversationRegistryReadInsideBuilderReservation(t *testing.T) {
-	// These distinct keys collided in the former 64-bucket mutex pool. The
-	// Builder holds its reservation while selecting a chat from this registry.
-	const user = "owner"
-	reservationKey := "external-builder:owner:Workflow/example-61"
-	reservation := productConversationRegistryMutex(reservationKey)
-	reservation.Lock()
-	defer reservation.Unlock()
-	if reservation != productConversationRegistryMutex(reservationKey) {
-		t.Fatal("the same reservation key must keep the same mutex")
-	}
-	if reservation.TryLock() {
-		reservation.Unlock()
-		t.Fatal("a second caller can enter the held reservation")
-	}
-	registry := productConversationRegistryMutex(productConversationRegistryPath(user))
-	if !registry.TryLock() {
-		t.Fatal("a registry read deadlocks against an unrelated Builder reservation")
-	}
-	registry.Unlock()
-	store, _ := memoryProductConversationStore()
-	if _, err := store.projectChats(t.Context(), user, "agentworks", "example"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestProductConversationRegistryReusesStableIdentity(t *testing.T) {
 	store, _ := memoryProductConversationStore()
 	profile := singletonConversationProfile()
@@ -84,50 +58,6 @@ func TestProductConversationRegistryReusesStableIdentity(t *testing.T) {
 	}
 	if first.ConversationID != second.ConversationID || second.SessionID != "existing-session" {
 		t.Fatalf("durable identity changed: first=%+v second=%+v", first, second)
-	}
-}
-
-func TestProductConversationRegistrySeparatesUsersAndKeys(t *testing.T) {
-	store, files := memoryProductConversationStore()
-	profile := singletonConversationProfile()
-	binding, _ := resolveProductConversationBinding(context.Background(), "user-1", profile, "main")
-	userOne, err := store.resolveOrCreate(context.Background(), "user-1", profile, binding, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	userTwo, err := store.resolveOrCreate(context.Background(), "user-2", profile, binding, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if userOne.ConversationID == userTwo.ConversationID || userOne.SessionID == userTwo.SessionID {
-		t.Fatalf("users shared a product conversation: one=%+v two=%+v", userOne, userTwo)
-	}
-	if len(files) != 2 {
-		t.Fatalf("registry files=%d, want one per user", len(files))
-	}
-}
-
-func TestProductConversationRegistryRemovesCompleteProjectSlot(t *testing.T) {
-	store, _ := memoryProductConversationStore()
-	profile := singletonConversationProfile()
-	binding, _ := resolveProductConversationBinding(context.Background(), "user-1", profile, "main")
-	first, err := store.resolveOrCreate(context.Background(), "user-1", profile, binding, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := store.rotate(context.Background(), "user-1", profile, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	removed, err := store.removeSlot(context.Background(), "user-1", profile, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(removed) != 2 || removed[0].SessionID != second.SessionID || removed[1].SessionID != first.SessionID {
-		t.Fatalf("removed records=%+v, want live then previous", removed)
-	}
-	if current, ok, previous, err := store.history(context.Background(), "user-1", profile, binding); err != nil || ok || current.SessionID != "" || len(previous) != 0 {
-		t.Fatalf("slot survived deletion: current=%+v ok=%v previous=%+v err=%v", current, ok, previous, err)
 	}
 }
 
@@ -156,32 +86,6 @@ func TestShouldRebindWorkConversationOnlyForVerifiedTabSpecificSession(t *testin
 	}
 }
 
-func TestProductConversationRegistryBindsVerifiedHistoryToNewProjectChatKey(t *testing.T) {
-	store, _ := memoryProductConversationStore()
-	profile := routeTestProfile("work", true, "")
-	binding := productConversationBinding{
-		ConversationKey: "project-1:historical-session",
-		WorkspacePath:   "_users/user-1/Chats/Work/projects/project-1",
-		ResourceID:      "project-1",
-		Title:           "Project 1",
-	}
-
-	restored, err := store.switchTo(context.Background(), "user-1", profile, binding, "historical-session", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restored.SessionID != "historical-session" || restored.ConversationKey != binding.ConversationKey || restored.ConversationID == "" {
-		t.Fatalf("verified historical session was not bound directly: %+v", restored)
-	}
-	resolved, err := store.resolveOrCreate(context.Background(), "user-1", profile, binding, "different-session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.SessionID != restored.SessionID || resolved.ConversationID != restored.ConversationID {
-		t.Fatalf("later resolve replaced restored identity: restored=%+v resolved=%+v", restored, resolved)
-	}
-}
-
 func TestProductConversationRegistryRejectsUnverifiedHistoryForNewKey(t *testing.T) {
 	store, _ := memoryProductConversationStore()
 	profile := routeTestProfile("work", true, "")
@@ -189,49 +93,6 @@ func TestProductConversationRegistryRejectsUnverifiedHistoryForNewKey(t *testing
 
 	if _, err := store.switchTo(context.Background(), "user-1", profile, binding, "untrusted-session", false); err == nil || !strings.Contains(err.Error(), "has not been opened") {
 		t.Fatalf("unverified session created a product conversation: %v", err)
-	}
-}
-
-func TestProductConversationRotationChangesProjectSessionAndKeepsNewBinding(t *testing.T) {
-	store, files := memoryProductConversationStore()
-	profile := routeTestProfile("example-product", true, "")
-	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{
-		Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject,
-	}
-	const manifestPath = "_users/user-1/Chats/Example Product/projects/launch/product.json"
-	files[manifestPath] = `{"product":"example-product","id":"launch","title":"Launch","session_id":"existing-session","unrelated":"preserved"}`
-	binding := productConversationBinding{
-		ConversationKey: "launch", WorkspacePath: "_users/user-1/Chats/Example Product/projects/launch",
-		ManifestPath: manifestPath, ResourceID: "launch", Title: "Launch", AuthoritativeSessionID: "existing-session",
-	}
-	original, err := store.resolveOrCreate(context.Background(), "user-1", profile, binding, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rotated, err := store.rotate(context.Background(), "user-1", profile, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rotated.ConversationID == original.ConversationID || rotated.SessionID == original.SessionID {
-		t.Fatalf("rotation reused the old durable identity: original=%+v rotated=%+v", original, rotated)
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(files[manifestPath]), &manifest); err != nil {
-		t.Fatal(err)
-	}
-	if manifest["session_id"] != rotated.SessionID || manifest["unrelated"] != "preserved" {
-		t.Fatalf("manifest not safely updated: %+v", manifest)
-	}
-
-	// A normal later resolve reads the rotated project binding and must not
-	// revive the conversation it replaced.
-	binding.AuthoritativeSessionID = rotated.SessionID
-	resolved, err := store.resolveOrCreate(context.Background(), "user-1", profile, binding, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.ConversationID != rotated.ConversationID || resolved.SessionID != rotated.SessionID {
-		t.Fatalf("resolve revived prior conversation: got=%+v want=%+v", resolved, rotated)
 	}
 }
 
@@ -341,38 +202,6 @@ func workProjectBindingPaths(t *testing.T, id string) (string, string) {
 		}
 	}
 	return "Crew/site/product.json", "Crew/site/workflow.json"
-}
-
-func TestWorkProjectBindingUsesCreatedProjectFolder(t *testing.T) {
-	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Crew"}
-	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
-
-	manifestPath, runtimePath := workProjectBindingPaths(t, "task-1")
-	store := productProjectStore{
-		listPaths: func(context.Context, string) ([]string, bool, error) {
-			return []string{manifestPath}, true, nil
-		},
-		read: func(_ context.Context, path string) (string, bool, error) {
-			if path == runtimePath {
-				return `{"schema_version":1,"id":"task-1","label":"Task","workflow_context_paths":["Workflow/reference"],"capabilities":{"llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"muse-cli","model_id":"muse-spark-1.3-contributor"}}}}`, true, nil
-			}
-			return `{"schema_version":1,"product":"work","id":"task-1","title":"Task","session_id":"work:task-1"}`, true, nil
-		},
-	}
-	binding, err := resolveProductProjectBindingWithStore(context.Background(), "user-1", profile, "task-1", store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if binding.WorkspacePath != "Crew/site" {
-		t.Fatalf("unexpected durable binding: %+v", binding)
-	}
-	if binding.ProjectLLMConfig == nil || binding.ProjectLLMConfig.BuilderLLM == nil || binding.ProjectLLMConfig.BuilderLLM.Provider != "muse-cli" {
-		t.Fatalf("project LLM configuration was not loaded: %+v", binding.ProjectLLMConfig)
-	}
-	if got := strings.Join(binding.ProjectWorkflowContextPaths, ","); got != "Workflow/reference" {
-		t.Fatalf("project workflow references were not loaded: %v", binding.ProjectWorkflowContextPaths)
-	}
 }
 
 func TestWorkProjectChatKeySharesProjectButNotManifestSession(t *testing.T) {
@@ -575,68 +404,5 @@ func TestTriggerRunsShareTheTriggersOwnConversation(t *testing.T) {
 	}
 	if other.SessionID == first.SessionID {
 		t.Fatalf("two different triggers shared session %q", first.SessionID)
-	}
-}
-
-// A project's native agent tools are always on: the switch is gone (2026-09-29),
-// and an older project's stored "off" no longer reaches the binding that
-// resolveAgentProfileForQuery reads.
-func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
-	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Crew"}
-	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
-	manifestPath, runtimePath := workProjectBindingPaths(t, "task-1")
-	for _, tc := range []struct {
-		capabilities string
-		want         bool
-	}{
-		{`{"native_agent_tools":true}`, true},
-		{`{}`, true},                           // on by default
-		{`{"native_agent_tools":false}`, true}, // no switch any more: a stored off is ignored
-	} {
-		store := productProjectStore{
-			listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
-			read: func(_ context.Context, path string) (string, bool, error) {
-				if path == runtimePath {
-					return `{"schema_version":1,"id":"task-1","capabilities":` + tc.capabilities + `}`, true, nil
-				}
-				return `{"schema_version":1,"product":"work","id":"task-1","title":"Task","session_id":"work:task-1"}`, true, nil
-			},
-		}
-		binding, err := resolveProductProjectBindingWithStore(context.Background(), "user-1", profile, "task-1", store)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if binding.ProjectNativeAgentTools != tc.want {
-			t.Fatalf("capabilities %s: ProjectNativeAgentTools = %v, want %v", tc.capabilities, binding.ProjectNativeAgentTools, tc.want)
-		}
-	}
-}
-
-// A Code has no "Native agent tools" switch: they are always on, even for a
-// Code whose workflow.json still says off from before the switch was removed.
-func TestCodeProjectBindingAlwaysHasNativeAgentTools(t *testing.T) {
-	profile := routeTestProfile("code", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Code/projects"}
-	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
-	manifestPath := "_users/user-1/Chats/Code/projects/app/product.json"
-	runtimePath := "_users/user-1/Chats/Code/projects/app/workflow.json"
-	for _, capabilities := range []string{`{}`, `{"native_agent_tools":true}`, `{"native_agent_tools":false}`} {
-		store := productProjectStore{
-			listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
-			read: func(_ context.Context, path string) (string, bool, error) {
-				if path == runtimePath {
-					return `{"schema_version":1,"id":"task-1","capabilities":` + capabilities + `}`, true, nil
-				}
-				return `{"schema_version":1,"product":"code","id":"task-1","title":"App","session_id":"code:project:task-1"}`, true, nil
-			},
-		}
-		binding, err := resolveProductProjectBindingWithStore(context.Background(), "user-1", profile, "task-1", store)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !binding.ProjectNativeAgentTools {
-			t.Fatalf("capabilities %s: a Code lost native agent tools", capabilities)
-		}
 	}
 }

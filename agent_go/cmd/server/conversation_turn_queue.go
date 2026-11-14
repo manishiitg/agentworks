@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -125,6 +127,11 @@ func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) Q
 // attributes needed to reconstruct and revalidate a delayed turn. It never
 // stores a bearer token or an execution principal.
 type queuedConversationPrincipal struct {
+	Attachments             []admittedChatAttachment `json:"attachments,omitempty"`
+	DeliveredMessageSession string                   `json:"delivered_message_session,omitempty"`
+	DeliveredMessageUser    string                   `json:"delivered_message_user,omitempty"`
+	// Display attribution only; never reconstructed from request JSON or used as admission.
+	DeliveredMessage        map[string]interface{} `json:"delivered_message,omitempty"`
 	CrewAskInput            *crewAskInputScope     `json:"crew_ask_input,omitempty"`
 	CostAttribution         costledger.Attribution `json:"cost_attribution,omitempty"`
 	FeedbackOperationID     string                 `json:"feedback_operation_id,omitempty"`
@@ -139,16 +146,21 @@ type queuedConversationPrincipal struct {
 }
 
 type queuedConversationTurn struct {
-	ID            string                      `json:"id"`
-	UserID        string                      `json:"user_id"`
-	SessionID     string                      `json:"session_id"`
-	Request       QueryRequest                `json:"request"`
-	Principal     queuedConversationPrincipal `json:"principal,omitempty"`
-	SubmissionID  string                      `json:"submission_id,omitempty"`
-	CreatedAt     time.Time                   `json:"created_at"`
-	StartedAt     *time.Time                  `json:"started_at,omitempty"`
-	Steering      bool                        `json:"steering,omitempty"`
-	DeliveryError string                      `json:"delivery_error,omitempty"`
+	UsageLimitRecoveryID string                      `json:"usage_limit_recovery_id,omitempty"`
+	BatchID              string                      `json:"batch_id,omitempty"`
+	Batch                []queuedConversationTurn    `json:"-"`
+	RetryAt              *time.Time                  `json:"retry_at,omitempty"`
+	ID                   string                      `json:"id"`
+	ComposerInput        bool                        `json:"composer_input,omitempty"`
+	UserID               string                      `json:"user_id"`
+	SessionID            string                      `json:"session_id"`
+	Request              QueryRequest                `json:"request"`
+	Principal            queuedConversationPrincipal `json:"principal,omitempty"`
+	SubmissionID         string                      `json:"submission_id,omitempty"`
+	CreatedAt            time.Time                   `json:"created_at"`
+	StartedAt            *time.Time                  `json:"started_at,omitempty"`
+	Steering             bool                        `json:"steering,omitempty"`
+	DeliveryError        string                      `json:"delivery_error,omitempty"`
 }
 
 type conversationTurnQueueDocument struct {
@@ -170,11 +182,15 @@ func queuedPrincipalFromContext(ctx context.Context) queuedConversationPrincipal
 	if claims == nil {
 		return queuedConversationPrincipal{}
 	}
+	delivery, _ := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
 	principal := queuedConversationPrincipal{
-		CrewAskInput:        crewAskInputFromContext(ctx),
-		CostAttribution:     costobserver.AttributionFromContext(ctx),
-		FeedbackOperationID: virtualtools.FeedbackOperationFromContext(ctx),
-		Provider:            claims.Provider, SlackTrustedApp: claims.SlackTrustedApp,
+		Attachments:          admittedChatAttachmentsFromContext(ctx),
+		DeliveredMessage:     maps.Clone(delivery),
+		DeliveredMessageUser: claims.UserID,
+		CrewAskInput:         crewAskInputFromContext(ctx),
+		CostAttribution:      costobserver.AttributionFromContext(ctx),
+		FeedbackOperationID:  virtualtools.FeedbackOperationFromContext(ctx),
+		Provider:             claims.Provider, SlackTrustedApp: claims.SlackTrustedApp,
 		BotRouteGrant: claims.BotRouteGrant, BotRouteWorkflowID: claims.BotRouteWorkflowID,
 		BotRouteProfileID: claims.BotRouteProfileID, BotRouteConversationKey: claims.BotRouteConversationKey,
 		BotRouteWorkspacePath: claims.BotRouteWorkspacePath,
@@ -230,11 +246,13 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 		ID: uuid.NewString(), UserID: userID, SessionID: sessionID, Request: sanitizedQueuedConversationRequest(ctx, req),
 		Principal: queuedPrincipalFromContext(ctx), CreatedAt: time.Now().UTC(),
 	}
+	turn.Principal.DeliveredMessageSession = sessionID
 	if ask := crewAskInputFromContext(ctx); ask != nil {
 		turn.ID = ask.Query
 	}
 	if submission, ok := ctx.Value(chatSubmissionContextKey{}).(chatSubmissionContext); ok {
 		turn.SubmissionID = submission.ID
+		turn.ComposerInput = submission.ComposerInput && personQueuedRequest(turn)
 	}
 	path := conversationTurnQueuePath(userID)
 	lock := productConversationRegistryMutex(path)
@@ -249,6 +267,10 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	turns = append(turns, turn)
 	if err := api.writeConversationTurnQueue(storageCtx, userID, turns); err != nil {
 		return queuedConversationTurn{}, 0, err
+	}
+	if personQueuedRequest(turn) {
+		api.cancelNativeGoalRestore(sessionID, "person_message_queued")
+		api.cancelUsageLimitRecovery(sessionID, "person_message_queued")
 	}
 	position := 0
 	for _, pending := range turns {
@@ -305,6 +327,7 @@ func (api *StreamingAPI) conversationQueueOwners(sessionID string) []string {
 // callers. Documents and delayed principals remain isolated per caller.
 func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessionID string) (queuedConversationTurn, bool, error) {
 	var oldest queuedConversationTurn
+	var heads []queuedConversationTurn
 	var readErr error
 	for _, owner := range api.conversationQueueOwners(sessionID) {
 		lock := productConversationRegistryMutex(conversationTurnQueuePath(owner))
@@ -317,12 +340,24 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			continue // One caller's unreadable document must not block others.
 		}
 		api.noteConversationQueueReadState(sessionID, owner, nil)
-		var head queuedConversationTurn
-		for _, turn := range turns {
-			if turn.UserID == owner && turn.SessionID == sessionID && turn.StartedAt == nil && turn.DeliveryError == "" {
-				head = turn
-				break
+		if pruned, changed := api.pruneRestartContinues(turns); changed {
+			if err := api.writeConversationTurnQueue(ctx, owner, pruned); err != nil {
+				lock.Unlock()
+				return queuedConversationTurn{}, false, err
 			}
+			turns = pruned
+		}
+
+		usagePruned, usageErr := api.pruneUsageLimitContinues(ctx, owner, turns)
+		if usageErr != nil {
+			lock.Unlock()
+			return queuedConversationTurn{}, false, usageErr
+		}
+		turns = usagePruned
+
+		head := conversationQueueHead(turns, owner, sessionID, time.Now())
+		if head.ID != "" {
+			heads = append(heads, head)
 		}
 		if head.ID == "" {
 			// Keep the file lock through index cleanup: a concurrent enqueue
@@ -333,6 +368,8 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 				delete(api.conversationTurnQueueOwners, sessionID)
 			}
 			api.conversationTurnQueueMu.Unlock()
+		} else if head.RetryAt != nil && time.Now().Before(*head.RetryAt) {
+			api.wakeConversationQueueAt(sessionID, *head.RetryAt)
 		} else if oldest.ID == "" || head.CreatedAt.Before(oldest.CreatedAt) || (head.CreatedAt.Equal(oldest.CreatedAt) && head.ID < oldest.ID) {
 			oldest = head
 		}
@@ -349,17 +386,24 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 		api.noteConversationQueueReadState(sessionID, oldest.UserID, err)
 		return queuedConversationTurn{}, false, err
 	}
-	for i := range turns {
-		if turns[i].ID == oldest.ID && turns[i].UserID == oldest.UserID && turns[i].SessionID == sessionID && turns[i].StartedAt == nil && turns[i].DeliveryError == "" {
-			now := time.Now().UTC()
-			turns[i].StartedAt = &now
-			if err := api.writeConversationTurnQueue(ctx, oldest.UserID, turns); err != nil {
-				logTurnQueue("cannot persist queue claim for session %s: %v", sessionID, err)
-				return queuedConversationTurn{}, false, err
-			}
-			return turns[i], true, nil
+	var other *queuedConversationTurn
+	for i := range heads {
+		if heads[i].UserID != oldest.UserID && (other == nil || heads[i].CreatedAt.Before(other.CreatedAt)) {
+			other = &heads[i]
 		}
 	}
+	claimed, updated := api.claimQueuedBatch(turns, oldest, other, time.Now().UTC())
+	if claimed.ID != "" {
+		if ok, err := api.consumeUsageLimitContinue(ctx, oldest.UserID, claimed); err != nil || !ok {
+			return queuedConversationTurn{}, false, err
+		}
+		if err := api.writeConversationTurnQueue(ctx, oldest.UserID, updated); err != nil {
+			return queuedConversationTurn{}, false, err
+		}
+		logTurnQueue("claimed batch session=%s head=%s messages=%d", sessionID, claimed.ID, len(queuedBatchMembers(claimed)))
+		return claimed, true, nil
+	}
+
 	// An explicit owner action took the selected head. Re-evaluate heads.
 	return queuedConversationTurn{}, false, nil
 }
@@ -430,12 +474,36 @@ func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, 
 		logTurnQueue("cannot read queue for %s: %v", userID, err)
 		return queuedConversationTurn{}, false
 	}
+	pruned, err := api.pruneUsageLimitContinues(ctx, userID, turns)
+	if err != nil {
+		return queuedConversationTurn{}, false
+	}
+	turns = pruned
+
+	head := conversationQueueHead(turns, userID, sessionID, time.Now())
+	if head.UsageLimitRecoveryID != "" && (head.RetryAt == nil || !time.Now().Before(*head.RetryAt)) {
+		claimed, updated := api.claimQueuedBatch(turns, head, nil, time.Now().UTC())
+		if claimed.ID == "" {
+			return queuedConversationTurn{}, false
+		}
+		if ok, err := api.consumeUsageLimitContinue(ctx, userID, claimed); err != nil || !ok {
+			return queuedConversationTurn{}, false
+		}
+		if err := api.writeConversationTurnQueue(ctx, userID, updated); err != nil {
+			return queuedConversationTurn{}, false
+		}
+		return claimed, true
+	}
 	for i := range turns {
-		if turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" {
+		if turns[i].ID != head.ID || turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" || (turns[i].RetryAt != nil && time.Now().Before(*turns[i].RetryAt)) {
 			continue
+		}
+		if ok, err := api.consumeUsageLimitContinue(ctx, userID, turns[i]); err != nil || !ok {
+			return queuedConversationTurn{}, false
 		}
 		now := time.Now().UTC()
 		turns[i].StartedAt = &now
+		turns[i].RetryAt = nil
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
 			logTurnQueue("cannot claim turn %s: %v", turns[i].ID, err)
 			return queuedConversationTurn{}, false
@@ -541,10 +609,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	// "Compact at 300K" in a chat that is never quiet: compact once before the next queued message; its end kicks the
 	// queue again (chat_context_options.go).
 	if api.compactBeforeQueuedTurn(sessionID) {
-		api.conversationTurnQueueMu.Lock()
-		delete(api.conversationTurnQueueDraining, sessionID)
-		api.conversationTurnQueueMu.Unlock()
-		return
+		return // compaction took over and released the dispatch reservation
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -560,7 +625,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		} else if pending {
 			// Admission or an explicit owner action changed a head while
 			// claiming. The next kick uses a fresh registered-owner snapshot.
-			go api.kickConversationTurnQueue(sessionID)
+			api.retryUnreadableConversationQueue(sessionID)
 		}
 		return
 	}
@@ -774,56 +839,95 @@ func (api *StreamingAPI) endIdleTurnForRuntimeChange(sessionID, occupant string,
 }
 
 func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTurn) {
-	reqMap, err := queryRequestToMap(turn.Request)
+	members := queuedBatchMembers(turn)
+	if !api.usageLimitContinuationCurrent(context.Background(), turn) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := api.removeConversationTurn(ctx, turn); err != nil {
+			log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=failed reason=cancel_queue_write_failed", turn.SessionID, turn.ID)
+		}
+		cancel()
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=skipped reason=superseded_before_start", turn.SessionID, turn.ID)
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueDraining, turn.SessionID)
+		api.conversationTurnQueueMu.Unlock()
+		api.kickConversationTurnQueue(turn.SessionID)
+		return
+	}
+	prepared, err := api.prepareQueuedBatch(context.Background(), turn, time.Now())
 	var result internalSessionTurnResult
-	var callback func(event *unifiedevents.AgentEvent)
-	api.conversationTurnQueueMu.Lock()
-	callback = api.conversationTurnQueueCallbacks[turn.ID]
-	api.conversationTurnQueueMu.Unlock()
 	if err == nil {
-		ctx, principalErr := api.queuedConversationTurnContext(turn, reqMap)
-		if principalErr != nil {
+		reqMap, mapErr := queryRequestToMap(prepared.Request)
+		err = mapErr
+		if err == nil {
+			ctx, principalErr := api.queuedConversationTurnContext(prepared, reqMap)
 			err = principalErr
-		} else {
-			ctx = withConversationTurnQueueExecution(ctx)
-			result, err = api.startSessionInternalWithResult(ctx, reqMap, turn.SessionID, turn.UserID, callback)
+			if err == nil {
+				callback := func(event *unifiedevents.AgentEvent) {
+					for _, member := range members {
+						api.conversationTurnQueueMu.Lock()
+						cb := api.conversationTurnQueueCallbacks[member.ID]
+						api.conversationTurnQueueMu.Unlock()
+						if cb != nil {
+							cb(event)
+						}
+					}
+				}
+				result, err = api.startSessionInternalWithResult(withConversationTurnQueueExecution(ctx), reqMap, turn.SessionID, turn.UserID, callback)
+			}
 		}
 	}
+	for _, member := range members {
+		api.finishQueuedConversationTurn(member, result, err)
+	}
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, turn.SessionID)
+	api.conversationTurnQueueMu.Unlock()
+	api.kickConversationTurnQueue(turn.SessionID)
+}
+
+func (api *StreamingAPI) finishQueuedConversationTurn(turn queuedConversationTurn, result internalSessionTurnResult, err error) {
 	outcome, proof := "confirmed", "conversation_turn_completed"
 	if err != nil {
 		outcome, proof = "failed", "conversation_turn_failed"
 		logTurnQueue("turn %s failed: %v", turn.ID, err)
 	}
 	if err == nil {
-		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
+		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if err != nil {
-		// A failure may precede the normal user echo, or follow partial work.
-		// Keep its content and explicit owner retry; never replay it automatically.
-		// Persist the no-replay state before publishing failure. A crash or
-		// failed queue write must not publish a verdict recovery can contradict.
+	if err != nil && !api.usageIncomingRetryArmed(storageCtx, turn) {
+		// Preserve the failed original for explicit resolution. Typed quota
+		// recovery either retries the still-unanswered incoming delivery or sends
+		// a separate continuation for the chat's own interrupted work.
 		if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
 			logTurnQueue("cannot persist failed turn %s: %v", turn.ID, persistErr)
 		} else {
 			api.recordFailedQueuedConversationUserMessage(turn)
 		}
-	} else if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
-		logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
-		err = removeErr
+
+	} else if err == nil {
+		if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
+			logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
+			err = removeErr
+		}
 	}
 	cancel()
+	if turn.UsageLimitRecoveryID != "" {
+		action, reason := "done", "turn_completed"
+		if err != nil {
+			action, reason = "failed", "turn_failed"
+		}
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=%s reason=%s", turn.SessionID, turn.ID, action, reason)
+	}
 	api.conversationTurnQueueMu.Lock()
 	waiter := api.conversationTurnQueueWaiters[turn.ID]
 	delete(api.conversationTurnQueueWaiters, turn.ID)
 	delete(api.conversationTurnQueueCallbacks, turn.ID)
-	delete(api.conversationTurnQueueDraining, turn.SessionID)
 	api.conversationTurnQueueMu.Unlock()
 	if waiter != nil {
 		waiter <- queuedConversationTurnResult{Result: result, Err: err}
 		close(waiter)
 	}
-	api.kickConversationTurnQueue(turn.SessionID)
 }
 
 const queuedTurnFailureMessage = "This queued message could not be completed. Check the chat before retrying."
@@ -847,9 +951,9 @@ func (api *StreamingAPI) failConversationTurn(ctx context.Context, turn queuedCo
 }
 
 func (api *StreamingAPI) recordFailedQueuedConversationUserMessage(turn queuedConversationTurn) {
-	api.recordLiveCodingAgentUserMessage(turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", sanitizeClientMessageID(turn.SubmissionID))
+	api.recordAttributedCodingAgentUserMessage(turn.SessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "failed", queuedTurnDisplayID(turn), queuedTurnDisplayAttribution(turn.SessionID, turn))
 	// The content must precede its receipt for live and restored consumers.
-	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, "failed", "conversation_turn_failed", turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), sanitizeClientMessageID(turn.SubmissionID))
+	api.recordLiveInputConfirmed(turn.SessionID, turn.ID, "failed", "conversation_turn_failed", turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 }
 
 func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTurn, reqMap map[string]interface{}) (context.Context, error) {
@@ -886,13 +990,43 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	if turn.Principal.FeedbackOperationID != "" {
 		ctx = virtualtools.WithFeedbackOperation(ctx, turn.Principal.FeedbackOperationID)
 	}
-	if turn.SubmissionID != "" {
+	if displayID := queuedTurnDisplayID(turn); displayID != "" {
 		ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{
-			ID: turn.SubmissionID, Owner: turn.UserID, Session: turn.SessionID, Message: turn.Request.Query,
+			ID: displayID, Owner: turn.UserID, Session: turn.SessionID, Message: pendingAttachmentSubmissionQuery(turn.Request), ComposerInput: turn.ComposerInput,
 		})
 	}
+	if len(turn.Principal.DeliveredMessage) > 0 && turn.Principal.DeliveredMessageUser == turn.UserID && turn.Principal.DeliveredMessageSession == turn.SessionID {
+		stamp := maps.Clone(turn.Principal.DeliveredMessage)
+		if displayID := queuedTurnDisplayID(turn); displayID != "" {
+			stamp["client_message_id"] = displayID
+		}
+		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, stamp)
+	}
+	ctx = withAdmittedChatAttachments(ctx, turn.Principal.Attachments)
 	ctx = costobserver.ContextWithAttribution(ctx, turn.Principal.CostAttribution)
 	return ctx, nil
+}
+
+// PLAT-746-819: the waiting row needs the same admitted sender as the started turn.
+// Never derive attribution from the envelope or reuse it for a different chat/person.
+func queuedTurnDisplayAttribution(sessionID string, turn queuedConversationTurn) map[string]interface{} {
+	p := turn.Principal
+	if sessionID != turn.SessionID || p.DeliveredMessageSession != sessionID || p.DeliveredMessageUser != turn.UserID || turn.UserID == "" {
+		return nil
+	}
+	return maps.Clone(p.DeliveredMessage)
+}
+
+// Server deliveries have no browser submission. Give their queue projection and
+// started echo one display identity, without changing queue admission/idempotency.
+func queuedTurnDisplayID(turn queuedConversationTurn) string {
+	if id := sanitizeClientMessageID(turn.SubmissionID); id != "" {
+		return id
+	}
+	if queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message" && turn.ID != "" {
+		return sanitizeClientMessageID("queue:" + turn.ID)
+	}
+	return ""
 }
 
 func (api *StreamingAPI) recordQueuedConversationUserMessage(sessionID string, turn queuedConversationTurn) {
@@ -900,10 +1034,17 @@ func (api *StreamingAPI) recordQueuedConversationUserMessage(sessionID string, t
 	// submitting browser. Its durable row is the turn's own user_message, which
 	// the event store stamps with the same client id when the turn starts, so it
 	// lands after the answer it waited behind instead of above it.
-	if sanitizeClientMessageID(turn.SubmissionID) != "" {
+	if queuedTurnDisplayID(turn) != "" {
 		return
 	}
-	api.recordLiveCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "")
+	presentation := queuedTurnDisplayAttribution(sessionID, turn)
+	if kind := automaticContinueNoticeKind(turn.Request); kind != "" && sessionID == turn.SessionID {
+		if presentation == nil {
+			presentation = map[string]interface{}{}
+		}
+		presentation["system_notice_kind"] = kind
+	}
+	api.recordAttributedCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "", presentation)
 }
 
 func (api *StreamingAPI) registerQueuedTurnWaiter(turnID string, callback func(event *unifiedevents.AgentEvent)) <-chan queuedConversationTurnResult {
@@ -943,11 +1084,19 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		lock := productConversationRegistryMutex(path)
 		lock.Lock()
 		turns, err := api.readConversationTurnQueue(ctx, userID)
-		if err != nil || len(turns) == 0 {
+		if err != nil {
 			lock.Unlock()
 			continue
 		}
 		turns = dropStaleWaitingTurns(turns, time.Now().UTC())
+		turns, err = api.prepareRestartContinues(ctx, userID, turns)
+		if err != nil {
+			lock.Unlock()
+			logTurnQueue("cannot recover interrupted chats for %s: %v", userID, err)
+			continue
+		}
+
+		turns, _ = api.pruneRestartContinues(turns)
 		for i := range turns {
 			if turns[i].Steering {
 				// An interrupted steer may have reached the CLI. Never replay it blindly.
@@ -981,11 +1130,11 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 const staleWaitingTurnAge = 30 * time.Minute
 
 // dropStaleWaitingTurns removes turns that never started and are older than staleWaitingTurnAge.
-// Turns that had started (they were running when the server stopped) are kept and run again.
+// Started rows are handled separately by restart continuation and never replayed.
 func dropStaleWaitingTurns(turns []queuedConversationTurn, now time.Time) []queuedConversationTurn {
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
-		if turn.Request.DeliveryMode != "queue" && turn.DeliveryError == "" && turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
+		if turn.RetryAt == nil && turn.Request.DeliveryMode != "queue" && turn.DeliveryError == "" && turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
 			logTurnQueue("dropping a message that waited %s without starting (session %s)", now.Sub(turn.CreatedAt).Round(time.Minute), turn.SessionID)
 			continue
 		}
@@ -1000,13 +1149,18 @@ func logTurnQueue(format string, args ...interface{}) {
 
 // PendingQueuedMessage is a keyed message waiting in the durable turn queue.
 type PendingQueuedMessage struct {
-	MessageID       string    `json:"message_id"`
-	Steering        bool      `json:"steering,omitempty"`
-	DeliveryError   string    `json:"delivery_error,omitempty"`
-	ClientMessageID string    `json:"client_message_id"`
-	Content         string    `json:"content"`
-	QueuedAt        time.Time `json:"queued_at"`
-	QueuePosition   int       `json:"queue_position"`
+	RequestedSkillID  string                 `json:"requested_skill_id,omitempty"`
+	WaitingSince      *time.Time             `json:"waiting_since,omitempty"`
+	AttachmentPaths   []string               `json:"attachment_paths,omitempty"`
+	AttachmentPending bool                   `json:"attachment_pending,omitempty"`
+	MessageID         string                 `json:"message_id"`
+	Steering          bool                   `json:"steering,omitempty"`
+	DeliveryError     string                 `json:"delivery_error,omitempty"`
+	ClientMessageID   string                 `json:"client_message_id"`
+	DisplayMetadata   map[string]interface{} `json:"display_metadata,omitempty"`
+	Content           string                 `json:"content"`
+	QueuedAt          time.Time              `json:"queued_at"`
+	QueuePosition     int                    `json:"queue_position"`
 	// Refreshing: the chat is being updated (new definition, model or settings) before this message can go in, so the person
 	// sees that, and Steer now does not apply: steering into the outdated process is what the update replaces. Remove stays, so a long
 	// update can still be withdrawn.
@@ -1014,6 +1168,8 @@ type PendingQueuedMessage struct {
 	QueueReason string `json:"queue_reason"`
 	QueueDetail string `json:"queue_detail,omitempty"`
 	CanSteer    bool   `json:"can_steer"`
+	CanDismiss  bool   `json:"can_dismiss"`
+	CanManage   bool   `json:"can_manage"` // Only messages typed by the person in chat get composer actions.
 	// Started: the queue handed this message to its turn, which has not finished. The chat keeps showing it as being sent
 	// until the turn's own user row arrives, instead of it vanishing between the queue and the chat.
 	Started bool `json:"started,omitempty"`
@@ -1046,29 +1202,47 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 		return nil
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	if !websiteDeviceClaims(GetUserFromContext(ctx)) {
+		for i := range messages {
+			messages[i].CanDismiss = false
+		}
+	}
+
 	api.projectQueuedMessageDelivery(sessionID, turns, messages)
+	api.projectPendingChatAttachments(userID, sessionID, turns, messages)
 	return messages
 }
 
 func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sessionID string) []PendingQueuedMessage {
+	return pendingQueuedMessagesFromTurnsAt(turns, userID, sessionID, time.Now())
+}
+func pendingQueuedMessagesFromTurnsAt(turns []queuedConversationTurn, userID, sessionID string, now time.Time) []PendingQueuedMessage {
 	var pending []PendingQueuedMessage
 	waiting := 0
 	for _, turn := range turns {
 		if turn.UserID != userID || turn.SessionID != sessionID {
 			continue
 		}
-		clientMessageID := sanitizeClientMessageID(turn.SubmissionID)
+		clientMessageID := queuedTurnDisplayID(turn)
 		if clientMessageID == "" {
 			continue
 		}
 		message := PendingQueuedMessage{
-			MessageID:       turn.ID,
-			Steering:        turn.Steering,
-			DeliveryError:   turn.DeliveryError,
-			ClientMessageID: clientMessageID,
-			Content:         turn.Request.Query,
-			QueuedAt:        turn.CreatedAt,
-			Started:         turn.StartedAt != nil && !turn.Steering,
+			RequestedSkillID: turn.Request.RequestedSkillID,
+			MessageID:        turn.ID,
+			CanManage:        personTypedQueuedTurn(turn),
+			CanDismiss:       dismissibleIncomingTurn(turn),
+			Steering:         turn.Steering,
+			DeliveryError:    turn.DeliveryError,
+			ClientMessageID:  clientMessageID,
+			DisplayMetadata:  queuedTurnDisplayAttribution(sessionID, turn),
+			Content:          turn.Request.Query,
+			QueuedAt:         turn.CreatedAt,
+			Started:          turn.StartedAt != nil && !turn.Steering,
+		}
+		if !message.Started && !message.Steering && message.DeliveryError == "" && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) >= 15*time.Minute {
+			since := turn.CreatedAt
+			message.WaitingSince = &since
 		}
 		if !message.Started {
 			waiting++
@@ -1130,4 +1304,88 @@ func autoSteerablePersonTurn(turn queuedConversationTurn) bool {
 	return sanitizeClientMessageID(turn.SubmissionID) != "" && turn.DeliveryError == "" && !turn.Steering &&
 		req.DeliveryMode != "queue" && !req.DisableLiveInputDelivery && !req.IsAutoNotification &&
 		strings.TrimSpace(req.BotPlatform) == "" && (trigger == "" || trigger == "manual" || trigger == "interactive")
+}
+
+// personTypedQueuedTurn distinguishes chat input from inbound channels and automated
+// work using persisted request/principal attribution, never message text (PLAT-746-860).
+func personTypedQueuedTurn(turn queuedConversationTurn) bool {
+	return turn.ComposerInput && sanitizeClientMessageID(turn.SubmissionID) != ""
+}
+
+func personQueuedRequest(turn queuedConversationTurn) bool {
+	req, p := turn.Request, turn.Principal
+	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
+	if sanitizeClientMessageID(turn.SubmissionID) == "" || req.IsAutoNotification || req.ParentSessionID != "" || strings.TrimSpace(req.BotPlatform) != "" ||
+		(trigger != "" && trigger != "manual" && trigger != "interactive") || len(p.DeliveredMessage) != 0 || p.CrewAskInput != nil ||
+		p.AccessTokenID != "" || p.BotRouteGrant != "" || p.SlackTrustedApp {
+		return false
+	}
+	switch p.Provider {
+	case "bot_route", "bot_owner", slackDMProvider:
+		return false
+	}
+	return true
+}
+
+// Incoming failures may be dismissed by the person whose queue owns them, never edited or steered.
+func dismissibleIncomingTurn(turn queuedConversationTurn) bool {
+	return turn.DeliveryError != "" && turn.StartedAt == nil && !turn.Steering &&
+		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message"
+}
+
+// Busy-lane observation and a future reset are separate waits. An earlier
+// reset must replace a later timer left behind by a canceled recovery.
+type conversationTurnQueueWake struct {
+	at    time.Time
+	timer *time.Timer
+}
+
+func (api *StreamingAPI) wakeConversationQueueAt(sessionID string, at time.Time) {
+	api.conversationTurnQueueMu.Lock()
+	defer api.conversationTurnQueueMu.Unlock()
+	if api.conversationTurnQueueWakes == nil {
+		api.conversationTurnQueueWakes = map[string]*conversationTurnQueueWake{}
+	}
+	if current := api.conversationTurnQueueWakes[sessionID]; current != nil {
+		if !at.Before(current.at) {
+			return
+		}
+		current.timer.Stop()
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=timer_replaced reason=earlier_reset reset_at=%s", sessionID, at.UTC().Format(time.RFC3339))
+	}
+	wake := &conversationTurnQueueWake{at: at}
+	api.conversationTurnQueueWakes[sessionID] = wake
+	log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=timer_armed reset_at=%s", sessionID, at.UTC().Format(time.RFC3339))
+	wake.timer = time.AfterFunc(time.Until(at), func() {
+		api.conversationTurnQueueMu.Lock()
+		if api.conversationTurnQueueWakes[sessionID] != wake {
+			api.conversationTurnQueueMu.Unlock()
+			return
+		}
+		delete(api.conversationTurnQueueWakes, sessionID)
+		api.conversationTurnQueueMu.Unlock()
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=timer_due reason=reset_due", sessionID)
+		api.kickConversationTurnQueue(sessionID)
+	})
+}
+
+// A delayed incoming head preserves incoming order, but never blocks a person's new message.
+func conversationQueueHead(turns []queuedConversationTurn, owner, sessionID string, now time.Time) queuedConversationTurn {
+	var head queuedConversationTurn
+	for _, turn := range turns {
+		if turn.UserID != owner || turn.SessionID != sessionID || turn.StartedAt != nil || turn.DeliveryError != "" {
+			continue
+		}
+		if head.ID == "" {
+			head = turn
+			if turn.RetryAt == nil || !now.Before(*turn.RetryAt) {
+				return turn
+			}
+			continue
+		}
+		if personTypedQueuedTurn(turn) && (turn.RetryAt == nil || !now.Before(*turn.RetryAt)) {
+			return turn
+		}
+	}
+	return head
 }

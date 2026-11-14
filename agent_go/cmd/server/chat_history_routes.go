@@ -710,7 +710,7 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		sessionID := mux.Vars(r)["session_id"]
 		// These routes sit outside the /api subrouter's session check (crewChatRelayMiddleware).
-		if private := api.crewSessionChatSavedRead(r, sessionID); private != nil {
+		if private := api.crewSessionChatLimit(r, sessionID); private != nil {
 			private.refuse(w, userID)
 			return
 		}
@@ -922,6 +922,11 @@ func projectChatHistoryConversationForResume(data []byte, maxTurns int) []byte {
 // That makes the formatted transcript's "Load earlier" control a real backend
 // pagination action instead of a client-side scroll shortcut.
 func projectChatHistoryConversationForResumePage(data []byte, maxTurns, offset int) []byte {
+	return projectChatHistoryResumeWindow(data, maxTurns, offset, 0, 0, 0)
+}
+
+// A bounded saved tail keeps its absolute source and turn positions.
+func projectChatHistoryResumeWindow(data []byte, maxTurns, offset, sourceBase, sourceTotal, turnBase int) []byte {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return data
@@ -985,12 +990,12 @@ func projectChatHistoryConversationForResumePage(data []byte, maxTurns, offset i
 	turns = turns[start:end]
 	projected := make([]json.RawMessage, 0, len(turns)*2+1)
 	if len(turns) == 0 && len(assistantWithoutUser.raw) > 0 {
-		projected = append(projected, annotateResumedChatMessage(assistantWithoutUser.raw, assistantWithoutUser.order, len(history)))
+		projected = append(projected, annotateResumedChatMessage(assistantWithoutUser.raw, assistantWithoutUser.order+sourceBase, max(sourceTotal, len(history))))
 	}
 	for _, item := range turns {
-		projected = append(projected, annotateResumedChatMessage(item.user.raw, item.user.order, len(history)))
+		projected = append(projected, annotateResumedChatMessage(item.user.raw, item.user.order+sourceBase, max(sourceTotal, len(history))))
 		for _, assistant := range item.assistants {
-			projected = append(projected, annotateResumedChatMessage(assistant.raw, assistant.order, len(history)))
+			projected = append(projected, annotateResumedChatMessage(assistant.raw, assistant.order+sourceBase, max(sourceTotal, len(history))))
 		}
 	}
 	encoded, err := json.Marshal(projected)
@@ -1001,12 +1006,12 @@ func projectChatHistoryConversationForResumePage(data []byte, maxTurns, offset i
 	// The formatted client uses these stable source positions only to interleave
 	// readable assistant updates with the persisted tool trace. They are not
 	// terminal events and do not affect the conversation's durable identity.
-	doc["history_source_message_count"], _ = json.Marshal(len(history))
+	doc["history_source_message_count"], _ = json.Marshal(max(sourceTotal, len(history)))
 	pagination, err := json.Marshal(map[string]interface{}{
-		"has_more":    start > 0,
+		"has_more":    start+turnBase > 0,
 		"next_offset": offset + len(turns),
-		"start_turn":  start,
-		"total_turns": totalTurns,
+		"start_turn":  start + turnBase,
+		"total_turns": totalTurns + turnBase,
 	})
 	if err != nil {
 		return data

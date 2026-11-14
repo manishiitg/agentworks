@@ -1,4 +1,4 @@
-import type { AgentLLMConfig, DelegationTierConfig, LLMProvider, PresetLLMConfig } from '../services/api-types'
+import type { AgentLLMConfig, LLMProvider, PresetLLMConfig } from '../services/api-types'
 import type {
   ProviderDefaultTierModels,
   ProviderManifestEntry,
@@ -59,41 +59,15 @@ function findManifestDefaults(provider: string, providerManifest: ProviderManife
 
 function resolveManifestDefaults(defaults?: ProviderDefaultTierModels) {
   if (!defaults) return null
-  const builder = defaults.builder ?? defaults.main ?? defaults.high
-  const maintenance = defaults.maintenance ?? defaults.auto_improve ?? defaults.phase ?? defaults.high
-  if (!builder || !defaults.high || !defaults.medium || !defaults.low || !maintenance) return null
+  const builder = defaults.main
+  if (!builder || !defaults.high || !defaults.medium || !defaults.low) return null
   return {
     builder,
     high: defaults.high,
     medium: defaults.medium,
     low: defaults.low,
-    maintenance,
-    pulse: defaults.pulse ?? defaults.high,
-  }
-}
-
-/** Resolve the live AgentWorks root-chat model from simple or advanced setup. */
-export function resolveDelegationMainModel(
-  config: DelegationTierConfig | null | undefined,
-  providerManifest: ProviderManifestEntry[] = [],
-): AgentLLMConfig | null {
-  if (!config) return null
-
-  if (config.mode === 'provider_profile' && config.provider) {
-    const defaults = resolveManifestDefaults(findManifestDefaults(config.provider, providerManifest))
-    if (!defaults) return null
-    return {
-      provider: defaults.builder.provider as LLMProvider,
-      model_id: defaults.builder.model_id,
-      ...(hasOptions(defaults.builder.options) ? { options: defaults.builder.options } : {}),
-    }
-  }
-
-  if (!config.main?.provider || !config.main.model_id) return null
-  return {
-    provider: config.main.provider as LLMProvider,
-    model_id: config.main.model_id,
-    ...(hasOptions(config.main.options) ? { options: config.main.options } : {}),
+    maintenance: defaults.high,
+    pulse: defaults.high,
   }
 }
 

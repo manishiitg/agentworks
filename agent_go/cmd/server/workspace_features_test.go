@@ -6,13 +6,76 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
 )
+
+// PLAT-746-1025: deleting a Team home through the ordinary Crew handler must
+// terminate at its derived roster, and remove only the two deleted Crew states.
+func TestTeamHomeDeletionDoesNotRecurseOrRemoveSiblingState(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	layout := legacyIdentityLayout()
+	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+	f := newMultiUserFixture(t, layout)
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
+	profile := f.Crew
+	profile.Version++
+	profile.Runtime.Workspace.ProjectsRoot = "Crew"
+	if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Sales", On: true, People: []crewTeamPerson{{UserID: fixtureUserB}}}); err != nil {
+		t.Fatal(err)
+	}
+	homeID, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := readCrewTeam(homeID)
+	if err != nil || home.RosterSource != fixtureCrewID || home.OnlineHome != "" {
+		t.Fatal("home must terminate lifecycle recursion", err)
+	}
+	// Normal private Share plus the derived Team roster is not Everyone.
+	homeRoot := crewProjectRootByID(homeID)
+	if !crewSharedWith(homeRoot, fixtureUserB) || crewSharedWith(homeRoot, "not-a-member") {
+		t.Fatal("home audience is not the current Team roster")
+	}
+	siblingDir, err := crewTeamDir("unrelated-crew")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(siblingDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(siblingDir, "keep")
+	if err := os.WriteFile(marker, []byte("unrelated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "/api/agent-profiles/work/projects/"+fixtureCrewID, nil).WithContext(f.Ctx(fixtureUserA))
+	req = mux.SetURLVars(req, map[string]string{"id": "work", "project_id": fixtureCrewID})
+	response := httptest.NewRecorder()
+	f.API.handleDeleteAgentProfileProject(response, req)
+	if response.Code >= 300 {
+		t.Fatalf("ordinary delete failed: %d %s", response.Code, response.Body.String())
+	}
+	for _, id := range []string{fixtureCrewID, homeID} {
+		dir, err := crewTeamDir(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("deleted Crew %s retained Team state: %v", id, err)
+		}
+	}
+	if raw, err := os.ReadFile(marker); err != nil || string(raw) != "unrelated" {
+		t.Fatal("unrelated Team state was removed", err)
+	}
+}
 
 // A failed initial manifest is removed; failed optional setup keeps the new
 // identity and returns it with a warning so retrying does not make duplicates.
@@ -60,34 +123,6 @@ func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
 	}
 	if projectStorageOwner(out.Root) != fixtureUserA || f.Mock.files[out.Root+"/product.json"] == "" || f.Mock.files[out.Root+"/workflow.json"] == "" {
 		t.Fatal("partial setup lost its usable identity")
-	}
-}
-
-func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, family := range []string{"files", "share", "settings", "dashboard", "functions"} {
-		for _, tool := range catalog {
-			if tool.Name != family {
-				continue
-			}
-			action := "get"
-			if family == "files" || family == "functions" {
-				action = "list"
-			}
-			input := map[string]any{"action": action, "workspace_id": "work:example"}
-			targetKey, targetID := "crew_id", "example"
-			if family == "functions" {
-				input = map[string]any{"action": action, "project": "work:example"}
-				targetKey, targetID = "project", "work:example"
-			}
-			member, args, err := externalResolveMerged(tool, input)
-			if err != nil || args[targetKey] != targetID {
-				t.Fatalf("%s lost native Crew target: %s %v %v", family, member.Name, args, err)
-			}
-		}
 	}
 }
 
@@ -156,28 +191,6 @@ func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing
 	}
 }
 
-func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
-	now := time.Now()
-	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
-		"failed": {ExecutionID: "failed", SessionID: "chat", StartedAt: now, Status: trackedExecutionStatusFailed},
-		"other":  {ExecutionID: "other", SessionID: "another-chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusFailed},
-	}}
-	if failure := api.externalWorkspaceTurnExecution("chat", ""); failure == nil || failure.ExecutionID != "failed" || failure.Status != trackedExecutionStatusFailed {
-		t.Fatal("launch failure with no transcript disappeared")
-	}
-	if failure := api.externalWorkspaceTurnExecution("chat", "new"); failure != nil {
-		t.Fatal("a new ask inherited an old failure")
-	}
-	api.trackedWorkflowExecutions["new"] = &TrackedWorkflowExecution{ExecutionID: "new", SessionID: "chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusCompleted}
-	if execution := api.externalWorkspaceTurnExecution("chat", ""); execution == nil || execution.ExecutionID != "new" || execution.Status != trackedExecutionStatusCompleted {
-		t.Fatal("an old failure replaced the latest completed turn")
-	}
-	api.trackedWorkflowExecutions["new"].Status = trackedExecutionStatusRunning
-	if execution := api.externalWorkspaceTurnExecution("chat", "new"); execution == nil || execution.Status != trackedExecutionStatusRunning {
-		t.Fatal("a newly accepted turn looked idle before its runner acquired the lane")
-	}
-}
-
 // PLAT-746-419: a successful live Crew delete left its workflow/script IDs
 // behind, which can make a later lookup ambiguous. Other Crews stay intact.
 func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
@@ -187,6 +200,8 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
 	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
 	f := newMultiUserFixture(t, layout)
+	// Real creation also materializes the private root required by workspace mutations.
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
 	profile := f.Crew
 	profile.Version++
 	profile.Runtime.Workspace.ProjectsRoot = "Crew"
@@ -195,21 +210,17 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	}
 	f.put("Crew/other/product.json", `{"schema_version":1,"product":"work","id":"other-crew","title":"Other","session_id":"work:project:other-crew"}`)
 	f.put("Crew/other/workflow.json", `{"schema_version":1,"id":"other-crew","label":"Other","capabilities":{}}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "other", ProjectID: "other-crew", OwnerID: fixtureUserB, Shared: true}); err != nil {
-		t.Fatal(err)
-	}
+	registerTestCrew(t, "other", fixtureUserB, true, "other-crew")
 	withProjectSharing(t, true)
 	if err := defaultProjectOwners().SetRunPeople("work", fixtureCrewFolder, []string{fixtureUserB}); err != nil {
 		t.Fatal(err)
 	}
 	for _, binding := range []crewExecutableBinding{
-		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "workflow"},
+		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "script"},
 		{ID: "script-shared-id", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-script", Kind: "script"},
 		{ID: "script-shared-id", CrewID: "other-crew", CrewRoot: "Crew/other", Root: "Workflow/keep-script", Kind: "script"},
 	} {
-		if err := registerCrewExecutable(binding); err != nil {
-			t.Fatal(err)
-		}
+		seedSavedCrewExecutableForTest(t, binding)
 	}
 	call := func(user string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(user))

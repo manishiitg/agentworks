@@ -168,7 +168,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	activity := ownerAgentReceiptActivity(s, userID)
 	for _, a := range s.Agents {
 		if a.UserID == userID && namedAgentDiscoverable(a, now) {
-			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
+			item := map[string]interface{}{"yours": true, "agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -487,6 +487,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 		if e != nil {
 			return nil, e
 		}
+		names, _ := readAgentMessageSnapshot(ctx) // senders by their current label; a failed read keeps stored labels
 		items := []map[string]interface{}{}
 		for _, c := range conversations {
 			for side, end := range c.Endpoints {
@@ -504,7 +505,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					if position >= limit {
 						continue
 					}
-					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": names.endpointName(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
 					for k, v := range messageArrivalFields(m) {
 						item[k] = v
 					}
@@ -578,7 +579,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				for _, c := range freshConversations {
 					for side, end := range c.Endpoints {
 						if end.NamedAgentID == a.ID && end.UserID == claims.UserID {
-							sent = append(sent, fresh.sentReceipts(c, side, 10)...)
+							sent = append(sent, fresh.sentReceipts(ctx, c, side, 10)...)
 						}
 					}
 				}

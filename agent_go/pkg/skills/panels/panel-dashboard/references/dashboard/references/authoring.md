@@ -11,8 +11,9 @@ platform operations, data access and finished defaults when no design is supplie
 
 Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
-When nobody has designed a dashboard, Share creates an automatic starting page.
-It shows the project content and actions first, with an **Ask about this dashboard**
+A private Crew has no automatic dashboard. When sharing needs one, ask before
+creating the standard starting page; listing and publishing Actions do not create it.
+That page shows the project content and actions first, with an **Ask about this dashboard**
 button for shared Run users that opens the existing chat. Builders use their existing project chat; dashboard Ask buttons and panels are hidden for them. This starting layout does not constrain
 authored dashboards: their designer can choose an open panel, a button, or both.
 Automatic Crew pages reflect the current callable functions without
@@ -224,6 +225,10 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
    discovery and blocks the link.
 2. `dashboard action=get` reads the source and revision. An HTML page may use its
    returned document_path and stays intact when adopted into a managed bundle.
+   For a draft, use the exact immutable revision path returned by get. The app
+   preserves that requested revision; the server requires current edit access.
+   Stable shared links still open the publication. Current published pages keep
+   Ask; a draft or older revision does not borrow the current publication’s Ask.
 3. `dashboard action=create` takes dashboard_id (lowercase slug), title and files.
    Live dashboards supply index.tsx and optional relative source/assets; a quick shareable page may supply index.html. JSON dashboards are not supported.
    Images/fonts use matching base64 data URLs. Optional scripts go under scripts/.
@@ -233,6 +238,11 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
 5. `dashboard action=validate` checks the exact source, SQL and referenced files.
    `dashboard action=preview` renders that revision with the real browser runtime;
    inspect errors and screenshots and verify visible content, not only ready status.
+   Preview waits for the page’s ready callbacks and visible Loading placeholders
+   to finish. Late data loads may return it to loading. CSS-hidden placeholders
+   do not block capture. If it times out as loading, report the unfinished check
+   and inspect the data/script errors; do not claim a screenshot or publish to
+   bypass it. The requested revision stays unchanged.
    Connected MCP attaches up to two PNG screenshot images; inspect those image
    blocks. Other screenshots open through signed-in browser links. If your client
    cannot display images, report that visual inspection is still needed.

@@ -4,13 +4,6 @@ schema_version: 2
 # in Go; registration, guidance and native-session identity use the resolved policy.
 dependencies: {}
 
-# The workflow execution agent's server-owned function-call surface. Go owns
-# schemas, executors and authorization; this declaration owns admission/grouping.
-execution:
-  function_tools:
-    category: crew_function_tools
-    tools: [project_functions_list, project_functions_call, project_functions_get_call, project_functions_reply]
-
 prompt:
   file: prompts/system-prompt.md
   variables: {}
@@ -130,6 +123,7 @@ chat:
       - manage_project
       - browser_connections
       - chat_preferences
+      - menu_groups
       - manage_messaging
       - add_mcp_server
       - agent_browser
@@ -213,6 +207,7 @@ chat:
       - export_dashboard_static
       - set_dashboard_public_link
       - publish_dashboard
+      - delete_dashboard
       - restore_dashboard
       - get_dashboard_link
       # External MCP presents these native aliases as share action=get/set.
@@ -367,6 +362,7 @@ chat:
       - export_dashboard_static
       - set_dashboard_public_link
       - publish_dashboard
+      - delete_dashboard
       - restore_dashboard
       - get_dashboard_link
       # External MCP presents these native aliases as share action=get/set.
@@ -378,6 +374,7 @@ chat:
       - get_secret_sources
       - browser_connections
       - chat_preferences
+      - menu_groups
       - manage_laptop_access
       - manage_my_vaults
       - execute_local_shell_command
@@ -459,11 +456,11 @@ chat:
       - get_review_costs
       - list_review_files
       - read_review_file
-      - list_review_chats
-      - read_review_chat
       - get_review_audit
       # Shared-account token limits and allowed models (get: crews:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
+      # PLAT-746-990: quota-only accounts; admin users:manage, otherwise crews:read plus account admission.
+      - get_subscription_limits
       - set_token_limits
       - set_allowed_models
       # Company account audiences: admins with users:manage, same handler as the screen.

@@ -1,4 +1,10 @@
+import type { FileContextItem } from '../stores/types'
+
 export interface ChatSubmissionOptions {
+  requestedSkillId?: string
+  pendingAttachments?: { hash: string; name: string }[]
+  fileContext?: FileContextItem[]
+  fileContextConsumed?: boolean
   deliveryMode?: 'steer' | 'queue'
   isAutoNotification?: boolean
   sourceTabId?: string
@@ -12,6 +18,11 @@ export interface ChatSubmissionOptions {
   onRejected?: (failure: { message: string; code?: string }) => void
   queuedDelivery?: boolean
   builderHandoff?: { tabId?: string; sessionId?: string }
+}
+
+// PLAT-746-938: a file-only message is content; an empty composer is not.
+export function hasChatSubmissionContent(text: string, files: readonly FileContextItem[] = [], pending: readonly { hash: string; name: string }[] = [], requestedSkillId?: string): boolean {
+  return Boolean(text.trim() || files.length || pending.length || requestedSkillId)
 }
 
 // Only submissions already pending from the same composer share its newly
@@ -38,4 +49,12 @@ export function isConfirmedUndeliveredSubmission(error: unknown): boolean {
   if (typeof error !== 'object' || error === null || !('response' in error)) return false
   const response = (error as { response?: { status?: number; data?: { error?: string } } }).response
   return response?.status === 409 && (response.data?.error === 'delivery_not_sent' || response.data?.error === 'turn_running')
+}
+
+// A committed upload keeps its writer-issued identity after the upload UI
+// closes. Typed/selected file paths alone never mint attachment admission.
+export function submittedChatAttachmentReferences(files: readonly FileContextItem[] = [], pending: readonly { hash: string; name: string }[] = []) {
+  const refs = new Map<string, { hash: string; name: string }>()
+  for (const ref of [...pending, ...files.flatMap(file => file.admittedAttachment ? [file.admittedAttachment] : [])]) refs.set(ref.hash, { ...ref })
+  return [...refs.values()]
 }

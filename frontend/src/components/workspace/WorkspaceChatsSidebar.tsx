@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Search } from 'lucide-react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -12,7 +11,7 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { followAppLink } from '../../utils/appNavigation'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { DesktopConnections } from './DesktopConnections'
-import { NewProjectMenu } from './NewProjectMenu'
+import { SidebarActions } from './SidebarActions'
 
 type Crew = Awaited<ReturnType<typeof agentApi.listWorkspaceNavigation>>['workspaces'][number]
 
@@ -29,7 +28,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const [directory, setDirectory] = useState<{ scope: string; crews: Crew[]; error: boolean } | null>(null)
   const [refresh, setRefresh] = useState(0)
   useLiveRefetch(() => setRefresh(value => value + 1), {
-    kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
+    kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 5000,
     enabled: allowed.includes('work'),
   })
   useEffect(() => {
@@ -48,7 +47,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }, [scope, refresh, allowed.join(','), crewId])
   const current = directory?.scope === scope ? directory : null
   const projects = [
-    ...(allowed.includes('work') ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
+    ...(allowed.includes('work') ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, shared_line: crew.shared_line, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
   ].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
 
   return <aside aria-label="Projects" className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20">
@@ -56,14 +55,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       <a href="/home" onClick={followAppLink} aria-label="Home" title="Home" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
       {toggle}
     </div>
-    <div className="shrink-0 space-y-0.5 px-2 pb-2">
-      <button type="button" aria-label="Search all chats (Ctrl+K or Command+K)" title="Search all chats · ⌘K / Ctrl+K" onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}
-        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <Search className="h-3.5 w-3.5" /><span className="flex-1">Search</span><kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd>
-      </button>
-      <NewProjectMenu />
-    </div>
-    <DesktopConnections projects={projects.map(project => ({ ...project,
+    <DesktopConnections top={<SidebarActions />} projects={projects.map(project => ({ ...project,
       selected: !globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
         product === 'work' && crewId === project.id,
     }))}>

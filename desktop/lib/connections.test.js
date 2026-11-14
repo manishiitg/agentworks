@@ -120,6 +120,13 @@ test('development window selects connections on Vite and sends proof only to its
   assert.equal(stopped.cancel, true);
   await openConnection(event, 'a'.repeat(32), '/crew/projects/example');
   assert.equal(loaded, appOrigin + '/crew/projects/example');
+  // PLAT-746-820: switching to a member copy retains the agent/panel link.
+  await openConnection(event, 'local', '/crew/projects/member-local?view=files&agent=agent-stable');
+  assert.equal(loaded, appOrigin + '/crew/projects/member-local?view=files&agent=agent-stable');
+  for (const path of ['//example.com/crew', '/crew/projects/../private', '/crew/projects/member-local?redirect=https://example.com']) {
+    await assert.rejects(openConnection(event, 'local', path), /Unknown project/);
+  }
+
 });
 
 // PLAT-856-561: split development never connected the Mac notification stream.

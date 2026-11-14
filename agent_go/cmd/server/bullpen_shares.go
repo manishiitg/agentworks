@@ -152,7 +152,7 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 
 // errAgentNotPublished is what a sender is told when a conversation's grant has ended (the agent was
 // unpublished, or the retired group it was in is gone).
-var errAgentNotPublished = fmt.Errorf("That agent isn't published any more; ask its owner to publish it again.")
+var errAgentNotPublished = fmt.Errorf("Discovery is off for that agent; ask its owner to turn it on again.")
 
 // conversationShareErr is the fence for every operation on a cross-account
 // conversation: both ends must carry the same live grant, belong to its owner
@@ -334,7 +334,15 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		return triggerTarget{}, denied
 	}
 	owner := dir.byUsername(ownerName)
-	if owner == nil || owner.ID == subjectID {
+	if owner == nil {
+		return triggerTarget{}, denied
+	}
+	if owner.ID == subjectID {
+		// A published Mac agent has the same owner-prefixed address in the directory as any shared agent.
+		// Resolve only that explicit publication; private tabs and named-agent shares retain their own rules.
+		if target, ok := macSharedAgentByAddress(owner.ID, name, subjectID); ok {
+			return target, nil
+		}
 		return triggerTarget{}, denied
 	}
 	s, err := readAgentMessageSnapshot(ctx)

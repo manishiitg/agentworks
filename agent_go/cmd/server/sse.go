@@ -135,7 +135,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 	// Backfill: subscribe first, then stream every missing durable page. A
 	// one-page read must never advertise the journal tip as its cursor: doing
 	// so silently drops all remaining pages on reconnect.
-	if durableChat && sinceIndex >= 0 {
+	replayDurable := func() bool {
 		requestedIndex := sinceIndex
 		for {
 			page, err := api.eventStore.ReadDurableChatPage(sessionID, events.DurableEventPageOptions{
@@ -143,7 +143,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			})
 			if err != nil {
 				log.Printf("[SSE] durable backfill failed for session %s: %v", sessionID, err)
-				return
+				return false
 			}
 			if len(page.Events) == 0 {
 				if page.JournalLatestSequence < int64(requestedIndex) {
@@ -151,7 +151,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 					// can be ahead of the durable tip. Rewind before live delivery.
 					sinceIndex = int(page.JournalLatestSequence)
 					if err := writeSSEEvent(w, "cursor", sinceIndex, struct{}{}); err != nil {
-						return
+						return false
 					}
 					flusher.Flush()
 				}
@@ -164,7 +164,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			}
 			if len(batch) == 0 {
 				if err := writeSSEEvent(w, "cursor", cursor, struct{}{}); err != nil {
-					return
+					return false
 				}
 			} else {
 				runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
@@ -177,7 +177,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 					RuntimeState: &runtimeState,
 				}
 				if err := writeSSEEvent(w, "event", cursor, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
-					return
+					return false
 				}
 			}
 			sinceIndex = cursor
@@ -185,6 +185,12 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			if !page.HasNewer || ctx.Err() != nil {
 				break
 			}
+		}
+		return true
+	}
+	if durableChat && sinceIndex >= 0 {
+		if !replayDurable() {
+			return
 		}
 	} else if sinceIndex >= 0 {
 		result := api.eventStore.GetEvents(sessionID, events.GetEventsOptions{SinceIndex: sinceIndex, IncludeStreaming: true})
@@ -261,6 +267,31 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Recover the active token prefix after durable backfill. Token deltas have
+	// no durable cursor, so the journal alone cannot restore a mid-word rejoin.
+	// The ordinary authorization above also covers this same-session read.
+	var replayedStreaming map[string]bool
+	if durableChat {
+		prefix, covered := api.eventStore.StreamingPrefix(sessionID)
+		replayedStreaming = covered
+		if len(prefix) > 0 {
+			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
+			msg := sseEventMessage{
+				Events: prefix, SessionStatus: sessionStatus,
+				DisplayStatus: runtimeStatus.Status, LastProcessedIndex: -2,
+				HasRunningBackgroundAgents: runtimeStatus.HasRunningBackgroundAgents,
+				IsSyntheticTurn:            api.isSyntheticTurn(sessionID), CanSteer: runtimeStatus.CanSteer,
+				RuntimeState: &runtimeState,
+			}
+			if err := writeSSEEvent(w, "event", -1, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
+				return
+			}
+			flusher.Flush()
+			log.Printf("[CHAT_STREAM_REPLAY] session=%s result=restored chunks=%d bytes=%d", sessionID, len(prefix)-1, events.StreamingPrefixBytes(prefix))
+		}
+	}
+
 	// 5. Event loop
 	statusTicker := time.NewTicker(2 * time.Second)
 	defer statusTicker.Stop()
@@ -287,6 +318,22 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			if !ok {
 				// Channel closed (unsubscribed)
 				return
+			}
+			// Fork import writes historical rows without publishing them as new
+			// activity. Its final marker wakes an early subscriber; reuse the
+			// authorized, paged replay before advancing past those rows.
+			if durableChat && event.Type == "chat_forked" {
+				sinceIndex = lastIndex
+				if !replayDurable() {
+					return
+				}
+				lastIndex, backfilledThrough = sinceIndex, sinceIndex
+				continue
+			}
+			// A subscribe-before-snapshot race may queue packets the prefix already
+			// includes. Skip only those exact transport IDs, never durable chat rows.
+			if durableChat && !events.IsDurableChatEvent(event) && replayedStreaming[event.ID] {
+				continue
 			}
 			if durableChat && !events.IsDurableChatEvent(event) {
 				// Live-only updates still drive the streaming UI, but never become

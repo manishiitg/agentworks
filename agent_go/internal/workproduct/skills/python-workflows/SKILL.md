@@ -1,13 +1,33 @@
 ---
 name: python-workflows
-description: Read before creating or changing a workflow in a Crew. New workflows are Python scripts (script.json plus main.py with the agentworks helpers); covers inputs, presets, agents, checks, the database, durable files and mocked test runs.
+description: Read before creating or changing a workflow in a Crew. New workflows are Python scripts (script.json plus main.py with the agentworks helpers); covers task paths, helper files, typed inputs, saved settings, agents, checks, the database and durable files.
 ---
 
 # Write a workflow as a Python script
 
 A new workflow is a Python script: a `script.json` that declares its inputs and outputs, and a `main.py` that does the work with the `agentworks` helpers. There is no plan file to build. Ordinary Python decides the order: functions, `if`/`elif`, loops.
 
-Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. In Crew chat, run it with `functions action=run_trigger`, passing its `workflow:<id>` in `workspace_path`, then read the result with `functions action=trigger_status`. If several saved workflows could match the request, ask which one; never choose silently.
+## One workflow per Crew
+
+A Crew has one workflow. A new task is a new path inside it, not a new workflow:
+
+- Add an input that picks the task (for example `TASK`) and an `if`/`elif` branch for it in `main.py`.
+- Save a preset (a saved setting) for that task, such as `{"name": "Weekly report", "values": {"TASK": "report"}}`.
+- Point the task's schedule, webhook or action at that preset.
+
+Put reusable code in a helper `.py` file beside `main.py` and import it normally:
+
+```python
+# gate.py
+def run_gate():
+    ...
+
+# main.py
+import gate
+gate.run_gate()
+```
+
+First list this Crew's workflow with `crew_workflow_files action=list`. Change the existing workflow for a new task; creating a second returns HTTP409. If there is none, use `crew_workflow_files action=create kind=script`, then write `script.json`, `main.py` and helper files with its `write` action. Run from Crew chat with the admitted bound `runs action=start`, or `functions action=run_trigger` using the returned workflow address, and inspect the saved result. The workflow page shows steps, files and runs; ask for changes in chat.
 
 ## External MCP and CLI
 
@@ -23,9 +43,8 @@ In the owning Crew chat, use its bound `runs action=start` when offered:
 optional `input_preset` selects saved values and `inputs` carries typed JSON
 values (numbers, booleans, objects and arrays stay typed). The workflow is
 selected by the Crew, so do not supply a path or workflow ID. This shortcut is
-offered only when one saved script matches. With several, ask which one and use
-`functions action=run_trigger` with its `workflow:<id>` in `workspace_path`.
-Inputs override
+bound to this Crew's workflow. A different task uses a declared input and saved
+setting in that same workflow. Inputs override
 the preset and defaults; unknown names and wrong types are refused before a
 run starts. Stop it through the chat's background work control. For different
 behavior or instructions, edit the saved Python/Crew configuration first.
@@ -44,27 +63,6 @@ an uncertain start. External
 agents can read `help action=topic topic=python-workflows` for the complete MCP
 and named laptop CLI instructions. These operations keep current project,
 source-editing, account and file grants.
-
-For a failed run, `runs action=resume` with its `workflow_id` and `run_folder`
-keeps the frozen source, input proof and folder, preserves logs and starts a new
-attempt from the top of Python. Builder/edit authority is required. Successful
-explicitly keyed `agent()` or `run_script()` results may be reused and expose
-`reply.reused`; keys name logical calls, so use a unique key per loop iteration.
-The same key twice in one attempt is refused. Changed arguments execute fresh.
-Other Python code, database/app calls, checks and notices execute again;
-uncertain completed effects are not silently retried. If frozen source/hash or
-input proof is missing or changed, start a new run. `rerun` uses current source
-in a new folder instead. Inspect the failed receipt before choosing either.
-
-During an upgrade, inspect the source outline's notes for calls without keys.
-Give expensive or effectful work a semantic key, such as one per record ID;
-never insert a fixed key per source line or rewrite loops automatically.
-To make long phases resumable, give each `agent()` or `run_script()` a stable
-explicit `key`, such as `key="research"` or `key=f"research:{customer_id}"` in
-a loop. Keys identify work, so do not reuse one for different calls. Keep sends
-and orders as ordinary calls; keys are not permission to resend them. Inspect
-an uncertain delivery receipt before deciding what to do next. A second resume
-is refused while the same run is active.
 
 ## script.json
 
@@ -85,7 +83,7 @@ is refused while the same run is active.
 - `inputs` are typed (`string`, `integer`, `number`, `boolean`) with an optional default in `value`; add `"required": true` when there is no sensible default.
 - `input_presets` are optional named sets of values, for example one per market. A run picks one preset or passes its own values.
 - `outputs` names the files the run must leave in its run folder.
-- Optional `timeout_seconds` limits the whole script, including its agent and script calls. The default is 3600 (one hour); choose an integer from 1 to 21600 (six hours). Stop can still end it sooner.
+- Optional `timeout_seconds` limits the whole script, including its agent calls. The default is 3600 (one hour); choose an integer from 1 to 21600 (six hours). Stop can still end it sooner.
 - Put third-party Python packages in one plain `requirements.txt` beside `main.py`, preferably with versions such as `httpx==0.28.1`. List pins directly; included files, constraints and installer option lines are refused. The runner installs them with bundled uv (pip when uv is unavailable), then reuses this script's read-only package cache. Changing the file creates a new cache entry. Its agents use the same packages. No system-wide install is needed.
 - Declare needed Vault names in `"secrets": ["API_KEY"]`. The existing selected/lent Vault account supplies them; a missing name stops the run before any step. `from agentworks import secret`, then `secret("API_KEY")`, reads its existing `SECRET_API_KEY` environment value. An undeclared name is refused. Never put values in inputs, files, helper arguments or logs.
 
@@ -149,10 +147,9 @@ else:
 
 - `inputs`: this run's typed values, by name.
 - `run_folder`: this run's own folder. Write outputs here.
-- `@step("Title")` on a function: a label in the Plan and Runs views. The function runs normally every time; nothing is cached or retried.
+- `@step("Title")` on a function: a label in the Steps and Runs views. The function runs normally every time; nothing is cached or retried.
 - A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
-- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
-- `run_script(id, inputs)`: run another saved script of this Crew and get its output files.
+- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None)`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so Steps can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `ask_agent(crew, message, wait_seconds=25)`: ask an accessible Crew by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
@@ -171,13 +168,16 @@ api_key = secret("API_KEY")  # Pass to the service's client; never print or save
 
 - **Branches are Python.** Use `if`/`elif` where an old workflow used routes.
 - **Repair once.** When an agent's output fails a check, send the error once to the same agent (`conversation_id=reply.conversation_id`), check again, and fail plainly if it still fails.
-- **One database per Crew.** Use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
+- **Python and agent shells.** The parent workflow and platform-run scripts can import `agentworks` and `agentworks_db`. Native shells inside `agent()` do not have that helper environment. Agents use the registered `database` tool (`action="query"` or `"mutate"`), or write artifacts for the parent to check and persist. Do not ask an agent to run a helper that imports either module.
+- **Fresh Crew files.** Parent Python can use `from agentworks import files` and `files.read("notes/owner-handled.md")` for current text from this Crew. Every call reads again; do not derive a live knowledge path from the frozen `WORKFLOW_CODE_ROOT` or copy a note into the run as its source of truth. Paths are relative to this Crew's Files, text is capped at 256 KiB, and private files, other Crews and symlinks are refused. Credential paths and retired local knowledge folders stay refused. This is not a general Brain reader and adds no shell grant; native agents keep their file tools.
+- **One database per Crew.** In parent Python or platform-run scripts, use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
 - **Durable files** that later runs need go under `WORKFLOW_DATA_ROOT`; everything else stays in `run_folder`.
-- **Nobody is asked mid-run.** A run never waits for a person. A missing value fails the run with a clear reason.
+- **Check command output.** For a Docker command that must return output, require both exit code zero and nonempty output. Empty output is a failed check, not evidence that a database has no rows. Record the return code and stdout/stderr byte counts without secret values.
+- **Collect answers before starting.** Ask for needed answers in Crew chat. A workflow runs without waiting for someone to answer; a missing required value fails with a clear reason.
 - **The run record is the summary.** Do not write a separate run summary; Activity records every outcome. Use `notify` for the owner and the send helpers only for people the workflow exists to reach.
 - **Mocked test runs.** Use this only when the installation's current start schema offers `mock_agents`; otherwise do not claim a mocked run. Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
 
-Existing plan-based workflows keep working until they are converted; edit them with the guide in `references/crew-plan/SKILL.md`.
+Old plan-based workflows must be converted to Python before they can run.
 
 ## Converting an old workflow
 
@@ -218,6 +218,7 @@ send explicitly through the current helpers. Do not keep a plan runner or read
   check both a missing field and an invalid supplied value. Save input/caller
   changes together through the canonical writer as described below. Preserve
   caller authentication, enabled state and schedule timing.
+- **Agent-run helpers.** Keep `agentworks` and `agentworks_db` imports in parent Python or platform-run scripts, never in helpers an agent must launch from its native shell. Preserve each helper's business work: have the agent use the `database` tool, or return files that the parent validates and stores.
 - **Managed database.** Replace retired `query_workflow_db` and
   `mutate_workflow_db` calls with `database` and `action="query"` / `"mutate"`,
   or use `agentworks_db`. Keep SQL, parameters and paging intact, check mutation
@@ -226,12 +227,12 @@ send explicitly through the current helpers. Do not keep a plan runner or read
   artifacts; completed transport alone is not task success. Repair invalid agent
   output once in the same conversation without repeating completed external
   actions. Verify one authorized entry through the actual runtime, then its next
-  turn and dependent script. Keep account/browser refusals, partial collection
+  turn and ordinary helper-file outputs. Keep account/browser refusals, partial collection
   and unavailable measurements honest; do not weaken guards to get a green run.
 
-### Calling from timers, webhooks and Slack
+### Calling from schedules, webhooks and Slack
 
-Use one static saved input preset plus fixed inputs for each caller. For a raw
+Read `agentworks-schedules-watchers` for timing. A Crew schedule can run this workflow with its saved setting and typed inputs, or send a message to an agent; these are different targets. Existing workflow timers may still need conversion to Crew schedules. Use one static saved input preset plus fixed inputs for each caller. For a raw
 webhook body use `payload_mappings.inputs` with declared names selected in
 `allowed_variables`, and a fixed dotted `source` path per name. JSON types are
 preserved; optional `values`/`default` map body choices to typed values. Do not
@@ -292,5 +293,3 @@ A missing raw payload source uses the mapping's default first, then the script
 input's declared `value`; a supplied invalid value still refuses. An input with
 neither default is named in the refusal. A mapped payload cannot choose a preset
 or replace fixed inputs.
-
-Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.

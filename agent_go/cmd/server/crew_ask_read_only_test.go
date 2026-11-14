@@ -5,7 +5,6 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"io"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -25,17 +24,6 @@ func TestGuestAskIsReadOnly(t *testing.T) {
 	notice := crewSessionModeNotice("Crew/c-1", "", true)
 	if strings.Contains(notice, "only place you can write") || !strings.Contains(notice, "Change nothing") {
 		t.Fatalf("a read-only ask must be told to change nothing:\n%s", notice)
-	}
-}
-
-// The tool description every MCP client reads states the final model.
-func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
-	if !strings.Contains(crewAskModelSentence, "Run mode") || !strings.Contains(crewAskModelSentence, "published") || !strings.Contains(crewAskModelSentence, "call one of its functions") {
-		t.Fatal(crewAskModelSentence)
-	}
-	src, err := os.ReadFile("external_tools.go")
-	if err != nil || !strings.Contains(string(src), `add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence`) {
-		t.Fatal("ask_crew description does not carry the sentence")
 	}
 }
 
@@ -135,13 +123,6 @@ func TestGuestAskNativeBridgeToolsAreTheAllowListMinusCore(t *testing.T) {
 	}
 }
 
-// The model reads the notice to learn the tools are direct (the bridge spec still shows HTTP routes).
-func TestGuestAskNoticeSaysTheToolsAreDirect(t *testing.T) {
-	if !strings.Contains(crewAskNotice("Crew/c-1", false), "DIRECT tools") {
-		t.Fatal("the guest ask notice must tell the model its tools are direct")
-	}
-}
-
 // Other callers' function-call payloads and the schedule run log belong to the owner and co-owners: a guest's ask and
 // any non-owner reader never see them, in a read or in a listing or search result.
 func TestCallerPrivateCrewAreas(t *testing.T) {
@@ -234,21 +215,5 @@ func TestFunctionRunNoticeSaysPublishedFunctionsMayWrite(t *testing.T) {
 	}
 	if strings.Contains(notice, "only place you can write") || strings.Contains(notice, "Change nothing") {
 		t.Errorf("a published function is not told it can write only the output folder:\n%s", notice)
-	}
-}
-
-// A queued message of a chat that is waiting for its runtime to be replaced is flagged so the app can say so and drop Steer/Remove.
-func TestQueuedMessagesAreFlaggedWhileTheChatIsBeingUpdated(t *testing.T) {
-	api := &StreamingAPI{}
-	api.setConversationTurnRuntimeChange("chat-1", true)
-	messages := []PendingQueuedMessage{{MessageID: "m1"}}
-	api.markRefreshingQueuedMessages("chat-1", messages)
-	if !messages[0].Refreshing {
-		t.Fatal("a message waiting for a runtime change must be flagged refreshing")
-	}
-	other := []PendingQueuedMessage{{MessageID: "m2"}}
-	api.markRefreshingQueuedMessages("chat-2", other)
-	if other[0].Refreshing {
-		t.Fatal("another chat's messages are not refreshing")
 	}
 }

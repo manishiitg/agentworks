@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 
@@ -406,7 +407,18 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	publicationRoot := agentProfileRuntimeWorkspace(actingFor, binding.WorkspacePath)
 	defer lockPublication("target:" + canonicalCrewWorkspaceRoot(publicationRoot))()
 	deleteCtx := context.WithValue(r.Context(), publicationLifecycleKey{}, publicationRoot)
+	historyRoot, err := scheduleHistoryRemovalScope(publicationRoot)
+	if err != nil {
+		writeAgentProfileError(w, 500, "Could not resolve run history before deletion: "+err.Error())
+		return
+	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
+	if profile.ID == crewProfileID {
+		if err := api.deleteCrewTeamOnlineHome(r, binding.ResourceID); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	var deleteErr error
 	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
 		deleteErr = rootErr
@@ -419,6 +431,22 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
 	}
+	if profile.ID == crewProfileID {
+		dir, err := crewTeamDir(binding.ResourceID)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state could not be resolved.")
+			return
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state needs cleanup.")
+			return
+		}
+	}
+	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {
+		writeAgentProfileError(w, 500, "Folder removed; run history cleanup failed: "+err.Error())
+		return
+	}
+	noteScheduleSummaryChange()
 	if profile.Product == "work" {
 		if err := removeCrewExecutableBindings(projectID); err != nil {
 			log.Printf("[CREW_DELETE] project=%s executable cleanup failed: %v", projectID, err)

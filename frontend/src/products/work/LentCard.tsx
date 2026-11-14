@@ -3,7 +3,7 @@ import { desktopRequest } from '../../services/desktopConnections'
 import type { TeamLent, TeamTarget } from './teamApi'
 
 // One thing of this Mac's Vault the Crew uses that teammates' agents can't use yet, as the Mac's server lists it.
-type MacOnlyItem = { key: string; name: string; kind: string; action: 'copy' | 'move' | ''; note?: string }
+type MacOnlyItem = { key: string; name: string; kind: string; label: string; action: 'copy' | 'move' | ''; note?: string }
 type ItemResult = { done?: string; line?: string; vault_url?: string }
 
 const card = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
@@ -15,7 +15,7 @@ const button = 'ml-auto shrink-0 rounded-full border border-primary bg-primary p
  * from you"). The server writes the card: its title and line, and what is ready for the team. In the owner's Mac app,
  * the Mac's own server adds what only this Mac has, with Copy (a secret) or Move (a signed-in app) to the server.
  */
-export function LentCard({ lent, target, ask }: { lent: TeamLent; target: TeamTarget; ask?: ReactNode }) {
+export function LentCard({ lent, target, ask, titled = true }: { lent: TeamLent; target: TeamTarget; ask?: ReactNode; titled?: boolean }) {
   const [macOnly, setMacOnly] = useState<MacOnlyItem[]>([])
   const [results, setResults] = useState<Record<string, ItemResult>>({})
   const [busy, setBusy] = useState('')
@@ -42,19 +42,23 @@ export function LentCard({ lent, target, ask }: { lent: TeamLent; target: TeamTa
 
   return <section aria-label={lent.title} className={card}>
     <div>
-      <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">{lent.title}</h3>{ask}</div>
-      <p className="text-[12.5px] text-muted-foreground">{lent.line}</p>
+      {/* Opened from its fold line, the fold line is the title: the card does not repeat it. */}
+      <div className="flex items-center gap-2">{titled ? <h3 className="flex-1 font-semibold">{lent.title}</h3> : <p className="flex-1 text-[12.5px] text-muted-foreground">{lent.line}</p>}{ask}</div>
+      {titled && <p className="text-[12.5px] text-muted-foreground">{lent.line}</p>}
     </div>
     <div className={lent.yours ? 'border-t border-border pt-2' : ''}>
       {lent.yours && <p className="mb-1 text-xs text-muted-foreground">Ready for the team</p>}
       {lent.items.length === 0 && recent.length === 0 && macOnly.length === 0 && <p className="text-[12.5px] text-muted-foreground">{lent.empty || 'Nothing yet'}</p>}
-      {lent.items.map(item => <div key={`${item.kind}:${item.name}`} className="flex items-center gap-2 py-1 text-[13px]">
-        <span>{item.name}</span><span className="text-xs text-muted-foreground">· {item.kind}</span>
-        {lent.yours && <span className={pill}>On the server</span>}
-        {recent.find(done => done.name === item.name) && <span className="text-xs text-emerald-600 dark:text-emerald-400">{recent.find(done => done.name === item.name)?.done}</span>}
+      {lent.groups.map(group => <div key={group.title} className="py-1.5">
+        <p className="text-[13px]"><span className="font-semibold">{group.title}</span> <span className="text-xs text-muted-foreground">{group.line}</span></p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {group.names.map(name => <span key={name} className={`rounded-full border border-border px-2.5 py-px text-[13px] ${group.key ? 'font-mono text-xs' : ''}`}>
+            {name}{recent.find(done => done.name === name) && <span className="ml-1.5 text-xs text-emerald-600 dark:text-emerald-400">{recent.find(done => done.name === name)?.done}</span>}
+          </span>)}
+        </div>
       </div>)}
       {recent.filter(done => !lent.items.some(item => item.name === done.name)).map(done => <div key={`recent:${done.name}`} className="flex items-center gap-2 py-1 text-[13px]">
-        <span>{done.name}</span><span className="text-xs text-muted-foreground">· {done.kind}</span><span className={pill}>On the server</span>
+        <span>{done.name}</span><span className={pill}>On the server</span>
         <span className="text-xs text-emerald-600 dark:text-emerald-400">{done.done}</span>
       </div>)}
     </div>
@@ -64,7 +68,7 @@ export function LentCard({ lent, target, ask }: { lent: TeamLent; target: TeamTa
         const result = results[item.key]
         return <div key={item.key} className="py-1 text-[13px]">
           <div className="flex items-center gap-2">
-            <span>{item.name}</span><span className="text-xs text-muted-foreground">· {item.kind}</span>
+            <span>{item.name}</span><span className="text-xs text-muted-foreground">· {item.label}</span>
             {item.action
               ? result?.vault_url
                 ? <button type="button" className={button} onClick={() => window.electronAPI?.openExternal?.(result.vault_url || '')}>Open the server's Vault</button>

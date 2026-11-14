@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -89,9 +90,8 @@ func TestStartupRegistersVaultSecretNamesWithoutValues(t *testing.T) {
 	}
 }
 
-// Without CAPLAYER_SERVICE_URL every function behaves as before Vault existed
-// and never reports "Vault is not configured" or "permissions unavailable".
-func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
+// PLAT-856-217: only managed stored values remain available without a Vault service; legacy environment entries do not return.
+func TestWithoutVaultOnlyManagedStoredSecretsResolve(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_URL", "")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", "")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
@@ -112,10 +112,10 @@ func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
 	if err := revokeVaultSecret(ctx, "admin", "MANAGED_ONE"); err != nil {
 		t.Fatal("revoke:", err)
 	}
-	if rows, err := permittedGlobalSecrets(ctx, "anyone"); err != nil || len(rows) != 2 {
+	if rows, err := permittedGlobalSecrets(ctx, "anyone"); err != nil || len(rows) != 1 {
 		t.Fatal("permitted:", rows, err)
 	}
-	if rows := visibleGlobalSecrets(ctx, "anyone"); len(rows) != 2 {
+	if rows := visibleGlobalSecrets(ctx, "anyone"); len(rows) != 1 {
 		t.Fatal("visible:", rows)
 	}
 	for name, tc := range map[string]struct {
@@ -123,9 +123,9 @@ func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
 		want      int
 	}{
 		"nil selection keeps the current behaviour (no inherited globals)": {nil, 0},
-		"empty selection":             {&empty, 0},
-		"selected globals are merged": {&both, 2},
-		"unknown name is skipped":     {&missing, 0},
+		"empty selection":                         {&empty, 0},
+		"only selected managed values are merged": {&both, 1},
+		"unknown name is skipped":                 {&missing, 0},
 	} {
 		got := api.mergeGlobalSecretsFor(ctx, "anyone", tc.selection)
 		if len(got) != tc.want {
@@ -148,7 +148,7 @@ func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/secrets/global", nil)
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "anyone"}))
 	api.handleGetGlobalSecrets(rec, req)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "ENV_ONE") || !strings.Contains(rec.Body.String(), "MANAGED_ONE") || strings.Contains(rec.Body.String(), "env-value") {
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), "ENV_ONE") || !strings.Contains(rec.Body.String(), "MANAGED_ONE") || (strings.Contains(rec.Body.String(), "env-value") || strings.Contains(rec.Body.String(), "managed-value")) {
 		t.Errorf("GET /api/secrets/global: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -169,15 +169,51 @@ func TestWithoutVaultManagedSecretSaveAndDeleteSucceed(t *testing.T) {
 	}
 }
 
-// A configured but unusable Vault stays fail-closed.
-func TestConfiguredButUnreachableVaultStillFailsClosed(t *testing.T) {
+// PLAT-746: a selected stored secret must stop run preparation when its configured
+// Vault cannot answer. Missing names use the separate, retained banner rule.
+func TestConfiguredVaultRunSecretsRequireReachablePermissionLookup(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks")
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
 	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("CAPLAYER_SERVICE_URL", "http://127.0.0.1:1")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
-	withSharedSecretsForTest(t, []globalSecretEntry{{Name: "ENV_ONE", Value: "env-value"}}, map[string]string{})
-	names := []string{"ENV_ONE"}
-	if err := validateVaultSecretSelection(context.Background(), "alice", &names); err == nil {
-		t.Fatal("unreachable Vault admitted the run")
+	const name, value = "MANAGED_ONE", "test-only-managed-value"
+	withSharedSecretsForTest(t, nil, map[string]string{name: value})
+	for _, unavailable := range []bool{true, false} {
+		t.Run(map[bool]string{true: "unavailable refuses run", false: "permitted resolves selected value"}[unavailable], func(t *testing.T) {
+			var requests atomic.Int32
+			vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/admin/runtime/secrets" || r.Header.Get("X-CapLayer-Actor") != "alice" {
+					t.Error("run did not use its owner's Vault permission lookup")
+				}
+				requests.Add(1)
+				if unavailable {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"secrets": []map[string]string{{"name": name}}})
+			}))
+			defer vault.Close()
+			t.Setenv("CAPLAYER_SERVICE_URL", vault.URL)
+			if !vaultConfigured() {
+				t.Fatal("fixture did not configure the runtime Vault")
+			}
+			names := []string{name}
+			secrets, err := (&StreamingAPI{}).projectRunSecrets(t.Context(), "alice", "", &names)
+			if requests.Load() == 0 {
+				t.Fatal("run never checked Vault permissions")
+			}
+			if unavailable {
+				if err == nil || len(secrets) != 0 {
+					t.Fatal("unavailable Vault admitted run secrets")
+				}
+				if strings.Contains(err.Error(), name) || strings.Contains(err.Error(), value) {
+					t.Fatal("permission failure exposed secret details")
+				}
+			} else if err != nil || len(secrets) != 1 || secrets[0].Name != name || secrets[0].Value != value {
+				t.Fatal("permitted selected secret did not resolve")
+			}
+		})
 	}
 }

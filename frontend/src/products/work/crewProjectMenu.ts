@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -25,17 +25,21 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   const add = (view: WorkWorkspaceView, group: CrewMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  add('dashboard', 'Build', 'Dashboards', LayoutDashboard)
+  add('dashboard', 'Build', 'Artifacts', LayoutDashboard)
   add('workflow', 'Build', 'Workflow', Route)
   add('schedules', 'Build', 'Automations', Zap)
-  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
+  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Integrations', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   add('database', 'Build', 'Database', Database)
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
-    // One Share row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
-    add('mcp', 'Share', 'Share', UsersRound, 'access', 'Share')
+    // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
+    // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
+    add('mcp', 'Share', 'Team', UsersRound, 'team')
+    add('mcp', 'Share', 'Mac online', Globe, 'online')
+    add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
+    // The Slack bot row opens Connections → Slack bot (owner, 14 Nov).
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }

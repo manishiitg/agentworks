@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -201,4 +205,67 @@ func checkSavedScriptMCPResumeAfterEdit(t *testing.T, api *StreamingAPI, binding
 		t.Fatalf("captured Python did not resume with old output/input: %s %v", artifact, err)
 	}
 	t.Logf("MCP resume same_run=%s previous=%s source_hash=%s real_python=true", folder, previous, current["source_snapshot_hash"])
+}
+
+// PLAT-746-505: Runs uses the aggregate workspace route, not only runs/get.
+// Resume must be derived for that route with the same current Builder/Run rules.
+func TestWorkspaceStateProjectsCurrentResumeEligibility(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, owner)
+	binding := crewExecutableBinding{ID: "resume-state", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/resume-state", Kind: "script", RuntimeRoot: "workflows/resume-state"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	if err := initializeCrewScriptSource(ctx, binding, "Resume state"); err != nil {
+		t.Fatal(err)
+	}
+	layout, found, err := crewroot.LookupExecutable(f.docs, binding.Root)
+	if err != nil || !found {
+		t.Fatalf("script runtime: found=%t err=%v", found, err)
+	}
+	const folder = "run-resume-state"
+	path := filepath.Join(layout.Runtime, "runs", folder, "run_metadata.json")
+	router := mux.NewRouter()
+	registerWorkflowReadRoutes(router.PathPrefix("/api").Subrouter(), f.api)
+	for _, tc := range []struct {
+		name, person, status string
+		proof, want          bool
+	}{
+		{"failed Builder", "owner", "failed", true, true},
+		{"failed Run person", "other", "failed", true, false},
+		{"completed Builder", "owner", "completed", true, false},
+		{"running Builder", "owner", "running", true, false},
+		{"failed without proof", "owner", "failed", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metadata := RunMetadata{Status: tc.status}
+			if tc.proof {
+				metadata.SourceSnapshotHash = strings.Repeat("a", 64)
+				metadata.InputsSnapshotHash = strings.Repeat("b", 64)
+			}
+			if err := writeRunMetadata(ctx, binding.Root+"/runs/"+folder+"/run_metadata.json", &metadata); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := adminRequest(http.MethodGet, "/api/workspace/state?workspace_path="+url.QueryEscape(binding.Root), "", &UserClaims{UserID: tc.person, Username: tc.person}, nil)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			var state WorkspaceStateResponse
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &state) != nil || !state.Success || state.Data == nil || len(state.Data.RunFolders) != 1 {
+				t.Fatalf("workspace state: HTTP%d %s", response.Code, response.Body.String())
+			}
+			projected := state.Data.RunFolders[0].Metadata
+			if projected == nil || projected.CanResume == nil || *projected.CanResume != tc.want {
+				t.Fatalf("workspace Resume eligibility=%+v, want explicit %t", projected, tc.want)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("derived eligibility changed durable run metadata: %v", err)
+			}
+		})
+	}
 }

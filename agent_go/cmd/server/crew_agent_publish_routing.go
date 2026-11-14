@@ -59,7 +59,8 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		}
 	}
 	var args struct {
-		SenderID string `json:"sender_id"`
+		SenderID  string `json:"sender_id"`
+		TeamInbox string `json:"team_inbox"`
 	}
 	if json.Unmarshal(call.Args, &args) != nil || args.SenderID == "" {
 		return fail(403, "This agent is unavailable.")
@@ -71,6 +72,11 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		}
 	} else if _, reason := macSharedAgentAccess(project, call.Tab, args.SenderID, owner, byAgent); reason != "" {
 		return fail(403, "This agent is no longer shared with you.")
+	}
+	if call.Operation != "agent_read" {
+		if reason := terminalStandbyCallRefusal(project, owner, call.Tab, args.SenderID, args.TeamInbox != ""); reason != "" {
+			return fail(409, reason)
+		}
 	}
 	if call.Operation != "agent_ask" && call.Operation != "agent_read" && call.Operation != "agent_answer" {
 		return fail(400, "Send a message, read its reply or answer its question.")

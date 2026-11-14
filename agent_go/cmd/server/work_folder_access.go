@@ -170,13 +170,37 @@ func workFolderRootsForKey(doc workFolderAccessDoc, key string) []string {
 // workFolderGrantsForClaims returns the stored external folder grants for
 // the calling identity. An unknown identity gets none.
 func workFolderAccessForClaims(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, []string) {
+	grants, roots, _ := workFolderAccessForClaimsChecked(ctx, claims)
+	return grants, roots
+}
+
+// A turn must not interpret a failed authority read as an empty grant set.
+func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, string, error) {
+	grants, _, err := workFolderAccessForClaimsChecked(ctx, claims)
+	if err != nil {
+		return nil, "", err
+	}
+	teamGrants, teamErr := crewTeamNativeFoldersChecked(ctx, claims)
+	return workFolderTurnResult(grants, teamGrants, teamErr)
+}
+
+func workFolderTurnResult(own, team []workflowtypes.WorkflowFolderGrant, teamErr error) ([]workflowtypes.WorkflowFolderGrant, string, error) {
+	notice := ""
+	if teamErr != nil {
+		// Do not expose remote URLs, response bodies or internal paths.
+		notice = "Team folders are unavailable this turn: a Team connection could not be reached."
+	}
+	return append(own, team...), notice, nil
+}
+
+func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, []string, error) {
 	doc, err := workFolderAccessStore.read(ctx)
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
 	key := workFolderAccessKeyForClaims(doc, claims)
 	if key == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	roots := workFolderRootsForKey(doc, key)
 	grants := doc.Grants[key]
@@ -192,7 +216,7 @@ func workFolderAccessForClaims(ctx context.Context, claims *UserClaims) ([]workf
 		}
 		grants = authorized
 	}
-	return append([]workflowtypes.WorkflowFolderGrant(nil), grants...), roots
+	return append([]workflowtypes.WorkflowFolderGrant(nil), grants...), roots, nil
 }
 
 func workFolderClaimsAreAdmin(claims *UserClaims) bool {

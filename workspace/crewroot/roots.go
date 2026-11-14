@@ -18,7 +18,11 @@ type Roots struct {
 	ID, Owner, Virtual        string
 	DatabaseRoot              string
 	Files, Resources, Private string
-	Local                     bool
+	// Automation is the Crew's .agentworks/ folder: workflow definitions and
+	// code, runs, the database, knowledge and (in settings/) the automation
+	// records. On a laptop it is the resource root itself.
+	Automation string
+	Local      bool
 }
 
 type Record struct {
@@ -127,10 +131,20 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	if sync != nil && sync.Side == "server" && sync.SplitFiles {
 		files = filepath.Join(files, FilesSegment)
 	}
-	for _, dir := range []string{files, resources, private} {
+	for _, dir := range []string{files, resources} {
 		if err := unchangedDirectory(dir, allowMissing); err != nil {
 			return Roots{}, err
 		}
+	}
+	// The private root holds only chats and program runtime (PLAT-746-924), so a
+	// Crew may not have one yet: it is made on first use, like .agentworks.
+	if _, statErr := os.Lstat(private); os.IsNotExist(statErr) && !allowMissing {
+		if _, err := EnsurePrivateRoot(realDocs, r.ID, files); err != nil {
+			return Roots{}, err
+		}
+	}
+	if err := unchangedDirectory(private, allowMissing); err != nil {
+		return Roots{}, err
 	}
 	if r.DatabaseRoot != "" {
 		parts := strings.Split(r.DatabaseRoot, "/")
@@ -138,7 +152,20 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 			return Roots{}, fmt.Errorf("invalid Crew database root")
 		}
 	}
-	return Roots{DatabaseRoot: r.DatabaseRoot, ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: files, Resources: resources, Private: private, Local: r.LocalRoot != ""}, nil
+	// A laptop Crew's .agentworks is its resource root; a server copy of a laptop
+	// Crew mirrors it there too. A Crew that lives only on a server keeps it in
+	// its folder.
+	automation := filepath.Join(files, AutomationFolder)
+	if r.LocalRoot != "" || files != resources {
+		automation = resources
+	}
+	out := Roots{DatabaseRoot: r.DatabaseRoot, ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: files, Resources: resources, Private: private, Automation: automation, Local: r.LocalRoot != ""}
+	if !allowMissing {
+		if err := out.EnsureAutomation(); err != nil {
+			return Roots{}, err
+		}
+	}
+	return out, nil
 }
 
 // Resolver keeps registry decoding and root bindings within one request. It is
@@ -221,27 +248,18 @@ func (r Roots) FilesPath() string {
 	return r.Virtual + "/" + FilesSegment
 }
 
-// Platform records keep their managed namespace outside the working folder. All other resource paths resolve
-// under the resource root, including skills, memory, code and outputs.
-func privatePath(rel string) bool {
-	rel = strings.ToLower(rel)
-	if rel == "db/db.sqlite" || rel == "db/db.sqlite-wal" || rel == "db/db.sqlite-shm" || rel == "db/db.sqlite-journal" {
-		return true
-	}
-	if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") {
-		return true
-	}
-	first := strings.SplitN(rel, "/", 2)[0]
-	switch first {
-	case "product.json", "workflow.json", "workflow.json.kb-lock", "schedules.json", "webhooks.json", "product-schedules.json", "schedule-runs.json", "functions.json", "costs", "human_inputs", "runs", "planning", "knowledgebase", ".sandbox-cache", ".report-cache", "builder", "conversation", "chat_history":
-		return true
-	}
-	return false
-}
-
+// ResourcePathRoot is the physical root a Crew-relative path joins onto:
+// chats and program runtime stay private; automation records sit in
+// .agentworks/settings/; runs, the database, plans and knowledge in
+// .agentworks/; everything else in the resource root.
 func (r Roots) ResourcePathRoot(rel string) string {
-	if privatePath(rel) || r.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")) {
+	switch {
+	case chatPrivatePath(rel):
 		return r.Private
+	case settingsPath(rel):
+		return r.SettingsDir()
+	case automationDataPath(rel):
+		return r.Automation
 	}
 	return r.Resources
 }
@@ -328,11 +346,13 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 		if first := strings.SplitN(strings.ToLower(rel), "/", 2)[0]; first == ".agentworks" {
 			return "", true, fmt.Errorf("use the Crew resource paths for .agentworks files")
 		}
+	} else if r.settingsAlias(rel) {
+		return "", true, fmt.Errorf("change schedules, webhooks and functions with their tools")
 	} else if r.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")) {
-		root = r.Private
+		root = r.Automation
 		rel = filepath.Join(r.DatabaseRoot, strings.TrimPrefix(strings.TrimPrefix(rel, "db"), "/"))
-	} else if privatePath(rel) {
-		root = r.Private
+	} else {
+		root = r.ResourcePathRoot(rel)
 	}
 	if err := unchangedDirectory(root, false); err != nil {
 		return "", true, err
@@ -395,6 +415,17 @@ func (q *Resolver) Reverse(physical string) (string, Roots, bool, error) {
 		}
 		if Within(r.Resources, physical) && !(r.SeparateFiles() && Within(r.Resources, r.Files) && Within(r.Files, physical)) {
 			root, prefix = r.Resources, r.Virtual
+		}
+		// Crew records and runtime data are issued by their own names
+		// (Crew/<folder>/runs/..., Crew/<folder>/schedules.json).
+		if settings := r.SettingsDir(); settings != "" && Within(settings, physical) {
+			if rel, _ := filepath.Rel(settings, physical); rel == "." || settingsPath(filepath.ToSlash(rel)) {
+				root, prefix = settings, r.Virtual
+			}
+		} else if r.Automation != "" && Within(r.Automation, physical) {
+			if rel, _ := filepath.Rel(r.Automation, physical); automationDataPath(filepath.ToSlash(rel)) {
+				root, prefix = r.Automation, r.Virtual
+			}
 		}
 		rel, _ := filepath.Rel(root, physical)
 		if _, err := ResolveContained(root, rel); err != nil {
@@ -481,25 +512,35 @@ func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
 	return r.ResourcePathRoot(rel), true, nil
 }
 
-// NativeGrants separates broad resource grants from platform state. The file
-// service keeps its logical grants for typed operations; shell processes don't
-// inherit writes to settings or conversation records. An explicitly granted
-// run output directory remains writable.
-func NativeGrants(docs string, read, write []string) ([]string, []string, []string) {
+// NativeGrants turns logical grants into what a shell process gets. Chats
+// and program runtime stay in the private root, which no Crew grant reaches
+// except the shell's own home. The raw database is blocked; the automation
+// records (.agentworks/settings/) are a blocked write for every Crew grant, so
+// schedules, webhooks and functions change only through their tools.
+func NativeGrants(docs string, read, write []string) (reads, writes, blocked, blockedWrites []string) {
 	read = executableGrants(docs, read)
 	write = executableGrants(docs, write)
-	var blocked []string
-	reads := append([]string(nil), read...)
+	reads = append([]string(nil), read...)
+	protect := map[string]bool{}
+	for _, grant := range append(append([]string{}, read...), write...) {
+		clean := strings.TrimSuffix(grant, "/")
+		r, found, err := Lookup(docs, clean)
+		if filepath.IsAbs(clean) {
+			_, r, found, err = Reverse(docs, clean)
+		}
+		if err == nil && found && r.SettingsDir() != "" {
+			protect[r.SettingsDir()] = true
+		}
+	}
 	for _, grant := range read {
 		clean := strings.TrimSuffix(grant, "/")
 		if r, found, err := Lookup(docs, clean); err == nil && found && clean == r.Virtual {
-			reads = append(reads, r.Private)
 			for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "db.sqlite-journal"} {
-				blocked = append(blocked, filepath.Join(r.Private, "db", name))
+				blocked = append(blocked, filepath.Join(r.Automation, "db", name))
 			}
 		}
 	}
-	writes := make([]string, 0, len(write))
+	writes = make([]string, 0, len(write))
 	caches := map[string]bool{}
 	for _, grant := range write {
 		clean := strings.TrimSuffix(grant, "/")
@@ -518,10 +559,15 @@ func NativeGrants(docs string, read, write []string) ([]string, []string, []stri
 		if err != nil && found {
 			continue
 		}
-		privateGrant := found && (r.ResourcePathRoot(suffix) == r.Private || filepath.IsAbs(clean) && Within(r.Private, clean))
-		shellHome := suffix == ".sandbox-cache/home" || strings.HasPrefix(suffix, ".sandbox-cache/home/")
-		if privateGrant && !strings.HasPrefix(suffix, "runs/") && !shellHome {
-			continue
+		if found {
+			root := r.ResourcePathRoot(suffix)
+			shellHome := suffix == ".sandbox-cache/home" || strings.HasPrefix(suffix, ".sandbox-cache/home/")
+			if root == r.SettingsDir() || filepath.IsAbs(clean) && Within(r.SettingsDir(), clean) {
+				continue
+			}
+			if (root == r.Private || filepath.IsAbs(clean) && Within(r.Private, clean)) && !shellHome {
+				continue
+			}
 		}
 		writes = append(writes, grant)
 		if found && (clean == r.Virtual || clean == r.FilesPath() || clean == r.Files || clean == r.Resources) {
@@ -536,5 +582,9 @@ func NativeGrants(docs string, read, write []string) ([]string, []string, []stri
 	}
 	sort.Strings(cachePaths)
 	writes = append(writes, cachePaths...)
-	return reads, SyncWriteGrants(docs, writes), blocked
+	for dir := range protect {
+		blockedWrites = append(blockedWrites, dir)
+	}
+	sort.Strings(blockedWrites)
+	return reads, SyncWriteGrants(docs, writes), blocked, blockedWrites
 }

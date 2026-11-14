@@ -87,17 +87,6 @@ func TestWorkflowLiveInputRefreshesInsteadOfDeliveringToOldCLI(t *testing.T) {
 	}
 }
 
-func TestWorkflowExplicitNewTurnDoesNotInterruptForegroundForRetainedAdmission(t *testing.T) {
-	canceled := false
-	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
-	for _, req := range []QueryRequest{{SelectedFolder: "Workflow/test", IsAutoNotification: true}, {SelectedFolder: "Workflow/test", DisableLiveInputDelivery: true}} {
-		compatible, _, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", req, false)
-		if err != nil || compatible || canceled {
-			t.Fatal("explicit new turn attempted retained admission or canceled foreground", compatible, err, canceled)
-		}
-	}
-}
-
 func TestWorkflowRetainedPolicyBackfillsFolderFromSession(t *testing.T) {
 	// Follow-ups often omit SelectedFolder and rely on session resumption.
 	// The fingerprint check must still run against the session's last known

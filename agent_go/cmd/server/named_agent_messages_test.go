@@ -486,3 +486,58 @@ func TestAgentMailOverMCPNeedsTheCLI(t *testing.T) {
 		t.Fatal("a bound agent connection must be allowed")
 	}
 }
+
+// PLAT-746: a sent card read "You -> app-<id>" because a named agent's endpoint keeps its registered address as its
+// label. Cards and inbox rows use the agent's current label; an endpoint without one keeps its stored label.
+func TestAgentMessageCardsNameNamedAgentsByCurrentLabel(t *testing.T) {
+	s := agentMessageStore{Agents: []namedMessageAgent{{ID: "a1", UserID: "u1", Name: "app-0123", Label: "Website (fork)"}}}
+	named := agentMessageEndpoint{UserID: "u1", NamedAgentID: "a1", Label: "app-0123"}
+	if got := s.endpointName(named, "u1"); got != "Website (fork)" {
+		t.Fatalf("named agent shown as %q", got)
+	}
+	if got := s.receiptFields(context.Background(), agentMessage{}, named)["to_label"]; got != "Website (fork)" {
+		t.Fatalf("send result to_label = %v", got)
+	}
+	named.ShareID = "share-example"
+	shared := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "u2"}, named}, Messages: []agentMessage{{From: 0}}}
+	rows := s.sentReceipts(context.Background(), shared, 0, 1)
+	if len(rows) != 1 || rows[0]["to"] != shareOwnerLabel("u1")+"/Website (fork)" {
+		t.Fatalf("shared sent receipt lost owner qualifier: %v", rows)
+	}
+	if got := s.endpointName(agentMessageEndpoint{UserID: "u1", Label: "Research Crew"}, "u1"); got != "Research Crew" {
+		t.Fatalf("plain endpoint shown as %q", got)
+	}
+}
+
+// PLAT-746: never resolve a recipient name from another owner's registry or
+// another chat just because its Crew label is the same.
+func TestCrewReceiptNameRequiresExactAdmittedConversation(t *testing.T) {
+	store, files := memoryProductConversationStore()
+	key := productConversationRegistryEntryKey("work", "project:chat:review")
+	doc := productConversationRegistryDocument{
+		Entries: map[string]ProductConversationRecord{key: {ProfileID: "work", ConversationKey: "project:chat:review", SessionID: "session-review", WorkspacePath: "Crew/example", Title: "Old title"}},
+		Agents:  map[string]ProductAgentIdentity{key: {Name: "Reviewer"}},
+	}
+	if err := store.writeDocument(context.Background(), productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Fatal("fixture did not persist")
+	}
+	endpoint := agentMessageEndpoint{UserID: "owner", Profile: "work", ChatKey: "project:chat:review", Session: "session-review", Path: "Crew/example"}
+	if got := store.messageRecipientName(context.Background(), endpoint); got != "Reviewer" {
+		t.Fatalf("exact recipient: %q", got)
+	}
+	for _, change := range []func(*agentMessageEndpoint){
+		func(e *agentMessageEndpoint) { e.UserID = "other" },
+		func(e *agentMessageEndpoint) { e.ChatKey = "project:chat:other" },
+		func(e *agentMessageEndpoint) { e.Session = "session-other" },
+		func(e *agentMessageEndpoint) { e.Path = "Crew/other" },
+	} {
+		wrong := endpoint
+		change(&wrong)
+		if got := store.messageRecipientName(context.Background(), wrong); got != "" {
+			t.Fatalf("unbound endpoint got name %q", got)
+		}
+	}
+}

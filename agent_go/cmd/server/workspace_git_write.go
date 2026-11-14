@@ -3,10 +3,14 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,8 +21,8 @@ import (
 )
 
 // Local git actions for the Files pane: stage, unstage, discard and commit.
-// Push and pull need the user's remote credentials, which live with the agent,
-// so those stay agent requests.
+// GitHub push/PR delivery uses the explicitly selected project Vault account;
+// pull and conflict judgement remain agent requests.
 //
 // Writing is narrower than reading: the caller must own the tree, or hold the
 // editor role or better on the Code (never an admin by role alone). Every
@@ -70,12 +74,15 @@ var workspaceGitWriteAllowed = func(ctx context.Context, r *http.Request, claims
 
 // workspaceGitWriteSafe refuses repos whose own config could run a command
 // during add, restore or commit.
-func workspaceGitWriteSafe(repoDir string) error {
-	gitDir := filepath.Join(repoDir, ".git")
+func workspaceGitWriteSafe(root, repoDir string) error {
+	gitDir, common, ok := safegit.CheckoutInside(root, repoDir)
+	if !ok {
+		return errors.New("Git data is not available inside this project folder.")
+	}
 	if _, err := os.Lstat(filepath.Join(gitDir, "config.worktree")); err == nil {
 		return errors.New("this repo uses per-worktree config; ask the agent to make this change")
 	}
-	file, err := os.Open(filepath.Join(gitDir, "config"))
+	file, err := os.Open(filepath.Join(common, "config"))
 	if err != nil {
 		return nil
 	}
@@ -124,6 +131,11 @@ func workspaceGitActionPaths(raw []string) ([]string, bool) {
 }
 
 type workspaceGitActionRequest struct {
+	SessionID     string   `json:"session_id,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	Body          string   `json:"body,omitempty"`
+	Base          string   `json:"base,omitempty"`
+	ExpectedHead  string   `json:"expected_head,omitempty"`
 	WorkspacePath string   `json:"workspace_path"`
 	Repo          string   `json:"repo"`
 	Op            string   `json:"op"`
@@ -197,6 +209,16 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		return
 	}
 	var req workspaceGitActionRequest
+	logged := &gitActionResponse{ResponseWriter: w, status: 200}
+	w = logged
+	requestID := newSteerMessageID()
+	defer func() {
+		switch req.Op {
+		case "commit", "push", "open_pr", "draft_commit", "draft_pr":
+			sum := sha256.Sum256([]byte(req.WorkspacePath + "\x00" + req.Repo))
+			log.Printf("[GIT_ACTION] op=%s repo=%s user=%s request=%s ok=%t reason=http_%d", req.Op, hex.EncodeToString(sum[:6]), GetUserIDFromContext(r.Context()), requestID, logged.status < 400, logged.status)
+		}
+	}()
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&req) != nil {
 		writeWorkspaceGitJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
@@ -210,6 +232,12 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 	if !workspaceGitWriteAllowed(r.Context(), r, claims, canonical) {
 		writeWorkspaceGitJSON(w, http.StatusForbidden, map[string]string{"error": "you do not have permission to change files here"})
 		return
+	}
+	if req.Op == "commit" || req.Op == "push" || req.Op == "open_pr" || req.Op == "prepare_pr" || req.Op == "draft_pr" || req.Op == "draft_commit" || req.Op == "delivery_capabilities" {
+		if !workspaceGitDeliveryTokenAllowed(r, canonical) {
+			writeWorkspaceGitJSON(w, 403, map[string]string{"error": "This connection cannot draft or publish a whole repository."})
+			return
+		}
 	}
 	root := workspaceGitDocsRoot()
 	if root == "" {
@@ -231,12 +259,18 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
 		return
 	}
-	if err := workspaceGitWriteSafe(repoDir); err != nil {
+	if err := workspaceGitWriteSafe(realBase, repoDir); err != nil {
 		writeWorkspaceGitJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 
-	serveWorkspaceGitAction(w, r, canonical, repoDir, req, claims)
+	r = r.WithContext(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase))
+	switch req.Op {
+	case "delivery_capabilities", "draft_commit", "prepare_pr", "draft_pr", "push", "open_pr":
+		api.workspaceGitDelivery(w, r, canonical, repoDir, req)
+		return
+	}
+	serveWorkspaceGitAction(w, r.WithContext(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase)), canonical, repoDir, req, claims)
 }
 
 // Shared action implementation; callers must authorize and select the repository.
@@ -482,6 +516,7 @@ func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, canonical, 
 	}
 
 	// Git index/tree writes do not pass through the file-mutation hooks.
+	markCrewPanelChangesDirty(canonical)
 	publishCrewPanelPathChanged(canonical)
 	repo, err := workspaceGitStatus(ctx, repoDir)
 	if err != nil {
@@ -491,3 +526,15 @@ func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, canonical, 
 	repo.Root = req.Repo
 	writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"ok": true, "repo": repo})
 }
+
+// Ordinary JSON responses only; no stream or upgraded connection is wrapped.
+type gitActionResponse struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *gitActionResponse) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *gitActionResponse) Write(body []byte) (int, error) { return w.ResponseWriter.Write(body) }

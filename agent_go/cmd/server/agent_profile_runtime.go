@@ -58,7 +58,8 @@ type resolvedAgentProfile struct {
 	// ProjectInstructions is the Code or Crew project's own PROJECT_INSTRUCTIONS.md, rendered as the last
 	// instruction section (PLAT-692). It is separate from Prompt because Crew re-renders Prompt for its mode.
 	// Its hash feeds the session fingerprint: a retained CLI relaunches, resuming the conversation, when it changes.
-	ProjectInstructions string
+	ProjectInstructions          string
+	ProjectInstructionSourcesKey string
 	// Changing the optional laptop binding refreshes retained tools between turns.
 	LaptopConnection       *laptopConnectionTarget
 	LaptopConnectionPolicy string
@@ -138,7 +139,7 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		LaptopConnectionPolicy string                  `json:"laptop_connection_policy,omitempty"`
 		Instructions           string                  `json:"project_instructions,omitempty"`
 	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions), LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
+		Instructions: projectinstructions.Key(profile.ProjectInstructions) + ":" + profile.ProjectInstructionSourcesKey, LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -507,8 +508,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			if e != nil {
 				return nil, e
 			}
-			if place != nil && (IsLocalMode() || place.Location != "server") {
-				return nil, fmt.Errorf("this agent is %s on the server; open Share → Publish to continue there or finish its publish", place.Location)
+			if place != nil && place.Location != "server" {
+				return nil, fmt.Errorf("this agent is still being copied to the server; try again in a moment")
+			}
+			if place != nil && IsLocalMode() {
+				return nil, fmt.Errorf("this is the online agent: it runs only on the server, so chat with it on the website")
 			}
 		}
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so
@@ -670,6 +674,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// coding-agent environment, lent by the project's owner.
 		selectedGlobals, globalSecretErr := productSelectedGlobalSecrets(ctx, profile.ID, workspacePath)
 		if globalSecretErr != nil {
+			if _, selectedAccountUnavailable := globalSecretErr.(githubProjectSelectionError); selectedAccountUnavailable {
+				return nil, globalSecretErr
+			}
 			log.Printf("[SECRETS] Failed to read product secret selection for %s (%s): %v", userID, workspacePath, globalSecretErr)
 			noGlobalSecrets := []string{}
 			req.SelectedGlobalSecrets = &noGlobalSecrets
@@ -724,13 +731,20 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		// The Team agent works by the Team Crew's own rules, read now from the server (PLAT-746-1026).
+		if rules := api.teamHomeRules(ctx, workspacePath); rules != "" {
+			projectInstructions = strings.TrimSpace(projectInstructions + "\n\n" + rules)
+		}
+	}
+
 	if publication != nil {
-		for _, name := range []string{projectinstructions.FileName, "AGENTS.md", "CLAUDE.md"} {
+		for _, name := range []string{projectinstructions.FileName} {
 			if publication.AgentID == "" && name == projectinstructions.FileName {
 				continue
 			}
 			if content, found, err := readFileFromWorkspace(ctx, publication.sourceRoot()+"/"+name); err == nil && found && strings.TrimSpace(content) != "" {
-				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.Section(content)
+				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.SourceSection(name, content)
 			}
 		}
 	}
@@ -833,10 +847,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	publishedAgentContext := ""
+	instructionFilesFolder := workspacePath
 	if isProjectProfileID(profile.ID) {
 		if scoped, e := crewAgentRuntimeFolder(workspacePath, userID, sessionID); e != nil {
 			return nil, e
 		} else if scoped != workspacePath {
+			instructionFilesFolder = scoped
 			// Keep the canonical Crew path for admission and private chat persistence.
 			// The native runtime's project link points at this agent's scoped files.
 			resources := strings.TrimSuffix(strings.TrimSuffix(scoped, "/files"), "/resources") + "/resources"
@@ -844,14 +860,37 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			if memory, found, e := readFileFromWorkspace(ctx, resources+"/MEMORY.md"); e == nil && found {
 				publishedAgentContext += "\n\nThis agent's saved memory:\n" + memory
 			}
-			if content, found, e := readFileFromWorkspace(ctx, resources+"/"+projectinstructions.FileName); e != nil {
-				return nil, e
-			} else if found {
-				projectInstructions = projectinstructions.Section(content)
+			// The Crew's PROJECT_INSTRUCTIONS.md is read live from the Crew above, never from a copy made at publish time,
+			// so an edit by anyone in the Team reaches this agent on its next turn (PLAT-856-564). MEMORY.md stays its own.
+		}
+	}
+	rootInstructionKey := ""
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		rootGuidance, err := resolveRootProjectInstructions(ctx, userID, instructionFilesFolder, publication, req.Provider, req.ModelID)
+		if err != nil {
+			// Imported AGENTS.md/CLAUDE.md are optional guidance: an unreadable file (an offline laptop folder, a
+			// permission blip) must not stop every chat in the Crew. Log it once per turn, no content, and go on.
+			log.Printf("[PROJECT_INSTRUCTIONS] workspace=%q provider=%q root guidance skipped: %v", instructionFilesFolder, req.Provider, err)
+			rootGuidance = projectinstructions.RootResult{}
+		}
+		rootInstructionKey = rootGuidance.Key
+		// Shared Crew rules stay last, after imported root guidance.
+		projectInstructions = strings.TrimSpace(rootGuidance.Section + "\n\n" + projectInstructions)
+	}
+	if profile.ID == crewProfileID && turnSharedAsk(ctx, req) == nil {
+		project := crewResourceProjectID(req.AgentProfileConversationKey)
+		if project != "" {
+			digest, digestErr := api.crewSharedAnswerDigestForTurn(ctx, project, userID, req.AgentProfileConversationKey, sessionID)
+			if digestErr != nil {
+				return nil, digestErr
+			}
+			if digest != "" {
+				req.Query += digest
+				log.Printf("[CREW_SHARED_ANSWER] project=%s session=%s event=digest_user_content", project, sessionID)
 			}
 		}
 	}
-	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 

@@ -63,7 +63,7 @@ const manageMyVaultsDescription = "Your own Vault items: your sign-ins (MCP apps
 	"connect {provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
 	"set_secret {name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {name}; " +
-	"github_status shows your GitHub connection. github_connect {method: gh|pat|oauth, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs. With multiple accounts, ask which login to use and pass login. gh copies only that account into encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect removes the saved connection. " +
+	"github_status shows this project’s GitHub selection and reusable saved connections. github_connect {workspace_path, method: saved|gh|pat|oauth, connection_id?, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs and reusable connections; method=saved selects connection_id for this project only. With multiple accounts, ask which login to use and pass login. gh copies only that account into separate encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect unselects GitHub for this project only. Saved connections remain reusable. " +
 	"sync {connection_id}; remove_connection {connection_id}. " +
 	"A person can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal."
 
@@ -87,7 +87,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 			"token":          str("github_connect with method=pat: the supplied personal access token. Stored encrypted; never return or repeat it."),
 			"url":            str("Verified custom MCP URL, with name instead of provider."),
 			"label":          str("connect: an account label, e.g. Notion · Engineering."),
-			"connection_id":  str("The connection's ID (c-...) from project."),
+			"connection_id":  str("The connection's ID (c-...) from project; for github_connect with method=saved, the id from github_status.connections (selects only for this project)."),
 			"value":          str("set_secret: the secret value the person gave you. Stored on the server; never repeat it."),
 			"api_key":        str("User-provided connection key; encrypted in Vault, never repeat."),
 			"api_key_header": str("Provider's documented API-key header."), "api_key_format": str("Header format, such as Bearer {}."),
@@ -122,7 +122,7 @@ func argString(args map[string]interface{}, key string) string {
 
 func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, args map[string]interface{}) (string, error) {
 	// In a project's own chat the project is the chat's; callers often leave workspace_path out.
-	if op := argString(args, "operation"); (op == "project" || op == "project_select") && argString(args, "workspace_path") == "" {
+	if op := argString(args, "operation"); (op == "project" || op == "project_select" || strings.HasPrefix(op, "github_")) && argString(args, "workspace_path") == "" {
 		if root := api.projectRootForSession(executor.SessionIDFromContext(ctx)); root != "" {
 			args["workspace_path"] = root
 		}
@@ -169,6 +169,26 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		}
 		return vaultPersonRequest(ctx, person, method, path, payload)
 	}
+	// The screen uses the native exact-connection management path, including its
+	// current owner/admin gate. Never accept a browser-provided vault or project.
+	if args["_screen"] == true {
+		native := map[string]string{"edit_connection": "edit_mcp_server", "sign_in": "install_mcp_server", "sync": "trigger_mcp_discovery", "remove_connection": "remove_mcp_server"}[operation]
+		if native != "" {
+			if !vaultConnectionID.MatchString(connectionID) {
+				return "", errors.New("Choose an exact saved connection")
+			}
+			in := map[string]interface{}{"_vault_only": true, "_screen": true, "name": vaultServerName(connectionID)}
+			for _, field := range []string{"label", "url", "api_key", "api_key_header", "api_key_format", "client_id", "client_secret"} {
+				if value, ok := args[field]; ok {
+					in[field] = value
+				}
+			}
+			if operation == "sign_in" {
+				in["reconnect"] = true
+			}
+			return api.mcpConnectionTool(ctx, person, native, in)
+		}
+	}
 	// Every change goes to the person's own vault (PLAT-856-400); there is no other vault to choose.
 	vaultID := ""
 	if operation != "apps" {
@@ -193,7 +213,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		}
 		return vaultCatalogApps(data, needsAdminSetup)
 	case "connect", "sign_in":
-		in := map[string]interface{}{"_vault_only": true, "vault_id": vaultID, "catalog": argString(args, "provider"), "label": argString(args, "label"), "name": argString(args, "name"), "url": argString(args, "url")}
+		in := map[string]interface{}{"_vault_only": true, "vault_id": vaultID, "catalog": argString(args, "provider"), "label": argString(args, "label"), "name": argString(args, "name"), "url": argString(args, "url"), "_screen": args["_screen"]}
 		if operation == "sign_in" {
 			in["name"] = vaultServerName(connectionID)
 			delete(in, "catalog")

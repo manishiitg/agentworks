@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -56,12 +57,20 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var in struct {
-		Where string `json:"where"`
-		Pair  string `json:"pair,omitempty"`
+		Where  string               `json:"where"`
+		Pair   string               `json:"pair,omitempty"`
+		Agents *[]crewTeamJoinAgent `json:"agents,omitempty"`
+		JoinID string               `json:"join_id,omitempty"`
 	}
-	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil || in.Where != "mac" && in.Where != "web" {
+	if json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&in) != nil || in.Where != "mac" && in.Where != "web" {
 		externalError(w, 400, "invalid_where", "Choose your Mac or the web.")
 		return
+	}
+	if in.JoinID != "" {
+		if _, err := uuid.Parse(in.JoinID); err != nil {
+			externalError(w, 400, "invalid_request", "Use this join's request ID.")
+			return
+		}
 	}
 	if in.Where == "mac" && !crewChatWebsiteClaims(claims) {
 		externalError(w, 403, "mac_sign_in_required", "Add this Crew from the AgentWorks app on your Mac.")
@@ -85,6 +94,20 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 	}
 	at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == claims.UserID })
 	person := &t.People[at]
+	if in.Agents != nil {
+		if in.Where != "mac" || len(*in.Agents) > 200 {
+			externalError(w, 400, "invalid_agents", "Choose your own agents on this Mac.")
+			return
+		}
+		seen := map[string]bool{}
+		for _, a := range *in.Agents {
+			if !crewMacTabID(a.Tab) || seen[a.Tab] || len(a.Name) > 200 {
+				externalError(w, 400, "invalid_agents", "Choose each of your own agents once.")
+				return
+			}
+			seen[a.Tab] = true
+		}
+	}
 	switch in.Where {
 	case "mac":
 		person.Where = "mac"
@@ -104,16 +127,41 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		person.Where, person.MacPair = "", ""
 	}
 	t.Revision++
-	if err = writeCrewTeam(t); err != nil {
+	initialized := []crewTeamRegisteredAgent{}
+	if err = writeCrewTeamWithAgents(t, func(agents map[string]crewTeamRegisteredAgent) {
+		if in.Agents == nil {
+			return
+		}
+		for _, choice := range *in.Agents {
+			id := ""
+			for key, a := range agents {
+				if a.OwnerID == claims.UserID && a.Tab == choice.Tab {
+					id = key
+					break
+				}
+			}
+			if id == "" {
+				id = crewTeamAgentIDPrefix + uuid.NewString()
+			}
+			a := agents[id]
+			a.ID, a.OwnerID, a.Tab, a.Name, a.InTeam, a.Place = id, claims.UserID, choice.Tab, choice.Name, choice.InTeam, "mac"
+			a.ChatKey = crewMacTabRow(project, crewMacTeamTab{Person: claims.UserID, Tab: choice.Tab}).ConversationKey
+			agents[id] = a
+			initialized = append(initialized, a)
+		}
+	}); err != nil {
 		externalError(w, 409, "team_save_failed", err.Error())
 		return
+	}
+	for _, a := range initialized {
+		log.Printf("[TEAM_JOIN] request_id=%s project=%s actor=%s agent=%s event=agent_choice_saved in_team=%t reason=accept_selection", in.JoinID, project, claims.UserID, a.ID, a.InTeam)
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=where where=%s revision=%d", project, logUsernameForUserID(claims.UserID), in.Where, t.Revision)
 	if in.Where == "mac" {
 		// Their server copy goes now: their agents here work on their Mac, with its copy (crew_team_server_copy.go).
 		go api.removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
 	}
-	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.view(claims.UserID)})
+	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.viewLocked(claims.UserID)})
 }
 
 // crewRelayReadKey marks a relay request that only reads a Mac chat (its events, status or queue).
@@ -163,7 +211,18 @@ func crewLocalCrewPairedWith(project string, keep func(string) bool) string {
 // team's folder (only their Main to start; the Crew's own setup reaches it through the team folder), paired to the
 // online copy as the member, and the server records that their agents here work on this Mac.
 func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder string) (string, error) {
-	local := crewTeamMemberCopy(project)
+	return api.addCrewTeamToMacChosen(ctx, claims, c, project, team, folder, "", nil)
+}
+
+type crewTeamJoinAgent struct {
+	Tab    string `json:"tab"`
+	Name   string `json:"name"`
+	InTeam bool   `json:"in_team"`
+}
+
+func (api *StreamingAPI) addCrewTeamToMacChosen(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder, chosen string, agents *[]crewTeamJoinAgent) (string, error) {
+	local := firstNonEmptyTrimmed(chosen, crewTeamMemberCopy(project))
+	joinedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	pair := ""
 	if local != "" {
 		if b, err := crewroot.ReadSync(local); err == nil && b != nil {
@@ -173,7 +232,7 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 	var where struct {
 		Pair string `json:"pair"`
 	}
-	if err := crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]string{"where": "mac", "pair": pair}, &where); err != nil {
+	if err := crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]any{"where": "mac", "pair": pair, "agents": agents, "join_id": crewTeamJoinRequestID(ctx)}, &where); err != nil {
 		return "", err
 	}
 	if where.Pair == "" {
@@ -200,7 +259,12 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		}
 		local = id
 	}
-	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) { s.MemberOf = project }); err != nil {
+	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) {
+		if s.MemberOf != project || pair == "" || s.JoinedAt == "" {
+			s.JoinedAt = joinedAt
+		}
+		s.MemberOf, s.SharedBy, s.SharedFrom = project, strings.SplitN(team.OwnerName, "@", 2)[0], crewTeamNetworkName(c)
+	}); err != nil {
 		return "", err
 	}
 	if err := crewroot.WriteSync(local, crewroot.SyncBinding{Mode: "relay", PairID: where.Pair, Side: "local", Editing: "local", ConnectionID: c.ID,
@@ -284,7 +348,13 @@ func crewTeamWhereFor(project, user string) string {
 	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
 		return ""
 	}
-	return t.view(user).Where
+	if t.member(user) && user != t.OwnerID {
+		if _, onMac := t.memberMac(user); onMac {
+			return "mac"
+		}
+		return "web"
+	}
+	return ""
 }
 
 // handleDesktopCrewTeamAddToMac moves the member's agents of a Team's Crew back to this Mac's existing copy ("Add to

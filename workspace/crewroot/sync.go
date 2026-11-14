@@ -196,6 +196,10 @@ func SyncContentAllowed(key string, directory bool) bool {
 		if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") || rel == "db/db.sqlite" || strings.HasPrefix(rel, "db/db.sqlite-") {
 			return false
 		}
+		// A laptop Crew's resource root is its .agentworks: runtime data and records never sync.
+		if HeavyRuntimePath(rel) {
+			return false
+		}
 	}
 	// Git's ignore/attribute files are ordinary project content, never .git state.
 	if path.Base(rel) == ".gitignore" || path.Base(rel) == ".gitattributes" {
@@ -272,6 +276,15 @@ func (r Roots) teamCopyPath(physical string) bool {
 }
 
 func (r Roots) syncRuntimePath(physical string) bool {
+	// Records, runs, the database, plans and knowledge in .agentworks are platform data, not synced source (PLAT-746-924).
+	if r.Automation != "" && Within(r.Automation, physical) {
+		if rel, err := filepath.Rel(r.Automation, physical); err == nil && rel != "." {
+			rel = filepath.ToSlash(rel)
+			if automationDataPath(rel) || HeavyRuntimePath(rel) {
+				return true
+			}
+		}
+	}
 	for _, name := range SyncRuntimeDirectories {
 		if Within(filepath.Join(r.Resources, name), physical) {
 			return true

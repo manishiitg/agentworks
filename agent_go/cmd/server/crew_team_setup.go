@@ -16,7 +16,8 @@ import (
 
 // A Team works with one Crew setup (owner, 5 Nov): the Crew's chat instructions and selected skills travel in
 // team-setup.json at the Crew folder's top, and its own skills in skills/. Both are always part of what a Team shares,
-// whatever folders it chose, so every copy has them and edits by anyone sync both ways with the store's history and
+// PROJECT_INSTRUCTIONS.md is also always shared; MEMORY.md and memory/ stay personal.
+// Whatever folders it chose, every copy has them and edits by anyone sync both ways with the store's history and
 // clash handling. Each copy (the owner's Mac, a member's Mac, a web member's server copy) writes the file when its
 // Crew's setup changes and applies it when someone else's edit arrives, so a web member's edit reaches the owner's Mac.
 // The model, apps and secrets stay as they are (the owner's, lent to the Team).
@@ -30,7 +31,7 @@ type crewTeamSetup struct {
 
 // crewTeamSetupPath: always shared with the Team (crewTeamFolder.holds).
 func crewTeamSetupPath(rel string) bool {
-	return rel == crewTeamSetupFile || rel == "skills" || strings.HasPrefix(rel, "skills/")
+	return rel == "PROJECT_INSTRUCTIONS.md" || rel == crewTeamSetupFile || rel == "skills" || strings.HasPrefix(rel, "skills/")
 }
 
 func (s crewTeamSetup) encode() []byte {
@@ -63,6 +64,10 @@ func (api *StreamingAPI) crewSetupOf(ctx context.Context, person, project string
 // reconcileCrewTeamSetup brings this Crew and its team-setup.json together. state is where the last applied version
 // is kept; write is false until a copy has received the team folder, so a new copy never replaces the Team's setup.
 func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write bool) {
+	api.reconcileCrewTeamSetupMapped(ctx, person, project, root, state, write, nil)
+}
+
+func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, person, project, root, state string, write bool, copy *crewTeamLocal) {
 	if project == "" || root == "" || state == "" {
 		return
 	}
@@ -73,8 +78,17 @@ func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, pro
 	mark := filepath.Join(state, "setup-applied")
 	last, _ := os.ReadFile(mark)
 	path := filepath.Join(root, crewTeamSetupFile)
-	current := setup.encode()
 	file, err := os.ReadFile(path)
+	currentSetup := setup
+	if copy != nil && copy.Mounted {
+		var shared crewTeamSetup
+		if err == nil {
+			_ = json.Unmarshal(file, &shared)
+		}
+		currentSetup.SelectedSkills = copy.exportSelectedSkills(setup.SelectedSkills, shared.SelectedSkills)
+	}
+	current := currentSetup.encode()
+
 	switch {
 	case os.IsNotExist(err):
 		if !write {
@@ -94,14 +108,18 @@ func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, pro
 			return
 		}
 		next := crewTeamSetup{ChatInstructions: in.ChatInstructions, SelectedSkills: in.SelectedSkills}
-		if string(next.encode()) != string(current) {
+		localSkills := next.SelectedSkills
+		if copy != nil && copy.Mounted {
+			localSkills = copy.importSelectedSkills(in.SelectedSkills, setup.SelectedSkills)
+		}
+		if next.ChatInstructions != setup.ChatInstructions || !slices.Equal(localSkills, setup.SelectedSkills) {
 			if next.ChatInstructions != setup.ChatInstructions {
 				if err = updateCrewChatInstructions(ctx, workspace, next.ChatInstructions); err != nil {
 					log.Printf("[CREW_TEAM] project=%s event=setup_apply_failed reason=%q", project, err)
 					return
 				}
 			}
-			if err = updateProductSelectedSkills(ctx, crewProfileID, workspace, func([]string) []string { return next.SelectedSkills }); err != nil {
+			if err = updateProductSelectedSkills(ctx, crewProfileID, workspace, func([]string) []string { return localSkills }); err != nil {
 				log.Printf("[CREW_TEAM] project=%s event=setup_apply_failed reason=%q", project, err)
 				return
 			}
@@ -124,4 +142,49 @@ func crewTeamLocalCrew(b crewTeamLocal) string {
 		return b.LocalProject
 	}
 	return crewTeamMemberCopy(b.Project)
+}
+
+func (b crewTeamLocal) privateSkill(name string) bool {
+	if filepath.Base(name) != name {
+		return false
+	}
+	if b.remoteRel("skills/"+name) != "" {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(b.diskRoot("skills/"+name), "skills", name))
+	return err == nil
+}
+
+func (b crewTeamLocal) exportSelectedSkills(local []string, shared ...[]string) []string {
+	common := []string{}
+	if len(shared) > 0 {
+		common = shared[0]
+	}
+	out := []string{}
+	for _, name := range local {
+		if remote := b.remoteRel("skills/" + name); remote != "" {
+			out = append(out, strings.TrimPrefix(remote, "skills/"))
+		} else if slices.Contains(common, name) && !b.privateSkill(name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func (b crewTeamLocal) importSelectedSkills(team, local []string) []string {
+	out := []string{}
+	for _, name := range local {
+		if b.remoteRel("skills/"+name) == "" {
+			out = append(out, name)
+		}
+	}
+	for _, name := range team {
+		if disk := b.diskRel("skills/" + name); disk != "" {
+			out = append(out, strings.TrimPrefix(disk, "skills/"))
+		} else {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }

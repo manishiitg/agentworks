@@ -232,7 +232,7 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 			return
 		}
 		pause, _ := LoadSchedulerConfig(ctx)
-		if pause.ProductPaused(fresh.Profile.ID) {
+		if pause != nil && pause.GloballyPaused {
 			return
 		}
 		m.Lock()

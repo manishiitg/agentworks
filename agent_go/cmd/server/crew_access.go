@@ -131,7 +131,7 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 	if err != nil {
 		return productConversationBinding{}, true, err
 	}
-	return crewOwnerDefaultBinding(userID, crew.Binding), crew.OwnedByCaller, nil
+	return crew.Binding, crew.OwnedByCaller, nil
 }
 
 // crewBuilderDiskHiddenFromUser reports whether project-local transcript
@@ -170,6 +170,11 @@ func isCrewReaderTurn(req QueryRequest, callerID string) bool {
 var errCrewProjectUnavailable = errors.New("This Crew is unavailable. Ask its owner to share it with you, or open another Crew.")
 
 func resolveCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
+	return readCrewProjectBinding(ctx, callerID, profile, projectID, selectedFolder)
+}
+
+// readCrewProjectBinding performs the same admission without repairing or creating Main.
+func readCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
 	denied := func() (crewProjectBinding, error) {
 		return crewProjectBinding{}, errCrewProjectUnavailable
 	}
@@ -185,10 +190,6 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 				log.Printf("[OWNER_MISMATCH] %s: %s/%s is registered to %q, not %q; refusing to open it as theirs", binding.WorkspacePath, id.Product, id.Folder, registered, callerID)
 				return denied()
 			}
-		}
-		binding, err = defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, callerID, profile, binding)
-		if err != nil {
-			return crewProjectBinding{}, err
 		}
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	} else if !errors.Is(err, errProjectNotFound) {
@@ -226,6 +227,9 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 		return reader(sharedCrewOwner(filepath.Base(shared.WorkspacePath)), shared)
 	} else if !errors.Is(err, errProjectNotFound) {
 		log.Printf("[CREW_BINDING] stage=shared profile=%s project=%q caller=%q cause=%v", profile.ID, projectID, callerID, err)
+		if retryableWorkspaceFailure(err) {
+			return crewProjectBinding{}, err
+		}
 		return denied()
 	}
 	// The query path already carries the verified physical root: resolve
@@ -233,12 +237,18 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if ownerID, ok := crewProjectOwnerID(selectedFolder); ok && ownerID != sanitizeUserIDForPath(callerID) {
 		binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, store)
 		if err != nil {
+			if retryableWorkspaceFailure(err) {
+				return crewProjectBinding{}, err
+			}
 			return denied()
 		}
 		return reader(ownerID, binding)
 	}
 	ownerID, binding, err := scanCrewProjectOwners(ctx, callerID, profile, projectID, store)
 	if err != nil {
+		if retryableWorkspaceFailure(err) {
+			return crewProjectBinding{}, err
+		}
 		return denied()
 	}
 	return reader(ownerID, binding)
@@ -263,6 +273,9 @@ func scanCrewProjectOwners(ctx context.Context, callerID string, profile agentpr
 	for _, ownerID := range owners {
 		binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, store)
 		if err != nil {
+			if retryableWorkspaceFailure(err) {
+				return "", productConversationBinding{}, err
+			}
 			continue
 		}
 		rootOwner, ok := crewProjectOwnerID(binding.WorkspacePath)

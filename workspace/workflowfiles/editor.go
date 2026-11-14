@@ -685,6 +685,13 @@ func (e *Editor) ReadBytes(scope, p string, g *FolderGuard) ([]byte, error) {
 	return data, nil
 }
 
+// ReadAt uses the same bounded read/grant policy on an already-admitted root.
+// The caller owns root; reads do not close it or create editor state.
+func ReadAt(root *os.Root, p string, g *FolderGuard) (File, error) {
+	e := &Editor{root: root}
+	return e.Read(".", p, g)
+}
+
 // Read returns a revision suitable for Write, with identical path and grant checks.
 func (e *Editor) Read(scope, p string, g *FolderGuard) (File, error) {
 	data, err := e.ReadBytes(scope, p, g)

@@ -45,8 +45,9 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 	defer livefeed.Default.Unsubscribe(sub)
 	if claims != nil {
 		// The Team's "active now" dot (crew_team_active.go).
-		noteWebOpen(claims.UserID, 1)
-		defer noteWebOpen(claims.UserID, -1)
+		where := clientWhere(r.UserAgent())
+		noteWebOpen(claims.UserID, where, 1)
+		defer noteWebOpen(claims.UserID, where, -1)
 	}
 
 	// Subscribe before telling the client to resync, so nothing published
@@ -105,7 +106,7 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			if claims != nil {
-				noteWebOpen(claims.UserID, 0)
+				noteWebOpen(claims.UserID, clientWhere(r.UserAgent()), 0)
 			}
 			flusher.Flush()
 		}
@@ -197,6 +198,26 @@ func liveFeedTerminalStatus(status string) bool {
 // publishSessionsChanged tells the header activity monitor to refetch. Call it
 // on session/execution status transitions only, never per event.
 func publishSessionsChanged() { livefeed.Publish(livefeed.Sessions, "") }
+
+// Resolve from the server's active session and registered Crew folder. Unknown
+// or non-Crew sessions keep the broad notice; no client guesses ownership.
+// Call only after releasing activeSessionsMux.
+func (api *StreamingAPI) publishSessionChanged(sessionID string) {
+	api.activeSessionsMux.RLock()
+	workspace := ""
+	if session := api.activeSessions[sessionID]; session != nil {
+		workspace = session.WorkspacePath
+	}
+	api.activeSessionsMux.RUnlock()
+	parts := strings.Split(strings.Trim(workspace, "/"), "/")
+	if len(parts) > 1 && parts[0] == "Crew" {
+		if record, ok := defaultProjectOwners().Lookup("work", parts[1]); ok && record.ProjectID != "" {
+			livefeed.Default.PublishProject(livefeed.Sessions, record.ProjectID)
+			return
+		}
+	}
+	publishSessionsChanged()
+}
 
 func publishHumanInputsChanged(workspacePath string) {
 	if wf := normalizeLiveFeedWorkflow(workspacePath); wf != "" {

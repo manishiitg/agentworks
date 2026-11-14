@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,8 @@ type crewAgentPublishAccount struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Identity string `json:"identity,omitempty"`
+	// Kind is whose account it is: "own" (the person's) or "company" (the server's, or one shared with them).
+	Kind string `json:"kind,omitempty"`
 }
 
 type crewAgentPublishPreview struct {
@@ -28,7 +31,6 @@ type crewAgentPublishPreview struct {
 	NeedsLogin  bool                      `json:"needs_login,omitempty"`
 	Selection   crewAgentPublishSelection `json:"selection"`
 	Accounts    []crewAgentPublishAccount `json:"accounts"`
-	Agents      []macAgentRow             `json:"agents,omitempty"`
 	TransferID  string                    `json:"transfer_id,omitempty"`
 	Files       int                       `json:"files"`
 	Bytes       int64                     `json:"bytes"`
@@ -58,43 +60,33 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 		out.Message += "."
 		return out, nil
 	}
-	views, err := api.listProviderAccountViews(ctx, claims.UserID, false, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"})
+	// Your own account or one the company provides (owner, 13 Nov, crew_server_account.go).
+	options, err := api.crewServerAccountOptions(ctx, claims, roots, provider)
 	if err != nil {
 		return nil, err
 	}
-	for _, v := range views {
-		if v.Provider != provider || v.Relation != "own" || !v.Usable || v.Configured != nil && !*v.Configured {
-			continue
-		}
-		out.Accounts = append(out.Accounts, crewAgentPublishAccount{v.ID, v.DisplayName, v.Identity})
+	out.Accounts = options
+	if account == "" {
+		account = crewServerAccountPick(roots.ID, claims.UserID, provider, options)
 	}
-	if account == "" && len(out.Accounts) == 1 {
-		account = out.Accounts[0].ID
+	if account == "" && len(options) == 1 {
+		account = options[0].ID
 	}
-	if len(out.Accounts) == 0 {
+	if len(options) == 0 {
 		out.NeedsLogin = true
-		out.Message = "Sign in to " + program + " on " + server + " once, in Providers → Add my account, then retry."
+		out.Message = "There is no " + program + " account you can use on " + server + ": sign in once in Providers → Add my account, or ask the admin to give you the company's account, then retry."
 		return out, nil
 	}
 	if account == "" {
-		out.Message = "Choose which of your server accounts this agent will use."
+		out.Message = "Ask the person which account this agent uses on " + server + ", their own or the company's, then retry with account_id: " + crewServerAccountChoiceLine(options) + "."
 		return out, nil
 	}
-	found := false
-	for _, candidate := range out.Accounts {
-		if candidate.ID == account {
-			found = true
-		}
-	}
-	if !found {
-		return nil, fmt.Errorf("choose one of your own signed-in accounts on this server")
+	if !slices.ContainsFunc(options, func(o crewAgentPublishAccount) bool { return o.ID == account }) {
+		return nil, fmt.Errorf("that account is not one you can use on %s; choose one of: %s", server, crewServerAccountChoiceLine(options))
 	}
 	admitted, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, provider, account)
 	if err != nil {
 		return nil, err
-	}
-	if admitted == nil || admitted.OwnerUserID != claims.UserID {
-		return nil, fmt.Errorf("publish uses your own AI login; add your account in Providers")
 	}
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
 	if err != nil {
@@ -102,6 +94,12 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 	}
 	if err = claudeCodeQueryAuthenticationError(&resolvedAgentProfile{Definition: profile}, provider, admitted); err != nil {
 		return nil, err
+	}
+	if readCrewServerAccounts(roots.ID, claims.UserID)[provider] != account {
+		if err = writeCrewServerAccount(roots.ID, claims.UserID, provider, account); err != nil {
+			return nil, err
+		}
+		logCrewServerAccount(roots.ID, claims.UserID, provider, account, "run_online")
 	}
 	out.Ready, out.Selection.AccountID = true, account
 	return out, nil
@@ -147,14 +145,18 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if selection.AccountID != out.Publish.Selection.AccountID {
 		return out, fmt.Errorf("confirm the server account before publishing")
 	}
-	if len(in.Native) != 1 || in.Native[0] == nil {
+	// One native session, or none: an agent whose program cannot copy its chat comes with its saved history only
+	// (crewMoveImportMode), and its first reply here starts that program's own session.
+	if len(in.Native) > 1 || (len(in.Native) == 1 && in.Native[0] == nil) {
 		return out, fmt.Errorf("publish requires exactly one native session")
 	}
-	if err = in.Native[0].Validate(); err != nil {
-		return out, err
-	}
-	if err = crewNativeRuntimeAvailable(ctx, in.Native[0]); err != nil {
-		return out, err
+	if len(in.Native) == 1 {
+		if err = in.Native[0].Validate(); err != nil {
+			return out, err
+		}
+		if err = crewNativeRuntimeAvailable(ctx, in.Native[0]); err != nil {
+			return out, err
+		}
 	}
 	if in.Action == "stage_agent" {
 		return api.prepareCrewTransfer(ctx, claims, id, in)
@@ -182,7 +184,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if in.Snapshot.StatePath == "" || in.Snapshot.Git != nil || in.Snapshot.DatabasePath != "" {
 		return out, fmt.Errorf("publish this agent's selected files and native session only")
 	}
-	main, err := api.crewHandoffMain(ctx, claims, id)
+	main, err := api.crewHandoffProjectTemplate(ctx, claims, id)
 	if err != nil {
 		return out, err
 	}
@@ -191,7 +193,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	}
 	var imported *crewMoveChat
 	err = readCrewMoveData(in.Snapshot.StatePath, func(h crewMoveHeader, chat *crewMoveChat) error {
-		if h.AgentTab != selection.Tab || h.AccountID != selection.AccountID || h.MainKey != h.SourceID || len(h.Settings) != 0 {
+		if h.AgentTab != selection.Tab || h.AccountID != selection.AccountID || (h.MainKey != "" && !ordinaryProjectChatKey(h.SourceID, h.MainKey)) || len(h.Settings) != 0 {
 			return fmt.Errorf("agent records differ from the confirmed publish")
 		}
 		if chat == nil {
@@ -204,16 +206,22 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 			}
 			return nil
 		}
-		if imported != nil || chat.Previous || chat.Key != crewAgentPublishKey(h.SourceID, selection.Tab) || chat.Conversation == nil || chat.Conversation.Native == nil {
+		if imported != nil || chat.Previous || chat.Key != crewAgentPublishKey(h.SourceID, selection.Tab) || chat.Conversation == nil || (chat.Conversation.Native == nil) != (len(in.Native) == 0) {
 			return fmt.Errorf("publish must contain only this agent's current native conversation")
 		}
-		a, _ := json.Marshal(chat.Conversation.Native)
-		b, _ := json.Marshal(in.Native[0])
-		if !bytes.Equal(a, b) {
-			return fmt.Errorf("the native session differs from the confirmed publish")
-		}
-		if chat.Conversation.Native.Provider != provider || chat.Conversation.Native.SessionID != in.Native[0].SessionID {
-			return fmt.Errorf("the native session differs from the staged agent")
+		if chat.Conversation.Native == nil {
+			if len(chat.Conversation.History) == 0 {
+				return fmt.Errorf("the agent's conversation is missing")
+			}
+		} else {
+			a, _ := json.Marshal(chat.Conversation.Native)
+			b, _ := json.Marshal(in.Native[0])
+			if !bytes.Equal(a, b) {
+				return fmt.Errorf("the native session differs from the confirmed publish")
+			}
+			if chat.Conversation.Native.Provider != provider || chat.Conversation.Native.SessionID != in.Native[0].SessionID {
+				return fmt.Errorf("the native session differs from the staged agent")
+			}
 		}
 		if selection.Tab != macMainTab && strings.TrimSpace(chat.Identity.Name) == "" {
 			return fmt.Errorf("give the agent a name")
@@ -225,7 +233,7 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 	if err != nil {
 		return out, err
 	}
-	if !strings.HasPrefix(in.MacMainConversationID, "conversation-") || !productConversationKeyPattern.MatchString(in.MacMainConversationID) {
+	if in.MacMainConversationID != "" && (!strings.HasPrefix(in.MacMainConversationID, "conversation-") || !productConversationKeyPattern.MatchString(in.MacMainConversationID)) {
 		return out, fmt.Errorf("the Mac main conversation identity is missing")
 	}
 	if imported == nil {
@@ -270,6 +278,10 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 		return out, err
 	}
 	out.Placements, err = readCrewAgentPlacements(id)
-	log.Printf("[CREW_AGENT_PUBLISH] owner=%s project=%s tab=%s transfer=%s native=%s files=%d result=server", claims.UserID, id, selection.Tab, in.TransferID, imported.Conversation.Native.SessionID, len(in.Snapshot.Files))
+	native := "none"
+	if imported.Conversation.Native != nil {
+		native = imported.Conversation.Native.SessionID
+	}
+	log.Printf("[CREW_AGENT_PUBLISH] owner=%s project=%s tab=%s transfer=%s program=%s native=%s files=%d result=server", claims.UserID, id, selection.Tab, in.TransferID, provider, native, len(in.Snapshot.Files))
 	return out, err
 }

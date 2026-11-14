@@ -59,7 +59,7 @@ type idleCompactConfig struct {
 
 func idleCompactConfigFromEnv() idleCompactConfig {
 	cfg := idleCompactConfig{MinTokens: 200_000, MinPercent: 60, IdleFrom: 50 * time.Minute, IdleTo: 58 * time.Minute,
-		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 90 * time.Second, MaxConcurrent: 2}
+		LongIdle: 3 * time.Hour, PersonWithin: 6 * time.Hour, Sweep: 5 * time.Minute, SendWait: 10 * time.Minute, MaxConcurrent: 2}
 	positive := func(key string) (int, bool) {
 		n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
 		return n, err == nil && n > 0
@@ -262,7 +262,7 @@ func (t *idleCompactTracker) notePersonTurn(sessionID, userID string, req QueryR
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c := t.chat(sessionID)
-	c.personReq, c.personUser, c.lastPerson = req, userID, now
+	c.personReq, c.personUser, c.lastPerson = queryRequestForRetention(req), userID, now
 }
 
 func (t *idleCompactTracker) noteTurnEnd(sessionID string, runtime *ChatHistoryAgentRuntime, now time.Time) {
@@ -453,6 +453,9 @@ func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCom
 	api.handleQuery(recorder, httpReq)
 	if recorder.status >= http.StatusBadRequest {
 		logSkip("turn_refused_" + strconv.Itoa(recorder.status))
+		// Keep the pre-queue attempt timestamp on refusal too. Its completion
+		// kicks the queue immediately; clearing the cooldown here creates a
+		// tight retry loop while a competing turn still owns the session.
 		run.finish(llmtypes.IdleCompactResult{}, nil)
 		return
 	}

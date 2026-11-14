@@ -554,6 +554,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 			allow[family] = true
 		}
 	}
+	// Managed file reads use this invocation's existing bridge, not broader
+	// shell/native grants or a reusable helper-result receipt.
+	bridgeTools["crew_files_read"] = pythonCrewFileReader(hcpo.GetWorkspacePath())
+	allow["crew_files_read"] = true
 	ctx = context.WithValue(ctx, pythonScriptSessionKey{}, sessionID)
 	helper, finishSteps := hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
 	bridgeTools["python_automation"] = helper

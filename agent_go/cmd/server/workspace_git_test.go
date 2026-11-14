@@ -268,12 +268,44 @@ func TestWorkspaceGitFindsReposTwoFoldersDeepButNotInDependencies(t *testing.T) 
 	if !roots["app"] || !roots["code/service"] || roots["node_modules/pkg"] {
 		t.Fatalf("repos: %v", roots)
 	}
+	// PLAT-746-833: an agent worktree in app/.claude/worktrees was invisible
+	// (dot folders are skipped), and a listed nested checkout also counted as
+	// one untracked folder of its parent.
+	repo := filepath.Join(project, "app")
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", filepath.Join(repo, ".claude", "worktrees", "feature"))
+	_, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	var worktree, parent map[string]any
+	for _, r := range body["repos"].([]any) {
+		switch r.(map[string]any)["root"] {
+		case "app/.claude/worktrees/feature":
+			worktree = r.(map[string]any)
+		case "app":
+			parent = r.(map[string]any)
+		}
+	}
+	if worktree == nil || worktree["worktree"] != true || worktree["repository"] != "app" {
+		t.Fatalf("hidden agent worktree: %v", body["repos"])
+	}
+	for _, f := range parent["files"].([]any) {
+		if path := f.(map[string]any)["path"].(string); strings.HasPrefix(path, ".claude/worktrees/") {
+			t.Fatalf("nested worktree counted in its parent: %s", path)
+		}
+	}
 }
 
 // The platform's private .sandbox-cache folder never shows up as a change, is never walked into (an unreadable folder inside it must not warn), and
 // "stage everything" does not add it.
 func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 	_, repo := gitTestEnv(t)
+	// PLAT-746-766: omit untracked dependencies but retain deliberate tracked edits.
+	for _, folder := range []string{"node_modules", "bower_components", "jspm_packages", ".venv", "venv", "__pycache__"} {
+		writeFile(t, filepath.Join(repo, folder, "untracked.txt"), "dependency noise")
+	}
+	tracked := filepath.Join(repo, "node_modules", "tracked.txt")
+	writeFile(t, tracked, "before")
+	gitRun(t, repo, "add", "-f", "node_modules/tracked.txt")
+	gitRun(t, repo, "commit", "-qm", "track dependency fixture")
+	writeFile(t, tracked, "after")
 	private := filepath.Join(repo, ".sandbox-cache", "cli-home", "muse-cli", "tmp", "muse-workspace-probe-abc")
 	if err := os.MkdirAll(private, 0o755); err != nil {
 		t.Fatal(err)
@@ -296,6 +328,12 @@ func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 		t.Fatalf("stage everything: %v %q", err, out)
 	}
 	staged, _ := workspaceGitRunWrite(context.Background(), repo, nil, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, "untracked.txt") {
+		t.Fatalf("stage everything added ignored dependencies: %q", staged)
+	}
+	if !strings.Contains(staged, "node_modules/tracked.txt") {
+		t.Fatalf("tracked dependency edit disappeared: %q", staged)
+	}
 	if strings.Contains(staged, ".sandbox-cache") {
 		t.Fatalf("stage everything added the platform folder: %q", staged)
 	}
@@ -384,5 +422,55 @@ func TestWorkspaceGitBranchCompareUsesMergeBaseNotUpstream(t *testing.T) {
 	q.Set("base", "--output=/tmp/x")
 	if code, _ := gitGet(t, "alice", q); code != http.StatusBadRequest {
 		t.Fatalf("option-looking base accepted: %d", code)
+	}
+}
+
+// PLAT-746-319: the imported parent folder's panel skipped real linked
+// worktrees because it recognized only .git directories.
+func TestWorkspaceGitLinkedWorktreeKeepsProjectBoundary(t *testing.T) {
+	docs, repo := gitTestEnv(t)
+	root := filepath.Join(docs, filepath.FromSlash(gitTestProject))
+	linked := filepath.Join(root, "feature")
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", linked)
+	writeFile(t, filepath.Join(linked, "a.txt"), "worktree change\n")
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	if code != http.StatusOK {
+		t.Fatalf("worktree status: %d %+v", code, body)
+	}
+	found := false
+	for _, value := range body["repos"].([]any) {
+		r := value.(map[string]any)
+		if r["root"] == "feature" {
+			found = r["branch"] == "feature" && len(r["files"].([]any)) == 1
+		}
+	}
+	if !found {
+		t.Fatalf("worktree absent from panel: %+v", body)
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "repo": {"feature"}, "op": {"diff"}, "file": {"a.txt"}})
+	if code != http.StatusOK || !strings.Contains(body["diff"].(string), "+worktree change") {
+		t.Fatalf("worktree diff: %d %+v", code, body)
+	}
+	code, body = gitPost(t, "alice", map[string]any{"workspace_path": gitTestProject, "repo": "feature", "op": "stage", "files": []string{"a.txt"}})
+	if code != http.StatusOK || gitOut(t, linked, "diff", "--cached", "--name-only") != "a.txt" {
+		t.Fatalf("worktree stage: %d %+v", code, body)
+	}
+	// The shared repository config still supplies the existing filter refusal.
+	gitRun(t, repo, "config", "filter.example.clean", "unused-fixture-command")
+	code, _ = gitPost(t, "alice", map[string]any{"workspace_path": gitTestProject, "repo": "feature", "op": "stage", "files": []string{"a.txt"}})
+	if code != http.StatusConflict {
+		t.Fatalf("worktree bypassed common config refusal: %d", code)
+	}
+	// A real worktree whose common Git directory is outside this project stays refused.
+	external := t.TempDir()
+	gitRun(t, external, "init", "-q", "-b", "main")
+	writeFile(t, filepath.Join(external, "private.txt"), "private")
+	gitRun(t, external, "add", "-A")
+	gitRun(t, external, "commit", "-q", "-m", "fixture")
+	outside := filepath.Join(root, "outside")
+	gitRun(t, external, "worktree", "add", "-q", "-b", "outside", outside)
+	code, _ = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "repo": {"outside"}, "op": {"diff"}, "file": {"private.txt"}})
+	if code != http.StatusNotFound {
+		t.Fatalf("external Git directory admitted: %d", code)
 	}
 }

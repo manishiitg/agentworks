@@ -3,10 +3,15 @@
 # This makes it easier to debug event issues by capturing all output to a log file
 # Terminal output is suppressed as requested.
 
+# Time through the first successful health response (no secret or query data).
+DEV_LAUNCH_STARTED_SECONDS=$SECONDS
+DEV_LAUNCH_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../scripts/dev-logging.sh"
 source "${SCRIPT_DIR}/../scripts/dev-processes.sh"
+source "${SCRIPT_DIR}/../scripts/dev-startup-dependencies.sh"
 
 # Local launches always run every core product, Vault included (owner, 2026-10-26:
 # server products are not optional). Local authentication is unchanged.
@@ -37,13 +42,10 @@ auto_pull_local_checkouts() {
         GIT_TERMINAL_PROMPT=0 git -C "$repo" fetch -q origin main 2>/dev/null || { echo "⚠️  $(basename "$repo"): could not fetch origin (offline?); running as is"; continue; }
         behind="$(git -C "$repo" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
         [ "$behind" = "0" ] && continue
-        # frontend/public/runtime-config.js is rewritten by this script on every start; it is
-        # not someone's work, so it neither blocks the update nor survives it.
-        if [ "$branch" != "main" ] || [ -n "$(git -C "$repo" status --porcelain 2>/dev/null | grep -v ' frontend/public/runtime-config.js$')" ]; then
+        if [ "$branch" != "main" ] || [ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
             echo "⚠️  $(basename "$repo") is $behind commit(s) behind origin/main but has uncommitted changes or is not on main; not updating it."
             continue
         fi
-        git -C "$repo" checkout -q -- frontend/public/runtime-config.js 2>/dev/null
         if git -C "$repo" merge -q --ff-only origin/main 2>/dev/null; then
             echo "⬇️  $(basename "$repo"): updated to origin/main (+$behind commits)"
             [ "$repo" = "$root" ] && updated_self=1
@@ -258,16 +260,11 @@ if [ "$ENABLE_CHAT_TERMINAL_DEBUGS" = true ]; then
     echo "🔬 Chat terminal diagnostics enabled for this run"
 fi
 
-# Every server launched by this script owns an isolated tmux socket. Coding
-# agent session names are process-global otherwise, and shutdown cleanup from
-# one dev/test server can kill sessions belonging to the desktop app or a
-# second server. TMUX_TMPDIR is inherited by the Go server and all CLI adapter
-# subprocesses, so ordinary tmux commands continue to work without extra flags.
+# Keep the socket across restarts so a chat can close its previous CLI before
+# relaunching. Each checkout/user still has its own server; explicit instance
+# sockets (run-local-instance.sh and test harnesses) retain their own scope.
 if [ -z "${TMUX_TMPDIR:-}" ]; then
-    TMUX_TMPDIR="${TMPDIR:-/tmp}/agentworks-tmux-$$"
-    AGENTWORKS_AUTO_TMUX_TMPDIR=true
-else
-    AGENTWORKS_AUTO_TMUX_TMPDIR=false
+    TMUX_TMPDIR="$(dev_tmux_directory "$SCRIPT_DIR")" || exit 1
 fi
 mkdir -p "$TMUX_TMPDIR"
 chmod 700 "$TMUX_TMPDIR"
@@ -508,13 +505,13 @@ launch_gateway_process() {
         fi
         prepare_gateway_product_credentials || return 1
         if [ "$BACKGROUND_MODE" = true ]; then
-            nohup env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            dev_detached_exec env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 < /dev/null &
         else
             env AGENTWORKS_DEPLOYMENT_MODE=local "$gateway_binary" >> "$GATEWAY_LOG_PATH" 2>&1 &
         fi
     else
         if [ "$BACKGROUND_MODE" = true ]; then
-            nohup bash -lc 'cd "$1" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc 'cd "$1" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server' bash "$GATEWAY_DIR" >> "$GATEWAY_LOG_PATH" 2>&1 < /dev/null &
         else
             (cd "$GATEWAY_DIR" && exec env GOWORK=off AGENTWORKS_DEPLOYMENT_MODE=local go run ./cmd/server) >> "$GATEWAY_LOG_PATH" 2>&1 &
         fi
@@ -791,11 +788,11 @@ EOF
     fi
     if [ "$BACKGROUND_MODE" = true ]; then
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         elif [ -n "$FRONTEND_HOST" ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         else
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         fi
     else
         (
@@ -863,7 +860,7 @@ EOF
         fi
         if [ "$BACKGROUND_MODE" = true ]; then
             # shellcheck disable=SC2086
-            nohup bash -lc "cd \"$DESKTOP_DIR\" && DEV_URL=\"$FRONTEND_URL\" exec \"$ELECTRON_BIN\" . $ELECTRON_EXTRA_ARGS" >> "$ELECTRON_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$DESKTOP_DIR\" && DEV_URL=\"$FRONTEND_URL\" exec \"$ELECTRON_BIN\" . $ELECTRON_EXTRA_ARGS" >> "$ELECTRON_LOG_PATH" 2>&1 < /dev/null &
         else
             (
                 cd "$DESKTOP_DIR" || exit 1
@@ -1535,6 +1532,7 @@ export MCPAGENT_CLAUDE_ENFORCE_HTTP_TOOL_ROUTING="${MCPAGENT_CLAUDE_ENFORCE_HTTP
 mkdir -p "$LOG_DIR"
 
 # Truncate the log files to start fresh
+dev_phase ports_and_env
 dev_detail "📝 Truncating log files for clean start..."
 # Keep the last three server logs (server_debug.log.1 is the previous start) so evidence from
 # before a restart is not lost.
@@ -1603,7 +1601,9 @@ run_local_builder_chat_migration() {
     dev_detail "✅ Local Workflow Builder chat migration complete"
 }
 
+dev_phase log_truncate
 run_local_builder_chat_migration || exit 1
+dev_phase builder_chat_migration
 
 # Migrate non-secret account audiences before launching the new server. Backups
 # of environment files stay outside workspace documents and are private.
@@ -1630,6 +1630,7 @@ if [ -n "${AGENTWORKS_PROVIDER_POLICY:-}" ]; then
     AGENTWORKS_PROVIDER_POLICY="$(python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" --workspace-dir "$WORKSPACE_DOCS_PATH" --backup-dir "$account_audience_backup" --export-current-policy)" || exit 1
     export AGENTWORKS_PROVIDER_POLICY
 fi
+dev_phase data_migrations
 
 
 # Log rotation cap (used by background daemon)
@@ -1664,6 +1665,7 @@ else
     mkdir -p generated/agents
     dev_detail "✅ generated/agents created (was missing)"
 fi
+dev_phase folder_cleanup
 
 # Add timestamp header to log file
 echo "🚀 MCP Agent Server Session Started: $(date)" > "$LOG_PATH"
@@ -1898,9 +1900,8 @@ cleanup_on_exit() {
             stop_mcp_gateway
         fi
     fi
-    if [ "$AGENTWORKS_AUTO_TMUX_TMPDIR" = true ]; then
-        rm -rf "$TMUX_TMPDIR"
-    fi
+    # Keep the socket directory: a surviving CLI must remain discoverable by
+    # the next backend, including after a background launcher exits.
     dev_instance_release
 }
 
@@ -1957,12 +1958,18 @@ start_native_workspace() {
     # Bind to localhost as defense in depth. Process-execution routes also
     # require the server-only WORKSPACE_API_TOKEN generated above.
     WORKSPACE_BIND_HOST="${WORKSPACE_BIND_HOST:-127.0.0.1}"
+    # Toolchain download and compilation must finish before the 90s
+    # service-health budget starts (PLAT-746-935).
+    local workspace_binary="$SCRIPT_DIR/.bin/native-workspace-dev"
+    mkdir -p "$SCRIPT_DIR/.bin" || return 1
+    echo "🔨 Building the native workspace (including any Go toolchain download)..."
+    (cd "$WORKSPACE_DIR" && go build -o "$workspace_binary" .) || return 1
     if [ "$BACKGROUND_MODE" = true ]; then
-        nohup bash -lc "cd \"$WORKSPACE_DIR\" && exec go run . server --debug --host \"$WORKSPACE_BIND_HOST\" --port \"$WORKSPACE_PORT\" --docs-dir \"$WORKSPACE_DOCS_PATH\"" >> "$WORKSPACE_LOG_PATH" 2>&1 &
+        dev_detached_exec bash -lc 'cd "$1" && shift && exec "$@"' bash "$WORKSPACE_DIR" "$workspace_binary" server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH" >> "$WORKSPACE_LOG_PATH" 2>&1 < /dev/null &
     else
         (
             cd "$WORKSPACE_DIR" || exit 1
-            exec go run . server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH"
+            exec "$workspace_binary" server --debug --host "$WORKSPACE_BIND_HOST" --port "$WORKSPACE_PORT" --docs-dir "$WORKSPACE_DOCS_PATH"
         ) >> "$WORKSPACE_LOG_PATH" 2>&1 &
     fi
 
@@ -2105,11 +2112,11 @@ start_frontend_dev() {
 
     if [ "$BACKGROUND_MODE" = true ]; then
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         elif [ -n "$FRONTEND_HOST" ]; then
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         else
-            nohup bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         fi
     else
         (
@@ -2136,6 +2143,11 @@ wait_for_agent_health() {
         if curl -fsS "$url" >/dev/null 2>&1; then
             AGENT_LISTENER="$(dev_owned_listener "$SERVER_PID" "$AGENT_PORT")"
             echo "✅ Agent server is healthy at: $url"
+            dev_phase agent_health
+            local timing="[STARTUP_TIMING] started=$DEV_LAUNCH_STARTED_AT healthy=$(date -u +%Y-%m-%dT%H:%M:%SZ) elapsed_seconds=$((SECONDS-DEV_LAUNCH_STARTED_SECONDS))"
+            echo "$timing"
+            dev_detail "$timing"
+            start_deferred_dev_setup
             return 0
         fi
         if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -2189,8 +2201,18 @@ start_electron() {
     echo "- DEV_URL: $dev_url" >> "$ELECTRON_LOG_PATH"
     echo "=========================================" >> "$ELECTRON_LOG_PATH"
 
+    if [ "$BACKGROUND_MODE" = true ]; then
+        dev_detached_exec bash -c '
+            cd "$1" || exit 1
+            if [ -n "${AGENTWORKS_DEV_AGENT_BINARY:-}" ]; then
+                # Keep the existing private stdin bootstrap; never put it in argv.
+                printf "%s" "$AUTH_SECRET" | env -u AUTH_SECRET DEV_URL="$2" "$3" .
+            else
+                exec env -u AUTH_SECRET DEV_URL="$2" "$3" .
+            fi
+        ' bash "$DESKTOP_DIR" "$dev_url" "$ELECTRON_BIN" >> "$ELECTRON_LOG_PATH" 2>&1 < /dev/null &
+    else
     (
-        [ "$BACKGROUND_MODE" != true ] || trap '' HUP
         cd "$DESKTOP_DIR" || exit 1
         if [ -n "${AGENTWORKS_DEV_AGENT_BINARY:-}" ]; then
             # printf is a shell builtin: the value never becomes a process arg.
@@ -2199,6 +2221,7 @@ start_electron() {
             exec env -u AUTH_SECRET DEV_URL="$dev_url" "$ELECTRON_BIN" .
         fi
     ) >> "$ELECTRON_LOG_PATH" 2>&1 &
+    fi
 
     ELECTRON_PID=$!
     dev_detail "✅ Electron process started (PID: $ELECTRON_PID)"
@@ -2311,41 +2334,25 @@ if [ "${AGENTWORKS_SKIP_GLOBAL_DEPENDENCY_UPDATES:-false}" = "true" ]; then
 else
     ensure_tmux_for_claude_code
 
-    # Keep the historical developer-runner behavior for the normal instance.
-    # preview_report and every browser-automation tool shell out to
-    # `agent-browser` by name with no PATH check of their own — an install
-    # failure here must not be reported as success, or the first real symptom
-    # is an opaque "exit code 127: agent-browser: not found" deep inside a
-    # tool call.
-    echo "📦 Updating agent-browser to latest..."
-    if ! dev_setup npm install -g agent-browser@latest; then
-        echo "❌ Error: npm install -g agent-browser@latest failed"
-        exit 1
-    fi
-    if ! command -v agent-browser >/dev/null 2>&1; then
-        echo "❌ Error: agent-browser still not on PATH after install"
-        exit 1
-    fi
-    dev_detail "✅ agent-browser updated: $(agent-browser --version 2>&1)"
+    ensure_dev_agent_browser || { echo "❌ agent-browser installation failed"; exit 1; }
 fi
+dev_phase setup_and_dependencies
 
-# Serve the same private Playwright fixtures as server releases. Build these
-# from source on every local start so archive contents match this checkout.
-# An explicit override belongs to the caller and must not be overwritten.
+# Fixture downloads are not needed for health or the first chat request.
+# Explicit package overrides remain caller-owned and validated before launch.
+DEV_FIXTURES_PENDING=false
 if [ -z "${AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR:-}" ]; then
     export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR="$SCRIPT_DIR/packages"
-    dev_detail "📦 Building AgentWorks Playwright fixture packages..."
-    if ! dev_setup python3 "$SCRIPT_DIR/../scripts/build-playwright-packages.py" "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR"; then
-        echo "❌ Failed to build Playwright fixture packages; check Python 3 and package sources"
-        exit 1
+    if [ "$UPDATE_MMX_CLI" = true ]; then
+        dev_setup build_dev_playwright_fixtures || exit 1
+    else
+        DEV_FIXTURES_PENDING=true
     fi
+else
+    for fixture_archive in agentworks-playwright.tgz agentworks-playwright-python.zip; do
+        [ -r "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR/$fixture_archive" ] || { echo "❌ Missing Playwright fixture archive: $fixture_archive"; exit 1; }
+    done
 fi
-for fixture_archive in agentworks-playwright.tgz agentworks-playwright-python.zip; do
-    if [ ! -r "$AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR/$fixture_archive" ]; then
-        echo "❌ Missing Playwright fixture archive: $AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR/$fixture_archive"
-        exit 1
-    fi
-done
 export AGENTWORKS_PLAYWRIGHT_PACKAGES_DIR
 
 # Build mcpbridge binary (required for CLI provider MCP bridge)
@@ -2358,14 +2365,15 @@ MCPBRIDGE_BIN_DIR="${SCRIPT_DIR}/.bin"
 mkdir -p "$MCPBRIDGE_BIN_DIR"
 # Use the pinned module from this checkout; never build in another agent's
 # mcpagent checkout or install an unreviewed @latest during isolated testing.
-echo "🔨 Building the pinned mcpbridge dependency..."
-GOWORK=off go build -o "$MCPBRIDGE_BIN_DIR/mcpbridge" github.com/manishiitg/mcpagent/cmd/mcpbridge || exit 1
+ensure_dev_mcpbridge "$MCPBRIDGE_BIN_DIR/mcpbridge" || exit 1
+dev_phase mcpbridge
 if [ -x "$MCPBRIDGE_BIN_DIR/mcpbridge" ]; then
     export MCP_BRIDGE_BINARY="$MCPBRIDGE_BIN_DIR/mcpbridge"
 fi
 
 if [ "$WITH_WORKSPACE" = true ]; then
     start_native_workspace || exit 1
+    dev_phase workspace_build_and_health
 fi
 
 if [ "$WITH_GATEWAY" = true ]; then
@@ -2375,6 +2383,7 @@ if [ "$WITH_GATEWAY" = true ]; then
         echo "   Stop any other AgentWorks instance using this local workspace, fix the reported error, then run ./run_server_with_logging.sh again."
         exit 1
     fi
+    dev_phase vault_build_and_health
 fi
 
 # Kill all leftover agent-browser daemon processes from previous runs.
@@ -2453,11 +2462,19 @@ fi
 GO_LDFLAGS="-X github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow.injectedPlatformVersion=${PLATFORM_REVISION}"
 
 # go run places the agent binary in a temporary build directory, so it cannot
-# discover release-style downloads beside its executable. Package the native
-# CLI for this machine and point the development server at that directory.
+# discover release-style downloads beside its executable. Point the development
+# server at a local download directory; the native CLI for this machine is
+# packaged there in the background once the server is healthy
+# (start_deferred_dev_setup). The server reads the files per request.
+# A slow laptop leaves its own profiles: past this heap size the server writes
+# heap, allocs, goroutine and 30 s CPU profiles to logs/pprof/<time>/ (at most
+# every 10 minutes), so an agent can read them without a pprof token.
+export AGENTWORKS_AUTO_PPROF_HEAP_MB="${AGENTWORKS_AUTO_PPROF_HEAP_MB:-1500}"
+export AGENTWORKS_AUTO_PPROF_DIR="${AGENTWORKS_AUTO_PPROF_DIR:-${SCRIPT_DIR}/logs/pprof}"
+
 if [ -z "${AGENTWORKS_CLI_DOWNLOAD_DIR:-}" ]; then
     export AGENTWORKS_CLI_DOWNLOAD_DIR="${SCRIPT_DIR}/bin/cli-downloads"
-    dev_setup bash "${SCRIPT_DIR}/../scripts/package-agentworks-cli-local.sh" "$AGENTWORKS_CLI_DOWNLOAD_DIR" || exit 1
+    DEV_CLI_PACKAGE_PENDING=true
 fi
 
 if [ -n "$PLATFORM_REVISION" ]; then
@@ -2476,6 +2493,7 @@ if [ -f "$FRONTEND_DIR/package.json" ]; then
         echo "❌ Could not prepare dashboard runtimes. See $FRONTEND_LOG_PATH"
         exit 1
     }
+    dev_phase dashboard_assets
 fi
 
 # Run the server with all the enhanced configuration
@@ -2487,6 +2505,15 @@ else
     unset AGENTWORKS_DESKTOP_SOCKET
 fi
 
+# Direct launches must also compile before their health timer, just like
+# Electron's existing prebuild. Keep the same flags and service arguments.
+if [ "$WITH_FRONTEND" != true ] || [ "$WITHOUT_ELECTRON" = true ]; then
+    AGENT_DIRECT_BINARY="$SCRIPT_DIR/.bin/agent-server-dev"
+    echo "🔨 Building the local backend (including any Go toolchain download)..."
+    go build -ldflags "$GO_LDFLAGS" -o "$AGENT_DIRECT_BINARY" main.go || exit 1
+    dev_phase backend_build
+fi
+
 if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
     # go run does not preserve fd 3 for its compiled child. Build once, then let
     # Electron own the backend exactly as the packaged app does.
@@ -2495,8 +2522,11 @@ if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
     export AGENTWORKS_DEV_AGENT_LOG="$LOG_PATH"
     echo "🔨 Building the local desktop backend..."
     go build -ldflags "$GO_LDFLAGS" -o "$AGENTWORKS_DEV_AGENT_BINARY" main.go || exit 1
+    dev_phase backend_build
     start_frontend_dev || exit 1
+    dev_phase frontend_ready
     start_electron || exit 1
+    dev_phase electron_started
     SERVER_PID="$ELECTRON_PID"
     wait_for_agent_health || exit 1
     echo "✅ Desktop and connected servers are ready at $FRONTEND_URL"
@@ -2507,7 +2537,7 @@ if [ "$WITH_FRONTEND" = true ] && [ "$WITHOUT_ELECTRON" != true ]; then
 elif [ "$BACKGROUND_MODE" = true ]; then
     # Background mode: run in background and capture PID
     dev_detail "🔄 Starting server in background mode..."
-    nohup go run -ldflags "$GO_LDFLAGS" main.go server \
+    dev_detached_exec "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2515,7 +2545,7 @@ elif [ "$BACKGROUND_MODE" = true ]; then
         --model "$DEEP_SEARCH_MAIN_LLM_MODEL" \
         --temperature "$DEEP_SEARCH_MAIN_LLM_TEMPERATURE" \
         --max-turns 500 \
-        --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 &
+        --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 < /dev/null &
     
     SERVER_PID=$!
     dev_detail "✅ Server started in background (PID: $SERVER_PID)"
@@ -2544,6 +2574,7 @@ elif [ "$BACKGROUND_MODE" = true ]; then
         fi
     fi
 
+    start_deferred_dev_setup
     echo "🛑 To stop the server, run: kill $SERVER_PID"
     if [ "$WITH_WORKSPACE" = true ]; then
         dev_detail "✅ Native workspace is running in background (PID: $WORKSPACE_PID)"
@@ -2564,7 +2595,7 @@ elif [ "$WITH_FRONTEND" = true ]; then
     # then tail the server log so the user still sees server output.
     dev_detail "🔄 Starting server in foreground mode (with frontend)..."
     echo "   Agent API URL: $MCP_AGENT_SERVER_URL"
-    nohup go run -ldflags "$GO_LDFLAGS" main.go server \
+    nohup "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2597,7 +2628,7 @@ else
     echo "   Agent API URL: $MCP_AGENT_SERVER_URL"
     echo ""
 
-    go run -ldflags "$GO_LDFLAGS" main.go server \
+    "$AGENT_DIRECT_BINARY" server \
         --port "$AGENT_PORT" \
         --log-level debug \
         --debug \
@@ -2608,8 +2639,7 @@ else
         --mcp-config "configs/mcp_servers_clean.json" >> "$LOG_PATH" 2>&1 &
 
     SERVER_PID=$!
-    # Records the compiled child listening on the port (AGENT_LISTENER): go run can exit before it on Ctrl+C,
-    # and cleanup then stops it by that record (PLAT-856-439).
+    # Record the owned listener for the same cleanup path (PLAT-856-439).
     wait_for_agent_health || exit 1
     wait "$SERVER_PID"
     EXIT_CODE=$?

@@ -75,6 +75,7 @@ type personalSlackConnection struct {
 	VaultID string
 	ID      string
 	Status  string
+	Label   string
 }
 
 // ownVaultSlack finds the person's Slack connection in a vault they own, preferring a signed-in one.
@@ -94,7 +95,7 @@ func ownVaultSlack(ctx context.Context, person string) (personalSlackConnection,
 				continue
 			}
 			if !ok || c.Status == "active" && found.Status != "active" {
-				found, ok = personalSlackConnection{VaultID: v.Group.ID, ID: c.ID, Status: c.Status}, true
+				found, ok = personalSlackConnection{VaultID: v.Group.ID, ID: c.ID, Status: c.Status, Label: c.Label}, true
 			}
 		}
 	}
@@ -246,7 +247,11 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 	if own, ok, err := ownVaultSlack(ctx, actor); err != nil {
 		return out, err
 	} else if ok {
-		out.Accounts = append(out.Accounts, row(actor, "Your Slack", own))
+		account := row(actor, "Your Slack", own)
+		if workspace == "" {
+			account.Label = firstNonBlank(own.Label, account.Label)
+		}
+		out.Accounts = append(out.Accounts, account)
 	}
 	// A project's Builder also sees the Slack its owner lent to it.
 	if workspace != "" && buildErr == nil {

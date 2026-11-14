@@ -75,16 +75,17 @@ func (t *Target) UnmarshalJSON(data []byte) error {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type GitHubPR struct {
-	ChatKey    string   `json:"chat_key,omitempty"`
-	SessionID  string   `json:"session_id,omitempty"`
-	Repository string   `json:"repository"`
-	Number     int      `json:"number"`
-	Mode       string   `json:"mode"` // checks, deployment, autofix
-	Worktree   string   `json:"worktree,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Login      string   `json:"login,omitempty"`       // selected by the server
-	HeadSHA    string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
-	ReviewBots []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
+	ConnectionID string   `json:"connection_id,omitempty"`
+	ChatKey      string   `json:"chat_key,omitempty"`
+	SessionID    string   `json:"session_id,omitempty"`
+	Repository   string   `json:"repository"`
+	Number       int      `json:"number"`
+	Mode         string   `json:"mode"` // checks, deployment, autofix
+	Worktree     string   `json:"worktree,omitempty"`
+	Branch       string   `json:"branch,omitempty"`
+	Login        string   `json:"login,omitempty"`       // selected by the server
+	HeadSHA      string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
+	ReviewBots   []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
 }
 
 type Config struct {

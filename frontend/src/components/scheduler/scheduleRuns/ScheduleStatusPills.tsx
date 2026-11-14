@@ -21,7 +21,7 @@ export const ScheduleStatusPills: React.FC<{ status: ScheduleStatusSnapshot }> =
           {workflowScheduleSummary.workflows} automation{workflowScheduleSummary.workflows === 1 ? '' : 's'}
         </span>
       )}
-      {isWorkflowScoped && (
+      {isWorkflowScoped && summary.total > 0 && (
         <span className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-muted-foreground">
           {summary.total} schedule{summary.total === 1 ? '' : 's'}
         </span>
@@ -54,7 +54,7 @@ export const ScheduleStatusPills: React.FC<{ status: ScheduleStatusSnapshot }> =
           {summary.running} running
         </span>
       )}
-      {isWorkflowScoped && (
+      {isWorkflowScoped && (summary.total > 0 || isSchedulerPaused) && (
         <span className={`rounded-full border px-2.5 py-0.5 text-xs ${
           isSchedulerPaused
             ? 'border-warning/30 bg-warning/10 text-warning'

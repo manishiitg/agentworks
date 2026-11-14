@@ -29,15 +29,19 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
-	SubmissionID   string          `json:"submission_id,omitempty"`
-	ConversationID string          `json:"conversation_id,omitempty"`
-	ID             string          `json:"id"`
-	Operation      string          `json:"operation"`
-	Message        string          `json:"message,omitempty"`
-	DeliveryMode   string          `json:"delivery_mode,omitempty"`
-	Query          url.Values      `json:"query,omitempty"`
-	Answer         json.RawMessage `json:"answer,omitempty"`
-	Path           string          `json:"path,omitempty"`
+	RequestedSkillID   string                  `json:"requested_skill_id,omitempty"`
+	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
+	Source             string                  `json:"source,omitempty"` // Fixed diagnostic route label; never caller identity.
+	SubmissionID       string                  `json:"submission_id,omitempty"`
+	ConversationID     string                  `json:"conversation_id,omitempty"`
+	ID                 string                  `json:"id"`
+	ComposerInput      bool                    `json:"composer_input,omitempty"`
+	Operation          string                  `json:"operation"`
+	Message            string                  `json:"message,omitempty"`
+	DeliveryMode       string                  `json:"delivery_mode,omitempty"`
+	Query              url.Values              `json:"query,omitempty"`
+	Answer             json.RawMessage         `json:"answer,omitempty"`
+	Path               string                  `json:"path,omitempty"`
 	// Workspace: the owner's own AI app call (ask, read_chat, reply_input), run on the Mac as its named tab.
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
@@ -238,6 +242,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		}
 		call.ConversationID = generation
 		call.SubmissionID = r.Header.Get("Idempotency-Key")
+		call.ComposerInput = isComposerChatRequest(r)
 	}
 	owner := GetUserIDFromContext(r.Context())
 	if call.Operation == "send" {
@@ -310,7 +315,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			// Every session route of a chat kept on this server; admins' audited reviews keep their own rule.
 			if !strings.HasPrefix(r.URL.Path, "/api/admin/") {
 				if limit := api.crewSessionChatLimit(r, mux.Vars(r)["session_id"]); limit != nil {
-					api.serveCrewServerChatLimited(w, r, next, limit)
+					limit.refuse(w, GetUserIDFromContext(r.Context()))
 					return
 				}
 			}
@@ -331,11 +336,10 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
 		limit := api.crewMacChatLimit(r, project, generation)
-		if limit != nil && (limit.share == crewChatShareAgent || r.Method != "GET" || suffix != "events/stream" && suffix != "events" && suffix != "status") {
+		if limit != nil {
 			limit.refuse(w, GetUserIDFromContext(r.Context()))
 			return
 		}
-		asked := r
 		// A Team member watches the owner's In team Mac agent: reads only, and only that conversation (crew_team_mac_watch.go).
 		if r.Method == "GET" && (suffix == "events/stream" || suffix == "events" || suffix == "status") {
 			if watch, ok := api.crewMacTeamWatchContext(r, project, generation); ok {
@@ -347,10 +351,6 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			r = r.WithContext(context.WithValue(r.Context(), crewRelayReadKey{}, true))
 		} else if crewTeamMemberOnMac(project, GetUserIDFromContext(r.Context())) {
 			externalError(w, 409, "mac_chat_action", "This Crew works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
-			return
-		}
-		if limit != nil {
-			api.serveCrewMacChatHistory(w, r, asked, project, generation, suffix)
 			return
 		}
 		switch {
@@ -677,8 +677,9 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 		result := api.callCrewMac(r, project, crewChatCall{Operation: "tabs"})
 		var rows []AgentProfileSideChat
 		if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
-			writeCrewChatResult(w, result)
-			return true
+			// A failed Mac list cannot hide independently available server agents.
+			log.Printf("[CREW_CHAT_RELAY] project=%s event=mac_tabs_unavailable status=%d", project, result.Status)
+			rows = nil
 		}
 		for _, row := range rows {
 			base, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
@@ -809,4 +810,14 @@ func (api *StreamingAPI) crewMacTwinForOwner(r *http.Request, project string) bo
 	}
 	b, err := api.crewChatPair(r, project, "")
 	return err == nil && b.Mode == "relay"
+}
+
+// crewChatRequestSource logs only fixed labels, never remote content or caller IDs.
+func crewChatRequestSource(source string) string {
+	switch source {
+	case "conversation-route", "team-tabs-refresh", "busy-chat-poll":
+		return source
+	default:
+		return "unspecified"
+	}
 }

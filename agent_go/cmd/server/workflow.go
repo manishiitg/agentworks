@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"io"
 	"log"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowrun"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -171,13 +173,17 @@ func readConversationTailFromWorkspace(ctx context.Context, filePath string, n i
 
 // appendConversationHistoryInWorkspace adds messages to a chat conversation
 // and sets top-level fields, without rewriting the conversation.
-func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}) error {
+func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}, expected ...*chatlog.Version) error {
 	noteWorkspaceMutation(filePath, false)
 	segments := strings.Split(filePath, "/")
 	for i, segment := range segments {
 		segments[i] = url.PathEscape(segment)
 	}
-	body, err := json.Marshal(map[string]interface{}{"messages": messages, "patch": patch})
+	requestBody := map[string]interface{}{"messages": messages, "patch": patch}
+	if len(expected) > 0 {
+		requestBody["expected_version"] = expected[0]
+	}
+	body, err := json.Marshal(requestBody)
 	if err != nil {
 		return err
 	}
@@ -207,6 +213,8 @@ var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
 // A nonzero limit bounds the HTTP body before allocation or JSON decoding.
 // Oversized records can be skipped by read-only callers without altering them.
 func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+	started := time.Now()
+	defer func() { workspacereads.Record(ctx, filePath, time.Since(started)) }()
 	// URL-encode the filepath segments
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
@@ -251,6 +259,9 @@ func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery
 		return "", false, nil // File doesn't exist, but not an error
 	}
 
+	if resp.StatusCode >= 500 {
+		return "", false, fmt.Errorf("%w: status %d", errWorkspaceUnavailable, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", false, fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
@@ -429,6 +440,11 @@ func readRunMetadata(ctx context.Context, metadataFilePath string) (*RunMetadata
 	if !exists {
 		return nil, nil
 	}
+	return decodeRunMetadata(content)
+}
+
+// Shared decoding only: run routes still compute their own current Resume eligibility.
+func decodeRunMetadata(content string) (*RunMetadata, error) {
 	var metadata RunMetadata
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
 		return nil, nil

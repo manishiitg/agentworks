@@ -71,7 +71,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	base := "/api/crew-teams/team-test"
 	// Team off (the Team tab's switch): the saved roster grants nothing, folder or agents.
-	w := call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member"}],"folder":{"whole":true}}`, "")
+	w := call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member"}],"folder":{"folders":[{"path":"team"}]}}`, "")
 	if w.Code != 200 || crewTeamMember("team-test", "member") || call("member", "GET", base+"/files", "", "").Code != 403 {
 		t.Fatalf("a roster saved with Team off must not let its people in: %d %s", w.Code, w.Body.String())
 	}
@@ -81,7 +81,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if former.Code != 403 || unknown.Code != 403 || former.Body.String() != unknown.Body.String() {
 		t.Fatal("lost-access refusal discloses a private Team's state")
 	}
-	config := `{"name":"Example","on":true,"people":[{"user_id":"member"},{"user_id":"teammate"}],"folder":{"whole":true}}`
+	config := `{"name":"Example","on":true,"people":[{"user_id":"member"},{"user_id":"teammate"}],"folder":{"folders":[{"path":"team"}]}}`
 	w = call("owner", "PUT", base, config, "")
 	if w.Code != 200 {
 		t.Fatalf("owner config: %d %s", w.Code, w.Body.String())
@@ -103,8 +103,65 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", AgentBridgePublic: true}}); err != nil {
 		t.Fatal(err)
 	}
+	private := mustReadCrewTeam(t, "team-test")
+	private.Agents = crewTeamAgentFixtures("team-test", map[string]map[string]bool{"owner": {"solo01": false}})
+	if err := writeCrewTeamAgentFixture(private); err != nil {
+		t.Fatal(err)
+	}
 	if w = call("member", "GET", base+"/agents", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"Reviewer"`) || strings.Contains(w.Body.String(), `"Solo"`) {
 		t.Fatalf("member team agents: %d %s", w.Code, w.Body.String())
+	}
+	{
+		// PLAT-746-820: queued Team delivery uses the current ID, not a saved
+		// physical key or the member's right to edit the Crew.
+		var directory struct {
+			People []crewTeamAgentsPerson `json:"people"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &directory); err != nil || len(directory.People) == 0 || len(directory.People[0].Agents) == 0 {
+			t.Fatalf("Team directory missing agents: %v", err)
+		}
+		memberCtx := internalBotRequestContext(t.Context(), "member")
+		target := triggerTarget{Kind: triggerCallerCrew, CrewID: "team-test", CrewProfile: crewProfileID, CrewOwner: "owner", Path: crewProjectRootByID("team-test")}
+		resolvedTarget, targetErr := api.resolveAgentChatTarget(memberCtx, target, directory.People[0].Agents[0].ID)
+		if targetErr != nil || resolvedTarget.TeamAgentID != directory.People[0].Agents[0].ID || resolvedTarget.CrewOwner != "owner" {
+			t.Fatalf("Team directory ID did not resolve its actual owner: %+v %v", resolvedTarget, targetErr)
+		}
+		if _, err := api.resolveAgentChatTarget(memberCtx, target, macSharedAgentChatKey("team-test", "team01")); err == nil {
+			t.Fatal("retired native Team address bypassed ID resolution")
+		}
+		endpoint := agentMessageEndpoint{ID: "team-test", UserID: "owner", TeamAgentID: directory.People[0].Agents[0].ID, ChatKey: "stale-key"}
+		endpoint.Kind, endpoint.Profile, endpoint.Session = triggerCallerCrew, crewProfileID, "old-session"
+		currentCaller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "team-test", ProfileID: crewProfileID}, Chat: &codeChat{Key: macSharedAgentChatKey("team-test", "team01"), SessionID: "new-session"}}
+		if !messageEndpointMatches(endpoint, "owner", currentCaller) || messageEndpointMatches(endpoint, "member", currentCaller) {
+			t.Fatal("Team reply must keep agent identity across session replacement without changing owner")
+		}
+		resolved, route, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member")
+		if err != nil || route != "owner_mac" || resolved.ChatKey != macSharedAgentChatKey("team-test", "team01") {
+			t.Fatalf("shared ID did not resolve to its owner's Mac: %+v %s %v", resolved, route, err)
+		}
+		if _, _, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "outsider"); err == nil {
+			t.Fatal("Team ID granted an outsider access")
+		}
+		forged := endpoint
+		forged.UserID = "member"
+		if _, _, err := resolveTeamMessageEndpoint(t.Context(), forged, "member"); err == nil {
+			t.Fatal("Team ID accepted a different agent owner")
+		}
+		teamBefore := mustReadCrewTeam(t, "team-test")
+		privateTeam := teamBefore
+		privateTeam.Agents = crewTeamAgentFixtures("team-test", map[string]map[string]bool{"owner": {"team01": false}})
+		if err := writeCrewTeamAgentFixture(privateTeam); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := resolveTeamMessageEndpoint(t.Context(), endpoint, "member"); err == nil {
+			t.Fatal("saved Team ID bypassed Only me")
+		}
+		if messageEndpointMatches(endpoint, "owner", currentCaller) {
+			t.Fatal("Only me agent retained Team reply authority")
+		}
+		if err := writeCrewTeamAgentFixture(teamBefore); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if w = call("outsider", "GET", base+"/agents", "", ""); w.Code != 403 {
 		t.Fatalf("outsider saw the team's agents: %d %s", w.Code, w.Body.String())
@@ -147,19 +204,16 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatalf("%s changed team: %d %s", who, w.Code, w.Body.String())
 		}
 	}
-	// Owner, 5 Nov: only the Crew's main owner turns the Team on/off, switches Folders / Whole Crew and stops sharing a
+	// Only the Crew's main owner turns the Team on/off and stops sharing a
 	// folder; members add people and folders. The one save path refuses the rest, for every caller.
 	if w = call("member", "PUT", base, strings.Replace(config, `"on":true`, `"on":false`, 1), ""); w.Code != 403 || !strings.Contains(w.Body.String(), "Only owner can turn the Team on or off.") {
 		t.Fatalf("member turned the Team off: %d %s", w.Code, w.Body.String())
 	}
 	folders := func(list string) string {
-		return strings.Replace(config, `"folder":{"whole":true}`, `"folder":{"folders":[`+list+`]}`, 1)
-	}
-	if w = call("member", "PUT", base, folders(`"team"`), ""); w.Code != 403 {
-		t.Fatalf("member switched to Folders: %d %s", w.Code, w.Body.String())
+		return strings.Replace(config, `"folder":{"folders":[{"path":"team"}]}`, `"folder":{"folders":`+teamFolderTestEntries(list)+`}`, 1)
 	}
 	if w = call("owner", "PUT", base, folders(`"team"`), ""); w.Code != 200 {
-		t.Fatalf("owner switched to Folders: %d %s", w.Code, w.Body.String())
+		t.Fatalf("owner chose folders: %d %s", w.Code, w.Body.String())
 	}
 	if w = call("member", "PUT", base, folders(`"team","notes"`), ""); w.Code != 200 {
 		t.Fatalf("member added a folder: %d %s", w.Code, w.Body.String())
@@ -171,22 +225,36 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("folders after member changes: %+v", saved.Folder)
 	}
 	memberTab, ownerTab := crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "member"), crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "owner")
-	if memberTab.CanSwitch || memberTab.CanChoose || !memberTab.CanAddFolder || memberTab.CanRemoveFolder || !ownerTab.CanSwitch || !ownerTab.CanChoose || !ownerTab.CanRemoveFolder {
+	if memberTab.CanSwitch || !memberTab.CanAddFolder || memberTab.CanRemoveFolder || !ownerTab.CanSwitch || !ownerTab.CanRemoveFolder {
 		t.Fatalf("tab flags: member %+v owner %+v", memberTab, ownerTab)
 	}
 	if w = call("owner", "PUT", base, config, ""); w.Code != 200 {
-		t.Fatalf("owner back to the Whole Crew: %d %s", w.Code, w.Body.String())
+		t.Fatalf("owner reset folder selection: %d %s", w.Code, w.Body.String())
 	}
 	// Owner, 6 Nov: no "Share all my agents" ("*" names none of anyone's agents), and each person keeps at least one
 	// agent shared: turning off their last shared one (here the member's Main) is refused and nothing is saved.
+	// The guard applies to an actual discovered agent, not an invented Main alias.
+	workspaceServer, _ := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
+	memberMain := crewOwnerDefaultChatKey("team-test", "member")
+	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
+		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"},
+	}}
+	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
+		t.Fatal(err)
+	}
+	// The registry, not a native chat's existence, owns Team choices.
+	if err := assignCrewTeamAgentIDs(mustReadCrewTeam(t, "team-test"), []crewTeamAgentsPerson{{UserID: "member", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: memberMain, Name: "Main"}}}}); err != nil {
+		t.Fatal(err)
+	}
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code < 400 {
 		t.Fatalf("member's all-agents choice was accepted: %d %s", w.Code, w.Body.String())
 	}
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"main","in_team":false}`, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "at least one agent shared") {
 		t.Fatalf("member's last shared agent went Only me: %d %s", w.Code, w.Body.String())
 	}
-	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macMainTab) || len(saved.AgentChoices["member"]) != 0 {
-		t.Fatalf("refused choices changed the record: %+v", saved.AgentChoices)
+	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macMainTab) {
+		t.Fatalf("refused choices changed the record: %+v", saved.Agents)
 	}
 	if w = call("owner", "POST", base+"/leave", `{}`, ""); w.Code != 403 || !crewTeamMember("team-test", "owner") {
 		t.Fatalf("the owner left their own Team: %d", w.Code)
@@ -194,7 +262,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("member", "PUT", base, config, ""); w.Code != 200 {
 		t.Fatalf("member update: %d %s", w.Code, w.Body.String())
 	}
-	file := base + "/file?path=brief.md"
+	file := base + "/file?path=team/brief.md"
 	w = call("owner", "PUT", file, "first", "first")
 	if w.Code != 200 {
 		t.Fatalf("first write: %d %s", w.Code, w.Body.String())
@@ -203,7 +271,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	first := state.Versions["brief.md"].File.Hash
+	first := state.Versions["team/brief.md"].File.Hash
 	w = call("owner", "PUT", file+"&base="+first, "owner changed", "owner-change")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
@@ -243,7 +311,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"losing_revision":2`) {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = call("member", "POST", base+"/resolve", `{"path":"brief.md","keep":"revision:2","winning_revision":3,"transfer_id":"restore-old"}`, "")
+	w = call("member", "POST", base+"/resolve", `{"path":"team/brief.md","keep":"revision:2","winning_revision":3,"transfer_id":"restore-old"}`, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -266,7 +334,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("an old version's chunk was served by hash: %d %d bytes", w.Code, w.Body.Len())
 	}
 	// Every joined member edits the shared folder; there is no per-person switch (owner, 5 Nov).
-	if w = call("teammate", "PUT", base+"/file?path=teammate.md", "teammate wrote", "teammate-write"); w.Code != 200 {
+	if w = call("teammate", "PUT", base+"/file?path=team/teammate.md", "teammate wrote", "teammate-write"); w.Code != 200 {
 		t.Fatalf("joined teammate could not write the shared folder: %d %s", w.Code, w.Body.String())
 	}
 	for _, who := range []string{"outsider"} {
@@ -277,7 +345,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			}
 		}
 	}
-	// Whole Crew still leaves out private state, credentials and each person's own memory (owner, 5 Nov).
+	// Selected folders still leave out private state, credentials and personal memory.
 	for _, p := range []string{"../outside.txt", ".env", "_system/crew-data/owner/chats.json", ".claude/projects/chat.jsonl", "MEMORY.md", "memory/notes.md", "product.json"} {
 		w = call("member", "PUT", base+"/file?path="+url.QueryEscape(p), "private", "invalid")
 		if w.Code != 403 || !strings.Contains(w.Body.String(), "team_path_forbidden") {
@@ -340,7 +408,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// Each copy's first round only receives the team folder (review 5 Nov #1).
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
-	if err := os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner sends"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(b1.Root, "team/sync.md"), []byte("owner sends"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	interruptUpload.Store(true)
@@ -349,10 +417,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
-	read(b2.Root, "sync.md", "owner sends")
+	read(b2.Root, "team/sync.md", "owner sends")
 	// PLAT-856-552: a full reconciliation (also used after missed watcher
 	// events) must detect preserved timestamps and propagate execute-only edits.
-	stampPath := filepath.Join(b1.Root, "stamp.md")
+	stampPath := filepath.Join(b1.Root, "team/stamp.md")
 	if err := os.WriteFile(stampPath, []byte("cached bytes A"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +446,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	fullSync(c1, d1, b1)
 	sync(c2, d2, b2)
-	read(b2.Root, "stamp.md", "cached bytes B")
+	read(b2.Root, "team/stamp.md", "cached bytes B")
 	if runtime.GOOS != "windows" {
 		for _, mode := range []os.FileMode{0700, 0600} {
 			if err := os.Chmod(stampPath, mode); err != nil {
@@ -386,7 +454,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			}
 			fullSync(c1, d1, b1)
 			sync(c2, d2, b2)
-			info, err := os.Stat(filepath.Join(b2.Root, "stamp.md"))
+			info, err := os.Stat(filepath.Join(b2.Root, "team/stamp.md"))
 			if err != nil || (info.Mode()&0111 != 0) != (mode&0111 != 0) {
 				t.Fatalf("execute-only change did not reach member: mode=%v err=%v", mode, err)
 			}
@@ -398,7 +466,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	func() {
 		originalSplit := chunkReader
 		defer func() { chunkReader = originalSplit }()
-		busy := filepath.Join(b1.Root, "busy.md")
+		busy := filepath.Join(b1.Root, "team/busy.md")
 		if err := os.WriteFile(busy, []byte("busy bytes"), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -412,39 +480,39 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			return version, err
 		}
 		for _, suffix := range []string{"A", "B"} {
-			if err := os.WriteFile(filepath.Join(b1.Root, "calm.md"), []byte("calm "+suffix), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(b1.Root, "team/calm.md"), []byte("calm "+suffix), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(b2.Root, "peer.md"), []byte("peer "+suffix), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(b2.Root, "team/peer.md"), []byte("peer "+suffix), 0600); err != nil {
 				t.Fatal(err)
 			}
 			fullSync(c2, d2, b2)
 			fullSync(c1, d1, b1)
-			if _, acknowledged := b1.Files["busy.md"]; acknowledged || b1.Status != "pending" {
-				t.Fatalf("unstable bytes were acknowledged or marked done: %+v", b1.Files["busy.md"])
+			if _, acknowledged := b1.Files["team/busy.md"]; acknowledged || b1.Status != "pending" {
+				t.Fatalf("unstable bytes were acknowledged or marked done: %+v", b1.Files["team/busy.md"])
 			}
-			read(b1.Root, "peer.md", "peer "+suffix)
+			read(b1.Root, "team/peer.md", "peer "+suffix)
 			sync(c2, d2, b2)
-			read(b2.Root, "calm.md", "calm "+suffix)
+			read(b2.Root, "team/calm.md", "calm "+suffix)
 		}
 		if err := os.Remove(busy); err != nil {
 			t.Fatal(err)
 		}
 	}()
 	fullSync(c1, d1, b1)
-	_ = os.WriteFile(filepath.Join(b2.Root, "sync.md"), []byte("member returns"), 0600)
+	_ = os.WriteFile(filepath.Join(b2.Root, "team/sync.md"), []byte("member returns"), 0600)
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
-	read(b1.Root, "sync.md", "member returns")
-	_ = os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("server arriving"), 0600)
+	read(b1.Root, "team/sync.md", "member returns")
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/sync.md"), []byte("server arriving"), 0600)
 	sync(c1, d1, b1)
-	dirtyPath = filepath.Join(b2.Root, "sync.md")
+	dirtyPath = filepath.Join(b2.Root, "team/sync.md")
 	onDownload.Store(true)
 	sync(c2, d2, b2)
-	read(b2.Root, "sync.md", "member edited while downloading")
+	read(b2.Root, "team/sync.md", "member edited while downloading")
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
-	read(b1.Root, "sync.md", "member edited while downloading")
+	read(b1.Root, "team/sync.md", "member edited while downloading")
 	// Already accepted bytes must not be replayed as a new write.
 	beforeRetry, _ := readCrewTeamFileState("team-test")
 	sync(c2, d2, b2)
@@ -473,18 +541,18 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner v2"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/sync.md"), []byte("owner v2"), 0600)
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
-	_ = os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner v3"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/sync.md"), []byte("owner v3"), 0600)
 	sync(c1, d1, b1)
 	sync(c2, d2, &stale)
-	teamHas("sync.md", "owner v3")
-	read(b2.Root, "sync.md", "owner v3")
+	teamHas("team/sync.md", "owner v3")
+	read(b2.Root, "team/sync.md", "owner v3")
 	b2 = &stale
 	// Review 5 Nov #2: a file this copy leaves out only because of this machine's own ignore rules, or a file the
 	// share's .gitignore newly leaves out while it is still here, is never sent as a removal.
-	_ = os.WriteFile(filepath.Join(b1.Root, "kept.md"), []byte("keep me"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/kept.md"), []byte("keep me"), 0600)
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
 	home := t.TempDir()
@@ -494,47 +562,56 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	sync(c2, d2, b2)
-	teamHas("kept.md", "keep me")
-	_ = os.WriteFile(filepath.Join(b1.Root, ".gitignore"), []byte("kept.md\n"), 0600)
+	teamHas("team/kept.md", "keep me")
+	_ = os.WriteFile(filepath.Join(b1.Root, "team", ".gitignore"), []byte("kept.md\n"), 0600)
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
-	teamHas("kept.md", "keep me")
-	read(b2.Root, "kept.md", "keep me")
-	_ = os.Remove(filepath.Join(b1.Root, ".gitignore"))
+	teamHas("team/kept.md", "keep me")
+	read(b2.Root, "team/kept.md", "keep me")
+	_ = os.Remove(filepath.Join(b1.Root, "team", ".gitignore"))
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
+	// A folder that arrives with its own .gitignore, in a share that had none: full and watched rounds read the
+	// rules from the files they listed (one walk), so the ignored file is never sent and its neighbour is.
+	_ = os.MkdirAll(filepath.Join(b1.Root, "team/plans"), 0700)
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/plans", ".gitignore"), []byte("draft.md\n"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/plans", "draft.md"), []byte("not shared"), 0600)
+	_ = os.WriteFile(filepath.Join(b1.Root, "team/plans", "final.md"), []byte("shared plan"), 0600)
+	sync(c1, d1, b1)
+	teamHas("team/plans/final.md", "shared plan")
+	teamHas("team/plans/draft.md", "")
 	fmt.Println("[CREW_TEAM_PROOF] two chunked HTTP clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
 	// PR932: directory/file replacements must not strand the next sync after deleting children.
-	if err := os.MkdirAll(filepath.Join(b1.Root, "reports"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(b1.Root, "team/reports"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(b1.Root, "reports", "old.md"), []byte("old report"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	sync(c1, d1, b1)
-	sync(c2, d2, b2)
-	if err := os.RemoveAll(filepath.Join(b1.Root, "reports")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(b1.Root, "reports"), []byte("now a file"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(b1.Root, "team/reports", "old.md"), []byte("old report"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
-	read(b2.Root, "reports", "now a file")
-	if err := os.Remove(filepath.Join(b2.Root, "reports")); err != nil {
+	if err := os.RemoveAll(filepath.Join(b1.Root, "team/reports")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(b2.Root, "reports"), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(b1.Root, "team/reports"), []byte("now a file"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(b2.Root, "reports", "new.md"), []byte("directory again"), 0600); err != nil {
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	read(b2.Root, "team/reports", "now a file")
+	if err := os.Remove(filepath.Join(b2.Root, "team/reports")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(b2.Root, "team/reports"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b2.Root, "team/reports", "new.md"), []byte("directory again"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
-	read(b1.Root, "reports/new.md", "directory again")
+	read(b1.Root, "team/reports/new.md", "directory again")
 	// Idle rounds send nothing and make no revision.
 	idle, _ := readCrewTeamFileState("team-test")
 	for i := 0; i < 4; i++ {
@@ -546,14 +623,14 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// A large file with a small edit sends only the changed chunks (the chunked design, 5 Nov).
 	big := make([]byte, 3<<20)
 	rand.New(rand.NewSource(7)).Read(big) // real content has cut points; a repeating pattern has none
-	if err := os.WriteFile(filepath.Join(b1.Root, "big.bin"), big, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(b1.Root, "team/big.bin"), big, 0600); err != nil {
 		t.Fatal(err)
 	}
 	sync(c1, d1, b1)
 	store, _ := crewTeamChunkStore("team-test")
 	chunksBefore, _ := filepath.Glob(filepath.Join(store, "*", "*"))
 	big = append(big[:len(big)/2], append([]byte("a small insert"), big[len(big)/2:]...)...)
-	if err := os.WriteFile(filepath.Join(b1.Root, "big.bin"), big, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(b1.Root, "team/big.bin"), big, 0600); err != nil {
 		t.Fatal(err)
 	}
 	sync(c1, d1, b1)
@@ -562,7 +639,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("a small insert in a 3 MB file stored %d new chunks", added)
 	}
 	sync(c2, d2, b2)
-	if got, _ := os.ReadFile(filepath.Join(b2.Root, "big.bin")); !bytes.Equal(got, big) {
+	if got, _ := os.ReadFile(filepath.Join(b2.Root, "team/big.bin")); !bytes.Equal(got, big) {
 		t.Fatal("the edited large file did not arrive whole")
 	}
 	t.Log("[CREW_TEAM_PROOF] idle rounds make no revision; a small insert in a large file moves only its chunks")
@@ -576,10 +653,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		name string
 		fn   func(string, string) error
 	}{{"link.txt", os.Symlink}, {"hard.txt", os.Link}} {
-		if err := link.fn(outside, filepath.Join(dir, "files", link.name)); err != nil {
+		if err := link.fn(outside, filepath.Join(dir, "files", "team", link.name)); err != nil {
 			t.Fatal(err)
 		}
-		w = call("member", "GET", base+"/file?path="+link.name, "", "")
+		w = call("member", "GET", base+"/file?path=team/"+link.name, "", "")
 		if w.Code == 200 || strings.Contains(w.Body.String(), "not shared") {
 			t.Fatalf("link read escaped: %d %s", w.Code, w.Body.String())
 		}
@@ -589,7 +666,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 || w.Body.String() != "member changed" {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = call("owner", "PUT", base, `{"people":[],"folder":{"whole":true}}`, "")
+	w = call("owner", "PUT", base, `{"people":[],"folder":{"folders":[{"path":"team"}]}}`, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -611,7 +688,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// Changing the selected folder keeps the Team's store (6 Nov: a new store per change re-uploaded every file): the
 	// files no longer shared stay in the store unseen, nobody can read or write them, and a copy keeps syncing.
 	oldTeam, _ := readCrewTeam("team-test")
-	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":["other"]}}`, "")
+	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[{"path":"other"}]}}`, "")
 	if w.Code != 200 {
 		t.Fatal("change folder", w.Code, w.Body.String())
 	}
@@ -688,12 +765,11 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if line := crewTeamFilesLine(&UserClaims{UserID: "outsider"}); line != "" {
 		t.Fatalf("someone else was told a copy: %q", line)
 	}
-	// PLAT-856-509: Folders -> Whole Crew while the member's agent has an edit not yet sent. The old copy's record
-	// can no longer send; its folder used to be wiped. The folder is kept and the edit reaches the team.
+	// PLAT-856-509: expanding the selection must keep a member's unsent edit and the same store.
 	if err = os.WriteFile(filepath.Join(copyRoot, "other", "unsent.md"), []byte("not sent yet"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"whole":true}}`, ""); w.Code != 200 {
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[{"path":"other"},{"path":"team"}]}}`, ""); w.Code != 200 {
 		t.Fatal("share switch with an unsent edit", w.Code, w.Body.String())
 	}
 	api.removeStaleCrewTeamServerCopies(t.Context())
@@ -704,21 +780,12 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("the member's unsent edit was lost on the share switch: %d %s", w.Code, w.Body.String())
 	}
 	// Removed from the team: the copy holds files they have no right to, so it goes.
-	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":["other"]}}`, ""); w.Code != 200 {
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":[{"path":"other"}]}}`, ""); w.Code != 200 {
 		t.Fatal("remove member", w.Code, w.Body.String())
 	}
 	api.removeStaleCrewTeamServerCopies(t.Context())
 	if _, err = os.Stat(copyRoot); !os.IsNotExist(err) {
 		t.Fatalf("a removed member's server copy stayed: %v", err)
-	}
-	// Owner, 5 Nov: Whole Crew, then back to Folders, brings back the folders shared before (the server decides).
-	for _, body := range []string{`{"name":"Example","on":true,"people":[],"folder":{"whole":true}}`, `{"name":"Example","on":true,"people":[],"folder":{"folders":[]}}`} {
-		if w = call("owner", "PUT", base, body, ""); w.Code != 200 {
-			t.Fatal("share switch", w.Code, w.Body.String())
-		}
-	}
-	if back, _ := readCrewTeam("team-test"); back.Folder.Whole || !slices.Equal(back.Folder.Folders, []string{"other"}) {
-		t.Fatalf("back to Folders: %+v", back.Folder)
 	}
 	// Owner, 6 Nov: Folders always shares at least one, so the last one is not stopped.
 	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":[]}}`, ""); w.Code != 400 {
@@ -740,7 +807,8 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 		return crewTeam{ProjectID: project, OwnerID: owner, On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
 	}
 	for _, t0 := range []crewTeam{team("gone-copy", "owner"), team("live-copy", "owner"), team("someone-else", "other")} {
-		if err := writeCrewTeam(t0); err != nil {
+		t0.Agents = crewTeamAgentFixtures(t0.ProjectID, map[string]map[string]bool{"owner": {"helper": false}})
+		if err := writeCrewTeamAgentFixture(t0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -749,6 +817,7 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 	if _, err := readCrewTeam("new-copy"); err == nil {
 		t.Fatal("a Team moved from a live copy or from another owner's")
 	}
+	before := mustReadCrewTeam(t, "gone-copy")
 	moveCrewTeamToTwin("owner", "gone-copy", "new-copy")
 	moved, err := readCrewTeam("new-copy")
 	if err != nil || moved.On || len(moved.People) != 1 || moved.People[0].Invited || moved.Folder.ID != "f1" {
@@ -756,6 +825,12 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 	}
 	if _, err := readCrewTeam("gone-copy"); err == nil {
 		t.Fatal("the old Team record stayed behind")
+	}
+	for id := range before.Agents {
+		a, ok := moved.Agents[id]
+		if !ok || a.ChatKey != "new-copy:chat:helper" || a.InTeam {
+			t.Fatalf("move lost agent identity, binding or privacy: %+v", moved.Agents)
+		}
 	}
 }
 
@@ -766,7 +841,7 @@ func TestCrewTeamNewCopyReceivesTheTeamSetupBeforeWriting(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
 	api := f.api
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
 		t.Fatal(err)
 	}
 	setup := crewTeamSetup{ChatInstructions: "Team instructions written by the owner", SelectedSkills: []string{}}.encode()
@@ -817,7 +892,7 @@ func TestCrewTeamNewServerOwnerCopyKeepsTheCrewFolder(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
 	api := f.api
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true},
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}},
 		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
@@ -841,23 +916,26 @@ func TestCrewTeamNewServerOwnerCopyKeepsTheCrewFolder(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put("notes.md", "from the member's Mac")
-	put("removed-on-web.md", "the web removed this")
-	for path, content := range map[string]string{"notes.md": "edited on the website"} {
+	put("team/notes.md", "from the member's Mac")
+	put("team/removed-on-web.md", "the web removed this")
+	if err = os.MkdirAll(filepath.Join(roots.Files, "team"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range map[string]string{"team/notes.md": "edited on the website"} {
 		if err = os.WriteFile(filepath.Join(roots.Files, path), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	api.syncServerCrewTeamStore(t.Context(), team)
-	if _, err = os.Stat(filepath.Join(roots.Files, "removed-on-web.md")); !os.IsNotExist(err) {
+	if _, err = os.Stat(filepath.Join(roots.Files, "team/removed-on-web.md")); !os.IsNotExist(err) {
 		t.Fatal("a file removed on the website was written back into the Crew folder")
 	}
 	state, _ := readCrewTeamFileState("team")
-	if v := state.Versions["removed-on-web.md"]; v.File != nil {
+	if v := state.Versions["team/removed-on-web.md"]; v.File != nil {
 		t.Fatal("the team still has the file removed on the website")
 	}
 	sum := sha256.Sum256([]byte("edited on the website"))
-	if v := state.Versions["notes.md"]; v.File == nil || v.File.Hash != hex.EncodeToString(sum[:]) || v.Author != "owner" {
+	if v := state.Versions["team/notes.md"]; v.File == nil || v.File.Hash != hex.EncodeToString(sum[:]) || v.Author != "owner" {
 		t.Fatalf("the website edit did not go up: %+v", v)
 	}
 }
@@ -867,7 +945,7 @@ func TestCrewTeamNewServerOwnerCopyKeepsTheCrewFolder(t *testing.T) {
 func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "purpose-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "purpose-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"express"}}}); err != nil {
 		t.Fatal(err)
 	}
 	data := []byte("//registry.example.com/:_authToken=${TOKEN}\n")
@@ -895,6 +973,19 @@ func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	state, _ := readCrewTeamFileState("purpose-test")
 	if state.OnPurpose["express/.npmrc"] != "member" || state.Versions["express/.npmrc"].File == nil {
 		t.Fatalf("not recorded on purpose: %+v", state.OnPurpose)
+	}
+	// Unsaved changes to one snapshot must not grant credential-file sharing
+	// or change metadata returned to another request from the private ledger.
+	state.OnPurpose["unapproved/.env"] = "member"
+	state.Versions["express/.npmrc"].File.Hash = "unsaved"
+	state.Events[0].File.Hash = "unsaved-event"
+	state.Events[0].Chunks[0].ID = "unsaved-chunk"
+	again, err := readCrewTeamFileState("purpose-test")
+	if err != nil || crewTeamAllowed("unapproved/.env", again.onPurpose()) || again.OnPurpose["express/.npmrc"] != "member" {
+		t.Fatalf("unsaved sharing choice escaped its request: %+v %v", again.OnPurpose, err)
+	}
+	if again.Versions["express/.npmrc"].File.Hash != version.Hash || again.Events[0].File.Hash != version.Hash || again.Events[0].Chunks[0].ID != version.Chunks[0].ID {
+		t.Fatal("unsaved file metadata changed the persisted snapshot")
 	}
 	if _, err := commitCrewTeamChanges(t.Context(), "purpose-test", "member", "stop", crewTransferDigest("stop"), []crewTeamChange{{Path: "express/.npmrc", Before: version.Hash}}); err != nil {
 		t.Fatalf("stop syncing: %v", err)
@@ -968,8 +1059,8 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	crewMacTeamTabsCache.Store("team-test\x00member", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{
 		{Person: "member", Tab: "shared-tab", ConversationID: "c-shared", Name: "Shared"}, {Person: "member", Tab: "private-tab", ConversationID: "c-private", Name: "Private"}}})
 	team, _ = readCrewTeam("team-test")
-	team.AgentChoices = map[string]map[string]bool{"member": {"private-tab": false}}
-	if err := writeCrewTeam(team); err != nil {
+	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"member": {"private-tab": false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if person, _ := crewMacTeamConversation(t.Context(), "team-test", "c-private"); person != "" || len(crewMacTabsFor(t.Context(), "member", "team-test", "owner")) != 1 {
@@ -1018,7 +1109,7 @@ func TestCrewTeamMessageIsAdmittedFromOwnerOrMemberMacOnly(t *testing.T) {
 	api := &StreamingAPI{}
 	send := func(user, pair string) (int, string) {
 		t.Helper()
-		body := crewSyncRequest{Action: "team_message", PairID: pair, TeamMessage: &crewTeamMessageRequest{FromTab: "", ConversationID: "c1", ChatKey: "x", Message: "hi"}}
+		body := crewSyncRequest{Action: "team_message", PairID: pair, TeamMessage: &crewTeamMessageRequest{FromTab: "", ConversationID: "c1", AgentID: "x", Message: "hi"}}
 		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		w := httptest.NewRecorder()
 		api.crewTeamMessage(w, r, "message-room", body)

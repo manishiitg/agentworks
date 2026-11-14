@@ -52,6 +52,7 @@ var dashboardPublicToken = regexp.MustCompile(`aw_(pat|cli|mcp)_[A-Za-z0-9_-]{16
 var dashboardPublicMu sync.Mutex
 
 type dashboardPublicRecord struct {
+	Removed   bool      `json:"removed,omitempty"`
 	Code      string    `json:"code"`
 	ProjectID string    `json:"project_id"`
 	Root      string    `json:"root"`
@@ -341,6 +342,10 @@ func (api *StreamingAPI) saveDashboardPublicLink(w http.ResponseWriter, r *http.
 		externalError(w, 400, "invalid_arguments", "Choose the dashboard by its dashboard_id.")
 		return
 	}
+	if mode != "off" && agentWorksPrivateRoot(r.Context(), target.Root) {
+		externalError(w, 403, "agentworks_private", agentWorksPrivateLine)
+		return
+	}
 	actor := sanitizeUserIDForPath(claims.UserID)
 	current, found := dashboardPublicRecords(target.Root)[id]
 	// Turning on a link that is on changes nothing: the copy moves only on Update.
@@ -384,6 +389,11 @@ func (api *StreamingAPI) saveDashboardPublicLink(w http.ResponseWriter, r *http.
 	}
 	dashboardPublicMu.Lock()
 	defer dashboardPublicMu.Unlock()
+	// A deleted definition cannot acquire a new frozen copy after capture.
+	if _, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "get", ID: id}); err != nil {
+		dashboardError(w, err)
+		return
+	}
 	// The capture took a while: read the link again, so an Off in between wins and two Ons share one code.
 	current, found = dashboardPublicRecords(target.Root)[id]
 	if mode == "update" && !found {
@@ -456,6 +466,12 @@ func (api *StreamingAPI) handleDashboardPublicPage(w http.ResponseWriter, r *htt
 	record, err := readDashboardPublicRecord(dir, code)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if record.Removed {
+		header.Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte("<!doctype html><html><head><title>Dashboard removed</title></head><body><main><h1>This dashboard was removed</h1><p>Ask the person who shared it.</p></main></body></html>"))
 		return
 	}
 	if dashboardPublicProjectGone(record.Root) {

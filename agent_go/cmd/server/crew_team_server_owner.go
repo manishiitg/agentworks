@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/google/uuid"
@@ -43,11 +44,11 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 	b, err := readCrewTeamLocal(dir)
 	if os.IsNotExist(err) {
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: t.ProjectID, LocalProject: t.ProjectID, RemoteUser: owner, Client: uuid.NewString(),
-			Root: roots.Files, Status: "pending"}
+			Root: roots.Files, SkillRoot: filepath.Join(roots.Resources, "skills"), Status: "pending"}
 		// The Crew folder is where people on the website work, so a new owner copy takes the store as it is now as its
 		// base and applies nothing from it (review 5 Nov #6): its first round sends what differs in the Crew folder
 		// (each file read once), and nothing the team removed comes back.
-		state, stateErr := readCrewTeamFileState(t.ProjectID)
+		state, stateErr := readCrewTeamCurrentState(t.ProjectID)
 		if stateErr != nil {
 			log.Printf("[CREW_TEAM_SERVER] project=%s event=owner_copy_failed reason=%q", t.ProjectID, stateErr)
 			return
@@ -69,6 +70,7 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 	} else if err != nil {
 		return
 	}
+	b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
 	c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: owner}}
 	round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: claims})
 	api.reconcileCrewTeamSetup(ctx, owner, t.ProjectID, b.Root, dir, b.Downloaded)

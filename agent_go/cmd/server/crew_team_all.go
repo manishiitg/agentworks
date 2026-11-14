@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,6 +36,39 @@ type crewTeamLocalState struct {
 	// MemberOf: this Mac Crew is a Team member's working copy of someone else's Crew (crew_team_where.go), paired to
 	// that Crew's online copy as the member. It is never repaired into an online copy of its own.
 	MemberOf string `json:"member_of,omitempty"`
+	JoinedAt string `json:"joined_at,omitempty"`
+	// SharedBy is that Crew's owner's name, kept when joining, for the left menu's "Shared by <name>".
+	SharedBy string `json:"shared_by,omitempty"`
+	// SharedFrom is the network the Team is on, as this Mac names that connection (owner, 10 Nov: a copy is listed
+	// under the Mac, where its agents run, so its line says where the Team is).
+	SharedFrom string `json:"shared_from,omitempty"`
+}
+
+// crewTeamNetworkName is how a saved connection is named in a Team copy's line: its name, else its server's host.
+func crewTeamNetworkName(c desktopConnection) string {
+	if name := strings.TrimSpace(c.Name); name != "" {
+		return name
+	}
+	if u, err := url.Parse(c.Server); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return ""
+}
+
+// sharedLine is the left menu's second line for a Team member's working copy ("" for the person's own Crew).
+func (s crewTeamLocalState) sharedLine() string {
+	switch {
+	case s.MemberOf == "":
+		return ""
+	}
+	line := "Shared with you"
+	if s.SharedBy != "" {
+		line = "Shared by " + s.SharedBy
+	}
+	if s.SharedFrom != "" {
+		line += " · " + s.SharedFrom
+	}
+	return line
 }
 
 func readCrewTeamState(project string) crewTeamLocalState {
@@ -68,8 +102,12 @@ func writeCrewTeamState(project string, change func(*crewTeamLocalState)) error 
 // Team (audience "team"), keeping each entry's other choices, and who sees which is the server's In team / Only me;
 // off, only agents public on AgentBridge stay, with no people audience. It says whether the list changed.
 func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]macSharedAgent, bool) {
-	next := slices.Clone(current)
-	changed := false
+	// A removed/import-replaced tab must not poison the entire next push:
+	// pushMacSharedAgents correctly refuses unknown tabs, including stale saved ones.
+	next := slices.DeleteFunc(slices.Clone(current), func(agent macSharedAgent) bool {
+		return !slices.ContainsFunc(rows, func(row macAgentRow) bool { return row.Tab == agent.Tab })
+	})
+	changed := len(next) != len(current)
 	if !on {
 		next = slices.DeleteFunc(next, func(agent macSharedAgent) bool { return !agent.AgentBridgePublic })
 		changed = len(next) < len(current)

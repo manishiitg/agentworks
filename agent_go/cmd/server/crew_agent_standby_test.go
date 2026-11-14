@@ -118,8 +118,8 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 		t.Fatalf("a refused copy changed the record: %+v %v", rows[tab], err)
 	}
 	// The owner turns the helper off: it is Only me and its copy is dropped; Main stays In team and eligible.
-	team.AgentChoices = map[string]map[string]bool{"owner": {tab: false}}
-	if err := writeCrewTeam(team); err != nil {
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {tab: false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatalf("team update: %v", err)
 	}
 	if rows, err = readCrewStandby("team", "owner"); err != nil || len(rows) != 0 {
@@ -141,12 +141,13 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
 	api := f.api
+	api.projectActions = NewProjectActionDispatcher(api, api.agentProfiles)
 	const helper, solo = "helper01", "solo01"
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}},
-		AgentChoices: map[string]map[string]bool{"owner": {solo: false}}}
+		Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {helper: true, solo: false}})}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
@@ -181,47 +182,71 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if api.crewStandbyRoute(t.Context(), "owner", "team", helper, "other", true) || len(imported) != 0 {
 		t.Fatalf("with the Mac on, the server took the agent (imported %v)", imported)
 	}
-	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); !strings.HasPrefix(label, "Always on") || tone != "ok" {
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); !strings.HasPrefix(label, crewAlwaysOnLine) || tone != "ok" {
 		t.Fatalf("Mac on label: %q %q", label, tone)
 	}
 
-	// The Mac goes off: the teammate asks Helper from their own AI app.
+	// The Mac goes off: the place label still advertises its online copy.
 	crewMacSockets.Lock()
 	delete(crewMacSockets.byDevice, "owner-mac")
 	crewMacSockets.Unlock()
-	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); !strings.HasPrefix(label, "Mac off · answering from the server") || tone != "server" {
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); !strings.HasPrefix(label, crewAlwaysOnLine+" · answering your team") || tone != "server" {
 		t.Fatalf("In team, Mac off label: %q %q", label, tone)
 	}
+	// PLAT-746-970: a teammate ask must use the asker's tool-free answer,
+	// never import or resume the maker's native standby session.
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "sdk")
+	previousAnswer := crewSharedAnswerTextForTest
+	t.Cleanup(func() { crewSharedAnswerTextForTest = previousAnswer })
+	actors := make(chan string, 1)
+	crewSharedAnswerTextForTest = func(_ context.Context, actor string, record *publishedProject, _, _ string) (string, error) {
+		actors <- actor + "/" + record.OwnerID
+		return `{"answer":"Shared context answer","needs_work":false}`, nil
+	}
 	member := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}}}
-	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, member))
-	w := httptest.NewRecorder()
-	api.macSharedAgentCall(w, r, "ask", map[string]any{"chat_id": macSharedAgentChatKey("team", helper), "message": "what changed today?"}, "owner", "team")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "submission_id") {
-		t.Fatalf("the teammate's ask was not answered on the server: %d %s (held: %v)", w.Code, w.Body.String(), heldTabs(t))
+	ask := func(tab string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, member))
+		w := httptest.NewRecorder()
+		api.macSharedAgentCall(w, r, "ask", map[string]any{"chat_id": macSharedAgentChatKey("team", tab), "message": "what changed today?"}, "owner", "team")
+		return w
 	}
-	if len(ran) != 1 || ran[0].Tab != helper || ran[0].Operation != "agent_ask" {
-		t.Fatalf("the server did not run the ask: %+v", ran)
+	if w := ask(helper); w.Code != http.StatusOK {
+		t.Fatalf("shared ask refused: %d %s", w.Code, w.Body.String())
 	}
-	var args struct {
-		SenderID string `json:"sender_id"`
+	select {
+	case actor := <-actors:
+		if actor != "other/other" {
+			t.Fatalf("answer account: %s", actor)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("shared-answer model was not called")
 	}
-	if json.Unmarshal(ran[0].Args, &args) != nil || args.SenderID != "other" {
-		t.Fatalf("the server turn must run with the teammate as the asker, got %q", args.SenderID)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		posts, err := readCrewSharedAnswers("team")
+		if err == nil && len(posts) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("shared answer not saved: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if len(imported) != 1 || imported[0] != helper+"/other" {
-		t.Fatalf("the owner's chat and the teammate's thread must come from the copy: %v", imported)
+	for _, tab := range []string{solo, "unregistered"} {
+		if w := ask(tab); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "agent_unavailable") {
+			t.Fatalf("private/unregistered target %s: %d %s", tab, w.Code, w.Body.String())
+		}
+	}
+	if len(imported) != 0 || len(ran) != 0 {
+		t.Fatal("teammate ask resumed maker standby")
 	}
 	rows, err := readCrewStandby("team", "owner")
-	if err != nil || rows[helper].Writer != "server" || rows[helper].WriterRevision != 1 || rows[helper].WriterSince == "" {
-		t.Fatalf("the server must be recorded as the writer: %+v %v", rows[helper], err)
-	}
-	// From now on the teammate's thread runs here, not on the Mac.
-	if !crewStandbyServesKey(sharedThreadKey("team", helper, "other")) || crewLivesOnMac(crewProfileID, sharedThreadKey("team", helper, "other"), "owner") {
-		t.Fatal("the teammate's thread on a server-answered agent must run on the server")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// PLAT-856-509 (owner, 6 Nov: "always online agents.. are for another person"): the owner's own chat waits for the Mac,
-	// also while the server answers teammates. Opening it still reads the copy's conversation; a send never runs here.
+	// Opening it still reads the copy's conversation; a send never runs here.
 	ownerKey := macSharedAgentChatKey("team", helper)
 	if crewStandbyServesKey(ownerKey) || !crewLivesOnMac(crewProfileID, ownerKey, "owner") {
 		t.Fatal("the owner's own chat must stay on the Mac")
@@ -236,7 +261,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if routed, w := ownerCall("resolve"); !routed || w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"mac_off":true`) || !strings.Contains(w.Body.String(), "conversation-"+helper) {
 		t.Fatalf("the owner's chat must open from the copy, to read: %t %d %s", routed, w.Code, w.Body.String())
 	}
-	if routed, w := ownerCall("send"); !routed || w.Code != http.StatusServiceUnavailable || len(ran) != 1 {
+	if routed, w := ownerCall("send"); !routed || w.Code != http.StatusServiceUnavailable || len(ran) != 0 {
 		t.Fatalf("the owner's send must wait for the Mac: %t %d %s (ran %d)", routed, w.Code, w.Body.String(), len(ran))
 	}
 
@@ -247,7 +272,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", solo, false, true, false); label != "Mac off · waits for your Mac" || tone != "" {
 		t.Fatalf("Only me, Mac off label: %q %q", label, tone)
 	}
-	if len(imported) != 1 {
+	if len(imported) != 0 {
 		t.Fatalf("an Only me agent's copy was imported: %v", imported)
 	}
 }
@@ -823,7 +848,7 @@ func TestOwnerTeamCopyIsAttachedToServerTurnsAndNamedInTheNote(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", Name: "Example Crew", On: true, Folder: crewTeamFolder{ID: "folder-1", Whole: true}}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", Name: "Example Crew", On: true, Folder: crewTeamFolder{ID: "folder-1", Folders: []string{"team"}}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
@@ -890,18 +915,28 @@ func TestCrewRelayedEventsSayWhetherAMacAgentIsWorking(t *testing.T) {
 	if _, known := crewRelayBatchRunning(batch("tool_call_start", "tool_call_end")); known {
 		t.Fatal("events with no turn start or end say nothing about the turn")
 	}
+	// A generation can finish before tools and more prose; relay activity uses
+	// the same whole-turn boundaries as the Mac's live and restart state.
+	for _, typ := range []string{"llm_generation_end", "streaming_end", "agent_end"} {
+		if running, known := crewRelayBatchRunning(batch("user_message", typ)); !running || !known {
+			t.Fatalf("%s incorrectly settled the relayed turn", typ)
+		}
+		if _, known := crewRelayBatchRunning(batch(typ)); known {
+			t.Fatalf("%s alone is not a whole-turn verdict", typ)
+		}
+	}
 	key := "owner/team/conversation-x"
 	crewRelayStreams.Lock()
 	crewRelayStreams.streams[key] = &crewRelayStream{running: true, since: time.Now()}
 	crewRelayStreams.Unlock()
 	t.Cleanup(func() { crewRelayStreams.Lock(); delete(crewRelayStreams.streams, key); crewRelayStreams.Unlock() })
-	if !crewMacConversationRunning("owner", "team", "conversation-x") {
+	if crewMacConversationActivity("owner", "team", "conversation-x") != "running" {
 		t.Fatal("a turn that started now must read as working")
 	}
 	crewRelayStreams.Lock()
 	crewRelayStreams.streams[key].since = time.Now().Add(-2 * crewActivityStale)
 	crewRelayStreams.Unlock()
-	if crewMacConversationRunning("owner", "team", "conversation-x") {
+	if crewMacConversationActivity("owner", "team", "conversation-x") == "running" {
 		t.Fatal("a turn whose end never came must stop counting as working")
 	}
 }
@@ -953,11 +988,14 @@ func TestCrewStandbyMemberRowsAreSeparateAndPairBound(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{
-		{UserID: "other", Where: "mac", MacPair: "other-pair"},
-		{UserID: "invitee", Invited: true, Where: "mac", MacPair: "invitee-pair"},
-		{UserID: "webby"},
-	}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true,
+		// PLAT-856-569: this fixture tests an explicitly shared member Main.
+		// Discovery alone correctly leaves unknown/pre-join member agents private.
+		Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"main": true}, "other": {"main": true}}), People: []crewTeamPerson{
+			{UserID: "other", Where: "mac", MacPair: "other-pair"},
+			{UserID: "invitee", Invited: true, Where: "mac", MacPair: "invitee-pair"},
+			{UserID: "webby"},
+		}}); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
@@ -1079,9 +1117,11 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "folder-1", Whole: true},
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "folder-1", Folders: []string{"team"}},
 		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "other-pair"}, {UserID: "third"}}}
-	if err := writeCrewTeam(team); err != nil {
+	// The current registry is authoritative for In team, not the cached Mac tab.
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"main": true}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
 	crewMacTeamTabsCache.Store("team\x00other", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "other", Tab: "main", Name: "Helper", Purpose: "helps"}}})

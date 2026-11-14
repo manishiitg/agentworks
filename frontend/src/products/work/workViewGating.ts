@@ -10,7 +10,7 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanels?: Set<string>): boolean {
   if (view === 'context') return true
   if (!enabledPanels) return true
-  if (view === 'identity' || view === 'goals' || view === 'workflow' || view === 'schedules' || view === 'suggestions') return true
+  if (view === 'identity' || view === 'workflow' || view === 'schedules' || view === 'suggestions') return true
   if (view === 'history') return enabledPanels.has('schedules')
   if (view === 'memory') return enabledPanels.has('memory') || enabledPanels.has('skills')
   if (view === 'shell') return true
@@ -31,7 +31,7 @@ export function isWorkIntegrationTabEnabled(tab: string, enabledPanels?: Set<str
   if (tab === 'secrets') return enabledPanels.has('secrets') || enabledPanels.has('mcp')
   if (tab === 'message-agents') return true
   if (tab === 'access' || tab === 'computer' || tab === 'laptop' || tab === 'sync' || tab === 'computer-use' || tab === 'mac-folders') return true
-  if (tab === 'cli' || tab === 'agentbridge') return true
+  if (tab === 'cli' || tab === 'agentbridge' || tab === 'slack-bot') return true
   if (tab === 'folders') return enabledPanels.has('folders')
   if (tab === 'brain') return true
   return enabledPanels.has('bots')

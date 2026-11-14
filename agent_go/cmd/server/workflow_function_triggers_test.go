@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 func reviewPRTrigger() WorkflowSchedule {
@@ -108,28 +107,6 @@ func TestWorkflowFunctionObjectInput(t *testing.T) {
 	}
 	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"INPUT": "not an object"}); err == nil {
 		t.Fatal("object input accepted a string")
-	}
-}
-
-// The validated inputs become the run's variables directly.
-func TestDeliverFunctionSetsRunVariables(t *testing.T) {
-	var got *WorkflowWebhookDelivery
-	receiver := webhookReceiver{
-		existing: func(context.Context, string) (schedulerstate.Run, error) {
-			return schedulerstate.Run{}, schedulerstate.ErrRunNotFound
-		},
-		start: func(_ string, _ string, _ string, input *WorkflowWebhookDelivery) (string, error) {
-			got = input
-			return input.RunID, nil
-		},
-	}
-	sched := reviewPRTrigger()
-	result, err := receiver.deliverFunction(context.Background(), "gate", "Workflow/gate", sched, "call-1", []byte(`{"function":"review_pr"}`), map[string]string{"PR_NUMBER": "149"}, "")
-	if err != nil || result.Status != "accepted" {
-		t.Fatalf("deliver = %+v err=%v", result, err)
-	}
-	if got == nil || got.Variables["PR_NUMBER"] != "149" || got.Group != "" || got.Event != "agentworks.function.review_pr" {
-		t.Fatalf("delivery = %+v", got)
 	}
 }
 

@@ -8,6 +8,7 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { PROJECT_SECRETS_REFRESH_EVENT } from '../../utils/secretMutationRefresh'
 import { Checkbox } from '../ui/checkbox'
 import { useVaultSetupDraft } from './useVaultSetupDraft'
+import { AddToTeamControl, useAddToTeam } from '../../products/work/TeamWay'
 
 type Props = { flat?: boolean; renderItemActions?: (item:ProjectVaultItem)=>ReactNode; workspacePath: string; tabId?: string; disabled?: boolean; itemKinds?: VaultItemKind[]; title?: string; onSelectionSaved?: (inventory: ProjectVaultInventory) => void }
 
@@ -28,6 +29,8 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   const setup = useVaultSetupDraft(tabId)
+  const projectId = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata?.agentProfileProjectId : undefined)
+  const team = useAddToTeam(projectId)
   const streaming = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.isStreaming))
   const wasStreaming = useRef(false)
   const data = result?.scope === scope ? result.inventory : undefined
@@ -81,6 +84,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
             <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, groupName)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
             {(flat||item.source)&&<span className="text-xs text-muted-foreground">{flat?(item.source||groupName):`(${item.source})`}</span>}
             {renderItemActions?.(item)}
+            {team && item.source === 'you' && (item.kind === 'mcp' || item.kind === 'shared_secret') && <AddToTeamControl team={team} kind={secret ? 'secret' : 'app'} id={secret ? item.name : item.id} provider={item.provider} signIn={item.sign_in} />}
             {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{status}</span>}
             {item.used_in && item.used_in.length > 0 && <span className="basis-full pl-10 text-xs text-muted-foreground">Used in: {item.used_in.join(', ')}</span>}
           </div>
@@ -95,6 +99,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
       <Checkbox aria-label="Use all my apps automatically" checked={data.use_all_vault_apps} disabled={disabled || busy} onCheckedChange={() => { void toggle('all_vault_apps') }} />
       <span className="min-w-0 flex-1"><span className="block font-medium">Use all my apps automatically</span><span className="block text-xs text-muted-foreground">{data.use_all_vault_apps ? 'This project can use every Vault app you can use. Untick an app below to choose them yourself.' : 'This project uses only the apps ticked below.'}</span></span>
     </label>}
+    {team?.line && <p role="status" className="text-xs text-muted-foreground">{team.line}</p>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
     {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app.'}</p>}
     {flat?<div className="divide-y divide-border rounded-lg border border-border" aria-label="Secret list">{flatRows?.map(({item,groupName})=>row(item,groupName))}</div>:groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">

@@ -30,11 +30,15 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
-	ws, _ := newFakeWorkspaceServer(t)
+	ws, documents := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	store := defaultProductConversationRegistryStore()
 	key := "member-access:chat:own"
 	memberMain := crewOwnerDefaultChatKey("member-access", "member")
+	ownerMain := crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID)
+	documents.mu.Lock()
+	documents.files["Crew/member-access/product.json"] = `{"schema_version":1,"product":"work","id":"member-access","main_chat_key":"` + ownerMain + `"}`
+	documents.mu.Unlock()
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "member-session"},
 		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"}}}
 	if err := store.writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
@@ -43,9 +47,28 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	for _, who := range []string{"owner", "teammate"} {
 		otherKey := "member-access:chat:" + who
 		otherDoc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, otherKey): {ProfileID: crewProfileID, ConversationKey: otherKey, SessionID: who + "-session"}}}
+		if who == "owner" {
+			otherDoc.Entries[productConversationRegistryEntryKey(crewProfileID, ownerMain)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: ownerMain, SessionID: "owner-main-session", WorkspacePath: "Crew/member-access"}
+		}
 		if err := store.writeDocument(t.Context(), productConversationRegistryPath(who), otherDoc); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Settings admission uses the Team registry, not conversation discovery.
+	// Seed the same owned agents before exercising visibility and its refusals.
+	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{
+		"member":   {key: true, memberMain: true},
+		"owner":    {"member-access:chat:owner": true, ownerMain: true},
+		"teammate": {"member-access:chat:teammate": true},
+	})
+	for id, agent := range team.Agents {
+		if agent.OwnerID == "member" && agent.ChatKey == memberMain {
+			agent.Name = "Main"
+			team.Agents[id] = agent
+		}
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
 	router := mux.NewRouter()
@@ -66,7 +89,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 		r := httptest.NewRequest("GET", "/api/sessions/member-session/events", nil)
 		return watching.crewSessionTabView(r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who})), "member-session")
 	}
-	// Notifications follow the same rule from the same record (crewTeam.AgentChoices, crew_team_in_team.go).
+	// Notifications follow the same rule from the same record (crewTeam.Agents, crew_team_in_team.go).
 	notified := func(who string) bool {
 		return watching.notifyCanSee(t.Context(), who, notifyChat{owner: "member", project: team.ProjectID, found: true}, "member-session")
 	}
@@ -110,7 +133,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	tab := crewTeamTabFor(t.Context(), team, "member")
 	own := 0
 	for _, agent := range tab.Agents {
-		if agent.Key == key {
+		if agent.WatchKey == key {
 			own++
 			if !agent.CanChange || agent.InTeam {
 				t.Fatalf("own agent row: %+v", agent)
@@ -150,7 +173,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	for viewer, editable := range map[string]bool{"member": true, "owner": false} {
 		seen := false
 		for _, agent := range crewTeamTabFor(t.Context(), team, viewer).Agents {
-			if agent.Key == key {
+			if agent.WatchKey == key {
 				seen = true
 				if agent.WhenOthersAsk != "Only answer about the website." || !agent.HasRule || agent.CanEditRule != editable {
 					t.Fatalf("%s sees rule row %+v", viewer, agent)
@@ -188,9 +211,9 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("%s edits %d of their agents", who, editable)
 		}
 	}
-	// Showcase, 6 Nov: the owner's Main, asked to set the rule of "testing xxx" from chat, named it by its tab, its Mac
-	// chat key and its name, with the Mac off; each was refused. Each now saves, for the caller's own agents only.
-	for _, name := range []string{"e139c703", "mac-copy:chat:e139c703", "helper", "mac-copy"} {
+	// Native adapters and unique chat-tool names resolve only among the caller's agents.
+	// The Team rows above exercise the server-issued IDs; retired Mac project aliases are gone.
+	for _, name := range []string{"e139c703", "helper"} {
 		if w := call("owner", "agent-rule", `{"agent_key":"`+name+`","when_others_ask":"Saved by `+name+`"}`); w.Code != 200 {
 			t.Fatalf("owner could not save the rule of their own Mac agent by %q: %d %s", name, w.Code, w.Body.String())
 		}
@@ -198,13 +221,13 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("member saved the owner's agent rule by %q: %d", name, w.Code)
 		}
 	}
-	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macMainTab).WhenOthersAsk != "Saved by mac-copy" {
-		t.Fatalf("rules by Mac key or name not kept on the owner's agents: %+v", saved.AgentRules["owner"])
+	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macMainTab).WhenOthersAsk != "Ask me first." {
+		t.Fatalf("rules by Mac key or name not kept on the owner's agents: %+v", saved.Agents)
 	}
 	call("owner", "agent-rule", `{"agent_key":"Helper","when_others_ask":"Ask me first."}`)
 	saved, _ := readCrewTeam(team.ProjectID)
 	if saved.agentRule("owner", "e139c703").WhenOthersAsk != "Ask me first." || saved.agentRule("member", memberMain).WhenOthersAsk != "Ask me first." {
-		t.Fatalf("rules not kept: %+v", saved.AgentRules)
+		t.Fatalf("rules not kept: %+v", saved.Agents)
 	}
 	// Public on AgentBridge from the website (owner, 6 Nov): anyone in the Team switches THEIR OWN agent, through their
 	// own Mac; the call never reaches another person's Mac. A person whose Mac is off is told plainly (no Mac here).
@@ -225,6 +248,10 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}}
 		who := who
 		sock.send = func(m crewRelayMessage) error {
+			// Team changes also send notification frames without a command.
+			if m.Call == nil {
+				return nil
+			}
 			sent[who] = append(sent[who], *m.Call)
 			sock.mu.Lock()
 			sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{}`)}

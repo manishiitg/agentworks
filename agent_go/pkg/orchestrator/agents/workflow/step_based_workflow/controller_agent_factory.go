@@ -1389,13 +1389,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Post-setup configuration failed for %s: %v", agentName, err))
 	}
 
-	if subAgentExecCtx != nil {
-		if inherited := backgroundAgentSkillsFromContext(ctx); len(inherited) > 0 {
-			if err := applyInheritedBackgroundSkills(ctx, baseAgent, inherited); err != nil {
-				return nil, fmt.Errorf("apply inherited background skills: %w", err)
-			}
-		}
-	}
 	return agent, nil
 }
 

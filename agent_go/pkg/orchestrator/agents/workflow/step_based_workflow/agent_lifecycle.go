@@ -6,6 +6,7 @@ import (
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
 
@@ -33,9 +34,27 @@ func (hcpo *StepBasedWorkflowOrchestrator) beginAgentExecution(ctx context.Conte
 	scoped = virtualtools.WithBackgroundAgentID(scoped, id)
 	scoped = context.WithValue(scoped, events.ParentExecutionIDKey, id)
 	return scoped, func(result string, err error) {
+		hcpo.flushAgentTranscripts()
 		defer cancel()
 		if !finalizeExecStatus(exec, scoped, &result, &err) && hcpo.workshopExecutionNotifier != nil {
 			hcpo.workshopExecutionNotifier.OnExecutionComplete(id, step.GetTitle(), result, meta, err)
 		}
+	}
+}
+
+// Flush diagnostics even when the run context has been cancelled. The ordinary
+// completion path and Workshop.Close (Stop/shutdown) share this same barrier.
+func (hcpo *StepBasedWorkflowOrchestrator) flushAgentTranscripts() {
+	if hcpo == nil || hcpo.BaseOrchestrator == nil {
+		return
+	}
+	bridge, ok := hcpo.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := bridge.WaitForBackgroundTranscriptPersistence(ctx); err != nil && hcpo.GetLogger() != nil {
+		hcpo.GetLogger().Warn(fmt.Sprintf("Agent transcript flush: %v", err))
 	}
 }

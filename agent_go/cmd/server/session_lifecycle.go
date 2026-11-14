@@ -14,6 +14,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -104,6 +105,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 		return
 	}
 
+	api.cancelUsageLimitRecovery(sessionID, "stopped")
 	// Preserve the user's intent even if the foreground cancel function has just
 	// completed and disappeared. A scheduled sequencer may be between turns at
 	// that exact moment; its waiter must still abort before sending the next one.
@@ -123,6 +125,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 		log.Printf("[SESSION DEBUG] Canceled current LLM turn for session %s", sessionID)
 	}
 	api.agentCancelMux.Unlock()
+	api.pauseNativeGoalForStop(sessionID)
 
 	if !exists {
 		if api.isSessionBusy(sessionID) && !api.retainedMainTurnTracked(sessionID) {
@@ -158,6 +161,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 		turnCanceled = true
 	}
 	api.agentCancelMux.Unlock()
+	api.pauseNativeGoalForStop(sessionID)
 	log.Printf("[STOP] session=%s active turn context canceled=%v", sessionID, turnCanceled)
 
 	api.sessionQueryIDMux.Lock()
@@ -200,10 +204,21 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	delete(api.lastQueryRequests, sessionID)
 	api.lastQueryMu.Unlock()
 
+	// Capture provider identity before closing its registration.
+	codexRuntime := false
+	if session, ok := mcpagent.LookupSession(sessionID); ok {
+		if handle := session.Snapshot(); handle != nil {
+			codexRuntime = handle.Provider.Provider == "codex-cli"
+		}
+	}
 	closeAllCodingCLISessionsForRuntimeCancel(sessionID, closeReason)
+	if codexRuntime && api.eventStore != nil {
+		api.eventStore.EndNativeCommandsWithoutResult(sessionID)
+	}
 	// Stop closes the coding CLI, so nothing can finish the turn it was running: release every
 	// marker that says the session is busy, or the next message queues behind a dead turn forever
 	// (server B, 2026-09-30: every message after a Stop stayed "queued_for_turn").
+	api.endNativeBackground(sessionID, "", "")
 	api.releaseStoppedSessionTurnMarkers(sessionID)
 	if api.terminalStore == nil {
 		return
@@ -238,6 +253,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 // kill-session) and is a no-op when no session is registered for the
 // owner, so calling all tmux providers is safe and provider-agnostic.
 func closeAllCodingCLIInteractiveSessionsForOwner(owner, reason string) {
+	common.RevokeProcessBridgeCredential(owner, "process_disposed")
 	llmproviders.CloseCursorCLIInteractiveSessionForOwner(owner, reason)
 	llmproviders.CloseCodexCLIInteractiveSessionForOwner(owner, reason)
 	llmproviders.CloseClaudeCodeInteractiveSessionForOwner(owner, reason)
@@ -322,6 +338,7 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 		log.Printf("[SESSION DEBUG] Canceled agent execution context for session %s", sessionID)
 	}
 	api.agentCancelMux.Unlock()
+	api.pauseNativeGoalForStop(sessionID)
 
 	// Update active session status to stopped
 	api.updateSessionStatus(sessionID, "stopped")
@@ -361,6 +378,7 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 		api.sessionWorkspaceMu.Unlock()
 	}
 
+	common.RevokeProcessBridgeCredential(sessionID, "stop")
 	api.removeSessionAgent(sessionID)
 
 	api.completionLoopStartedMu.Lock()
@@ -631,6 +649,7 @@ func (api *StreamingAPI) handleClearSession(w http.ResponseWriter, r *http.Reque
 	api.conversationMux.Lock()
 	if _, exists := api.conversationHistory[sessionID]; exists {
 		delete(api.conversationHistory, sessionID)
+		delete(api.resumeHistorySources, sessionID)
 		log.Printf("[SESSION DEBUG] Cleared conversation history for session %s", sessionID)
 	}
 	delete(api.lastWorkshopModeBySession, sessionID)
@@ -788,8 +807,7 @@ func (api *StreamingAPI) settleStoppedTurnWithNoOwner(sessionID string) {
 	log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=no_turn_owner_after_stop", sessionID)
 }
 
-// emitInterruptedTurnEnd records an interrupted end with no reply in the session's events, so every screen leaves
-// "working".
+// emitInterruptedTurnEnd preserves received partial prose and records Stop, never a successful final answer.
 func (api *StreamingAPI) emitInterruptedTurnEnd(sessionID, source string) {
 	now := time.Now()
 	completion := unifiedevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "", "completed", 0, 1)
@@ -799,6 +817,13 @@ func (api *StreamingAPI) emitInterruptedTurnEnd(sessionID, source string) {
 	completion.Metadata["scope"] = "main_agent"
 	completion.Metadata[mcpagent.RetainedTurnOutcomeMetadataKey] = "interrupted"
 	completion.Metadata["final_response_missing"] = true
+	completion.Metadata["stopped"] = source != "app_restart"
+	// Preserve only the platform's current main-chat stream, never CLI transcript
+	// recovery or terminal screenshots. Incomplete/pruned prefixes stay unavailable.
+	prefix, _ := api.eventStore.StreamingPrefix(sessionID)
+	if partial := events.StreamingPrefixText(prefix); partial != "" {
+		completion.Metadata["partial_response"] = partial
+	}
 	api.eventStore.AddEvent(sessionID, events.Event{
 		ID:            fmt.Sprintf("stop-no-owner-completion-%d", now.UnixNano()),
 		Type:          "unified_completion",
@@ -834,6 +859,8 @@ func (api *StreamingAPI) settleStoredTurnForOwner(r *http.Request, sessionID str
 	if err != nil || strings.TrimSpace(owner) == "" || caller == "" || owner != caller {
 		return false
 	}
+	api.pauseNativeGoalForStop(sessionID)
+	api.cancelUsageLimitRecovery(sessionID, "stopped_after_restart")
 	if !api.eventStore.PersistedTurnOpen(sessionID) {
 		log.Printf("[SESSION STOP] cancel-turn session=%s: no live session and the stored events show no open turn", sessionID)
 		return true

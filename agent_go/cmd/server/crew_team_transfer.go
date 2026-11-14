@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -27,7 +28,7 @@ type crewTeamSyncRequest struct {
 	Changes    []crewTeamChange `json:"changes"`
 	// OnPurpose are files the sender chose to sync despite credential-looking names (owner, 5 Nov, "Sync it anyway").
 	OnPurpose []string `json:"on_purpose,omitempty"`
-	// Since is, for changes, the last revision the copy has.
+	// Since is the last revision this copy has, for changes and every upload.
 	Since uint64 `json:"since,omitempty"`
 }
 
@@ -39,6 +40,7 @@ type crewTeamRemoteFile struct {
 
 // crewTeamChangesReply lists what changed after the copy's revision, up to Through (more pages while More).
 type crewTeamChangesReply struct {
+	CatchUp   bool                 `json:"catch_up,omitempty"`
 	Revision  uint64               `json:"revision"`
 	Through   uint64               `json:"through"`
 	More      bool                 `json:"more,omitempty"`
@@ -91,13 +93,18 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 	done := func(status int, files, chunks int) {
 		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=%s files=%d chunks=%d status=%d ms=%d", project, logUsernameForUserID(claims.UserID), op, files, chunks, status, time.Since(start).Milliseconds())
 	}
-	state, e := readCrewTeamFileState(project)
-	if e != nil {
-		externalError(w, 409, "transfer_failed", e.Error())
-		return
-	}
 	switch op {
 	case "plan":
+		state, e := readCrewTeamCurrentState(project)
+		if e != nil {
+			externalError(w, 409, "transfer_failed", e.Error())
+			return
+		}
+		if in.Since < state.HistoryFloor || in.Since > state.Revision {
+			team, _ := readCrewTeam(project)
+			writeCrewTeamCatchUp(w, project, claims, team, state, in.Since)
+			return
+		}
 		team, _ := readCrewTeam(project)
 		store, e := crewTeamChunkStore(project)
 		if e != nil {
@@ -138,7 +145,17 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		wire, _ := json.Marshal(in.Changes)
-		receipt, e := commitCrewTeamChanges(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, crewTransferDigest(string(wire)), in.Changes, in.OnPurpose...)
+		receipt, e := commitCrewTeamChangesAtRevision(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, crewTransferDigest(string(wire)), &in.Since, in.Changes, in.OnPurpose...)
+		if errors.Is(e, errCrewTeamHistoryCatchUp) {
+			state, readErr := loadCrewTeamFileState(project, true)
+			if readErr != nil {
+				externalError(w, 409, "transfer_failed", readErr.Error())
+				return
+			}
+			team, _ := readCrewTeam(project)
+			writeCrewTeamCatchUp(w, project, claims, team, state, in.Since)
+			return
+		}
 		if e != nil {
 			done(409, len(in.Changes), 0)
 			externalError(w, 409, "transfer_failed", e.Error())
@@ -147,12 +164,25 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		done(200, len(in.Changes), 0)
 		externalJSON(w, receipt)
 	case "changes":
-		since := in.Since
-		if since > state.Revision {
-			since = 0 // a copy from another generation starts over
+		state, paths, through, e := readCrewTeamLedgerChanges(project, in.Since, crewTeamCommitBatch)
+		if e != nil {
+			externalError(w, 409, "transfer_failed", e.Error())
+			return
+		}
+		if in.Since < state.HistoryFloor || in.Since > state.Revision {
+			state, e = readCrewTeamCurrentState(project)
+			if e != nil {
+				externalError(w, 409, "transfer_failed", e.Error())
+				return
+			}
+			team, _ := readCrewTeam(project)
+			out := crewTeamCatchUpManifest(claims, team, state)
+			log.Printf("[CREW_TEAM_LEDGER] project=%s event=sync_catch_up requested_revision=%d current_revision=%d history_floor=%d", project, in.Since, state.Revision, state.HistoryFloor)
+			done(200, len(out.Files), 0)
+			externalJSON(w, out)
+			return
 		}
 		out := crewTeamChangesReply{Revision: state.Revision, Through: state.Revision, Files: []crewTeamRemoteFile{}, OnPurpose: sortedOnPurpose(state.onPurpose())}
-		paths, through := crewTeamChangedSince(state, since, crewTeamCommitBatch)
 		if through < state.Revision {
 			out.Through, out.More = through, true
 		}
@@ -235,7 +265,7 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 	// Only chunks of a file the caller may read now: a current version, inside what the team shares, not private, and
 	// within their connection's file guard (not any old chunk by its hash).
 	sent, size, ok := serveChunks(w, r, store, func() (map[string]bool, error) {
-		state, e := readCrewTeamFileState(project)
+		state, e := readCrewTeamCurrentState(project)
 		if e != nil {
 			return nil, e
 		}
@@ -261,14 +291,19 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}", api.handleCrewTeam).Methods("GET", "PUT")
 	r.HandleFunc("/crew-teams/{project}/{op:invite}", api.handleCrewTeam).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/agents", api.handleCrewTeamAgents).Methods("GET")
+	r.HandleFunc("/crew-teams/{project}/activity", api.handleCrewTeamActivity).Methods("GET")
+	r.HandleFunc("/crew-teams/{project}/activity-posts", api.handleCrewTeamActivityPosts).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/tab", api.handleCrewTeamTab).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/dashboards-tab", api.handleCrewTeamDashboardsTab).Methods("GET")
+	r.HandleFunc("/crew-teams/{project}/share", api.handleCrewSharePage).Methods("GET")
+	r.HandleFunc("/crew-teams/{project}/action", api.handleCrewShareAction).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/dashboards/public-link", api.handleCrewTeamDashboardPublicLink).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/agentbridge", api.handleCrewTeamAgentBridge).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/folders", api.handleCrewTeamFolders).Methods("GET")
-	r.HandleFunc("/crew-teams/{project}/folder-change", api.handleCrewTeamFolderChange).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/where", api.handleCrewTeamWhere).Methods("POST")
+	r.HandleFunc("/crew-teams/{project}/setup", api.handleCrewTeamSetup).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/people", api.handleCrewTeamPeople).Methods("GET", "POST")
+	r.HandleFunc("/crew-teams/{project}/way", api.handleCrewTeamWay).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/{op:leave|agent-visibility|agent-rule}", api.handleCrewTeamMemberAction).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/{op:files}", api.handleCrewTeamFiles).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/{op:file}", api.handleCrewTeamFiles).Methods("GET", "PUT", "DELETE")

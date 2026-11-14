@@ -1,8 +1,10 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -45,13 +47,34 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 			return
 		}
 		task := update.Task
-		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: "helper", State: task.State, Origin: "sdk_helper", Name: task.Description, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: time.Now()}
+		kind := task.Kind
+		if kind != "background_command" {
+			kind = "helper"
+		}
+		at := time.Now()
+		if task.UpdatedAt > 0 {
+			at = time.UnixMilli(task.UpdatedAt)
+		}
+		record := llmtypes.NativeRecord{ID: "sdk-helper:" + task.TaskID + ":" + task.RunID, Provider: "claude-code", SessionID: update.NativeSessionID, Kind: kind, State: task.State, Origin: "sdk_helper", Name: task.Description, HelperType: task.HelperType, HelperDescription: task.HelperDescription, HelperMode: task.HelperMode, CurrentStep: task.CurrentStep, CommandLabel: task.Command, BackgroundMode: task.BackgroundMode, TaskID: task.TaskID, ToolID: task.ToolUseID, Timestamp: at, TaskRunID: task.RunID, StartedAt: time.UnixMilli(task.StartedAt), Tokens: task.TotalTokens, DurationMS: task.DurationMS}
 		activity := agentevents.NewAgentEvent(agentevents.NewCodingAgentNativeActivity(record))
 		activity.SessionID = update.Owner
 		api.observeTurnInactivity(update.Owner, storeevents.Event{Type: string(agentevents.CodingAgentNativeActivity), SessionID: update.Owner, Timestamp: time.Now(), ExecutionKind: "main_agent", Data: activity})
+		if task.StartedAt <= 0 {
+			record.StartedAt = time.Time{}
+		}
+		if task.TotalTokens != nil {
+			record.TokenSource = "task_report"
+		}
 		if task.State == "progress" {
-			return
-		} // actual native progress, not another transcript row
+			if api.nativeBackgroundReportUnchanged(update.Owner, record) {
+				return
+			}
+			tokens := int64(-1)
+			if task.TotalTokens != nil {
+				tokens = *task.TotalTokens
+			}
+			record.ID += fmt.Sprintf(":progress:%d:%d:%d", task.UpdatedAt, task.DurationMS, tokens)
+		}
 
 		if err := api.saveNativeCodingActivity(update.Owner, record); err != nil {
 			log.Printf("[SDK_HELPER] event failed session=%s task=%s state=%s: %v", update.Owner, task.TaskID, task.State, err)
@@ -66,7 +89,10 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 		}
 		log.Printf("[SDK_BACKGROUND] list session=%s tasks=%d closed=%s", sessionID, len(update.Tasks), update.Closed)
 		api.observeRuntimeSnapshot(sessionID)
-		publishSessionsChanged()
+		api.publishSessionChanged(sessionID)
+		if update.Wake {
+			go api.showClaudeWake(sessionID)
+		}
 	})
 }
 
@@ -94,6 +120,54 @@ func stopClaudeTaskBackgroundWork(sessionID, execID string) bool {
 	if taskID == "" || !stopClaudeBackgroundTask(sessionID, taskID) {
 		return false
 	}
+	claudeTasksStoppedByPerson.Store(sessionID, time.Now())
 	log.Printf("[SDK_BACKGROUND] stop from background work session=%s task=%s", sessionID, taskID)
 	return true
+}
+
+// claudeTasksStoppedByPerson remembers when the person stopped a chat's Claude task from the background-work list: the
+// turn Claude starts on its own about that is not shown.
+var claudeTasksStoppedByPerson sync.Map // sessionID -> time.Time
+
+// claudeWakeMessage is what the chat shows for a turn Claude started on its own; Claude does not receive it.
+const claudeWakeMessage = "[Background work finished] Claude is following up on work it started earlier in this chat."
+
+// showClaudeWake shows the turn Claude starts on its own when its background work (a build, a test run) finishes
+// between turns. Claude wakes itself like this; a chat turn adopts Claude's own turn, the way T3 Code does
+// (PLAT-746-899). While another turn holds the chat the wake waits in nativeWakes (its unclaimed timeout is
+// stopped) and is adopted when that turn ends, instead of being dropped.
+func (api *StreamingAPI) showClaudeWake(sessionID string) {
+	if native, wakeID := claudecode.ClaudeSDKWakeIdentity(sessionID); wakeID != 0 {
+		claudecode.QueueClaudeSDKWake(sessionID, native, wakeID)
+	}
+	nativeWakes.addClaude(sessionID)
+	api.runQueuedNativeWakes(sessionID)
+}
+
+// adoptQueuedClaudeWake runs the chat turn that adopts Claude's waiting wake.
+func (api *StreamingAPI) adoptQueuedClaudeWake(sessionID string) {
+	if chatTerminalTurnRefusal(sessionID) != "" {
+		dropQueuedNativeWakes(sessionID, "continued_in_terminal")
+		return
+	}
+	reason := ""
+	if at, ok := claudeTasksStoppedByPerson.LoadAndDelete(sessionID); ok && time.Since(at.(time.Time)) < 2*time.Minute {
+		reason = "stopped_by_person"
+	} else if !claudecode.ClaudeSDKWakePending(sessionID) {
+		// A person's turn took the kept session first; Claude's conversation keeps what it said.
+		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=wake_taken_by_turn", sessionID)
+		return
+	} else if reason = backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID)); reason == "" && backgroundFollowUps.atLimit(sessionID) {
+		reason = "chain_limit"
+	}
+	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, claudeWakeMessage, "", nil, llmtypes.WithCodingProviderAdoptWake, storeevents.BackgroundWakePresentation{Kind: "background_work_finished"}) {
+		reason = "turn_not_started"
+	}
+	if reason != "" {
+		claudecode.DismissClaudeSDKWake(sessionID, reason)
+		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=%s", sessionID, reason)
+		return
+	}
+	api.noteAutomaticFollowUpStarted(sessionID)
+	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=adopted", sessionID)
 }

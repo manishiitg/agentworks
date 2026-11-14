@@ -12,6 +12,10 @@ export default {
   ],
   theme: {
   	extend: {
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'system-ui', '"Segoe UI"', 'sans-serif'],
+        mono: ['"AgentWorks SF Mono Terminal"', '"SF Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+      },
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

@@ -4,6 +4,7 @@ import type { UserMessageEvent } from '../../../generated/events'
 import { askAIDisplayText, hasAskAIMessage } from '../../../utils/askAIMessage'
 import { PlainMarkdown } from '../../ui/PlainMarkdown'
 import { DeliveryTick } from './DeliveryTick'
+import { AgentInboxMessage, agentInboxMessage } from '../../AgentInboxMessage'
 
 interface UserMessageEventDisplayProps {
   event: UserMessageEvent
@@ -35,6 +36,9 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
   const stepName = typeof event.metadata?.step_name === 'string'
     ? event.metadata.step_name.trim()
     : ''
+
+  const incomingAgentMessage = agentInboxMessage(event.metadata as Record<string, unknown> | undefined)
+  if (incomingAgentMessage) return <AgentInboxMessage message={incomingAgentMessage} timestamp={typeof event.timestamp === 'string' ? event.timestamp : ''} />
 
   // Check if content is long enough to need expansion
   const shouldShowExpand = content.length > CHAR_LIMIT

@@ -22,7 +22,7 @@ func TestTmuxServerEnvCheckRemovesServiceTokens(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "s")
-	start := exec.Command(tmux, "-f", "/dev/null", "-S", sock, "new-session", "-d", "-s", "plat663", "sleep 30")
+	start := exec.Command(tmux, "-f", "/dev/null", "-S", sock, "new-session", "-d", "-s", "plat663", "sleep", "30")
 	start.Env = append(os.Environ(), "WORKSPACE_API_TOKEN=x", "SUPABASE_SERVICE_ROLE_KEY=x", "PLAT663_ORDINARY=kept")
 	if out, err := start.CombinedOutput(); err != nil {
 		t.Fatalf("start tmux: %v: %s", err, out)

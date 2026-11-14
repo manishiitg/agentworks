@@ -16,11 +16,12 @@ type Props = {
   busy: boolean
   onSelect: (id: string) => Promise<void>
   onUpdated: () => Promise<void>
+  manageOnly?: boolean
   children?: ReactNode
 }
 
 /** One list for saved bots. Every mutation uses the existing server checks. */
-export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect, onUpdated, children }: Props) {
+export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect, onUpdated, manageOnly = false, children }: Props) {
   const [view, setView] = useState<'existing' | 'new'>('existing')
   const [editing, setEditing] = useState<VaultSlackBot | 'new' | null>(null)
   const [scopes, setScopes] = useState<SlackBotState['scopes']>([])
@@ -83,8 +84,8 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
 
   return <div aria-label="Slack bot choices" className="space-y-3">
     <div className="flex flex-wrap gap-2">
-      <Button type="button" size="sm" variant={view === 'existing' ? 'secondary' : 'outline'} disabled={busy} onClick={() => { existing(); void onUpdated() }}>Use existing</Button>
-      <Button type="button" size="sm" variant={view === 'new' ? 'secondary' : 'outline'} disabled={busy} onClick={() => void add()}><Plus className="mr-1.5 h-3.5 w-3.5"/>Add new</Button>
+      <Button type="button" size="sm" variant={view === 'existing' ? 'secondary' : 'outline'} disabled={busy} onClick={() => { existing(); void onUpdated() }}>{manageOnly ? 'Saved bots' : 'Use existing'}</Button>
+      <Button type="button" size="sm" variant={view === 'new' ? 'secondary' : 'outline'} disabled={busy} onClick={() => void add()}><Plus className="mr-1.5 h-3.5 w-3.5"/>{manageOnly ? 'Add bot' : 'Add new'}</Button>
     </div>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {notice && <p role="status" className="text-xs">{notice}</p>}
@@ -96,13 +97,13 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
             <p className="break-words font-medium">{slackBotName(item)}</p>
             <p className="mt-1 text-xs text-muted-foreground">{[item.identity?.workspace, !item.configured ? 'Needs setup' : !item.enabled ? 'Paused' : item.identity?.verified ? 'Identity verified' : 'Saved'].filter(Boolean).join(' · ')}</p>
           </div>
-          {item.id === data.selected_id ? <span className="inline-flex items-center gap-1 text-xs text-primary"><Check className="h-3.5 w-3.5"/>Used here</span> : <Button type="button" size="xs" variant="outline" disabled={busy || !item.can_select} onClick={() => void onSelect(item.id)}>Use here</Button>}
-          {item.can_manage && <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => edit(item)}>Settings</Button>}
+          {!manageOnly && (item.id === data.selected_id ? <span className="inline-flex items-center gap-1 text-xs text-primary"><Check className="h-3.5 w-3.5"/>Used here</span> : <Button type="button" size="xs" variant="outline" disabled={busy || !item.can_select} onClick={() => void onSelect(item.id)}>Use here</Button>)}
+          {item.can_manage && <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => edit(item)}>{manageOnly ? 'Configure' : 'Settings'}</Button>}
         </div>
-        <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Used in </span>
-          {item.used_in?.length ? item.used_in.map((usage, i) => <span key={`${usage.kind}:${usage.label}:${i}`}>{i > 0 ? ', ' : ''}{usage.kind === 'workflows' ? 'Goal' : usage.kind === 'crew' ? 'Crew' : 'Project'} · {usage.label}</span>) : 'No projects visible to you yet'}
-        </div>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer">Used in {item.used_in?.length || 0} {(item.used_in?.length || 0) === 1 ? 'project' : 'projects'}</summary>
+          {item.used_in?.length ? <ul className="mt-2 space-y-1">{item.used_in.map((usage, i) => <li key={`${usage.kind}:${usage.label}:${i}`}>{usage.kind === 'workflows' ? 'Goal' : usage.kind === 'crew' ? 'Crew' : 'Project'} · {usage.label}</li>)}</ul> : <p className="mt-2">No projects visible to you yet.</p>}
+        </details>
         {item.id === data.selected_id && children}
       </div>)}
     </>}
@@ -117,7 +118,7 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
       <SecretField label="App token" hint={<SlackTokenHint kind="app"/>} value={app} onChange={setApp} placeholder={editing === 'new' ? 'xapp-…' : 'Leave blank to keep the saved token'}/>
       <p className="text-muted-foreground">Tokens are encrypted. Saved values are never shown here.</p>
       <ToggleRow label="Enabled" checked={enabled} onCheckedChange={setEnabled}/>
-      <details><summary className="cursor-pointer">Slack app setup instructions</summary><div className="mt-2 space-y-3"><SlackManifestSetup defaultName={name || 'AgentWorks'} finalStep="Save the bot here, then choose Use here."/><SlackPermissionsChecklist/></div></details>
+      <details><summary className="cursor-pointer">Slack app setup instructions</summary><div className="mt-2 space-y-3"><SlackManifestSetup defaultName={name || 'AgentWorks'} finalStep={manageOnly ? "Save the bot here, then choose it in a Crew’s Slack settings." : "Save the bot here, then choose Use here."}/><SlackPermissionsChecklist/></div></details>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={busy || !name.trim() || (editing === 'new' && (!scope || !bot || !app))}>{working ? 'Saving…' : 'Save bot'}</Button>
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={existing}>Cancel</Button>

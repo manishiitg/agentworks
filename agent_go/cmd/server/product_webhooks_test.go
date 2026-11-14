@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestProductWebhookTriggerValidationAndDTO(t *testing.T) {
@@ -55,38 +54,6 @@ func TestProductWebhookUsesItsOwnAuthenticationBoundary(t *testing.T) {
 	}
 }
 
-func TestProductWebhookStatusPath(t *testing.T) {
-	if got := productWebhookStatusPath("trigger-1", "run-1"); got != "/api/hooks/trigger-1/runs/run-1" {
-		t.Fatalf("status path = %q", got)
-	}
-}
-
-func TestProductWebhookRunStatusDTO(t *testing.T) {
-	completed := time.Now().UTC()
-	for _, tt := range []struct {
-		status   string
-		terminal bool
-	}{
-		{"queued", false},
-		{"running", false},
-		{"success", true},
-		{"error", true},
-		{"stopped", true},
-	} {
-		entry := &ScheduleRunEntry{ID: "run-1", Status: tt.status, FinalResponse: "done", Error: "boom", SessionID: "sess-1", StartedAt: completed, CompletedAt: &completed}
-		got := productWebhookRunStatusDTO(entry)
-		if got.RunID != "run-1" || got.Status != tt.status || got.Terminal != tt.terminal {
-			t.Fatalf("status=%q dto = %+v", tt.status, got)
-		}
-		if got.FinalResponse != "done" || got.Error != "boom" || got.SessionID != "sess-1" {
-			t.Fatalf("status=%q dto dropped fields: %+v", tt.status, got)
-		}
-		if !got.StartedAt.Equal(completed) || got.CompletedAt == nil || !got.CompletedAt.Equal(completed) {
-			t.Fatalf("status=%q dto dropped timestamps: %+v", tt.status, got)
-		}
-	}
-}
-
 // PLAT-871-15: moving authentication out of the manifest must keep only ciphertext.
 func TestProjectWebhookFileStoresOnlyEncryptedSecret(t *testing.T) {
 	_, _ = newScheduleRunWorkspaceStub(t)
@@ -99,5 +66,40 @@ func TestProjectWebhookFileStoresOnlyEncryptedSecret(t *testing.T) {
 	raw, found, err := readFileFromWorkspace(ctx, "Crew/project-1/webhooks.json")
 	if err != nil || !found || !strings.Contains(raw, `"encrypted_secret": "encrypted-value"`) || strings.Contains(raw, `"secret"`) {
 		t.Fatalf("webhook encryption storage contract: found=%v err=%v", found, err)
+	}
+}
+
+// PLAT-746-885: a pinned webhook destination must survive storage and an edit;
+// otherwise removing the Main role silently routes its next call elsewhere.
+func TestCrewWebhookPreservesPhysicalDestination(t *testing.T) {
+	_, _ = newScheduleRunWorkspaceStub(t)
+	ctx := context.Background()
+	root := "Crew/project-1"
+	manifest := productProjectManifest{Product: "work", ID: "project-1", OwnerID: "owner"}
+	manifest.Triggers = []productWebhookTrigger{{ID: "hook", Name: "Hook", Enabled: true,
+		ChatKey: "project-1:chat:physical-agent", Message: "Inspect the event",
+		Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: "sealed-fixture"}}}
+	if err := saveCrewEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	records, err := readProjectWebhookDefinitions(ctx, root)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("read webhook: %v", err)
+	}
+	view, err := crewWebhookExecutionView(records[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	view.Name = "Renamed hook"
+	manifest.Triggers = []productWebhookTrigger{view}
+	if err := saveCrewEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	records, err = readProjectWebhookDefinitions(ctx, root)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("read edited webhook: %v", err)
+	}
+	if records[0].Action.Tab != "project-1:chat:physical-agent" {
+		t.Fatal("editing a webhook lost its physical agent destination")
 	}
 }

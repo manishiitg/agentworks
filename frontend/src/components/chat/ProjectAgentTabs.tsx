@@ -1,3 +1,6 @@
+import { continueInTerminal } from './TerminalResume'
+import { SidebarCrewAgents } from '../workspace/SidebarCrewAgents'
+import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
@@ -5,7 +8,7 @@ import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
-import { chatTabArrowTargetAllowed, workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
+import { workChatTabShortcut, WORK_SIDE_CHAT_LIMIT } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
@@ -14,7 +17,7 @@ import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
-import { teamAgentForTab, useTeamTab, type TeamTabPresence } from '../../products/work/teamApi'
+import { agentSetupForTab, teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -23,6 +26,8 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 
 
@@ -37,17 +42,20 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onImportLocalChat, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
+  onImportLocalChat, onDiscoverSkills, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
   mainPurpose?: string
+  createRequest?: number
+  projectId?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>; onPin: (key: string, pinned: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
   onReopen?: (chat: AgentProfileSideChat) => Promise<void>
   onImportLocalChat?: () => void
+  onDiscoverSkills?: () => void
   onOpenIdentity?: () => void
   onCloseTab: (tabId: string) => void; onSelectTab: (tabId: string) => void
   projectActivity?: 'running' | 'waiting' | null
@@ -57,6 +65,20 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const chatTabs = useChatStore(state => state.chatTabs)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [newTabName, setNewTabName] = useState<string | null>(null)
+  const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
+  useEffect(() => { if (createRequest) { setNewTabName(''); setAddMode('new') } }, [createRequest])
+  const [forking, setForking] = useState(false)
+  const beginAddAgent = () => {
+    if (surface === 'work') setAddMode('choose')
+    else setNewTabName('')
+  }
+  useEffect(() => { setAddMode(null) }, [canonicalTabId])
+  useEffect(() => {
+    if (!addMode) return
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setAddMode(null) } }
+    window.addEventListener('keydown', escape)
+    return () => window.removeEventListener('keydown', escape)
+  }, [addMode])
   const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
@@ -77,7 +99,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const submitNewAgent = async (requested: string) => {
     const name = requested.trim()
     if (!name || opening) return
-    try { if (await onOpen(name) !== false) { setNewTabName(null); phoneNavigation?.onChange('chat') } }
+    try { if (await onOpen(name) !== false) { setNewTabName(null); setAddMode(null); phoneNavigation?.onChange('chat') } }
     catch (cause) { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open a new agent.', 'error') }
   }
   const isAgentTab = (tab: ChatTab) => !tab.metadata?.isViewOnly && !tab.metadata?.isScheduledRun && !tab.metadata?.isBotRun
@@ -104,12 +126,24 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const onStrip = (tab: ChatTab) => tab.tabId === canonicalTabId || !listedFor(tab) || sideChatPinned(tab)
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
   const mainTab = tabs.find(tab => tab.tabId === canonicalTabId) ?? activeTab
-  const placeProject = mainTab?.metadata?.agentProfileId === 'work' ? mainTab.metadata?.agentProfileProjectId : undefined
+  const placeProject = projectId || (mainTab?.metadata?.agentProfileId === 'work' ? mainTab.metadata?.agentProfileProjectId : undefined)
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
   const livesOnMac = useCrewLivesOnMac(placeProject)
   // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
   const sideChatsHere = allowSideChats && place !== 'mac_off'
+  useEffect(() => {
+    const add = (event: Event) => {
+      const requested = (event as CustomEvent<{ projectId: string }>).detail?.projectId
+      if (surface !== 'work' || requested !== placeProject || !sideChatsHere || opening) return
+      if (ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return
+      setNewTabName('')
+      setAddMode('new')
+    }
+    window.addEventListener('crew-new-agent', add)
+    return () => window.removeEventListener('crew-new-agent', add)
+  }, [surface, placeProject, sideChatsHere, opening, ownedListed.length])
+
   // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
   // Mac on, grey with it off, amber while moving. Online Crews keep a plain arrow.
   const arrowTone = place === 'mac' ? 'text-emerald-500' : place === 'mac_off' ? 'text-muted-foreground/50' : place === 'moving' ? 'text-amber-500' : ''
@@ -123,7 +157,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const shownTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's, by account,
   // under the server's display name.
-  const tabOwnerId = (tab: ChatTab) => canControl(tab) ? '' : listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+  // A read-only row that is the viewer's own (a schedule's own chat) sits with their own tabs, not under a person.
+  const me = useAuthStore(state => state.user?.id)
+  const tabOwnerId = (tab: ChatTab) => {
+    if (canControl(tab)) return ''
+    const owner = listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+    return owner === me ? '' : owner
+  }
   const personName = (id: string) => team?.people.find(person => person.user_id === id)?.name
     || ownerShortName(tabs.map(tab => tabOwnerId(tab) === id ? listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '' : '').find(Boolean) || '') || 'Someone'
   // Whether a teammate's Mac is on, the server's words (crew_team_tab.go).
@@ -142,18 +182,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const menuPeople = [...new Set(tabs.map(tabOwnerId))].sort(byName)
   const menuGrouped = menuPeople.length > 1 || menuPeople[0] !== ''
   const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerId(tab) === person) }))
-  // In a Crew's strip each other person is one chip after your own tabs (owner, 6 Nov, approved mockup); their agents
-  // and the server's status words open from it. Other products keep their tabs.
-  const personChips = surface === 'work'
-  const stripTabs = personChips ? visibleTabs.filter(tab => tabOwnerId(tab) === '') : visibleTabs
-  const chipAgent = (tab: ChatTab) => {
-    const row = teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)
-    return { tabId: tab.tabId, name: tabLabel(tab), status: row?.place_label || row?.status_label || '', tone: row?.place_label ? row.place_tone : undefined, running: row?.activity === 'running' }
+  // A Crew's strip shows only your own tabs; teammates are in the ⌄ menu and the header's Team button (owner, 12 Nov:
+  // one Team chip, not two).
+  const stripTabs = surface === 'work' ? visibleTabs.filter(tab => tabOwnerId(tab) === '') : visibleTabs
+  // Another person's agent working or waiting for them, as the server reads it from their Mac (crew_team_activity.go).
+  const serverActivity = (tab: ChatTab) => {
+    const activity = teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)?.activity
+    return activity === 'running' || activity === 'waiting' ? activity : undefined
   }
-  const chipPeople = personChips ? menuGroups.filter(group => group.person !== '').map(group => {
-    const agents = group.tabs.filter(isAgentTab).map(chipAgent)
-    return { person: group.person, agents, watching: agents.find(agent => agent.tabId === activeTabId) }
-  }).filter(group => group.agents.length > 0) : []
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   // Your own agent In team, from the Team tab's server reading (the same rows in the Mac app and on the website).
   // Answer only / Make changes is the same row's server answer (When others ask).
@@ -163,8 +199,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   }
   const sharedHere = (tab: ChatTab) => Boolean(shareOf(tab))
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
-  const setupOf = (tab: ChatTab) => teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))?.setup
+  const setupOf = (tab: ChatTab) => agentSetupForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))
   const automationsAsk = team?.asks?.automations
+  // Run online is for a Crew on this Mac (owner, 12 Nov): the Mac's own server says so through local_mode.
+  const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
     // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
     if (surface !== 'work' || !isAgentTab(tab)) return undefined
@@ -186,11 +224,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
-        onRemove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
+        onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
         tabId: tab.tabId,
         activity: tab.tabId === canonicalTabId ? projectActivity : undefined,
         setup: setupOf(tab),
         onAutomations: automationsAsk ? () => { sendToTab(tab.tabId, automationsAsk) } : undefined,
+        // The same Run online as the agent menu's (owner, 12 Nov: "where is option to run online").
+        onRunOnline: localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       },
     }
   }
@@ -207,6 +247,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const before = position > 0 ? ownedListed[position - 1].conversation_key : undefined
     const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
     return {
+      fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
+      terminal: surface === 'work' && isAgentTab(tab) && canControl(tab) && (tab.metadata?.agentProfileChatProvider || tab.metadata?.agentProfileEngine) === 'claude-code' ? () => continueInTerminal(tab.tabId) : undefined,
+      editorWorkspace: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? tab.metadata?.agentProfileWorkspace : undefined,
+      runOnline: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
       rename: key ? name => renameSideChat(tab, name) : undefined,
@@ -214,30 +258,38 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       moveDown: key && after ? () => { void moveSideChat(key, after) } : undefined,
       dropHere: key ? from => { void moveSideChat(from, key) } : undefined,
       setPinned: pinKey ? pinned => { void pinSideChat(pinKey, pinned) } : undefined,
-      remove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
+      remove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
     }
   }
   // The left menu's order: shown agents (pinned, or open now) first, then the hidden ones. Cmd/Ctrl+1..5 and the arrows
   // follow it in Left menu mode, so reordering there changes the numbers.
-  const agentTabs = tabs.filter(isAgentTab)
+  // Another person's chat is listed once even when this app holds two tabs for its session (owner, 10 Nov: a teammate's
+  // Main showed twice after it was opened).
+  const agentTabs = tabs.filter(isAgentTab).filter((tab, index, all) => canControl(tab) || !tab.sessionId || all.findIndex(other => !canControl(other) && other.sessionId === tab.sessionId) === index)
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
-  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : canControl(tab) ? undefined : serverActivity(tab), actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the left menu's Closed agents list.
-  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
+  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
-  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose,
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, pinned: chat.pinned,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.pinned]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])
   useEffect(() => {
-    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
+    if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere && !opening && ownedListed.length < WORK_SIDE_CHAT_LIMIT, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crewKey])
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
-  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
+  // While you look at a teammate's agent, the top line keeps your own (the last one you had open, else Main) and takes
+  // you back to it; the teammate's chip shows what is open (owner, 10 Nov: "my main thread is gone").
+  const lastOwnTab = useRef('')
+  const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
+  if (openTab && !watchingOther) lastOwnTab.current = openTab.tabId
+  const headerTab = watchingOther ? (tabs.some(tab => tab.tabId === lastOwnTab.current) ? lastOwnTab.current : canonicalTabId) : openTab?.tabId
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${openInfo?.onRunOnline ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -338,13 +390,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not pin this tab.', 'error')
     }
   }
-  // Cmd/Ctrl+arrows cycle visible chats (also from the composer); numbers pick a chat.
+  // Cmd/Ctrl+Left/Right step to the previous/next agent and numbers pick one, within this project.
   // Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while this product is on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
-  const visibleTabsRef = useRef(visibleTabs)
   // A Crew uses the left menu's order with the menu open or closed, so ⌘2 is the same agent either way (owner, 4 Nov).
-  visibleTabsRef.current = surface === 'work' && placeProject ? menuOrder.filter(listedInMenu) : visibleTabs
   const numberedTabsRef = useRef(tabs)
   numberedTabsRef.current = surface === 'work' && placeProject ? menuOrder : tabs
   useEffect(() => {
@@ -355,20 +405,22 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       const action = workChatTabShortcut(event)
       if (!action) return
       if (action.kind === 'adjacent') {
-        // The owner chose tab switching from the chat input, including drafts.
-        if (!chatTabArrowTargetAllowed(event.target)) return
-        const shown = visibleTabsRef.current
-        const active = shown.findIndex(tab => isTabActive ? isTabActive(tab) : tab.tabId === useChatStore.getState().activeTabId)
-        if (shown.length < 2 || active < 0) return
+        // Cmd/Ctrl+Left/Right: the previous or next agent in the menu's order. While text is typed they keep their
+        // editing job (line start on a Mac, previous word elsewhere); in an empty chat box they switch (PLAT-746-849).
+        const field = event.target instanceof Element ? event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor') : null
+        if (field && !((field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) && field.value === '')) return
+        const order = numberedTabsRef.current
+        if (order.length < 2) return
+        const current = order.findIndex(tab => tab.tabId === useChatStore.getState().activeTabId)
         event.preventDefault()
         markFeatureUsed('chat-tab-keys')
-        onSelectTab(shown[(active + action.direction + shown.length) % shown.length].tabId)
+        onSelectTab(order[(Math.max(current, 0) + action.direction + order.length) % order.length].tabId)
         return
       }
       event.preventDefault()
       markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {
-        setNewTabName(current => current ?? '')
+        beginAddAgent()
         return
       }
       const target = numberedTabsRef.current[action.index]
@@ -376,7 +428,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [sideChatsHere, surface, onSelectTab, isTabActive])
+  }, [sideChatsHere, surface, onSelectTab, isTabActive, onImportLocalChat])
   // With many tabs the strip scrolls sideways (tabs keep their width, "+" stays in view) and the
   // active tab is brought into view when it changes.
   const stripRef = useRef<HTMLDivElement>(null)
@@ -384,7 +436,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const active = stripRef.current?.querySelector('[data-tab-active="true"]')
     if (active && typeof (active as HTMLElement).scrollIntoView === 'function') (active as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeTabId, tabs.length])
-  const newTabForm = sideChatsHere && newTabName !== null && (
+  const newTabForm = surface !== 'work' && sideChatsHere && newTabName !== null && (
     <form
       className="absolute inset-x-3 top-full z-40 flex items-center rounded-lg border border-border bg-background p-2 shadow-lg md:static md:shrink-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none"
       onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName) }}
@@ -407,6 +459,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   // Your own agents' menu (the caret) sits with your tabs, before the divider and the other people's chips.
   // Keep general agent actions reachable with Main alone, including when local-chat import is unavailable.
+  const sharedAgentMenu = surface === 'work' && !!placeProject
   const moreMenu = (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
@@ -432,11 +485,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                 <span className="ml-auto flex items-center gap-2"><CrewPlaceBadge place={place} word={placeWord} />
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}</span>
               </div>
-              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
+              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">{sharedAgentMenu ? 'Drag agents, or use Move up / Move down in their menu.' : 'Drag agents or use the arrows to change their order.'}</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
+              {sharedAgentMenu && <SidebarCrewAgents projectId={placeProject!} popup reordering={reordering} onSelect={tabId => { setMoreOpen(false); selectTab(tabId) }} onClosedOpened={() => setMoreOpen(false)} />}
               {menuGroups.map(group => <Fragment key={`person:${group.person}`}>
-              {menuGrouped && <p title={presenceOf(group.person)?.line} className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(group.person)} />{group.person ? personName(group.person) : 'You'}</p>}
-              {group.tabs.map(tab => {
+              {!sharedAgentMenu && menuGrouped && <p title={presenceOf(group.person)?.line} className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(group.person)} />{group.person ? personName(group.person) : 'You'}</p>}
+              {group.tabs.filter(tab => !sharedAgentMenu || !isAgentTab(tab)).map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 // Anyone may pin another person's tab on their own strip; renaming and ordering stay with its owner.
                 const pinKey = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
@@ -501,26 +555,26 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               })}
               </Fragment>)}
               {/* Closed agents open again from here too, for people who use tabs instead of the left menu. */}
-              {closedAgents.length > 0 && <>
+              {!sharedAgentMenu && closedAgents.length > 0 && <>
                 <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">Closed agents</p>
                 {closedAgents.map(agent => <button key={agent.key} type="button" title={agent.purpose || undefined} onClick={() => { setMoreOpen(false); void agent.open() }}
                   className="flex min-h-10 w-full min-w-0 items-center rounded-xl px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"><span className="min-w-0 truncate">{agent.name}</span></button>)}
               </>}
               </div>
-              {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
+              {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); beginAddAgent() }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
-              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground"><span aria-label="Claude, Codex and Cursor" className="flex shrink-0 -space-x-1">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-5 w-5 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Continue a local chat</button>}
+              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground"><span aria-label="Claude, Codex and Cursor" className="flex shrink-0 -space-x-1">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-5 w-5 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
+              {onDiscoverSkills && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onDiscoverSkills() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground">Discover &amp; import skills…</button>}
             </div>, document.body
           )}
         </div>
       )
-  const moreBeforePeople = chipPeople.length > 0 && !menuMode
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} onOpenIdentity={onOpenIdentity} />}
+      {surface === 'work' && <AgentHeaderLine tabId={headerTab} crewName={projectName} showName={menuMode} onOpenIdentity={onOpenIdentity} onReturn={watchingOther && headerTab ? () => selectTab(headerTab) : undefined} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
@@ -555,24 +609,53 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
-      {moreBeforePeople && moreMenu}
-      {chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
-      {chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
-        agents={group.agents} watching={group.watching} onPick={selectTab} />)}
       </div>
-      {!moreBeforePeople && moreMenu}
+      {moreMenu}
 
       {newTabForm}
-      {sideChatsHere && newTabName === null && (
+      {addMode && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking && !opening) setAddMode(null) }}>
+          <div role="dialog" aria-modal="true" aria-label={addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">{addMode === 'new' ? 'New agent' : addMode === 'choose' ? 'Add agent' : 'Fork existing agent'}</h2>
+              <button type="button" autoFocus={addMode !== 'new'} disabled={forking || opening} aria-label="Close" onClick={() => setAddMode(null)} className="rounded p-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" /></button>
+            </div>
+            {addMode === 'new' ? <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName || '') }}>
+              <label className="block text-sm">Agent name
+                <input autoFocus value={newTabName || ''} onChange={event => setNewTabName(event.target.value)} maxLength={120} disabled={opening} placeholder="e.g. Research" aria-label="Agent name" data-testid="work-new-chat-tab-name" className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" disabled={opening} onClick={() => { setAddMode(null); setNewTabName(null) }} className="rounded-md px-3 py-2 text-sm hover:bg-muted">Cancel</button>
+                <button type="submit" disabled={opening || !newTabName?.trim()} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{opening && <Loader2 className="h-4 w-4 animate-spin" />}Create agent</button>
+              </div>
+            </form> : addMode === 'choose' ? <div className="space-y-1">
+              <button type="button" onClick={() => { setNewTabName(''); setAddMode('new') }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-4 w-4" />New agent</button>
+              <button type="button" onClick={() => setAddMode('fork')} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Fork existing agent…</button>
+              {onImportLocalChat && <button type="button" onClick={() => { setAddMode(null); onImportLocalChat() }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><span aria-hidden="true" className="mr-2 inline-flex -space-x-1 align-middle">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-6 w-6 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
+              {onDiscoverSkills && <button type="button" onClick={() => { setAddMode(null); onDiscoverSkills() }} className="w-full rounded-lg border-t border-border px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Discover &amp; import skills…</button>}
+            </div> : <>
+              <p className="mb-2 px-2 text-xs text-muted-foreground">Choose an agent to copy its conversation into a separate chat. The original stays unchanged.</p>
+              <div className="max-h-72 overflow-y-auto">
+                {tabs.filter(tab => isAgentTab(tab) && canControl(tab) && tab.metadata?.agentProfileConversationKey).map(tab => <button key={tab.tabId} type="button" disabled={forking} onClick={async () => {
+                  setForking(true)
+                  try { await forkChatTab(tab.tabId); setAddMode(null); phoneNavigation?.onChange('chat') }
+                  finally { setForking(false) }
+                }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">{forking && <Loader2 className="h-3.5 w-3.5 animate-spin" />}<span className="truncate">{tabLabel(tab)}</span></button>)}
+              </div>
+            </>}
+          </div>
+        </div>, document.body
+      )}
+      {sideChatsHere && (surface === 'work' || newTabName === null) && !addMode && (
         <button
           type="button"
-          onClick={() => setNewTabName('')}
+          onClick={beginAddAgent}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
           className={`${menuMode ? 'max-md:h-10 max-md:w-10' : 'max-md:hidden'} ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`
-            : 'New agent (⌥⇧T on Mac, Alt+Shift+T on Windows): another agent in this project. The main agent keeps Slack, WhatsApp, MCP and schedules'}
+            : 'Add agent (⌥⇧T on Mac, Alt+Shift+T on Windows)'}
           data-testid="work-new-chat-tab"
         >
           {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
@@ -584,82 +667,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   )
 }
 
-type PersonChipAgent = { tabId: string; name: string; status: string; tone?: string; running?: boolean }
-
-/** Another person's agent: the server's "working" (their Mac's relayed events, or its own queue) shows even when this
- * browser holds no live turn for it; this browser's own signal (needs you, failed, a reply to read) wins. */
-function useAgentMenuStateOrServer(tabId: string, running?: boolean) {
-  const own = useAgentMenuState(tabId)
-  return own ?? (running ? 'running' as const : null)
-}
-function PersonAgentMark({ tabId, running }: { tabId: string; running?: boolean }) { return <AgentMark state={useAgentMenuStateOrServer(tabId, running)} /> }
-function PersonAgentWord({ tabId, running }: { tabId: string; running?: boolean }) {
-  const state = useAgentMenuStateOrServer(tabId, running)
-  return state ? <span className="ml-auto shrink-0 pl-2 text-[10px] font-normal text-muted-foreground">{AGENT_STATE_WORD[state]}</span> : null
-}
-const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-emerald-400', wait: 'text-amber-600 dark:text-amber-400', server: 'text-sky-600 dark:text-sky-400' }
-
-/** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many
- * of their agents are here and the dot for their Mac; it opens their agents with the server's status words (the Team
- * tab reading). While one of theirs is open, the chip names it. */
-function PersonChip({ name, presence, agents, watching, onPick }: {
-  name: string; presence?: TeamTabPresence; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  useLayoutEffect(() => {
-    if (!open) return
-    const rect = buttonRef.current?.getBoundingClientRect()
-    if (rect) setPosition({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(300, window.innerWidth - 16) - 8)) })
-    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
-    const close = (event: MouseEvent) => { if (!buttonRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); buttonRef.current?.focus() } }
-    const shut = () => setOpen(false)
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    window.addEventListener('resize', shut)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape); window.removeEventListener('resize', shut) }
-  }, [open])
-  const avatar = (size: string) => <span aria-hidden="true" className={`relative grid ${size} shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary`}>
-    {name.trim().charAt(0).toUpperCase() || '?'}
-    {presence && <span className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-background p-[1.5px]"><PersonPresenceDot presence={presence} className="h-2 w-2" /></span>}
-  </span>
-  return <>
-    <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open}
-      aria-label={`${name}'s agents (${agents.length})${presence ? ` · ${presence.line}` : ''}`} title={presence?.line || `${name}'s agents`}
-      data-person-chip={name} data-tab-active={watching ? 'true' : undefined}
-      className={`inline-flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching ? 'border-primary text-foreground' : 'border-border text-foreground/85'}`}>
-      {avatar('h-5 w-5')}
-      <span className="min-w-0 truncate">{name}{watching && <> · <b className="font-semibold">{watching.name}</b></>}</span>
-      {/* What their agents are doing now (owner, 6 Nov: "when their agent is online/offline/working/loading I want to see
-          that"): one mark each, only while it is working, needs them, failed or has a reply not read yet. */}
-      <span className="flex shrink-0 items-center gap-0.5">{agents.map(agent => <PersonAgentMark key={agent.tabId} tabId={agent.tabId} running={agent.running} />)}</span>
-      <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
-    </button>
-    {open && createPortal(
-      <div ref={menuRef} style={position} role="menu" aria-label={`${name}'s agents`} className="fixed z-[100] w-[300px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-popover p-1.5 shadow-lg">
-        <div className="flex items-start gap-2 px-2 pb-1.5 pt-1">
-          {avatar('h-5 w-5')}
-          <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}</span>{presence && <span className="block">{presence.line}</span>}</p>
-        </div>
-        {agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
-          className={`flex min-h-9 w-full min-w-0 items-start gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70' : ''}`}>
-          <span className="mt-1 flex w-3 shrink-0 justify-center"><PersonAgentMark tabId={agent.tabId} running={agent.running} /></span>
-          {/* The name keeps its own full line; the server's status sits smaller underneath (owner, 6 Nov: names were cut to "t.." by the status). */}
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate ${watching?.tabId === agent.tabId ? 'font-semibold' : ''}`}>{agent.name}</span>
-            {agent.status && <span className={`block text-[11px] font-normal leading-snug ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
-          </span>
-          {watching?.tabId === agent.tabId && <span className="mt-0.5 shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
-          <span className="mt-0.5 flex shrink-0 items-center"><PersonAgentWord tabId={agent.tabId} running={agent.running} /></span>
-        </button>)}
-      </div>, document.body
-    )}
-  </>
-}
-
+// The agent menu's Run online sends this to the agent itself: it picks what its online agent needs (crew_run_online.go).
+const RUN_ONLINE_ASK = 'Run yourself online: make your online agent with manage_crew_sync run_online. Pick the folders and files you work with and the automations meant for you (schedules, webhooks, watchers), and write a short handover note first.'
 const PHONE_PLACE: Record<CloudState, string> ={ mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */

@@ -13,9 +13,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // A Mac Crew is reached from the phone and the web only when its owner turns "Reach it from your phone and the web" on
@@ -48,7 +46,7 @@ func (api *StreamingAPI) createDesktopCrewRelayTwin(ctx context.Context, owner s
 	pair := uuid.NewString()
 	macName := desktopMacDisplayName()
 	previous := readCrewTeamState(roots.ID).PreviousProject
-	remote, err := desktopCrewSyncCall(ctx, owner, &connection, "new", crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: name, MacName: macName, MacID: connection.ID, PreviousProjectID: previous})
+	remote, err := desktopCrewSyncCall(ctx, owner, &connection, "new", crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: name, MacName: macName, MacID: desktopRelayDeviceID(connection.ID), PreviousProjectID: previous})
 	if err != nil {
 		return err
 	}
@@ -104,7 +102,7 @@ func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]bool{"relay": true, "shared_agents": true})
 }
 
-const macCrewShareBlocked = "This Crew lives on your Mac. So people can use it any time, even when your Mac is off, move it online first from the Mac app: Where it lives, then Move online."
+const macCrewShareBlocked = "This Crew lives on your Mac. So people can use it any time, even when your Mac is off, put the agent they use on the server first: open its menu and choose Run online."
 
 // crewRelayTwin reports a server Crew that is only the empty twin of a Mac Crew.
 func crewRelayTwin(id string) bool {
@@ -113,44 +111,4 @@ func crewRelayTwin(id string) bool {
 	}
 	b, err := crewroot.ReadSync(id)
 	return err == nil && b != nil && b.Side == "server" && b.Editing == "local"
-}
-
-// handleCrewSyncReadiness tells the owner, before Cloud turns on, whether this
-// Crew fits a first upload and about how long it takes. Mac app only; read-only.
-func (api *StreamingAPI) handleCrewSyncReadiness(w http.ResponseWriter, r *http.Request) {
-	if !IsLocalMode() {
-		externalError(w, 404, "local_app_required", "Open the Crew in the local AgentWorks app.")
-		return
-	}
-	roots, err := api.crewSyncRoots(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"])
-	if err != nil {
-		externalError(w, 403, "sync_unavailable", err.Error())
-		return
-	}
-	m, err := crewsync.Measure(r.Context(), roots)
-	if err != nil {
-		externalError(w, 409, "sync_unavailable", "Could not check this Crew's folder: "+err.Error())
-		return
-	}
-	// What the Crew uses from the Mac's Vault: secrets selected from the owner's own Vault are copied to the server, apps and
-	// accounts need the same connection there (checked when Cloud turns on).
-	secrets, connections := 0, []map[string]string{}
-	if vaultConfigured() {
-		if inventory, e := api.projectVaultInventory(r.Context(), roots.Owner, roots.Virtual); e == nil {
-			if own, e := ownVaultSecretValues(r.Context(), roots.Owner, inventory.Shared); e == nil {
-				secrets = len(own)
-			}
-			seen := map[string]bool{}
-			for _, group := range inventory.Vaults {
-				for _, item := range group.Items {
-					if item.Selected && !seen[item.Kind+":"+item.ID] && (item.Kind == "mcp" || item.Kind == "google" || item.Kind == "slack") {
-						seen[item.Kind+":"+item.ID] = true
-						connections = append(connections, map[string]string{"kind": item.Kind, "name": item.Name})
-					}
-				}
-			}
-		}
-	}
-	// About 1.5 MB/s up from a typical laptop connection; shown as a rough minute count.
-	externalJSON(w, map[string]any{"measurement": m, "fits": m.Fits(), "estimated_seconds": m.Bytes / (3 << 19), "secrets": secrets, "connections": connections})
 }

@@ -5,6 +5,7 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
     <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
+        data-workspace-context-card
         className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
       >
         {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
@@ -94,9 +95,9 @@ export function WorkspaceContextRow({
       className={`flex w-full items-center gap-2.5 rounded-md px-1 min-h-8 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      <span className={detail ? 'shrink-0' : 'min-w-0 flex-1 truncate'}>{children}</span>
       {detail && (
-        <span className="max-w-[60%] shrink-0 truncate text-[10px] text-muted-foreground">{detail}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">{detail}</span>
       )}
     </button>
   )

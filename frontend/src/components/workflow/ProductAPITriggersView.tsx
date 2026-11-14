@@ -8,6 +8,7 @@ import { Switch } from '../ui/Switch'
 import type { ScheduledJobRun } from '../../services/api-types'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
+import { RUN_ONLINE_AUTOMATION_HINT } from '../automation/runOnlineAutomation'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 
@@ -16,7 +17,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update project triggers'
 }
 
-export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, hideEmpty = false, pageRows = false }: { pageRows?: boolean; embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, onRunOnline, embedded = false, hideEmpty = false, pageRows = false }: { onRunOnline?: (name: string) => void; pageRows?: boolean; embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
   const [destinations, setDestinations] = useState<RunDestinationChoice[]>([])
@@ -100,12 +101,13 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       {triggers.map(trigger => <PageRow key={trigger.id} testId={`webhook-${trigger.id}`}
         lead={<Switch aria-label={`${trigger.enabled ? 'Turn off' : 'Turn on'} ${trigger.name}`} checked={trigger.enabled} disabled={busy} onCheckedChange={enabled => void save({ ...trigger, enabled })} />}
         title={trigger.name}
-        lines={[`Asks: “${trigger.message}” · ${where(trigger)}`, trigger.enabled ? lastCall(trigger.id) : `Off · ${lastCall(trigger.id)}`]}
+        lines={[[trigger.starts, where(trigger)].filter(Boolean).join(' · '), trigger.enabled ? lastCall(trigger.id) : `Off · ${lastCall(trigger.id)}`]}
         action={<RowButton onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy address</RowButton>}
         open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}>
         <DetailLine label="When">{trigger.auth_mode === 'github' ? 'GitHub sends a signed request to' : 'A request with the secret key to'} <code className="break-all select-all">{apiTriggerURL(trigger.path)}</code> · <button type="button" className="text-primary hover:underline" onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy</button> · <button type="button" disabled={busy} className="text-primary hover:underline disabled:opacity-50" onClick={() => void save(trigger, true)}>New secret</button></DetailLine>
-        <DetailLine label="What runs">Asks: “{trigger.message}”{onAsk && <> · <button type="button" className="text-primary hover:underline" onClick={() => void onAsk(`Change the message of the webhook “${trigger.name}” (id ${trigger.id}) in this Crew.`)}>Change</button></>}</DetailLine>
-        <DetailLine label="Where"><select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as ProductAPITrigger['run_destination'] })} className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
+        <DetailLine label="What runs">{trigger.starts ? `${trigger.starts}: ` : ''}“{trigger.message}”{onAsk && <> · <button type="button" className="text-primary hover:underline" onClick={() => void onAsk(`Change the message of the webhook “${trigger.name}” (id ${trigger.id}) in this Crew.`)}>Change</button></>}</DetailLine>
+        {trigger.changed_by && <DetailLine label="History">{trigger.changed_by}</DetailLine>}
+        <DetailLine label="Where"><select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.chat_id?.split(':chat:')[1] || trigger.run_destination || 'isolated'} onChange={event => { const value = event.target.value; void save({ ...trigger, run_destination: value === 'new' || value === 'isolated' ? value : 'chat', chat_id: value === 'new' || value === 'isolated' ? '' : value }) }} className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
           {(destinations.length ? destinations : [{ id: trigger.run_destination || 'chat', label: trigger.run_destination || 'chat' }]).map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
         </select></DetailLine>
         <DetailLine label="Recent">{(recent[trigger.id] || []).length === 0 ? 'No calls yet' : (recent[trigger.id] || []).slice(0, 2).map(run => `${relativeTime(run.started_at)}: ${outcome(run)}`).join(' · ')}{deliveryHistory && <> · <button type="button" className="text-primary hover:underline" onClick={() => setShowAllRuns(value => !value)}>{showAllRuns ? 'Hide runs' : 'All runs'}</button></>}</DetailLine>
@@ -143,11 +145,11 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span className="shrink-0 font-medium text-foreground">Run in</span>
-        <select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as ProductAPITrigger['run_destination'] })} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
+        <select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.chat_id?.split(':chat:')[1] || trigger.run_destination || 'isolated'} onChange={event => { const value = event.target.value; void save({ ...trigger, run_destination: value === 'new' || value === 'isolated' ? value : 'chat', chat_id: value === 'new' || value === 'isolated' ? '' : value }) }} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
           {(destinations.length ? destinations : [{ id: trigger.run_destination || 'chat', label: trigger.run_destination || 'chat' }]).map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
         </select>
         </label>
-        <div className="flex flex-wrap gap-1.5"><button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Disable' : 'Enable'}</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(trigger.id)}>Remove</button></div>
+        <div className="flex flex-wrap gap-1.5"><button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Disable' : 'Enable'}</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button>{onRunOnline && <button type="button" disabled={busy} className={buttonClass} title={RUN_ONLINE_AUTOMATION_HINT} onClick={() => onRunOnline(trigger.name)}>Run online</button>}<button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(trigger.id)}>Remove</button></div>
       </div>
     </AutomationRow>)}</AutomationListBox>}{!hideEmpty && triggers.length === 0 && <EmptyAutomations>No webhooks yet. Ask the chat to create one.</EmptyAutomations>}
     {copied && <p role="status" className="text-xs text-muted-foreground">{copied}</p>}

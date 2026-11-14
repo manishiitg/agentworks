@@ -20,6 +20,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/parsers"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
 	"github.com/gin-gonic/gin"
@@ -744,7 +746,11 @@ func GetDocument(c *gin.Context) {
 	// log; ?tail=N returns only its last N messages (never to be saved back).
 	var content []byte
 	if chatlog.IsConversationPath(filePath) {
-		if tail := c.Query("tail"); tail != "" {
+		if c.Query("header_only") == "true" {
+			content, err = os.ReadFile(filePath)
+		} else if c.Query("runtime_metadata") == "true" {
+			content, err = chatlog.RuntimeMetadata(filePath)
+		} else if tail := c.Query("tail"); tail != "" {
 			n := 0
 			_, _ = fmt.Sscanf(tail, "%d", &n)
 			content, err = chatlog.LoadTail(filePath, n)
@@ -1005,11 +1011,19 @@ func UpdateDocument(c *gin.Context) {
 		}
 	}
 
+	// Dispatch state contains private caller/configuration selectors. Its mode
+	// is server-owned, never a caller-supplied document option (PLAT-746-919).
+	privateDispatch := filepath.Base(filepath.Dir(filePath)) == "chat_history" &&
+		(filepath.Base(filePath) == "restart-continue.json" || filepath.Base(filePath) == "conversation-turn-dispatch.json")
+	mode := os.FileMode(0644)
+	if privateDispatch {
+		mode = 0600
+	}
 	// Write content (create or update). A chat conversation goes to its
 	// header and history log, appending when only new messages were added.
 	var writeErr error
 	if req.CreateOnly {
-		writeErr = createFileAtomic(filePath, []byte(*req.Content), 0644)
+		writeErr = createFileAtomic(filePath, []byte(*req.Content), mode)
 		if errors.Is(writeErr, os.ErrExist) {
 			c.JSON(http.StatusConflict, models.APIResponse[any]{
 				Success: false,
@@ -1029,7 +1043,12 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 	} else {
-		writeErr = writeFileAtomic(filePath, []byte(*req.Content), 0644)
+		writeErr = writeFileAtomic(filePath, []byte(*req.Content), mode)
+	}
+	if writeErr == nil && privateDispatch {
+		// Atomic replacement normally preserves an existing file's mode; correct
+		// a previously created queue file as well as a new continuation document.
+		writeErr = os.Chmod(filePath, mode)
 	}
 	if err := writeErr; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
@@ -1118,8 +1137,23 @@ func DeleteDocument(c *gin.Context) {
 
 	// Use RemoveAll for directories so non-empty dirs are deleted cleanly,
 	// and plain Remove for files (faster, no risk of accidentally nuking a tree).
-	if info.IsDir() {
-		err = os.RemoveAll(filePath)
+	finalInfo, lstatErr := os.Lstat(filePath)
+	if lstatErr != nil {
+		c.JSON(500, gin.H{"error": lstatErr.Error()})
+		return
+	}
+	if finalInfo.Mode()&os.ModeSymlink != 0 {
+		err = os.Remove(filePath) // only the link, not its directory target
+	} else if info.IsDir() {
+		physical, resolveErr := sqliteopen.CanonicalPath(filePath)
+		if resolveErr != nil {
+			err = resolveErr
+		} else {
+			err = os.RemoveAll(filePath)
+			if err == nil {
+				err = schedulehistory.PurgeTree(c.Request.Context(), docsDir, physical)
+			}
+		}
 	} else if chatlog.IsConversationPath(filePath) {
 		err = chatlog.Remove(filePath)
 	} else {

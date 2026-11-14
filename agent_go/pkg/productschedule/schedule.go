@@ -35,6 +35,9 @@ type Schedule struct {
 	// never-run cron schedule would recompute "next" from every scheduler tick
 	// and could therefore never become due.
 	CreatedAt string `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	// CreatedBy and UpdatedBy say who made and who last changed it (see projectactions.Actor).
+	CreatedBy *projectactions.Actor `json:"created_by,omitempty" yaml:"created_by,omitempty"`
+	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty" yaml:"updated_by,omitempty"`
 
 	// CronExpression is a standard five-field cron line, evaluated in Timezone
 	// (local time when empty).
@@ -62,6 +65,13 @@ type Schedule struct {
 	// Messages are sent into the product conversation one at a time; each is
 	// a full agent turn and the next waits for the previous reply.
 	Messages []string `json:"messages" yaml:"messages"`
+
+	// A Crew timer can run its saved workflow directly instead of sending
+	// messages. Inputs retain the common schedule invocation contract.
+	WorkflowID      string            `json:"target_workflow_id,omitempty" yaml:"target_workflow_id,omitempty"`
+	InputPreset     string            `json:"input_preset,omitempty" yaml:"input_preset,omitempty"`
+	Inputs          map[string]string `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	RouteSelections map[string]string `json:"route_selections,omitempty" yaml:"route_selections,omitempty"`
 
 	// Isolated runs this schedule on its own dedicated conversation (session,
 	// coding-CLI process, transcript) instead of the profile or Crew project's
@@ -123,6 +133,20 @@ func Validate(s Schedule) error {
 	}
 	if s.QuietMinutes < 0 || s.MaxDeferralHours < 0 {
 		return fmt.Errorf("schedule %q: quiet_minutes and max_deferral_hours must not be negative", s.ID)
+	}
+	if s.When != nil {
+		if err := s.When.After.Validate(s.ID); err != nil {
+			return err
+		}
+	}
+	if s.WorkflowID != "" {
+		if len(s.Messages) != 0 || s.Condition != nil {
+			return fmt.Errorf("a workflow timer runs saved work and cannot also send messages or watch events")
+		}
+		return nil
+	}
+	if s.InputPreset != "" || len(s.Inputs) > 0 || len(s.RouteSelections) > 0 {
+		return fmt.Errorf("choose a saved workflow before setting its inputs")
 	}
 	if s.Condition != nil {
 		if len(s.Messages) != 0 {

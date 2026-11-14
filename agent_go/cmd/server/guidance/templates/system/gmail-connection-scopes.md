@@ -119,10 +119,9 @@ and does not change what the account can do yet. It returns a
    screen. New Google scopes require successful consent. Saved restrictions
    can take effect immediately; an existing Google grant does not itself
    turn on the application's Gmail read opt-in.
-2. Call `perform_ui_action(action="open", view="mcp")` right after and point at the
-   Gmail tab, so the Sending accounts panel is visible and they can see the
-   updated request (and click Reconnect there instead, if they'd rather not
-   use the link).
+2. Point to the saved Gmail account in Connections/Vault if they prefer its
+   Reconnect control. Agent UI controls open only the Dashboard; do not invent
+   a Gmail UI-open target.
 
 Never claim the new access is active before the user confirms they
 completed the consent screen — the tool call succeeding only means the
@@ -152,7 +151,7 @@ A provider login or billing email is not a Gmail connection or the signed-in Age
 ### Personal accounts and item selection
 
 A personal Google connection belongs to the person who signs in. They can add it
-explicitly to each workflow, Crew or Flow they build, including a
+explicitly to each authorized project they build, including a
 workflow they edit. Use `manage_google_account`: `list_saved` finds their accounts,
 `connect` returns a Google sign-in link and adds the new account here, and `attach`
 adds a saved account. Tell them: anyone who can run or change this item can use

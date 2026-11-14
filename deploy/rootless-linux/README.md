@@ -227,3 +227,15 @@ list change is needed. For products sharing a host, set `SLOT_PREFIX` and
 service settings, so root provisioning uses that product's own slot accounts
 and table. Host preparation must provide an initial `current/bin/slotctl`
 before the first slot provisioning pass.
+
+## Service logs
+
+When `/usr/sbin/logrotate` is installed, activation installs a per-product timer
+for every `logs/*.log` file, including agent, workspace, gateway and scheduler
+logs. It checks sizes every ten minutes, rotates files above 100 MiB and keeps
+three rotated copies. `copytruncate` keeps systemd's append output and child
+stderr connected. This is not a hard byte cap: a file can exceed 100 MiB by the
+writes between checks and while rotation runs. No process is added to the
+services' output path. If logrotate is missing, deployment warns and continues
+without installing the timer. A host's existing daily rotation may also run;
+its separate state can cause an extra rotation of the same logs.

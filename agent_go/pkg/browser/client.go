@@ -198,6 +198,9 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 	if apiResp.Data.ExitCode != 0 {
 		stdout := strings.TrimSpace(apiResp.Data.Stdout)
 		stderr := strings.TrimSpace(cleanBrowserShellStderr(apiResp.Data.Stderr))
+		if browserToolMissing(apiResp.Data.ExitCode, stdout+"\n"+stderr) {
+			return "", fmt.Errorf("%s", browserToolMissingMessage)
+		}
 		output := stdout
 		if output == "" {
 			output = stderr
@@ -268,4 +271,14 @@ func quoteShellArg(arg string) string {
 		return "\x27" + escaped + "\x27"
 	}
 	return arg
+}
+
+// browserToolMissingMessage is what a person reads when the browser tool is not installed here, in place of the shell's
+// "command not found": what to do, in plain words.
+const browserToolMissingMessage = "The browser tool is not installed on this computer. In the Mac app, update AgentWorks to the latest version and try again. On a server, ask your administrator to install it."
+
+// browserToolMissing reports the shell's answer for a missing agent-browser: exit 127, or its "not found" text.
+func browserToolMissing(exitCode int, output string) bool {
+	text := strings.ToLower(output)
+	return exitCode == 127 || strings.Contains(text, "agent-browser: command not found") || strings.Contains(text, "command not found: agent-browser")
 }

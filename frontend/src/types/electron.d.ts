@@ -10,6 +10,8 @@ interface ElectronUpdateProgress {
 interface ElectronBridge {
   getDesktopApiBaseUrl?: () => string | null
   getDesktopConnection?: () => string | null
+  isNotificationWindowActive?: () => boolean
+  onNotificationWindowActiveChanged?: (callback: (focused: boolean) => void) => () => void
   openDesktopConnection?: (id: string, route: string) => Promise<void>
   isWalkthroughDismissed?: (key: string) => boolean
   dismissWalkthrough?: (key: string) => void
@@ -19,6 +21,7 @@ interface ElectronBridge {
   setDockBadge?: (text: string) => void
   setRunningActivity?: (payload: { count: number }) => void
   openExternal?: (url: string) => void
+  openEditor?: (payload: { url?: string; jetbrains?: { path: string; line: number }; requestId: string }) => Promise<{ ok: boolean; error?: string }>
   printToPDF?: (filename: string) => Promise<unknown>
   saveFlowImage?: (payload: Record<string, unknown>) => Promise<unknown>
   captureFlowImage?: (payload: Record<string, unknown>) => Promise<string | null>

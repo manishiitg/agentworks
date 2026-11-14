@@ -9,6 +9,19 @@ external_tools: [workflow, workspace, runs, functions]
 A workflow belongs to a Crew. Its saved source is `script.json` (typed inputs,
 optional presets and expected outputs), `main.py`, and any nested Python files.
 The server runs it in that Crew with its current permissions and connected apps.
+
+A Crew has one workflow. A new task is a new path inside it, not a new
+workflow: add an input that picks the task, an `if`/`elif` branch in `main.py`,
+and a saved preset (saved setting) for that task. Point the task's schedule,
+webhook or action at that preset. Put reusable code in a helper `.py` file
+beside `main.py` and import it normally, for example `import gate`, then
+`gate.run_gate()`.
+
+The parent workflow and platform-run scripts can import `agentworks` and
+`agentworks_db`. A native shell inside `agent()` does not have that helper
+environment. Agents use the registered `database` tool (`action="query"` or
+`"mutate"`), or write files that the parent checks and stores. When converting
+a workflow, keep these imports out of helpers an agent must launch itself.
 An optional `timeout_seconds` in `script.json` limits the whole script, including
 its helper calls: default 3600 seconds, allowed integers 1 through 21600 (six
 hours). Stop can end it sooner.
@@ -32,8 +45,10 @@ keeps its original reasoning choice, recorded with its run.
 1. Use `workflow action=list`. Each saved script has `kind=script`, typed `inputs`
    and `input_presets`. Keep its `id` and `workspace_path`; `workflow action=get`
    returns the same contract and full manifest for one workflow.
-2. To create one, use `workspace action=automation_create` with `crew_id` and
-   `name`. New workflows are Python scripts. Keep the returned identity.
+2. Inspect this Crew's existing workflow before creating one. Use
+   `workspace action=automation_create` with `crew_id` and `name` only when it
+   has none; a second workflow is refused with HTTP409. Keep the returned identity.
+   Add task paths and saved settings to the existing workflow instead.
 3. Use `workspace action=automation_read` or `automation_write` with `crew_id`,
    `workspace_path` and `file`, such as `main.py`, `nested/report.py`, or root
    `script.json`. Writes take UTF-8 `content` and use the existing script editor's
@@ -50,7 +65,7 @@ keeps its original reasoning choice, recorded with its run.
    This inspects the syntax without executing or importing authored code and
    requires source-editor access. Python `@step` labels are normal function
    calls, not separate runnable or resumable plan steps. Branches and loops
-   appear as “Other code”; large scripts can return an outline-limit message.
+   with no step or agent inside are left out; large scripts can return an outline-limit message.
    Read the saved source for the complete logic.
 
 Never put secret values into source or presets. Use the project's existing
@@ -60,9 +75,8 @@ secret selection. Sharing and connected-account authority do not change here.
 
 The owning Crew's in-app chat can offer a bound `runs action=start` with
 only `input_preset` and typed `inputs`. That tool chooses the workflow from the
-Crew when exactly one saved script matches and uses the same input validation
-as MCP. With several scripts, ask which one and use `functions action=run_trigger`
-with its `workflow:<id>` in `workspace_path`. It starts a real background
+Crew and uses the same input validation as MCP. Choose the task through a saved
+setting or typed inputs, rather than creating another workflow. It starts a real background
 run; the chat's background work control stops it. Workflow run instructions
 belong in the saved Python/Crew setup.
 
@@ -81,7 +95,7 @@ checks/notices; full run files remain available under the same file grants.
 For Python runs, `metadata.source_snapshot_hash` identifies the main script's
 executed frozen bundle, including `script.json`, nested source and binary files.
 It is a SHA-256 of sorted relative file names and raw bytes, each followed by a
-NUL byte; `__pycache__` is excluded. Child script calls do not replace it.
+NUL byte; `__pycache__` is excluded.
 `runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
 tails with full paths, per-label status/durations, checks/notices, saved typed
 inputs/preset, failing labels and traceback, and agent answer/provider-log paths.
@@ -107,29 +121,10 @@ Crew/workflow. Choose one start path per intended run. Inspect uncertain
 receipts before starting again; reuse `delivery_id` only for an identical retry
 of `run_trigger`.
 
-Runs do real work, including database writes, app calls and sends. No new
-mid-run question or individual Python step execution is introduced.
-
-## Resume a failed run
-
-Use `runs action=resume` with `workflow_id` and the failed `run_folder`.
-Only the Crew's Builder or an admitted workflow editor can resume. It keeps
-that folder and the captured source and typed inputs, starts a new execution
-attempt, and preserves the old logs. Python starts at the top again.
-
-Only successful `agent()` and `run_script()` calls with an explicit `key=`
-can reuse their recorded results. Use a distinct logical key for each call,
-including each loop iteration; reusing a key within one attempt is refused.
-The same key and arguments can reuse a successful result even if unrelated
-calls move. Changed arguments execute fresh and are recorded as such.
-Returned replies expose `reused=true` when reused.
-
-Ordinary Python, database writes, app calls, checks and notices execute again.
-An interrupted call whose completion is uncertain keeps its existing refusal;
-resume never silently repeats an uncertain send. Missing or changed frozen
-source, source hash or input proof says to start a new run. Older runs without
-that proof cannot resume. Use `rerun` when you want current source and a new
-run folder instead.
+Runs do real work, including database writes, app calls and sends. Collect
+needed answers in Crew chat before starting: a workflow does not wait for
+someone to answer. Ordinary chat question cards do not pause a workflow.
+Individual Python labels are not separately executable steps.
 
 ## Laptop CLI
 
@@ -149,7 +144,6 @@ agentworks runs status --workflow sample --session returned-session
 agentworks runs get --workflow sample --run-folder returned-run
 agentworks runs logs --workflow sample --run-folder returned-run
 agentworks runs rerun --workflow sample --run-folder returned-run
-agentworks runs resume --workflow sample --run-folder failed-run
 agentworks functions run-trigger --crew team --workspace Workflow/sample --preset weekly --inputs '{"LIMIT":3}'
 agentworks functions trigger-status --crew team --workspace Workflow/sample --trigger-id returned-trigger --run-id returned-run
 ```
@@ -159,7 +153,9 @@ accepts the complete typed input-definition array when you mean to replace it.
 `tools spec workflow workspace runs functions` reads the server's current
 schemas; `tools call` and `mcp serve` use the same catalog and access checks.
 
-## Webhook and timer inputs
+## Webhook and schedule inputs
+
+Workflow timers are Crew schedules that run the Crew's workflow. A message schedule sends a message to an agent instead. Read the current schedules guidance before creating or changing either; older workflow timers may still need conversion.
 
 Each webhook or timer chooses one saved `input_preset` plus optional fixed
 `inputs`. The sender cannot choose another preset. For raw webhook JSON, map
@@ -185,6 +181,4 @@ Discovery also returns `secrets`: required Vault names declared by the script.
 These are names, never values or new grants. Connect or select missing names
 through the existing Vault settings before running.
 
-Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.
-
-Run metadata exposes `can_resume`: eligible now under the current account and workflow access, failed status and saved proof headers. It is computed by the server, never saved in run files. Admission still verifies the complete captured source and inputs and can refuse; show its plain message.
+Parent Python can read fresh own-Crew text with `from agentworks import files; note = files.read("notes/owner-handled.md")`. Each call reads again through the existing file policy, it does not read a frozen copy or grant the shell access. Use paths relative to the Crew's Files. UTF-8 text up to 256 KiB is supported; private files, credential paths, other Crews and symlinks are refused. Retired local knowledge folders do not become accessible through this helper. It is not a general Brain reader. Native agents use their existing file tools, not this import. Only the parent workflow receives its durable `WORKFLOW_DATA_ROOT`; do not assume a report executor or native shell has that environment.

@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +21,28 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	crewOwnerTabsFixture(t, env)
 	ctx := internalBotRequestContext(context.Background(), "owner")
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Optional Main no longer creates an implicit destination. Select a real
+	// named chat so this regression reaches message/reply admission itself.
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := resolveProductConversationBinding(ctx, "owner", profile, "beta:chat:recipient")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipientName := "Review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &recipientName, nil, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	target, err = env.api.resolveAgentChatTarget(ctx, target, record.ConversationKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +62,9 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	receipt, err := env.api.sendAgentMessage(ctx, "owner", caller, target, "Please check this", "", "submission-first")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if receipt["to_label"] != recipientName {
+		t.Fatalf("receipt names Crew instead of recipient agent: %v", receipt)
 	}
 	id := receipt["inbox_id"].(string)
 	if receipt["accepted"] != true || receipt["call_id"] != nil {
@@ -67,6 +95,19 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	page, err := env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("final chat leaked: %v %v", page, err)
+	}
+	recipientName = "Renamed review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &recipientName, nil, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	// Read again after renaming: existing inboxes resolve the current exact agent.
+	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := page["sent"].([]map[string]interface{})
+	if len(sent) != 1 || sent[0]["to_label"] != recipientName || sent[0]["to"] != recipientName {
+		t.Fatalf("sent history lost exact recipient: %v", sent)
 	}
 	chat := conv.Endpoints[1].Session
 	// Request JSON and pasted text cannot manufacture the private delivery context.
@@ -187,5 +228,104 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 		if received != check.want {
 			t.Fatalf("address %q reached %s, want %s", check.key, received, check.want)
 		}
+	}
+}
+
+// PLAT-746: own-agent communications steer in either direction, never across
+// another person, Run/guest scope, or an external terminal destination.
+func TestOnlySamePersonAgentMessagesSteerIntoOwnerTurn(t *testing.T) {
+	asker := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "crew", Session: "product-asker", Mode: "builder"}
+	replier := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerUser, ID: "reviewer", External: true}
+	conv := func(a, r agentMessageEndpoint) agentConversation {
+		return agentConversation{ID: "inbox-1", Endpoints: [2]agentMessageEndpoint{a, r}}
+	}
+	localReplier := asker
+	localReplier.Session = "product-replier"
+	other := replier
+	other.UserID = "colleague"
+	runAsker := asker
+	runAsker.Mode = "run"
+	guestAsker := asker
+	guestAsker.Guest = "colleague"
+	for _, tc := range []struct {
+		name string
+		c    agentConversation
+		m    agentMessage
+		want bool
+	}{
+		{"reply from own agent", conv(asker, replier), agentMessage{From: 1}, true},
+		{"external destination", conv(asker, replier), agentMessage{From: 0}, false},
+		{"own Crew first request", conv(asker, localReplier), agentMessage{From: 0}, true},
+		{"own Crew follow-up", conv(asker, localReplier), agentMessage{From: 1}, true},
+		{"Run sender", conv(runAsker, localReplier), agentMessage{From: 0}, false},
+		{"guest sender", conv(guestAsker, localReplier), agentMessage{From: 0}, false},
+		{"another person's agent", conv(asker, other), agentMessage{From: 1}, false},
+		{"Run chat asker", conv(runAsker, replier), agentMessage{From: 1}, false},
+		{"guest asker", conv(guestAsker, replier), agentMessage{From: 1}, false},
+		{"person ping", conv(asker, replier), agentMessage{From: 1, Kind: "ping"}, false},
+	} {
+		if got := agentMessageMaySteer(tc.c, tc.m); got != tc.want {
+			t.Errorf("%s: steerable=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// PLAT-746: an unconfirmed native write used to reopen the same message,
+// allowing the worker to send it again. Only a proven no-target may reopen.
+func TestAgentSteerUnconfirmedNeverReopensForAutomaticResend(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		status          mcpagent.UserMessageDeliveryStatus
+		err             error
+		wantReopen      bool
+		wantUnconfirmed bool
+	}{
+		{"confirmed", mcpagent.UserMessageDeliveryStatusSentToCLI, nil, false, false},
+		{"no target", "", &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession}, true, false},
+		{"timeout", "", context.DeadlineExceeded, false, true},
+		{"queued injection", mcpagent.UserMessageDeliveryStatusQueuedForInjection, nil, false, true},
+		{"unknown result", "", nil, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &StreamingAPI{eventStore: openClientIdentityTestStore(t, "uncertain-steer")}
+			const session = "recipient"
+			if err := api.eventStore.SetSessionPersistenceClass(session, internalevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			c := agentConversation{ID: "inbox-test", Endpoints: [2]agentMessageEndpoint{
+				{UserID: "owner", Kind: triggerCallerCrew, Session: session, Mode: "builder"},
+				{UserID: "owner", Kind: triggerCallerUser, External: true},
+			}}
+			m := agentMessage{ID: "mail-test", From: 1, Text: "review update", SentAt: time.Now().UTC()}
+			handled, err := api.finishAgentMessageSteer(context.Background(), c, m, "native-message", m.Text,
+				mcpagent.UserMessageDeliveryResult{DeliveryStatus: tc.status}, tc.err)
+			if reopen := !handled && err == nil; reopen != tc.wantReopen {
+				t.Fatalf("worker reopen=%t want %t", reopen, tc.wantReopen)
+			}
+			if errors.Is(err, errAgentMessageSteerUnconfirmed) != tc.wantUnconfirmed {
+				t.Fatalf("unconfirmed=%v err=%v", tc.wantUnconfirmed, err)
+			}
+			rows := api.eventStore.GetAllEventsRaw(session)
+			if tc.wantReopen {
+				if len(rows) != 0 {
+					t.Fatal("unsent message was recorded as delivered")
+				}
+				return
+			}
+			if len(rows) != 1 {
+				t.Fatalf("message rows=%d want one", len(rows))
+			}
+			raw, _ := json.Marshal(rows[0])
+			if tc.wantUnconfirmed && !strings.Contains(string(raw), `"delivery_status":"unconfirmed"`) {
+				t.Fatalf("missing durable unconfirmed receipt: %s", raw)
+			}
+			if tc.wantUnconfirmed {
+				m.Delivery = "unconfirmed"
+				c.Messages = []agentMessage{m}
+				if pendingInternalAgentMessage(c) {
+					t.Fatal("restart would resend unconfirmed mail")
+				}
+			}
+		})
 	}
 }
