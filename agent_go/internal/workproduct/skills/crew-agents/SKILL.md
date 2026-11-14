@@ -73,7 +73,9 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   starting task with `sessions action=ask` using the returned chat_id.
 - Use a new empty tab only for unrelated work or an intentional clean context.
   Open a named tab with `sessions action=open` (a name and, optionally, a first
-  task). Reuse a tab by name before opening another. Coordinate overlapping
+  task). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
+  and, when needed, `connection_id` (choices from `models action=list`) to the same
+  call: do not open it and then set its model. Reuse a tab by name before opening another. Coordinate overlapping
   changes through messages; there is no whole-Crew edit lock. Do not split a small task.
 - `sessions action=new` archives the existing Main's conversation and starts a
   fresh one in that same agent. It does not create a named tab or restore a

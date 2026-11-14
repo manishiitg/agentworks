@@ -456,10 +456,14 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return string(body), nil
 			}},
-		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
+		{"open_project_chat", "Open a new named tab (a new agent) in this project, as the + in the app does, to give it part of the work. name is required and unique in this project (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat; engine, model_id, reasoning_effort and connection_id optionally start the new tab on that model in the same call (do not open it and then set the model). Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this project's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
-				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
-				"task": map[string]interface{}{"type": "string", "description": "Optional first task, self-contained."},
+				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
+				"task":             map[string]interface{}{"type": "string", "description": "Optional first task, self-contained."},
+				"engine":           map[string]interface{}{"type": "string", "description": "Optional: start the new tab on this provider (an engine from models action=list, e.g. claude-code). Same checks as models action=set scope=tab; a refused choice opens nothing. Ignored for a tab that already exists."},
+				"model_id":         map[string]interface{}{"type": "string", "description": "With engine: a model that provider offers."},
+				"reasoning_effort": map[string]interface{}{"type": "string", "description": "With engine: an optional reasoning level that model offers."},
+				"connection_id":    map[string]interface{}{"type": "string", "description": "With engine: your personal or available company account ID."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
@@ -483,11 +487,18 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if claims == nil {
 					claims = &UserClaims{UserID: userID}
 				}
+				tabModel, err := newTabModelFromArgs(args)
+				if err != nil {
+					return "", err
+				}
 				reused := true
 				chat := findCodeChat(chats, name)
 				if chat == nil {
 					reused = false
 					request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+					if status, reason := api.refuseNewTabModel(request, project.ProfileID, projectID, tabModel); status != 0 {
+						return "", fmt.Errorf("%s. Choose a provider, model and reasoning level offered by models action=list; no tab was opened", reason)
+					}
 					id, status, message := api.externalCodeRunOpenTab(request, claims, binding, projectID, chats, name, project.ProfileID)
 					if id == "" {
 						return "", fmt.Errorf("%s (%d)", message, status)
@@ -498,8 +509,14 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					if chat == nil {
 						return "", fmt.Errorf("the tab was opened but could not be found; see list_project_chats")
 					}
+					if status, body := api.applyNewTabModel(request, project.ProfileID, projectID, chat.ID, tabModel); status >= 400 {
+						return "", fmt.Errorf("the tab %s (id %s) was opened but its model was not applied: %s. Set it with models action=set, or close the tab", chat.Name, chat.ID, strings.TrimSpace(string(body)))
+					}
 				}
 				out := map[string]interface{}{"id": chat.ID, "name": chat.Name, "reused": reused}
+				if tabModel.chosen() && !reused {
+					out["engine"], out["model_id"], out["reasoning_effort"] = tabModel.engine, tabModel.modelID, tabModel.effort
+				}
 				task := strings.TrimSpace(stringToolArg(args, "task"))
 				if task == "" {
 					out["next"] = "Hand it work with ask_project_chat chat=" + chat.ID + "."
