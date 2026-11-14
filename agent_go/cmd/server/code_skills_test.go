@@ -93,6 +93,20 @@ func TestWorkspaceProxyRefusesSkillInstallTargetDir(t *testing.T) {
 	if status := verdict("application/json", `{"source":"owner/repo@skill"}`); status != http.StatusForbidden {
 		t.Fatalf("unscoped installs must be refused: %d", status)
 	}
+	// skills_from (another Crew's skills added to a read) is the server's alone too, on any route and Content-Type.
+	for _, contentType := range []string{"application/json", "text/plain", ""} {
+		req := httptest.NewRequest(http.MethodPost, "/api/wp/api/skills/workspace/list", strings.NewReader(`{"workspace_path":"Crew/mine","skills_from":"Crew/someone-elses"}`))
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		status, _, cleanup := workspaceProxyCrossUserBlock(req, "bob")
+		if cleanup != nil {
+			t.Cleanup(cleanup)
+		}
+		if status != http.StatusForbidden {
+			t.Fatalf("skills_from with Content-Type %q = %d, want 403", contentType, status)
+		}
+	}
 }
 
 // The workspace binds JSON whatever Content-Type is claimed, so the proxy

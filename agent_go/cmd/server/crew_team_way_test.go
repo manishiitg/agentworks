@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 // PLAT-746-1026: any Team member adds their own secret to the Team (value copied inside the server, kept by them, never
@@ -101,6 +102,9 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	}
 	if own, err := productSelectedSkills(f.Ctx(fixtureUserA), crewProfileID, home); err != nil || containsExactString(own, "review") {
 		t.Fatalf("the Team's skills were copied into the home Crew: %v %v", own, err)
+	}
+	if skills.ExtraSkillsRoot(home) != source || skills.ExtraSkillsRoot(source) != "" {
+		t.Fatalf("the home must read the Team Crew's skills folder and an ordinary Crew none: %q %q", skills.ExtraSkillsRoot(home), skills.ExtraSkillsRoot(source))
 	}
 	if got := teamHomeSkills(f.Ctx(fixtureUserA), source); len(got) != 0 {
 		t.Fatalf("an ordinary Crew must not take another Crew's skills: %v", got)
