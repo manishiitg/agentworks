@@ -462,27 +462,9 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			externalError(w, 403, "tab_owner", err.Error())
 			return
 		}
-		if engine := strings.TrimSpace(input.Engine); engine != "" {
-			option, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine)
-			if !offered {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model provider is not available here")
-				return
-			}
-			if connection := strings.TrimSpace(input.ConnectionID); connection != "" {
-				if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: userID, WorkspacePath: slot.binding.WorkspacePath, Product: slot.profile.Product}, option.Provider, connection); err != nil {
-					writeAgentProfileError(w, http.StatusForbidden, err.Error())
-					return
-				}
-			}
-			// Refuse now what the next turn would refuse, so the chat keeps a model that runs.
-			if model := strings.TrimSpace(input.ModelID); model != "" && !providerOptionOffersModel(option, currentCodingAgentModel(option.Provider, model)) {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model is not available for this coding agent")
-				return
-			}
-			if effort := strings.TrimSpace(input.ReasoningEffort); effort != "" && !reasoningEffortOffered(option, effort) {
-				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that reasoning level is not available for this model")
-				return
-			}
+		if status, message := api.chatModelChoiceRefusal(r.Context(), userID, slot, input); status != 0 {
+			writeAgentProfileError(w, status, message)
+			return
 		}
 		previous, readErr := store.agentIdentity(r.Context(), userID, slot.profile.ID, key)
 		if readErr != nil {
@@ -571,4 +553,31 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		slotDone.Sub(started).Round(time.Millisecond), saveDone.Sub(slotDone).Round(time.Millisecond),
 		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
 	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
+}
+
+// chatModelChoiceRefusal is the one check a chat's model choice passes, for a model change and for a tab opened with
+// its model: the provider is offered here, the account is the caller's to use, and the model and reasoning level are
+// offered for that provider. It returns 0 when the choice stands, else the status and the plain reason.
+func (api *StreamingAPI) chatModelChoiceRefusal(ctx context.Context, userID string, slot profileAndBinding, input AgentProfileChatModel) (int, string) {
+	engine := strings.TrimSpace(input.Engine)
+	if engine == "" {
+		return 0, ""
+	}
+	option, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine)
+	if !offered {
+		return http.StatusUnprocessableEntity, "that model provider is not available here"
+	}
+	if connection := strings.TrimSpace(input.ConnectionID); connection != "" {
+		if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: userID, WorkspacePath: slot.binding.WorkspacePath, Product: slot.profile.Product}, option.Provider, connection); err != nil {
+			return http.StatusForbidden, err.Error()
+		}
+	}
+	// Refuse now what the next turn would refuse, so the chat keeps a model that runs.
+	if model := strings.TrimSpace(input.ModelID); model != "" && !providerOptionOffersModel(option, currentCodingAgentModel(option.Provider, model)) {
+		return http.StatusUnprocessableEntity, "that model is not available for this coding agent"
+	}
+	if effort := strings.TrimSpace(input.ReasoningEffort); effort != "" && !reasoningEffortOffered(option, effort) {
+		return http.StatusUnprocessableEntity, "that reasoning level is not available for this model"
+	}
+	return 0, ""
 }
