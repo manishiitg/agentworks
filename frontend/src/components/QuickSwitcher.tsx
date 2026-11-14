@@ -359,7 +359,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const messageKey = `${resourceScope}:${query.trim()}`
   const messageEnabled = isOpen && !!user && (category === 'all' || category === 'chat') && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2 && [...query.trim()].length <= 200
   useEffect(() => {
-    if (!messageEnabled) return
+    if (!messageEnabled) {
+      // Reopening search must get fresh admission, not resurface snippets
+      // cached before a chat was hidden or access was removed.
+      messageBatch.current = { key: '', items: [], cursor: '' }
+      setMessageSearch({ key: '', items: [], cursor: '', loading: false, error: false })
+      return
+    }
     const controller = new AbortController()
     if (messageBatch.current.key !== messageKey) messageBatch.current = { key: messageKey, items: [], cursor: '' }
     const timer = window.setTimeout(() => {
