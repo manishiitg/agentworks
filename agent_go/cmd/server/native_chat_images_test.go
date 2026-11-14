@@ -53,6 +53,16 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 	if err = env.api.validatePendingChatAttachments("owner", "chat", req); err != nil {
 		t.Fatal(err)
 	}
+	// More than16 admitted files must not reject the text before the native
+	// payload limiter can skip excess images. Every reference is still validated.
+	many := req
+	many.PendingAttachments = make([]pendingChatAttachment, 17)
+	for i := range many.PendingAttachments {
+		many.PendingAttachments[i] = req.PendingAttachments[0]
+	}
+	if err = env.api.validatePendingChatAttachments("owner", "chat", many); err != nil {
+		t.Fatal("attachment count swallowed text", err)
+	}
 	ctx = env.api.bindReadyChatAttachments(ctx, "owner", "chat", &req)
 	principal := queuedPrincipalFromContext(ctx)
 	raw, err := json.Marshal(principal)

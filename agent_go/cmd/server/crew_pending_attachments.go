@@ -116,7 +116,7 @@ func (api *StreamingAPI) validatePendingChatAttachments(user, session string, re
 	if len(req.PendingAttachments) == 0 {
 		return nil
 	}
-	if req.AgentProfileID != crewProfileID || len(req.PendingAttachments) > 16 || req.AgentProfileConversationKey == "" {
+	if req.AgentProfileID != crewProfileID || req.AgentProfileConversationKey == "" {
 		return errors.New("Attach these files in a Crew chat before sending.")
 	}
 	for _, file := range req.PendingAttachments {
