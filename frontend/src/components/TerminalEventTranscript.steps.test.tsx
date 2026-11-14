@@ -71,3 +71,40 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     useChatDisplayStore.setState({ showThinking: false, showTools: false })
   }
 })
+
+it('groups ended shells by server kind and absorbs only their exact adjacent tool wrappers (PLAT-746-995)', async () => {
+  const event = (id: string, type: string, fields: Record<string, unknown>): PollingEvent => ({
+    id, type, session_id: 'shell-chat', timestamp: '2026-11-14T12:00:00Z', data: { type, data: fields },
+  } as PollingEvent)
+  const shell = (id: string, state: string) => [
+    event(`${id}-tool`, 'tool_call_end', { tool_call_id: id, tool_name: 'exec_command', result: 'private tool output' }),
+    event(id, 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: `work-${id}`, tool_id: id, state, command_label: `check ${id}`, started_at: '0001-01-01T00:00:00Z', ended_at: '0001-01-01T00:00:00Z' } }),
+  ]
+  const rows = [...shell('one', 'finished'), ...shell('two', 'failed'), ...shell('three', 'stopped'), ...shell('four', 'interrupted')]
+  const host = document.createElement('div'), root = createRoot(host)
+  const render = (events = rows) => act(async () => root.render(<TerminalEventTranscript terminal={null} events={events.map((row, index) => ({ ...row, sequence: index + 1 }))} searchable scrollKey="shell-groups-regression" />))
+  try {
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+    await render()
+    expect(host.querySelectorAll('[data-testid="compact-shell-group"]')).toHaveLength(1)
+    expect(host.textContent).toContain('4 background shells ended')
+    expect(host.querySelector('[data-testid="terminal-work-summary"]')).toBeNull()
+    const button = host.querySelector<HTMLButtonElement>('[data-testid="compact-shell-group"] button')!
+    await act(async () => button.click())
+    for (const state of ['finished', 'failed', 'stopped', 'interrupted']) expect(host.textContent).toContain(`Background shell ${state}`)
+    expect(host.textContent).toContain('check one')
+    expect(host.textContent).not.toContain('private tool output')
+    expect(host.textContent).not.toContain('restart')
+    await act(async () => useChatDisplayStore.setState({ showTools: true }))
+    expect(host.querySelector('[data-testid="terminal-tool-call-group"]')).toBeNull()
+    expect(host.textContent).toContain('exec_command')
+    // An unrelated tool is still shown and breaks the shell run.
+    await act(async () => useChatDisplayStore.setState({ showTools: false }))
+    await render([...rows.slice(0, 2), event('other', 'tool_call_end', { tool_call_id: 'unrelated', tool_name: 'read_file', result: 'ok' }), ...rows.slice(2)])
+    expect(host.querySelector('[data-testid="terminal-work-summary"]')?.textContent).toBe('2 steps')
+    expect(host.textContent).toContain('3 background shells ended')
+  } finally {
+    await act(async () => root.unmount())
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})
