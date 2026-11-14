@@ -21,7 +21,7 @@ require (
 	github.com/manishiitg/coding-agent-loop/mcpoauth v0.0.0
 	github.com/manishiitg/coding-agent-loop/workspace v0.0.0
 	github.com/manishiitg/mcpagent v1.7.12-0.20261113123402-0e23126f9751
-	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114050416-49692f676dc8
+	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114050659-bbb8648cbf40
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/openai/openai-go/v3 v3.36.0
 	github.com/robfig/cron/v3 v3.0.1
