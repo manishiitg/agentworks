@@ -12,6 +12,32 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
+func (api *StreamingAPI) nativeSkillsRoute(write bool) http.HandlerFunc {
+	return workspaceSkillRoute(write, func(w http.ResponseWriter, r *http.Request) {
+		claims := GetUserFromContext(r.Context())
+		workspace := r.URL.Query().Get("workspace_path")
+		crew, ok := resolveCrewPath(r.Context(), claims.UserID, workspace)
+		if !ok || crew.OwnerID != sanitizeUserIDForPath(claims.UserID) {
+			http.Error(w, "Open a Crew you own to discover native skills.", 403)
+			return
+		}
+		if token := claims.AccessToken; token != nil {
+			roots, bound, err := crewStorageRoots(workspace)
+			scope := "crews:read"
+			if write {
+				scope = "crews:write"
+			}
+			// Same native-file admission as localProjectAccess: a file-limited
+			// or another-Crew token cannot expand into personal/native folders.
+			if err != nil || !bound || token.FileGuard != nil || !token.Allows(scope) || !token.AllowsCrew(roots.ID) {
+				http.Error(w, "Use a connection with full access to this own Crew.", 403)
+				return
+			}
+		}
+		api.discoverNativeSkills(w, r)
+	})
+}
+
 // This is discovery for explicit project import, not a native invocation or a
 // second skill store. Server/Run callers never inspect the app account's home.
 func (api *StreamingAPI) nativeSkillSources(r *http.Request) ([]skills.NativeSource, string) {
