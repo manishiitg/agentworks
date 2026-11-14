@@ -1455,7 +1455,7 @@ func resolveProductProjectBindingInRoot(
 			AuthoritativeSessionID:      strings.TrimSpace(manifest.SessionID),
 			ProjectLLMConfig:            manifest.Capabilities.LLMConfig,
 			ProjectSelectedServers:      teamWayServers(ctx, workspacePath, manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),
-			ProjectSelectedSkills:       append([]string(nil), manifest.Capabilities.SelectedSkills...),
+			ProjectSelectedSkills:       appendUniqueStrings(append([]string(nil), manifest.Capabilities.SelectedSkills...), teamHomeSkills(ctx, workspacePath)...),
 			ProjectWorkflowContextPaths: append([]string(nil), firstNonEmptyStrings(manifest.WorkflowContextPaths, manifest.Capabilities.WorkflowContextPaths)...),
 			// No user switch for a Crew or a Code (user, 2026-09-29): native
 			// agent tools are always on, even where an older project stored
