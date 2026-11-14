@@ -35,7 +35,15 @@ func (api *StreamingAPI) importCrewAgentForkCopy(r *http.Request, offer crewAgen
 	var runtime *ChatHistoryAgentRuntime
 	if payload.Conversation.Native != nil && destination.Provider == payload.Conversation.Native.Provider {
 		var err error
-		runtime, err = api.importCrewAgentForkNative(r, roots, destination, payload.Conversation.Native)
+		// The descriptor's source-machine Root is never authority to read
+		// native files on this computer. Only this fork's admitted stage is.
+		dir, stageErr := crewAgentForkDirectory(offer.Project, offer.ID)
+		if stageErr != nil {
+			return stageErr
+		}
+		native := *payload.Conversation.Native
+		native.Root = filepath.Join(dir, "native")
+		runtime, err = api.importCrewAgentForkNative(r, roots, destination, &native)
 		if err != nil {
 			// A different program or unsupported native format is not a failed fork.
 			// No source-account details or native error paths go to the logs.
@@ -80,6 +88,19 @@ func crewAgentForkChatKey(offer crewAgentFork) string {
 
 func (api *StreamingAPI) importCrewAgentForkNative(r *http.Request, roots crewroot.Roots, destination ProductConversationRecord, bundle *sessiontransfer.Bundle) (*ChatHistoryAgentRuntime, error) {
 	claims := GetUserFromContext(r.Context())
+	// Match the ordinary chat-fork copy budget before duplicating a native
+	// database. Dialogue continuity remains available when space is tight.
+	var size uint64
+	for _, file := range bundle.Files {
+		if file.Size < 0 || uint64(file.Size) > 64<<20 || size > (64<<20)-uint64(file.Size) {
+			return nil, fmt.Errorf("native copy budget exceeded")
+		}
+		size += uint64(file.Size)
+	}
+	free, err := localChatFreeBytes(roots.Private)
+	if err != nil || free < size*3+(256<<20) {
+		return nil, fmt.Errorf("not enough free space for the native copy")
+	}
 	if err := bundle.ValidateFiles(); err != nil {
 		return nil, err
 	}
