@@ -3,9 +3,14 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	agentevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,5 +185,40 @@ func TestCrewMainSessionIsRecordedUnderItsMainOwner(t *testing.T) {
 	api.trackActiveSession(session, "multi-agent", "hi", "owner", "", "", "", "", "")
 	if owner, err := store.DurableChatOwner(session); err != nil || owner != "owner" {
 		t.Fatalf("durable owner = %q, %v; want the main owner", owner, err)
+	}
+}
+
+// PLAT-746-988: reconnect must restore an old goal outside the requested tail,
+// without changing pagination or exposing its objective to another person.
+func TestGoalRestoreUsesAuthorizedDurableChatBoundary(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	api, store := newDurableChatAPI(t, "goal-chat", "alice")
+	goal := events.Event{ID: "old-goal", Type: "native_goal_updated", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(&agentevents.NativeGoalEvent{Update: llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Private goal", Status: "paused"}}})}
+	if err := store.AddEventChecked("goal-chat", goal); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		store.AddEvent("goal-chat", events.Event{ID: fmt.Sprintf("later-%d", i), Type: "user_message", Timestamp: time.Now()})
+	}
+	read := func(owner string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/sessions/goal-chat/events?durable_chat=1&limit=1", nil)
+		req = mux.SetURLVars(req, map[string]string{"session_id": "goal-chat"})
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: owner}))
+		out := httptest.NewRecorder()
+		api.handleGetSessionEvents(out, req)
+		return out
+	}
+	denied := read("bob")
+	if denied.Code != 404 || strings.Contains(denied.Body.String(), "Private goal") {
+		t.Fatal("goal read crossed chat owner boundary", denied.Code)
+	}
+	allowed := read("alice")
+	var body GetEventsResponse
+	if allowed.Code != 200 || json.Unmarshal(allowed.Body.Bytes(), &body) != nil || body.NativeGoalSnapshot == nil || body.NativeGoalSnapshot.ID != "old-goal" {
+		t.Fatalf("own reconnect lost goal: %d %s", allowed.Code, allowed.Body.String())
+	}
+	if len(body.Events) != 1 || body.Events[0].ID != "later-19" || body.OldestSequence != body.Events[0].Sequence || body.LatestSequence != body.Events[0].Sequence {
+		t.Fatal("goal projection changed real page/cursors")
 	}
 }

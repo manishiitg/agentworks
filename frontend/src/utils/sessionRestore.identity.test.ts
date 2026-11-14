@@ -87,3 +87,17 @@ describe('durable SQLite hydration isolation', () => {
     expect(mocks.markTabHistoryLoaded).not.toHaveBeenCalled()
   })
 })
+
+// PLAT-746-988: the goal projection is not a historical page/cursor row.
+it('restores a goal snapshot without moving the journal pagination boundary', async () => {
+  vi.resetAllMocks()
+  invalidateChatIdentity()
+  mocks.getTabEvents.mockReturnValue([])
+  mocks.getRecentChatEvents.mockResolvedValue({ ...response([{ id: 'tail', type: 'user_message', sequence: 100 }], 100), oldest_sequence: 100, has_more: true,
+    native_goal_snapshot: { id: 'old-goal', type: 'native_goal_updated', sequence: 2, data: { update: { goal: { objective: 'Task', status: 'paused' } } } } })
+  await hydrateTabEvents('goal-chat')
+  const restored = mocks.setTabEvents.mock.calls.at(-1)?.[1] as Array<{ id: string; sequence?: number }>
+  expect(restored.find(event => event.id === 'native-goal-snapshot:goal-chat')?.sequence).toBeUndefined()
+  expect(mocks.setTabLastEventIndex).toHaveBeenCalledWith('goal-chat', 100)
+  expect(mocks.setTabHistoryPagination).toHaveBeenCalledWith('goal-chat', expect.objectContaining({ nextOffset: 100 }))
+})
