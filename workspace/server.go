@@ -220,6 +220,7 @@ func registerAPIRoutes(r *gin.Engine) {
 		api.GET("/browser/live/:session/stream", requireWorkspaceAPIToken(), handlers.BrowserLiveStream)
 		api.POST("/browser/live/:session/recording", requireWorkspaceAPIToken(), handlers.BrowserRecording)
 		api.POST("/browser/live/:session/text", requireWorkspaceAPIToken(), handlers.BrowserViewerText)
+		api.POST("/browser/live/:session/context", requireWorkspaceAPIToken(), handlers.BrowserChatContext)
 		api.POST("/browser/live/:session/restore-tabs", requireWorkspaceAPIToken(), handlers.BrowserRestoreTabs)
 
 		// Skills CLI routes (npx skills — runs inside container)
