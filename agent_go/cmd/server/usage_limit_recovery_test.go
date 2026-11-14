@@ -260,3 +260,28 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 		})
 	}
 }
+
+// PLAT-746: a canceled reset left the shared watching flag set for hours,
+// so a newer earlier reset never kicked the real queue at its due time.
+func TestEarlierQuotaResetWakesQueueBeforeOldTimer(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	const user, sid = "owner", "earlier-usage-reset"
+	api.registerConversationQueueOwnerLocked(user, sid)
+	read := make(chan struct{}, 1)
+	api.internalTurnQueueRead = func(_ context.Context, path string) (string, bool, error) {
+		if path == conversationTurnQueuePath(user) {
+			select {
+			case read <- struct{}{}:
+			default:
+			}
+		}
+		return "", false, nil
+	}
+	api.wakeConversationQueueAt(sid, time.Now().Add(time.Hour))
+	api.wakeConversationQueueAt(sid, time.Now().Add(20*time.Millisecond))
+	select {
+	case <-read:
+	case <-time.After(2 * time.Second):
+		t.Fatal("earlier reset did not wake the input queue")
+	}
+}

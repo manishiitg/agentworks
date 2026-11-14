@@ -1320,23 +1320,38 @@ func dismissibleIncomingTurn(turn queuedConversationTurn) bool {
 		queuedTurnDisplayAttribution(turn.SessionID, turn)["source"] == "agent_message"
 }
 
-// Kicks and claims are idempotent: an old timer may wake after another queue watcher,
-// but the persisted StartedAt and the session drainer prevent duplicate dispatch.
+// Busy-lane observation and a future reset are separate waits. An earlier
+// reset must replace a later timer left behind by a canceled recovery.
+type conversationTurnQueueWake struct {
+	at    time.Time
+	timer *time.Timer
+}
+
 func (api *StreamingAPI) wakeConversationQueueAt(sessionID string, at time.Time) {
 	api.conversationTurnQueueMu.Lock()
-	if api.conversationTurnQueueWatching == nil {
-		api.conversationTurnQueueWatching = make(map[string]bool)
+	defer api.conversationTurnQueueMu.Unlock()
+	if api.conversationTurnQueueWakes == nil {
+		api.conversationTurnQueueWakes = map[string]*conversationTurnQueueWake{}
 	}
-	if api.conversationTurnQueueWatching[sessionID] {
-		api.conversationTurnQueueMu.Unlock()
-		return
+	if current := api.conversationTurnQueueWakes[sessionID]; current != nil {
+		if !at.Before(current.at) {
+			return
+		}
+		current.timer.Stop()
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=timer_replaced reason=earlier_reset reset_at=%s", sessionID, at.UTC().Format(time.RFC3339))
 	}
-	api.conversationTurnQueueWatching[sessionID] = true
-	api.conversationTurnQueueMu.Unlock()
-	time.AfterFunc(time.Until(at), func() {
+	wake := &conversationTurnQueueWake{at: at}
+	api.conversationTurnQueueWakes[sessionID] = wake
+	log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=timer_armed reset_at=%s", sessionID, at.UTC().Format(time.RFC3339))
+	wake.timer = time.AfterFunc(time.Until(at), func() {
 		api.conversationTurnQueueMu.Lock()
-		delete(api.conversationTurnQueueWatching, sessionID)
+		if api.conversationTurnQueueWakes[sessionID] != wake {
+			api.conversationTurnQueueMu.Unlock()
+			return
+		}
+		delete(api.conversationTurnQueueWakes, sessionID)
 		api.conversationTurnQueueMu.Unlock()
+		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s action=timer_due reason=reset_due", sessionID)
 		api.kickConversationTurnQueue(sessionID)
 	})
 }
