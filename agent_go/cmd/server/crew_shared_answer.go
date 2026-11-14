@@ -93,9 +93,15 @@ func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string
 	fmt.Fprintf(&out, "Agent: %s\nPurpose: %s\n", redaction.Text(agent.Name), redaction.Text(agent.Purpose))
 	posts := crewTeamActivityPostsFor(team, asker)
 	for _, post := range posts.Decisions {
+		if post.Private {
+			continue
+		}
 		fmt.Fprintf(&out, "Team decision: %s — %s\n", redaction.Text(post.Line), redaction.Text(post.Why))
 	}
 	for _, post := range posts.Findings {
+		if post.Private {
+			continue
+		}
 		fmt.Fprintf(&out, "Team finding: %s\n", redaction.Text(post.Line))
 	}
 	// Reuse the admitted live projection and its exact Live-chat gate. Never
