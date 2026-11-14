@@ -439,7 +439,10 @@ func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		api.listExternalWorkspaces(w, r, args, true)
+		encoded, _ := json.Marshal(args)
+		writeSharedRead(w, r, "workspaces\x00"+claims.UserID+"\x00"+string(encoded), func(w http.ResponseWriter, r *http.Request) {
+			api.listExternalWorkspaces(w, r, args, true)
+		})
 		return
 	}
 	api.externalWorkspaceCall(w, r, args)

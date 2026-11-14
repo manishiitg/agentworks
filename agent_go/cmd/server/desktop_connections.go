@@ -507,6 +507,10 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 	if !desktopConnectionGate(w, r) {
 		return
 	}
+	writeSharedRead(w, r, "inventory\x00"+GetUserFromContext(r.Context()).UserID+"\x00"+mux.Vars(r)["connection"], api.readDesktopConnectionInventory)
+}
+
+func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["connection"]
 	base, token := "http://"+desktopBootstrapHost, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if id != "local" {
