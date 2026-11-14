@@ -320,9 +320,29 @@ func Import(ctx context.Context, destination *sql.DB, input io.Reader, seed bool
 			wanted.Triggers = append(wanted.Triggers, object.Name)
 		}
 	}
-	if _, err = describe(ctx, tx, wanted); err != nil {
+	actual, err := describe(ctx, tx, wanted)
+	if err != nil {
 		return err
 	}
+	expectedRows := map[string]int64{}
+	for _, table := range schema.Tables {
+		if !tables[table.Name] || table.Rows < 0 {
+			return fmt.Errorf("invalid dataset table counts")
+		}
+		if _, duplicate := expectedRows[table.Name]; duplicate {
+			return fmt.Errorf("duplicate dataset table count")
+		}
+		expectedRows[table.Name] = table.Rows
+	}
+	if len(expectedRows) != len(tables) {
+		return fmt.Errorf("dataset table counts are incomplete")
+	}
+	for _, table := range actual.Tables {
+		if expectedRows[table.Name] != table.Rows {
+			return fmt.Errorf("dataset row count changed during import")
+		}
+	}
+
 	for name, value := range schema.Sequences {
 		if !tables[name] || value < 0 {
 			return fmt.Errorf("invalid dataset sequence")
