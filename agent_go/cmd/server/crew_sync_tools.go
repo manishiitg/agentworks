@@ -79,7 +79,7 @@ func (api *StreamingAPI) pairedCrewSyncAction(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if action == "" || action == "status" {
-		out, err := api.crewSync(r.Context(), claims, id, crewSyncRequest{Action: "status"})
+		out, err := api.crewSync(r.Context(), claims, roots.ID, crewSyncRequest{Action: "status"})
 		if err != nil {
 			externalError(w, 409, "sync_unavailable", err.Error())
 			return
