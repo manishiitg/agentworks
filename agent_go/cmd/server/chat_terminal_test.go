@@ -23,10 +23,18 @@ func TestChatTerminalOwnerRecoverySupersedesOldSession(t *testing.T) {
 		t.Fatal(e)
 	}
 	ctx := internalBotRequestContext(t.Context(), "owner")
-	if e = ensureCrewOwnerDefaultTab(ctx, "owner", profile, "beta"); e != nil {
+	binding, _, e := resolveConversationBindingForUser(ctx, "owner", profile, "beta:chat:terminal-own")
+	if e != nil {
 		t.Fatal(e)
 	}
 	store := defaultProductConversationRegistryStore()
+	initial, e := store.resolveOrCreate(ctx, "owner", profile, binding, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = setCodeTabName(ctx, "owner", initial.ConversationKey, "Own chat", "work"); e != nil {
+		t.Fatal(e)
+	}
 	doc, e := store.loadDocument(ctx, productConversationRegistryPath("owner"))
 	if e != nil {
 		t.Fatal(e)

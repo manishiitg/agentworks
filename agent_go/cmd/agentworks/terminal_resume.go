@@ -103,10 +103,13 @@ func terminalLocalFolder(ref chatterminal.Reference, hint string) (string, error
 			return "", fmt.Errorf("this server chat needs its project files on this laptop. Open its Crew or synced Team folder in the Mac app first")
 		}
 		hint = ""
-		for id, record := range doc.Projects {
-			match := id == ref.Project
-			if binding, err := crewroot.ReadSync(id); err == nil && binding != nil {
-				match = binding.PeerProjectID == ref.Project && strings.TrimRight(binding.PeerServer, "/") == ref.Server
+		for _, record := range doc.Projects {
+			match := loopback && record.ID == ref.Project
+			if record.Product != "work" || record.Folder == "" || filepath.Base(record.Folder) != record.Folder || record.Folder == "." || record.Folder == ".." {
+				continue
+			}
+			if binding, err := crewroot.ReadSync(record.ID); err == nil && binding != nil {
+				match = binding.Side == "local" && binding.PeerProjectID == ref.Project && strings.TrimRight(binding.PeerServer, "/") == ref.Server
 			}
 			if !match {
 				continue
@@ -116,7 +119,7 @@ func terminalLocalFolder(ref chatterminal.Reference, hint string) (string, error
 				var settings struct {
 					Docs string `json:"docsDir"`
 				}
-				settingsRaw, err := os.ReadFile(filepath.Join(filepath.Dir(state), "settings.json"))
+				settingsRaw, err := os.ReadFile(filepath.Join(filepath.Dir(state), "config.json"))
 				if err == nil {
 					_ = json.Unmarshal(settingsRaw, &settings)
 				}
@@ -218,6 +221,19 @@ func runTerminalResume(ctx context.Context, o *options, reference string) (resul
 	if _, e = exec.LookPath("claude"); e != nil {
 		return fmt.Errorf("install and sign in to Claude Code on this laptop first; the chat has not moved")
 	}
+	reason = "folder_unavailable"
+	status, e := client.TerminalStatus(ctx, ref.Key)
+	if e != nil {
+		return e
+	}
+	if status["out"] == true {
+		return fmt.Errorf("this chat is already in a terminal. Attach it back, or choose Continue here instead in AgentWorks")
+	}
+	hint, _ := status["local_folder"].(string)
+	folder, e := terminalLocalFolder(ref, hint)
+	if e != nil {
+		return e
+	}
 	path, e := o.path()
 	if e != nil {
 		return e
@@ -248,7 +264,10 @@ func runTerminalResume(ctx context.Context, o *options, reference string) (resul
 	}
 	nativeID = t.Bundle.SessionID
 	reason = "local_folder_unavailable"
-	folder, e := terminalLocalFolder(ref, t.LocalFolder)
+	currentFolder, e := terminalLocalFolder(ref, t.LocalFolder)
+	if e == nil && currentFolder != folder {
+		e = fmt.Errorf("the project folder changed during this handoff; try again from the chat menu")
+	}
 	if e != nil {
 		abort()
 		return e

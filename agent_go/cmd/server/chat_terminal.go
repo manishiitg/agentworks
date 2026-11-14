@@ -64,7 +64,13 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			scheme = "http"
 		}
 		ref := chatterminal.Reference{Server: scheme + "://" + r.Host, Key: c.ConversationKey, Project: project}
-		externalJSON(w, map[string]any{"out": state.Out, "command": "agentworks resume " + ref.String(), "notice": chatTerminalNotice})
+		localFolder := ""
+		if IsLocalMode() {
+			if roots, bound, err := crewStorageRoots(c.WorkspacePath); err == nil && bound {
+				localFolder = roots.Files
+			}
+		}
+		externalJSON(w, map[string]any{"out": state.Out, "command": "agentworks resume " + ref.String(), "notice": chatTerminalNotice, "local_folder": localFolder})
 		return
 	}
 	if r.Method != http.MethodPost {
