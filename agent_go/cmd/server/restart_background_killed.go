@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -92,30 +93,65 @@ func (api *StreamingAPI) markRestartKilledStopped(sessionID string, killed []llm
 	}
 }
 
-// queueRestartBackgroundKilledWake queues the one wake for a chat whose background work died with the app. It obeys
-// what the interrupted-turn continuation obeys: a person's Stop, a person's message already waiting, the restart
-// loop limit and the follow-up chain limit. It returns the queue and whether it handled this chat.
-func (api *StreamingAPI) queueRestartBackgroundKilledWake(userID, sessionID string, record *restartContinueRecord, kept []queuedConversationTurn) ([]queuedConversationTurn, bool) {
+const (
+	// Only recent chats and recent work get a wake: the saved journals hold many old "started" rows that never closed,
+	// and one restart must not start model turns in a pile of long-idle chats.
+	restartBackgroundRecent = 6 * time.Hour
+	// At most this many chats are woken per startup, most recently active first.
+	restartBackgroundWakeCap = 10
+)
+
+// restartBackgroundWake is one chat that gets the wake turn.
+type restartBackgroundWake struct {
+	sessionID  string
+	labels     []string
+	lastActive time.Time
+}
+
+// chatLastActivity is the time of the newest saved event of a chat.
+func (api *StreamingAPI) chatLastActivity(sessionID string) time.Time {
+	if rows := api.eventStore.LastEventsRaw(sessionID, 1); len(rows) > 0 {
+		return rows[len(rows)-1].Timestamp
+	}
+	return time.Time{}
+}
+
+// planRestartBackgroundKilledWake closes the dead background rows of a chat between turns and says whether it gets
+// the one wake. Every dead row is marked stopped; only a recently active chat with recently started work is a
+// candidate, and the caller keeps the newest few. It obeys what the interrupted-turn continuation obeys: a person's
+// Stop, a person's message already waiting, the restart loop limit and the follow-up chain limit. handled is false
+// when the chat has no dead background work, so the caller skips it as before.
+func (api *StreamingAPI) planRestartBackgroundKilledWake(sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) (wake restartBackgroundWake, handled bool) {
 	if record.QueryID == "" || api.sessionTurnRunning(sessionID) {
-		return kept, false
+		return wake, false
 	}
 	killed := api.restartKilledBackground(sessionID)
 	if len(killed) == 0 {
-		return kept, false
+		return wake, false
 	}
-	labels := make([]string, 0, len(killed))
-	for _, work := range killed {
-		labels = append(labels, restartKilledLabel(work))
-	}
+	// Read the chat's activity before closing the rows: closing them is itself a new event.
+	lastActive := api.chatLastActivity(sessionID)
 	// Whatever follows, the dead work is no longer running.
 	api.markRestartKilledStopped(sessionID, killed)
+	var labels []string
+	for _, work := range killed {
+		started := work.StartedAt
+		if started.IsZero() {
+			started = work.Timestamp
+		}
+		if !started.IsZero() && now.Sub(started) <= restartBackgroundRecent {
+			labels = append(labels, restartKilledLabel(work))
+		}
+	}
 	reason := ""
 	switch {
+	case lastActive.IsZero() || now.Sub(lastActive) > restartBackgroundRecent || len(labels) == 0:
+		reason = "too_old"
 	case api.isSessionMarkedStopped(sessionID):
 		reason = "stopped_by_person"
 	case waitingPersonTurn(kept, sessionID):
 		reason = "person_message_queued"
-	case len(recentRestartContinues(record.RestartContinues, time.Now())) >= restartContinueLimit:
+	case len(recentRestartContinues(record.RestartContinues, now)) >= restartContinueLimit:
 		reason = "restart_loop_limit"
 	case record.FollowUps >= backgroundFollowUpChainLimit:
 		reason = "chain_limit"
@@ -127,15 +163,29 @@ func (api *StreamingAPI) queueRestartBackgroundKilledWake(userID, sessionID stri
 	}
 	if reason != "" {
 		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s tasks=%d background_killed=true", sessionID, record.QueryID, reason, len(killed))
-		return kept, true
+		return wake, true
 	}
-	now := time.Now().UTC()
-	record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
-	record.FollowUps++
-	backgroundFollowUps.restore(sessionID, record.FollowUps)
-	request := record.Request
-	request.Query = strings.Replace(restartBackgroundKilledMessage, "%s", strings.Join(labels, "; "), 1)
-	kept = append(kept, queuedConversationTurn{ID: "restart-bg:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: request, Principal: record.Principal, CreatedAt: now})
-	log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=wake reason=background_killed tasks=%d", sessionID, record.QueryID, len(killed))
-	return kept, true
+	return restartBackgroundWake{sessionID: sessionID, labels: labels, lastActive: lastActive}, true
+}
+
+// queueRestartBackgroundKilledWakes queues the wakes of the newest chats, up to the cap; the rest are skipped.
+func queueRestartBackgroundKilledWakes(userID string, wakes []restartBackgroundWake, document *restartContinueDocument, kept []queuedConversationTurn, now time.Time) []queuedConversationTurn {
+	sort.Slice(wakes, func(i, j int) bool { return wakes[i].lastActive.After(wakes[j].lastActive) })
+	for i, wake := range wakes {
+		record := document.Chats[wake.sessionID]
+		if i >= restartBackgroundWakeCap {
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=cap tasks=%d background_killed=true", wake.sessionID, record.QueryID, len(wake.labels))
+			continue
+		}
+		utc := now.UTC()
+		record.RestartContinues = append(recentRestartContinues(record.RestartContinues, utc), utc)
+		record.FollowUps++
+		backgroundFollowUps.restore(wake.sessionID, record.FollowUps)
+		request := record.Request
+		request.Query = strings.Replace(restartBackgroundKilledMessage, "%s", strings.Join(wake.labels, "; "), 1)
+		kept = append(kept, queuedConversationTurn{ID: "restart-bg:" + record.QueryID, UserID: userID, SessionID: wake.sessionID, Request: request, Principal: record.Principal, CreatedAt: utc})
+		document.Chats[wake.sessionID] = record
+		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=wake reason=background_killed tasks=%d", wake.sessionID, record.QueryID, len(wake.labels))
+	}
+	return kept
 }
