@@ -342,7 +342,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		o.nativeCodingGap(s, "checkpoint_write_failed")
 		return
 	}
-	stamp := nativeTerminalFileStamp(path)
+	stamp := nativeSubagentFileStamp(o.provider, path, s.Cursor.Tasks)
 	if stamp != "" && stamp == s.stamp {
 		return
 	}
@@ -438,6 +438,9 @@ func (api *StreamingAPI) saveNativeCodingActivity(sessionID string, record llmty
 	err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: time.Now(), SessionID: sessionID, ExecutionKind: "main_agent", Data: wrapped})
 	if err == nil && record.WorkID != "" && record.Origin != "background_usage" {
 		api.wakeNativeBackgroundAccounting(sessionID)
+	}
+	if err == nil && record.Kind == "helper" && record.WorkID != "" && record.State != "progress" && record.Origin != "background_usage" {
+		log.Printf("[SUBAGENT_ROW] provider=%s session=%s task=%q state=%s", record.Provider, sessionID, record.TaskID, record.State)
 	}
 	return err
 }
