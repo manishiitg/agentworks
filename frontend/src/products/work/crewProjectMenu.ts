@@ -28,7 +28,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('dashboard', 'Build', 'Artifacts', LayoutDashboard)
   add('workflow', 'Build', 'Workflow', Route)
   add('schedules', 'Build', 'Automations', Zap)
-  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
+  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Integrations', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   add('database', 'Build', 'Database', Database)
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
