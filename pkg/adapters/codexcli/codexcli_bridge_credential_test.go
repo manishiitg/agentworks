@@ -125,14 +125,33 @@ func TestCodexProcessBridgeCredentialReusesAndReleasesExactGeneration(t *testing
 	if current != nil || closed != 2 {
 		t.Fatal("process close retained its credential")
 	}
+	// PLAT-746-941: an unexpected process exit rotates bridge auth, not
+	// conversation identity. No explicit resume ID is supplied by the caller.
+	t.Setenv("PATH", savedPath)
+	run(options("after-close"))
+	codexAppSessions.Lock()
+	session := codexAppSessions.sessions[owner]
+	codexAppSessions.Unlock()
+	session.mu.Lock()
+	deadRPC := session.rpc
+	session.mu.Unlock()
+	deadRPC.finish(fmt.Errorf("fixture process exit"))
+	run(options("after-exit"))
+	if launches != 4 || len(loads) != 4 || loads[3]["method"] != "thread/resume" {
+		t.Fatal("process credential rotation discarded cached thread")
+	}
+	closeCodexAppSession(owner)
+	if current != nil || closed != 4 {
+		t.Fatal("replacement retained credential")
+	}
 	// Constructor failure releases even before cmd.Start (no process to own it).
 	t.Setenv("PATH", t.TempDir())
 	_, preflightErr := adapter.generateContentAppServer(context.Background(), nil, options("hour-four"))
-	if preflightErr == nil || current != nil || closed != 3 {
+	if preflightErr == nil || current != nil || closed != 5 {
 		t.Fatal("preflight retained an unowned credential")
 	}
 	_, err := adapter.launchAppServer(context.Background(), options("hour-five"), dir)
-	if err == nil || current != nil || closed != 4 {
+	if err == nil || current != nil || closed != 6 {
 		t.Fatal("failed constructor retained credential")
 	}
 }

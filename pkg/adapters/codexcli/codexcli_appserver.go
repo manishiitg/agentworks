@@ -36,6 +36,7 @@ type codexAppSession struct {
 	threadID, turnID, cwd, model string
 	fingerprint                  [32]byte
 	processFingerprint           [32]byte
+	threadBoundaryFingerprint    [32]byte
 	processEnvParts              map[string][32]byte
 	fingerprintParts             map[string][32]byte
 	fingerprintCustom            map[string][32]byte
@@ -342,7 +343,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		s.mu.Unlock()
 	}()
 	var config map[string]any
-	var fingerprint, processFingerprint [32]byte
+	var fingerprint, processFingerprint, threadBoundaryFingerprint [32]byte
 	var envParts, parts, customParts map[string][32]byte
 	refreshConfiguration := func() (configurationErr error) {
 		var credential *AppBridgeCredential
@@ -384,6 +385,20 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		if err != nil {
 			return err
 		}
+		// A replacement process needs fresh bridge auth, but that alone must
+		// not discard its durable thread. All other actual process gates stay.
+		boundaryEnv := make(map[string]string, len(environment))
+		for key, value := range environment {
+			boundaryEnv[key] = value
+		}
+		if credential != nil {
+			delete(boundaryEnv, "MCP_API_TOKEN")
+			delete(boundaryEnv, "MCP_AUTH")
+		}
+		threadBoundaryFingerprint, err = c.appProcessFingerprint(opts, cwd, boundaryEnv)
+		if err != nil {
+			return err
+		}
 		parts = codexFingerprintParts(config)
 		customParts = codexCustomFingerprintParts(config)
 		return nil
@@ -396,6 +411,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	thread := s.threadID
 	oldFingerprint := s.fingerprint
 	oldProcessFingerprint := s.processFingerprint
+	oldThreadBoundaryFingerprint := s.threadBoundaryFingerprint
 	oldEnvParts := s.processEnvParts
 	oldParts := s.fingerprintParts
 	oldCustomParts := s.fingerprintCustom
@@ -433,7 +449,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	if r == nil {
 		// A different process boundary may be a different account. Resume only
 		// an identity supplied by the host's current admitted request.
-		if oldProcessFingerprint != processFingerprint {
+		if oldThreadBoundaryFingerprint != threadBoundaryFingerprint {
 			thread = ""
 		}
 		r, err = startCodexAppServer(c, ctx, opts, cwd)
@@ -518,6 +534,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		s.model = result.Model
 		s.fingerprint = fingerprint
 		s.processFingerprint = processFingerprint
+		s.threadBoundaryFingerprint = threadBoundaryFingerprint
 		s.processEnvParts = envParts
 		s.fingerprintParts = parts
 		s.fingerprintCustom = customParts
