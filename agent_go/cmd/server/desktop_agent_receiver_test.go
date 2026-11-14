@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/mcpagent/llm"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // PLAT-746-890: stored network mail must never recreate a deleted chat or
@@ -124,7 +127,10 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 		{"own usage recovery", true, QueryRequest{IsAutoNotification: true, TriggeredBy: "usage_limit_continue"}, "sent_to_cli", true},
 		{"restricted synthetic", true, QueryRequest{IsAutoNotification: true, PinRunMode: true}, "", false},
 		{"own no target", true, QueryRequest{}, "no_target", true},
+		{"own idle retained process", true, QueryRequest{}, "", false},
+		{"own compaction", true, QueryRequest{}, "", false},
 		{"own uncertain", true, QueryRequest{}, "uncertain", true},
+		{"real access refusal", true, QueryRequest{}, "forbidden", true},
 		{"visitor", false, QueryRequest{}, "", false},
 		{"restricted current turn", true, QueryRequest{PinRunMode: true}, "", false},
 		{"bot current turn", true, QueryRequest{BotPlatform: "slack"}, "", false},
@@ -135,6 +141,16 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 			api.internalChatSubmissionStore = newTestChatSubmissionStore()
 			api.lastQueryRequests = map[string]QueryRequest{"recipient": tc.prior}
 			api.activeSessions = map[string]*ActiveSessionInfo{"recipient": {SessionID: "recipient", IsSyntheticTurn: tc.prior.IsAutoNotification}}
+			api.runningAgents = map[string]*mcpagent.Agent{"recipient": testCodingAgent(llm.ProviderCodexCLI, "codex-cli")}
+			api.agentCancelFuncs = map[string]context.CancelFunc{"recipient": func() {}}
+			api.internalSteerTransportReady = func(_, _ string) bool { return tc.name != "own idle retained process" }
+			if tc.name == "own compaction" {
+				run := newIdleCompactRun()
+				if !idleCompacts.start("recipient", run, 100, time.Now()) {
+					t.Fatal("compaction fixture not started")
+				}
+				t.Cleanup(func() { idleCompacts.end("recipient", run) })
+			}
 			record := ProductConversationRecord{SessionID: "recipient", ConversationKey: "crew:chat:recipient", WorkspacePath: "Chats"}
 			input := api.desktopAppMessageInput("owner", record, desktopAppIncoming{Own: tc.own}, "admitted agent message")
 			query, err := queryRequestForAgentProfileChat(routeTestProfile("example-product", true, ""), input, record)
@@ -159,6 +175,11 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 			calls := 0
 			api.internalLiveInputDeliver = func(w http.ResponseWriter, r *http.Request, _, _, _ string) bool {
 				calls++
+				if tc.result == "forbidden" {
+					logQueryAdmissionRefusal(w, r, "provider_account")
+					http.Error(w, "refused", http.StatusForbidden)
+					return true
+				}
 				if tc.result == "no_target" {
 					return false
 				}
@@ -195,8 +216,11 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 				t.Fatal(err)
 			}
 			wantRows := 1
-			if tc.result == "sent_to_cli" || tc.result == "uncertain" {
+			if tc.result == "sent_to_cli" || tc.result == "uncertain" || tc.result == "forbidden" {
 				wantRows = 0
+			}
+			if tc.result == "forbidden" && (capture.Code != 403 || capture.Header().Get("X-Query-Refusal-Reason") != "provider_account") {
+				t.Fatal("access refusal lost its reason or fell through to queued execution")
 			}
 			if len(rows) != wantRows {
 				t.Fatalf("durable queued rows=%d want %d", len(rows), wantRows)

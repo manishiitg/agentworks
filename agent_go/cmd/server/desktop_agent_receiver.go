@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,21 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+// Categories are server-authored constants; response bodies may contain private data.
+func logQueryAdmissionRefusal(w http.ResponseWriter, r *http.Request, reason string) {
+	w.Header().Set("X-Query-Refusal-Reason", reason)
+	log.Printf("[QUERY_ADMISSION] action=refused reason=%s session=%s", reason, r.Header.Get("X-Session-ID"))
+}
+
+type desktopAppAdmissionError struct {
+	status int
+	reason string
+}
+
+func (e *desktopAppAdmissionError) Error() string {
+	return fmt.Sprintf("app chat admission refused (status %d, reason %s)", e.status, e.reason)
+}
 
 type desktopAppOwnDeliveryKey struct{}
 
@@ -280,10 +296,16 @@ func (api *StreamingAPI) receiveDesktopAppInbox(ctx context.Context, owner strin
 				if message.Kind != "" {
 					continue
 				} // person pings are not model turns
+				delivery := "delivered"
 				if err = api.deliverDesktopAppMessage(bounded, owner, connection.ID, recipient.Record, message); err != nil {
-					break
+					var admission *desktopAppAdmissionError
+					if !errors.As(err, &admission) || admission.status != http.StatusForbidden {
+						break
+					}
+					delivery = "failed"
+					log.Printf("[AGENTBRIDGE_APP] event=delivery_failed connection=%s message=%s reason=%s", connection.ID, message.ID, admission.reason)
 				}
-				ack := map[string]any{"action": "ack", "agent_name": recipient.Registration.Name, "attachment_id": recipient.Registration.Attachment, "message_id": message.ID, "delivery": "delivered"}
+				ack := map[string]any{"action": "ack", "agent_name": recipient.Registration.Name, "attachment_id": recipient.Registration.Attachment, "message_id": message.ID, "delivery": delivery}
 				if err = crewTeamRemoteJSON(bounded, owner, connection, http.MethodPost, "/api/external/v1/agents/app", ack, nil); err != nil {
 					break
 				}
@@ -347,9 +369,13 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 		DeliveryStatus string `json:"delivery_status"`
 	}
 	_ = json.Unmarshal(capture.body.Bytes(), &result)
-	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s status=%d live_first=%t outcome=%s delivery_status=%s", connectionID, record.ConversationID, message.ID, capture.status, input.DeliveryMode != "queue", result.Status, result.DeliveryStatus)
+	reason := capture.Header().Get("X-Query-Refusal-Reason")
+	if reason == "" {
+		reason = "unspecified"
+	}
+	log.Printf("[AGENTBRIDGE_APP] event=admission connection=%s conversation=%s message=%s status=%d live_first=%t outcome=%s delivery_status=%s reason=%s", connectionID, record.ConversationID, message.ID, capture.status, input.DeliveryMode != "queue", result.Status, result.DeliveryStatus, reason)
 	if capture.status >= 300 {
-		return fmt.Errorf("app chat did not admit the message (status %d)", capture.status)
+		return &desktopAppAdmissionError{status: capture.status, reason: reason}
 	}
 	return nil
 }
@@ -363,10 +389,13 @@ func (api *StreamingAPI) desktopAppMessageInput(owner string, record ProductConv
 	prior := api.lastQueryRequests[record.SessionID]
 	api.lastQueryMu.RUnlock()
 	role := api.agentMessageCallerRole(agentMessageEndpoint{UserID: owner, Kind: triggerCallerCrew, Session: record.SessionID})
-	if message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" {
+	if message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" && api.canSteerSession(record.SessionID) {
 		input.DeliveryMode = ""
 	}
-	reason := "restricted_or_function_turn"
+	reason := "no_native_turn"
+	if desktopAppTurnRestricted(prior, owner) || role.FunctionCallID != "" {
+		reason = "restricted_or_function_turn"
+	}
 	if !message.Own {
 		reason = "other_person"
 	} else if input.DeliveryMode == "" {

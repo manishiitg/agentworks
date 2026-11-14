@@ -126,6 +126,49 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if status, _ := request(stranger, inboxArgs); status != 403 {
 		t.Fatalf("another login read a private inbox: %d", status)
 	}
+	// A permanent app-side refusal is a failed receipt, not a retrying inbox row.
+	failedSend := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "agent:receiving-agent", "message": "Refused example", "submission_id": "permanent-refusal"}
+	status, failureSent := request(second, failedSend)
+	if status != 200 {
+		t.Fatal("failed-receipt fixture send refused")
+	}
+	failureID, _ := failureSent["message_id"].(string)
+	if failureID == "" {
+		t.Fatal("missing message id")
+	}
+	ack := map[string]any{"action": "ack", "agent_name": "receiving-agent", "attachment_id": receiver["attachment_id"], "message_id": failureID, "delivery": "failed"}
+	if status, _ := request(stranger, ack); status == 200 {
+		t.Fatal("other account acknowledged a failure")
+	}
+	if status, _ := request(first, ack); status != 200 {
+		t.Fatalf("failed receipt status=%d", status)
+	}
+	if status, _ := request(first, ack); status != 200 {
+		t.Fatal("failed receipt is not idempotent")
+	}
+	status, remaining := request(first, inboxArgs)
+	if status != 200 || len(remaining["messages"].([]any)) != 1 {
+		t.Fatal("failed message kept retrying or original pending message lost")
+	}
+	store, err := readAgentMessageStore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundFailure := false
+	for _, c := range store.Conversations {
+		for _, m := range c.Messages {
+			if m.ID == failureID {
+				state, _ := receiptState(m, nil, true)
+				if state != "not_delivered" || m.Delivery != "failed" || !m.DeliveredAt.IsZero() {
+					t.Fatal("sender saw a successful or pending delivery")
+				}
+				foundFailure = true
+			}
+		}
+	}
+	if !foundFailure {
+		t.Fatal("failure receipt not persisted")
+	}
 	invalid := map[string]any{"action": "send", "agent_name": "notes-agent", "attachment_id": id, "target": "workspace:work:unpaired", "message": "no"}
 	if status, _ := request(second, invalid); status != 400 {
 		t.Fatalf("app message path admitted a Crew operation: %d", status)

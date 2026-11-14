@@ -335,7 +335,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox", appAgentDeliveryRoute}, transport) {
+		if (delivery != "delivered" && !(transport == appAgentDeliveryRoute && delivery == "failed")) || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox", appAgentDeliveryRoute}, transport) {
 			externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat has received the message.")
 			return
 		}
@@ -373,9 +373,15 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				}
 				found = true
 				ackDelivery = delivery
-				receiptUnchanged = !m.DeliveredAt.IsZero()
+				receiptUnchanged = !m.DeliveredAt.IsZero() || m.Delivery == "failed"
+				if receiptUnchanged {
+					ackDelivery = m.Delivery
+				}
 				if !receiptUnchanged {
 					m.Delivery = delivery
+					if delivery == "failed" {
+						m.Error = "The receiving chat refused this message. Check its access and send again."
+					}
 					stampReceipt(m, delivery, time.Now().UTC())
 					m.LiveAttachment = a.Attachment.ID
 					m.LiveTransport = transport
