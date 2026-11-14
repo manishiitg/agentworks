@@ -387,7 +387,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			out["chats_inside_agentworks"] = items
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); !slices.ContainsFunc(list, func(a map[string]interface{}) bool { _, other := a["owner"]; return other }) {
-			out["hint"] = "Agents of other people appear here once they publish them to the network. Ask the other person to tell their agent to publish it (agentworks share)."
+			out["hint"] = "Agents of other people appear here once discovery is on for them. Ask the other person to tell their agent to turn on discovery (agentworks share)."
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); slices.ContainsFunc(list, func(a map[string]interface{}) bool {
 			_, other := a["owner"]
@@ -504,7 +504,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
 		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner published to the network, for an initial send."),
+		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner made discoverable on the network, for an initial send."),
 		"message":                externalString("Message to send; required for action send."),
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),
