@@ -13,7 +13,6 @@ import (
 
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
@@ -379,11 +378,8 @@ func readNativeTranscriptMessagesForHome(provider, nativeSessionID, workingDir s
 		if nativeSessionID == "" {
 			return nil, time.Time{}, "", false, nil
 		}
-		transcript, found, err := agycli.ReadNativeTranscript(nativeSessionID, accountHome...)
-		if err != nil || !found {
-			return nil, time.Time{}, "", false, err
-		}
-		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
+		// A recent window, extended incrementally (native_history_agy.go), like the Claude and Codex journals.
+		return readRecentAgyTranscript(nativeSessionID, accountHome...)
 	case "claude-code":
 		if nativeSessionID == "" || workingDir == "" {
 			return nil, time.Time{}, "", false, nil

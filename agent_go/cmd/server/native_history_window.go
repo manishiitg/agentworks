@@ -217,6 +217,9 @@ func recentNativePromptTime(path, provider, text string, fallback time.Time) tim
 // A missing prompt in a bounded or truncated view cannot prove non-delivery.
 // Other providers retain their existing complete-reader contract.
 func nativeHistoryCanProveAbsence(provider, path string) bool {
+	if provider == "agy-cli" {
+		return agyHistoryComplete(path)
+	}
 	if provider != "claude-code" && provider != "codex-cli" {
 		return true
 	}
