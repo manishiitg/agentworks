@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -17,7 +18,10 @@ import (
 
 func parseNativeGoalCommand(query, sessionID string) (llmtypes.NativeGoalCommand, bool, error) {
 	text := strings.TrimSpace(query)
-	head, rest, _ := strings.Cut(text, " ")
+	head, rest := text, ""
+	if boundary := strings.IndexFunc(text, unicode.IsSpace); boundary >= 0 {
+		head, rest = text[:boundary], text[boundary:]
+	}
 	// Only the slash command is control input, not a quoted mention or prefix.
 	if head != "/goal" {
 		return llmtypes.NativeGoalCommand{}, false, nil
@@ -40,7 +44,7 @@ func parseNativeGoalCommand(query, sessionID string) (llmtypes.NativeGoalCommand
 // Called only after ordinary project, tab and account admission. Goal commands
 // never become raw retained input, and unsupported programs never receive them
 // as a model prompt. Queued commands are parsed again at their own admission.
-func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.Request, req *QueryRequest, sessionID, provider string) (*http.Request, bool) {
+func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.Request, req *QueryRequest, sessionID, provider string, allowDirectControl bool) (*http.Request, bool) {
 	command, known, err := parseNativeGoalCommand(req.Query, sessionID)
 	if !known || req.IsAutoNotification || req.AgentMessageInbox != "" {
 		return r, false
@@ -56,7 +60,7 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	}
 	// A person must be able to pause/clear a running goal without waiting for
 	// that goal to release the input lane. Use only the existing owned thread.
-	if api.sessionTurnRunning(sessionID) && (command.Action == "show" || command.Action == "pause" || command.Action == "clear") {
+	if allowDirectControl && api.sessionTurnRunning(sessionID) && (command.Action == "show" || command.Action == "pause" || command.Action == "clear") {
 		if err := api.verifySessionAccess(r, sessionID); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return r, true

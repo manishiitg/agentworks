@@ -16,7 +16,7 @@ func TestNativeGoalCommandOwnSessionAndUnicodeBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		query, action string
 		bad           bool
-	}{{"/goal", "show", false}, {"/goal clear", "clear", false}, {"/goal pause", "pause", false}, {"/goal resume", "resume", false}, {"/goal " + strings.Repeat("界", 4000), "set", false}, {"/goal " + strings.Repeat("界", 4001), "set", true}} {
+	}{{"/goal", "show", false}, {"/goal clear", "clear", false}, {"/goal pause", "pause", false}, {"/goal resume", "resume", false}, {"/goal\nresume", "resume", false}, {"/goal " + strings.Repeat("界", 4000), "set", false}, {"/goal " + strings.Repeat("界", 4001), "set", true}} {
 		command, known, err := parseNativeGoalCommand(tc.query, "chat")
 		if !known || command.SessionID != "chat" || command.Action != tc.action || (err != nil) != tc.bad {
 			t.Fatalf("goal dispatch changed: action=%s known=%t err=%v", command.Action, known, err)

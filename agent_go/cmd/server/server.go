@@ -3958,11 +3958,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var goalHandled bool
-	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider)
-	if goalHandled {
-		return
-	}
 	crewGuest := crewGuestCallerForTurn(req, currentUserID)
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
@@ -3978,6 +3973,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			otherRoleTurn = true
 			log.Printf("[TURN_QUEUE] session=%s queued: a %s message waits for the running %s turn", sessionID, map[bool]string{true: "shared-ask", false: "owner"}[crewAskOnly], map[bool]string{true: "shared-ask", false: "owner"}[cfg.CrewAskReadOnly])
 		}
+	}
+	var goalHandled bool
+	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider, !otherRoleTurn)
+	if goalHandled {
+		return
 	}
 	if !otherRoleTurn {
 		common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
