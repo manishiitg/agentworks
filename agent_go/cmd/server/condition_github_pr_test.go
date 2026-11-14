@@ -19,6 +19,7 @@ func TestPRWatcherLongChecksReviewsAndDeployment(t *testing.T) {
 	head, check, prState := "abc", "in_progress", "open"
 	comments := false
 	deployment := "in_progress"
+	mergeable, mergeableState := "null", "unknown"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer fixture" {
 			t.Error("wrong saved credential")
@@ -26,7 +27,7 @@ func TestPRWatcherLongChecksReviewsAndDeployment(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
-			fmt.Fprintf(w, `{"number":7,"html_url":"https://github.com/example/project/pull/7","state":%q,"head":{"sha":%q,"ref":"feature"}}`, prState, head)
+			fmt.Fprintf(w, `{"number":7,"html_url":"https://github.com/example/project/pull/7","state":%q,"mergeable":%s,"mergeable_state":%q,"head":{"sha":%q,"ref":"feature"}}`, prState, mergeable, mergeableState, head)
 		case strings.HasSuffix(r.URL.Path, "/check-runs"):
 			fmt.Fprintf(w, `{"total_count":1,"check_runs":[{"id":1,"name":"tests","status":%q,"conclusion":%q,"html_url":"https://github.com/example/project/actions/runs/1","output":{"summary":"untrusted output"}}]}`, map[bool]string{true: "in_progress", false: "completed"}[check == "in_progress"], check)
 		case strings.HasSuffix(r.URL.Path, "/status"):
@@ -95,6 +96,39 @@ func TestPRWatcherLongChecksReviewsAndDeployment(t *testing.T) {
 	if out := poll(); len(out.Events) != 0 {
 		t.Fatal("review finding repeated")
 	}
+	// PLAT-746-989: only an explicit dirty conflict wakes autofix, once per head.
+	comments = false
+	for _, unresolved := range [][2]string{{"null", "dirty"}, {"false", "unknown"}, {"false", "blocked"}, {"true", "dirty"}} {
+		mergeable, mergeableState = unresolved[0], unresolved[1]
+		if out := poll(); out.Done || len(out.Events) != 0 {
+			t.Fatal("unknown or non-conflicting mergeability woke autofix", out)
+		}
+	}
+	mergeable, mergeableState = "false", "dirty"
+	if out := poll(); out.Done || len(out.Events) != 1 || out.Events[0].Payload["kind"] != "merge_conflict" || out.Events[0].Payload["head_sha"] != head {
+		t.Fatal("dirty conflict did not wake the current head", out)
+	}
+	if out := poll(); len(out.Events) != 0 {
+		t.Fatal("unchanged conflict repeated", out)
+	}
+	mergeable, mergeableState = "true", "clean"
+	poll()
+	mergeable, mergeableState = "false", "dirty"
+	if out := poll(); len(out.Events) != 0 {
+		t.Fatal("same head conflict repeated after base changed", out)
+	}
+	head = "conflicted-next"
+	if out := poll(); out.Done || len(out.Events) != 1 || out.Events[0].Payload["kind"] != "merge_conflict" || out.Events[0].Payload["head_sha"] != head {
+		t.Fatal("conflict on a new head was lost", out)
+	}
+	// A checks-only watch must not gain autofix events or finish before checks.
+	cfg.GitHubPR.Mode, cfg.GitHubPR.HeadSHA = "checks", head
+	state = nil
+	check = "in_progress"
+	if out := poll(); out.Done || len(out.Events) != 0 {
+		t.Fatal("conflict changed checks-only watch", out)
+	}
+	cfg.GitHubPR.Mode = "autofix"
 	prState = "closed"
 	if out := poll(); !out.Done || len(out.Events) != 1 {
 		t.Fatal("closed PR did not finish")

@@ -200,11 +200,13 @@ func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *f
 }
 
 type githubPRHead struct {
-	Number   int     `json:"number"`
-	URL      string  `json:"html_url"`
-	State    string  `json:"state"`
-	MergedAt *string `json:"merged_at"`
-	Head     struct {
+	Number         int     `json:"number"`
+	URL            string  `json:"html_url"`
+	State          string  `json:"state"`
+	MergedAt       *string `json:"merged_at"`
+	Mergeable      *bool   `json:"mergeable"`
+	MergeableState string  `json:"mergeable_state"`
+	Head           struct {
 		SHA string `json:"sha"`
 		Ref string `json:"ref"`
 	} `json:"head"`
