@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Blocks, Cpu, Globe, KeyRound, Plug, Search, Sparkles } from 'lucide-react'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
+import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } from './integrations/AccountConnectionPanels'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
 import { OpenVaultButton } from './integrations/OpenVaultButton'
@@ -32,9 +33,8 @@ export default function ConnectionsToolsPage() {
 function ConnectionsToolsContent() {
   const [category, setCategory] = useState<Category>('apps')
   const [search, setSearch] = useState('')
-  const [app, setApp] = useState<'google' | 'slack' | null>(null)
-  const matching = categories.filter(item => `${item.label} ${item.id === 'apps' ? 'Slack Google Gmail Drive Calendar GitHub WhatsApp' : item.id === 'ai' ? 'Claude Codex Cursor Muse models' : item.id === 'browser' ? 'Chrome extension' : item.id === 'secrets' ? 'Vault keys' : ''}`.toLowerCase().includes(search.trim().toLowerCase()))
-  const choose = (next: Category) => { setCategory(next); setSearch(''); setApp(null) }
+  const matching = categories.filter(item => `${item.label} ${item.id === 'apps' ? 'Slack Google Gmail Drive Calendar GitHub WhatsApp Computer use desktop' : item.id === 'ai' ? 'Claude Codex Cursor Muse models' : item.id === 'browser' ? 'Chrome extension' : item.id === 'secrets' ? 'Vault keys' : ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const choose = (next: Category) => { setCategory(next); setSearch('') }
   return <section aria-label="Connections & tools" className="flex h-full min-h-0 flex-col bg-background">
     <WorkspacePageHeader page="connections" title="Connections & tools" icon={Plug} />
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -45,10 +45,11 @@ function ConnectionsToolsContent() {
           <nav aria-label="Connection categories" className="flex gap-1 overflow-x-auto border-b border-border">{categories.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-current={category === id ? 'page' : undefined} onClick={() => choose(id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-xs font-medium ${category === id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}</button>)}</nav>
           <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading settings…</p>}>
             {category === 'apps' && <div className="space-y-4">
-              {app ? <><Button variant="ghost" size="sm" onClick={() => setApp(null)}>Back to apps</Button><PersonalAccountsPanel provider={app} /></> : <>
-                <div className="divide-y divide-border rounded-lg border border-border">{([{ id: 'slack', name: 'Slack', description: 'Your Slack account and saved sign-ins.' }, { id: 'google', name: 'Google', description: 'Gmail, Drive, Calendar and other Google apps.' }] as const).map(item => <div key={item.id} className="flex items-center gap-4 px-4 py-3"><div className="min-w-0 flex-1"><h3 className="text-sm font-medium">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.description}</p></div><Button variant="outline" size="sm" onClick={() => setApp(item.id)}>Manage</Button></div>)}</div>
-                <p className="text-xs text-muted-foreground">GitHub and WhatsApp setup currently lives in each Crew’s Connections. This page does not change those selections.</p>
-              </>}
+              <PersonalAccountsPanel provider="slack" hideHeading />
+              <PersonalAccountsPanel provider="google" hideHeading />
+              <AccountWhatsAppPanel />
+              <AccountGitHubPanel />
+              <AccountComputerUsePanel />
             </div>}
             {category === 'ai' && <div className="h-[65vh] min-h-96"><CodingProvidersPanel embedded isOpen onClose={() => choose('apps')} /></div>}
             {category === 'browser' && <BrowserConnectionsPanel open onClose={() => {}} inline startSetup />}

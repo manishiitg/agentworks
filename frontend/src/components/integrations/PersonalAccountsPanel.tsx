@@ -22,11 +22,11 @@ const errorText = (cause: unknown) => {
 }
 
 /** Personal records stay in their existing stores. Products only select those records. */
-export default function PersonalAccountsPanel({ workspacePath, provider, onChanged }: { workspacePath?: string; provider?: Provider; onChanged?: () => void }) {
+export default function PersonalAccountsPanel({ workspacePath, provider, onChanged, hideHeading = false }: { hideHeading?: boolean; workspacePath?: string; provider?: Provider; onChanged?: () => void }) {
   const actor = useAuthStore(state => state.user?.id)
   const [managementOpen, setManagementOpen] = useState(false)
   return <section aria-label={workspacePath ? 'Saved personal accounts' : 'Your connected accounts'} className="space-y-4">
-    {!workspacePath && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. Choose which projects can use each account.</p></div>}
+    {!workspacePath && !hideHeading && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. Choose which projects can use each account.</p></div>}
     {(['google', 'slack'] as Provider[]).filter(item => !provider || item === provider).map(item => <ProviderAccounts key={`${getApiBaseUrl()}:${actor}:${item}:${workspacePath || ''}`} provider={item} workspacePath={workspacePath} onChanged={onChanged} />)}
     {workspacePath && <div className="space-y-3"><Button variant="outline" size="sm" aria-expanded={managementOpen} onClick={() => setManagementOpen(open => !open)}>Connect or manage {provider === 'google' ? 'Google' : provider === 'slack' ? 'Slack' : 'your'} accounts</Button>{managementOpen && <PersonalAccountsPanel provider={provider} onChanged={onChanged} />}</div>}
   </section>

@@ -2452,6 +2452,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/mcp/catalog", api.handleMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
 	api.registerVaultMeRoutes(apiRouter)
+	apiRouter.HandleFunc("/computer-use/status", api.handleComputerUseSetupStatus).Methods("GET")
 	apiRouter.HandleFunc("/vault/github", api.handleGitHubVault).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/vault/github/connect", api.handleGitHubVault).Methods("POST")
 	apiRouter.HandleFunc("/vault/github/complete", api.handleGitHubVault).Methods("POST")
