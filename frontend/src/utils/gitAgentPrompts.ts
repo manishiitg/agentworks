@@ -1,14 +1,11 @@
 // The messages the Source Control view sends to the project's agent. Anything
-// that needs judgement (a commit message, a conflict, why a line changed)
+// that needs judgement (a conflict, why a line changed)
 // goes to the agent; the view only does the mechanical git steps itself.
 
 const where = (repoRoot: string) => (repoRoot ? `the \`${repoRoot}\` repo` : 'this repo')
 
 export const gitAgentPrompts = {
-  commit: (repoRoot: string, hasStaged: boolean) =>
-    `Review the ${hasStaged ? 'staged' : 'current'} changes in ${where(repoRoot)}, write a clear commit message and commit them. Tell me the message you used.`,
   pull: (repoRoot: string) => `Pull the latest changes for ${where(repoRoot)} and tell me what changed.`,
-  push: (repoRoot: string) => `Push ${where(repoRoot)}'s commits to its remote.`,
   resolveConflict: (repoRoot: string, file?: string) =>
     file
       ? `Resolve the merge conflict in \`${file}\` in ${where(repoRoot)}: read both sides, keep the right combination, remove the conflict markers and stage the file. Explain what you chose and why.`

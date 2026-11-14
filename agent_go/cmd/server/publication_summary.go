@@ -26,7 +26,7 @@ func (api *StreamingAPI) publicationSummary(ctx context.Context, actor, operatio
 // This is a fresh, tool-free summary request, not native session resume or a
 // continuation of unfinished local work. Its result remains Builder-only.
 func (api *StreamingAPI) publicationText(ctx context.Context, actor, operation string, record *publishedProject, handoff, system string) (string, error) {
-	if operation == "shared_agent_answer" {
+	if operation == "shared_agent_answer" || operation == "git_draft" {
 		if err := crewSharedAnswerTransportAllowed(record.Provider, os.Getenv("CLAUDE_CODE_TRANSPORT")); err != nil {
 			return "", err
 		}
@@ -55,7 +55,7 @@ func (api *StreamingAPI) publicationText(ctx context.Context, actor, operation s
 			opts = append(opts, option)
 		}
 	}
-	if operation == "shared_agent_answer" {
+	if operation == "shared_agent_answer" || operation == "git_draft" {
 		switch record.Provider {
 		case "claude-code":
 			opts = append(opts, llmproviders.WithClaudeCodeTools(""), llmproviders.WithMCPConfig(`{"mcpServers":{}}`))
@@ -70,6 +70,9 @@ func (api *StreamingAPI) publicationText(ctx context.Context, actor, operation s
 		case "agy-cli":
 			return "", fmt.Errorf("this program does not support a tool-free shared answer yet")
 		}
+	}
+	if operation == "git_draft" {
+		opts = append(opts, llmtypes.WithMaxTokens(1024))
 	}
 	opts = append(opts, llmtypes.WithTools([]llmtypes.Tool{}))
 	started := time.Now()
@@ -96,8 +99,11 @@ func (api *StreamingAPI) publicationText(ctx context.Context, actor, operation s
 			}
 			metadata["llm_call_count"] = 1
 			activity, productOwner, account := "publication_summary", record.OwnerID, "global:"+record.Provider
-			if operation == "shared_agent_answer" {
+			if operation == "shared_agent_answer" || operation == "git_draft" {
 				activity = "shared_answer"
+				if operation == "git_draft" {
+					activity = "git_draft"
+				}
 				productOwner = firstNonEmptyTrimmed(record.PublisherID, record.OwnerID)
 				account = firstNonEmptyTrimmed(record.ConnectionID, account)
 			}

@@ -15,14 +15,19 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "search_messages", "open_editor"}},
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. git_action offers the same Source Control actions: draft_commit writes editable text only; commit uses message and optional all; push uses this Crew’s selected GitHub account; draft_pr returns editable title/body/base and a pinned head; open_pr requires those checked fields and expected_head and never pushes implicitly. Drafts require your own session_id in this Crew and use one small tool-free request on its account. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "search_messages", "open_editor", "git_action"}},
 		"sync_action":  map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac; server to move it online."},
 		"network":      externalString("For sync_action=reach_on with several networks: the network's name."),
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
+		"git_op": map[string]any{"type": "string", "enum": []string{"delivery_capabilities", "draft_commit", "commit", "push", "prepare_pr", "draft_pr", "open_pr"}},
+		"all":    map[string]any{"type": "boolean", "description": "git_action commit/draft_commit: include all current tracked changes; otherwise staged only. New unstaged files are read as bounded excerpts, never staged by drafting."},
+		"title":  externalString("git_action open_pr: reviewed title."), "body": externalString("git_action open_pr: reviewed description."),
+		"base":            externalString("git_action draft_pr/open_pr: target branch; draft_pr defaults to GitHub default branch."),
+		"expected_head":   externalString("git_action open_pr: exact head from the reviewed draft_pr result."),
 		"editor":          map[string]any{"type": "string", "enum": []string{"vscode", "cursor", "zed", "jetbrains"}, "description": "open_editor: chosen local editor; omit to use your saved choice. JetBrains means IntelliJ IDEA."},
-		"repo":            externalString("open_editor: repository root relative to the Crew files root, as returned by files git_status."),
+		"repo":            externalString("open_editor/git_action: repository root relative to the Crew files root, as returned by files git_status."),
 		"file":            externalString("open_editor: current file relative to repo; omit for the project folder."),
 		"line":            map[string]any{"type": "integer", "minimum": 1, "maximum": 10000000, "description": "open_editor: line in the current file."},
 		"remember":        map[string]any{"type": "boolean", "description": "open_editor: save the explicitly chosen editor for your next opens."},
@@ -140,6 +145,10 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if action == "git_action" {
+		api.externalWorkspaceGitAction(w, r, args)
+		return
+	}
 	if action == "open_editor" {
 		api.externalWorkspaceEditor(w, r, args)
 		return
