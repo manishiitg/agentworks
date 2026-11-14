@@ -49,7 +49,7 @@ func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAc
 		{Who: "You, from your other agents", How: "Always, on your network. Nothing to turn on."},
 		{Who: "You, from the website or phone", How: "When Mac online is on and this Mac is on."},
 		{Who: "Your Team", How: team},
-		{Who: "Other people's agents", How: "Only agents with Discovery on in AgentBridge. They answer as you, by your rules."},
+		{Who: "Other people's agents", How: "Only agents you Publish on AgentBridge. They answer as you, by your rules."},
 	}}
 }
 
@@ -154,21 +154,6 @@ func crewAccessPage(out *crewSyncReply) {
 		// A Crew that lives on this server: its Share and Dashboards tabs and laptop access for its owner.
 		out.AccessTabs = crewAccessTeamTab
 		out.AccessLaptop = out.Role == "owner"
-	}
-	if out.AccessMac != nil {
-		for _, placement := range out.Placements {
-			if placement.Location != "server" {
-				continue
-			}
-			if out.AccessMac.Online {
-				out.AccessMac.Line = "Your local agents use the files and chats on this Mac; use them from the website and phone while it is on. The online agents listed below run on the server even when this Mac is off."
-			}
-			out.AccessMac.Kept = "The server keeps messages between agents and the online agents' own chats, memory, skills and selected files."
-			if crewTeamRecordOn(out.ProjectID) || IsLocalMode() && crewTeamKeepsMacOnline(out.ProjectID) {
-				out.AccessMac.Kept += " It also keeps the folder you share with your Team and Team chats answered while this Mac is off."
-			}
-			break
-		}
 	}
 }
 

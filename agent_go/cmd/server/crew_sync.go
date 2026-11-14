@@ -363,7 +363,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		for _, entry := range out.Placements {
 			out.OnServer = append(out.OnServer, crewServerCopy{Name: entry.Name, Detail: "native chat, memory, skills and selected working files"})
 		}
-		if input.IncludeOnlineAgents && !IsLocalMode() && len(out.Placements) > 0 {
+		if input.IncludeOnlineAgents && !IsLocalMode() {
 			out.OnlineAgents, e = api.crewOnlineAgents(ctx, claims.UserID, roots, out.Placements)
 			if e != nil {
 				return out, e
