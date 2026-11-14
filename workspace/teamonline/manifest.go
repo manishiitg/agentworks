@@ -4,9 +4,11 @@
 package teamonline
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
@@ -61,8 +63,11 @@ func DecodeItem(reader io.Reader) (Item, error) {
 	if decoder.Decode(new(any)) != io.EOF {
 		return item, fmt.Errorf("the online dependency manifest must contain one item")
 	}
-	if item.ID == "" || len(item.ID) > 64 || len(item.Revision) != 64 {
+	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`).MatchString(item.ID) || len(item.Revision) != 64 {
 		return item, fmt.Errorf("choose a published item and its current revision")
+	}
+	if _, err := hex.DecodeString(item.Revision); err != nil {
+		return item, fmt.Errorf("choose the current published revision")
 	}
 	for _, p := range append(append([]string{}, item.Dependencies.Assets...), item.DatasetParts...) {
 		if _, err := publication.CleanPath(p); err != nil || publication.CredentialPath(p) {

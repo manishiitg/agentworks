@@ -4,9 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
+	"io"
+	"net/http"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -60,10 +65,10 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	result.DestinationItemID = "online-" + hex.EncodeToString(sum[:12])
 	result.Revision = item.Revision
 	result.Automations = item.Dependencies.Automations
-	result.OfferAutomations = len(result.Automations) > 0
+	result.OfferAutomations = ref.Seed && len(result.Automations) > 0
 	// Updates never even inspect the attached data stream. Preview of a new
 	// item reads its immutable source snapshot header, never a live Team DB.
-	if ref.Seed || preview {
+	if ref.Seed {
 		if len(item.DatasetParts) > 0 {
 			schema, err := teamonline.DescribeParts(ref.Package, item.DatasetParts)
 			if err != nil {
@@ -113,6 +118,41 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 		db.Close()
 		if err != nil {
 			return result, err
+		}
+	}
+
+	// Assets are ordinary Crew files in this stable item's namespace. Replacing
+	// one item cannot overwrite another item's files or any live data table.
+	for _, asset := range item.Dependencies.Assets {
+		if !strings.HasPrefix(asset, "db/assets/") {
+			return result, fmt.Errorf("declare item assets under db/assets")
+		}
+		file, err := ref.Package.Open(asset)
+		if err != nil {
+			return result, err
+		}
+		data, err := io.ReadAll(io.LimitReader(file, publication.MaxFileBytes+1))
+		file.Close()
+		if err != nil {
+			return result, err
+		}
+		if int64(len(data)) > publication.MaxFileBytes {
+			return result, fmt.Errorf("an item asset exceeds the normal file limit")
+		}
+		name := path.Join("db/assets", result.DestinationItemID, strings.TrimPrefix(asset, "db/assets/"))
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, "/team-online/asset", nil)
+		if err != nil {
+			return result, err
+		}
+		buffer := &externalBufferedResponse{}
+		api.externalWriteCrewFile(buffer, request, claims, map[string]any{"crew_id": destination.CrewID, "path": name, "content_base64": base64.StdEncoding.EncodeToString(data)})
+		if buffer.status != http.StatusOK {
+			return result, fmt.Errorf("this Team item asset could not be saved with current access")
+		}
+		for file, content := range item.Snapshot.Files {
+			content = strings.ReplaceAll(content, source.Path+"/"+asset, destination.Path+"/"+name)
+			content = strings.ReplaceAll(content, asset, name)
+			item.Snapshot.Files[file] = content
 		}
 	}
 	request := dashboards.Request{Root: destination.Path, ID: result.DestinationItemID, Title: item.Snapshot.Title, Artifact: &item.Snapshot.Artifact, Motion: &item.Snapshot.Motion, Files: item.Snapshot.Files, IncludeDraft: true, Action: "create"}
