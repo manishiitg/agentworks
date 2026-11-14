@@ -186,12 +186,13 @@ func TestRuntimeSkillLookupUsesRegisteredLocalCrewRoot(t *testing.T) {
 func TestClaudePrivateProjectionIsNotAdvertisedAsNativeCommand(t *testing.T) {
 	project, artifact := t.TempDir(), t.TempDir()
 	recognitionWrite(t, filepath.Join(artifact, ".claude/skills/private-review/SKILL.md"), "---\nname: private-review\ndescription: Private instructions\n---\nDo not claim a native command.")
+	recognitionWrite(t, filepath.Join(project, ".claude/skills/native-review/SKILL.md"), "---\nname: native-review\ndescription: Native project skill\n---\nReview this project.")
 	inventory, err := skills.ReadRuntimeInventory(artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
 	catalog := currentNativeSkillChoices(runtimeSkillsResponse{RuntimeInventory: inventory, Prepared: true, Provider: "claude-code", Transport: "sdk", SessionID: "current", Directory: artifact, WorkingDirectory: project}, "claude-code")
-	if len(catalog.Skills) != 0 || !strings.Contains(catalog.Message, "not native slash skills") {
+	if len(catalog.Skills) != 1 || catalog.Skills[0].Name != "native-review" || catalog.Skills[0].NativePath != filepath.Join(project, ".claude/skills/native-review/SKILL.md") || !strings.Contains(catalog.Message, "not native slash skills") {
 		t.Fatal("private instruction advertised as native invocation", catalog)
 	}
 }
