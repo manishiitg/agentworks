@@ -97,6 +97,9 @@ func (api *StreamingAPI) observeUsageLimitFailure(sessionID string, event storee
 		api.retainedMainTurnsMu.Lock()
 		expected, tracked := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
 		api.retainedMainTurnsMu.Unlock()
+		if reason == "" && event.ExecutionID != record.QueryID && !tracked {
+			reason = "native_turn_not_owned"
+		}
 		if reason == "" && tracked && !expected.matchesCompletion(event) {
 			reason = "different_native_turn"
 		}
