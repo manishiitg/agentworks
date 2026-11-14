@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,6 +48,20 @@ func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testi
 	if json.Unmarshal(created.Body.Bytes(), &response) != nil || json.Unmarshal([]byte(response.Result), &connected) != nil || !connected.Connected || connected.RequiresSignIn || connected.ConnectionID != "c-00000001" {
 		t.Fatalf("public connection must finish with a discovered runtime verdict, not saved/sign-in: %s", created.Body.String())
 	}
+	// Repeated catalog Connect for the same open endpoint must return the
+	// caller's existing ID even with a label; it must not save another copy.
+	publicCatalog := filepath.Join(t.TempDir(), "public.json")
+	if err := os.WriteFile(publicCatalog, []byte(`{"mcpServers":{"Example":{"url":"https://mcp.example.com/mcp","protocol":"http"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f.api.mcpConfigPath = publicCatalog
+	for range 2 {
+		repeated := call(`{"operation":"connect","provider":"Example","label":"Example"}`)
+		if repeated.Code != http.StatusOK || json.Unmarshal(repeated.Body.Bytes(), &response) != nil || json.Unmarshal([]byte(response.Result), &connected) != nil || connected.ConnectionID != "c-00000001" || gateway.count() != 1 {
+			t.Fatalf("catalog reconnect created a duplicate: %d %s", repeated.Code, repeated.Body.String())
+		}
+	}
+	f.api.mcpConfigPath = gateway.catalog
 	// A pending saved row must not be called connected even if inventory has an old entry.
 	gateway.mu.Lock()
 	gateway.connections["c-00000001"]["Status"] = "pending"

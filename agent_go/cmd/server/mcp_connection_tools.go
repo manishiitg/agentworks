@@ -93,6 +93,34 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 			return "", fmt.Errorf("several accounts match; use the exact vault_ connection ID from list_mcp_servers")
 		}
 	}
+	// PLAT-746: catalog Connect for an open service reuses the caller's
+	// saved connection. OAuth and explicit custom/credential setup still allow
+	// distinct accounts. Never match shared or foreign Vault connections.
+	if args["_screen"] == true && !vaultConnectionID.MatchString(id) && rawURL == "" && catalog != "" && apiKey == "" && credential == "" && clientID == "" && clientSecret == "" {
+		if entry, ok := api.mcpCatalogEntry(catalog); ok && !entry.SignIn {
+			own, err := personalVaults(ctx, person)
+			if err != nil {
+				return "", err
+			}
+			for _, v := range own.Vaults {
+				if v.Role != "owner" {
+					continue
+				}
+				for _, c := range v.Connections {
+					if !strings.EqualFold(c.Provider, entry.Catalog) {
+						continue
+					}
+					saved, err := vaultSavedConnection(ctx, c.ID)
+					if err != nil {
+						return "", err
+					}
+					if saved.OAuthServer == "" && saved.UpstreamURL == entry.config.URL && (id == "" || c.ID < id) {
+						id, vaultID = c.ID, v.Group.ID
+					}
+				}
+			}
+		}
+	}
 	exists := vaultConnectionID.MatchString(id)
 	if exists {
 		if operation != "trigger_mcp_discovery" && !api.vaultActorCanManage(ctx, person, id) {
