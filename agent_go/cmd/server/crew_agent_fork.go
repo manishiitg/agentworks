@@ -5,6 +5,7 @@ package server
 // authority to a filesystem path, provider login or another chat.
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,13 +17,14 @@ import (
 const crewAgentForkLifetime = 7 * 24 * time.Hour
 
 type crewAgentFork struct {
-	ID        string                  `json:"id"`
-	Project   string                  `json:"project_id"`
-	Sender    string                  `json:"sender_id"`
-	Recipient string                  `json:"recipient_id"`
-	Agent     crewTeamRegisteredAgent `json:"agent"`
-	Created   time.Time               `json:"created_at"`
-	Expires   time.Time               `json:"expires_at"`
+	ID          string                  `json:"id"`
+	CopyAgentID string                  `json:"copy_agent_id"`
+	Project     string                  `json:"project_id"`
+	Sender      string                  `json:"sender_id"`
+	Recipient   string                  `json:"recipient_id"`
+	Agent       crewTeamRegisteredAgent `json:"agent"`
+	Created     time.Time               `json:"created_at"`
+	Expires     time.Time               `json:"expires_at"`
 	// Ready is set only after the staged conversation and all native chunks
 	// have been validated. No screen may offer an incomplete upload for import.
 	Ready bool `json:"ready"`
@@ -66,7 +68,7 @@ func newCrewAgentFork(team crewTeam, sender, recipient, agentID string, now time
 	if !ok || agent.OwnerID != sender || !team.On || !team.member(sender) || !team.member(recipient) || sender == recipient {
 		return crewAgentFork{}, fmt.Errorf("choose your own agent and another person in this Team")
 	}
-	return crewAgentFork{ID: uuid.NewString(), Project: team.ProjectID, Sender: sender, Recipient: recipient,
+	return crewAgentFork{ID: uuid.NewString(), CopyAgentID: "team-agent-" + uuid.NewString(), Project: team.ProjectID, Sender: sender, Recipient: recipient,
 		Agent: agent, Created: now, Expires: now.Add(crewAgentForkLifetime)}, nil
 }
 
@@ -89,5 +91,10 @@ func removeCrewAgentFork(offer crewAgentFork) error {
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		log.Printf("[AGENT_FORK] project=%s fork=%s event=remove_failed", offer.Project, offer.ID)
+		return err
+	}
+	log.Printf("[AGENT_FORK] project=%s fork=%s event=removed", offer.Project, offer.ID)
+	return nil
 }
