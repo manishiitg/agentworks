@@ -979,6 +979,12 @@ func (store productConversationRegistryStore) rotate(
 	profile agentprofiles.Profile,
 	binding productConversationBinding,
 ) (ProductConversationRecord, error) {
+	// The Crew's own key addresses its Main; starting it again needs a Main to start. Like resolveOrCreate, this never
+	// creates one (optional Main, PLAT-746-966): a Crew without a Main answers "Main isn't ready" and nothing is written.
+	var addressErr error
+	if binding, addressErr = store.resolveProjectMainAddress(ctx, userID, profile, binding); addressErr != nil {
+		return ProductConversationRecord{}, addressErr
+	}
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
 	mutex.Lock()
