@@ -99,7 +99,10 @@ func Export(ctx context.Context, source *sql.DB, wanted Dataset, output io.Write
 			return fmt.Errorf("dataset exceeds the publication limit")
 		}
 		data = append(data, '\n')
-		_, err = output.Write(data)
+		n, err := output.Write(data)
+		if err == nil && n != len(data) {
+			err = io.ErrShortWrite
+		}
 		return err
 	}
 	if err = write(record{Kind: "schema", Schema: &schema}); err != nil {

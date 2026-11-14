@@ -435,6 +435,9 @@ func TestSelectedDatasetCopyPreservesRowsAndNeverReseeds(t *testing.T) {
 	if _, err := destination.Exec("CREATE TABLE live_team(value TEXT);INSERT INTO live_team VALUES('retained')"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := source.Exec("PRAGMA query_only=ON"); err != nil {
+		t.Fatal(err)
+	}
 	wanted := teamonline.Dataset{Tables: []string{"child"}, Views: []string{"child_view"}, Triggers: []string{"child_update"}}
 	var data bytes.Buffer
 	schema, err := teamonline.Export(t.Context(), source, wanted, &data)
