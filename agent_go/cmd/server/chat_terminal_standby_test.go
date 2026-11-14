@@ -124,8 +124,11 @@ func TestTerminalStandbyAdoptsRecoveryAndScopesUnreadableMarker(t *testing.T) {
 	}
 	f, _ := newExternalCrewCommandFixture(t)
 	_ = f
-	if e := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", PairID: "pair", Mode: "relay", PeerProjectID: "mac-crew"}); e != nil {
+	if e := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", Mode: "relay", PeerProjectID: "mac-crew"}); e != nil {
 		t.Fatal(e)
+	}
+	if binding, err := crewroot.ReadSync("team"); err != nil || binding == nil || binding.PeerProjectID != "mac-crew" {
+		t.Fatalf("invalid real pair fixture: %+v %v", binding, err)
 	}
 	p, e := terminalStandbyPath("team", "owner")
 	if e != nil {
