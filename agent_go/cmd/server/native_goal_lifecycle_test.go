@@ -20,7 +20,7 @@ import (
 // PLAT-746-988: use the real journal/receipt/Stop projection; mock only native
 // RPC and the final admitted provider turn, never the state deciding to resume.
 func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
-	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "retry_after_failure", "arm_stop_race", "pause_failed", "no_live_process", "missing_record", "poster_record", "resume_quota"} {
+	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "retry_after_failure", "arm_stop_race", "pause_failed", "no_live_process", "missing_record", "poster_record", "resume_quota", "cold_stop"} {
 		t.Run(action, func(t *testing.T) {
 			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"poster","username":"poster","can_create":true,"products":["work"]}]}`)
 			api, store := newDurableChatAPI(t, "goal-lifecycle-"+action, "owner")
@@ -52,7 +52,7 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				if action == "pause_failed" && op != "show" {
 					return nil, errors.New("native pause refused")
 				}
-				if action == "no_live_process" {
+				if action == "no_live_process" || (action == "cold_stop" && op == "pause") {
 					return nil, llmtypes.NativeGoalUnavailable("this Codex session")
 				}
 				if owner != sid {
@@ -151,6 +151,14 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				if w.Code != http.StatusNoContent || !canceled {
 					t.Fatal("Stop did not cancel owned turn", w.Code)
 				}
+			case "cold_stop":
+				r := sharedSecretsRequest(http.MethodPost, "/api/cancel-turn", "owner", nil)
+				r.Header.Set("X-Session-ID", sid)
+				w := httptest.NewRecorder()
+				api.handleCancelCurrentTurn(w, r)
+				if w.Code != http.StatusNoContent {
+					t.Fatal("cold Stop refused stored owner", w.Code)
+				}
 			case "clear":
 				api.cancelNativeGoalRestore(sid, "person_goal_command")
 				native.Goal = nil
@@ -160,7 +168,7 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				native.Goal = &llmtypes.NativeGoal{Objective: "New goal", Status: "paused"}
 				_ = api.projectNativeGoal(sid, native, "intent_set")
 			}
-			if action == "stop" || action == "clear" {
+			if action == "stop" || action == "cold_stop" || action == "clear" {
 				late := native
 				late.Goal = &llmtypes.NativeGoal{Objective: "Finish the task", Status: "active"}
 				_ = api.projectNativeGoal(sid, late, "native_update")
@@ -168,7 +176,7 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if action == "stop" && (projected.Goal == nil || projected.Goal.Status != "paused") {
+				if (action == "stop" || action == "cold_stop") && (projected.Goal == nil || projected.Goal.Status != "paused") {
 					t.Fatal("late frame revived stopped goal")
 				}
 				if action == "clear" && projected.Goal != nil {
