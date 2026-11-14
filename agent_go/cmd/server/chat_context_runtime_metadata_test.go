@@ -34,6 +34,16 @@ func TestChatContextReadsRuntimeWithoutResolvingFullHistory(t *testing.T) {
 	if err := os.WriteFile(chatlog.HistoryLogPath(path), []byte("not a message log"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// The path lookup reads file names only (it used to parse up to 1000
+	// whole transcripts per turn), so a transcript that does not parse is
+	// still found by its name.
+	other := filepath.Join(dir, chatHistoryConversationFileName("unparsed-chat"))
+	if err := os.WriteFile(other, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got, found, err := FindChatHistoryConversationPathForSession("owner", "unparsed-chat", crew); err != nil || !found || got == "" {
+		t.Fatalf("lookup by file name: %q %t %v", got, found, err)
+	}
 	record := ProductConversationRecord{SessionID: "ctx-chat", WorkspacePath: crew, Provider: "claude-code", ModelID: "old-model"}
 	provider, model, transport, handle := chatContextRuntime("owner", chatContextTab{Record: record})
 	if provider != "cursor-cli" || model != "example-model" || transport != "sdk" || !handle {
