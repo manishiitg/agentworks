@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	agentevents "github.com/manishiitg/mcpagent/events"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -16,6 +14,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // newDurableChatAPI stores one interactive chat owned by ownerID and returns

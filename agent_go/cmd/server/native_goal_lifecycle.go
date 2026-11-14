@@ -79,7 +79,7 @@ func (api *StreamingAPI) projectNativeGoal(sessionID string, update llmtypes.Nat
 	if update.Goal != nil {
 		status = update.Goal.Status
 	}
-	log.Printf("[AGENT_GOAL] session=%s native=%s event=%s action=done status=%s reason=%s", sessionID, update.NativeSessionID, event.ID, status, reason)
+	log.Printf("[AGENT_GOAL] session=%s native=%s event=%s action=done received_status=%s reason=projection_saved source_reason=%s", sessionID, update.NativeSessionID, event.ID, status, reason)
 	return nil
 }
 
@@ -183,59 +183,63 @@ func nativeGoalObjectiveHash(objective string) string {
 
 // A wake first pauses the current goal, before waiting for the full-turn lane.
 // Its one restore receipt contains identities/hash, never another prompt copy.
-func (api *StreamingAPI) pauseNativeGoalForWake(sessionID string) *nativeGoalRestoreRecord {
+func (api *StreamingAPI) pauseNativeGoalForWake(sessionID string) (*nativeGoalRestoreRecord, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	previous, err := api.latestNativeGoal(ctx, sessionID)
-	if err != nil || previous == nil || previous.Provider != "codex-cli" || previous.Goal == nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("read goal before wake: %w", err)
+	}
+	if previous == nil || previous.Provider != "codex-cli" || previous.Goal == nil {
+		return nil, nil
 	}
 	if previous.Goal.Status == "paused" && previous.Reason == "background_wake" {
 		receipt := api.pendingNativeGoalRestore(ctx, sessionID)
 		if receipt != nil && receipt.NativeID == previous.NativeSessionID && receipt.ObjectiveHash == nativeGoalObjectiveHash(previous.Goal.Objective) {
-			return receipt
+			return receipt, nil
 		}
 	}
 	if previous.Goal.Status != "active" {
-		return nil
+		return nil, nil
 	}
 	update, err := controlNativeGoal(ctx, sessionID, "wake_pause")
 	if err != nil {
 		log.Printf("[AGENT_GOAL] session=%s action=failed reason=wake_pause_failed", sessionID)
-		return nil
+		return nil, err
 	}
 	if err = api.projectNativeGoal(sessionID, *update, "background_wake"); err != nil {
-		return nil
+		return nil, err
 	}
 	if update.Goal == nil || update.Goal.Status != "paused" || update.NativeSessionID != previous.NativeSessionID || update.Goal.Objective != previous.Goal.Objective {
-		return nil
+		return nil, nil
 	}
 	owner := api.eventStore.GetSessionOwner(sessionID)
 	if owner == "" {
-		return nil
+		return nil, nil
 	}
 	lock := productConversationRegistryMutex(restartContinuePath(owner))
 	lock.Lock()
 	defer lock.Unlock()
 	document, err := api.readRestartContinueRecords(ctx, owner)
 	if err != nil {
-		return nil
+		log.Printf("[AGENT_GOAL] session=%s action=failed reason=restore_arm_read", sessionID)
+		return nil, err
 	}
 	record, known := document.Chats[sessionID]
 	currentGoal, currentErr := api.latestNativeGoal(ctx, sessionID)
 	if !known || api.isSessionMarkedStopped(sessionID) || currentErr != nil || currentGoal == nil || currentGoal.Reason != "background_wake" {
 		log.Printf("[AGENT_GOAL] session=%s action=skipped reason=wake_pause_superseded", sessionID)
-		return nil
+		return nil, nil
 	}
 	receipt := &nativeGoalRestoreRecord{ID: fmt.Sprintf("goal-wake:%d", time.Now().UnixNano()), NativeID: update.NativeSessionID, ObjectiveHash: nativeGoalObjectiveHash(update.Goal.Objective)}
 	record.NativeGoalRestore = receipt
 	document.Chats[sessionID] = record
 	if err = api.writeRestartContinueRecords(ctx, owner, document); err != nil {
 		log.Printf("[AGENT_GOAL] session=%s action=failed reason=restore_arm_write", sessionID)
-		return nil
+		return nil, err
 	}
 	log.Printf("[AGENT_GOAL] session=%s native=%s restore=%s action=paused status=paused reason=background_wake", sessionID, receipt.NativeID, receipt.ID)
-	return receipt
+	return receipt, nil
 }
 func (api *StreamingAPI) nativeGoalRestoreCurrent(ctx context.Context, sessionID, receiptID string) bool {
 	if api.eventStore == nil || api.isSessionMarkedStopped(sessionID) {
