@@ -93,7 +93,7 @@ type ServerAccountState = 'ready' | 'sign_in' | 'different_login' | 'missing' | 
 /** Where one of your accounts on this Mac stands on a server, with the login each side reports (an email, usually). */
 type ServerAccount = { state: ServerAccountState; mac_login?: string; server_login?: string }
 
-export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
+export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product, directory = false, inventory }: {
   provider: string
   /** Display name of the provider, e.g. "Claude Code". */
   providerLabel?: string
@@ -108,6 +108,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   /** Workflow, Crew or Code path the selection is for. */
   workspacePath?: string | null
   product?: string
+  /** Settings supplies one authorized inventory for all provider rows. */
+  inventory?: ProviderConnection[]
+  directory?: boolean
 }) {
   const manage = !onSelect && !formOnly && !selectionOnly
   const [connections, setConnections] = useState<ProviderConnection[]>([])
@@ -146,7 +149,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // Connected servers, when this page shows the Mac app's own accounts: each own account can also be added there.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
-  useEffect(() => { if (onThisMac && manage) void useConnectedWorkStore.getState().refresh() }, [onThisMac, manage])
+  useEffect(() => { if (onThisMac && manage && !directory) void useConnectedWorkStore.getState().refresh() }, [onThisMac, manage, directory])
   // Where each of your accounts stands on each connected server: ready, needs sign-in, or not there yet.
   const [onServers, setOnServers] = useState<Record<string, Record<string, ServerAccount> | 'unavailable'>>({})
   const serverIds = servers.map(server => server.id).join(',')
@@ -160,6 +163,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   useEffect(() => {
     let cancelled = false
     setError(null)
+    if (inventory) { setConnections(inventory.filter(record => record.provider === provider)); return }
     const refresh = () => {
       void llmConfigService.getProviderConnections(workspacePath || product ? { workspacePath, product } : undefined).then(records => {
         if (!cancelled) setConnections(records.filter(record => record.provider === provider))
@@ -167,7 +171,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     }
     refresh(); window.addEventListener('provider-connections-changed', refresh)
     return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refresh) }
-  }, [provider, workspacePath, product])
+  }, [provider, workspacePath, product, inventory])
   // Each row shows its status; the cheap check runs on load, the real one on Refresh.
   useEffect(() => {
     if (!manage) return
@@ -433,7 +437,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     finally { setBusy(false) }
   }
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
-    <div className="mt-2 w-full pl-11 text-xs">
+    <details className="mt-2 w-full pl-11 text-xs" open={directory ? undefined : true}>
+      {<summary className={directory ? 'w-fit cursor-pointer text-muted-foreground' : 'hidden'}>Available on {servers.length} {servers.length === 1 ? 'server' : 'servers'}{directory && servers.some(item => { const entry = onServers[item.id]; const state = entry !== 'unavailable' && entry?.[record.id]?.state; return state === 'sign_in' || state === 'different_login' }) && <span className="ml-2 text-amber-600 dark:text-amber-400">Sign-in needed</span>}</summary>}
       <div className="flex flex-wrap items-center gap-2">
       <span className="text-gray-500 dark:text-gray-400">Servers:</span>
       {servers.map(server => {
@@ -458,7 +463,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         )
       })}
       </div>
-    </div>
+    </details>
   )
   const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login' || record.auth_method === 'server_login')
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
@@ -573,12 +578,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const serverBlock = (record: ProviderConnection) => {
     const availability = record.availability
     return (
-      <div className={onThisMac ? '' : 'rounded-lg border border-gray-200 p-3 dark:border-gray-700'}>
+      <div className={onThisMac || directory ? '' : 'rounded-lg border border-gray-200 p-3 dark:border-gray-700'}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
             <div className="min-w-0">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{onThisMac ? `${providerLabel || provider} on this Mac` : ADMIN_MANAGED_ACCOUNT_LABEL}</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{onThisMac ? directory ? 'This Mac' : `${providerLabel || provider} on this Mac` : ADMIN_MANAGED_ACCOUNT_LABEL}</span>
               {statusLine(record) || (record.identity && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Signed in as {record.identity}</p>)}
               {/* On a personal Mac nobody else uses it: who may use it and per-person limits only matter on a server. */}
               {!onThisMac && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -644,7 +649,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   }
 
   const group = (title: string, records: ProviderConnection[], extra?: ReactNode) => (records.length > 0 || extra) && (
-    <div className="mt-5">
+    <div className={directory ? 'mt-3' : 'mt-5'}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</h4>
         {extra}
@@ -730,12 +735,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   if (manage) {
     return (
       <>
-        <section className={onThisMac ? 'mb-5' : 'mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700'}>
-          {server && <div>
+        <section className={directory ? '' : onThisMac ? 'mb-5' : 'mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700'}>
+          {server && (!directory || server.configured !== false) && <div>
             {!onThisMac && <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>}
             {serverBlock(server)}
           </div>}
-          {own.length > 0 ? group('Your accounts', own, addButton) : personalAllowed && !adding && <div className="mt-4">{addButton}</div>}
+          {own.length > 0 ? group('Your accounts', own, directory ? undefined : addButton) : !directory && personalAllowed && !adding && <div className="mt-4">{addButton}</div>}
           {provider === 'pi-cli' && own.length === 0 && !adding && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many have free models.</p>}
           {addForm}
           {companySection}
