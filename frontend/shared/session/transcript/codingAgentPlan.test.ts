@@ -31,3 +31,14 @@ describe('native CLI plan projection (PLAT-746)', () => {
     expect(codingAgentPlan({ ...good, type: 'conversation_response', data: { content: '- [x] Invented status' } } as PollingEvent)).toBeUndefined()
   })
 })
+
+it('gives repeated native IDs distinct keys without dropping checklist items', () => {
+  const event = { type: 'coding_agent_plan', data: { plan_id: 'p', items: [
+    { id: 'same', text: 'First', status: 'completed' },
+    { id: 'same', text: 'Second', status: 'pending' },
+    { id: 'same:1', text: 'Third', status: 'pending' },
+  ] } } as PollingEvent
+  const items = codingAgentPlan(event)!.items
+  expect(new Set(items.map(item => item.id)).size).toBe(3)
+  expect(items.map(item => item.text)).toEqual(['First', 'Second', 'Third'])
+})
