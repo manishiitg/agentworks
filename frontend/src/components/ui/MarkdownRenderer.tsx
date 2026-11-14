@@ -1,3 +1,4 @@
+import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { ChatImage } from './ChatImage'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
@@ -57,7 +58,7 @@ const workspacePrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'know
 const workspaceStandardPrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/', 'learnings/']
 const linkableWorkspaceFileExtensions = [
   'md', 'markdown', 'txt', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'xml',
-  'html', 'htm', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg',
+  'ipynb', 'html', 'htm', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg',
   'gif', 'webp', 'svg', 'bmp', 'ico', 'log', 'diff', 'patch'
 ]
 
@@ -746,11 +747,6 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
       // resolvedPath is the full path for API calls
       const displayPath = displayPathOverride || getWorkspaceDisplayPath(resolvedPath)
 
-      const fileName = resolvedPath.split('/').pop() || resolvedPath
-      const ext = fileName.split('.').pop()?.toLowerCase() || ''
-
-      // Check if binary viewable file
-      const isViewableBinary = ['xls', 'xlsx', 'docx', 'pdf', 'webm', 'mp4', 'mov'].includes(ext)
       // 1. Ensure workspace is visible. On the main surface the viewer lives
       //    in the workspace pane's Files view, so bring that view up (this
       //    also un-minimizes the workspace). Other surfaces (Video Studio)
@@ -769,55 +765,10 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
       expandFoldersForFile(displayPath)
       highlightFile(displayPath)
 
-      // 3. Select file and start loading content (use resolvedPath for API)
-      setSelectedFile({ name: fileName, path: resolvedPath })
-      setLoadingFileContent(true)
+      // Use the same authorized loader as Files (including media and paged text).
+      await openWorkspaceFile(resolvedPath)
+      onLinkClick?.(resolvedPath)
 
-      if (isViewableBinary) {
-        const response = await workspaceApi.get(
-          `/api/documents/${encodeURIComponent(resolvedPath)}`,
-          { params: { download: 'true' }, responseType: 'arraybuffer' }
-        )
-        setBinaryFileData(response.data as ArrayBuffer)
-        setFileContent('')
-        setShowFileContent(true)
-        setLoadingFileContent(false)
-        if (onLinkClick) {
-          onLinkClick(resolvedPath)
-        }
-        return
-      }
-
-      // Text or image file — workspace API returns base64 data URL for images
-      setBinaryFileData(null)
-      const response = await agentApi.getPlannerFileContent(resolvedPath)
-      if (response.success && response.data) {
-        // Guard against undefined/null content (matches Workspace.tsx logic)
-        if (response.data.content === undefined || response.data.content === null) {
-          setFileContent('')
-          setShowFileContent(true)
-          setLoadingFileContent(false)
-          if (onLinkClick) {
-            onLinkClick(resolvedPath)
-          }
-          return
-        }
-
-        let content = typeof response.data.content === 'string'
-          ? response.data.content
-          : String(response.data.content)
-
-        // Images arrive as base64 data URLs — no processing needed
-        if (!response.data.is_image) {
-          content = content.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
-        }
-
-        setFileContent(content || '')
-        setShowFileContent(true)
-        if (onLinkClick) {
-          onLinkClick(resolvedPath)
-        }
-      }
     } catch (error) {
       console.error('[MarkdownRenderer] Failed to open workspace link:', error)
     } finally {

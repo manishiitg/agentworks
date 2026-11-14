@@ -1,3 +1,4 @@
+import { isPagedTextFile, readPreviewPage } from '../components/files/readPreviewPage'
 import { agentApi, workspaceApi } from '../services/api'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { isValidJSON } from './event-helpers'
@@ -32,6 +33,23 @@ export async function openWorkspaceFile(fullFilePath: string, line?: number): Pr
       return
     }
     store.setBinaryFileData(null)
+
+    // Source/log/data files are fetched in pieces before any full-content API.
+    // Conversation JSON has a semantic loader, so keep that separate.
+    if (isPagedTextFile(fileName)) {
+      const first = await readPreviewPage(fullFilePath)
+      if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+      if (first.next < first.total) {
+        store.setSelectedFile({ name: fileName, path: fullFilePath, previewPage: first })
+        store.setFileContent('')
+        store.setShowFileContent(true)
+        return
+      }
+      // Small source files still use the normal text/CSV rendering and saved line offsets.
+      store.setFileContent(first.text)
+      store.setShowFileContent(true)
+      return
+    }
 
     const response = await agentApi.getPlannerFileContent(fullFilePath)
     if (!response.success || !response.data) {

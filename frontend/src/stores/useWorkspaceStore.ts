@@ -1,3 +1,4 @@
+import type { PreviewPage } from '../components/files/readPreviewPage'
 import { create } from 'zustand'
 import type { FileTreeVisibility, PlannerFile } from '../services/api-types'
 import { agentApi } from '../services/api'
@@ -25,8 +26,8 @@ interface WorkspaceState {
   
   // Selected file and content
   /** line: open the viewer at this line (a "Search in files" result). */
-  selectedFile: {name: string, path: string, line?: number} | null
-  setSelectedFile: (file: {name: string, path: string, line?: number} | null) => void
+  selectedFile: {name: string, path: string, line?: number, previewPage?: PreviewPage} | null
+  setSelectedFile: (file: {name: string, path: string, line?: number, previewPage?: PreviewPage} | null) => void
   // Recently opened files, shown as viewer tabs (most recent last).
   openTabs: {name: string, path: string}[]
   closeTab: (path: string) => void
