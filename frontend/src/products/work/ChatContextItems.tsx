@@ -41,6 +41,17 @@ export function chatLimitsPercent(limits: ChatContextView['limits']): string {
   return (limits ?? []).map(limit => `${limit.label} ${Math.round(limit.used_percent)}%`).join(' · ')
 }
 
+/** One plan window: "5h  12%  ▓░░░  resets 3:00 PM". */
+function PlanWindowRow({ label, percent, resets }: { label: string; percent: number; resets: string }) {
+  const value = Math.round(percent)
+  return <div className="flex items-center gap-2 px-2.5 pb-1 text-[11px] tabular-nums text-muted-foreground" title={`Your account's plan use, as the provider reports it: ${label} ${value}%${resets ? `, resets ${resets}` : ''}`}>
+    <span className="w-10 shrink-0 text-foreground">{label}</span>
+    <span className="w-8 shrink-0 text-right">{value}%</span>
+    <span className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true"><span className={`block h-full rounded-full ${value >= 90 ? 'bg-diff-del' : 'bg-primary/70'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></span>
+    {resets && <span className="min-w-0 truncate">resets {resets}</span>}
+  </div>
+}
+
 /** One-line setting: its explanation is the hover text of the row and its ⓘ. */
 function SettingLabel({ label, hint }: { label: string; hint?: string }) {
   return <span className="flex min-w-0 flex-1 items-center gap-1.5" title={hint}>
@@ -115,10 +126,9 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
   return <>
     <Menu.Separator className="my-1 h-px bg-border first:hidden" />
     <Menu.Label className={menuLabelClass}>Context</Menu.Label>
-    {limits && <div className="flex items-center gap-1.5 px-2.5 pb-1 text-[11px] text-muted-foreground" title={`Your account's plan use, as the provider reports it: ${limits}`}>
-      <span className="truncate">{modelLabel ? `${modelLabel} · ` : ''}{chatLimitsPercent(view.limits)}</span>
-      <Info className="h-3 w-3 shrink-0" aria-label={limits} />
-    </div>}
+    {modelLabel && <div className="truncate px-2.5 pb-1 text-[11px] text-muted-foreground">{modelLabel}</div>}
+    {/* Every plan window the provider reported, each with its own reset time; a window it did not report is not shown. */}
+    {(view.limits ?? []).map(limit => <PlanWindowRow key={limit.label} label={limit.label} percent={limit.used_percent} resets={resetDate(limit.resets_at)} />)}
     {used > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
       <div className="text-xs text-muted-foreground">{formatTokens(used)}{windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} used</div>
       {windowTokens > 0 && <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />}
