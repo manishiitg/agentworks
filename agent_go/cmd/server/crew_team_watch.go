@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"path"
 	"path/filepath"
@@ -139,8 +140,9 @@ func (p crewTeamScanPlan) mode() string {
 // crewTeamScanKey is what decides which files a copy's scan reads: a change of it needs a full scan.
 func crewTeamScanKey(b crewTeamLocal, share crewTeamFolder) string {
 	folders := append([]string(nil), share.Folders...)
+	mounts, _ := json.Marshal(b.Mounts)
 	return strings.Join([]string{b.Root, map[bool]string{true: "whole"}[share.Whole], strings.Join(folders, "\x00"),
-		strings.Join(sortedOnPurpose(b.onPurpose()), "\x00"), strings.Join(b.StopSyncing, "\x00")}, "\x01")
+		strings.Join(sortedOnPurpose(b.onPurpose()), "\x00"), strings.Join(b.StopSyncing, "\x00"), string(mounts)}, "\x01")
 }
 
 // crewTeamWatchFor is the watch of the copy recorded in dir; it also closes the watches no round asked for lately.

@@ -210,7 +210,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("member turned the Team off: %d %s", w.Code, w.Body.String())
 	}
 	folders := func(list string) string {
-		return strings.Replace(config, `"folder":{"whole":true}`, `"folder":{"folders":[`+list+`]}`, 1)
+		return strings.Replace(config, `"folder":{"whole":true}`, `"folder":{"folders":`+teamFolderTestEntries(list)+`}`, 1)
 	}
 	if w = call("member", "PUT", base, folders(`"team"`), ""); w.Code != 403 {
 		t.Fatalf("member switched to Folders: %d %s", w.Code, w.Body.String())
@@ -687,7 +687,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// Changing the selected folder keeps the Team's store (6 Nov: a new store per change re-uploaded every file): the
 	// files no longer shared stay in the store unseen, nobody can read or write them, and a copy keeps syncing.
 	oldTeam, _ := readCrewTeam("team-test")
-	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":["other"]}}`, "")
+	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[{"path":"other"}]}}`, "")
 	if w.Code != 200 {
 		t.Fatal("change folder", w.Code, w.Body.String())
 	}
@@ -780,7 +780,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("the member's unsent edit was lost on the share switch: %d %s", w.Code, w.Body.String())
 	}
 	// Removed from the team: the copy holds files they have no right to, so it goes.
-	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":["other"]}}`, ""); w.Code != 200 {
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":[{"path":"other"}]}}`, ""); w.Code != 200 {
 		t.Fatal("remove member", w.Code, w.Body.String())
 	}
 	api.removeStaleCrewTeamServerCopies(t.Context())

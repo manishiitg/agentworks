@@ -57,9 +57,10 @@ type crewTeamInvite struct {
 // copy upload all its files again, thousands of false clashes): only what holds() admits changes, so files still
 // shared stay in step and nothing is uploaded again.
 type crewTeamFolder struct {
-	ID      string   `json:"id"`
-	Whole   bool     `json:"whole,omitempty"`
-	Folders []string `json:"folders,omitempty"`
+	ID      string               `json:"id"`
+	Whole   bool                 `json:"whole,omitempty"`
+	Folders []string             `json:"-"` // derived path list; the wire and saved record use identities
+	Paths   []crewTeamSharedPath `json:"-"`
 }
 
 // crewTeamMaxFolders keeps the folder list a choice people can read.
@@ -201,6 +202,10 @@ func readCrewTeam(project string) (crewTeam, error) {
 	return t, err
 }
 func writeCrewTeam(t crewTeam) error {
+	return writeCrewTeamWithAgents(t, nil)
+}
+
+func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegisteredAgent)) error {
 	t.RegistryVersion = 1
 	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
 	if (t.On || len(t.People) > 0) && agentWorksPrivateProject(context.Background(), t.ProjectID) {
@@ -233,6 +238,16 @@ func writeCrewTeam(t crewTeam) error {
 		err = readErr
 	}
 	if err == nil {
+		if t.Agents == nil {
+			t.Agents = map[string]crewTeamRegisteredAgent{}
+		}
+		if choices != nil {
+			choices(t.Agents)
+		}
+		if err = t.Folder.assignPaths(t.Folder, true); err != nil {
+			mu.Unlock()
+			return err
+		}
 		for id, a := range t.Agents {
 			if a.OwnerID != t.OwnerID && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == a.OwnerID }) {
 				delete(t.Agents, id)
@@ -596,6 +611,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	// The same store for a changed choice (crewTeamFolder): copies keep what is still shared, nothing goes up again.
 	input.Folder.ID = previous.Folder.ID
+	if e = input.Folder.assignPaths(previous.Folder, claims.UserID == owner); e != nil {
+		externalError(w, 400, "invalid_folder", e.Error())
+		return
+	}
 	folderChanged := !previous.Folder.same(input.Folder)
 	if folderChanged {
 		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d store=%s", project, logUsernameForUserID(claims.UserID), input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
@@ -830,7 +849,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
-			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: crewTeamFolder{Whole: t.Folder.Whole, Folders: t.Folder.Folders}})
+			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
 		}
 	}
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})

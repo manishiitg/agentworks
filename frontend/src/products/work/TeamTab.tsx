@@ -399,7 +399,7 @@ function FolderRow({ folder, target, canRemove, saving, disabled, onRemove }: { 
 function FolderLine({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
   const [open, setOpen] = useState(false)
   const { folder, name } = view.team
-  const where = folder.whole ? `the whole ${name} folder` : (folder.folders || []).map(item => `${item}/`).join(', ') || 'no folder yet'
+  const where = folder.whole ? `the whole ${name} folder` : (folder.folders || []).map(item => `${item.path}/`).join(', ') || 'no folder yet'
   return <div className="space-y-2">
     <p className="px-1 text-xs text-muted-foreground">They work in: <span className="text-foreground">{where}</span> · <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-primary hover:underline">{open ? 'done' : 'change'}</button></p>
     {open && <SharesCard view={view} target={target} projectId={projectId} />}
@@ -427,12 +427,13 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     return () => { active = false }
   }, [picking, parent, target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
   const whole = useFolderSize(target, team.folder.whole ? 'whole=1' : undefined)
-  const folders = team.folder.folders || []
+  const entries = team.folder.folders || []
+  const folders = entries.map(entry => entry.path)
   const save = (key: string, next: Team) => run(key, () => saveTeam(target, next))
   const add = async (folder: string) => {
     const clean = folder.trim().replace(/^\/+|\/+$/g, '')
     if (!clean || folders.includes(clean)) return
-    if (await save('add', { ...team, folder: { folders: [...folders, clean] } })) { setPicking(false); setName('') }
+    if (await save('add', { ...team, folder: { folders: [...entries, { id: '', path: clean }] } })) { setPicking(false); setName('') }
   }
   return <section aria-label="What the team shares" className={card}>
     <div className="flex items-center gap-2">
@@ -451,7 +452,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     {team.folder.whole ? <p className="text-xs text-muted-foreground">The whole <b className="text-foreground">{team.name}</b> folder{whole?.files ? `: ${sizeLine(whole)}` : ''}. Everyone in the Team reads and edits it.</p>
       : <div className="space-y-1.5">
         {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={view.can_remove_folder} saving={pending === `remove:${folder}`} disabled={Boolean(pending)}
-          onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: folders.filter(f => f !== folder) } })} />)}
+          onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: entries.filter(f => f.path !== folder) } })} />)}
         {!folders.length && <p className="text-xs text-muted-foreground">Nothing is shared yet{choose ? ': add a folder, or share the Whole Crew' : ''}.</p>}
         {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
           onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}

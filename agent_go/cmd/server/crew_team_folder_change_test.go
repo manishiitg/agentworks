@@ -35,7 +35,7 @@ func TestCrewTeamFolderChangeKeepsStoreWithoutReupload(t *testing.T) {
 	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
 	put := func(user, folders string) *httptest.ResponseRecorder {
 		t.Helper()
-		r := httptest.NewRequest("PUT", "/api/crew-teams/fold-test", strings.NewReader(`{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[`+folders+`]}}`))
+		r := httptest.NewRequest("PUT", "/api/crew-teams/fold-test", strings.NewReader(`{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":[`+strings.TrimSuffix(strings.TrimPrefix(teamFolderTestEntries(folders), "["), "]")+`]}}`))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
