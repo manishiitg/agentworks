@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -109,5 +112,42 @@ func TestNativeSkillDiscoveryImportKeepsOwnerAndFileBoundaries(t *testing.T) {
 	after, _ := os.ReadFile(filepath.Join(roots.Files, ".agents/skills/review/SKILL.md"))
 	if string(after) != original {
 		t.Fatal("import modified source")
+	}
+	// Folder upload also uses the same scoped importer; preview never writes,
+	// browser filenames are not host paths, and traversal is refused.
+	install.Name = ""
+	folderCall := func(user string, copying bool, names []string) *httptest.ResponseRecorder {
+		t.Helper()
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		paths, _ := json.Marshal(names)
+		_ = form.WriteField("paths", string(paths))
+		for i, content := range []string{original, "Review the actual diff."} {
+			field, err := form.CreateFormFile(fmt.Sprintf("file%d", i), "upload")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = field.Write([]byte(content))
+		}
+		form.Close()
+		request := httptest.NewRequest(http.MethodPost, "/api/skills/import-folder?workspace_path="+url.QueryEscape(externalCommandCrewRoot), &body)
+		request.Header.Set("Content-Type", form.FormDataContentType())
+		request = request.WithContext(context.WithValue(request.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		response := httptest.NewRecorder()
+		workspaceSkillRoute(copying, skillFolderUpload(copying))(response, request)
+		return response
+	}
+	names := []string{"review/SKILL.md", "review/references/rules.md"}
+	if result := folderCall("owner", false, names); result.Code != 200 || !strings.Contains(result.Body.String(), "Read references") || install.Name != "" {
+		t.Fatalf("folder preview wrote or failed: %d %s", result.Code, result.Body.String())
+	}
+	if result := folderCall("other", true, names); result.Code != 403 || install.Name != "" {
+		t.Fatalf("foreign folder import: %d %s", result.Code, result.Body.String())
+	}
+	if result := folderCall("owner", true, []string{"review/SKILL.md", "review/../escape"}); result.Code != 400 || install.Name != "" {
+		t.Fatalf("traversal folder import: %d %s", result.Code, result.Body.String())
+	}
+	if result := folderCall("owner", true, names); result.Code != 200 || install.Name != "review" || string(install.Files["references/rules.md"]) != "Review the actual diff." {
+		t.Fatalf("folder copy: %d %s", result.Code, result.Body.String())
 	}
 }

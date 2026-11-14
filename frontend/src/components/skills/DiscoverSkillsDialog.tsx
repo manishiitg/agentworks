@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { skillsApi, type DiscoveredSkill, type NativeSkillDiscovery } from '../../api/skills'
 import ModalPortal from '../ui/ModalPortal'
 import SkillImportDialog from './SkillImportDialog'
+import SkillFolderImport from './SkillFolderImport'
 
 /** One project-scoped picker shared by Skills and Add agent. Nothing is
  * attached to a chat or imported until the person explicitly chooses Import. */
@@ -17,6 +18,7 @@ export default function DiscoverSkillsDialog({ workspacePath, close, onImported 
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [upload, setUpload] = useState(false)
+  const [folder, setFolder] = useState(false)
   const generation = useRef(0)
   const dialog = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -50,10 +52,13 @@ export default function DiscoverSkillsDialog({ workspacePath, close, onImported 
       if (!result.success) throw new Error(result.error || 'Import failed')
       setNotice(`Imported ${result.skill_name} into this project. The original is unchanged.`)
       setPreview(undefined); onImported?.()
-    } catch (cause) { if (version === generation.current) setError(cause instanceof Error ? cause.message : 'Import failed') }
+    } catch (cause) {
+      const detail = (cause as { response?: { data?: unknown } })?.response?.data
+      if (version === generation.current) setError(typeof detail === 'string' ? detail : 'Could not import this skill. Check its files and try again.')
+    }
     finally { setBusy(false) }
   }
-  if (upload) return <SkillImportDialog workspacePath={workspacePath} onClose={() => setUpload(false)} onSuccess={() => { setUpload(false); setNotice('Skill imported into this project.'); onImported?.() }} />
+  if (upload) return <ModalPortal><div className="fixed inset-0 z-[115]"><SkillImportDialog workspacePath={workspacePath} onClose={() => setUpload(false)} onSuccess={() => { setUpload(false); setNotice('Skill imported into this project.'); onImported?.() }} /></div></ModalPortal>
   return <ModalPortal><div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/50 p-4">
     <section ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Discover and import skills" className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-background p-5 shadow-xl" onKeyDown={event => {
       if (event.key === 'Escape' && !busy) close()
@@ -66,10 +71,10 @@ export default function DiscoverSkillsDialog({ workspacePath, close, onImported 
     }}>
       <div className="flex items-center justify-between gap-2"><h2 className="text-base font-semibold">Discover &amp; import skills</h2><button type="button" disabled={busy} onClick={close} className="rounded px-2 py-1 text-sm hover:bg-muted">Close</button></div>
       <p className="mt-2 text-sm text-muted-foreground">Preview existing skills, then copy the ones you choose into this project. Discovery changes nothing; originals stay untouched.</p>
-      <div className="my-4 flex flex-wrap gap-2"><select aria-label="Skill source program" value={provider} disabled={busy} onChange={event => setProvider(event.target.value)} className="rounded border border-input bg-background p-2 text-sm"><option value="claude-code">Claude</option><option value="codex-cli">Codex</option><option value="cursor-cli">Cursor</option></select><input autoFocus aria-label="Search discovered skills" placeholder="Search skills…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 rounded border border-input bg-background px-3 text-sm" /><button type="button" disabled={busy} onClick={() => setUpload(true)} className="rounded border border-border px-3 py-2 text-sm">GitHub / ZIP…</button></div>
+      <div className="my-4 flex flex-wrap gap-2"><select aria-label="Skill source program" value={provider} disabled={busy} onChange={event => setProvider(event.target.value)} className="rounded border border-input bg-background p-2 text-sm"><option value="claude-code">Claude</option><option value="codex-cli">Codex</option><option value="cursor-cli">Cursor</option></select><input autoFocus aria-label="Search discovered skills" placeholder="Search skills…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 rounded border border-input bg-background px-3 text-sm" /><button type="button" disabled={busy} onClick={() => setUpload(true)} className="rounded border border-border px-3 py-2 text-sm">GitHub / ZIP…</button><button type="button" disabled={busy} onClick={() => setFolder(true)} className="rounded border border-border px-3 py-2 text-sm">From folder…</button></div>
       {error && <p role="alert" className="mb-2 text-sm text-destructive">{error}</p>}
       {notice && <p role="status" className="mb-2 text-sm">{notice}</p>}
-      {loading ? <p role="status" className="text-sm text-muted-foreground">Reading skills…</p> : preview ? <div className="min-h-0 overflow-auto">
+      {folder ? <SkillFolderImport workspacePath={workspacePath} back={() => setFolder(false)} onImported={() => { setFolder(false); setNotice('Skill imported into this project.'); onImported?.() }} /> : loading ? <p role="status" className="text-sm text-muted-foreground">Reading skills…</p> : preview ? <div className="min-h-0 overflow-auto">
         <button type="button" disabled={busy} onClick={() => setPreview(undefined)} className="mb-3 text-sm underline">Back to discovered skills</button>
         <h3 className="font-medium">{preview.name}</h3><p className="text-xs text-muted-foreground">{preview.source}</p>
         <pre className="my-3 whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{preview.document}</pre>
