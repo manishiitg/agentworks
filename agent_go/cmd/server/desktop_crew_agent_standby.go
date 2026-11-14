@@ -8,6 +8,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -204,8 +205,8 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		if crewAgentPublishTab(crewStandbyWireKey(roots.ID, record.ConversationKey)) != tab {
 			continue
 		}
-		if marker, err := readChatTerminal(record.SessionID); err == nil && marker.Revision > 0 {
-			if err = api.syncTerminalStandby(ctx, record, marker); err != nil {
+		if marker, err := readChatTerminal(record.SessionID); err == nil && marker.Receipt != "" {
+			if err = api.syncTerminalStandby(ctx, record, marker); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
 				retry(record.SessionID)
 				api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
 				continue

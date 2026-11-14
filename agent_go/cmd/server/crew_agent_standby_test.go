@@ -963,11 +963,14 @@ func TestCrewStandbyMemberRowsAreSeparateAndPairBound(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{
-		{UserID: "other", Where: "mac", MacPair: "other-pair"},
-		{UserID: "invitee", Invited: true, Where: "mac", MacPair: "invitee-pair"},
-		{UserID: "webby"},
-	}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true,
+		// PLAT-856-569: this fixture tests an explicitly shared member Main.
+		// Discovery alone correctly leaves unknown/pre-join member agents private.
+		Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"main": true}, "other": {"main": true}}), People: []crewTeamPerson{
+			{UserID: "other", Where: "mac", MacPair: "other-pair"},
+			{UserID: "invitee", Invited: true, Where: "mac", MacPair: "invitee-pair"},
+			{UserID: "webby"},
+		}}); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {

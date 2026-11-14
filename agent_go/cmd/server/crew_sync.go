@@ -54,6 +54,7 @@ type crewServerCopy struct {
 }
 
 type crewSyncReply struct {
+	Terminal *chatTerminalStandby `json:"terminal,omitempty"`
 	// Where the caller's own agents in this Crew work when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string `json:"where,omitempty"`
 	// AccessView is which Access page this person gets: "team" (the Team tab alone: a teammate, or the website copy

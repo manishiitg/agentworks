@@ -522,7 +522,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	}
 	if call.Operation != "agent_read" {
 		if notice := chatTerminalTurnRefusal(conversation.SessionID); notice != "" {
-			return reply(409, map[string]string{"error": notice})
+			return reply(409, map[string]string{"error": chatTerminalPeerNotice})
 		}
 	}
 	if err := markCrewStandbySession(ctx, project, claims.UserID, conversation.SessionID); err != nil {

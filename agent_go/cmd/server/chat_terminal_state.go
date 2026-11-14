@@ -82,7 +82,7 @@ func chatTerminalTurnRefusal(session string) string {
 		return ""
 	}
 	log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=refused reason=continued_in_terminal", s.Chat, session)
-	return chatTerminalPeerNotice
+	return chatTerminalNotice
 }
 
 func (api *StreamingAPI) chatTerminalWorkRunning(session string) bool {
