@@ -56,9 +56,17 @@ func (api *StreamingAPI) crewTeamJoinTarget(ctx context.Context, claims *UserCla
 	if err != nil {
 		return out, roots, err
 	}
-	out.Agents, err = api.macAgentRows(ctx, claims, project)
+	tabs, main, err := api.macCrewAgents(ctx, claims, project)
 	if err != nil {
 		return out, roots, err
+	}
+	if main.ConversationKey != "" && main.CanWrite {
+		out.Agents = append(out.Agents, macAgentRow{Tab: macMainTab, Name: firstNonEmptyTrimmed(main.Name, "Main"), Purpose: main.Purpose})
+	}
+	for _, tab := range tabs {
+		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
+			out.Agents = append(out.Agents, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose})
+		}
 	}
 	out.CanJoin = true
 	return out, roots, nil

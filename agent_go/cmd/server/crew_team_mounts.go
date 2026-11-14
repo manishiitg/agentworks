@@ -42,6 +42,9 @@ func (b crewTeamLocal) diskRel(rel string) string {
 	if rel == "PROJECT_INSTRUCTIONS.md" || rel == crewTeamSetupFile {
 		return rel
 	}
+	if !b.ProtectPrivate {
+		return rel
+	}
 	return ""
 }
 
@@ -60,6 +63,14 @@ func (b crewTeamLocal) remoteRel(rel string) string {
 		return result
 	}
 	if rel == "PROJECT_INSTRUCTIONS.md" || rel == crewTeamSetupFile {
+		return rel
+	}
+	for _, m := range b.Mounts {
+		if m.Remote != m.Local && crewTeamUnder(rel, m.Remote) {
+			return ""
+		}
+	}
+	if !b.ProtectPrivate {
 		return rel
 	}
 	return ""
@@ -181,6 +192,14 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 	for _, entry := range share.mounts() {
 		active[entry.ID] = true
 		old, had := b.Mounts[entry.ID]
+		if !had && !b.ProtectPrivate {
+			for rel := range b.Files {
+				if crewTeamUnder(rel, entry.Path) {
+					old.Local = entry.Path
+					break
+				}
+			}
+		}
 		local, err := crewTeamFreeMount(b.Root, entry.Path, old.Local)
 		if err != nil {
 			return err

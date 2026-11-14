@@ -237,7 +237,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		}
 		if err == nil {
 			b := crewTeamLocal{FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
-				Root: folder, LocalProject: input.LocalProject, Status: "pending", Mounted: true}
+				Root: folder, LocalProject: input.LocalProject, Status: "pending", Mounted: true, ProtectPrivate: input.LocalProject != ""}
 			if input.LocalProject != "" {
 				err = backupCrewTeamJoinSetup(folder)
 			}
