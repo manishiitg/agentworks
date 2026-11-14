@@ -935,3 +935,5 @@ modernc.org/token v1.1.0 h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=
 modernc.org/token v1.1.0/go.mod h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114043601-0d2b27d69ac5 h1:P/iLAVF+5/TMCR4Cf12STJMih+yYp104RBBqcfilsUk=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114043601-0d2b27d69ac5/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114044546-69f7f300c90a h1:rN8CGdi7fWTR+JYlY+2oaUuL2+x+F5eUr22XPOgCt2o=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114044546-69f7f300c90a/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
