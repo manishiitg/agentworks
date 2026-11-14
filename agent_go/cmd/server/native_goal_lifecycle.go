@@ -93,6 +93,10 @@ func (api *StreamingAPI) prepareNativeGoalEvent(sessionID string, event *storeev
 	if event.Type != "native_goal_updated" || event.Data == nil {
 		return
 	}
+	if (event.ParentExecutionID != "" && event.ParentExecutionID != "session:"+sessionID) || (event.ExecutionKind != "" && event.ExecutionKind != "main_agent") {
+		return
+	}
+
 	update, ok := nativeGoalUpdateFromEvent(event)
 	if !ok {
 		return
