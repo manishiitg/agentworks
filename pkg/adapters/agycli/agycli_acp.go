@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
@@ -149,8 +149,9 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 		release()
 		return nil, err
 	}
-	// Native diagnostics can echo prompt image bytes. Do not retain or log stderr.
-	cmd.Stderr = io.Discard
+	// Bounded diagnostics are exposed only on failure, with payloads omitted.
+	stderr := &clisandbox.StderrTail{}
+	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		stop()
@@ -176,11 +177,13 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 		}
 		return nil, fmt.Errorf("start agy acp: %w", err)
 	}
-	r := &agyACP{owner: agyStringMetadata(opts, MetadataKeyInteractiveSessionID), cmd: cmd, stdin: stdin, pending: map[string]chan agyACPMessage{}, events: make(chan agyACPMessage, 4096), done: make(chan struct{}), exited: make(chan struct{}), stop: stop}
+	r := &agyACP{stderr: stderr, owner: agyStringMetadata(opts, MetadataKeyInteractiveSessionID), cmd: cmd, stdin: stdin, pending: map[string]chan agyACPMessage{}, events: make(chan agyACPMessage, 4096), done: make(chan struct{}), exited: make(chan struct{}), stop: stop}
 	go r.read(stdout)
 	go func() {
 		err := cmd.Wait()
-		log.Printf("[CLI_EXIT] session=%s provider=agy-cli transport=acp action=done exit_code=%d reason=process_exited", r.owner, cmd.ProcessState.ExitCode())
+		if err != nil {
+			log.Printf("[CLI_EXIT] session=%s provider=agy-cli transport=acp action=failed exit_code=%d reason=process_exited last_error=%q", r.owner, cmd.ProcessState.ExitCode(), r.stderrLine())
+		}
 		r.finish(fmt.Errorf("agy acp exited: %v", err))
 		cleanupSandbox()
 		close(r.exited)
@@ -453,7 +456,12 @@ type agyACPTool struct {
 	open, ended        bool
 }
 
-func (a *AgyCLIAdapter) consumeAgyACPTurn(ctx context.Context, s *agyACPSession, prompt string, emit func(llmtypes.StreamChunk), images ...agyImageTurn) (*llmtypes.ContentResponse, error) {
+func (a *AgyCLIAdapter) consumeAgyACPTurn(ctx context.Context, s *agyACPSession, prompt string, emit func(llmtypes.StreamChunk), images ...agyImageTurn) (response *llmtypes.ContentResponse, turnErr error) {
+	defer func() {
+		if turnErr != nil && !errors.Is(turnErr, context.Canceled) {
+			log.Printf("[AGY_ACP] session=%s action=failed reason=turn_failed last_error=%q", s.rpc.owner, s.rpc.stderrLine())
+		}
+	}()
 	meta := map[string]any{"agy_session_id": s.sessionID, "agy_stream_source": "acp"}
 	events := s.listen()
 	defer s.stopListening()

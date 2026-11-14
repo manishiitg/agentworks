@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
 
@@ -35,6 +36,7 @@ type agyACPError struct {
 func (e *agyACPError) Error() string { return fmt.Sprintf("(%d): %s", e.Code, e.Message) }
 
 type agyACP struct {
+	stderr  *clisandbox.StderrTail
 	owner   string
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser

@@ -191,6 +191,18 @@ func (r agyRepeatedByte) Read(p []byte) (int, error) {
 // The actual reader tolerates diagnostic/bad lines, strips only native content
 // data before its event queue, and ends clearly on retained/wire/depth caps.
 func TestAgyACPImageEchoScopeMalformedLinesAndCaps(t *testing.T) {
+	t.Run("stderr_payloads_are_omitted_before_character_limit", func(t *testing.T) {
+		last := agyACPStderrLine("old diagnostic\nfailed: "+strings.Repeat("A", 1000)+" API_KEY=short-token detail\n", nil)
+		if last != "failed: [omitted] [omitted] detail" {
+			t.Fatal("stderr payload retained")
+		}
+		if got := agyACPStderrLine("last error é "+strings.Repeat("word ", 100), nil); len([]rune(got)) != 200 {
+			t.Fatal("diagnostic exceeds character cap")
+		}
+		if got := agyACPStderrLine("bad credential short-value", []string{"PROVIDER_TOKEN=short-value"}); strings.Contains(got, "short-value") {
+			t.Fatal("known credential retained")
+		}
+	})
 	newRPC := func() *agyACP {
 		exited := make(chan struct{})
 		close(exited)
