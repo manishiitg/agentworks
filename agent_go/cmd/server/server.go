@@ -3751,12 +3751,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	principalContext, principalErr := api.revalidateExecutionPrincipal(r.Context(), req)
 	if principalErr != nil {
+		logQueryAdmissionRefusal(w, r, "execution_principal")
 		http.Error(w, principalErr.Error(), http.StatusForbidden)
 		return
 	}
 	r = r.WithContext(principalContext)
 	req.oauthRedirectURI = deriveOAuthRedirectURI(r)
 	if err := api.bindSlackInvocation(r.Context(), &req, r.Header.Get("X-Session-ID")); err != nil {
+		logQueryAdmissionRefusal(w, r, "slack_invocation")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -3788,6 +3790,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// with one-message # references before the common authorization boundary so
 	// both forms receive identical access checks and folder guards.
 	if contextErr := admitWorkflowBuilderContextPaths(r.Context(), &req); contextErr != nil {
+		logQueryAdmissionRefusal(w, r, "workflow_context")
 		http.Error(w, contextErr.Error(), http.StatusForbidden)
 		return
 	}
@@ -3871,6 +3874,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A Code chat belongs to its pinned person: nothing else (a live-input
 	// delivery below, a queued turn) may run in it as anyone else.
 	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		logQueryAdmissionRefusal(w, r, "session_access")
 		http.Error(w, refusal, http.StatusForbidden)
 		return
 	}
@@ -3894,6 +3898,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	resolvedProfile, access, admitErr := api.admitQueryTarget(r.Context(), &req, currentUserID, sessionID)
 	if admitErr != nil {
 		if errors.Is(admitErr, errCrewProjectUnavailable) {
+			logQueryAdmissionRefusal(w, r, "project_access")
 			externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
 			return
 		}
@@ -3901,6 +3906,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if admitErr.invalidProfile {
 			status = http.StatusBadRequest
 		}
+		logQueryAdmissionRefusal(w, r, "query_target")
 		http.Error(w, admitErr.Error(), status)
 		return
 	}
@@ -3909,6 +3915,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateTeamQuery(r.Context(), req); err != nil {
+		logQueryAdmissionRefusal(w, r, "team_admission")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -3916,6 +3923,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 		if e := crewQueryTabWriteError(r.Context(), currentUserID, resolvedProfile.Definition.ID, req.SelectedFolder, sessionID); e != nil {
+			logQueryAdmissionRefusal(w, r, "tab_owner")
 			externalError(w, 403, "tab_owner", e.Error())
 			return
 		}
@@ -3970,6 +3978,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// The bot posts this message in the thread (botSessionFailureMessage).
 				status = http.StatusTooManyRequests
 			}
+			logQueryAdmissionRefusal(w, r, "provider_account")
 			http.Error(w, accountErr.Error(), status)
 			return
 		}
@@ -4034,6 +4043,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := api.validateQuerySecretSelection(r.Context(), currentUserID, req); err != nil {
+		logQueryAdmissionRefusal(w, r, "secret_selection")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -4224,6 +4234,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	retainedDeliveryEligible := preferRetainedDelivery && retainedProfileCompatible
 	retainedWorkflowCompatible, runtimeChanged, policyErr := api.prepareWorkflowRetainedDelivery(r.Context(), sessionID, req, retainedDeliveryEligible)
 	if policyErr != nil {
+		logQueryAdmissionRefusal(w, r, "retained_tool_policy")
 		http.Error(w, policyErr.Error(), http.StatusForbidden)
 		return
 	}
@@ -4349,6 +4360,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if _, delegated := r.Context().Value(agentMessageAdmissionKey{}).(func(string) (func(), error)); delegated {
 		releaseAuthority, admissionErr := acquireAgentMessageAuthority(r.Context(), sessionID)
 		if admissionErr != nil {
+			logQueryAdmissionRefusal(w, r, "agent_message_authority")
 			http.Error(w, admissionErr.Error(), http.StatusForbidden)
 			return
 		}
@@ -4617,6 +4629,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.BotConnectionID = strings.TrimSpace(caps.SlackConnectionID)
 				}
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
+					logQueryAdmissionRefusal(w, r, "manifest_secret_selection")
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}

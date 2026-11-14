@@ -38,6 +38,9 @@ func (api *StreamingAPI) getSessionStatusString(r *http.Request, sessionID strin
 }
 
 func (api *StreamingAPI) canSteerSession(sessionID string) bool {
+	if idleCompacts.running(sessionID) != nil {
+		return false
+	}
 	api.runningAgentsMux.RLock()
 	runningAgent, exists := api.runningAgents[sessionID]
 	api.runningAgentsMux.RUnlock()
@@ -101,7 +104,7 @@ func (api *StreamingAPI) liveSteerProviderTransportReady(sessionID, provider str
 	case "cursor-cli":
 		return cursorcli.InteractiveSessionRegistered(sessionID)
 	case "codex-cli":
-		return codexcli.InteractiveSessionRegistered(sessionID)
+		return codexcli.InteractiveTurnActive(sessionID)
 	case "pi-cli":
 		return picli.InteractiveSessionRegistered(sessionID)
 	case "muse-cli":
