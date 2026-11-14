@@ -498,6 +498,12 @@ func TestAgentMessageCardsNameNamedAgentsByCurrentLabel(t *testing.T) {
 	if got := s.receiptFields(context.Background(), agentMessage{}, named)["to_label"]; got != "Website (fork)" {
 		t.Fatalf("send result to_label = %v", got)
 	}
+	named.ShareID = "share-example"
+	shared := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "u2"}, named}, Messages: []agentMessage{{From: 0}}}
+	rows := s.sentReceipts(context.Background(), shared, 0, 1)
+	if len(rows) != 1 || rows[0]["to"] != shareOwnerLabel("u1")+"/Website (fork)" {
+		t.Fatalf("shared sent receipt lost owner qualifier: %v", rows)
+	}
 	if got := s.endpointName(agentMessageEndpoint{UserID: "u1", Label: "Research Crew"}, "u1"); got != "Research Crew" {
 		t.Fatalf("plain endpoint shown as %q", got)
 	}

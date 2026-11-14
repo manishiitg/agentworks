@@ -119,7 +119,9 @@ func (s agentMessageStore) sentReceipts(ctx context.Context, c agentConversation
 			continue
 		}
 		row := s.receiptFieldsWithLabel(m, c.Endpoints[1-side], label)
-		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, row["to_label"]
+		display := c.Endpoints[1-side]
+		display.Label = label
+		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, endpointDisplayLabel(display, c.Endpoints[side].UserID)
 		rows = append(rows, row)
 	}
 	return rows
