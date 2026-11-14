@@ -84,6 +84,9 @@ type crewPanelSource struct {
 	// timeout, when set, is this section's own time limit instead of the panel's (a Git status over several repos).
 	timeout    time.Duration
 	refreshFor time.Duration // Successful display snapshots; current authority is still checked before and after.
+	// background serves the last good snapshot at once while it is older than refreshFor and re-reads it off the
+	// request, one read at a time. The first read of a Crew still waits for the section.
+	background bool
 	read       func(context.Context) (crewPanelSection, error)
 }
 type crewPanelReadError struct{ status int }
@@ -97,6 +100,9 @@ func (e crewPanelReadError) Error() string { return "Panel section unavailable" 
 const crewPanelTimeout = 2 * time.Second
 const crewPanelCacheTTL = 30 * time.Second
 
+// A background section keeps its last snapshot this long, so an old one can be shown while a new one is read.
+const crewPanelBackgroundKeep = 10 * time.Minute
+
 type crewPanelCacheKey struct{ caller, project, section, authority string }
 type crewPanelCached struct {
 	at      time.Time
@@ -106,6 +112,7 @@ type crewPanelCache struct {
 	mu           sync.Mutex
 	workflowRead sync.Mutex // At most one cold workflow summary scan; never queue UI reads behind it.
 	entries      map[crewPanelCacheKey]crewPanelCached
+	refreshing   map[crewPanelCacheKey]bool // Background reads in flight: at most one per section.
 }
 
 func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
@@ -116,7 +123,7 @@ func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
 	}
 	now := time.Now()
 	for k, v := range c.entries {
-		if now.Sub(v.at) >= crewPanelCacheTTL {
+		if now.Sub(v.at) >= crewPanelBackgroundKeep {
 			delete(c.entries, k)
 		}
 	}
@@ -136,6 +143,50 @@ func (c *crewPanelCache) previous(key crewPanelCacheKey, maximum ...time.Duratio
 	}
 	return v.section, ok && time.Since(v.at) < age
 }
+
+// aged is the last snapshot and how old it is, whatever its age.
+func (c *crewPanelCache) aged(key crewPanelCacheKey) (crewPanelSection, time.Duration, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.entries[key]
+	if !ok {
+		return crewPanelSection{}, 0, false
+	}
+	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
+	return v.section, time.Since(v.at), true
+}
+
+// refreshInBackground re-reads one section off the request and stores a good answer. A read already in flight for the
+// section is not repeated. base carries the caller's identity but not the request's cancellation.
+func (c *crewPanelCache) refreshInBackground(base context.Context, key crewPanelCacheKey, source crewPanelSource, limit time.Duration) {
+	c.mu.Lock()
+	if c.refreshing == nil {
+		c.refreshing = map[crewPanelCacheKey]bool{}
+	}
+	if c.refreshing[key] {
+		c.mu.Unlock()
+		return
+	}
+	c.refreshing[key] = true
+	c.mu.Unlock()
+	go func() {
+		started := time.Now()
+		ctx, cancel := context.WithTimeout(base, limit)
+		section, err := source.read(ctx)
+		if err == nil && ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		cancel()
+		if err == nil && section.Error == "" {
+			section.ID, section.Title = source.id, source.title
+			c.put(key, section)
+		}
+		c.mu.Lock()
+		delete(c.refreshing, key)
+		c.mu.Unlock()
+		log.Printf("[CREW_PANEL] project=%s section=%s background_refresh ok=%t ms=%d", key.project, source.id, err == nil, time.Since(started).Milliseconds())
+	}()
+}
 func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -144,6 +195,14 @@ func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 
 // Deadline bounds the whole fan-out, not one timeout multiplied by the number
 // of sections. A timed-out reader cannot write back late or replace newer data.
+func firstPositive(values ...time.Duration) time.Duration {
+	for _, v := range values {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
+}
 func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sources []crewPanelSource, timeout time.Duration) []crewPanelSection {
 	// The panel waits for its slowest section; each section stops at its own limit.
 	longest := timeout
@@ -152,6 +211,7 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			longest = source.timeout
 		}
 	}
+	base := context.WithoutCancel(ctx)
 	ctx, cancel := context.WithTimeout(ctx, longest)
 	defer cancel()
 	started := time.Now()
@@ -181,6 +241,15 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			if previous, found := c.previous(k, source.refreshFor); found {
 				out[i] = previous
 				continue
+			}
+			if source.background {
+				// Older than refreshFor but still held: show it now and read the new one in the background.
+				if old, age, held := c.aged(k); held && age < crewPanelBackgroundKeep {
+					old.refreshAt = time.Time{}
+					out[i] = old
+					c.refreshInBackground(base, k, source, firstPositive(source.timeout, timeout))
+					continue
+				}
 			}
 		}
 		pending[i] = true

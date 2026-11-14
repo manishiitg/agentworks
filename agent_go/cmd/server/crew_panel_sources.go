@@ -28,7 +28,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 		}},
 
 		// Git status over a Crew's repos takes longer than the panel's other reads (5 Nov: past 2 s on every refresh).
-		{id: "changes", title: "Uncommitted", allowed: workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsCaller, true), timeout: 6 * time.Second, read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "changes", title: "Uncommitted", allowed: workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsCaller, true), timeout: 6 * time.Second, refreshFor: crewPanelCacheTTL, background: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data struct {
 				Repos       []workspaceGitRepo `json:"repos"`
 				Unavailable bool               `json:"git_unavailable"`
