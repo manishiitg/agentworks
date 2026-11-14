@@ -21,7 +21,7 @@ export function NotebookPreview({ content }: { content: string }) {
     <div className="flex items-center gap-3 text-sm"><span>{parsed.length} cells · Saved output only</span><button disabled={!current} onClick={() => setPage(current - 1)}>Previous</button><span>{current + 1} / {pages}</span><button disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Next</button></div>
     {parsed.slice(current * 25, current * 25 + 25).map((cell, index) => <section key={current * 25 + index} className="rounded border border-border p-3">
       {cell.cell_type === 'markdown' ? <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml disallowedElements={['a', 'img']} unwrapDisallowed>{joined(cell.source)}</ReactMarkdown> : <pre className="overflow-auto whitespace-pre-wrap text-xs">{joined(cell.source)}</pre>}
-      {(Array.isArray(cell.outputs) ? cell.outputs.filter(output => output !== null && typeof output === 'object') : []).map((output, i) => <pre key={i} className="mt-3 overflow-auto whitespace-pre-wrap border-t pt-2 text-xs">{joined(output.text) || joined(output.data?.['text/plain']) || joined(output.traceback)}</pre>)}
+      {(Array.isArray(cell.outputs) ? cell.outputs.filter(output => output !== null && typeof output === 'object') : []).map((output, i) => <pre key={i} className="mt-3 overflow-auto whitespace-pre-wrap border-t pt-2 text-xs">{joined(output.text) || joined(output.data?.['text/plain']) || joined(output.traceback) || (output.data ? JSON.stringify(output.data, null, 2) : '')}</pre>)}
     </section>)}
   </div>
 }

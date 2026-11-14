@@ -294,6 +294,11 @@ func TestCORSMiddlewareAllowsLoopbackOrigin(t *testing.T) {
 	if got := rr.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPatch) {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want PATCH", got)
 	}
+	// PLAT-746-1029: cross-origin Mac/Vite previews must see the bounded Range response.
+	if !strings.Contains(rr.Header().Get("Access-Control-Allow-Headers"), "Range") || !strings.Contains(rr.Header().Get("Access-Control-Expose-Headers"), "Content-Range") {
+		t.Fatal("authorized preview origin cannot request/read file ranges")
+	}
+
 }
 
 func TestCORSMiddlewareRejectsNonLoopbackOrigin(t *testing.T) {
