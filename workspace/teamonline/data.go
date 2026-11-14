@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqlpolicy"
@@ -41,6 +42,9 @@ func cell(value any) (Cell, error) {
 	case float64:
 		return Cell{Kind: "real", Real: v}, nil
 	case string:
+		if !utf8.ValidString(v) {
+			return Cell{Kind: "text", Blob: []byte(v)}, nil
+		}
 		return Cell{Kind: "text", Text: v}, nil
 	case []byte:
 		return Cell{Kind: "blob", Blob: v}, nil
@@ -57,9 +61,12 @@ func (c Cell) value() (any, error) {
 	case "real":
 		return c.Real, nil
 	case "text":
+		if c.Blob != nil {
+			return string(c.Blob), nil
+		}
 		return c.Text, nil
 	case "blob":
-		return c.Blob, nil
+		return append([]byte{}, c.Blob...), nil
 	default:
 		return nil, fmt.Errorf("unsupported dataset cell")
 	}

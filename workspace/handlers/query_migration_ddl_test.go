@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
+	"github.com/manishiitg/coding-agent-loop/workspace/teamonline"
 )
 
 // TestInitializeWorkflowDBAcceptsIdempotentDropTable proves DROP TABLE IF
@@ -402,4 +404,77 @@ func TestPruneMigrationBackupsKeepsOnlyTheMostRecent(t *testing.T) {
 
 func formatBackupTestName(index int) string {
 	return fmt.Sprintf("backup-%04d-pre-migration.sqlite", index)
+}
+
+// PLAT-746-1023: whole selected data must retain identity/type/constraints,
+// never include an unrelated table, collide with live data or reseed updates.
+func TestSelectedDatasetCopyPreservesRowsAndNeverReseeds(t *testing.T) {
+	open := func(name string) *sql.DB {
+		db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.SetMaxOpenConns(1)
+		t.Cleanup(func() { db.Close() })
+		return db
+	}
+	source, destination := open("source.sqlite"), open("destination.sqlite")
+	for _, statement := range []string{
+		"CREATE TABLE parents(id INTEGER PRIMARY KEY AUTOINCREMENT,label TEXT)",
+		"INSERT INTO parents(id,label) VALUES(10,'removed')", "DELETE FROM parents", "INSERT INTO parents(id,label) VALUES(5,'parent')",
+		"CREATE TABLE child(parent INTEGER REFERENCES parents(id),value INTEGER,payload BLOB,empty BLOB)",
+		"INSERT INTO child(rowid,parent,value,payload,empty) VALUES(80,5,9007199254740993,x'00ff',x'')",
+		"CREATE INDEX child_parent ON child(parent)", "CREATE VIEW child_view AS SELECT rowid,value FROM child",
+		"CREATE TRIGGER child_update AFTER UPDATE ON child BEGIN UPDATE parents SET label=label WHERE id=NEW.parent; END",
+		"CREATE TABLE unrelated_private(value TEXT)", "INSERT INTO unrelated_private VALUES('not copied')",
+	} {
+		if _, err := source.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := destination.Exec("CREATE TABLE live_team(value TEXT);INSERT INTO live_team VALUES('retained')"); err != nil {
+		t.Fatal(err)
+	}
+	wanted := teamonline.Dataset{Tables: []string{"child"}, Views: []string{"child_view"}, Triggers: []string{"child_update"}}
+	var data bytes.Buffer
+	schema, err := teamonline.Export(t.Context(), source, wanted, &data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(schema.Tables) != 2 {
+		t.Fatalf("wrong table closure: %v", schema.Tables)
+	}
+	if err = teamonline.Import(t.Context(), destination, bytes.NewReader(data.Bytes()), true); err != nil {
+		t.Fatal(err)
+	}
+	var rowid, value int64
+	var kind, payload, empty string
+	if err = destination.QueryRow("SELECT rowid,value,typeof(payload),hex(payload),typeof(empty) FROM child").Scan(&rowid, &value, &kind, &payload, &empty); err != nil || rowid != 80 || value != 9007199254740993 || kind != "blob" || payload != "00FF" || empty != "blob" {
+		t.Fatalf("row changed: %d %d %s %s %s %v", rowid, value, kind, payload, empty, err)
+	}
+	var count int
+	if err = destination.QueryRow("SELECT count(*) FROM sqlite_schema WHERE name='unrelated_private'").Scan(&count); err != nil || count != 0 {
+		t.Fatal("copied an unused table")
+	}
+	if _, err = destination.Exec("INSERT INTO parents(label) VALUES('next')"); err != nil {
+		t.Fatal(err)
+	}
+	if err = destination.QueryRow("SELECT id FROM parents WHERE label='next'").Scan(&value); err != nil || value != 11 {
+		t.Fatalf("autoincrement sequence changed: %d %v", value, err)
+	}
+	// A republish succeeds without a reader at all: data is not inspected.
+	if err = teamonline.Import(t.Context(), destination, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = teamonline.Import(t.Context(), destination, bytes.NewReader(data.Bytes()), true); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("collision was not refused: %v", err)
+	}
+	var retained string
+	if err = destination.QueryRow("SELECT value FROM live_team").Scan(&retained); err != nil || retained != "retained" {
+		t.Fatal("existing Team data changed")
+	}
+	wanted.Triggers = nil
+	if _, err = teamonline.Describe(t.Context(), source, wanted); err == nil || !strings.Contains(err.Error(), "declare trigger") {
+		t.Fatalf("missing dependency not refused: %v", err)
+	}
 }
