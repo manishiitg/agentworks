@@ -178,7 +178,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		for ctx.Err() == nil {
 			if woken || time.Since(cleaned) >= crewTeamCheckAfter(true) {
 				api.removeStaleCrewTeamServerCopies(ctx)
-				expireAllCrewAgentTransfers(ctx, time.Now())
+				expireAllCrewAgentForks(ctx, time.Now())
 				cleaned = time.Now()
 			}
 			for _, t := range crewTeamsOnServer() {

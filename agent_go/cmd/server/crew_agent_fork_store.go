@@ -15,18 +15,18 @@ import (
 
 // Conversation is deliberately the portable history/native descriptor, not a
 // ProductConversationRecord: account IDs, runtime handles and grants stay home.
-type crewAgentTransferPayload struct {
+type crewAgentForkPayload struct {
 	Conversation *crewHandoffConversation `json:"conversation"`
 	NativeFiles  map[string]chunkedFile   `json:"native_files,omitempty"`
 }
 
-func readCrewAgentTransfer(project, id string) (crewAgentTransfer, error) {
-	var offer crewAgentTransfer
-	dir, err := crewAgentTransferDirectory(project, id)
+func readCrewAgentFork(project, id string) (crewAgentFork, error) {
+	var offer crewAgentFork
+	dir, err := crewAgentForkDirectory(project, id)
 	if err != nil {
 		return offer, err
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "transfer.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, "fork.json"))
 	if err != nil {
 		return offer, err
 	}
@@ -34,15 +34,15 @@ func readCrewAgentTransfer(project, id string) (crewAgentTransfer, error) {
 		return offer, err
 	}
 	if offer.Project != project || offer.ID != id {
-		return offer, fmt.Errorf("agent transfer record is unavailable")
+		return offer, fmt.Errorf("agent fork record is unavailable")
 	}
 	return offer, nil
 }
 
 // Staging bytes never travel through the Team's shared-folder namespace. Each
-// transfer has its own chunk store, removable together with the private chat.
-func crewAgentTransferChunkStore(offer crewAgentTransfer) (string, error) {
-	dir, err := crewAgentTransferDirectory(offer.Project, offer.ID)
+// fork has its own chunk store, removable together with the private chat.
+func crewAgentForkChunkStore(offer crewAgentFork) (string, error) {
+	dir, err := crewAgentForkDirectory(offer.Project, offer.ID)
 	if err != nil {
 		return "", err
 	}
@@ -50,7 +50,7 @@ func crewAgentTransferChunkStore(offer crewAgentTransfer) (string, error) {
 	return store, os.MkdirAll(store, 0700)
 }
 
-func validateCrewAgentTransferPayload(payload crewAgentTransferPayload) error {
+func validateCrewAgentForkPayload(payload crewAgentForkPayload) error {
 	if err := validateCrewHandoffConversation(payload.Conversation); err != nil {
 		return err
 	}
@@ -68,22 +68,22 @@ func validateCrewAgentTransferPayload(payload crewAgentTransferPayload) error {
 
 // Caller holds the Team record lock across admission and commit. Metadata is
 // published as ready only after every chunk and assembled native file checks.
-func stageCrewAgentTransfer(team crewTeam, offer crewAgentTransfer, person string, payload crewAgentTransferPayload, now time.Time) error {
+func stageCrewAgentFork(team crewTeam, offer crewAgentFork, person string, payload crewAgentForkPayload, now time.Time) error {
 	if person != offer.Sender {
 		return fmt.Errorf("only the maker can upload this agent")
 	}
 	if err := offer.admit(team, person, false, now); err != nil {
 		return err
 	}
-	if err := validateCrewAgentTransferPayload(payload); err != nil {
+	if err := validateCrewAgentForkPayload(payload); err != nil {
 		return err
 	}
-	dir, err := crewAgentTransferDirectory(offer.Project, offer.ID)
+	dir, err := crewAgentForkDirectory(offer.Project, offer.ID)
 	if err != nil {
 		return err
 	}
 	if payload.Conversation.Native != nil {
-		store, err := crewAgentTransferChunkStore(offer)
+		store, err := crewAgentForkChunkStore(offer)
 		if err != nil {
 			return err
 		}
@@ -104,15 +104,15 @@ func stageCrewAgentTransfer(team crewTeam, offer crewAgentTransfer, person strin
 		return err
 	}
 	offer.Ready = true
-	return saveCrewAgentTransfer(offer)
+	return saveCrewAgentFork(offer)
 }
 
-func downloadCrewAgentTransfer(team crewTeam, offer crewAgentTransfer, person string, now time.Time) (crewAgentTransferPayload, error) {
-	var payload crewAgentTransferPayload
+func downloadCrewAgentFork(team crewTeam, offer crewAgentFork, person string, now time.Time) (crewAgentForkPayload, error) {
+	var payload crewAgentForkPayload
 	if err := offer.admit(team, person, true, now); err != nil {
 		return payload, err
 	}
-	dir, err := crewAgentTransferDirectory(offer.Project, offer.ID)
+	dir, err := crewAgentForkDirectory(offer.Project, offer.ID)
 	if err != nil {
 		return payload, err
 	}
@@ -126,20 +126,20 @@ func downloadCrewAgentTransfer(team crewTeam, offer crewAgentTransfer, person st
 	if err = json.Unmarshal(raw, &payload); err != nil {
 		return payload, err
 	}
-	return payload, validateCrewAgentTransferPayload(payload)
+	return payload, validateCrewAgentForkPayload(payload)
 }
 
-func cancelCrewAgentTransfer(team crewTeam, offer crewAgentTransfer, person string, now time.Time) error {
+func cancelCrewAgentFork(team crewTeam, offer crewAgentFork, person string, now time.Time) error {
 	if err := offer.admit(team, person, false, now); err != nil {
 		return err
 	}
-	return removeCrewAgentTransfer(offer)
+	return removeCrewAgentFork(offer)
 }
 
-// Used by every pending-transfer surface. Expiry cleanup also runs on the
+// Used by every pending-fork surface. Expiry cleanup also runs on the
 // server maintenance tick, so unattended private uploads do not live forever.
-func listCrewAgentTransfers(project, person string, now time.Time) ([]crewAgentTransfer, error) {
-	out := []crewAgentTransfer{}
+func listCrewAgentForks(project, person string, now time.Time) ([]crewAgentFork, error) {
+	out := []crewAgentFork{}
 	team, err := readCrewTeam(project)
 	if err != nil {
 		return out, err
@@ -148,7 +148,7 @@ func listCrewAgentTransfers(project, person string, now time.Time) ([]crewAgentT
 	if err != nil {
 		return out, err
 	}
-	entries, err := os.ReadDir(filepath.Join(dir, "agent-transfers"))
+	entries, err := os.ReadDir(filepath.Join(dir, "agent-forks"))
 	if os.IsNotExist(err) {
 		return out, nil
 	}
@@ -159,12 +159,12 @@ func listCrewAgentTransfers(project, person string, now time.Time) ([]crewAgentT
 		if !entry.IsDir() {
 			continue
 		}
-		offer, err := readCrewAgentTransfer(project, entry.Name())
+		offer, err := readCrewAgentFork(project, entry.Name())
 		if err != nil {
 			return out, err
 		}
 		if !now.Before(offer.Expires) {
-			if err = removeCrewAgentTransfer(offer); err != nil {
+			if err = removeCrewAgentFork(offer); err != nil {
 				return out, err
 			}
 			continue
@@ -177,14 +177,14 @@ func listCrewAgentTransfers(project, person string, now time.Time) ([]crewAgentT
 	return out, nil
 }
 
-// Maintenance has no viewing identity; this scans only transfer metadata in
+// Maintenance has no viewing identity; this scans only fork metadata in
 // private Team state. It never reads or logs the staged conversation itself.
-func expireCrewAgentTransfers(ctx context.Context, project string, now time.Time) error {
+func expireCrewAgentForks(ctx context.Context, project string, now time.Time) error {
 	dir, err := crewTeamDir(project)
 	if err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(filepath.Join(dir, "agent-transfers"))
+	entries, err := os.ReadDir(filepath.Join(dir, "agent-forks"))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -198,12 +198,12 @@ func expireCrewAgentTransfers(ctx context.Context, project string, now time.Time
 		if !entry.IsDir() {
 			continue
 		}
-		offer, err := readCrewAgentTransfer(project, entry.Name())
+		offer, err := readCrewAgentFork(project, entry.Name())
 		if err != nil {
 			return err
 		}
 		if !now.Before(offer.Expires) {
-			if err = removeCrewAgentTransfer(offer); err != nil {
+			if err = removeCrewAgentFork(offer); err != nil {
 				return err
 			}
 		}
@@ -212,7 +212,7 @@ func expireCrewAgentTransfers(ctx context.Context, project string, now time.Time
 }
 
 // Include Team-off Crews too: turning a Team off must not retain an upload.
-func expireAllCrewAgentTransfers(ctx context.Context, now time.Time) {
+func expireAllCrewAgentForks(ctx context.Context, now time.Time) {
 	root, err := crewroot.StateRoot()
 	if err != nil {
 		return
@@ -234,7 +234,7 @@ func expireAllCrewAgentTransfers(ctx context.Context, now time.Time) {
 		}
 		mu := crewTeamRecordMutex(dir)
 		mu.Lock()
-		_ = expireCrewAgentTransfers(ctx, entry.Name(), now)
+		_ = expireCrewAgentForks(ctx, entry.Name(), now)
 		mu.Unlock()
 	}
 }
