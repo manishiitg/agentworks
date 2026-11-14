@@ -3,41 +3,36 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import ConnectionsToolsPage from './ConnectionsToolsPage'
-const state = vi.hoisted(() => ({ account: 'first', network: 'one', get: vi.fn(), personal: vi.fn() }))
+const state = vi.hoisted(() => ({ account: 'first', network: 'one', get: vi.fn(), personal: vi.fn(), canManage: true }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: state.account } }) }))
 vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: state.network }) }))
 vi.mock('../services/api', () => ({ default: { get: state.get } }))
 vi.mock('./workspace/WorkspacePageHeader', () => ({ WorkspacePageHeader: () => null }))
-vi.mock('./integrations/OpenVaultButton', () => ({ OpenVaultButton: () => null }))
+vi.mock('./integrations/OpenVaultButton', () => ({ OpenVaultButton: () => null, useCanManageVault: () => state.canManage }))
 vi.mock('./integrations/PersonalAccountsPanel', () => ({ default: (props: unknown) => { state.personal(props); return <div>Personal accounts</div> } }))
 vi.mock('./integrations/AccountSlackOverview', () => ({ AccountSlackOverview: () => { state.personal({ provider: 'slack' }); return <div>Slack as me and bots</div> } }))
 vi.mock('./integrations/AccountConnectionPanels', () => ({ AccountWhatsAppPanel: () => <div>WhatsApp connection</div>, AccountGitHubPanel: () => <div>GitHub accounts</div>, AccountComputerUsePanel: () => <div>Computer use</div> }))
+vi.mock('./secrets/SecretSelectionSection', () => ({ default: ({ mode }: { mode: string }) => <div data-vault-mode={mode}>Vault secrets manager</div> }))
 vi.mock('./BrowserConnectionsDialog', () => ({ BrowserConnectionsPanel: () => null }))
 const host = document.createElement('div')
 const root = createRoot(host)
 afterEach(() => { act(() => root.render(null)); state.get.mockReset(); state.personal.mockClear() })
 
-// PLAT-746: global setup must not inherit an active Crew or a previous account's inventory.
-it('keeps personal setup unscoped and drops late secret names after changing network', async () => {
-  let finish!: (value: unknown) => void
-  state.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-  state.get.mockResolvedValue({ data: [{ name: 'CURRENT_ACCOUNT_KEY' }] })
+// PLAT-746: reuse the real Vault surface only behind its existing management gate.
+it('embeds Vault directly and removes it on account changes without management access', async () => {
+  state.canManage = true
   await act(async () => root.render(<ConnectionsToolsPage />))
   const click = async (label: string) => { await act(async () => { const button = [...host.querySelectorAll('button')].find(node => node.textContent === label); expect(button).toBeTruthy(); button!.click() }) }
   expect(state.personal.mock.calls.map(([props]) => props.provider)).toEqual(expect.arrayContaining(['slack', 'google']))
   expect(state.personal.mock.calls.every(([props]) => props.workspacePath === undefined)).toBe(true)
-  expect(host.textContent).toContain('WhatsApp connection')
-  expect(host.textContent).toContain('GitHub accounts')
-  expect(host.textContent).toContain('Computer use')
-  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Manage')).toBe(false)
   await click('Secrets')
-  state.network = 'two'; state.account = 'second'
+  expect(host.querySelector('[data-vault-mode="vault"]')).toBeTruthy()
+  expect(host.textContent).not.toContain('Open Vault')
+  state.network = 'two'; state.account = 'second'; state.canManage = false
   await act(async () => root.render(<ConnectionsToolsPage />))
   await click('Secrets')
-  await act(async () => finish({ data: [{ name: 'OLD_ACCOUNT_KEY' }] }))
-  expect(host.textContent).toContain('CURRENT_ACCOUNT_KEY')
-  expect(host.textContent).not.toContain('OLD_ACCOUNT_KEY')
-  expect(state.get.mock.calls.every(([path, options]) => path === '/api/secrets/global' && options.skipSessionContext === true)).toBe(true)
+  expect(host.querySelector('[data-vault-mode]')).toBeNull()
+  expect(host.textContent).toContain('Ask a Vault manager')
 })
 
 it('shows Slack bot identity and authorized project usage alongside Slack as me', async () => {
