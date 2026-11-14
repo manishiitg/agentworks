@@ -42,6 +42,7 @@ func NewEventObserverWithLogger(store *EventStore, sessionID string, logger logg
 
 // HandleEvent processes agent events and stores them in the event store
 func (eo *EventObserver) HandleEvent(ctx context.Context, event *events.AgentEvent) error {
+	event = backgroundWakeEvent(ctx, event)
 	// Create the store event with only the original AgentEvent data
 	storeEvent := Event{
 		ID:        StableAgentEventID("observer:"+eo.sessionID, event),

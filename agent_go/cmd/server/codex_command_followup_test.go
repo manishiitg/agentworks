@@ -49,6 +49,10 @@ func TestNativeWakesWaitBatchAndDropOnStop(t *testing.T) {
 	if !strings.Contains(text, "successfully") || !strings.Contains(text, "with an error") || !strings.Contains(text, "(no output)") {
 		t.Fatalf("one follow-up must carry both results: %q", text)
 	}
+	presentation := nativeWakePresentation(commands, nil)
+	if presentation.Kind != "background_command_finished" || !presentation.Failed || presentation.Output != "ok" {
+		t.Fatalf("PLAT-746-993: mixed command results need a compact error notice with output only: %+v", presentation)
+	}
 	nativeWakes.addCodex(chat, codexFinishedCommand{id: "c"})
 	dropQueuedNativeWakes(chat, "stopped")
 	if commands, claude, muse := nativeWakes.take(chat); len(commands) != 0 || claude || len(muse) != 0 {
@@ -71,6 +75,10 @@ func TestMuseWakesBatchEmptyRepliesAndDropOnStop(t *testing.T) {
 	text := museWakesFinishedText(wakes)
 	if !strings.Contains(text, "(no output)") || !strings.Contains(text, "tests finished") {
 		t.Fatalf("missing wake results: %q", text)
+	}
+	presentation := nativeWakePresentation(nil, wakes)
+	if presentation.Kind != "background_work_finished" || presentation.Failed || presentation.Output != "tests finished" {
+		t.Fatalf("PLAT-746-993: Muse display must omit internal instructions: %+v", presentation)
 	}
 	nativeWakes.addMuse(chat, wakes[0])
 	dropQueuedNativeWakes(chat, "stopped")

@@ -156,7 +156,7 @@ func (api *StreamingAPI) adoptQueuedClaudeWake(sessionID string) {
 	} else if reason = backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID)); reason == "" && backgroundFollowUps.atLimit(sessionID) {
 		reason = "chain_limit"
 	}
-	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, claudeWakeMessage, "", nil, llmtypes.WithCodingProviderAdoptWake) {
+	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, claudeWakeMessage, "", nil, llmtypes.WithCodingProviderAdoptWake, storeevents.BackgroundWakePresentation{Kind: "background_work_finished"}) {
 		reason = "turn_not_started"
 	}
 	if reason != "" {

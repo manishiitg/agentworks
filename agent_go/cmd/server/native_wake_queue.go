@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
@@ -101,7 +103,7 @@ func (api *StreamingAPI) runQueuedNativeWakes(sessionID string) {
 		messages = append(messages, museWakesFinishedText(muse))
 	}
 	reason := backgroundFollowUps.skipReason(sessionID, stopped)
-	if reason == "" && !api.executeSyntheticTurnWithOutcome(sessionID, strings.Join(messages, "\n\n"), "", func(err error) {
+	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, strings.Join(messages, "\n\n"), "", func(err error) {
 		action := "done"
 		reason := "completed"
 		if err != nil {
@@ -109,7 +111,7 @@ func (api *StreamingAPI) runQueuedNativeWakes(sessionID string) {
 			reason = "turn_error"
 		}
 		log.Printf("[NATIVE_WAKE] session=%s commands=%d muse=%d action=%s reason=%s", sessionID, len(commands), len(muse), action, reason)
-	}) {
+	}, nil, nativeWakePresentation(commands, muse)) {
 		reason = "turn_not_started"
 	}
 	if reason != "" {
@@ -130,4 +132,34 @@ func dropQueuedNativeWakes(sessionID, reason string) {
 	if claude || len(commands) > 0 || len(muse) > 0 {
 		log.Printf("[NATIVE_WAKE] dropped session=%s commands=%d claude=%t muse=%d reason=%s", sessionID, len(commands), claude, len(muse), reason)
 	}
+}
+
+// Display only native result tails, never the internal continuation instructions.
+func nativeWakePresentation(commands []codexFinishedCommand, muse []museWake) events.BackgroundWakePresentation {
+	p := events.BackgroundWakePresentation{Kind: "background_work_finished"}
+	if len(commands) > 0 && len(muse) == 0 {
+		p.Kind = "background_command_finished"
+	}
+	var output []string
+	for _, command := range commands {
+		p.Failed = p.Failed || command.failed
+		tail := []rune(command.output)
+		if len(tail) > codexCommandOutputTail {
+			tail = tail[len(tail)-codexCommandOutputTail:]
+		}
+		if len(tail) > 0 {
+			output = append(output, string(tail))
+		}
+	}
+	for _, wake := range muse {
+		tail := []rune(wake.text)
+		if len(tail) > 2000 {
+			tail = tail[len(tail)-2000:]
+		}
+		if len(tail) > 0 {
+			output = append(output, string(tail))
+		}
+	}
+	p.Output = strings.Join(output, "\n\n")
+	return p
 }
