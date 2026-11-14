@@ -55,9 +55,15 @@ func codingAgentUsesStructuredTransportForChat(provider string, retainsSession b
 	return !retainsSession
 }
 
-func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
+func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest, provider string) bool {
 	if req == nil {
 		return false
+	}
+	// Top-level Codex chats have a lasting conversation regardless of the
+	// presentation kind. Internal children keep their bounded one-shot path;
+	// workflow step/stage execution selects its transport outside this route.
+	if strings.EqualFold(strings.TrimSpace(provider), "codex-cli") {
+		return strings.TrimSpace(req.ParentSessionID) == ""
 	}
 	return strings.TrimSpace(req.SessionKind) == ""
 }

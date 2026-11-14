@@ -5568,7 +5568,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if crewAskOnly {
 			profileAgentToolsMode = "mcp_only"
 		}
-		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
+		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req, finalProvider)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
 		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
 		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider, chatClaudeCodeTransport(streamCtx, currentUserID, sessionID, req.ClaudeCodeTransport))
