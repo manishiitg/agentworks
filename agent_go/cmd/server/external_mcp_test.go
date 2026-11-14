@@ -16,6 +16,7 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -486,9 +487,13 @@ func TestExternalMCPWorkspaceCatalogReachesSearchSyncAndReplyInput(t *testing.T)
 	if got := marshalStructured(t, search); !strings.Contains(got, "catalog needle visible") || strings.Contains(got, "catalog needle private") {
 		t.Fatalf("MCP search lost admission: %s", got)
 	}
+	// PLAT-856-571: work:<id> is an MCP address, not a second storage ID.
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{PairID: "fixture-pair", Side: "local", Editing: "local", PeerProjectID: "peer"}); err != nil {
+		t.Fatal(err)
+	}
 	status := call(map[string]any{"action": "sync", "sync_action": "status"})
 	requireRemoteSuccess(t, status, "owner sync status")
-	if got := marshalStructured(t, status); !strings.Contains(got, `"project_id":"team"`) {
+	if got := marshalStructured(t, status); !strings.Contains(got, `"project_id":"team"`) || !strings.Contains(got, `"pair_id":"fixture-pair"`) {
 		t.Fatalf("sync did not reach its project: %s", got)
 	}
 	f.api.sessionBusy = map[string]bool{session: true}
