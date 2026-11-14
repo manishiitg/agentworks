@@ -63,6 +63,14 @@ type LLMAgentWrapper struct {
 	lastResult mcpagent.Result
 }
 
+// NativeQuestionMode returns the server-admitted question capability of the
+// current stored wrapper. Synthetic turns must not infer it from request JSON.
+func (a *LLMAgentWrapper) NativeQuestionMode() (string, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return string(a.config.Provider), !a.closed && a.config.CodingAgentUserAnswersNativeQuestions
+}
+
 func providerNeedsPlainTextHistory(provider llm.Provider) bool {
 	return common.IsCLIProvider(string(provider))
 }
