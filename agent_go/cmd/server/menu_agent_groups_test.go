@@ -41,7 +41,7 @@ func TestAgentGroupsKeepOneMembershipPerProjectAndPreserveMenu(t *testing.T) {
 	}
 }
 
-// PLAT-746-982: forks keep personal membership without grouping unrelated
+// PLAT-746-983: forks keep personal membership without grouping unrelated
 // projects/people; both the sessions list and directory show the saved names.
 func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 	env := newTriggerLinkEnv(t)
@@ -54,7 +54,11 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 	}
 	for _, person := range []string{"owner", "other"} {
 		ctx := internalBotRequestContext(t.Context(), person)
-		if err := ensureCrewOwnerDefaultTab(ctx, person, profile, "beta"); err != nil {
+		binding, _, err := resolveConversationBindingForUser(ctx, person, profile, "beta:chat:"+person)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, person, profile, binding, "Agent"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -150,10 +154,7 @@ func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureCrewOwnerDefaultTab(ctx, "owner", profile, "team"); err != nil {
-		t.Fatal(err)
-	}
-	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, "team")
+	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, "team:chat:source")
 	if err != nil {
 		t.Fatal(err)
 	}
