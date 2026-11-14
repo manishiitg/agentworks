@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
@@ -101,6 +102,11 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 		return result, fmt.Errorf("this Team item ID already exists; nothing was replaced")
 	}
 	if ref.Seed && len(item.DatasetParts) > 0 {
+		// Same managed initialization used when an ordinary Crew is opened;
+		// no virtual-user account or filesystem permission path is added.
+		if _, err := api.reportPreviewWorkspaceClient(ctx, claims, destination.Path).InitializeWorkflowDB(ctx, workspace.InitializeWorkflowDBParams{DBPath: path.Join(destination.Path, "db/db.sqlite")}); err != nil {
+			return result, err
+		}
 		roots, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), destination.Path)
 		if err != nil || !found || roots.ID != destination.CrewID {
 			return result, fmt.Errorf("the Team dataset is unavailable")
