@@ -21,7 +21,14 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		}
 		for side, endpoint := range conversation.Endpoints {
 			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
+				if err := recheckAgentConversationContact(ctx, conversation); err != nil {
+					return agentMessageEndpoint{}, err
+				}
 				peer := conversation.Endpoints[1-side]
+				peer, err = publishedAgentAuthorizationPeer(ctx, peer)
+				if err != nil {
+					return agentMessageEndpoint{}, err
+				}
 				peerClaims := claims
 				// The hosted chat opened this inbox with this exact attached
 				// agent. Answering it is mail, not a grant of product tools.
@@ -88,6 +95,14 @@ func messagePeerView(claims *UserClaims, send bool) *UserClaims {
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
+	// A published sender thread is mail to an admitted audience, not a grant of
+	// Crew tools to an attached agent's messaging-only connection.
+	if peer.PublishedAgent != "" && token != nil && token.BoundAgentID != "" {
+		if _, err := publishedAgentAuthorizationPeer(ctx, peer); err == nil && claims.UserID == peer.PublishedAsker && namedAgentOperationAllowed(claims, send) {
+			return nil
+		}
+		return denied
+	}
 	if peer.External {
 		if peer.UserID != claims.UserID && peer.ShareID != "" {
 			return api.externalAuthorizeSharedPeer(ctx, claims, peer, send)

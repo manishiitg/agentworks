@@ -26,5 +26,8 @@ func (api *StreamingAPI) createCrewTeamHomeMain(ctx context.Context, owner, proj
 	if _, err := store.setAgentIdentity(ctx, owner, crewProfileID, record.ConversationKey, &name, nil, owner); err != nil {
 		return err
 	}
-	return store.writeMainChatPointer(ctx, path.Join(binding.WorkspacePath, "product.json"), record.ConversationKey, record.SessionID)
+	if err := store.writeMainChatPointer(ctx, path.Join(binding.WorkspacePath, "product.json"), record.ConversationKey, record.SessionID); err != nil {
+		return err
+	}
+	return defaultProjectOwners().SetAudience(crewProfileID, path.Base(binding.WorkspacePath), true, nil, []string{record.ConversationKey})
 }

@@ -955,11 +955,17 @@ func agentMailboxEndpointSQL(side, userID string, c triggerLinkCaller) (string, 
 		index = 1
 	}
 	teamID := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].team_agent_id'), '')", index)
+	published := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].published_agent'), '')", index)
+	thread := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].chat_key'), '')", index)
+	key := "\x00"
+	if c.Chat != nil {
+		key = c.Chat.Key
+	}
 	// A Team identity never falls back to a session when admission was removed.
-	identity := fmt.Sprintf("((%s = '' AND %s_session <> '' AND %s_session = ?) OR (? <> '' AND %s = ?))", teamID, side, side, teamID)
+	identity := fmt.Sprintf("((%s <> '' AND %s_session <> '' AND %s_session = ? AND %s = ?) OR (%s = '' AND ((%s = '' AND %s_session <> '' AND %s_session = ?) OR (? <> '' AND %s = ?))))", published, side, side, thread, published, teamID, side, side, teamID)
 	current := messageCallerTeamAgentID(userID, c)
 	clause := fmt.Sprintf("(%[1]s_named_agent_id = ? AND %[1]s_user_id = ? AND %[1]s_kind = ? AND %[1]s_ref_id = ? AND (%[1]s_external = 1 OR (%[1]s_profile = ? AND %[2]s)))", side, identity)
-	return clause, []any{c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session, current, current}
+	return clause, []any{c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session, key, session, current, current}
 
 }
 
@@ -986,6 +992,9 @@ func queryAgentMailboxConversations(ctx context.Context, where string, args ...a
 		if err := json.Unmarshal([]byte(endpoints), &c.Endpoints); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if publishedConversation(c) && recheckAgentConversationContact(ctx, c) != nil {
+			continue
 		}
 		out = append(out, c)
 	}

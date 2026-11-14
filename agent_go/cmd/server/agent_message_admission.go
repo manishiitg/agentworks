@@ -35,7 +35,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		return err
 	}
 	check = "shared_contact"
-	if err := recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
+	if err := recheckAgentConversationContact(ctx, c); err != nil {
 		return err
 	}
 	if source.ConditionJob != "" {
@@ -116,7 +116,11 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			}
 		}
 		view := hostedInboxReplyClaims(claims, c, m.From)
-		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, dest, view == claims); err != nil {
+		peer, peerErr := publishedAgentAuthorizationPeer(ctx, dest)
+		if peerErr != nil {
+			return peerErr
+		}
+		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, peer, view == claims); err != nil {
 			return err
 		}
 	}
