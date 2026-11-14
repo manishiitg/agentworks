@@ -13,11 +13,12 @@ it('groups only consecutive server-marked interrupted notices and preserves exac
   expect(groupTranscriptMessages([a, item('stop', 'unified_completion', { ...meta, stopped: true })])).toHaveLength(2)
 })
 it('groups delivered incoming messages by server sender identity, never labels alone or actionable uncertainty', () => {
-  const meta = { source: 'agent_message', sender_agent: 'sender-a', sender_user_id: 'owner', sender_label: 'Review', display_content: 'A message', delivery_status: 'sent_to_cli' }
+  const meta = { source: 'agent_message', sender_agent: 'Review', agent_message_inbox: 'inbox-a', sender_user_id: 'owner', sender_label: 'Review', display_content: 'A message', delivery_status: 'sent_to_cli' }
   const a = item('a', 'user_message', meta), b = item('b', 'user_message', meta)
-  const rows = groupTranscriptMessages([a, b, item('other', 'user_message', { ...meta, sender_agent: 'sender-b' }), item('uncertain', 'user_message', { ...meta, delivery_status: 'unconfirmed' })])
+  const rows = groupTranscriptMessages([a, b, item('other', 'user_message', { ...meta, agent_message_inbox: 'inbox-b' }), item('uncertain', 'user_message', { ...meta, delivery_status: 'unconfirmed' })])
   expect(rows.map(row => row.kind)).toEqual(['message_group', 'event', 'event'])
   expect(groupTranscriptMessages([item('cold-a', 'user_message', { ...meta, delivery_status: undefined }), item('cold-b', 'user_message', { ...meta, delivery_status: undefined })])).toHaveLength(1)
+  expect(groupTranscriptMessages([a, item('no-identity', 'user_message', { ...meta, agent_message_inbox: undefined })])).toHaveLength(2)
   expect(a.event.data).toEqual({ data: { metadata: meta } })
   expect(groupTranscriptMessages([a, item('waiting', 'user_message', { ...meta, delivery_status: 'queued_for_turn' })])).toHaveLength(2)
 })

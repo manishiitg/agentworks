@@ -7,14 +7,16 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 function descriptor(event: PollingEvent) {
   const outer = object(event.data), payload = outer.data ? object(outer.data) : outer
   const meta = object(payload.metadata)
-  if (['unified_completion', 'agent_end'].includes(event.type || '') && meta.retained_turn_outcome === 'interrupted' && meta.final_response_missing === true && meta.stopped !== true && !meta.partial_response) {
+  if (['unified_completion', 'agent_end'].includes(event.type || '') && meta.retained_turn_outcome === 'interrupted' && meta.final_response_missing === true && meta.stopped !== true && !meta.partial_response && !payload.error) {
     return { category: 'interrupted' as const, label: 'Interrupted', identity: JSON.stringify([event.session_id, 'interrupted']) }
   }
   if (event.type !== 'user_message' || meta.source !== 'agent_message' || typeof meta.sender_label !== 'string' || typeof meta.display_content !== 'string') return null
   // A clock, uncertain delivery or an actionable failure must remain visible.
   if (meta.confirmation !== 'confirmed' && meta.delivery_status && !['sent_to_cli', 'next_turn_started'].includes(String(meta.delivery_status))) return null
   if (meta.confirmation !== 'confirmed' && (meta.delivery_status === 'unconfirmed' || ['failed', 'accepted_but_unflushed'].includes(String(meta.confirmation)))) return null
-  const sender = typeof meta.sender_agent === 'string' && meta.sender_agent ? meta.sender_agent : typeof meta.agent_message_inbox === 'string' ? meta.agent_message_inbox : ''
+  // sender_agent is a human-readable label, NOT an identity. The admitted
+  // conversation inbox identifies this sender/recipient pair.
+  const sender = typeof meta.agent_message_inbox === 'string' ? meta.agent_message_inbox : ''
   if (!sender || !meta.sender_label.trim()) return null
   return { category: 'sender' as const, label: meta.sender_label, identity: JSON.stringify([event.session_id, meta.sender_user_id, sender, meta.sender_channel, meta.sender_label]) }
 }
