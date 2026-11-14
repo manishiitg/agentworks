@@ -281,3 +281,25 @@ func TestNativeMissingUsageDoesNotEmitZeroTotal(t *testing.T) {
 		t.Fatal("reported usage was hidden")
 	}
 }
+
+// A CLI's reported capacity overrides model tables without treating a billed
+// per-turn prompt total as the current context occupancy.
+func TestReportedContextWindowOverridesFallbackWithoutInventingOccupancy(t *testing.T) {
+	agent := &Agent{sessionID: "reported-context", modelID: "main-model", modelContextWindow: 200000, logger: loggerv2.NewNoop()}
+	input := 1
+	resp := &llmtypes.ContentResponse{Choices: []*llmtypes.ContentChoice{{GenerationInfo: &llmtypes.GenerationInfo{InputTokens: &input, Additional: map[string]interface{}{llmtypes.ContextWindowTokensMetaKey: 327680, "context_window_usage_known": false}}}}}
+	agent.accumulateTokenUsage(context.Background(), events.UsageMetrics{}, resp, 1)
+	if agent.modelContextWindow != 327680 {
+		t.Fatalf("native capacity lost to fallback: %d", agent.modelContextWindow)
+	}
+	for _, bad := range []interface{}{nil, 0, -1, 1.5, "1000000"} {
+		resp.Choices[0].GenerationInfo.Additional[llmtypes.ContextWindowTokensMetaKey] = bad
+		agent.applyReportedContextWindow(resp)
+		if agent.modelContextWindow != 327680 {
+			t.Fatalf("invalid capacity replaced native value: %v", bad)
+		}
+	}
+	if agent.currentContextWindowUsage != 0 {
+		t.Fatal("capacity fabricated context occupancy")
+	}
+}

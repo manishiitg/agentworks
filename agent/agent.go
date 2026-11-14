@@ -2042,6 +2042,7 @@ func calculateCostFromTokens(tokenCount int, costPer1MTokens float64) float64 {
 // It accepts ContentResponse to use the unified Usage field, with fallback to GenerationInfo.
 // Only accumulates if we have actual token values from LLM response (not estimates).
 func (a *Agent) accumulateTokenUsage(ctx context.Context, usageMetrics events.UsageMetrics, resp *llmtypes.ContentResponse, turn int) {
+	a.applyReportedContextWindow(resp)
 	// Check if we have actual token values from LLM response
 	// Only accumulate if resp has actual usage data (not estimated).
 	//
