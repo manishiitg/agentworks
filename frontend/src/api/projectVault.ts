@@ -7,6 +7,8 @@ export interface ProjectVaultItem {
   source?: string
   account_email?: string
   app?: string
+  /** An app each person signs in to themselves (never copied to a Team). */
+  sign_in?: boolean
   status: 'connected' | 'needs_attention' | 'stored' | 'online' | 'offline'
   selected: boolean; can_select: boolean
   /** Names of the person's own projects that use this item (Yours only). */

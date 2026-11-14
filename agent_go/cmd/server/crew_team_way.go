@@ -280,6 +280,9 @@ func (api *StreamingAPI) teamWayView(ctx context.Context, project, person string
 			view.OnTeam = append(view.OnTeam, name)
 		}
 	}
+	for _, need := range rec.Needs {
+		view.OnTeam = append(view.OnTeam, "need:"+strings.ToLower(strings.TrimPrefix(need.Provider, "custom:")))
+	}
 	slices.Sort(view.OnTeam)
 	if rec.Vault != "" {
 		owner := "team-" + project

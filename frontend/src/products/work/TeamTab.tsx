@@ -14,6 +14,7 @@ import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
+import { TeamWayCard } from './TeamWay'
 
 type Person = { id: string; username: string; email?: string }
 
@@ -140,7 +141,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
-      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}</>}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <TeamWayCard target={target} projectId={projectId} />}{team.on && <CrewWhereRow projectId={projectId} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}{team.lent && <LentFold lent={team.lent} target={target} projectId={projectId} />}</section>}
       {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
