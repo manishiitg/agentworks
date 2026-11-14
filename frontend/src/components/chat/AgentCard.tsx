@@ -73,6 +73,7 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
   fork?: () => void | Promise<void>
+  terminal?: () => void | Promise<void>
   /** Asks the agent to make its online copy (crew_run_online.go); only on the Mac, for your own agents. */
   runOnline?: () => void
   /** The saved order's key, for dragging rows. */
@@ -240,6 +241,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
       setForking(true)
       try { await actions.fork!() } finally { setForking(false); onDone() }
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
+    {actions.terminal && <button type="button" role="menuitem" className={item} onClick={() => { void actions.terminal!(); onDone() }}>Continue in my terminal</button>}
     {actions.runOnline && <button type="button" role="menuitem" className={item} title="Makes a separate agent, named with · online, that runs only on the server. This agent stays on your Mac." onClick={() => run(actions.runOnline!)}><Cloud aria-hidden="true" className="h-3.5 w-3.5" />Run online</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}

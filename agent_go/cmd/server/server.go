@@ -3054,6 +3054,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/computer-use", api.handleCrewComputerUse).Methods("GET", "POST")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop/folders", api.handleLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
+	apiRouter.HandleFunc("/external/v1/chats/terminal", api.handleChatTerminal).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/mcp/tasks", api.handleExternalMCPTasks).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/mcp/elicitation", api.handleExternalMCPInput).Methods("POST")
@@ -3858,6 +3859,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return
+	}
+
 	// Get current user ID for session isolation
 	currentUserID := GetUserIDFromContext(r.Context())
 	// A Code chat belongs to its pinned person: nothing else (a live-input
@@ -4321,6 +4327,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			releaseInputLane()
 		}
 	}()
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return
+	}
 	// Another request may have durably queued while this request acquired
 	// the lane. Give the drainer its older turn before doing any agent work.
 	if releaseInputLane != nil && shouldYieldToConversationBacklog(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
@@ -9461,6 +9471,9 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 // handled delivery error must be surfaced to the caller; it must never be
 // hidden behind an asynchronous next-turn fallback.
 func (api *StreamingAPI) deliverRetainedMainTerminalInput(ctx context.Context, sessionID, message string) (provider string, handled bool, err error) {
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		return "", true, errors.New(refusal)
+	}
 	if api == nil {
 		return "", false, nil
 	}
@@ -10515,6 +10528,10 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
 func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) (handled bool) {
+	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return true
+	}
 	attribution, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
 	// Not delivered: the caller starts a new turn under the same query ID, and that turn keeps the before-snapshot
 	// prepared here. Abandoning it marked every such turn's snapshot unavailable (server B 2026-10-28, PLAT-746-158).

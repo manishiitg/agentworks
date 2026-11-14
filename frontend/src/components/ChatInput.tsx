@@ -1,3 +1,4 @@
+import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
@@ -437,6 +438,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const storeActiveTabId = useChatStore(state => state.activeTabId)
   const activeTabId = scopedTabId === null ? null : (scopedTabId ?? storeActiveTabId)
   const forkFeedback = useChatForkFeedback(activeTabId)
+  const terminalOut = useChatTerminalOut(activeTabId)
   // Use the scoped tab as the mode source when ChatInput is embedded. The global
   // mode category can lag behind WorkflowLayout, which would otherwise make a
   // workflow builder input behave like product-profile chat.
@@ -2889,6 +2891,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   return (
     <TooltipProvider>
       <ChatComposerBand product={isProductSurface}>
+      <TerminalResumeNotice tabId={activeTabId} />
       {forkFeedback && <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
         {forkFeedback.pending ? <><Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin" /><span>Forking this chat… The new tab will open when ready.</span></> : <>
           <span className="min-w-0 flex-1 break-words">{forkFeedback.error}</span>
@@ -2898,7 +2901,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       </div>}
       {/* Preserve the chat draft while native terminal input owns all typing.
           Commands and uploads remain available through the terminal toolbar. */}
-      <div id={terminalComposerId} hidden={nativeTerminalTools} data-testid="message-composer">
+      <div id={terminalComposerId} hidden={nativeTerminalTools || terminalOut} data-testid="message-composer">
       {/* Read-only workflow/Crew references — same style as FileContextDisplay */}
       {(tabConfig?.workflowContext?.length ?? 0) > 0 && (
         <div className={inputPadX}>
