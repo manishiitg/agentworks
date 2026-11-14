@@ -133,16 +133,28 @@ var claudeTasksStoppedByPerson sync.Map // sessionID -> time.Time
 const claudeWakeMessage = "[Background work finished] Claude is following up on work it started earlier in this chat."
 
 // showClaudeWake shows the turn Claude starts on its own when its background work (a build, a test run) finishes
-// between turns. Claude wakes itself like this; the kept session used to drop that turn and the app sent its own
-// "background work finished" message instead (PLAT-746-856). Now a chat turn adopts Claude's own turn, the way T3
-// Code does (PLAT-746-899). Not after Stop, while another turn holds the chat or past the follow-up limit: that
-// turn is then not shown, and a session with none of Claude's tasks left closes.
+// between turns. Claude wakes itself like this; a chat turn adopts Claude's own turn, the way T3 Code does
+// (PLAT-746-899). While another turn holds the chat the wake waits in nativeWakes (its unclaimed timeout is
+// stopped) and is adopted when that turn ends, instead of being dropped.
 func (api *StreamingAPI) showClaudeWake(sessionID string) {
+	if native, wakeID := claudecode.ClaudeSDKWakeIdentity(sessionID); wakeID != 0 {
+		claudecode.QueueClaudeSDKWake(sessionID, native, wakeID)
+	}
+	nativeWakes.addClaude(sessionID)
+	api.runQueuedNativeWakes(sessionID)
+}
+
+// adoptQueuedClaudeWake runs the chat turn that adopts Claude's waiting wake.
+func (api *StreamingAPI) adoptQueuedClaudeWake(sessionID string) {
 	reason := ""
 	if at, ok := claudeTasksStoppedByPerson.LoadAndDelete(sessionID); ok && time.Since(at.(time.Time)) < 2*time.Minute {
 		reason = "stopped_by_person"
-	} else {
-		reason = backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID), api.isSessionBusyForAutoNotification(sessionID))
+	} else if !claudecode.ClaudeSDKWakePending(sessionID) {
+		// A person's turn took the kept session first; Claude's conversation keeps what it said.
+		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=wake_taken_by_turn", sessionID)
+		return
+	} else if reason = backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID)); reason == "" && backgroundFollowUps.atLimit(sessionID) {
+		reason = "chain_limit"
 	}
 	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, claudeWakeMessage, "", nil, llmtypes.WithCodingProviderAdoptWake) {
 		reason = "turn_not_started"
