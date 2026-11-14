@@ -150,7 +150,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	if status != 200 || len(remaining["messages"].([]any)) != 1 {
 		t.Fatal("failed message kept retrying or original pending message lost")
 	}
-	store, err := readAgentMessageStore(ctx)
+	store, err = readAgentMessageStore(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
