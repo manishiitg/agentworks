@@ -1,3 +1,4 @@
+import { readWorkspaceDocument } from '../components/files/readBoundedDocument'
 import { isPagedTextFile, readPreviewPage } from '../components/files/readPreviewPage'
 import { agentApi, workspaceApi } from '../services/api'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
@@ -23,16 +24,22 @@ export async function openWorkspaceFile(fullFilePath: string, line?: number): Pr
 
     // Viewable binary files load as raw bytes so the viewer can render them.
     if (isViewableBinaryFile(fileName)) {
-      const response = await workspaceApi.get(
-        `/api/documents/${encodeURIComponent(fullFilePath)}`,
-        { params: { download: 'true' }, responseType: 'arraybuffer' },
-      )
-      store.setBinaryFileData(response.data as ArrayBuffer)
+      const data = await readWorkspaceDocument(fullFilePath)
+      if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+      store.setBinaryFileData(data)
       store.setFileContent('')
       store.setShowFileContent(true)
       return
     }
     store.setBinaryFileData(null)
+
+    if (/\.ipynb$/i.test(fileName)) {
+      const data = await readWorkspaceDocument(fullFilePath)
+      if (useWorkspaceStore.getState().selectedFile?.path !== fullFilePath) return
+      store.setFileContent(new TextDecoder().decode(data))
+      store.setShowFileContent(true)
+      return
+    }
 
     // Source/log/data files are fetched in pieces before any full-content API.
     // Conversation JSON has a semantic loader, so keep that separate.

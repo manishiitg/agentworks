@@ -1,3 +1,4 @@
+import { binaryPreviewPage, readBoundedDocument } from '../components/files/readBoundedDocument'
 import { PagedTextPreview } from '../components/files/PagedTextPreview'
 import { decodePreviewPage, isPagedTextFile, PREVIEW_PAGE_BYTES, type PreviewPage } from '../components/files/readPreviewPage'
 import { sharedLink } from '../utils/sharedLinks'
@@ -75,7 +76,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     enabled: isRenderedSearchAvailable,
   })
 
-  const readSharedPage = useCallback(async (_path: string, offset = 0, signal?: AbortSignal) => {
+  const fetchSharedRange = useCallback(async (offset: number, signal?: AbortSignal) => {
     const token = getAuthToken()
     const headers: Record<string, string> = { Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` }
     if (token) headers.Authorization = `Bearer ${token}`
@@ -84,8 +85,12 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     if (resp.status === 403) throw new Error('You do not have access to this file.')
     if (resp.status !== 206 && resp.status !== 416) { await resp.body?.cancel(); throw new Error('Could not read this file preview.') }
     console.info(`[FILE_PREVIEW] id=${crypto.randomUUID()} source=shared offset=${offset}`)
-    return decodePreviewPage(resp.status, resp.headers.get('Content-Range') || '', await resp.arrayBuffer(), offset)
+    return { status: resp.status, range: resp.headers.get('Content-Range') || '', data: await resp.arrayBuffer() }
   }, [encodedPath, uid])
+  const readSharedPage = useCallback(async (_path: string, offset = 0, signal?: AbortSignal) => {
+    const response = await fetchSharedRange(offset, signal)
+    return decodePreviewPage(response.status, response.range, response.data, offset)
+  }, [fetchSharedRange])
 
   useEffect(() => {
     if (!filePath) {
@@ -110,6 +115,20 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
           if (controller.signal.aborted) return
           if (first.next < first.total) setFirstPage(first)
           setContent(first.next < first.total ? '' : first.text)
+          return
+        }
+        if (hasDocumentPreview(fileName) && !fileName.toLowerCase().endsWith('.csv')) {
+          const data = await readBoundedDocument(async offset => {
+            const response = await fetchSharedRange(offset, controller.signal)
+            return binaryPreviewPage(response.status, response.range, response.data, offset)
+          })
+          if (controller.signal.aborted) return
+          if (/\.ipynb$/i.test(fileName)) setContent(new TextDecoder().decode(data))
+          else {
+            setBinaryData(data)
+            objectUrl = URL.createObjectURL(new Blob([data]))
+            setBinaryUrl(objectUrl)
+          }
           return
         }
         const base = getApiBaseUrl() || ''
@@ -153,7 +172,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [encodedPath, filePath, uid, isVideoFile, isAudioFile, isImageFile, isPDF, isOfficeOrBinary, lowerPath, fileName, readSharedPage])
+  }, [encodedPath, filePath, uid, isVideoFile, isAudioFile, isImageFile, isPDF, isOfficeOrBinary, lowerPath, fileName, readSharedPage, fetchSharedRange])
 
   if (loading) {
     return (
