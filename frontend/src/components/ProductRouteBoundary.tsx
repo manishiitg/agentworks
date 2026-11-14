@@ -3,7 +3,7 @@ import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { markViewSwitchAdmitted, markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 import { workspaceSettingsPage } from '../utils/workspaceSettingsRoutes'
 import { syncWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { enabledProductSurfaces, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
 import { waitForChatStoreHydration } from '../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
@@ -18,6 +18,7 @@ import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { installWorkspaceStateFlush, queueWorkspaceState } from '../hooks/useWorkspaceReturn'
 import { restoreWorkspaceChat } from '../utils/restoreWorkspaceChat'
 import { workConversationKey } from '../utils/workConversationKey'
+const PromptLinkPage = lazy(() => import('./chat/PromptLinkPage').then(module => ({ default: module.PromptLinkPage })))
 
 type Status = 'loading' | 'ready' | 'disabled' | 'unavailable' | 'error'
 export function ProductRouteBoundary({ children, account, allowedProducts }: { children: ReactNode; account?: string; allowedProducts?: string[] | null }) {
@@ -56,6 +57,11 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       syncWorkspaceSettings(settings)
       useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
       finish('ready')
+      return () => controller.abort()
+    }
+    if (window.location.pathname === '/new') {
+      useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
+      void waitForChatStoreHydration().then(() => finish('ready'))
       return () => controller.abort()
     }
     const homeRequested = window.location.pathname === '/home'
@@ -189,7 +195,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
   // Crew switch does not tear down the chat and flash a full-page loader.
   // Account, connection and permission changes still remove it immediately.
   if (status === 'ready' || openingLink && loadingAge !== 'expired') return <>
-    <div className={openingLink ? 'contents pointer-events-none' : 'contents'} aria-busy={openingLink} inert={openingLink}>{children}</div>
+    <div className={openingLink ? 'contents pointer-events-none' : 'contents'} aria-busy={openingLink} inert={openingLink}>{window.location.pathname === '/new' ? <Suspense fallback={<p role="status">Opening prompt…</p>}><PromptLinkPage key={`${workspace}:${account}:${location}`} /></Suspense> : children}</div>
     {openingLink && loadingAge === 'notice' && <p role="status" className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground shadow-sm">Opening link…</p>}
   </>
   const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : resolution.message || 'This item is not available. You may not have access.'

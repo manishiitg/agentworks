@@ -3005,6 +3005,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
 	apiRouter.HandleFunc("/project-ask/conversation", api.handleProjectAskConversation).Methods(http.MethodPost)
+	apiRouter.HandleFunc("/prompt-links/open", api.handlePromptLinkOpen).Methods(http.MethodPost)
+	apiRouter.HandleFunc("/prompt-links", api.handlePromptLinkCreate).Methods(http.MethodPost)
 	apiRouter.HandleFunc("/project-chat-instructions", api.handleProjectChatInstructions).Methods(http.MethodGet, http.MethodPut)
 	api.registerDashboardFunctionRoutes(apiRouter)
 	api.registerDefaultDashboardRoutes(apiRouter)
