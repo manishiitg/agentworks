@@ -30,6 +30,9 @@ var processBridgeTokens = map[[32]byte]string{}
 func init() { codexcli.AppBridgeCredentialForOwner = acquireProcessBridgeCredential }
 
 func resetProcessBridgeCredentialsLocked() {
+	if len(processBridgeTokens) > 0 {
+		log.Printf("[CODING_BRIDGE] action=credentials_cleared reason=server_key_reset count=%d", len(processBridgeTokens))
+	}
 	processBridgeSlots = map[string]*processBridgeSlot{}
 	processBridgeTokens = map[[32]byte]string{}
 }
@@ -143,7 +146,8 @@ func acquireProcessBridgeCredential(session, scope string) *codexcli.AppBridgeCr
 	sessionShellConfigsMu.Unlock()
 
 	return &codexcli.AppBridgeCredential{
-		Token: credential.token,
+		Token:          credential.token,
+		ReleasePending: func() { DiscardPendingProcessBridgeCredential(session, credential.token) },
 		Started: func() {
 			bridgeTokenMu.Lock()
 			defer bridgeTokenMu.Unlock()
