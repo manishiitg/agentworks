@@ -35,9 +35,10 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
     // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
-    // Online, how everyone else reaches it (Mac online, Online agents, Artifacts); your agents and actions are Team › Agents. Each opens its own page.
+    // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
     add('mcp', 'Share', 'Team', UsersRound, 'team')
     add('mcp', 'Share', 'Online', Globe, 'online')
+    add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot (owner, 14 Nov).
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')

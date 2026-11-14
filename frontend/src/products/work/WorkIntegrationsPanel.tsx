@@ -44,9 +44,9 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
   useWorkspaceViewTarget('mcp', target => {
     // Sharing, where it lives (or laptop access) and connected agents are one Access page (owner, 3 Nov); old names open it.
     // Slack bot stays in Connections, not Online (owner, 14 Nov).
-    // Dashboards are the Access page's own tab next to Share (owner, 9 Nov).
+    // Artifacts is its own page; the former dashboards target redirects here (owner, 14 Nov).
     // Team and Online (owner, 11 Nov) are the same page, each opened at its own tabs.
-    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'dashboards'].includes(target) ? 'access' : target
+    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'dashboards', 'artifacts'].includes(target) ? 'access' : target
     if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
@@ -54,7 +54,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     if (target === 'team') openCrewAccess(projectId, '', 'team')
     if (target === 'online') openCrewAccess(projectId, '', 'mac')
     if (target === 'agents') openCrewAccess(projectId, '', 'team', 'agents')
-    if (target === 'dashboards') openCrewAccess(projectId, '', 'dashboards')
+    if (target === 'dashboards' || target === 'artifacts') openCrewAccess(projectId, '', 'artifacts')
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack-bot', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
   useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])
