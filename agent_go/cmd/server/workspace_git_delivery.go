@@ -112,6 +112,7 @@ func workspaceGitDeliveryPush(ctx context.Context, dir string, target *workspace
 	// Scoped auth stays in the child environment, not argv, a URL or a file.
 	cmd := workspaceGitCommand(ctx, dir,
 		"-c", "protocol.https.allow=always",
+		"-c", "core.hooksPath=/dev/null",
 		"-c", "credential.helper=", "-c", "core.askPass=",
 		"-c", "http.proxy=", "-c", "http.sslVerify=true", "-c", "http.followRedirects=false",
 		"-c", "push.gpgSign=false", "-c", "push.recurseSubmodules=no",
