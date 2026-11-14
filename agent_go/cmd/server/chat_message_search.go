@@ -117,8 +117,9 @@ func messageSearchSnippet(content, query string) string {
 func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Request, input chatSearchInput, workspaceFilter string) {
 	started := time.Now()
 	result := []chatSearchHit{}
+	ok, reason := false, "invalid_arguments"
 	defer func() {
-		log.Printf("[CHAT_SEARCH] user=%s results=%d elapsed_ms=%d", GetUserIDFromContext(r.Context()), len(result), time.Since(started).Milliseconds())
+		log.Printf("[CHAT_SEARCH] user=%s results=%d elapsed_ms=%d ok=%t reason=%s", GetUserIDFromContext(r.Context()), len(result), time.Since(started).Milliseconds(), ok, reason)
 	}()
 	w.Header().Set("Cache-Control", "private, no-store")
 	query := strings.TrimSpace(input.Query)
@@ -140,6 +141,7 @@ func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
+	reason = "store_unavailable"
 	page, err := api.eventStore.ScanChatMessages(ctx, cursor)
 	if err != nil {
 		externalError(w, 503, "unavailable", "Message search is unavailable. Try again from your workspace.")
@@ -183,6 +185,7 @@ func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Reque
 	if page.Next != nil {
 		next = strconv.FormatInt(int64(*page.Next), 10)
 	}
+	ok, reason = true, "done"
 	externalJSON(w, map[string]any{"results": result, "next_cursor": next})
 }
 
