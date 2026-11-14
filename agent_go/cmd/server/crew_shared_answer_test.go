@@ -32,12 +32,16 @@ func TestCrewSharedAnswerReadsOnlyAdmittedFiles(t *testing.T) {
 		state.Versions[name] = crewTeamVersion{File: &crewsync.File{Size: 10}}
 	}
 	team := crewTeam{Folder: crewTeamFolder{Folders: []string{"team", "MEMORY.md"}}}
-	got, err := crewSharedAnswerFiles(team, state, root)
+	got, err := crewSharedAnswerFiles(team, state, root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(got, "SHARED_REPORT") {
 		t.Fatal("allowed shared report missing")
+	}
+	denied, err := crewSharedAnswerFiles(team, state, root, func(string) bool { return false })
+	if err != nil || denied != "" {
+		t.Fatal("narrowed connection file guard bypassed")
 	}
 	for _, private := range []string{"PRIVATE_REPORT", "PRIVATE_MEMORY", "PRIVATE_CREDENTIAL"} {
 		if strings.Contains(got, private) {
@@ -63,7 +67,7 @@ func TestCrewSharedAnswerDigestOnlyExactOwnerChat(t *testing.T) {
 	if !ok {
 		t.Fatal("allowed agent fixture missing")
 	}
-	rec := crewSharedAnswerRecord{ID: "msg-one", AgentID: agent.ID, Owner: "owner", Asker: "other", Question: "Shared report status?", Answer: "The report is ready", NeedsWork: true, At: time.Now()}
+	rec := crewSharedAnswerRecord{Authority: crewSharedAnswerAuthority(team, agent), ID: "msg-one", AgentID: agent.ID, Owner: "owner", Asker: "other", Question: "Shared report status?", Answer: "The report is ready", NeedsWork: true, At: time.Now()}
 	if err = saveCrewSharedAnswer("team", rec); err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +84,22 @@ func TestCrewSharedAnswerDigestOnlyExactOwnerChat(t *testing.T) {
 	got, err = crewSharedAnswerDigest("team", "owner", agent.ChatKey)
 	if err != nil || got != "" {
 		t.Fatal("digest repeated")
+	}
+	// Narrowing Live chat while an answer is generated invalidates that
+	// result, even though the agent remains In team and otherwise askable.
+	hidden := team.Agents[agent.ID]
+	hidden.Rule.ChatShare = crewChatShareAgent
+	team.Agents[agent.ID] = hidden
+	if err = writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	rec.ID = "msg-chat-narrowed"
+	if err = saveCrewSharedAnswer("team", rec); err == nil {
+		t.Fatal("answer retained revoked chat authority")
+	}
+	team.Agents[agent.ID] = agent
+	if err = writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
 	}
 	// Access was real above; now revoking sharing must refuse a new answer.
 	saved := team.Agents[agent.ID]

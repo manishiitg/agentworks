@@ -23,7 +23,16 @@ func (api *StreamingAPI) answerCrewSharedMessage(ctx context.Context, c agentCon
 	if api.agentProfiles == nil {
 		return fmt.Errorf("server answer models are unavailable")
 	}
-	agent, data, err := crewSharedAnswerContext(ctx, dest.ID, source.UserID, dest.TeamAgentID)
+	claims := &UserClaims{UserID: source.UserID}
+	if m.SenderConnectionID != "" {
+		current, e := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
+		if e != nil || current.UserID != source.UserID {
+			return fmt.Errorf("the asking connection is no longer available")
+		}
+		claims = current
+	}
+	ctx = context.WithValue(ctx, UserContextKey, claims)
+	agent, data, authority, err := crewSharedAnswerContext(ctx, dest.ID, source.UserID, dest.TeamAgentID)
 	if err != nil {
 		return err
 	}
@@ -32,6 +41,9 @@ func (api *StreamingAPI) answerCrewSharedMessage(ctx context.Context, c agentCon
 		return err
 	}
 	provider, model := resolveProfileRuntimeModel(profile.Runtime, "", "")
+	if provider == "muse-cli" || provider == "agy-cli" {
+		return fmt.Errorf("this program does not yet support tool-free shared answers; choose another existing server model")
+	}
 	record := &publishedProject{OwnerID: source.UserID, WorkspaceID: dest.ID, ProfileID: crewProfileID, Provider: provider, ModelID: model, Revision: "shared-answer-" + uuid.NewString()}
 	dir, err := record.historyDir()
 	if err != nil {
@@ -68,7 +80,7 @@ func (api *StreamingAPI) answerCrewSharedMessage(ctx context.Context, c agentCon
 	if len(response.Answer) > 16<<10 {
 		return fmt.Errorf("the shared answer was too long; ask a narrower question")
 	}
-	receipt := crewSharedAnswerRecord{ID: m.ID, AgentID: agent.ID, Owner: agent.OwnerID, Asker: source.UserID, Question: m.Text, Answer: response.Answer, NeedsWork: response.NeedsWork, At: time.Now().UTC()}
+	receipt := crewSharedAnswerRecord{Authority: authority, ID: m.ID, AgentID: agent.ID, Owner: agent.OwnerID, Asker: source.UserID, Question: m.Text, Answer: response.Answer, NeedsWork: response.NeedsWork, At: time.Now().UTC()}
 	if err = saveCrewSharedAnswer(dest.ID, receipt); err != nil {
 		return err
 	}

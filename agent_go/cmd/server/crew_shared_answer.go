@@ -21,10 +21,10 @@ const crewSharedAnswerBytes = 96 << 10
 
 // Only explicit shared context, never the maker's runtime, credentials or home.
 // Files are selected from the current Team manifest, not a walk of the Crew.
-func crewSharedAnswerFiles(team crewTeam, state crewTeamFileState, root string) (string, error) {
+func crewSharedAnswerFiles(team crewTeam, state crewTeamFileState, root string, allows func(string) bool) (string, error) {
 	names := []string{}
 	for name, v := range state.held(team.Folder) {
-		if v.File != nil && crewTeamAllowed(name) {
+		if v.File != nil && crewTeamAllowed(name) && (allows == nil || allows(name)) {
 			names = append(names, name)
 		}
 	}
@@ -55,26 +55,30 @@ func crewSharedAnswerFiles(team crewTeam, state crewTeamFileState, root string) 
 	return out.String(), nil
 }
 
-func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string) (crewTeamRegisteredAgent, string, error) {
+func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string) (crewTeamRegisteredAgent, string, string, error) {
 	team, err := readCrewTeam(project)
 	if err != nil || !crewTeamAgentsVisible(team, asker) {
-		return crewTeamRegisteredAgent{}, "", fmt.Errorf("this Team is not available to you")
+		return crewTeamRegisteredAgent{}, "", "", fmt.Errorf("this Team is not available to you")
 	}
 	agent, ok := team.Agents[agentID]
 	if !ok || !agent.InTeam || !team.member(agent.OwnerID) || !crewTeamAccountActive(agent.OwnerID) {
-		return agent, "", fmt.Errorf("this agent is no longer In team")
+		return agent, "", "", fmt.Errorf("this agent is no longer In team")
 	}
 	state, err := readCrewTeamCurrentState(project)
 	if err != nil {
-		return agent, "", err
+		return agent, "", "", err
 	}
 	root, err := crewTeamFilesRoot(project)
 	if err != nil {
-		return agent, "", err
+		return agent, "", "", err
 	}
-	files, err := crewSharedAnswerFiles(team, state, root)
+	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.UserID != asker {
+		return agent, "", "", fmt.Errorf("the asking account could not be verified")
+	}
+	files, err := crewSharedAnswerFiles(team, state, root, func(name string) bool { return crewTeamGuardAllows(claims, name, false) })
 	if err != nil {
-		return agent, "", err
+		return agent, "", "", err
 	}
 	var out strings.Builder
 	fmt.Fprintf(&out, "Agent: %s\nPurpose: %s\n", redaction.Text(agent.Name), redaction.Text(agent.Purpose))
@@ -111,12 +115,13 @@ func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string
 	current, err := readCrewTeam(project)
 	a, exists := current.Agents[agentID]
 	if err != nil || !crewTeamAgentsVisible(current, asker) || !exists || !a.InTeam || a.OwnerID != agent.OwnerID || a.Rule != agent.Rule || current.Revision != team.Revision || !reflect.DeepEqual(current.Folder, team.Folder) || !current.member(a.OwnerID) || !crewTeamAccountActive(a.OwnerID) {
-		return agent, "", fmt.Errorf("this agent's sharing changed; ask again")
+		return agent, "", "", fmt.Errorf("this agent's sharing changed; ask again")
 	}
-	return agent, text, nil
+	return agent, text, crewSharedAnswerAuthority(team, agent), nil
 }
 
 type crewSharedAnswerRecord struct {
+	Authority string    `json:"-"`
 	ID        string    `json:"id"`
 	AgentID   string    `json:"agent_id"`
 	Owner     string    `json:"owner_id"`
@@ -157,6 +162,9 @@ func saveCrewSharedAnswer(project string, record crewSharedAnswerRecord) error {
 	a, ok := team.Agents[record.AgentID]
 	if err != nil || !crewTeamAgentsVisible(team, record.Asker) || !ok || !a.InTeam || a.OwnerID != record.Owner || !team.member(record.Owner) {
 		return fmt.Errorf("the agent is no longer shared with you")
+	}
+	if record.Authority != "" && record.Authority != crewSharedAnswerAuthority(team, a) {
+		return fmt.Errorf("the shared context permissions changed; ask again")
 	}
 	records, err := readCrewSharedAnswers(project)
 	if err != nil {
@@ -276,4 +284,13 @@ func crewSharedAnswerSavedSummary(ctx context.Context, project string, agent cre
 		summary = string(chars[:16000]) + "\n[Summary shortened]"
 	}
 	return summary
+}
+
+func crewSharedAnswerAuthority(team crewTeam, agent crewTeamRegisteredAgent) string {
+	raw, _ := json.Marshal(struct {
+		Folder crewTeamFolder
+		Rule   crewTeamAgentRule
+		Owner  string
+	}{team.Folder, agent.Rule, agent.OwnerID})
+	return string(raw)
 }
