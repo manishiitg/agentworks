@@ -5584,6 +5584,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			agyPersistentInteractive = false
 			claudeCodeTransport = ""
 		}
+		if finalProvider == "codex-cli" {
+			kind := "other"
+			switch req.SessionKind {
+			case "":
+				kind = "chat"
+			case "generic_agent":
+				kind = "generic_agent"
+			}
+			log.Printf("[CODEX_CHAT_TRANSPORT] session=%s kind=%s has_parent=%t allows_persistent=%t structured=%t persistent=%t", sessionID, kind, req.ParentSessionID != "", allowPersistentInteractive, forceStructuredCodingAgent, codexPersistentInteractive)
+		}
 		chatWorkingFolder := perUserChatsFolder
 		if resolvedProfile != nil {
 			chatWorkingFolder = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)

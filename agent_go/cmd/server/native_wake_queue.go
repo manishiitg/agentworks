@@ -54,10 +54,12 @@ func (q *nativeWakeQueue) addMuse(sessionID string, wake museWake) {
 	}
 	for _, queued := range q.muse[sessionID] {
 		if queued.nativeSessionID == wake.nativeSessionID && queued.turnID == wake.turnID {
+			log.Printf("[MUSE_WAKE] session=%s native=%s turn=%s action=skipped reason=duplicate", sessionID, wake.nativeSessionID, wake.turnID)
 			return
 		}
 	}
 	q.muse[sessionID] = append(q.muse[sessionID], wake)
+	log.Printf("[MUSE_WAKE] session=%s native=%s turn=%s action=queued", sessionID, wake.nativeSessionID, wake.turnID)
 }
 
 func (q *nativeWakeQueue) addClaude(sessionID string) {
@@ -99,7 +101,15 @@ func (api *StreamingAPI) runQueuedNativeWakes(sessionID string) {
 		messages = append(messages, museWakesFinishedText(muse))
 	}
 	reason := backgroundFollowUps.skipReason(sessionID, stopped)
-	if reason == "" && !api.executeSyntheticTurn(sessionID, strings.Join(messages, "\n\n")) {
+	if reason == "" && !api.executeSyntheticTurnWithOutcome(sessionID, strings.Join(messages, "\n\n"), "", func(err error) {
+		action := "done"
+		reason := "completed"
+		if err != nil {
+			action = "failed"
+			reason = "turn_error"
+		}
+		log.Printf("[NATIVE_WAKE] session=%s commands=%d muse=%d action=%s reason=%s", sessionID, len(commands), len(muse), action, reason)
+	}) {
 		reason = "turn_not_started"
 	}
 	if reason != "" {
