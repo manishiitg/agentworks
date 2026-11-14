@@ -84,6 +84,12 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string) 
 func refreshChatUsageProbe(ctx context.Context, key, owner, provider, connectionID string, environment func() []string) {
 	started := time.Now()
 	usage, err := readNativeAccountUsage(ctx, provider, nativeUsageEnvironment(provider, environment()))
+	// Keep the complete selected-account snapshot for Limits. The chat chip
+	// below remains a deliberately reduced projection. Failed probes never erase
+	// known native windows, and a newer live event wins over this request's start.
+	if err == nil {
+		subscriptionLimits.put(provider, connectionID, "probe", started, usage.Windows)
+	}
 	var limits []chatUsageLimit
 	for _, window := range usage.Windows {
 		var resets time.Time
