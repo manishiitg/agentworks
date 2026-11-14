@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -19,20 +21,43 @@ type crewOnlineAgent struct {
 
 // The caller has already passed crewSyncRoots' owner admission. This is an
 // owner status projection, not a new directory or automation mutation path.
-func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roots crewroot.Roots, placements map[string]crewAgentPlacement) ([]crewOnlineAgent, error) {
+func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roots crewroot.Roots, placements map[string]crewAgentPlacement) (rows []crewOnlineAgent, err error) {
+	started := time.Now()
+	reason := "conversation_registry_unavailable"
+	defer func() {
+		if err != nil {
+			log.Printf("[CREW_ONLINE_AGENTS] owner=%s project=%s result=failed reason=%s elapsed_ms=%d", owner, roots.ID, reason, time.Since(started).Milliseconds())
+			return
+		}
+		automations := 0
+		for _, row := range rows {
+			automations += len(row.Automations)
+		}
+		log.Printf("[CREW_ONLINE_AGENTS] owner=%s project=%s result=read agents=%d automations=%d elapsed_ms=%d", owner, roots.ID, len(rows), automations, time.Since(started).Milliseconds())
+	}()
+	ready := false
+	for _, placement := range placements {
+		ready = ready || placement.Location == "server"
+	}
+	if !ready {
+		return []crewOnlineAgent{}, nil
+	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
 	if err != nil {
 		return nil, err
 	}
+	reason = "project_automations_unavailable"
 	dispatcher := api.crewMoveDispatcher()
 	profile, binding, manifest, _, err := dispatcher.projectManifestAnyOwner(ctx, owner, crewProfileID, roots.ID)
 	if err != nil {
 		return nil, err
 	}
+	reason = "automation_state_unavailable"
 	states, err := dispatcher.loadState(ctx, owner)
 	if err != nil {
 		return nil, err
 	}
+	reason = "webhooks_unavailable"
 	hooks, err := readProjectWebhookDefinitions(ctx, roots.Virtual)
 	if err != nil {
 		return nil, err
@@ -68,7 +93,7 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 
 func crewOnlineAutomation(dispatcher *ProjectActionDispatcher, job productScheduleJob, runs string) crewTabAutomation {
 	resp := dispatcher.jobResponse(job, runs)
-	item := crewTabAutomation{Tab: firstNonEmptyTrimmed(resp.ChatID, macMainTab), Kind: "Schedule", Name: job.Schedule.Name, On: resp.Enabled}
+	item := crewTabAutomation{Tab: firstNonEmptyTrimmed(job.Schedule.ChatKey, macMainTab), Kind: "Schedule", Name: job.Schedule.Name, On: resp.Enabled}
 	when := crewTabTimingWords(resp)
 	if cfg := job.Schedule.Condition; cfg != nil {
 		item.Kind, item.Tab = "Watcher", firstNonEmptyTrimmed(cfg.Target.ChatID, macMainTab)
