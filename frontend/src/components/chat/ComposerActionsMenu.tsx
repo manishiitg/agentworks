@@ -39,12 +39,12 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
 }
 
 /** Reuse the exact actions inside the chat's model/context menu. */
-export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, deferAction }: ComposerActions & { deferAction: (action: () => void) => void }) {
+export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpenLiveView, liveViewTitle, sendOptions, deferAction, attachOnBar = false }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean }) {
   const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <>
-      <Menu.Item disabled={uploading} onSelect={onAttach} data-testid="chat-upload-button" className={rowClass}>
+      {!attachOnBar && <Menu.Item disabled={uploading} onSelect={onAttach} data-testid="chat-upload-button" className={rowClass}>
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
-      </Menu.Item>
+      </Menu.Item>}
       {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { deferAction(onOpenCommands) }} className={rowClass}>
         <Wand2 className="h-4 w-4" aria-hidden="true" />Slash commands<kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">/</kbd>
       </Menu.Item>}
@@ -59,4 +59,13 @@ export function ComposerActionItems({ uploading, onAttach, onOpenCommands, onOpe
         <ChatSendOptions {...sendOptions} deferAction={deferAction} />
       </>}
   </>
+}
+
+/** One click attaches: the paperclip sits on the chat box's bottom row beside the model chip, not inside its menu. */
+export function ComposerAttachButton({ uploading, onAttach }: Pick<ComposerActions, 'uploading' | 'onAttach'>) {
+  const label = uploading ? 'Uploading files…' : 'Attach files'
+  return <button type="button" disabled={uploading} onClick={onAttach} data-testid="chat-upload-button" aria-label={label} title={label}
+    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />}
+  </button>
 }
