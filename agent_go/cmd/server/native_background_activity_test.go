@@ -50,10 +50,10 @@ func TestNativeBackgroundTaskFactsKeepUsageAndRunsSeparate(t *testing.T) {
 	shell.CommandLabel = "deploy.sh verify"
 	shell.BackgroundMode = "explicit"
 	shell = api.nativeBackgroundFacts("chat", shell)
-	update := shell
-	update.CommandLabel, update.BackgroundMode = "", ""
-	update.State = "progress"
-	if got := api.nativeBackgroundFacts("chat", update); got.CommandLabel != shell.CommandLabel || got.BackgroundMode != shell.BackgroundMode {
+	shellProgress := shell
+	shellProgress.CommandLabel, shellProgress.BackgroundMode = "", ""
+	shellProgress.State = "progress"
+	if got := api.nativeBackgroundFacts("chat", shellProgress); got.CommandLabel != shell.CommandLabel || got.BackgroundMode != shell.BackgroundMode {
 		t.Fatal("task progress lost the shell classification or redacted command")
 	}
 	api.projectNativeBackgroundUsage("chat", "claude-code", "native-parent", "account", []nativeusage.Record{
