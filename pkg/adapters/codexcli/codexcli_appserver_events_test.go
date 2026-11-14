@@ -198,3 +198,34 @@ func TestCodexAppServerEmitsStructuredPlanSnapshots(t *testing.T) {
 		t.Fatalf("native plans lost/crossed chat: %+v %v", plans, err)
 	}
 }
+
+// PLAT-746-990: plan updates must reach subscribers even without a token event.
+func TestCodexAccountLimitsEmitWithoutTokenUsage(t *testing.T) {
+	r := &codexRPC{events: make(chan codexRPCMessage, 3), done: make(chan struct{})}
+	for _, percent := range []string{"0", "42"} {
+		r.events <- codexRPCMessage{Method: "account/rateLimits/updated", Params: json.RawMessage(`{"rateLimits":{"primary":{"usedPercent":` + percent + `,"windowDurationMins":300}}}`)}
+	}
+	r.events <- codexRPCMessage{Method: "turn/completed", Params: json.RawMessage(`{"threadId":"thread","turn":{"id":"turn","status":"completed"}}`)}
+	initial := &llmtypes.StatusLine{Provider: "codex-cli", InputTokens: 100, Metadata: map[string]any{"context_used_tokens": 123}}
+	var statuses []*llmtypes.StatusLine
+	_, err := (&CodexCLIAdapter{}).consumeAppTurn(context.Background(), &codexAppSession{status: initial}, r, "thread", "turn", func(c llmtypes.StreamChunk) {
+		if c.StatusLine != nil {
+			statuses = append(statuses, c.StatusLine)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 2 {
+		t.Fatalf("expected two immediate quota updates, got %d", len(statuses))
+	}
+	for i, status := range statuses {
+		windows := status.RateLimitWindows()
+		if len(windows) != 1 || windows[0].UsedPercent != float64(i*42) || status.InputTokens != 100 || status.Metadata["context_used_tokens"] != 123 {
+			t.Fatalf("lost or mutated quota/context: %+v", status)
+		}
+	}
+	if _, changed := initial.Metadata[llmtypes.RateLimitWindowsMetaKey]; changed {
+		t.Fatal("quota update mutated prior status")
+	}
+}

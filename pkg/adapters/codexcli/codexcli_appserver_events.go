@@ -216,7 +216,26 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				if json.Unmarshal(msg.Params, &payload) == nil {
 					s.mu.Lock()
 					s.rateLimits = codexAppRateLimits(payload.RateLimits)
+					// Account updates can arrive without another token event. Emit
+					// immediately, retaining context/tokens and cloning the metadata
+					// so later updates cannot mutate an already delivered snapshot.
+					status := &llmtypes.StatusLine{Provider: "codex-cli", Model: s.model}
+					if s.status != nil {
+						*status = *s.status
+					}
+					status.Metadata = map[string]any{}
+					if s.status != nil {
+						for key, value := range s.status.Metadata {
+							status.Metadata[key] = value
+						}
+					}
+					windows := codexStructuredRateLimitWindows(s.rateLimits)
+					status.SetRateLimitWindows(windows)
+					s.status = status
 					s.mu.Unlock()
+					if len(windows) > 0 {
+						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeStatusLine, StatusLine: status})
+					}
 				}
 				continue
 			}
