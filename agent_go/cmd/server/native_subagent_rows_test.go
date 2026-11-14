@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"os"
 	"path/filepath"
@@ -54,6 +55,7 @@ func TestNativeSubagentRowsUseSharedDurableFacts(t *testing.T) {
 	}
 	for _, r := range running {
 		r.ID += "-end"
+		r.TurnID = "later-parent-turn"
 		r.Timestamp = start.Add(30 * time.Second)
 		r.State = "finished"
 		if r.Provider == "muse-cli" {
@@ -70,13 +72,19 @@ func TestNativeSubagentRowsUseSharedDurableFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	nativeCount := 0
+	for _, event := range page.Events {
+		if event.Type == string(agentevents.CodingAgentNativeActivity) {
+			nativeCount++
+		}
+	}
 	raw, err := json.Marshal(page.Events)
-	if err != nil || len(page.Events) != 6 {
+	if err != nil || nativeCount != 6 {
 		t.Fatalf("durable helper events=%s err=%v", raw, err)
 	}
 	for _, r := range running {
 		ended := api.nativeBackgroundFacts("chat", llmtypes.NativeRecord{Provider: r.Provider, SessionID: r.SessionID, Kind: "helper", TaskID: r.TaskID, TaskRunID: r.TaskRunID, State: "progress"})
-		if ended.WorkID != r.WorkID || ended.EndedAt.IsZero() || ended.Tokens != nil {
+		if ended.WorkID != r.WorkID || ended.EndedAt.IsZero() || ended.Tokens != nil || ended.TurnID != "launch-turn" {
 			t.Fatal("replay lost canonical task facts")
 		}
 	}
