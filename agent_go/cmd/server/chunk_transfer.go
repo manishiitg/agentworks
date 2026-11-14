@@ -115,6 +115,7 @@ func assembleChunked(store string, v chunkedFile, w io.Writer) error {
 
 // chunkSource is where a chunk's bytes are in this copy: a file and the range inside it.
 type chunkSource struct {
+	root   string // optional trusted source root for a Team's separate installed skills
 	path   string
 	offset int64
 	size   int64
@@ -122,6 +123,9 @@ type chunkSource struct {
 
 // readChunkSource reads one chunk back from this copy and checks it is still the same bytes.
 func readChunkSource(root string, source chunkSource, id string) ([]byte, error) {
+	if source.root != "" {
+		root = source.root
+	}
 	f, err := os.Open(filepath.Join(root, filepath.FromSlash(source.path)))
 	if err != nil {
 		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")

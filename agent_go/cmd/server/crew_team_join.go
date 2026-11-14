@@ -160,6 +160,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var agents *[]crewTeamJoinAgent
+	skillRoot := ""
 	if input.LocalProject != "" {
 		target, roots, err := api.crewTeamJoinTarget(r.Context(), claims, input.LocalProject)
 		if err != nil {
@@ -193,6 +194,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		}
 		agents = &choices
 		input.Folder = roots.Files
+		skillRoot = filepath.Join(roots.Resources, "skills")
 	}
 
 	// Check the chosen folder before accepting: a refused folder keeps the invite open, so the person picks another
@@ -236,7 +238,10 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 			err = os.MkdirAll(dir, 0o700)
 		}
 		if err == nil {
-			b := crewTeamLocal{FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
+			if skillRoot == "" {
+				skillRoot = filepath.Join(folder, ".agentworks", "skills")
+			}
+			b := crewTeamLocal{SkillRoot: skillRoot, FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
 				Root: folder, LocalProject: input.LocalProject, Status: "pending", Mounted: true, ProtectPrivate: input.LocalProject != ""}
 			if input.LocalProject != "" {
 				err = backupCrewTeamJoinSetup(folder)

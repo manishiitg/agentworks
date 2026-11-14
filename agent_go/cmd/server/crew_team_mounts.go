@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
 type crewTeamMount struct {
@@ -17,6 +18,39 @@ type crewTeamMount struct {
 	Local  string `json:"local"`
 	Device uint64 `json:"device"`
 	Inode  uint64 `json:"inode"`
+}
+
+func (b crewTeamLocal) separateSkills() bool {
+	return b.SkillRoot != "" && filepath.Clean(b.SkillRoot) != filepath.Join(b.Root, "skills")
+}
+
+func (b crewTeamLocal) diskRoot(remote string) string {
+	if b.SkillRoot != "" && crewTeamUnder(remote, "skills") {
+		return filepath.Dir(b.SkillRoot)
+	}
+	return b.Root
+}
+
+func (b *crewTeamLocal) setSkillRoot(root string) {
+	previous := b.SkillRoot
+	if previous == "" {
+		previous = filepath.Join(b.Root, "skills")
+	}
+	if filepath.Clean(previous) != filepath.Clean(root) {
+		for id, m := range b.Mounts {
+			if crewTeamUnder(m.Remote, "skills") {
+				delete(b.Mounts, id)
+			}
+		}
+		for rel := range b.Files {
+			if crewTeamUnder(rel, "skills") {
+				delete(b.Files, rel)
+			}
+		}
+		b.Downloaded = false
+		b.Revision = 0
+	}
+	b.SkillRoot = root
 }
 
 func crewTeamUnder(rel, prefix string) bool {
@@ -132,7 +166,7 @@ func (b crewTeamLocal) checkIgnore(ctx context.Context, paths []string) (map[str
 // Refuse links in every existing parent. A collision must never make sync follow
 // a private link out of the registered project root.
 func crewTeamMountPath(root, rel string) (string, error) {
-	if !crewTeamAllowed(rel + "/file.txt") {
+	if _, err := publication.CleanPath(rel); err != nil || !crewsync.Allowed(crewTeamKey(rel), false) || !(crewTeamFolder{Whole: true}).holds(rel) {
 		return "", fmt.Errorf("invalid Team folder path")
 	}
 	current := root
@@ -198,7 +232,27 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 	active := map[string]bool{}
 	for _, entry := range share.mounts() {
 		active[entry.ID] = true
+		root := b.diskRoot(entry.Path)
 		old, had := b.Mounts[entry.ID]
+		if had && old.Inode != 0 && !entry.File {
+			if info, e := os.Lstat(filepath.Join(root, filepath.FromSlash(old.Local))); e == nil {
+				stamp := crewsync.StampOf(info)
+				if stamp.Inode != old.Inode || stamp.Device != old.Device {
+					// A different local folder at the same spelling is private. Its
+					// bytes must never inherit this Team identity or its upload base.
+					delete(b.Mounts, entry.ID)
+					had = false
+					old = crewTeamMount{}
+					for rel := range b.Files {
+						if crewTeamUnder(rel, entry.Path) {
+							delete(b.Files, rel)
+						}
+					}
+					b.Downloaded = false
+					b.Revision = 0
+				}
+			}
+		}
 		if !had && !b.ProtectPrivate {
 			for rel := range b.Files {
 				if crewTeamUnder(rel, entry.Path) {
@@ -207,16 +261,16 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 				}
 			}
 		}
-		local, err := crewTeamFreeMount(b.Root, entry.Path, old.Local)
+		local, err := crewTeamFreeMount(root, entry.Path, old.Local)
 		if err != nil {
 			return err
 		}
-		to, err := crewTeamMountPath(b.Root, local)
+		to, err := crewTeamMountPath(root, local)
 		if err != nil {
 			return err
 		}
 		if had {
-			from, err := crewTeamMountPath(b.Root, old.Local)
+			from, err := crewTeamMountPath(root, old.Local)
 			if err != nil {
 				return err
 			}
