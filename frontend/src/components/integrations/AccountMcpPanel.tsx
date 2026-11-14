@@ -42,7 +42,7 @@ export default function AccountMcpPanel() {
       const next = await vaultConnectionsApi.operate(operation, fields)
       if (!alive.current) return
       setResult(next)
-      setMessage(next.message || (operation === 'remove_connection' ? 'Connection removed from Vault.' : operation === 'sync' ? 'Tools refreshed.' : 'Connection saved. Check its status below.'))
+      setMessage(next.message || (operation === 'remove_connection' ? 'Connection removed from Vault.' : operation === 'sync' ? 'Connection checked and tools refreshed.' : 'Connection saved. Check its status below.'))
       setTarget(undefined); setRemoving(undefined)
       await vault.refresh()
     } catch (cause) { if (alive.current) setError(errorText(cause)) }
@@ -63,7 +63,7 @@ export default function AccountMcpPanel() {
         const saved = vault.items.find(item => 'vault_' + item.id === server.id)!
         return { ...server, source: 'Remote · ' + (server.source || 'Saved in Vault'),
           actions: saved.can_manage ? [
-            { label: 'Refresh tools', disabled: busy, run: () => operate('sync', { connection_id: saved.id }) },
+            { label: 'Test connection', disabled: busy, run: () => operate('sync', { connection_id: saved.id }) },
             { label: 'Sign in', disabled: busy, run: () => operate('sign_in', { connection_id: saved.id }) },
             { label: 'Edit connection', disabled: busy, run: () => { setError(''); setTarget({ server: saved }) } },
             { label: 'Remove connection', destructive: true, disabled: busy, run: () => { setError(''); setRemoving(saved) } },

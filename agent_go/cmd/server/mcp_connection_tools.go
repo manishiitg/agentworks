@@ -333,8 +333,10 @@ func mcpConnectionScreenOAuth(id string, start *OAuthStartResponse, discovery *O
 		out["message"] = "Open the sign-in page, then refresh this connection after approving access."
 	}
 	if discovery != nil {
-		out["setup"] = discovery
-		out["message"] = discovery.Message
+		setup := *discovery
+		setup.Message = "Enter the OAuth app details here and register the callback URL with the service."
+		out["setup"] = setup
+		out["message"] = setup.Message
 	}
 	data, err := json.Marshal(out)
 	return string(data), err
