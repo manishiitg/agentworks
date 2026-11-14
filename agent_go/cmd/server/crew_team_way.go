@@ -68,6 +68,10 @@ type teamWayView struct {
 	// OnTeam lists the personal apps (connection ids) and secrets (names) already shared, so the Vault panel can show
 	// "On the Team" instead of the button.
 	OnTeam []string `json:"on_team"`
+	// Rules says the Team's Crew has rules for its agents, and Skills are the skills it uses. Both are the Crew's own
+	// setup, already shared with every member's copy (crew_team_setup.go); this only lets the screen list them.
+	Rules  bool     `json:"rules"`
+	Skills []string `json:"skills"`
 	Notice string   `json:"notice,omitempty"`
 }
 
@@ -267,7 +271,19 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 }
 
 func (api *StreamingAPI) teamWayView(ctx context.Context, project, person string) (teamWayView, error) {
-	view := teamWayView{Items: []teamWayItem{}, OnTeam: []string{}}
+	view := teamWayView{Items: []teamWayItem{}, OnTeam: []string{}, Skills: []string{}}
+	if team, e := readCrewTeam(project); e == nil {
+		if setup, workspace, sctx, ok := api.crewSetupOf(ctx, team.OwnerID, project); ok {
+			view.Rules = strings.TrimSpace(setup.ChatInstructions) != ""
+			if !view.Rules {
+				if text, found, e := readFileFromWorkspace(sctx, workspace+"/PROJECT_INSTRUCTIONS.md"); e == nil && found && strings.TrimSpace(text) != "" {
+					view.Rules = true
+				}
+			}
+			view.Skills = slices.Clone(setup.SelectedSkills)
+			slices.Sort(view.Skills)
+		}
+	}
 	rec, err := readTeamWay(project)
 	if err != nil {
 		return view, err

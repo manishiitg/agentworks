@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, Plug } from 'lucide-react'
+import { KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { changeTeamWay, teamFailure, teamWay, useTeamTab, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
@@ -34,7 +34,7 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
   }
   return <section aria-label="How we work" className={teamCard}>
     <h3 className="font-semibold">How we work</h3>
-    {way.view.items.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Add an app or a key from your Vault with Add to Team.</p>}
+    {way.view.items.length === 0 && !way.view.rules && way.view.skills.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Add an app or a key from your Vault with Add to Team.</p>}
     <ul className="divide-y divide-border">
       {way.view.items.map(item => {
         const signIn = item.kind === 'needs_sign_in'
@@ -53,6 +53,13 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
         </li>
       })}
     </ul>
+    {(way.view.rules || way.view.skills.length > 0) && <>
+      <ul className="divide-y divide-border border-t border-border">
+        {way.view.rules && <li className="flex items-center gap-2 py-2"><ScrollText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Team rules</span></li>}
+        {way.view.skills.map(name => <li key={name} className="flex items-center gap-2 py-2"><Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{name}</span></li>)}
+      </ul>
+      <p className="text-xs text-muted-foreground">Rules and skills are changed in this Crew's settings or by asking in chat; everyone's agents use them.</p>
+    </>}
     {line && <p role="status" className="text-xs text-muted-foreground">{line}</p>}
   </section>
 }
