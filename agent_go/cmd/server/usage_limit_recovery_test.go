@@ -16,7 +16,7 @@ import (
 // documents, and claim. Only provider execution is absent; original input must
 // never be replayed, including when the failure came from an incoming message.
 func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) {
-	for _, scenario := range []string{"future", "due_after_restart", "fresh_past", "too_overdue", "stopped", "person_queued", "stop_after_claim", "child", "other_turn", "different_native", "missing_reset", "stopped_before_failure", "incoming_future", "incoming_due", "incoming_batch", "incoming_stopped"} {
+	for _, scenario := range []string{"future", "due_after_restart", "fresh_past", "too_overdue", "stopped", "person_queued", "stop_after_claim", "child", "other_turn", "different_native", "missing_reset", "stopped_before_failure", "incoming_future", "incoming_due", "incoming_batch", "incoming_stopped", "unowned_native"} {
 		t.Run(scenario, func(t *testing.T) {
 			const user, sid = "owner", "usage-limit-chat"
 			files := map[string]string{}
@@ -102,6 +102,8 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 				api.retainedMainTurnExecutionIDs = map[string]string{sid: "current-execution"}
 				api.retainedMainTurnCanonicalIDs = map[string]retainedTurnIdentity{"current-execution": {ID: "current-native"}}
 				event.Data.TurnID = "older-native"
+			case "unowned_native":
+				event.ExecutionID = "older-execution"
 			case "missing_reset":
 				delete(completion.Metadata, "retry_at")
 			case "stopped_before_failure":
@@ -114,7 +116,7 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected := scenario != "fresh_past" && scenario != "too_overdue" && scenario != "child" && scenario != "other_turn" && scenario != "different_native" && scenario != "missing_reset" && scenario != "stopped_before_failure"
+			expected := scenario != "fresh_past" && scenario != "too_overdue" && scenario != "child" && scenario != "other_turn" && scenario != "different_native" && scenario != "missing_reset" && scenario != "stopped_before_failure" && scenario != "unowned_native"
 			quotaTurns, notices := 0, 0
 			groups := map[string]bool{}
 			for _, turn := range turns {
