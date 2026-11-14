@@ -259,8 +259,9 @@ type crewShareSharedEntry struct {
 
 // crewShareSharedWithYou lists the agents other people share with the viewer, from the Team tab's own rows, and the
 // Crew owner's enabled actions when the viewer is not the owner. The viewer's rights come from the same rules the
-// rows already carry (can_make_changes, chat_share); this adds no access.
-func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, groups map[string][]crewShareAction, workflows []crewShareWorkflow) []crewShareSharedPerson {
+// rows already carry (can_make_changes, chat_share); this adds no access. Each agent carries one status line, worded
+// here: working shows its Doing post, waiting shows who it waits on, idle shows its last activity time.
+func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, live crewTeamLiveView, groups map[string][]crewShareAction, workflows []crewShareWorkflow) []crewShareSharedPerson {
 	out := []crewShareSharedPerson{}
 	at := map[string]int{}
 	person := func(id, name string) *crewShareSharedPerson {
@@ -276,17 +277,28 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		}
 		return &out[i]
 	}
+	status := map[string]crewTeamLiveAgent{}
+	for _, a := range live.Agents {
+		status[a.ID] = a
+		if a.ChatKey != "" {
+			status[a.ChatKey] = a
+		}
+	}
+	for _, a := range live.Idle {
+		status[a.ID] = a
+		if a.ChatKey != "" {
+			status[a.ChatKey] = a
+		}
+	}
 	for _, a := range rows {
 		if a.Mine || !a.InTeam {
 			continue
 		}
-		line := a.PlaceLabel
-		if line == "" {
-			line = "Runs on the server, always available"
-			if a.Place == "mac" {
-				line = "On their Mac"
-			}
+		found, ok := status[a.Key]
+		if !ok {
+			found, ok = status[a.WatchKey]
 		}
+		line := crewShareTeammateStatusLine(a, found, ok)
 		can := "ask it"
 		if a.CanMakeChanges != nil && *a.CanMakeChanges {
 			can = "make changes"
@@ -331,6 +343,37 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		}
 	}
 	return out
+}
+
+// crewShareTeammateStatusLine is the one status line under a teammate's agent: while it works its Doing post, while
+// it waits who it waits on, otherwise its last activity time. Only me agents never reach here; a missing live row
+// falls back to the row's own words, never to an invented state.
+func crewShareTeammateStatusLine(row crewTeamTabAgent, live crewTeamLiveAgent, ok bool) string {
+	switch row.Activity {
+	case "running":
+		if ok && live.Doing != "" {
+			return live.Doing
+		}
+		return "Working"
+	case "waiting":
+		if ok && live.Waiting != "" {
+			return live.Waiting
+		}
+		if row.StatusLabel != "" {
+			return row.StatusLabel
+		}
+		return "Waiting"
+	default:
+		if ok && live.LastMessageAt != "" {
+			if at, err := time.Parse(time.RFC3339, live.LastMessageAt); err == nil {
+				return "Last active " + roughAgo(time.Since(at))
+			}
+		}
+		if row.StatusLabel != "" {
+			return row.StatusLabel
+		}
+		return "Idle"
+	}
 }
 
 const (
@@ -688,7 +731,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 			page.ActionsGroup.SetupAsk = crewShareSetupAsk("this Crew")
 		}
 	}
-	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, groups, workflows)
+	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, tab.Live, groups, workflows)
 	if len(page.Agents) == 0 {
 		page.AgentsEmpty = "No agents to share yet."
 	}
