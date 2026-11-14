@@ -154,6 +154,8 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 			last_sequence INTEGER NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS structured_chat_event_id ON structured_chat_events(event_id)`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_native_goal ON structured_chat_events(session_id, sequence DESC)
+		 WHERE json_extract(payload,'$.type')='native_goal_updated'`,
 		`CREATE TABLE IF NOT EXISTS structured_chat_migrations (
 			session_id TEXT PRIMARY KEY,
 			migrated_at TEXT NOT NULL

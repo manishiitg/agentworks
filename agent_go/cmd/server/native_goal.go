@@ -40,7 +40,7 @@ func parseNativeGoalCommand(query, sessionID string) (llmtypes.NativeGoalCommand
 // Called only after ordinary project, tab and account admission. Goal commands
 // never become raw retained input, and unsupported programs never receive them
 // as a model prompt. Queued commands are parsed again at their own admission.
-func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.Request, req *QueryRequest, sessionID, provider string, allowDirectControl bool) (*http.Request, bool) {
+func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.Request, req *QueryRequest, sessionID, provider string, allowDirectControl, builder bool) (*http.Request, bool) {
 	command, known, err := parseNativeGoalCommand(req.Query, sessionID)
 	trustedRestore := false
 	if trusted, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
@@ -62,7 +62,7 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 				if resumeAfterRestart {
 					r = r.WithContext(llmtypes.WithNativeGoalTurnPause(r.Context(), llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: "app_restarted"}))
 				}
-			} else if previous.Goal.Status == "paused" || (previous.Goal.Status == "active" && !api.sessionTurnRunning(sessionID)) {
+			} else if (previous.Goal.Status == "paused" || (previous.Goal.Status == "active" && !api.sessionTurnRunning(sessionID))) && !(req.IsAutoNotification && (previous.Reason == "no_live_process" || previous.Reason == "native_pause_failed")) {
 				reason := previous.Reason
 				if !req.IsAutoNotification {
 					reason = "person_message"
@@ -80,6 +80,21 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return r, true
+	}
+	if command.Action != "show" {
+		owner := ""
+		if api.eventStore != nil {
+			owner = api.eventStore.GetSessionOwner(sessionID)
+		}
+		actor := ""
+		if claims := GetUserFromContext(r.Context()); claims != nil {
+			actor = claims.UserID
+		}
+		if !builder || (owner != "" && owner != actor) {
+			log.Printf("[AGENT_GOAL] session=%s action=skipped reason=goal_owner_required", sessionID)
+			http.Error(w, "Only this chat's Builder can change its goal.", http.StatusForbidden)
+			return r, true
+		}
 	}
 	if !isToolBackedChatMode(req.AgentMode) {
 		log.Printf("[AGENT_GOAL] session=%s action=skipped status=unavailable reason=unsupported_chat_mode", sessionID)
@@ -101,6 +116,7 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return r, true
 		}
+		log.Printf("[AGENT_GOAL] session=%s action=started reason=person_%s", sessionID, command.Action)
 		update, err := controlNativeGoal(r.Context(), sessionID, command.Action)
 		if err != nil {
 			log.Printf("[AGENT_GOAL] session=%s action=failed status=unknown reason=control_failed", sessionID)

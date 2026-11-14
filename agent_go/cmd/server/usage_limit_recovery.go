@@ -154,6 +154,7 @@ func (api *StreamingAPI) observeUsageLimitFailure(sessionID string, event storee
 	if !armed {
 		return
 	}
+	api.markNativeGoalRestoreUsageLimited(sessionID)
 	api.conversationTurnQueueMu.Lock()
 	api.registerConversationQueueOwnerLocked(userID, sessionID)
 	api.conversationTurnQueueMu.Unlock()

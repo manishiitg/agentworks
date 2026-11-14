@@ -3982,7 +3982,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var goalHandled bool
-	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider, !otherRoleTurn)
+	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider, !otherRoleTurn, !currentUserIsReadOnly && !crewAskOnly)
 	if goalHandled {
 		return
 	}
@@ -4358,7 +4358,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Could not save goal intent", http.StatusServiceUnavailable)
 				return
 			}
-		} else if !req.IsAutoNotification {
+		} else if !req.IsAutoNotification && turnProvider == "codex-cli" && previous.Provider == "codex-cli" && previous.Goal != nil {
 			if err := api.projectNativeGoal(sessionID, *previous, "intent_message"); err != nil {
 				http.Error(w, "Could not save goal intent", http.StatusServiceUnavailable)
 				return
