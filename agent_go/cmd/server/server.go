@@ -3958,6 +3958,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var goalHandled bool
+	r, goalHandled = api.prepareNativeGoalQuery(w, r, &req, sessionID, turnProvider)
+	if goalHandled {
+		return
+	}
 	crewGuest := crewGuestCallerForTurn(req, currentUserID)
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
