@@ -136,4 +136,43 @@ func TestChatMessageSearchSkipsToolStore500MB(t *testing.T) {
 		t.Fatalf("message scan missed index: %s", plan)
 	}
 	t.Logf("VERIFY-METRIC: chat_message_search fixture_bytes=%d index_ms=%d scan_us=%d scanned=%d payload_bytes=%d plan=%s", len(tool)*1000, installMS, elapsed.Microseconds(), page.Scanned, page.Bytes, plan)
+
+	// Measure the feature's write overhead on the same populated store, using
+	// the real per-event transaction/fsync path, not a bulk-insert shortcut.
+	// Both phases insert 10,000 bounded 4 KB events: 10% messages, 90% tools.
+	if err = rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"structured_chat_message_scan", "structured_chat_message_window"} {
+		if _, err = j.db.Exec("DROP INDEX " + name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var toolEvent Event
+	toolRaw, _ := json.Marshal(map[string]any{"type": "tool_call_end", "data": map[string]any{"data": map[string]any{"result": strings.Repeat("x", 4000)}}})
+	if err = json.Unmarshal(toolRaw, &toolEvent); err != nil {
+		t.Fatal(err)
+	}
+	userEvent := journalTestEvent("insert", strings.Repeat("x", 4000))
+	insert := func(prefix string) time.Duration {
+		started := time.Now()
+		for i := 0; i < 10000; i++ {
+			event := toolEvent
+			if i%10 == 0 {
+				event = userEvent
+			}
+			event.ID = fmt.Sprintf("%s-%d", prefix, i)
+			event.Timestamp = time.Now()
+			if _, _, err = j.Append(prefix, event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return time.Since(started)
+	}
+	baseline := insert("baseline")
+	if err = installChatMessageIndexes(j); err != nil {
+		t.Fatal(err)
+	}
+	indexed := insert("indexed")
+	t.Logf("VERIFY-METRIC: chat_message_insert rows=10000 message_percent=10 text_bytes=4000 baseline_ms=%d indexed_ms=%d added_us_per_insert=%.2f", baseline.Milliseconds(), indexed.Milliseconds(), float64((indexed-baseline).Microseconds())/10000)
 }
