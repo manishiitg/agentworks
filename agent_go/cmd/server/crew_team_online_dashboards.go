@@ -27,9 +27,29 @@ const teamOnlinePreparationNeeded = "Ask your agent to prepare this dashboard fo
 
 type teamOnlineDashboardRef struct {
 	ItemID, Revision, SubmissionID, Kind string
-	Package                              *os.Root `json:"-"` // Only the admitted, hash-validated item importer supplies this capability.
-	Seed                                 bool     `json:"-"` // The common stable mapping decides; never a caller's field.
+	Package                              *os.Root                            `json:"-"` // Only the admitted, hash-validated item importer supplies this capability.
+	SourceAdmission                      *teamOnlineDashboardSourceAdmission `json:"-"`
+	Seed                                 bool                                `json:"-"` // The common stable mapping decides; never a caller's field.
 }
+
+// Only the common receive-online validator mints this after current source
+// ownership, exact-pair export and package validation. It is never decoded from
+// an export or request. Local server exports use the same admission capability.
+// The common wrapper owns its single-use lifetime; this hook only consumes it.
+type teamOnlineDashboardSourceAdmission struct {
+	person, owner, sourceProjectID       string   `json:"-"`
+	kind, itemID, revision, submissionID string   `json:"-"`
+	packageRoot                          *os.Root `json:"-"`
+}
+
+func (admission *teamOnlineDashboardSourceAdmission) matches(person string, source triggerTarget, ref teamOnlineDashboardRef) bool {
+	return admission != nil && person != "" && source.CrewID != "" && ref.Package != nil &&
+		admission.person == person && admission.owner == source.CrewOwner &&
+		admission.sourceProjectID == source.CrewID && admission.kind == ref.Kind &&
+		admission.itemID == ref.ItemID && admission.revision == ref.Revision &&
+		admission.submissionID == ref.SubmissionID && admission.packageRoot == ref.Package
+}
+
 type teamOnlineDatasetTable = teamonline.Table
 type teamOnlineAutomationRef = teamonline.Automation
 type teamOnlineDashboardResult struct {
@@ -56,9 +76,10 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	if claims == nil || source.CrewOwner != claims.UserID || source.CrewID == "" || ref.Package == nil {
 		return result, fmt.Errorf("choose one of your published items to put online")
 	}
-	target, err := api.dashboardTarget(ctx, claims, source.Path)
-	if err != nil || !dashboardAuthoringAllowed(claims, &target) {
-		return result, fmt.Errorf("this source item is unavailable")
+	// The authoritative source may live only on the authenticated Mac. Do not
+	// reopen a server path or use a stale Team mirror to decide its ownership.
+	if !ref.SourceAdmission.matches(claims.UserID, source, ref) {
+		return result, fmt.Errorf("this source item is unavailable; preview it again")
 	}
 	file, err := ref.Package.Open(teamonline.Descriptor)
 	if err != nil {
@@ -98,7 +119,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	}
 	if preview {
 		if ref.Seed && len(item.DatasetParts) > 0 && destination.CrewID != "" {
-			target, err = api.dashboardTarget(ctx, claims, destination.Path)
+			target, err := api.dashboardTarget(ctx, claims, destination.Path)
 			if err != nil || !dashboardAuthoringAllowed(claims, &target) {
 				return result, fmt.Errorf("this Team Crew is unavailable")
 			}
@@ -116,7 +137,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 		}
 		return result, nil
 	}
-	target, err = api.dashboardTarget(ctx, claims, destination.Path)
+	target, err := api.dashboardTarget(ctx, claims, destination.Path)
 	if err != nil || !dashboardAuthoringAllowed(claims, &target) {
 		return result, fmt.Errorf("this Team Crew is unavailable")
 	}

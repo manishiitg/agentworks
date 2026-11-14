@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,8 @@ import (
 
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	"github.com/manishiitg/coding-agent-loop/workspace/teamonline"
 )
 
 // PLAT-746: discovering a shared dashboard must not expose another Crew or
@@ -109,5 +112,60 @@ func TestTeamOnlineAssetRewriteMatchesWholePathTokens(t *testing.T) {
 	want := `<img src="db/assets/item/x.png"><img src="db/assets/item/x.png?v=1#preview"> url(db/assets/item/x.png) db/assets/x.png.bak other/db/assets/x.png`
 	if got != want {
 		t.Fatalf("asset rewrite changed nonmatching paths: %s", got)
+	}
+}
+
+// PLAT-746-1023: a validated Mac source needs no server-local source root,
+// but an admission for another person, item, submission or root grants nothing.
+func TestTeamOnlineReceiveRequiresBoundSourceAdmissionNotServerSourceRoot(t *testing.T) {
+	folder := t.TempDir()
+	root, err := os.OpenRoot(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	otherRoot, err := os.OpenRoot(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer otherRoot.Close()
+	source := triggerTarget{CrewOwner: "owner", CrewID: "source", Path: "Crew/not-on-this-server"}
+	ref := teamOnlineDashboardRef{ItemID: "report", Kind: "artifact", Revision: strings.Repeat("a", 64), SubmissionID: "submission", Package: root}
+	item := teamonline.Item{ID: ref.ItemID, Revision: ref.Revision, Snapshot: dashboards.Snapshot{Title: "Report", Artifact: true, Files: map[string]string{"index.html": "<h1>Report</h1>"}}}
+	data, err := json.Marshal(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(folder, teamonline.Descriptor), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ref.SourceAdmission = &teamOnlineDashboardSourceAdmission{person: "owner", owner: "owner", sourceProjectID: source.CrewID, kind: ref.Kind, itemID: ref.ItemID, revision: ref.Revision, submissionID: ref.SubmissionID, packageRoot: root}
+	api := &StreamingAPI{}
+	for _, tc := range []struct {
+		name   string
+		change func(*teamOnlineDashboardRef)
+	}{
+		{"absent", func(r *teamOnlineDashboardRef) { r.SourceAdmission = nil }},
+		{"person", func(r *teamOnlineDashboardRef) { r.SourceAdmission.person = "other" }},
+		{"owner", func(r *teamOnlineDashboardRef) { r.SourceAdmission.owner = "other" }},
+		{"source", func(r *teamOnlineDashboardRef) { r.SourceAdmission.sourceProjectID = "other" }},
+		{"kind", func(r *teamOnlineDashboardRef) { r.SourceAdmission.kind = "dashboard" }},
+		{"item", func(r *teamOnlineDashboardRef) { r.SourceAdmission.itemID = "other" }},
+		{"revision", func(r *teamOnlineDashboardRef) { r.SourceAdmission.revision = strings.Repeat("b", 64) }},
+		{"submission", func(r *teamOnlineDashboardRef) { r.SourceAdmission.submissionID = "other" }},
+		{"package", func(r *teamOnlineDashboardRef) { r.Package = otherRoot }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempt, admission := ref, *ref.SourceAdmission
+			attempt.SourceAdmission = &admission
+			tc.change(&attempt)
+			if _, err := api.receiveTeamOnlineDashboard(internalBotRequestContext(t.Context(), "owner"), source, triggerTarget{}, attempt, true); err == nil || !strings.Contains(err.Error(), "source item is unavailable") {
+				t.Fatalf("mismatched source capability was not refused: %v", err)
+			}
+		})
+	}
+	out, err := api.receiveTeamOnlineDashboard(internalBotRequestContext(t.Context(), "owner"), source, triggerTarget{}, ref, true)
+	if err != nil || out.DestinationItemID != teamOnlineDashboardItemID(source.CrewID, ref.Kind, ref.ItemID) {
+		t.Fatalf("validated Mac source required a server source path: %+v %v", out, err)
 	}
 }
