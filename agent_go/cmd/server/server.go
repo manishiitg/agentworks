@@ -5902,6 +5902,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
 		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
 		clarificationAvailable := crewAskClarification || attendedTurn
+		// Claude can wait on background tasks it started before it ends a reply (the chat's own task list).
+		claudeBackgroundWait := strings.EqualFold(finalProvider, "claude-code") && sessionID != ""
+		if claudeBackgroundWait {
+			toolGate.Declare(claudeBackgroundWaitTool)
+			claudeBackgroundWait = toolGate.Admit(claudeBackgroundWaitTool)
+		}
 		// A question in a turn another agent's message started gets the unattended answer after 5 minutes.
 		questionsUnansweredAfter := time.Duration(0)
 		if attendedTurn {
@@ -5919,6 +5925,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
 				return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, questionsUnansweredAfter), sessionID, finalProvider, questions)
 			})
+		}
+		if claudeBackgroundWait {
+			platformBridgeTools = append(platformBridgeTools, claudeBackgroundWaitTool)
 		}
 		if resolvedProfile != nil {
 			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
@@ -6569,6 +6578,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			if claudeBackgroundWait {
+				if err := api.registerClaudeBackgroundWaitTool(llmAgent, sessionID); err != nil {
+					sendError(fmt.Sprintf("Failed to register background wait tool: %v", err), true)
+					return
+				}
+			}
 			// Create custom tools for the agent. Workflow-phase (workshop) agents need
 			// the full applicable human-tool set registered including summary tools.
 			// Chat mode stays minimal (workflowMode=false). Without
@@ -6940,6 +6955,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if strings.EqualFold(finalProvider, "claude-code") && claudeSummarisesPreToolText(finalModelID) {
 				if err := llmAgent.AddInstructions(claudeReplyHintInstruction); err != nil {
 					logfWithContext(queryLogCtx, "[CLAUDE_REPLY_HINT] Failed to add instruction: %v", err)
+				}
+			}
+			if claudeBackgroundWait {
+				if err := llmAgent.AddInstructions(claudeBackgroundWaitInstruction); err != nil {
+					logfWithContext(queryLogCtx, "[CLAUDE_BG_WAIT] Failed to add instruction: %v", err)
 				}
 			}
 			// 2. CONTEXT — skills. Attaching a skill is not an instruction
