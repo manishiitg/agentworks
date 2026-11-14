@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Conversation is deliberately the portable history/native descriptor, not a
@@ -208,4 +209,32 @@ func expireCrewAgentTransfers(ctx context.Context, project string, now time.Time
 		}
 	}
 	return nil
+}
+
+// Include Team-off Crews too: turning a Team off must not retain an upload.
+func expireAllCrewAgentTransfers(ctx context.Context, now time.Time) {
+	root, err := crewroot.StateRoot()
+	if err != nil {
+		return
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "team-folders"))
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return
+		}
+		if !entry.IsDir() {
+			continue
+		}
+		dir, err := crewTeamDir(entry.Name())
+		if err != nil {
+			continue
+		}
+		mu := crewTeamRecordMutex(dir)
+		mu.Lock()
+		_ = expireCrewAgentTransfers(ctx, entry.Name(), now)
+		mu.Unlock()
+	}
 }
