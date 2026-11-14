@@ -88,13 +88,18 @@ function isWorkingStep(item: TranscriptItem): item is WorkingStep {
   return item.kind === 'tools' || (item.kind === 'thinking' && !item.assistantUpdate)
 }
 
-// groupWorkingSteps folds every run of two or more steps into one Working row. The row keeps the
-// key of its first step, so a run that grows while the agent works keeps its open/closed state.
+// Chat joins tools across hidden thinking; inspectors retain the complete Working row.
+// Both keep the first step key so a growing run preserves its open/closed state.
 function groupWorkingSteps(items: TranscriptItem[], showThinking?: boolean): TranscriptRenderItem[] {
   const out: TranscriptRenderItem[] = []
   let run: WorkingStep[] = []
   const flush = () => {
-    if (run.length > 1) out.push({ kind: 'working', key: `working:${run[0].key}`, events: run.flatMap(step => step.events), steps: run })
+    if (showThinking !== undefined && run.length) {
+      // Chat keeps one optional tool disclosure across invisible summaries.
+      // Build a new item once, without mutating the recorded batches.
+      const tools = run.filter((step): step is Extract<TranscriptItem, { kind: 'tools' }> => step.kind === 'tools')
+      out.push({ kind: 'tools', key: tools[0].key, events: tools.flatMap(step => step.events), toolCount: tools.reduce((count, step) => count + step.toolCount, 0) })
+    } else if (run.length > 1) out.push({ kind: 'working', key: `working:${run[0].key}`, events: run.flatMap(step => step.events), steps: run })
     else out.push(...run)
     run = []
   }
@@ -105,8 +110,8 @@ function groupWorkingSteps(items: TranscriptItem[], showThinking?: boolean): Tra
       if (showThinking) { flush(); out.push(item) }
       continue
     }
-    // In chat, message cards and optional tool rows must stay outside the activity disclosure.
-    if (showThinking !== undefined && item.kind === 'tools') { flush(); out.push(item); continue }
+    // Hidden thinking is no boundary; visible thinking and message cards are.
+    if (showThinking !== undefined && item.kind === 'tools') { run.push(item); continue }
     if (isWorkingStep(item)) { run.push(item); continue }
     flush()
     out.push(item)
