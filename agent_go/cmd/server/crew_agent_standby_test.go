@@ -848,7 +848,7 @@ func TestOwnerTeamCopyIsAttachedToServerTurnsAndNamedInTheNote(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", Name: "Example Crew", On: true, Folder: crewTeamFolder{ID: "folder-1", Whole: true}}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", Name: "Example Crew", On: true, Folder: crewTeamFolder{ID: "folder-1", Folders: []string{"team"}}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
@@ -1117,7 +1117,7 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
 	}
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "folder-1", Whole: true},
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "folder-1", Folders: []string{"team"}},
 		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "other-pair"}, {UserID: "third"}}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team fixture: %v", err)

@@ -4,8 +4,7 @@ Inspect the current Crew first. A Team is people working together on its shared
 folder and chosen agents; it is not a separate workflow execution team. The Crew
 has one Python workflow, not another owner list for each task.
 
-The first-time Team setup chooses people and their level, the shared folder
-(whole Crew or selected folder), and agents (Main selected initially), then
+The first-time Team setup chooses people and their level, the chosen shared folders, and agents (Main selected initially), then
 saves with Finish. If sharing requires a dashboard, explain that before saving
 and ask before creating one. Do not create it as a side effect of listing.
 
@@ -25,9 +24,10 @@ rather than copying action names or old workflow-team policy fields:
   Answer only from the person’s own chat. An invitation is not proof they joined.
   Chat `leave` and **Leave this Team** let members leave.
 - Chat `configure` / MCP `settings` controls Team on/off and shared folders. The main owner controls
-  on/off, whole Crew versus folders, and removing folders; joined members can
-  add folders. Preserve unrelated folders. Show the returned change preview
-  and follow the service's confirmation requirement.
+  on/off and removing folders; joined members can add folders. `folders` is the
+  complete selection, with at least one folder: include existing folders to keep
+  them. Other Crew files are not shared. People changes still use their own
+  returned preview and confirmation requirement.
 - `agents` lists what teammates share. `agent_rule` changes only your own
   agent's instructions for others, change permission and chat visibility.
   Use the offered enums; the website calls chat visibility Live (empty) or Hidden (`agent`).

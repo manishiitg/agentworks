@@ -23,7 +23,7 @@ func TestCrewTeamSkippedListsOnlySharedFolders(t *testing.T) {
 	if got := crewTeamSkipped(root, crewTeamFolder{Folders: []string{"team"}}); !slices.Equal(got, []string{"team/secrets.json"}) {
 		t.Fatalf("folder share must skip only its own private-looking files: %v", got)
 	}
-	if got := crewTeamSkipped(root, crewTeamFolder{Whole: true}); len(got) != 3 {
-		t.Fatalf("whole Crew share still lists every private-looking file: %v", got)
+	if got := crewTeamSkipped(root, crewTeamFolder{Folders: []string{"team", "other-repo", "evidence"}}); len(got) != 3 {
+		t.Fatalf("multiple selected folders list their private-looking file: %v", got)
 	}
 }

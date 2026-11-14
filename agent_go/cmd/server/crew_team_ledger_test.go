@@ -16,7 +16,7 @@ import (
 // sides, retry receipts and explicit credential-file sharing, without replay.
 func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	if err := writeCrewTeam(crewTeam{ProjectID: "import-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "import-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := crewTeamContentDir("import-test")
@@ -29,14 +29,14 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	file := &crewsync.File{Hash: crewTransferDigest("content"), Size: 7, Executable: true}
 	chunks := []transferChunk{{ID: crewTransferDigest("chunk"), Len: 7}}
 	before := crewTeamFileState{Revision: 9, Versions: map[string]crewTeamVersion{
-		".npmrc":      {File: file, Chunks: chunks, Revision: 8, Author: "owner", ModifiedAt: "2026-11-10T00:00:00Z"},
-		"deleted.txt": {Revision: 9, Author: "member", ModifiedAt: "2026-11-10T00:00:01Z"},
+		"team/.npmrc":      {File: file, Chunks: chunks, Revision: 8, Author: "owner", ModifiedAt: "2026-11-10T00:00:00Z"},
+		"team/deleted.txt": {Revision: 9, Author: "member", ModifiedAt: "2026-11-10T00:00:01Z"},
 	}, Events: []crewTeamEvent{
-		{Source: "copy", Path: "deleted.txt", Kind: "write", Revision: 8, Actor: "owner", Author: "owner", At: "2026-11-10T00:00:00Z", File: file, Chunks: chunks},
-		{Source: "copy", Path: "deleted.txt", Kind: "delete", Revision: 9, Actor: "member", At: "2026-11-10T00:00:01Z"},
-		{Source: "copy", Path: ".npmrc", Kind: "shared", Revision: 9, Actor: "owner", At: "2026-11-10T00:00:02Z", File: file, Chunks: chunks},
-	}, Clashes: []crewTeamClash{{Source: "copy", Path: "deleted.txt", WinningRevision: 9, LosingRevision: 8, WinningAuthor: "member", LosingAuthor: "owner", Hunks: 1}},
-		Receipts: map[string]crewTeamReceipt{"receipt": {TransferID: "copy/round", Digest: crewTransferDigest("changes"), Revision: 9, Conflicts: []string{"deleted.txt"}}}, OnPurpose: map[string]string{".npmrc": "owner"}}
+		{Source: "copy", Path: "team/deleted.txt", Kind: "write", Revision: 8, Actor: "owner", Author: "owner", At: "2026-11-10T00:00:00Z", File: file, Chunks: chunks},
+		{Source: "copy", Path: "team/deleted.txt", Kind: "delete", Revision: 9, Actor: "member", At: "2026-11-10T00:00:01Z"},
+		{Source: "copy", Path: "team/.npmrc", Kind: "shared", Revision: 9, Actor: "owner", At: "2026-11-10T00:00:02Z", File: file, Chunks: chunks},
+	}, Clashes: []crewTeamClash{{Source: "copy", Path: "team/deleted.txt", WinningRevision: 9, LosingRevision: 8, WinningAuthor: "member", LosingAuthor: "owner", Hunks: 1}},
+		Receipts: map[string]crewTeamReceipt{"receipt": {TransferID: "copy/round", Digest: crewTransferDigest("changes"), Revision: 9, Conflicts: []string{"team/deleted.txt"}}}, OnPurpose: map[string]string{"team/.npmrc": "owner"}}
 	raw, err := json.Marshal(before)
 	if err != nil {
 		t.Fatal(err)
@@ -62,15 +62,15 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	// The delta includes a complete revision even beyond the page's path
 	// limit, and reshares a file whose own version predates the cursor.
 	delta, paths, through, err := readCrewTeamLedgerChanges("import-test", 8, 1)
-	if err != nil || through != 9 || len(paths) != 2 || delta.Versions[".npmrc"].Revision != 8 || delta.Versions["deleted.txt"].File != nil || delta.OnPurpose[".npmrc"] != "owner" {
+	if err != nil || through != 9 || len(paths) != 2 || delta.Versions["team/.npmrc"].Revision != 8 || delta.Versions["team/deleted.txt"].File != nil || delta.OnPurpose["team/.npmrc"] != "owner" {
 		t.Fatalf("query lost reshare, deletion or whole-revision paging: %+v %v %d %v", delta, paths, through, err)
 	}
 	current, err := readCrewTeamCurrentState("import-test")
 	if err != nil || len(current.Events) != 0 || len(current.Receipts) != 0 || !reflect.DeepEqual(current.Versions, before.Versions) {
 		t.Fatal("current-state query lost files or loaded history")
 	}
-	summary, err := readCrewTeamLedgerSummary("import-test", crewTeamFolder{Whole: true}, false)
-	if err != nil || summary.files != 1 || summary.bytes != 7 || summary.last.Path != ".npmrc" || len(summary.clashes) != 1 {
+	summary, err := readCrewTeamLedgerSummary("import-test", crewTeamFolder{Folders: []string{"team"}}, false)
+	if err != nil || summary.files != 1 || summary.bytes != 7 || summary.last.Path != "team/.npmrc" || len(summary.clashes) != 1 {
 		t.Fatalf("summary differs from saved Team: %+v %v", summary, err)
 	}
 	if _, err = os.Stat(source); !os.IsNotExist(err) {
@@ -89,7 +89,7 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	// Re-create the interrupted-rename condition after changing the live ledger.
 	// The import marker must finish the rename, not replay the older JSON.
 	after.Revision = 10
-	delete(after.OnPurpose, ".npmrc")
+	delete(after.OnPurpose, "team/.npmrc")
 	after.Clashes[0].Resolved = true
 	unlock, err = wf.LockWorkspace(context.Background(), dir)
 	if err != nil {
@@ -107,11 +107,11 @@ func TestCrewTeamLedgerImportsOnceWithoutLosingHistoryOrGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if final.Revision != 10 || final.OnPurpose[".npmrc"] != "" || !final.Clashes[0].Resolved || len(final.Events) != 3 {
+	if final.Revision != 10 || final.OnPurpose["team/.npmrc"] != "" || !final.Clashes[0].Resolved || len(final.Events) != 3 {
 		t.Fatal("committed history was replayed or a removed grant returned")
 	}
 	// Failed imports never masquerade as an empty Team or leave an import marker.
-	if err = writeCrewTeam(crewTeam{ProjectID: "broken-import", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+	if err = writeCrewTeam(crewTeam{ProjectID: "broken-import", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
 		t.Fatal(err)
 	}
 	broken, _ := crewTeamContentDir("broken-import")

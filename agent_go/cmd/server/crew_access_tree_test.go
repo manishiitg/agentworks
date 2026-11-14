@@ -8,7 +8,7 @@ import (
 // PLAT-746-904: a quiet Team is one header, not a repeated people/agent/sync inventory. Your own working agents are
 // not Team news (the left menu shows them), so they never fill the card.
 func TestCrewTeamCardShowsOnlyLiveSharedAgentsAndProblems(t *testing.T) {
-	team := crewTeam{On: true, Folder: crewTeamFolder{Whole: true}}
+	team := crewTeam{On: true, Folder: crewTeamFolder{Folders: []string{"team"}}}
 	facts := crewAccessFacts{ServerCrew: true, TeamKnown: true, Team: &team, Viewer: "owner", People: []crewTeamAgentsPerson{
 		{UserID: "owner", You: true, Name: "Example Owner", Agents: []crewTeamAgent{{Name: "Private agent", Activity: "running", InTeam: false}, {Name: "Own shared", Activity: "running", InTeam: true}}},
 		{UserID: "member", Name: "Example Member", Agents: []crewTeamAgent{{Name: "Research", InTeam: true}}},

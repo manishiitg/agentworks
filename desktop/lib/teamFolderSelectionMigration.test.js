@@ -38,10 +38,21 @@ test('folder-only conversion preserves identities, member baselines and backed-u
   const offline=JSON.parse(fs.readFileSync(remote));assert.deepEqual(offline.folder.folders.map(p=>p.path),['team']);assert.ok(offline.folder_note);
   assert.equal(logs.length,2);assert.ok(logs.every(line=>line.includes('from=whole')&&!line.includes('reports')));
   const once=fs.readFileSync(file);assert.equal(migrateTeamFolderSelections({stateDir:state,docsDir:docs}).converted,0);assert.deepEqual(fs.readFileSync(file),once);
+  // A missing source directory uses the same explicit fallback; an existing
+  // selected-folder record retains exactly its IDs and member layout.
+  write(path.join(state,'ownership','projects.json'),{projects:{one:{product:'work',project_id:'owned',owner_id:'owner',folder:'absent'}}});
+  write(file,metadata);
+  const selectedFile=path.join(state,'team-folders','selected','team.json');
+  write(selectedFile,{...metadata,project_id:'selected',folder:{id:'selected-store',path_ids_version:1,whole:false,folders:[{id:'keep-id',path:'chosen'}],paths:[{id:'keep-id',path:'chosen'}]}});
+  const fallback=migrateTeamFolderSelections({stateDir:state,docsDir:docs,log:()=>{}});
+  assert.equal(fallback.converted,2);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file)).folder.folders.map(p=>p.path),['team']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(selectedFile)).folder.folders,[{id:'keep-id',path:'chosen'}]);
+  const backupCount=backups(file).length;
   // Validation of every input precedes backups/writes, including an unsafe second record.
   write(file,metadata);fs.symlinkSync(file,path.join(state,'team-folders','unsafe'));
   assert.throws(()=>migrateTeamFolderSelections({stateDir:state,docsDir:docs}),/Linked Team state/);
-  assert.deepEqual(fs.readFileSync(file),before);assert.equal(backups(file).length,1);
+  assert.deepEqual(fs.readFileSync(file),before);assert.equal(backups(file).length,backupCount);
   for(const name of ['memory','keys','.env','credentials','secrets','db','settings','team-copies','a/b','a\\b','e\u0301'])assert.equal(ordinaryFolder(name),false,name);
  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
