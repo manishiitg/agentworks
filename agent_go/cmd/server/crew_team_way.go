@@ -36,6 +36,7 @@ const teamWayFile = "team-way.json"
 type teamWayNeed struct {
 	Provider string `json:"provider"`
 	Label    string `json:"label"`
+	AddedBy  string `json:"added_by,omitempty"`
 }
 
 type teamWayRecord struct {
@@ -43,6 +44,9 @@ type teamWayRecord struct {
 	Vault string `json:"vault,omitempty"`
 	// Apps maps a member's connection to the Team's copy, so adding the same app again changes nothing.
 	Apps map[string]string `json:"apps,omitempty"`
+	// AddedBy says who put an app (key "app:<Team connection id>") or a secret (key "secret:<name>") on the Team, so
+	// teammates know who to ask.
+	AddedBy map[string]string `json:"added_by,omitempty"`
 	// Needs are the apps the Team uses that each person signs in to themselves.
 	Needs []teamWayNeed `json:"needs,omitempty"`
 }
@@ -53,6 +57,10 @@ type teamWayItem struct {
 	Name  string `json:"name"`            // what people see
 	Login string `json:"login,omitempty"` // shared or sign_in
 	Note  string `json:"note,omitempty"`
+	// AddedBy is the name of the teammate who added it.
+	AddedBy string `json:"added_by,omitempty"`
+	// Connected (sign-in apps only) is whether the person asking already has that app connected.
+	Connected *bool `json:"connected,omitempty"`
 }
 
 type teamWayView struct {
@@ -196,7 +204,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if r.Method == http.MethodGet {
-		view, err := api.teamWayView(r.Context(), project)
+		view, err := api.teamWayView(r.Context(), project, claims.UserID)
 		if err != nil {
 			externalError(w, 500, "team_way_failed", "The Team's tools could not be read. Try again.")
 			return
@@ -245,7 +253,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	log.Printf("[TEAM_WAY] project=%s actor=%s op=%s kind=%s item=%q result=ok", project, claims.UserID, in.Op, in.Kind, in.ID)
-	view, err := api.teamWayView(ctx, project)
+	view, err := api.teamWayView(ctx, project, claims.UserID)
 	if err != nil {
 		externalError(w, 500, "team_way_failed", "It was saved, but the Team's tools could not be read back. Try again.")
 		return
@@ -255,7 +263,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 	externalJSON(w, view)
 }
 
-func (api *StreamingAPI) teamWayView(ctx context.Context, project string) (teamWayView, error) {
+func (api *StreamingAPI) teamWayView(ctx context.Context, project, person string) (teamWayView, error) {
 	view := teamWayView{Items: []teamWayItem{}}
 	rec, err := readTeamWay(project)
 	if err != nil {
@@ -277,16 +285,41 @@ func (api *StreamingAPI) teamWayView(ctx context.Context, project string) (teamW
 			return view, errors.New("the Team's vault could not be read")
 		}
 		for _, c := range vault.Connections {
-			view.Items = append(view.Items, teamWayItem{Kind: "app", ID: c.ID, Name: c.Label, Login: "shared"})
+			view.Items = append(view.Items, teamWayItem{Kind: "app", ID: c.ID, Name: c.Label, Login: "shared", AddedBy: teamWayAdder(rec.AddedBy["app:"+c.ID])})
 		}
 		for _, name := range vault.SecretNames {
-			view.Items = append(view.Items, teamWayItem{Kind: "secret", ID: vaultSecretShortName(name), Name: vaultSecretShortName(name), Login: "shared"})
+			short := vaultSecretShortName(name)
+			view.Items = append(view.Items, teamWayItem{Kind: "secret", ID: short, Name: short, Login: "shared", AddedBy: teamWayAdder(rec.AddedBy["secret:"+short])})
 		}
 	}
-	for _, need := range rec.Needs {
-		view.Items = append(view.Items, teamWayItem{Kind: "needs_sign_in", ID: need.Provider, Name: need.Label, Login: "sign_in", Note: "Team uses " + need.Label + ": each person signs in themselves."})
+	if len(rec.Needs) > 0 {
+		mine, _ := personalVaults(ctx, person) // an unreadable vault only means "not connected" on the screen
+		for _, need := range rec.Needs {
+			connected := teamWayConnected(mine, need.Provider)
+			view.Items = append(view.Items, teamWayItem{Kind: "needs_sign_in", ID: need.Provider, Name: need.Label, Login: "sign_in", Note: "Team uses " + need.Label + ": each person signs in themselves.", AddedBy: teamWayAdder(need.AddedBy), Connected: &connected})
+		}
 	}
 	return view, nil
+}
+
+func teamWayAdder(user string) string {
+	if user == "" {
+		return ""
+	}
+	return crewOwnerDisplayName(user)
+}
+
+// teamWayConnected reports whether the person already has a working connection to the app a Team need names.
+func teamWayConnected(mine personalVaultList, provider string) bool {
+	want := strings.TrimPrefix(provider, "custom:")
+	for _, v := range mine.Vaults {
+		for _, c := range v.Connections {
+			if strings.EqualFold(c.Provider, want) && c.Status == "active" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // teamWayProviderName is the app's own name (for example "GitHub"), never the member's connection label: the label can be
@@ -311,7 +344,7 @@ func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, con
 			return "", err
 		}
 		if !slices.ContainsFunc(rec.Needs, func(n teamWayNeed) bool { return n.Provider == c.OAuthServer }) {
-			rec.Needs = append(rec.Needs, teamWayNeed{Provider: c.OAuthServer, Label: teamWayProviderName(c)})
+			rec.Needs = append(rec.Needs, teamWayNeed{Provider: c.OAuthServer, Label: teamWayProviderName(c), AddedBy: person})
 			if err := writeTeamWay(project, rec); err != nil {
 				return "", err
 			}
@@ -342,6 +375,10 @@ func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, con
 		rec.Apps = map[string]string{}
 	}
 	rec.Apps[connection] = copied.ID
+	if rec.AddedBy == nil {
+		rec.AddedBy = map[string]string{}
+	}
+	rec.AddedBy["app:"+copied.ID] = person
 	if err := writeTeamWay(project, rec); err != nil {
 		return "", err
 	}
@@ -393,6 +430,17 @@ func (api *StreamingAPI) teamWayAddSecret(ctx context.Context, person, project, 
 	if err := updateProductSelectedGlobalSecrets(ctx, crewProfileID, crewProjectRootByID(home), func(current []string) []string { return settingsWith(current, full) }); err != nil {
 		return "", err
 	}
+	rec, err := readTeamWay(project)
+	if err != nil {
+		return "", err
+	}
+	if rec.AddedBy == nil {
+		rec.AddedBy = map[string]string{}
+	}
+	rec.AddedBy["secret:"+name] = person
+	if err := writeTeamWay(project, rec); err != nil {
+		return "", err
+	}
 	return name + " is on the Team now. You keep your own copy; its value is never shown.", nil
 }
 
@@ -409,6 +457,7 @@ func (api *StreamingAPI) teamWayRemoveApp(ctx context.Context, person, project, 
 	for source, team := range rec.Apps {
 		if team == id {
 			delete(rec.Apps, source)
+			delete(rec.AddedBy, "app:"+id)
 			found = true
 		}
 	}
@@ -445,7 +494,8 @@ func (api *StreamingAPI) teamWayRemoveSecret(ctx context.Context, person, projec
 	if err := api.removeVaultSecret(ctx, "team-"+project, rec.Vault, name); err != nil {
 		return "", err
 	}
-	return "Removed from the Team. Everyone's own copy stays.", nil
+	delete(rec.AddedBy, "secret:"+name)
+	return "Removed from the Team. Everyone's own copy stays.", writeTeamWay(project, rec)
 }
 
 func teamWayRemoveNeed(project, provider string) (string, error) {

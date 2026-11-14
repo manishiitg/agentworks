@@ -93,12 +93,22 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 
 	vault.mu.Lock()
 	personal := vault.personal[fixtureUserB]
-	vault.connectors["c-aaaaaaaa"] = map[string]string{"ID": "c-aaaaaaaa", "OAuthServer": "github", "OAuthCredentialID": "c-aaaaaaaa", "Label": "GitHub", "VaultID": personal}
+	vault.connectors["c-aaaaaaaa"] = map[string]string{"ID": "c-aaaaaaaa", "OAuthServer": "github", "OAuthCredentialID": "c-aaaaaaaa", "Label": "Priya personal GitHub", "VaultID": personal}
 	vault.mu.Unlock()
 	rec = post(fixtureUserB, `{"op":"add","kind":"app","id":"c-aaaaaaaa"}`)
 	var view teamWayView
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &view) != nil || !strings.Contains(view.Notice, "each person signs in themselves") {
 		t.Fatalf("add sign-in app: %d %s", rec.Code, rec.Body.String())
+	}
+	// The sign-in need shows who added it and the asker's own connected flag (not the member's personal label).
+	foundNeed := false
+	for _, item := range view.Items {
+		if item.Kind == "needs_sign_in" {
+			foundNeed = item.AddedBy != "" && item.Connected != nil && !*item.Connected && !strings.Contains(item.Name, "Priya")
+		}
+	}
+	if !foundNeed {
+		t.Fatalf("sign-in need lacks who added it or the connected flag: %+v", view.Items)
 	}
 	vault.mu.Lock()
 	copies := vault.copies
