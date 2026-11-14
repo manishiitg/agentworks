@@ -27,10 +27,6 @@ type nativeGoalRestoreContextKey struct{}
 // The native RPC is the external boundary; all projection and restore decisions
 // below operate on real accepted chat state, not model output or UI hints.
 var controlNativeGoal = codexcli.ControlCodexNativeGoal
-var runNativeGoalResume = func(api *StreamingAPI, ctx context.Context, req map[string]interface{}, sessionID, owner string) error {
-	_, err := api.startSessionInternalWithResult(ctx, req, sessionID, owner, nil)
-	return err
-}
 
 func nativeGoalUpdateFromEvent(event *storeevents.Event) (*llmtypes.NativeGoalUpdate, bool) {
 	if event == nil || event.Type != "native_goal_updated" || event.Data == nil {
@@ -312,7 +308,11 @@ func (api *StreamingAPI) restoreNativeGoalAfterWake(sessionID string, receipt *n
 	resumeCtx = context.WithValue(resumeCtx, nativeGoalRestoreContextKey{}, receipt.ID)
 	resumeCtx = llmtypes.WithNativeGoalCommand(resumeCtx, llmtypes.NativeGoalCommand{SessionID: sessionID, Action: "resume", Objective: update.Goal.Objective})
 	log.Printf("[AGENT_GOAL] session=%s native=%s restore=%s action=started status=paused reason=wake_restore", sessionID, receipt.NativeID, receipt.ID)
-	err = runNativeGoalResume(api, resumeCtx, reqMap, sessionID, owner)
+	if api.internalNativeGoalResume != nil {
+		err = api.internalNativeGoalResume(resumeCtx, reqMap, sessionID, owner)
+	} else {
+		_, err = api.startSessionInternalWithResult(resumeCtx, reqMap, sessionID, owner, nil)
+	}
 	if err != nil {
 		log.Printf("[AGENT_GOAL] session=%s restore=%s action=failed reason=restore_turn_failed", sessionID, receipt.ID)
 	} else {

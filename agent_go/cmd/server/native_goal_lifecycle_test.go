@@ -36,8 +36,8 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 			if err := api.projectNativeGoal(sid, native, "native_update"); err != nil {
 				t.Fatal(err)
 			}
-			oldControl, oldResume := controlNativeGoal, runNativeGoalResume
-			t.Cleanup(func() { controlNativeGoal = oldControl; runNativeGoalResume = oldResume })
+			oldControl := controlNativeGoal
+			t.Cleanup(func() { controlNativeGoal = oldControl })
 			raced := false
 			controlNativeGoal = func(_ context.Context, owner, op string) (*llmtypes.NativeGoalUpdate, error) {
 				if owner != sid {
@@ -54,7 +54,7 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				return &update, nil
 			}
 			calls := 0
-			runNativeGoalResume = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, owner string) error {
+			api.internalNativeGoalResume = func(ctx context.Context, req map[string]interface{}, session, owner string) error {
 				calls++
 				command, ok := llmtypes.NativeGoalCommandForSession(ctx, sid)
 				if !ok || command.Action != "resume" || command.Objective != "Finish the task" || session != sid || owner != "owner" {
