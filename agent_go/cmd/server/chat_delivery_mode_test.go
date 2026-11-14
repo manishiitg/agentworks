@@ -387,3 +387,24 @@ func TestQuotaWaitingHeadLetsOnlyComposerMessagesPass(t *testing.T) {
 		t.Fatalf("due retry skipped: %s", head.ID)
 	}
 }
+
+// PLAT-746-941: a trigger/inbox string is not proof that mail came from the
+// owner. Only recorded desktop/network delivery provenance allows live-first.
+func TestAgentMessageLiveFirstRequiresRecordedOwnSender(t *testing.T) {
+	base := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	request := QueryRequest{TriggeredBy: "agent_message", AgentMessageInbox: "claimed-inbox"}
+	if shouldTryRetainedDeliveryBeforeQueue(base, request, "chat") {
+		t.Fatal("request JSON granted own-agent live delivery")
+	}
+	for _, sender := range []string{"owner", "visitor"} {
+		ctx := context.WithValue(base, deliveredAgentMessageKey{}, map[string]interface{}{"sender_user_id": sender})
+		if got := shouldTryRetainedDeliveryBeforeQueue(ctx, request, "chat"); got != (sender == "owner") {
+			t.Fatalf("sender=%s admitted=%t", sender, got)
+		}
+	}
+	own := context.WithValue(base, desktopAppOwnDeliveryKey{}, true)
+	request.AgentMessageFromOtherPerson = true
+	if shouldTryRetainedDeliveryBeforeQueue(own, request, "chat") {
+		t.Fatal("recorded external caller acquired owner live delivery")
+	}
+}
