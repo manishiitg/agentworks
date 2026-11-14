@@ -150,6 +150,8 @@ type crewTeamServerData struct {
 	TeamProjectID string `json:"team_project_id"`
 }
 type crewTeam struct {
+	OnlineHome      string              `json:"online_home,omitempty"`
+	RosterSource    string              `json:"roster_source,omitempty"`
 	RegistryVersion int                 `json:"registry_version"`
 	ServerData      *crewTeamServerData `json:"server_data,omitempty"`
 	ProjectID       string              `json:"project_id"`
@@ -206,6 +208,10 @@ func writeCrewTeam(t crewTeam) error {
 }
 
 func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegisteredAgent)) error {
+	return writeCrewTeamRecord(t, choices, false)
+}
+
+func writeCrewTeamRecord(t crewTeam, choices func(map[string]crewTeamRegisteredAgent), derivedRoster bool) error {
 	t.RegistryVersion = 1
 	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
 	if (t.On || len(t.People) > 0) && agentWorksPrivateProject(context.Background(), t.ProjectID) {
@@ -231,11 +237,18 @@ func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegiste
 			if latest.RegistryVersion != 1 || latest.ProjectID != t.ProjectID || latest.OwnerID != t.OwnerID {
 				err = fmt.Errorf("Team setup needs to be reset for this release")
 			} else {
+				if latest.RosterSource != "" && !derivedRoster && !sameCrewTeamRoster(t, latest) {
+					mu.Unlock()
+					return fmt.Errorf("change membership in the original Team")
+				}
+				t.OnlineHome, t.RosterSource = latest.OnlineHome, latest.RosterSource
 				t.Agents = latest.Agents
 			}
 		}
 	} else if !os.IsNotExist(readErr) {
 		err = readErr
+	} else if !derivedRoster {
+		t.OnlineHome, t.RosterSource = "", ""
 	}
 	if err == nil {
 		if t.Agents == nil {
@@ -254,6 +267,9 @@ func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegiste
 			}
 		}
 		err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+		if err == nil {
+			err = syncCrewTeamHomeMembersLocked(t)
+		}
 	}
 	mu.Unlock()
 	if err == nil {
