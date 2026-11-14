@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -16,11 +17,12 @@ const usageLimitContinueMessage = "Continue where you left off."
 const usageLimitMaxOverdue = 24 * time.Hour
 
 type usageLimitRecoveryRecord struct {
-	EventID  string    `json:"event_id"`
-	FailedAt time.Time `json:"failed_at"`
-	ResetAt  time.Time `json:"reset_at"`
-	Canceled bool      `json:"canceled,omitempty"`
-	Consumed bool      `json:"consumed"`
+	IncomingTurnIDs []string  `json:"incoming_turn_ids,omitempty"`
+	EventID         string    `json:"event_id"`
+	FailedAt        time.Time `json:"failed_at"`
+	ResetAt         time.Time `json:"reset_at"`
+	Canceled        bool      `json:"canceled,omitempty"`
+	Consumed        bool      `json:"consumed"`
 }
 
 func usageLimitRecoveryID(record restartContinueRecord) string {
@@ -109,11 +111,30 @@ func (api *StreamingAPI) observeUsageLimitFailure(sessionID string, event storee
 			}
 		}
 		if reason == "" && err == nil {
+			for _, turn := range turns {
+				if turn.SessionID == sessionID && turn.StartedAt != nil && queuedTurnDisplayAttribution(sessionID, turn)["source"] == "agent_message" {
+					if turn.UsageLimitRecoveryID != "" {
+						reason = "incoming_retry_already_attempted"
+						break
+					}
+					recovery.IncomingTurnIDs = append(recovery.IncomingTurnIDs, turn.ID)
+				}
+			}
+		}
+		if reason == "" && err == nil {
 			record.UsageLimit = &recovery
 			document.Chats[sessionID] = record
 			err = api.writeRestartContinueRecords(ctx, userID, document)
 			if err == nil {
-				turns = append(turns, usageLimitQueuedTurn(userID, record))
+				if len(recovery.IncomingTurnIDs) > 0 {
+					for i := range turns {
+						if slices.Contains(recovery.IncomingTurnIDs, turns[i].ID) {
+							turns[i] = usageLimitIncomingTurn(record, turns[i])
+						}
+					}
+				} else {
+					turns = append(turns, usageLimitQueuedTurn(userID, record))
+				}
 				err = api.writeConversationTurnQueue(ctx, userID, turns)
 				armed = err == nil
 			}
@@ -149,7 +170,7 @@ func usageLimitQueuedTurn(userID string, record restartContinueRecord) queuedCon
 	req.Query, req.Message = usageLimitContinueMessage, ""
 	req.TriggeredBy = usageLimitContinueTrigger
 	at := record.UsageLimit.ResetAt
-	return queuedConversationTurn{ID: usageLimitRecoveryID(record), UserID: userID, SessionID: record.SessionID, Request: req, Principal: record.Principal, RetryAt: &at, CreatedAt: record.UsageLimit.FailedAt}
+	return queuedConversationTurn{UsageLimitRecoveryID: usageLimitRecoveryID(record), ID: usageLimitRecoveryID(record), UserID: userID, SessionID: record.SessionID, Request: req, Principal: record.Principal, RetryAt: &at, CreatedAt: record.UsageLimit.FailedAt}
 }
 
 // Startup runs under both document locks. Rebuild a missing queue row from its
@@ -176,7 +197,13 @@ func (api *StreamingAPI) prepareUsageLimitContinues(document *restartContinueDoc
 				break
 			}
 		}
-		if !found {
+		if len(record.UsageLimit.IncomingTurnIDs) > 0 {
+			for i := range turns {
+				if slices.Contains(record.UsageLimit.IncomingTurnIDs, turns[i].ID) {
+					turns[i] = usageLimitIncomingTurn(record, turns[i])
+				}
+			}
+		} else if !found {
 			turns = append(turns, usageLimitQueuedTurn(userID, record))
 		}
 		log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=restored reset_at=%s", sid, record.QueryID, record.UsageLimit.ResetAt.UTC().Format(time.RFC3339))
@@ -220,7 +247,7 @@ func (api *StreamingAPI) cancelUsageLimitRecovery(sessionID, reason string) {
 // Called while the owner's queue is locked, before claim. Both claim paths use
 // the same receipt; consuming it BEFORE dispatch prevents a crash from replaying.
 func (api *StreamingAPI) consumeUsageLimitContinue(ctx context.Context, userID string, turn queuedConversationTurn) (bool, error) {
-	if turn.Request.TriggeredBy != usageLimitContinueTrigger {
+	if turn.UsageLimitRecoveryID == "" {
 		return true, nil
 	}
 	lock := productConversationRegistryMutex(restartContinuePath(userID))
@@ -231,7 +258,7 @@ func (api *StreamingAPI) consumeUsageLimitContinue(ctx context.Context, userID s
 		return false, err
 	}
 	record := document.Chats[turn.SessionID]
-	if record.UsageLimit == nil || record.UsageLimit.Consumed || usageLimitRecoveryID(record) != turn.ID || api.isSessionMarkedStopped(turn.SessionID) {
+	if record.UsageLimit == nil || record.UsageLimit.Consumed || usageLimitRecoveryID(record) != turn.UsageLimitRecoveryID || api.isSessionMarkedStopped(turn.SessionID) {
 		return false, nil
 	}
 	if reason := usageLimitResetReason(*record.UsageLimit, time.Now()); reason != "" {
@@ -249,7 +276,7 @@ func (api *StreamingAPI) consumeUsageLimitContinue(ctx context.Context, userID s
 func (api *StreamingAPI) pruneUsageLimitContinues(ctx context.Context, userID string, turns []queuedConversationTurn) ([]queuedConversationTurn, error) {
 	has := false
 	for _, turn := range turns {
-		if turn.StartedAt == nil && turn.Request.TriggeredBy == usageLimitContinueTrigger {
+		if turn.StartedAt == nil && turn.UsageLimitRecoveryID != "" {
 			has = true
 			break
 		}
@@ -266,12 +293,13 @@ func (api *StreamingAPI) pruneUsageLimitContinues(ctx context.Context, userID st
 	}
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	changed := false
+	queueChanged := false
 	for _, turn := range turns {
-		if turn.StartedAt == nil && turn.Request.TriggeredBy == usageLimitContinueTrigger {
+		if turn.StartedAt == nil && turn.UsageLimitRecoveryID != "" {
 			record := document.Chats[turn.SessionID]
 			reason := ""
 			switch {
-			case record.UsageLimit == nil || record.UsageLimit.Consumed || usageLimitRecoveryID(record) != turn.ID:
+			case record.UsageLimit == nil || record.UsageLimit.Consumed || usageLimitRecoveryID(record) != turn.UsageLimitRecoveryID:
 				reason = "superseded"
 			case api.isSessionMarkedStopped(turn.SessionID) || waitingPersonTurn(turns, turn.SessionID):
 				reason = "person_superseded"
@@ -279,12 +307,19 @@ func (api *StreamingAPI) pruneUsageLimitContinues(ctx context.Context, userID st
 				reason = usageLimitResetReason(*record.UsageLimit, time.Now())
 			}
 			if reason != "" {
+				queueChanged = true
 				if record.UsageLimit != nil && !record.UsageLimit.Consumed {
 					record.UsageLimit.Consumed = true
 					document.Chats[turn.SessionID] = record
 					changed = true
 				}
 				log.Printf("[USAGE_LIMIT_RECOVERY] session=%s turn=%s action=skipped reason=%s", turn.SessionID, turn.ID, reason)
+				if turn.Request.TriggeredBy != usageLimitContinueTrigger {
+					turn.UsageLimitRecoveryID = ""
+					turn.RetryAt = nil
+					turn.DeliveryError = queuedTurnFailureMessage
+					kept = append(kept, turn)
+				}
 				continue
 			}
 		}
@@ -295,13 +330,18 @@ func (api *StreamingAPI) pruneUsageLimitContinues(ctx context.Context, userID st
 			return nil, err
 		}
 	}
+	if queueChanged {
+		if err := api.writeConversationTurnQueue(ctx, userID, kept); err != nil {
+			return nil, err
+		}
+	}
 	return kept, nil
 }
 
 // Recheck the consumed receipt immediately before entering ordinary admission:
 // Stop or a new person message may have arrived after the queue claim.
 func (api *StreamingAPI) usageLimitContinuationCurrent(ctx context.Context, turn queuedConversationTurn) bool {
-	if turn.Request.TriggeredBy != usageLimitContinueTrigger {
+	if turn.UsageLimitRecoveryID == "" {
 		return true
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -315,5 +355,27 @@ func (api *StreamingAPI) usageLimitContinuationCurrent(ctx context.Context, turn
 		return false
 	}
 	record := document.Chats[turn.SessionID]
-	return record.UsageLimit != nil && record.UsageLimit.Consumed && !record.UsageLimit.Canceled && usageLimitRecoveryID(record) == turn.ID && !api.isSessionMarkedStopped(turn.SessionID)
+	return record.UsageLimit != nil && record.UsageLimit.Consumed && !record.UsageLimit.Canceled && usageLimitRecoveryID(record) == turn.UsageLimitRecoveryID && !api.isSessionMarkedStopped(turn.SessionID)
+}
+
+func usageLimitIncomingTurn(record restartContinueRecord, turn queuedConversationTurn) queuedConversationTurn {
+	at := record.UsageLimit.ResetAt
+	turn.StartedAt = nil
+	turn.RetryAt = &at
+	turn.Steering = false
+	turn.DeliveryError = ""
+	turn.UsageLimitRecoveryID = usageLimitRecoveryID(record)
+	return turn
+}
+
+func usageIncomingRetryPending(record restartContinueRecord, turnID string) bool {
+	return record.UsageLimit != nil && !record.UsageLimit.Consumed && slices.Contains(record.UsageLimit.IncomingTurnIDs, turnID)
+}
+
+func (api *StreamingAPI) usageIncomingRetryArmed(ctx context.Context, turn queuedConversationTurn) bool {
+	lock := productConversationRegistryMutex(restartContinuePath(turn.UserID))
+	lock.Lock()
+	defer lock.Unlock()
+	document, err := api.readRestartContinueRecords(ctx, turn.UserID)
+	return err == nil && usageIncomingRetryPending(document.Chats[turn.SessionID], turn.ID)
 }

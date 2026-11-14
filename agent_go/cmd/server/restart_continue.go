@@ -204,6 +204,10 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 	}
 	kept := make([]queuedConversationTurn, 0, len(turns))
 	for _, turn := range turns {
+		if record := document.Chats[turn.SessionID]; usageIncomingRetryPending(record, turn.ID) {
+			kept = append(kept, usageLimitIncomingTurn(record, turn))
+			continue
+		}
 		if turn.StartedAt == nil {
 			kept = append(kept, turn)
 			continue
