@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/commandlabel"
 )
 
 // NEVER_SHOW_EVENTS contains event types that should NEVER be shown in any mode
@@ -2068,6 +2069,8 @@ func logStreamingChunkTelemetry(sessionID string, event Event) {
 // so an unpaired call is exactly the defect our tests cannot currently catch.
 
 type toolCallTelemetry struct {
+	commandLabel     string
+	nativeStartedAt  time.Time
 	owner            string
 	name             string
 	startedAt        time.Time
@@ -2122,11 +2125,22 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 		authority := toolCompletionAuthority
 		toolResultResolverMu.RUnlock()
 		nativeCompletion := authority != nil && authority(sessionID, d.ToolCallID, d.ToolName)
+		// Keep only the existing bounded display label, not an arguments object. Parse only
+		// bounded native exec inputs, before taking the shared telemetry lock.
+		label := ""
+		if nativeCompletion && d.ToolName == "exec_command" && len(d.ToolParams.Arguments) <= 64*1024 {
+			var input struct {
+				Cmd string `json:"cmd"`
+			}
+			if json.Unmarshal([]byte(d.ToolParams.Arguments), &input) == nil {
+				label = commandlabel.Label(input.Cmd)
+			}
+		}
 		toolCallsMu.Lock()
 		if openToolCall[sessionID] == nil {
 			openToolCall[sessionID] = map[string]*toolCallTelemetry{}
 		}
-		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now(), nativeCompletion: nativeCompletion}
+		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now(), nativeCompletion: nativeCompletion, commandLabel: label, nativeStartedAt: event.Timestamp}
 		open := len(openToolCall[sessionID])
 		toolCallsMu.Unlock()
 		log.Printf("[TOOL] session=%s START id=%s name=%s args_len=%d open=%d",
@@ -2511,8 +2525,8 @@ func (es *EventStore) CompleteNativeTool(sessionID, toolID string, at time.Time,
 
 // NativeCommand is an actual provider-owned command, not an ordinary tool.
 type NativeCommand struct {
-	ID, Name  string
-	StartedAt time.Time
+	ID, Name, Label string
+	StartedAt       time.Time
 }
 
 func (es *EventStore) OpenNativeCommands(sessionID string) []NativeCommand {
@@ -2521,7 +2535,7 @@ func (es *EventStore) OpenNativeCommands(sessionID string) []NativeCommand {
 	var result []NativeCommand
 	for id, call := range openToolCall[sessionID] {
 		if call.nativeCompletion {
-			result = append(result, NativeCommand{ID: id, Name: call.name, StartedAt: call.startedAt})
+			result = append(result, NativeCommand{ID: id, Name: call.name, Label: call.commandLabel, StartedAt: call.nativeStartedAt})
 		}
 	}
 	return result

@@ -195,13 +195,13 @@ func TestNativeBackgroundCommandFollowsActualProcessBookends(t *testing.T) {
 	t.Cleanup(func() { storeevents.SetToolCompletionAuthority(nil) })
 	store.SetEventAddedCallback(api.observeNativeBackgroundCommands)
 	at := time.Now().Add(-time.Minute)
-	store.AddEvent("command-chat", storeevents.Event{ID: "start-command", Type: "tool_call_start", Timestamp: at, Data: agentevents.NewAgentEvent(&agentevents.ToolCallStartEvent{ToolName: "exec_command", ToolCallID: "exec-bg"})})
+	store.AddEvent("command-chat", storeevents.Event{ID: "start-command", Type: "tool_call_start", Timestamp: at, Data: agentevents.NewAgentEvent(&agentevents.ToolCallStartEvent{ToolName: "exec_command", ToolCallID: "exec-bg", ToolParams: agentevents.ToolParams{Arguments: `{"cmd":"EXAMPLE_PRIVATE=not-for-the-label npm run check\nsecond line"}`}})})
 	if len(api.activeNativeBackground("command-chat")) != 0 {
 		t.Fatal("ordinary foreground command was labelled background")
 	}
 	store.AddEvent("command-chat", storeevents.Event{ID: "reply-end", Type: "unified_completion", Timestamp: time.Now(), Data: &agentevents.AgentEvent{Type: "unified_completion"}})
 	tasks := api.activeNativeBackground("command-chat")
-	if len(tasks) != 1 || tasks[0].Tokens != nil {
+	if len(tasks) != 1 || tasks[0].Tokens != nil || tasks[0].CommandLabel != "npm run check" || !tasks[0].StartedAt.Equal(at) {
 		t.Fatalf("background command facts: %+v", tasks)
 	}
 	store.CompleteNativeTool("other-chat", "exec-bg", time.Now(), false, "")
