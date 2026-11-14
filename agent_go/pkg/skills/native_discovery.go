@@ -108,9 +108,14 @@ func ReadDiscoveredSkill(skill DiscoveredSkill) (map[string][]byte, error) {
 	if !nativeOrdinaryPath(root, skill.Directory) {
 		return nil, fmt.Errorf("skill folder changed; refresh discovery")
 	}
+	skillRoot, err := root.OpenRoot(skill.Directory)
+	if err != nil {
+		return nil, err
+	}
+	defer skillRoot.Close()
 	files := map[string][]byte{}
 	total := 0
-	err = fs.WalkDir(root.FS(), skill.Directory, func(file string, entry fs.DirEntry, walkErr error) error {
+	err = fs.WalkDir(skillRoot.FS(), ".", func(file string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -126,7 +131,7 @@ func ReadDiscoveredSkill(skill DiscoveredSkill) (map[string][]byte, error) {
 		if len(files) >= 256 {
 			return fmt.Errorf("skill has more than 256 files")
 		}
-		f, err := root.Open(file)
+		f, err := skillRoot.Open(file)
 		if err != nil {
 			return err
 		}
@@ -139,8 +144,7 @@ func ReadDiscoveredSkill(skill DiscoveredSkill) (map[string][]byte, error) {
 		if total > 10*1024*1024 {
 			return fmt.Errorf("skill is larger than 10 MB")
 		}
-		rel := file[len(skill.Directory)+1:]
-		files[rel] = data
+		files[file] = data
 		return nil
 	})
 	if err != nil {
