@@ -132,7 +132,7 @@ func TestChatMessageSearchSkipsToolStore500MB(t *testing.T) {
 		}
 		plan += detail
 	}
-	if !strings.Contains(plan, "structured_chat_message_scan") {
+	if !strings.Contains(plan, "structured_chat_message_scan") || strings.Contains(plan, "TEMP B-TREE") {
 		t.Fatalf("message scan missed index: %s", plan)
 	}
 	t.Logf("VERIFY-METRIC: chat_message_search fixture_bytes=%d index_ms=%d scan_us=%d scanned=%d payload_bytes=%d plan=%s", len(tool)*1000, installMS, elapsed.Microseconds(), page.Scanned, page.Bytes, plan)
