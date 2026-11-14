@@ -398,10 +398,20 @@ func (api *StreamingAPI) markNativeGoalWakeStarted(sessionID string, receipt *na
 
 // Recovered wake turns also restore through their own accepted completion.
 // An older parent/child completion cannot claim a newly armed wake receipt.
+//
+// The event-added callback runs on the goroutine that appended the event, and
+// some of those callers hold the restart-continue registry lock (for example
+// prepareRestartContinues -> emitInterruptedTurnEnd at startup). This observer
+// takes the same lock, so it must never run inline: doing so deadlocked the
+// backend at startup whenever an interrupted turn was being recovered.
 func (api *StreamingAPI) observeNativeGoalWakeCompletion(sessionID string, event storeevents.Event) {
 	if event.Type != "unified_completion" || event.Data == nil || (event.ParentExecutionID != "" && event.ParentExecutionID != "session:"+sessionID) || (event.ExecutionKind != "" && event.ExecutionKind != "main_agent") {
 		return
 	}
+	go api.observeNativeGoalWakeCompletionAsync(sessionID, event)
+}
+
+func (api *StreamingAPI) observeNativeGoalWakeCompletionAsync(sessionID string, event storeevents.Event) {
 	owner := api.nativeGoalRecordOwner(sessionID)
 	if owner == "" {
 		return
