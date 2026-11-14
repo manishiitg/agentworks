@@ -1,4 +1,5 @@
 export const WORKSPACE_SETTINGS_PATHS = {
+  connections: '/settings/connections',
   providers: '/settings/ai-accounts',
   mcp: '/settings/ai-tools',
   users: '/settings/people',

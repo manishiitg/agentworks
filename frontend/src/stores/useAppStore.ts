@@ -20,7 +20,7 @@ interface AppState {
   schedulesSearchQuery: string
   schedulesSearchScope: string
   /** Admin full pages opened from the top bar (Users & access, Connect an AI agent). */
-  adminPage: 'users' | 'mcp' | 'notifications' | null
+  adminPage: 'users' | 'mcp' | 'notifications' | 'connections' | null
   activityWorkflowPath: string | null
   
   // Code execution mode (for multi-agent mode when no preset is active)
@@ -44,7 +44,7 @@ interface AppState {
   setWorkspaceMinimizedForLayout: (minimized: boolean) => void
   setShowWorkflowsOverview: (show: boolean) => void
   setShowSchedulesOverview: (show: boolean) => void
-  setAdminPage: (page: 'users' | 'mcp' | 'notifications' | null) => void
+  setAdminPage: (page: 'users' | 'mcp' | 'notifications' | 'connections' | null) => void
   setActivityWorkflowPath: (workspacePath: string | null) => void
   setUseCodeExecutionMode: (enabled: boolean) => void
   // Last-used tab settings — inherited by new tabs
