@@ -28,6 +28,7 @@ type codexAppSession struct {
 	goalActivationPending        bool
 	goalPausedForWake            bool
 	goalStateChanged             chan struct{}
+	compacting                   bool
 	turnMu                       sync.Mutex
 	mu                           sync.Mutex
 	rpc                          *codexRPC
@@ -703,7 +704,7 @@ func SendCodexAppServerInput(ctx context.Context, owner, message string) error {
 	}
 	s.mu.Lock()
 	r, thread, turn := s.rpc, s.threadID, s.turnID
-	if r == nil || turn == "" {
+	if r == nil || turn == "" || s.compacting {
 		s.mu.Unlock()
 		return fmt.Errorf("%w: no active Codex turn; start the next turn through GenerateContent", llmtypes.ErrCodingAgentInputNotSent)
 	}
@@ -715,7 +716,7 @@ func SendCodexAppServerInput(ctx context.Context, owner, message string) error {
 	defer closeImages()
 	s.mu.Lock()
 	r, thread, turn = s.rpc, s.threadID, s.turnID
-	if r == nil || turn == "" {
+	if r == nil || turn == "" || s.compacting {
 		s.mu.Unlock()
 		return fmt.Errorf("%w: native turn ended during image preparation", llmtypes.ErrCodingAgentInputNotSent)
 	}

@@ -571,6 +571,29 @@ func activeCodexInteractiveSession(ownerSessionID string) (string, bool) {
 // InteractiveSessionRegistered reports whether the owner's Codex TUI is
 // registered — the live-injection transport exists. Cheap registry lookup
 // (no tmux round-trip) for steer gating; delivery re-verifies liveness.
+// InteractiveTurnActive excludes an idle retained app-server and its maintenance
+// compaction turn from live person/agent input. Delivery rechecks under the lock.
+func InteractiveTurnActive(owner string) bool {
+	if _, ok := activeCodexInteractiveSession(owner); ok {
+		return true
+	}
+	s := codexAppSessionForOwner(owner)
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rpc == nil || s.turnID == "" || s.compacting {
+		return false
+	}
+	select {
+	case <-s.rpc.done:
+		return false
+	default:
+		return true
+	}
+}
+
 func InteractiveSessionRegistered(ownerSessionID string) bool {
 	if _, ok := activeCodexInteractiveSession(ownerSessionID); ok {
 		return true

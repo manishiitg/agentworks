@@ -260,6 +260,9 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				event.TurnID = event.Turn.ID
 			}
 			if event.TurnID != turn {
+				if msg.Method == "turn/completed" && c.logger != nil {
+					c.logger.Infof("[CODEX_TURN] owner=%s thread=%s turn=%s event_turn=%s action=ignored reason=other_turn", s.owner, thread, turn, event.TurnID)
+				}
 				continue
 			}
 			metadata := map[string]any{"codex_thread_id": thread, "codex_turn_id": turn, "codex_stream_source": "app-server"}
@@ -528,6 +531,10 @@ func codexAppRateLimits(raw json.RawMessage) *codexRateLimits {
 // is then followed like any turn (its contextCompaction item, token usage and
 // turn/completed). No person message is sent.
 func (c *CodexCLIAdapter) compactAppThread(ctx context.Context, s *codexAppSession, r *codexRPC, thread string, emit func(llmtypes.StreamChunk)) (*llmtypes.ContentResponse, error) {
+	s.mu.Lock()
+	s.compacting = true
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); s.compacting = false; s.mu.Unlock() }()
 	if err := r.call(ctx, "thread/compact/start", map[string]any{"threadId": thread}, nil); err != nil {
 		r.close()
 		return nil, err
