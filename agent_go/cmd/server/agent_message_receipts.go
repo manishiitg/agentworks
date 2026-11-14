@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -73,13 +74,27 @@ func (s agentMessageStore) destAgentOf(e agentMessageEndpoint) (*namedMessageAge
 }
 
 // receiptFields adds the plain-language state to a send result or a sent-message row.
-func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoint) map[string]interface{} {
+func (s agentMessageStore) receiptFields(ctx context.Context, m agentMessage, dest agentMessageEndpoint) map[string]interface{} {
+	return s.receiptFieldsWithLabel(m, dest, s.recipientLabel(ctx, dest))
+}
+
+func (s agentMessageStore) recipientLabel(ctx context.Context, dest agentMessageEndpoint) string {
+	// The recipient's own name for itself (a Crew's title, an agent's current label), so the sender's chat can say
+	// "Message to <label>" instead of a raw agent id such as app-<id>.
+	label := s.endpointName(dest, dest.UserID)
+	if dest.NamedAgentID == "" && dest.Kind == triggerCallerCrew {
+		if name := defaultProductConversationRegistryStore().messageRecipientName(ctx, dest); name != "" {
+			label = name
+		}
+	}
+	return label
+}
+
+func (s agentMessageStore) receiptFieldsWithLabel(m agentMessage, dest agentMessageEndpoint, label string) map[string]interface{} {
 	agent, named := s.destAgentOf(dest)
 	state, text := receiptState(m, agent, named)
 	out := map[string]interface{}{"state": state, "state_text": text, "message": text, "sent_at": m.SentAt}
-	// The recipient's own name for itself (a Crew's title, an agent's current label), so the sender's chat can say
-	// "Message to <label>" instead of a raw agent id such as app-<id>.
-	if label := strings.TrimSpace(s.endpointName(dest, dest.UserID)); label != "" {
+	if label = strings.TrimSpace(label); label != "" {
 		out["to_label"] = label
 	}
 	if named {
@@ -95,15 +110,16 @@ func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoi
 }
 
 // sentReceipts lists the newest messages this side sent in a conversation.
-func (s agentMessageStore) sentReceipts(c agentConversation, side, limit int) []map[string]interface{} {
+func (s agentMessageStore) sentReceipts(ctx context.Context, c agentConversation, side, limit int) []map[string]interface{} {
 	rows := []map[string]interface{}{}
+	label := s.recipientLabel(ctx, c.Endpoints[1-side])
 	for i := len(c.Messages) - 1; i >= 0 && len(rows) < limit; i-- {
 		m := c.Messages[i]
 		if m.From != side || serverAuthoredKind(m.Kind) {
 			continue
 		}
-		row := s.receiptFields(m, c.Endpoints[1-side])
-		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, s.endpointName(c.Endpoints[1-side], c.Endpoints[side].UserID)
+		row := s.receiptFieldsWithLabel(m, c.Endpoints[1-side], label)
+		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, row["to_label"]
 		rows = append(rows, row)
 	}
 	return rows
@@ -129,4 +145,30 @@ func (s agentMessageStore) endpointName(e agentMessageEndpoint, viewer string) s
 		}
 	}
 	return endpointDisplayLabel(e, viewer)
+}
+
+// PLAT-746: a Crew endpoint's stored Label is often only the Crew title. Resolve
+// the exact admitted conversation, including inbox replies, never a guessed Main.
+func (store productConversationRegistryStore) messageRecipientName(ctx context.Context, e agentMessageEndpoint) string {
+	if e.UserID == "" || e.Session == "" || e.Path == "" {
+		return ""
+	}
+	path := productConversationRegistryPath(e.UserID)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	doc, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return ""
+	}
+	for key, record := range doc.Entries {
+		if record.SessionID != e.Session || record.ProfileID != e.Profile || canonicalCrewWorkspaceRoot(record.WorkspacePath) != canonicalCrewWorkspaceRoot(e.Path) {
+			continue
+		}
+		if e.ChatKey != "" && e.ChatKey != record.ConversationKey {
+			continue
+		}
+		return firstNonEmptyTrimmed(doc.Agents[key].Name, record.Title)
+	}
+	return ""
 }
