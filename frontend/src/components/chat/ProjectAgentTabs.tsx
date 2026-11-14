@@ -42,7 +42,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onImportLocalChat, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
+  onImportLocalChat, onDiscoverSkills, onOpenIdentity, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -55,6 +55,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
   onReopen?: (chat: AgentProfileSideChat) => Promise<void>
   onImportLocalChat?: () => void
+  onDiscoverSkills?: () => void
   onOpenIdentity?: () => void
   onCloseTab: (tabId: string) => void; onSelectTab: (tabId: string) => void
   projectActivity?: 'running' | 'waiting' | null
@@ -630,6 +631,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               <button type="button" onClick={() => { setNewTabName(''); setAddMode('new') }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-4 w-4" />New agent</button>
               <button type="button" onClick={() => setAddMode('fork')} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Fork existing agent…</button>
               {onImportLocalChat && <button type="button" onClick={() => { setAddMode(null); onImportLocalChat() }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><span aria-hidden="true" className="mr-2 inline-flex -space-x-1 align-middle">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-6 w-6 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
+              {onDiscoverSkills && <button type="button" onClick={() => { setAddMode(null); onDiscoverSkills() }} className="w-full rounded-lg border-t border-border px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Discover &amp; import skills…</button>}
             </div> : <>
               <p className="mb-2 px-2 text-xs text-muted-foreground">Choose an agent to copy its conversation into a separate chat. The original stays unchanged.</p>
               <div className="max-h-72 overflow-y-auto">

@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import { useChatStore } from '../../stores/useChatStore'
 import { useProjectProduct } from './projectProduct'
@@ -14,6 +15,8 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
   onOpenFile?: (path: string) => void
 }) {
   const product = useProjectProduct()
+  const [discover, setDiscover] = useState(false)
+  const [revision, setRevision] = useState(0)
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || EMPTY_SKILLS)
   const pendingSkillSaves = useRef<Promise<void>>(Promise.resolve())
   const toggleSkill = async (folderName: string) => {
@@ -36,7 +39,9 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
     }
   }
 
-  return <SkillsManagerPanel
+  return <><SkillsManagerPanel
+          key={revision}
+          headerAction={<button type="button" onClick={() => setDiscover(true)} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">Discover &amp; import…</button>}
           compact
           manageOwnScroll={false}
           customOnly
@@ -60,5 +65,5 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
           onToggleSkill={folderName => { void toggleSkill(folderName) }}
           selectionScopeLabel="Crew"
           emptySelectionText={`No custom skills have been added to this ${product.noun} yet.`}
-        />
+        />{discover && <DiscoverSkillsDialog key={workspacePath} workspacePath={workspacePath} close={() => setDiscover(false)} onImported={() => setRevision(value => value + 1)} />}</>
 }
