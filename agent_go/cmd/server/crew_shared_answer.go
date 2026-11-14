@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -117,6 +118,7 @@ func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string
 	if err != nil || !crewTeamAgentsVisible(current, asker) || !exists || !a.InTeam || a.OwnerID != agent.OwnerID || a.Rule != agent.Rule || current.Revision != team.Revision || !reflect.DeepEqual(current.Folder, team.Folder) || !current.member(a.OwnerID) || !crewTeamAccountActive(a.OwnerID) {
 		return agent, "", "", fmt.Errorf("this agent's sharing changed; ask again")
 	}
+	log.Printf("[CREW_SHARED_ANSWER] project=%s agent=%s event=context bytes=%d", project, agent.ID, len(text))
 	return agent, text, crewSharedAnswerAuthority(team, agent), nil
 }
 
@@ -230,6 +232,7 @@ func crewSharedAnswerDigest(project, person, chat string) (string, error) {
 	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "shared-answers.json"), records, 0600); err != nil {
 		return "", err
 	}
+	log.Printf("[CREW_SHARED_ANSWER] project=%s agent=%s event=digest bytes=%d", project, agent.ID, out.Len())
 	return out.String(), nil
 }
 
