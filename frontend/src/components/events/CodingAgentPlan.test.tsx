@@ -4,7 +4,7 @@ import { CodingAgentPlan } from './CodingAgentPlan'
 import type { PollingEvent } from '../../services/api-types'
 
 it('shows native completed/running/pending states as text, safely (PLAT-746)', () => {
-  const event = { type: 'coding_agent_plan', data: { plan_id: 'p', items: [
+  const event = { id: 'plan-event', timestamp: '2026-11-14T00:00:00Z', type: 'coding_agent_plan', data: { plan_id: 'p', items: [
     { id: '1', text: '<script>unsafe</script>', status: 'completed' },
     { id: '2', text: 'Review', status: 'running' },
     { id: '3', text: 'Report', status: 'pending' },
