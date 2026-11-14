@@ -3,12 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -97,7 +97,7 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 	}
 
 	// A full page of private rows cannot expose its boundary chat through the
-	// continuation token. Replaying it as another person or tampering fails.
+	// continuation token. A forged position cannot grant another chat's access.
 	for i := 0; i < 130; i++ {
 		store.AddEvent("private-stranger", storeevents.Event{ID: fmt.Sprintf("private-%d", i), Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(agentevents.NewUserMessageEvent(1, "needle private tail", "user"))})
 	}
@@ -109,17 +109,20 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 	if json.Unmarshal(w.Body.Bytes(), &first) != nil || w.Code != 200 || len(first.Results) != 0 || first.Cursor == "" {
 		t.Fatalf("private page = %d %s", w.Code, w.Body.String())
 	}
-	decoded, _ := base64.StdEncoding.DecodeString(first.Cursor)
-	if strings.Contains(string(decoded), "private-stranger") || strings.Contains(first.Cursor, "private-stranger") {
-		t.Fatal("cursor exposed another person's chat")
+	if _, err := strconv.ParseInt(first.Cursor, 10, 64); err != nil {
+		t.Fatal("cursor contains more than a store position")
 	}
 	w = call(f.api.handleChatMessageSearch, "other", chatSearchInput{Query: "needle", Cursor: first.Cursor})
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "needle own text") || strings.Contains(w.Body.String(), "needle private tail") {
 		t.Fatalf("admitted continuation = %d %s", w.Code, w.Body.String())
 	}
-	for _, scenario := range []struct{ user, cursor string }{{"owner", first.Cursor}, {"other", first.Cursor + "x"}} {
-		if w = call(f.api.handleChatMessageSearch, scenario.user, chatSearchInput{Query: "needle", Cursor: scenario.cursor}); w.Code != 400 {
-			t.Fatalf("foreign/tampered cursor accepted: %d", w.Code)
-		}
+	// Position is deliberately not a grant or bound to one person/query.
+	w = call(f.api.handleChatMessageSearch, "owner", chatSearchInput{Query: "needle", Cursor: first.Cursor})
+	if w.Code != 200 || strings.Contains(w.Body.String(), "needle own text") || strings.Contains(w.Body.String(), "needle private tail") {
+		t.Fatalf("cursor widened another person's reads: %d %s", w.Code, w.Body.String())
+	}
+	w = call(f.api.handleChatMessageSearch, "other", chatSearchInput{Query: "needle", Cursor: first.Cursor + "x"})
+	if w.Code != 400 {
+		t.Fatalf("non-position cursor accepted: %d", w.Code)
 	}
 }

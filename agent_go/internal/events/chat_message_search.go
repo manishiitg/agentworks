@@ -21,7 +21,7 @@ const chatMessagePredicate = `(json_extract(payload,'$.type')='user_message'
 
 func installChatMessageIndexes(j *SQLiteEventJournal) error {
 	for _, query := range []string{
-		`CREATE INDEX IF NOT EXISTS structured_chat_message_scan ON structured_chat_events(created_at DESC, session_id DESC, sequence DESC) WHERE ` + chatMessagePredicate,
+		`CREATE INDEX IF NOT EXISTS structured_chat_message_scan ON structured_chat_events(json_valid(payload)) WHERE ` + chatMessagePredicate,
 		`CREATE INDEX IF NOT EXISTS structured_chat_message_window ON structured_chat_events(session_id, sequence) WHERE ` + chatMessagePredicate,
 	} {
 		if _, err := j.db.Exec(query); err != nil {
@@ -31,11 +31,9 @@ func installChatMessageIndexes(j *SQLiteEventJournal) error {
 	return nil
 }
 
-type ChatMessageCursor struct {
-	At       string `json:"at"`
-	Session  string `json:"session"`
-	Sequence int64  `json:"sequence"`
-}
+// Only a store position crosses the read boundary; never another chat's ID
+// or timestamp. Position changes do not grant authority.
+type ChatMessageCursor int64
 
 type ChatMessage struct {
 	SessionID string `json:"session_id"`
@@ -81,13 +79,15 @@ func (es *EventStore) ChatMessageWindow(ctx context.Context, session string, seq
 // regardless of the total store size. The cursor grants no read authority.
 func (j *SQLiteEventJournal) ScanChatMessages(ctx context.Context, cursor *ChatMessageCursor) (ChatMessageScan, error) {
 	out := ChatMessageScan{Messages: []ChatMessage{}}
-	query := `SELECT session_id, sequence, created_at, payload FROM structured_chat_events WHERE ` + chatMessagePredicate
+	// Every canonical payload is valid JSON. Its indexed value is therefore
+	// one; SQLite can seek the partial index's implicit rowid suffix directly.
+	query := `SELECT rowid, payload FROM structured_chat_events WHERE json_valid(payload)=1 AND ` + chatMessagePredicate
 	args := []any{}
 	if cursor != nil {
-		query += ` AND (created_at,session_id,sequence)<(?,?,?)`
-		args = append(args, cursor.At, cursor.Session, cursor.Sequence)
+		query += ` AND rowid<?`
+		args = append(args, int64(*cursor))
 	}
-	query += ` ORDER BY created_at DESC, session_id DESC, sequence DESC LIMIT 129`
+	query += ` ORDER BY rowid DESC LIMIT 129`
 	rows, err := j.reader().QueryContext(ctx, query, args...)
 	if err != nil {
 		return out, err
@@ -95,10 +95,9 @@ func (j *SQLiteEventJournal) ScanChatMessages(ctx context.Context, cursor *ChatM
 	defer rows.Close()
 	var last *ChatMessageCursor
 	for rows.Next() {
-		var session, at string
-		var sequence int64
+		var position int64
 		var raw []byte
-		if err = rows.Scan(&session, &sequence, &at, &raw); err != nil {
+		if err = rows.Scan(&position, &raw); err != nil {
 			return out, err
 		}
 		if out.Scanned == 128 {
@@ -107,7 +106,8 @@ func (j *SQLiteEventJournal) ScanChatMessages(ctx context.Context, cursor *ChatM
 		}
 		out.Scanned++
 		out.Bytes += len(raw)
-		last = &ChatMessageCursor{At: at, Session: session, Sequence: sequence}
+		boundary := ChatMessageCursor(position)
+		last = &boundary
 		if message, ok := indexedChatMessage(raw); ok {
 			out.Messages = append(out.Messages, message)
 		}
