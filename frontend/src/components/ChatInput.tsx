@@ -904,7 +904,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [uploadingFiles, setUploadingFiles] = useState<{ tabId: string | null; files: File[]; canSend: boolean } | null>(null)
   const pendingUploadBatchRef = useRef<{
     tabId: string | null; sessionId: string; pending: { hash: string; name: string }[];
-    submitted: boolean; completedFiles: { name: string; path: string; type: 'file' }[]
+    submitted: boolean; completedFiles: { name: string; path: string; type: 'file'; admittedAttachment?: { hash: string; name: string } }[]
   } | null>(null)
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const isCdpDisconnected = browserMode === 'cdp' && (!cdpEnabled || cdpConnected === false)
@@ -2480,7 +2480,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
     const conversationKey = activeTab?.metadata?.agentProfileConversationKey
     const batch = agentProfileId === 'work' && agentProfileProjectId && uploadSessionId && conversationKey && !terminalViewSelected
-      ? { tabId: activeTabId, sessionId: uploadSessionId, pending: [] as { hash: string; name: string }[], submitted: false, completedFiles: [] as { name: string; path: string; type: 'file' }[] }
+      ? { tabId: activeTabId, sessionId: uploadSessionId, pending: [] as { hash: string; name: string }[], submitted: false, completedFiles: [] as { name: string; path: string; type: 'file'; admittedAttachment?: { hash: string; name: string } }[] }
       : null
     pendingUploadBatchRef.current = batch
     let prepared: Awaited<ReturnType<typeof agentApi.prepareCrewChatFile>>[] | undefined
@@ -2513,7 +2513,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           response?.filepath
         if (uploadedPath && typeof uploadedPath === 'string') {
           uploadedPaths.push(uploadedPath)
-          if (batch) batch.completedFiles.push({ name: file.name, path: uploadedPath, type: 'file' })
+          if (batch) batch.completedFiles.push({ name: file.name, path: uploadedPath, type: 'file', admittedAttachment: prepared?.[index].attachment })
           const absolutePath = response?.data?.absolute_path || response?.absolute_path
           if (typeof absolutePath === 'string' && absolutePath.startsWith('/')) uploadedAbsolutePaths.set(uploadedPath, absolutePath)
           console.info('[CHAT_UPLOAD] upload success', { name: file.name, path: uploadedPath })
@@ -2564,6 +2564,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             name: path.split('/').pop() || path,
             path,
             type: 'file' as const,
+            admittedAttachment: batch?.completedFiles.find(file => file.path === path)?.admittedAttachment,
           }))
 
         if (uploadedContextItems.length > 0) {

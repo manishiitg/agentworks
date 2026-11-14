@@ -239,7 +239,7 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if bound {
-		api.finishPendingChatUpload(key, workspace+"/"+rel)
+		api.finishPendingChatUpload(key, workspace+"/"+rel, in.File.Size)
 		committed = true
 	}
 	pruneChunks(store, nil, crewNativeChunkKeep)

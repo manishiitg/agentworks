@@ -49,3 +49,11 @@ export function isConfirmedUndeliveredSubmission(error: unknown): boolean {
   const response = (error as { response?: { status?: number; data?: { error?: string } } }).response
   return response?.status === 409 && (response.data?.error === 'delivery_not_sent' || response.data?.error === 'turn_running')
 }
+
+// A committed upload keeps its writer-issued identity after the upload UI
+// closes. Typed/selected file paths alone never mint attachment admission.
+export function submittedChatAttachmentReferences(files: readonly FileContextItem[] = [], pending: readonly { hash: string; name: string }[] = []) {
+  const refs = new Map<string, { hash: string; name: string }>()
+  for (const ref of [...pending, ...files.flatMap(file => file.admittedAttachment ? [file.admittedAttachment] : [])]) refs.set(ref.hash, { ...ref })
+  return [...refs.values()]
+}

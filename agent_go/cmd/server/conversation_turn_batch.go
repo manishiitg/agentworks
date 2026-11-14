@@ -39,6 +39,7 @@ func (api *StreamingAPI) queuedBatchEligible(turn queuedConversationTurn) bool {
 func queuedBatchScope(turn queuedConversationTurn) string {
 	principal := turn.Principal
 	principal.DeliveredMessage = nil
+	principal.Attachments = nil
 	principal.DeliveredMessageSession, principal.DeliveredMessageUser = "", ""
 	principal.CostAttribution = queuedConversationPrincipal{}.CostAttribution
 	request := sanitizedQueuedConversationRequest(context.Background(), turn.Request)
@@ -113,6 +114,8 @@ func (api *StreamingAPI) claimQueuedBatch(turns []queuedConversationTurn, head q
 		return claimed, turns
 	}
 	canCombine := api.queuedBatchEligible(head) && scope != ""
+	var imageBytes int64
+	imageCount := 0
 	started := false
 	var members []queuedConversationTurn
 	for _, i := range ordered {
@@ -130,6 +133,12 @@ func (api *StreamingAPI) claimQueuedBatch(turns []queuedConversationTurn, head q
 				break
 			}
 		}
+		count, size := api.queuedChatImageSize(candidate)
+		if len(members) > 0 && (imageCount+count > 16 || imageBytes+size > nativeChatTurnImageMaxBytes) {
+			break
+		}
+		imageCount += count
+		imageBytes += size
 		turns[i].StartedAt = &now
 		turns[i].RetryAt = nil
 		turns[i].BatchID = head.ID
@@ -179,6 +188,7 @@ func (api *StreamingAPI) prepareQueuedBatch(ctx context.Context, turn queuedConv
 	allAutomatic := true
 	hasPerson := false
 	inbox := ""
+	var attachments []admittedChatAttachment
 	for _, member := range turn.Batch {
 		request := member.Request
 		args, err := queryRequestToMap(request)
@@ -195,6 +205,8 @@ func (api *StreamingAPI) prepareQueuedBatch(ctx context.Context, turn queuedConv
 		if err := api.resolvePendingChatAttachments(principal, member.UserID, member.SessionID, &request); err != nil {
 			return turn, err
 		}
+		attachments = append(attachments, member.Principal.Attachments...)
+		attachments = append(attachments, request.admittedAttachments...)
 		sender := "you"
 		if member.Principal.DeliveredMessage["source"] == "agent_message" {
 			if label, ok := member.Principal.DeliveredMessage["sender_label"].(string); ok && label != "" {
@@ -217,6 +229,7 @@ func (api *StreamingAPI) prepareQueuedBatch(ctx context.Context, turn queuedConv
 	}
 	turn.Request.Query, turn.Request.Message = text.String(), ""
 	turn.Request.PendingAttachments = nil
+	turn.Principal.Attachments = attachments
 	turn.Request.IsAutoNotification = allAutomatic
 	turn.Request.AgentMessageInbox = inbox
 	if hasPerson {
@@ -228,4 +241,30 @@ func (api *StreamingAPI) prepareQueuedBatch(ctx context.Context, turn queuedConv
 	}
 	turn.Principal.DeliveredMessageUser, turn.Principal.DeliveredMessageSession = turn.UserID, turn.SessionID
 	return turn, nil
+}
+
+// Keep attachment batches inside the same native turn payload bounds. A ready
+// image that does not fit remains in the existing lane for the next turn.
+func (api *StreamingAPI) queuedChatImageSize(turn queuedConversationTurn) (int, int64) {
+	count := 0
+	var size int64
+	for _, ref := range turn.Principal.Attachments {
+		if nativeChatImagePath(ref.Path) {
+			count++
+			size += ref.Bytes
+		}
+	}
+	for _, ref := range turn.Request.PendingAttachments {
+		if item, err := api.pendingChatUpload(pendingAttachmentKey(turn.UserID, turn.SessionID, turn.Request, ref.Hash)); err == nil {
+			select {
+			case <-item.Ready:
+				if nativeChatImagePath(item.Path) {
+					count++
+					size += item.Bytes
+				}
+			default:
+			}
+		}
+	}
+	return count, size
 }

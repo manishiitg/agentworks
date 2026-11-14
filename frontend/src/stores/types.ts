@@ -33,6 +33,7 @@ export interface ToolDetail {
 
 // File Context Types
 export interface FileContextItem {
+  admittedAttachment?: { hash: string; name: string }
   name: string
   path: string
   type: 'file' | 'folder'
