@@ -356,19 +356,19 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const crewDirectory = crewInventory.scope === resourceScope ? crewInventory.rows : []
   const [messageAttempt, setMessageAttempt] = useState(0)
   const [messageSearch, setMessageSearch] = useState<{ key: string; items: ResourceItem[]; cursor: string; loading: boolean; error: boolean }>({ key: '', items: [], cursor: '', loading: false, error: false })
-  const messageBatch = useRef({ key: '', items: [] as ResourceItem[], cursor: '' })
+  const messageBatch = useRef({ key: '', items: [] as ResourceItem[], cursor: '', page: 0 })
   const messageKey = `${resourceScope}:${query.trim()}`
   const messageEnabled = isOpen && !!user && (category === 'all' || category === 'chat') && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2 && [...query.trim()].length <= 200
   useEffect(() => {
     if (!messageEnabled) {
       // Reopening search must get fresh admission, not resurface snippets
       // cached before a chat was hidden or access was removed.
-      messageBatch.current = { key: '', items: [], cursor: '' }
+      messageBatch.current = { key: '', items: [], cursor: '', page: 0 }
       setMessageSearch({ key: '', items: [], cursor: '', loading: false, error: false })
       return
     }
     const controller = new AbortController()
-    if (messageBatch.current.key !== messageKey) messageBatch.current = { key: messageKey, items: [], cursor: '' }
+    if (messageBatch.current.key !== messageKey) messageBatch.current = { key: messageKey, items: [], cursor: '', page: 0 }
     const timer = window.setTimeout(() => {
       const previous = messageBatch.current
       setMessageSearch({ ...previous, loading: true, error: false })
@@ -376,11 +376,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         let items = [...previous.items], cursor = previous.cursor
         // One debounced HTTP request per pause; the server batches the bounded
         // journal scan. Older history is explicit, never an eight-call burst.
-        const { data } = await api.post<{ results: { session_id: string; id: string; title: string; sender: string; at: string; snippet: string; url: string }[]; next_cursor: string }>('/api/chat-search', { query: query.trim(), cursor, page: messageAttempt }, { signal: controller.signal, skipSessionContext: true })
+        const { data } = await api.post<{ results: { session_id: string; id: string; title: string; sender: string; at: string; snippet: string; url: string }[]; next_cursor: string }>('/api/chat-search', { query: query.trim(), cursor, page: previous.page }, { signal: controller.signal, skipSessionContext: true })
         if (controller.signal.aborted) return
         items = [...items, ...data.results.filter(hit => !items.some(item => item.id === `message:${hit.session_id}:${hit.id}`)).map(hit => ({ type: 'message' as const, id: `message:${hit.session_id}:${hit.id}`, chatId: hit.session_id, sender: hit.sender, at: hit.at, label: hit.title, subtitle: hit.snippet, searchText: '', href: hit.url, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }))]
         cursor = data.next_cursor
-        const batch = { key: messageKey, items, cursor }
+        const batch = { key: messageKey, items, cursor, page: previous.page + 1 }
         messageBatch.current = batch
         setMessageSearch({ ...batch, loading: false, error: false })
       }
