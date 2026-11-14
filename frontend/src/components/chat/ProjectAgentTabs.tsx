@@ -248,6 +248,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     return {
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
       terminal: surface === 'work' && isAgentTab(tab) && canControl(tab) && (tab.metadata?.agentProfileChatProvider || tab.metadata?.agentProfileEngine) === 'claude-code' ? () => continueInTerminal(tab.tabId) : undefined,
+      editorWorkspace: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? tab.metadata?.agentProfileWorkspace : undefined,
       runOnline: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? () => { sendToTab(tab.tabId, RUN_ONLINE_ASK) } : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,

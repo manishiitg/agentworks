@@ -1,3 +1,4 @@
+import { OpenInEditorAction } from './workspace/OpenInEditor'
 import { useFileGit, useFileGitStore } from './workspace/FileGitContext'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -445,6 +446,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
                   <Pencil className="w-4 h-4" />
                 </button>
               )}
+              {gitFile && gitWorkspacePath && <OpenInEditorAction workspacePath={gitWorkspacePath} repo={gitFile.repo.root} file={gitFile.file} />}
               <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
                 <Download className="w-4 h-4" />
               </button>

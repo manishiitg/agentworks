@@ -204,6 +204,7 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	apiRouter.HandleFunc("/workspace-snapshots", requireWorkflowReadAccessCallerRelative(api.handleCrewFileSnapshots)).Methods("GET", "POST", "OPTIONS")
 	// Local git actions (stage, unstage, discard, commit); write access is checked in the handler.
 	apiRouter.HandleFunc("/workspace-git", api.handleWorkspaceGitAction).Methods("POST")
+	apiRouter.HandleFunc("/workspace-editor", api.handleWorkspaceEditor).Methods("GET", "POST")
 	apiRouter.HandleFunc("/workflow/logs/file", requireLogFileReadAccess(api.handleGetLogFile)).Methods("GET", "OPTIONS")
 	// These check inside the handler: they name a workflow by ID, by session,
 	// by a list of paths, or through a report-preview token.

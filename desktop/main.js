@@ -1,6 +1,7 @@
+const { makeEditorOpener } = require('./lib/editorOpen');
 const { app, BrowserWindow, dialog, shell, nativeTheme, Menu, Tray, ipcMain, nativeImage, session, Notification } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -781,6 +782,15 @@ ipcMain.on('set-running-activity', (_event, payload) => {
 
 // External-URL handling is shared with the other desktop shells (lib/externalNav.js).
 const openExternalUrl = makeOpenExternalUrl(shell);
+
+const openChosenEditor = makeEditorOpener(shell, execFile);
+ipcMain.handle('open-editor', async (event, payload) => {
+  // Only the trusted main renderer, never a report iframe or auxiliary window.
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    return { ok: false, error: 'Open the editor from your project in the main app window.' };
+  }
+  return openChosenEditor(payload);
+});
 
 // IPC Handler for opening external URLs
 ipcMain.on('open-external', (event, url) => {
