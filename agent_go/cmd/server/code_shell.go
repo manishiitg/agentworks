@@ -42,13 +42,14 @@ const (
 )
 
 type codeShellState struct {
-	socket    string
-	viewers   int
-	lastSeen  time.Time
-	ownerID   string
-	projectID string
-	userID    string
-	conns     map[*websocket.Conn]bool
+	socket          string
+	viewers         int
+	lastSeen        time.Time
+	ownerID         string
+	projectID       string
+	userID          string
+	conns           map[*websocket.Conn]bool
+	contextCommands []codeShellContextCommand
 }
 
 var codeShells = struct {
@@ -332,6 +333,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 		}
 	}()
 
+	contextStream := codeShellContextStream{shellID: shellID}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -343,7 +345,8 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 				}
 				continue
 			}
-			if conn.WriteMessage(websocket.BinaryMessage, data) != nil {
+			data = contextStream.feed(data)
+			if len(data) > 0 && conn.WriteMessage(websocket.BinaryMessage, data) != nil {
 				return
 			}
 		}
