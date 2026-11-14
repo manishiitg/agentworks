@@ -17,12 +17,14 @@ import (
 type chatSearchInput struct {
 	Query  string `json:"query"`
 	Cursor string `json:"cursor"`
+	Page   int    `json:"page,omitempty"`
 }
 type chatSearchHit struct {
 	Session  string `json:"session_id"`
 	ID       string `json:"id"`
 	Sequence int64  `json:"sequence"`
 	Title    string `json:"title"`
+	Sender   string `json:"sender"`
 	Snippet  string `json:"snippet"`
 	At       string `json:"at"`
 	URL      string `json:"url"`
@@ -75,6 +77,13 @@ func (api *StreamingAPI) chatSearchRecords(ctx context.Context, owner string) ma
 	for _, record := range doc.Entries {
 		out[record.SessionID] = record
 	}
+	for session, record := range out {
+		name := strings.TrimSpace(doc.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)].Name)
+		if name != "" && name != record.Title {
+			record.Title = firstNonEmptyTrimmed(record.Title, "Chat") + " · " + name
+			out[session] = record
+		}
+	}
 	return out
 }
 func (api *StreamingAPI) chatSearchReadable(r *http.Request, session, workspace string) bool {
@@ -118,12 +127,14 @@ func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Reque
 	started := time.Now()
 	result := []chatSearchHit{}
 	ok, reason := false, "invalid_arguments"
+	scanned, pages, matched, denied, ownerMissing := 0, 0, 0, 0, 0
+	hasMore := false
 	defer func() {
-		log.Printf("[CHAT_SEARCH] user=%s results=%d elapsed_ms=%d ok=%t reason=%s", GetUserIDFromContext(r.Context()), len(result), time.Since(started).Milliseconds(), ok, reason)
+		log.Printf("[CHAT_SEARCH] user=%s results=%d elapsed_ms=%d ok=%t reason=%s page=%d continuation=%t pages=%d scanned=%d matched=%d denied=%d missing_owner=%d has_more=%t", GetUserIDFromContext(r.Context()), len(result), time.Since(started).Milliseconds(), ok, reason, input.Page, input.Cursor != "", pages, scanned, matched, denied, ownerMissing, hasMore)
 	}()
 	w.Header().Set("Cache-Control", "private, no-store")
 	query := strings.TrimSpace(input.Query)
-	if utf8.RuneCountInString(query) < 2 || utf8.RuneCountInString(query) > 200 {
+	if utf8.RuneCountInString(query) < 2 || utf8.RuneCountInString(query) > 200 || input.Page < 0 {
 		externalError(w, 400, "invalid_arguments", "Use 2 to 200 characters to search messages.")
 		return
 	}
@@ -142,48 +153,60 @@ func (api *StreamingAPI) searchChatMessages(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 	reason = "store_unavailable"
-	page, err := api.eventStore.ScanChatMessages(ctx, cursor)
-	if err != nil {
-		externalError(w, 503, "unavailable", "Message search is unavailable. Try again from your workspace.")
-		return
-	}
 	ownerRecords := map[string]map[string]ProductConversationRecord{}
 	type admission struct {
 		allowed bool
 		record  ProductConversationRecord
 	}
 	admissions := map[string]admission{}
-	for _, message := range page.Messages {
-		if !strings.Contains(strings.ToLower(message.Text), strings.ToLower(query)) {
-			continue
+	for batch := 0; batch < 8; batch++ {
+		page, err := api.eventStore.ScanChatMessages(ctx, cursor)
+		if err != nil {
+			externalError(w, 503, "unavailable", "Message search is unavailable. Try again from your workspace.")
+			return
 		}
-		entry, found := admissions[message.SessionID]
-		if !found {
-			owner, ownerErr := api.eventStore.DurableChatOwner(message.SessionID)
-			if ownerErr != nil || owner == "" {
+		pages++
+		scanned += page.Scanned
+		cursor = page.Next
+		hasMore = cursor != nil
+		for _, message := range page.Messages {
+			if !strings.Contains(strings.ToLower(message.Text), strings.ToLower(query)) {
 				continue
 			}
-			records, loaded := ownerRecords[owner]
-			if !loaded {
-				records = api.chatSearchRecords(ctx, owner)
-				ownerRecords[owner] = records
+			matched++
+			entry, found := admissions[message.SessionID]
+			if !found {
+				owner, ownerErr := api.eventStore.DurableChatOwner(message.SessionID)
+				if ownerErr != nil || owner == "" {
+					ownerMissing++
+					continue
+				}
+				records, loaded := ownerRecords[owner]
+				if !loaded {
+					records = api.chatSearchRecords(ctx, owner)
+					ownerRecords[owner] = records
+				}
+				record := records[message.SessionID]
+				entry = admission{record: record, allowed: (workspaceFilter == "" || record.WorkspacePath == workspaceFilter) && api.chatSearchReadable(r, message.SessionID, record.WorkspacePath)}
+				admissions[message.SessionID] = entry
 			}
-			record := records[message.SessionID]
-			entry = admission{record: record, allowed: (workspaceFilter == "" || record.WorkspacePath == workspaceFilter) && api.chatSearchReadable(r, message.SessionID, record.WorkspacePath)}
-			admissions[message.SessionID] = entry
+			if !entry.allowed {
+				denied++
+				continue
+			}
+			title := strings.TrimSpace(entry.record.Title)
+			if title == "" {
+				title = "Saved chat · " + message.SessionID
+			}
+			result = append(result, chatSearchHit{Session: message.SessionID, ID: message.ID, Sequence: message.Sequence, Title: title, Sender: message.Sender, Snippet: messageSearchSnippet(message.Text, query), At: message.At, URL: chatMessageURL(message.SessionID, message.ID, message.Sequence)})
 		}
-		if !entry.allowed {
-			continue
+		if cursor == nil || len(result) >= 20 {
+			break
 		}
-		title := strings.TrimSpace(entry.record.Title)
-		if title == "" {
-			title = "Saved chat · " + message.SessionID
-		}
-		result = append(result, chatSearchHit{Session: message.SessionID, ID: message.ID, Sequence: message.Sequence, Title: title, Snippet: messageSearchSnippet(message.Text, query), At: message.At, URL: chatMessageURL(message.SessionID, message.ID, message.Sequence)})
 	}
 	next := ""
-	if page.Next != nil {
-		next = strconv.FormatInt(int64(*page.Next), 10)
+	if cursor != nil {
+		next = strconv.FormatInt(int64(*cursor), 10)
 	}
 	ok, reason = true, "done"
 	externalJSON(w, map[string]any{"results": result, "next_cursor": next})

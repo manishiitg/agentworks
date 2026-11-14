@@ -41,6 +41,7 @@ type ChatMessage struct {
 	Sequence  int64  `json:"sequence"`
 	At        string `json:"at"`
 	Role      string `json:"role"`
+	Sender    string `json:"sender"`
 	Text      string `json:"text"`
 }
 
@@ -172,13 +173,19 @@ func indexedChatMessage(raw []byte) (ChatMessage, bool) {
 		return ""
 	}
 	role := "assistant"
+	sender := "Assistant"
 	content := ""
 	if e.Type == "user_message" {
 		role = "user"
+		sender = "You"
 		content = text("content", "message")
 		if metadata, ok := fields["metadata"].(map[string]any); ok {
 			if metadata["source"] == "agent_message" {
 				content, _ = metadata["display_content"].(string)
+				sender, _ = metadata["sender_label"].(string)
+				if strings.TrimSpace(sender) == "" {
+					sender = "Agent message"
+				}
 			}
 		}
 	} else {
@@ -190,5 +197,5 @@ func indexedChatMessage(raw []byte) (ChatMessage, bool) {
 	if strings.TrimSpace(content) == "" {
 		return ChatMessage{}, false
 	}
-	return ChatMessage{SessionID: e.Session, ID: e.ID, Sequence: e.Sequence, At: e.At, Role: role, Text: content}, true
+	return ChatMessage{SessionID: e.Session, ID: e.ID, Sequence: e.Sequence, At: e.At, Role: role, Sender: sender, Text: content}, true
 }
