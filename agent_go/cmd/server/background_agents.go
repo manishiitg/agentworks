@@ -1189,6 +1189,9 @@ func (api *StreamingAPI) isSessionStoppedOrInactive(sessionID string) bool {
 // any background step that outlived the 10-minute idle window had its completion
 // silently dropped even though the main agent was alive, stalling the workflow.
 func (api *StreamingAPI) autoNotificationSessionUnreachable(sessionID string) bool {
+	if chatTerminalTurnRefusal(sessionID) != "" {
+		return true
+	}
 	if api.isSessionMarkedStopped(sessionID) {
 		return true
 	}

@@ -58,7 +58,7 @@ export function TerminalResumeNotice({ tabId }: { tabId: string | null }) {
     try {
       await api.post(endpoint, null, { params: { conversation_key: key, action: 'here' } })
       if (isChatIdentityCurrent(identity)) useTerminalResumeState.setState(s => ({ byTab: { ...s.byTab, [byKey]: { ...status, out: false } }, commandTab: undefined }))
-    } catch { useChatStore.getState().addToast('Could not return this chat here. Try again.', 'error') }
+    } catch { if (isChatIdentityCurrent(identity)) useChatStore.getState().addToast('Could not return this chat here. Try again.', 'error') }
     finally { setWorking(false) }
   }
   return <div role="status" className="space-y-2 border-b border-border px-3 py-2 text-sm">

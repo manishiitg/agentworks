@@ -84,6 +84,10 @@ func (q *nativeWakeQueue) take(sessionID string) ([]codexFinishedCommand, bool, 
 // runQueuedNativeWakes starts the follow-up turn for a chat's waiting wakes,
 // unless a turn still holds the chat: that turn's end calls this again.
 func (api *StreamingAPI) runQueuedNativeWakes(sessionID string) {
+	if chatTerminalTurnRefusal(sessionID) != "" {
+		dropQueuedNativeWakes(sessionID, "continued_in_terminal")
+		return
+	}
 	stopped := api.isSessionMarkedStopped(sessionID)
 	if !stopped && api.isSessionBusyForAutoNotification(sessionID) {
 		return

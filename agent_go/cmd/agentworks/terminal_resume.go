@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -163,14 +164,35 @@ func installTerminalJournal(store, folder string, b *sessiontransfer.Bundle) (st
 	if e != nil {
 		return "", e
 	}
-	if raw, e := os.ReadFile(dest); e == nil {
-		h := sha256.Sum256(raw)
-		if int64(len(raw)) == b.Files["session.jsonl"].Size && hex.EncodeToString(h[:]) == b.Files["session.jsonl"].SHA256 {
+	var previous os.FileInfo
+	old, err := os.Open(dest)
+	if err == nil {
+		previous, err = old.Stat()
+		if err != nil {
+			old.Close()
+			return "", err
+		}
+		if !previous.Mode().IsRegular() || previous.Size() > b.Files["session.jsonl"].Size {
+			old.Close()
+			return "", fmt.Errorf("a different local Claude journal exists; nothing was overwritten")
+		}
+		hash := sha256.New()
+		_, err = io.CopyN(hash, old, previous.Size())
+		old.Close()
+		if err != nil {
+			return "", err
+		}
+		digest := hex.EncodeToString(hash.Sum(nil))
+		if previous.Size() == b.Files["session.jsonl"].Size && digest == b.Files["session.jsonl"].SHA256 {
 			return dest, nil
 		}
-		return "", fmt.Errorf("a different local Claude journal already exists. Nothing was overwritten; choose Continue here instead in AgentWorks")
-	} else if !os.IsNotExist(e) {
-		return "", e
+		if previous.Size() > 0 {
+			if err = chatterminal.CheckPrefix(b.Root, previous.Size(), digest); err != nil {
+				return "", fmt.Errorf("this local Claude journal has different history; nothing was overwritten")
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
 	}
 	f, e := os.CreateTemp(filepath.Dir(dest), ".terminal-session-")
 	if e != nil {
@@ -191,9 +213,15 @@ func installTerminalJournal(store, folder string, b *sessiontransfer.Bundle) (st
 	if ce != nil {
 		return "", ce
 	}
-	// Link publishes complete bytes without replacing a file another process
-	// created after our absence check. No differing journal is ever replaced.
-	if e = os.Link(f.Name(), dest); e != nil {
+	if previous != nil {
+		current, err := os.Lstat(dest)
+		if err != nil || !current.Mode().IsRegular() || !os.SameFile(previous, current) || current.Size() != previous.Size() || !current.ModTime().Equal(previous.ModTime()) {
+			return "", fmt.Errorf("the local journal changed while preparing resume; nothing was overwritten")
+		}
+		if e = os.Rename(f.Name(), dest); e != nil {
+			return "", e
+		}
+	} else if e = os.Link(f.Name(), dest); e != nil {
 		return "", e
 	}
 	return dest, nil
@@ -337,12 +365,14 @@ func returnTerminalChat(ctx context.Context, o *options, chosen liveAgentSession
 	if json.Unmarshal(raw, &receipt) != nil || receipt.Native != chosen.session {
 		return true, fmt.Errorf("invalid terminal return receipt")
 	}
-	if chosen.cwd != "" {
-		root, e := filepath.EvalSymlinks(chosen.cwd)
-		if e != nil || root != receipt.Folder {
-			return true, fmt.Errorf("attach from the exact project folder where this chat was resumed")
-		}
+	if chosen.cwd == "" {
+		return true, fmt.Errorf("the exact project folder could not be verified; attach from the terminal where this chat was resumed")
 	}
+	root, e := filepath.EvalSymlinks(chosen.cwd)
+	if e != nil || root != receipt.Folder {
+		return true, fmt.Errorf("attach from the exact project folder where this chat was resumed")
+	}
+
 	client, e := terminalClient(o, receipt.Reference.Server)
 	if e != nil {
 		return true, e
@@ -352,7 +382,8 @@ func returnTerminalChat(ctx context.Context, o *options, chosen liveAgentSession
 		return true, e
 	}
 	if status["out"] != true {
-		return true, fmt.Errorf("this old terminal copy is no longer the live chat. Continue in AgentWorks, or import it as a new chat")
+		_ = os.Remove(path)
+		return false, nil // Superseded: normal attach may register this as a separate native chat.
 	}
 	home, e := os.UserHomeDir()
 	if e != nil {
@@ -386,9 +417,17 @@ func returnTerminalChat(ctx context.Context, o *options, chosen liveAgentSession
 	}
 	response, e := client.TerminalSession(ctx, receipt.Reference.Key, "return", "", archive)
 	if e != nil {
+		var failure *agentworksclient.APIError
+		if errors.As(e, &failure) && failure.Code == "handoff_superseded" {
+			_ = os.Remove(path)
+			return false, nil
+		}
 		return true, e
 	}
 	response.Close()
+	if e = os.Remove(path); e != nil && !os.IsNotExist(e) {
+		return true, fmt.Errorf("the chat is back in AgentWorks, but its local return receipt could not be cleared")
+	}
 	fmt.Fprintf(o.stdout, "The chat is back in AgentWorks. This terminal copy is no longer the live one.\n")
 	return true, nil
 }
