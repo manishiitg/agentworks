@@ -34,6 +34,29 @@ func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testi
 	if created.Code != http.StatusOK || gateway.count() != 1 {
 		t.Fatalf("create: %d %s", created.Code, created.Body.String())
 	}
+	var response struct {
+		Result string `json:"result"`
+	}
+	var connected struct {
+		Connected      bool   `json:"connected"`
+		ConnectionID   string `json:"connection_id"`
+		RequiresSignIn bool   `json:"requires_sign_in"`
+		ToolCount      int    `json:"tool_count"`
+	}
+	if json.Unmarshal(created.Body.Bytes(), &response) != nil || json.Unmarshal([]byte(response.Result), &connected) != nil || !connected.Connected || connected.RequiresSignIn || connected.ConnectionID != "c-00000001" {
+		t.Fatalf("public connection must finish with a discovered runtime verdict, not saved/sign-in: %s", created.Body.String())
+	}
+	// A pending saved row must not be called connected even if inventory has an old entry.
+	gateway.mu.Lock()
+	gateway.connections["c-00000001"]["Status"] = "pending"
+	gateway.mu.Unlock()
+	notReady := call(`{"operation":"sync","connection_id":"c-00000001"}`)
+	if json.Unmarshal(notReady.Body.Bytes(), &response) != nil || json.Unmarshal([]byte(response.Result), &connected) != nil || connected.Connected || connected.RequiresSignIn {
+		t.Fatalf("unverified row offered sign-in or claimed connected: %s", notReady.Body.String())
+	}
+	gateway.mu.Lock()
+	gateway.connections["c-00000001"]["Status"] = "active"
+	gateway.mu.Unlock()
 	edited := call(`{"operation":"edit_connection","connection_id":"c-00000001","label":"Renamed tools","vault_id":"v-999999","workspace_path":"Crew/foreign"}`)
 	if edited.Code != http.StatusOK {
 		t.Fatalf("edit: %d %s", edited.Code, edited.Body.String())

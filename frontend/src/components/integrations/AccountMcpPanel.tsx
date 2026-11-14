@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Loader2, Plus, X } from 'lucide-react'
 import { McpConnectionsPanel } from './McpConnectionsPanel'
 import { useVaultMcpConnections } from './useVaultMcpConnections'
 import { vaultConnectionsApi, type VaultCatalogApp, type VaultConnectionResult, type VaultConnectionRow } from '../../api/vaultConnections'
@@ -29,6 +29,8 @@ export default function AccountMcpPanel() {
   const [target, setTarget] = useState<FormTarget>()
   const [removing, setRemoving] = useState<VaultConnectionRow>()
   const [busy, setBusy] = useState(false)
+  const [connecting, setConnecting] = useState('')
+  const [activity, setActivity] = useState('')
   const alive = useRef(true)
   const loadCatalog = useCallback(async () => {
     try { const items = await vaultConnectionsApi.catalog(); if (alive.current) { setCatalog(items); setCatalogError('') } }
@@ -36,25 +38,39 @@ export default function AccountMcpPanel() {
   }, [])
   useEffect(() => { alive.current = true; void loadCatalog(); return () => { alive.current = false } }, [loadCatalog])
   const refresh = () => { void vault.refresh(); void loadCatalog() }
+  // OAuth completion already discovers tools on the server. Focus/manual refresh
+  // reads that verdict; no browser-side polling or second Test step.
+  useEffect(() => {
+    if (!result?.auth_url || !result.connection_id) return
+    const saved = vault.items.find(item => item.id === result.connection_id)
+    if (saved?.status === 'active') {
+      setResult({ connection_id: saved.id, connected: true, tool_count: saved.tools.length })
+      setMessage(`${saved.label} connected · ${saved.tools.length} ${saved.tools.length === 1 ? 'tool' : 'tools'} available.`)
+    }
+  }, [result, vault.items])
   async function operate(operation: Parameters<typeof vaultConnectionsApi.operate>[0], fields: Record<string, string>) {
-    setBusy(true); setError(''); setMessage('')
+    setBusy(true); setError(''); setMessage(''); setResult(undefined)
+    const label = fields.provider || fields.label || vault.items.find(item => item.id === fields.connection_id)?.label || 'server'
+    setConnecting(label)
+    setActivity(operation === 'remove_connection' ? `Removing ${label}…` : operation === 'sync' ? `Checking ${label}…` : operation === 'edit_connection' ? `Updating ${label}…` : `Connecting to ${label}…`)
     try {
       const next = await vaultConnectionsApi.operate(operation, fields)
       if (!alive.current) return
       setResult(next)
-      setMessage(next.message || (operation === 'remove_connection' ? 'Connection removed from Vault.' : operation === 'sync' ? 'Connection checked and tools refreshed.' : 'Connection saved. Check its status below.'))
+      setMessage(next.message || (operation === 'remove_connection' ? 'Connection removed.' : next.auth_url ? 'Finish signing in to connect and discover tools.' : 'Check the connection status below.'))
+      const signIn = safeSignIn(next.auth_url)
+      if (signIn) window.open(signIn, '_blank', 'noopener,noreferrer')
       setTarget(undefined); setRemoving(undefined)
       await vault.refresh()
-    } catch (cause) { if (alive.current) setError(errorText(cause)) }
+    } catch (cause) { if (alive.current) { setError(errorText(cause)); await vault.refresh() } }
     finally { if (alive.current) setBusy(false) }
   }
   const authUrl = safeSignIn(result?.auth_url)
   return <>
-      {busy && <p role="status" className="text-sm text-muted-foreground">Updating connection…</p>}
+      {busy && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{activity}</p>}
       {message && <div role="status" className="space-y-2 rounded-md border border-border p-3 text-sm"><p>{message}</p>
-        {authUrl && <a href={authUrl} target="_blank" rel="noopener noreferrer" className="inline-block underline">Open sign-in page</a>}
+        {authUrl && <><a href={authUrl} target="_blank" rel="noopener noreferrer" className="inline-block underline">Continue sign-in</a><p className="text-xs text-muted-foreground">If no sign-in page opened, use this link. Return here after approving access; tools are checked automatically.</p></>}
         {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" disabled={busy} onClick={() => { const saved = vault.items.find(item => item.id === result.connection_id); if (saved) setTarget({ server: saved, appSetup: true }); else setError('Refresh connections, then use Edit connection to enter the OAuth app details.') }}>Enter app details</Button></div>}
-        <p className="text-xs text-muted-foreground">After signing in, refresh to check discovery. Saving is not proof of a successful connection.</p>
       </div>}
     <McpConnectionsPanel density="directory"
       description="Manage your saved MCP connections here. Choose what each Crew uses in that Crew’s settings."
@@ -64,16 +80,16 @@ export default function AccountMcpPanel() {
         return { ...server, source: 'Remote · ' + (server.source || 'Saved in Vault'),
           actions: saved.can_manage ? [
             { label: 'Test connection', disabled: busy, run: () => operate('sync', { connection_id: saved.id }) },
-            { label: 'Sign in', disabled: busy, run: () => operate('sign_in', { connection_id: saved.id }) },
+            ...(saved.status === 'authentication_required' ? [{ label: 'Sign in', disabled: busy, run: () => operate('sign_in', { connection_id: saved.id }) }] : []),
             { label: 'Edit connection', disabled: busy, run: () => { setError(''); setTarget({ server: saved }) } },
             { label: 'Remove connection', destructive: true, disabled: busy, run: () => { setError(''); setRemoving(saved) } },
           ] : [],
           controls: !saved.can_manage ? <span className="text-xs text-muted-foreground">Managed by owner</span>
-            : saved.status === 'authentication_required' || saved.status === 'pending' ? <Button size="xs" variant="outline" disabled={busy} onClick={() => void operate('sign_in', { connection_id: saved.id })}>Sign in</Button> : undefined,
+            : saved.status === 'authentication_required' ? <Button size="xs" variant="outline" disabled={busy} onClick={() => void operate('sign_in', { connection_id: saved.id })}>Sign in</Button> : saved.status !== 'active' ? <Button size="xs" variant="outline" disabled={busy} onClick={() => void operate('sync', { connection_id: saved.id })}>Check connection</Button> : undefined,
         }
       })}
-      catalog={catalog.map(app => ({ id: app.name, name: app.name, description: app.needs_admin_setup ? 'OAuth app setup required' : app.oauth ? 'Sign in with your account' : 'Connect an account',
-        connect: vault.canConnect ? { label: 'Connect', disabled: busy, run: () => { setError(''); setTarget({ provider: app.name }) } } : undefined,
+      catalog={catalog.map(app => ({ id: app.name, name: app.name, description: app.needs_admin_setup ? 'OAuth app setup required' : app.oauth ? 'Sign in with your account' : 'No sign-in required',
+        connect: vault.canConnect ? { label: busy && connecting === app.name ? 'Connecting…' : 'Connect', icon: busy && connecting === app.name ? <Loader2 className="animate-spin" /> : undefined, disabled: busy, run: () => operate('connect', { provider: app.name, label: app.name }) } : undefined,
       }))}
       loading={vault.loading} refresh={refresh}
       notices={[...vault.notices, ...(catalogError ? [{ message: catalogError, retry: refresh }] : []), ...(error && !target && !removing ? [{ message: error }] : [])]}
@@ -119,8 +135,8 @@ function McpAccountForm({ target, busy, error, close, submit }: {
   }, [busy, close])
   return <ModalPortal><div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
     <section role="dialog" aria-modal="true" aria-labelledby="mcp-account-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-background p-6 shadow-xl">
-      <div className="flex items-center justify-between"><h2 id="mcp-account-title" className="text-lg font-semibold">{target.server ? 'Edit MCP connection' : 'Add MCP server'}</h2><Button variant="ghost" size="icon" aria-label="Close connection form" disabled={busy} onClick={close}><X className="h-4 w-4" /></Button></div>
-      <p className="mt-2 text-sm text-muted-foreground">Saved in Vault. No Crew selection is changed.</p>
+      <div className="flex items-center justify-between"><h2 id="mcp-account-title" className="text-lg font-semibold">{target.server ? 'Edit MCP connection' : 'Connect MCP server'}</h2><Button variant="ghost" size="icon" aria-label="Close connection form" disabled={busy} onClick={close}><X className="h-4 w-4" /></Button></div>
+      <p className="mt-2 text-sm text-muted-foreground">Connect and discover its tools. Choose which Crews use it separately.</p>
       <form className="mt-5 space-y-4" onSubmit={event => { event.preventDefault(); const fields: Record<string, string> = { label: label.trim() }
         if (target.server) fields.connection_id = target.server.id
         else if (target.provider) fields.provider = target.provider
@@ -139,7 +155,7 @@ function McpAccountForm({ target, busy, error, close, submit }: {
           <details><summary className="cursor-pointer text-xs text-muted-foreground">Header settings</summary><div className="mt-3 space-y-3"><label className="block text-xs">Header name<Input required value={header} onChange={event => setHeader(event.target.value)} /></label><label className="block text-xs">Format<Input required value={format} onChange={event => setFormat(event.target.value)} /><span className="text-muted-foreground">Use {} for the key, for example Bearer {}.</span></label></div></details></>}
         {auth === 'app' && <><label className="block space-y-1 text-xs">OAuth client ID<Input required value={clientID} disabled={busy} onChange={event => setClientID(event.target.value)} /></label><label className="block space-y-1 text-xs">OAuth client secret<Input type="password" autoComplete="off" value={clientSecret} disabled={busy} onChange={event => setClientSecret(event.target.value)} /></label></>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={close} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save connection'}</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={close} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? 'Connecting…' : target.server && !target.appSetup ? 'Save changes' : 'Connect'}</Button></div>
       </form>
     </section>
   </div></ModalPortal>

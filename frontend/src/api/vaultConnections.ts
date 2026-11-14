@@ -6,7 +6,7 @@ export interface VaultConnectionRow {
 }
 export interface VaultCatalogApp { name: string; oauth: boolean; needs_admin_setup?: boolean }
 export interface VaultConnectionResult {
- message?: string; auth_url?: string; connected?: boolean; connection_id?: string
+ message?: string; auth_url?: string; connected?: boolean; connection_id?: string; tool_count?: number; requires_sign_in?: boolean
  setup?: { message: string; redirect_uri?: string; needs_client_secret?: boolean }
 }
 export const vaultConnectionsApi = {

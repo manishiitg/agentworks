@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { vaultConnectionsApi, type VaultConnectionRow } from '../../api/vaultConnections'
+import { liveFeed } from '../../services/liveFeed'
 import type { McpConnectionRow } from './McpConnectionsPanel'
 export type VaultMcpServer = VaultConnectionRow
 export function useVaultMcpConnections(workspacePath?: string) {
@@ -13,6 +14,7 @@ export function useVaultMcpConnections(workspacePath?: string) {
   catch { setError('Apps are unavailable. Refresh to check your connections.') }
   finally { setLoading(false) }
  },[workspacePath])
+ useEffect(() => liveFeed.subscribe(['vault_connections'], null, () => { void refresh() }), [refresh])
  useEffect(() => { void refresh(); const focus=()=>void refresh(); window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus) },[refresh])
  return { loading, refresh, items, canConnect, notices: error ? [{ message:error,retry:()=>void refresh() }] : [],
   servers:items.map(server=>({id:`vault_${server.id}`,name:server.label,provider:server.provider,source:server.detail||'Saved account',status:server.status==='active'?'Connected':server.status==='authentication_required'?'Sign-in required':server.status==='pending'?'Saved · not verified':'Needs attention',toolCount:server.tools.length,
