@@ -14,6 +14,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Real workspace HTTP and persisted registry/history, with only the paid model
@@ -429,6 +430,54 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Late reply", inbox, "team-revoked"); err == nil {
 		t.Fatal("reply bypassed membership revocation")
+	}
+
+	// PLAT-746-1022: an offline source must route to the ordinary home
+	// user's account/context, never the source agent owner's namespace.
+	team.Name = "Example"
+	team.People = []crewTeamPerson{{UserID: "other"}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-source-pair", PeerProjectID: "source-mac"}); err != nil {
+		t.Fatal(err)
+	}
+	homeTurn := make(chan string, 1)
+	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
+		if user != "team-team" || GetUserIDFromContext(turnCtx) != user {
+			return internalSessionTurnResult{}, fmt.Errorf("offline ask kept source identity: user=%s context=%s", user, GetUserIDFromContext(turnCtx))
+		}
+		homeTurn <- session
+		return internalSessionTurnResult{}, nil
+	}
+	offline, err := f.api.sendAgentMessage(otherCtx, "other", caller, target, "Ask while source is offline", "", "offline-home-ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-homeTurn:
+	case <-time.After(deliveryTimeout):
+		t.Fatal("offline ask did not reach its home agent")
+	}
+	homeContact, _, found, err := callerAgentMailboxConversation(otherCtx, offline["inbox_id"].(string), "other", caller)
+	if err != nil || !found || homeContact.Endpoints[1].UserID != "team-team" || homeContact.Endpoints[1].TeamAgentID == "" {
+		t.Fatalf("offline ask did not bind the normal home audience: %+v %v", homeContact, err)
+	}
+	// Even if the home publication is later shared more broadly, this Team
+	// inbox still requires the roster that admitted the original ask.
+	if err := defaultProjectOwners().SetAudience(crewProfileID, filepath.Base(homeContact.Endpoints[1].Path), false, nil); err != nil {
+		t.Fatal(err)
+	}
+	team, err = readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	team.People = nil
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if recheckAgentConversationContact(otherCtx, homeContact) == nil {
+		t.Fatal("public sharing revived a removed Team asker's reply grant")
 	}
 
 }
