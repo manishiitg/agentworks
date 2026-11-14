@@ -26,6 +26,9 @@ func (api *StreamingAPI) recordMuseWakeReply(reply musecli.MuseMSPReply) {
 			api.runQueuedNativeWakes(sessionID)
 		}()
 	}
+	if reply.Terminal != "completed" {
+		log.Printf("[MUSE_WAKE] session=%s native=%s turn=%s action=skipped reason=not_completed", sessionID, reply.NativeSessionID, reply.TurnID)
+	}
 	if text == "" {
 		return
 	}
