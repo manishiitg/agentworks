@@ -62,7 +62,10 @@ func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
 const crewPublishTabShown = false
 
 var crewAccessMacTabs = func() []crewAccessTab {
-	tabs := []crewAccessTab{{ID: "mac", Label: "Mac online", Detail: "you, from anywhere", Group: "online"}}
+	tabs := []crewAccessTab{
+		{ID: "mac", Label: "Mac online", Detail: "you, from anywhere", Group: "online"},
+		{ID: "online-agents", Label: "Online agents", Detail: "runs on the server", Group: "online"},
+	}
 	if crewPublishTabShown {
 		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server", Group: "online"})
 	}

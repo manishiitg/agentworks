@@ -6,7 +6,7 @@ import type { CrewAsk } from './YourComputerPanel'
 // Opening the Access page at a tab (WorkSurface listens), from an agent's tab or the side panel's Access lines.
 // Team is its own page; the other tabs make up the Online page (owner, 11 Nov: Share split into Team and Online).
 export type CrewTeamSection = 'people' | 'agents' | 'activity' | 'sync'
-export type CrewAccessSection = 'mac' | 'publish' | 'team' | 'dashboards' | 'slack'
+export type CrewAccessSection = 'mac' | 'online-agents' | 'publish' | 'team' | 'dashboards' | 'slack'
 let pendingAccess: { projectId: string; tab: string; section: CrewAccessSection; teamSection?: CrewTeamSection } | null = null
 export function hasPendingCrewAccess(projectId: string) { return pendingAccess?.projectId === projectId }
 /** Which Access tab a pending open asks for (Team unless said otherwise). */
