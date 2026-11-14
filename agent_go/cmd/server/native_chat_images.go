@@ -307,6 +307,12 @@ func (api *StreamingAPI) queueDeferredChatImage(w http.ResponseWriter, r *http.R
 // text-only transports keep paths; no image bytes are ever pasted into tmux.
 func (api *StreamingAPI) nativeChatImagesSupported(ctx context.Context, user, session, provider, carried string) bool {
 	live := liveCodingProviderTransport(session)
+	if provider == "cursor-cli" {
+		if live != "" {
+			return live == "sdk"
+		}
+		return strings.ToLower(strings.TrimSpace(os.Getenv("CURSOR_CLI_TRANSPORT"))) != "tmux"
+	}
 	if provider == "muse-cli" {
 		if live != "" {
 			return live == "msp"

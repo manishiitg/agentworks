@@ -130,6 +130,20 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 		t.Fatal(piErr)
 	}
 	piReader.Close()
+	t.Setenv("CURSOR_CLI_TRANSPORT", "sdk")
+	cursorImages := llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "cursor-cli", req), "chat")
+	if len(cursorImages) != 1 {
+		t.Fatal("Cursor SDK lost admitted image")
+	}
+	cursorReader, _, _, cursorErr := cursorImages[0].Open(context.Background())
+	if cursorErr != nil {
+		t.Fatal(cursorErr)
+	}
+	cursorReader.Close()
+	t.Setenv("CURSOR_CLI_TRANSPORT", "tmux")
+	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "cursor-cli", req), "chat")) != 0 {
+		t.Fatal("image bytes offered to Cursor terminal")
+	}
 	t.Setenv("MUSE_CLI_TRANSPORT", "msp")
 	museContext := env.api.withNativeChatImages(replay, "owner", "chat", "muse-cli", req)
 	museImages := llmtypes.NativeImageInputsForSession(museContext, "chat")
