@@ -13,7 +13,7 @@ export function queuedMessageDelivered(metadata?: Record<string, unknown>): bool
 
 export function queuedMessageReason(message: PendingQueuedMessage): string {
   return message.delivery_error || message.queue_detail || (message.refreshing || message.queue_reason === 'refreshing'
-    ? "Sends after the chat restarts with the Crew's latest setup."
+    ? "Updated setup applies next turn. You can steer into the current reply."
     : message.steering ? 'Delivering to the current reply'
       : message.queue_reason === 'starting' ? 'The agent is starting or resuming. Your message sends automatically.'
         : message.queue_reason === 'running' ? 'Waiting for the current reply' : 'Sends next')
@@ -56,7 +56,7 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
     title={message.attachment_pending ? 'Attachments are still uploading' : controls.canEdit ? 'Move back to the box to edit · ↑' : 'Clear the box to edit this message'}
     onClick={() => controls.act(message, 'edit')}>Edit</button>)
   if (message.delivery_error) parts.push(<button key="r" type="button" className={link} disabled={disabled} onClick={() => controls.act(message, 'retry')}>Retry</button>)
-  if (message.can_steer === true && !message.delivery_error && !refreshing && !message.steering) parts.push(<button key="s" type="button" className={link} disabled={disabled} title="Send it into the current reply" onClick={() => controls.act(message, 'steer')}>Steer now</button>)
+  if (message.can_steer === true && !message.delivery_error && !message.steering) parts.push(<button key="s" type="button" className={link} disabled={disabled} title="Send it into the current reply" onClick={() => controls.act(message, 'steer')}>Steer now</button>)
   parts.push(<button key="x" type="button" aria-label="Remove queued message" title="Remove from the queue" disabled={disabled} onClick={() => controls.act(message, 'remove')} className="text-muted-foreground hover:text-foreground disabled:opacity-40">✕</button>)
   return (
     <span data-testid="queued-message-controls" title={reason} className="inline-flex flex-wrap items-center gap-x-1.5 text-[11px]" aria-live="polite">

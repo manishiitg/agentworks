@@ -192,7 +192,7 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 		t.Fatalf("next-turn-only request = %s / %t", reason, allowed)
 	}
 	api.setConversationTurnRuntimeChange("chat", true)
-	check("refreshing", false)
+	check("refreshing", true) // pending setup does not block the current turn
 	api.setConversationTurnRuntimeChange("chat", false)
 	steered, status, err := api.changeQueuedConversationMessage(ctx, "owner", "chat", turn.ID, true)
 	if err != nil || status != http.StatusOK {

@@ -4097,6 +4097,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		return
 	}
+	if req.RestartCodingCLI && isQueuedMessageSteer(r.Context()) && api.conversationTurnOccupied(sessionID) {
+		api.setConversationTurnRuntimeChange(sessionID, true)
+		req.RestartCodingCLI = false
+		log.Printf("[QUERY->LIVE] session=%s action=steering reason=setup_deferred_to_next_turn", sessionID)
+	}
 	if req.RestartCodingCLI {
 		// The product chat's runtime changed while a turn was running (PLAT-676): this message waits
 		// for that turn, then the CLI is relaunched for it. Closing it on arrival killed the running
@@ -4144,6 +4149,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// the current definition. Whether a definition change needs a fresh
 	// session (agent-tools mode, a CLI that cannot reload instructions) is
 	// decided per runtime by seedCodingAgentRuntimeFromRestoredConversation.
+	if !retainedProfileCompatible && isQueuedMessageSteer(r.Context()) && api.conversationTurnOccupied(sessionID) {
+		api.setConversationTurnRuntimeChange(sessionID, true)
+		retainedProfileCompatible = true
+		log.Printf("[QUERY->LIVE] session=%s action=steering reason=profile_refresh_deferred_to_next_turn", sessionID)
+	}
 	productDefinitionRefreshed := resolvedProfile != nil && !retainedProfileCompatible
 	if isQueuedMessageSteer(r.Context()) && !retainedProfileCompatible {
 		api.setConversationTurnRuntimeChange(sessionID, true)
@@ -4200,6 +4210,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if isQueuedMessageSteer(r.Context()) {
 			api.setConversationTurnRuntimeChange(sessionID, true)
 			logTurnQueue("session %s: queued steer deferred because retained workflow policy differs (runtime_changed=%t)", sessionID, runtimeChanged)
+			log.Printf("[QUERY->LIVE] session=%s action=queued reason=workflow_policy_changed", sessionID)
 			rejectUnavailableQueuedSteer(w)
 			return
 		}
@@ -10539,13 +10550,13 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				}
 				api.stampCodingAgentDeliveryTiming(r, &response, requestReceivedAt)
 				_ = json.NewEncoder(w).Encode(response)
-				log.Printf("[QUERY->LIVE] Delivered /api/query through durable mcpagent session=%s provider=%s transport=%s: %.80s", sessionID, provider, delivery.Transport, message)
+				log.Printf("[QUERY->LIVE] session=%s query=%s provider=%s transport=%s action=steered reason=durable_native_input", sessionID, queryID, provider, delivery.Transport)
 				return true
 			} else {
 				// Queueing is an accepted non-tmux submission. It is not evidence that
 				// the durable session is broken, so do not bypass mcpagent via tmux.
 				// Send accepted a non-CLI queue entry. Do not inject it again.
-				log.Printf("[QUERY->LIVE] Queued /api/query for injection session=%s provider=%s transport=%s status=%s: %.80s", sessionID, delivery.Provider, delivery.Transport, delivery.Status, message)
+				log.Printf("[QUERY->LIVE] session=%s query=%s provider=%s transport=%s action=queued reason=%s", sessionID, queryID, delivery.Provider, delivery.Transport, delivery.Status)
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "status": "accepted", "session_id": sessionID, "delivery_status": string(delivery.Status), "provider": string(delivery.Provider)})
 				return true
@@ -10587,7 +10598,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			response := QueryResponse{QueryID: queryID, SessionID: sessionID, Status: queryStatusLiveInputDelivered, Message: "Delivered to retained coding-agent CLI", DeliveryStatus: "sent_to_cli", Provider: retainedProvider, DeliveryTransport: "tmux", DeliverySource: queryDeliverySourceRetainedCompatibility, MessageID: messageID}
 			api.stampCodingAgentDeliveryTiming(r, &response, requestReceivedAt)
 			_ = json.NewEncoder(w).Encode(response)
-			log.Printf("[QUERY->LIVE] Delivered /api/query through retained-terminal fallback session=%s provider=%s transport=tmux: %.80s", sessionID, retainedProvider, message)
+			log.Printf("[QUERY->LIVE] session=%s query=%s provider=%s transport=tmux action=steered reason=retained_terminal", sessionID, queryID, retainedProvider)
 			return true
 		}
 	}
