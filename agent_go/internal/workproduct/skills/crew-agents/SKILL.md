@@ -75,6 +75,10 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   Open a named tab with `sessions action=open` (a name and, optionally, a first
   task). Reuse a tab by name before opening another. Coordinate overlapping
   changes through messages; there is no whole-Crew edit lock. Do not split a small task.
+- `sessions action=new` archives the existing Main's conversation and starts a
+  fresh one in that same agent. It does not create a named tab or restore a
+  missing Main. Main is optional; use `sessions action=open name="<purpose>"`
+  to create a named agent tab instead.
 - Answers are not instant. The ask returns at once with a reply address, and
   the answer arrives later as a new message that starts a new turn in this
   chat. Do not wait, sleep or keep checking; carry on with other work, or end
