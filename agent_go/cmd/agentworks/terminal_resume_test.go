@@ -3,6 +3,9 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chatterminal"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,5 +50,57 @@ func TestTerminalResumeKeepsDifferingJournalAndRefusesLinks(t *testing.T) {
 	}
 	if _, e = installTerminalJournal(linked, root, b); e == nil {
 		t.Fatal("linked provider path accepted")
+	}
+}
+
+// Local IDs alone are not a cross-server mapping. The saved pair, including
+// its server origin, must name this exact remote Crew.
+func TestTerminalResumeResolvesOnlyExactSavedProjectPair(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	if e := os.MkdirAll(filepath.Join(state, "ownership"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	root := t.TempDir()
+	root, _ = filepath.EvalSymlinks(root)
+	record := crewroot.Record{ID: "local-project", Product: "work", Folder: "folder", Owner: "owner", LocalRoot: root}
+	writeRecord := func() {
+		raw, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/folder": record}})
+		if e := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), raw, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	writeRecord()
+	ref := chatterminal.Reference{Server: "https://example.com", Project: "local-project", Key: "chat"}
+	if _, e := terminalLocalFolder(ref, root); e == nil {
+		t.Fatal("unpaired same local ID accepted as a remote mapping")
+	}
+	ref.Project = "remote-project"
+	if e := crewroot.WriteSync(record.ID, crewroot.SyncBinding{PairID: "pair", Side: "local", Editing: "server", PeerProjectID: ref.Project, PeerServer: ref.Server}); e != nil {
+		t.Fatal(e)
+	}
+	if got, e := terminalLocalFolder(ref, "/a/remote/untrusted/path"); e != nil || got != root {
+		t.Fatalf("saved local pair: %q %v", got, e)
+	}
+	wrong := ref
+	wrong.Server = "https://different.example"
+	if _, e := terminalLocalFolder(wrong, root); e == nil {
+		t.Fatal("same remote ID on a different server accepted")
+	}
+	// Managed Crews use the app's configured docs root, not a guessed CWD.
+	docs := t.TempDir()
+	managed := filepath.Join(docs, "Crew", record.Folder)
+	if e := os.MkdirAll(managed, 0700); e != nil {
+		t.Fatal(e)
+	}
+	settings, _ := json.Marshal(map[string]any{"docsDir": docs})
+	if e := os.WriteFile(filepath.Join(filepath.Dir(state), "config.json"), settings, 0600); e != nil {
+		t.Fatal(e)
+	}
+	record.LocalRoot = ""
+	writeRecord()
+	managed, _ = filepath.EvalSymlinks(managed)
+	if got, e := terminalLocalFolder(ref, ""); e != nil || got != managed {
+		t.Fatalf("managed folder: %q %v", got, e)
 	}
 }
