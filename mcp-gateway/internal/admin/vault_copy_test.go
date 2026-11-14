@@ -52,8 +52,11 @@ func TestCopyVaultConnectorIntoTeamVault(t *testing.T) {
 	if _, err := a.copyVaultConnector(ctx, "bob", mine, src.ID, team, "team-1"); err == nil {
 		t.Fatal("someone who does not own the source vault copied its connection")
 	}
-	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, bobs, "alice"); err == nil {
-		t.Fatal("a copy went into a vault the named owner does not own")
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, bobs, "bob"); err == nil {
+		t.Fatal("a copy went into another person's vault: only a team-<project> account may receive one")
+	}
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, bobs, "team-1"); err == nil {
+		t.Fatal("a copy went into a vault the named team account does not own")
 	}
 	copied, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, team, "team-1")
 	if err != nil {
@@ -92,6 +95,15 @@ func TestCopyVaultConnectorIntoTeamVault(t *testing.T) {
 		if status != http.StatusUnauthorized && status != http.StatusForbidden {
 			t.Fatalf("%s reached the copy route: %d", name, status)
 		}
+	}
+
+	odd := store.Connector{ID: "c-odd", WorkspaceID: "w", Provider: "langfuse", UpstreamURL: remote.URL + "/mcp", AuthScheme: "Query", Status: store.StatusActive, VaultID: mine}
+	st.AddConnector(odd)
+	if err := st.VaultAttachConnector("alice", mine, odd.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.copyVaultConnector(ctx, "alice", mine, odd.ID, team, "team-1"); err == nil {
+		t.Fatal("a sign-in type the copy cannot carry was copied")
 	}
 
 	oauth := store.Connector{ID: "c-oauth", WorkspaceID: "w", Provider: "github", OAuthServer: "github", OAuthCredentialID: "c-oauth", Status: store.StatusActive, VaultID: mine}

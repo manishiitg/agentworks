@@ -289,6 +289,16 @@ func (api *StreamingAPI) teamWayView(ctx context.Context, project string) (teamW
 	return view, nil
 }
 
+// teamWayProviderName is the app's own name (for example "GitHub"), never the member's connection label: the label can be
+// personal, and the Team need is shown to everyone on the Team.
+func teamWayProviderName(c vaultOAuthConnection) string {
+	name := strings.TrimPrefix(c.OAuthServer, "custom:")
+	if name == "" {
+		return "An app"
+	}
+	return strings.ToUpper(name[:1]) + name[1:]
+}
+
 // teamWayAddApp shares one of the person's own connections with the Team, by its login type.
 func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, connection string) (string, error) {
 	c, err := vaultSavedConnection(ctx, connection)
@@ -301,12 +311,12 @@ func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, con
 			return "", err
 		}
 		if !slices.ContainsFunc(rec.Needs, func(n teamWayNeed) bool { return n.Provider == c.OAuthServer }) {
-			rec.Needs = append(rec.Needs, teamWayNeed{Provider: c.OAuthServer, Label: c.Label})
+			rec.Needs = append(rec.Needs, teamWayNeed{Provider: c.OAuthServer, Label: teamWayProviderName(c)})
 			if err := writeTeamWay(project, rec); err != nil {
 				return "", err
 			}
 		}
-		return "Team uses " + c.Label + ": each person signs in themselves. Nothing of yours was shared.", nil
+		return "Team uses " + teamWayProviderName(c) + ": each person signs in themselves. Nothing of yours was shared.", nil
 	}
 	home, vault, err := api.ensureTeamVault(ctx, project)
 	if err != nil {
