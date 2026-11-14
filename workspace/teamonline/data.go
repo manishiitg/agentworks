@@ -118,6 +118,26 @@ func Export(ctx context.Context, source *sql.DB, wanted Dataset, output io.Write
 		if err != nil {
 			return schema, err
 		}
+		// Preserve accessible implicit rowids too: views/triggers may use them,
+		// even when the authored schema has no INTEGER PRIMARY KEY column.
+		var withoutRowID int
+		if err = tx.QueryRowContext(ctx, "SELECT wr FROM pragma_table_list WHERE schema='main' AND name=?", table.Name).Scan(&withoutRowID); err != nil {
+			return schema, err
+		}
+		if withoutRowID == 0 {
+			used := map[string]bool{}
+			for _, name := range columns {
+				used[strings.ToLower(name)] = true
+			}
+			for _, alias := range []string{"rowid", "_rowid_", "oid"} {
+				if !used[alias] {
+					columns = append([]string{alias}, columns...)
+					quoted = append([]string{quote(alias)}, quoted...)
+					break
+				}
+			}
+		}
+
 		rows, err := tx.QueryContext(ctx, "SELECT "+strings.Join(quoted, ",")+" FROM "+quote(table.Name))
 		if err != nil {
 			return schema, err
