@@ -104,6 +104,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 		return
 	}
 
+	api.pauseNativeGoalForStop(sessionID)
 	api.cancelUsageLimitRecovery(sessionID, "stopped")
 	// Preserve the user's intent even if the foreground cancel function has just
 	// completed and disappeared. A scheduled sequencer may be between turns at
@@ -149,6 +150,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 		return
 	}
 	log.Printf("[STOP] session=%s begin runtime cancel (reason=%q phase=%s)", sessionID, closeReason, terminalPhase)
+	api.pauseNativeGoalForStop(sessionID)
 	api.markSessionStoppedAs(sessionID, terminalPhase, closeReason)
 
 	api.agentCancelMux.Lock()
@@ -321,6 +323,7 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	// goroutines that race with this stop handler will see the flag and bail out
 	// instead of re-creating workshop sessions or spawning new CLI processes.
 	// See stoppedSessions field comment for the full race condition description.
+	api.pauseNativeGoalForStop(sessionID)
 	api.markSessionStopped(sessionID)
 	if isScheduledSession(sessionID) {
 		api.markSessionTurnInterrupted(sessionID)

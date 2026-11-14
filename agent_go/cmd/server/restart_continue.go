@@ -23,15 +23,16 @@ const restartContinueWindow = 5 * time.Minute
 // The last admitted chat's runtime selectors, not its original prompt or a live
 // agent pointer. Restart recovery must re-enter normal query admission.
 type restartContinueRecord struct {
-	UsageLimit       *usageLimitRecoveryRecord   `json:"usage_limit,omitempty"`
-	SessionID        string                      `json:"session_id"`
-	QueryID          string                      `json:"query_id"`
-	Request          QueryRequest                `json:"request"`
-	Principal        queuedConversationPrincipal `json:"principal"`
-	FollowUps        int                         `json:"follow_ups"`
-	RecoveredQueryID string                      `json:"recovered_query_id,omitempty"`
-	RestartContinues []time.Time                 `json:"restart_continues,omitempty"`
-	SavedAt          time.Time                   `json:"saved_at"`
+	NativeGoalRestore *nativeGoalRestoreRecord    `json:"native_goal_restore,omitempty"`
+	UsageLimit        *usageLimitRecoveryRecord   `json:"usage_limit,omitempty"`
+	SessionID         string                      `json:"session_id"`
+	QueryID           string                      `json:"query_id"`
+	Request           QueryRequest                `json:"request"`
+	Principal         queuedConversationPrincipal `json:"principal"`
+	FollowUps         int                         `json:"follow_ups"`
+	RecoveredQueryID  string                      `json:"recovered_query_id,omitempty"`
+	RestartContinues  []time.Time                 `json:"restart_continues,omitempty"`
+	SavedAt           time.Time                   `json:"saved_at"`
 }
 
 type restartContinueDocument struct {
@@ -104,7 +105,11 @@ func (api *StreamingAPI) saveRestartContinueRequest(ctx context.Context, userID,
 	principal.CrewAskInput = nil
 	principal.FeedbackOperationID = ""
 	previous := document.Chats[sessionID]
-	document.Chats[sessionID] = restartContinueRecord{RestartContinues: previous.RestartContinues, SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID)}
+	if previous.NativeGoalRestore != nil && !previous.NativeGoalRestore.Claimed && req.TriggeredBy == "restart_continue" {
+		previous.NativeGoalRestore.WakeExecutionID = queryID
+	}
+
+	document.Chats[sessionID] = restartContinueRecord{NativeGoalRestore: previous.NativeGoalRestore, RestartContinues: previous.RestartContinues, SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID)}
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return err
@@ -336,6 +341,7 @@ func (api *StreamingAPI) noteRestartLivePersonInput(sessionID, messageID string)
 	if !known || req.userID == "" {
 		return
 	}
+	api.cancelNativeGoalRestore(sessionID, "person_live_input")
 	api.cancelUsageLimitRecovery(sessionID, "person_live_input")
 	backgroundFollowUps.personWrote(sessionID)
 	if err := api.saveRestartContinueRequest(context.Background(), req.userID, sessionID, messageID, req); err != nil {
