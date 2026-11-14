@@ -32,7 +32,7 @@ type chatSearchHit struct {
 // accessible history; scoped tools must first select an admitted Crew.
 func chatSearchGeneralCaller(r *http.Request) bool {
 	claims := GetUserFromContext(r.Context())
-	return claims != nil && externalWorkspaceAllowed(claims) && claims.Scope == "" && claims.Provider != "bot_route" && claims.AccessToken == nil
+	return claims != nil && claims.UserID != "" && !userAccessForClaims(claims).Disabled && claims.Scope == "" && claims.Provider != "bot_route" && claims.AccessToken == nil
 }
 
 func (api *StreamingAPI) handleChatMessageSearch(w http.ResponseWriter, r *http.Request) {
