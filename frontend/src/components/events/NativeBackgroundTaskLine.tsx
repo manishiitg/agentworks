@@ -12,9 +12,10 @@ const duration = (ms: number): string => {
   return minutes < 60 ? `${minutes}m ${String(seconds % 60).padStart(2, '0')}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
 export function backgroundTaskLine(record: Record<string, unknown>, now: number): string {
-  const kind = record.kind === 'helper' ? 'Background agent' : 'Background task'
+  const kind = record.kind === 'helper' ? 'Background agent' : 'Background shell'
   const state = record.state === 'started' ? 'running…' : ['finished', 'completed'].includes(String(record.state)) ? 'finished' : record.state === 'stopped' ? 'stopped' : 'ended'
   const parts = [`${kind} ${state}`]
+  if (record.kind === 'background_command' && typeof record.command_label === 'string' && record.command_label.trim()) parts.push(record.command_label)
   const start = instant(record.started_at), end = instant(record.ended_at)
   if (start !== undefined && (record.state === 'started' || end !== undefined)) parts.push(duration((end ?? now) - start))
   else if (typeof record.duration_ms === 'number' && record.duration_ms > 0) parts.push(duration(record.duration_ms))
