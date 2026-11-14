@@ -1316,7 +1316,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   // the next turn. Keep the copy user-facing: "steered" and provider routing
   // described the implementation but made a successful notification look
   // like an unexplained diagnostic.
-  if (event.type === 'work_folder_notice') {
+  if (event.type === 'work_folder_notice' || event.type === 'restart_continue_notice') {
     const envelope = event.data as unknown as Record<string, unknown> | undefined
     const payload = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
     const message = typeof payload.message === 'string' ? payload.message : ''

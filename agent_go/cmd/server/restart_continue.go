@@ -258,6 +258,16 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: time.Now().UTC()})
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=queued reason=interrupted_by_restart", sessionID, record.QueryID)
 		} else {
+			if reason == "restart_loop_limit" {
+				api.eventStore.AddEvent(sessionID, storeevents.Event{
+					ID: "restart-limit:" + record.QueryID, Type: "restart_continue_notice",
+					Timestamp: time.Now(), SessionID: sessionID,
+					Data: unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{
+						BaseEventData: unifiedevents.BaseEventData{Timestamp: time.Now()},
+						Data:          map[string]interface{}{"message": "The app restarted several times; send a message to continue."},
+					}),
+				})
+			}
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s", sessionID, record.QueryID, reason)
 		}
 		document.Chats[sessionID] = record
