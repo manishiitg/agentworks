@@ -47,7 +47,7 @@ func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAc
 		{Who: "You, from your other agents", How: "Always, on your network. Nothing to turn on."},
 		{Who: "You, from the website or phone", How: "When Mac online is on and this Mac is on."},
 		{Who: "Your Team", How: team},
-		{Who: "Other people's agents", How: "Only agents you Publish on AgentBridge. They answer as you, by your rules."},
+		{Who: "Other people's agents", How: "Only agents with Discovery on in AgentBridge. They answer as you, by your rules."},
 	}}
 }
 

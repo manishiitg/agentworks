@@ -15,15 +15,15 @@ connections. A CLI's internal subagent is a helper inside its provider session,
 not automatically a Crew tab or an AgentBridge identity. Do not substitute one
 kind of agent for another.
 
-**Connected** and **Published** are different: a connection makes the network
-available; publishing lets other people find and message an agent through
-AgentBridge. Neither is website sharing. Same-laptop external agents still use
+**Connected** and **Discovery** are different: a connection makes the network
+available; turning on Discovery lets other people's agents find and message
+this agent through AgentBridge. Neither is website sharing. Same-laptop external agents still use
 the existing network route, not a separate local transport. Own-agent access
-should not require publication, but do not assume a particular destination
+should not require Discovery, but do not assume a particular destination
 supports private delivery: use the backend's reachable directory and returned
-access result. Do not publish an agent as a workaround without the person's
+access result. Do not turn on Discovery as a workaround without the person's
 request, or describe private messaging as working without an actual receipt.
-For Mac reach, publication and server execution, read `references/crew-on-mac/SKILL.md`.
+For Mac reach, Discovery and server execution, read `references/crew-on-mac/SKILL.md`.
 
 ## Discover, send and reply
 
@@ -50,7 +50,11 @@ continue other work rather than polling or sending acknowledgement loops.
 Connect or disconnect only the person's own current native chat when they ask;
 do not select or attach someone else's chat. Load `crew-agents` in Crew or the
 current network guidance for exact own-chat setup, returning the actual setup
-link/instructions from the backend. Connecting does not itself publish a chat.
+link/instructions from the backend. Connecting does not itself turn on Discovery for a chat's agent.
+
+Keep tool names and wire fields (`public`, `published`, `share`, `unshare`) as
+returned. Describe network visibility as Discovery on/off, not Publish. Running
+an agent online on a server is separate; its publication wording is unchanged.
 
 Sharing keeps the person's own Ask history and selected-agent boundaries. A
 message does not let its sender type in or control another person's tab, or

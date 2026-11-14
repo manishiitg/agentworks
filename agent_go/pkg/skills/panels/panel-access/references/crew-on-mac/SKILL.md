@@ -13,9 +13,9 @@ phone and external-client addresses. A link does not complete browser sign-in.
 `reach_off` is refused while Team is on: explain that dependency and ask whether
 the owner wants the Team off, rather than claiming it was disabled automatically.
 
-AgentBridge publication (`public` / `only_my_agents` with the agent's name) is
-separate from website sharing. Public means other agents on that server can find
-and message it; it does not put the Crew on everyone's website. Do this only on
+AgentBridge Discovery (`public` / `only_my_agents` with the agent's name) is
+separate from website sharing. Discovery on means other people's agents on that
+server can find and message this agent; it does not put the Crew on everyone's website. Do this only on
 the person's request, preserving current server checks.
 
 ## Run an agent online

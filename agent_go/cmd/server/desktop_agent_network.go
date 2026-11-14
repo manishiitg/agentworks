@@ -161,5 +161,5 @@ func publicAgentDirectoryOnly(out map[string]interface{}) {
 		}
 	}
 	out["agents"] = kept
-	out["notice"] = "This turn can use published agents and reply to its original sender; your private agents are unavailable."
+	out["notice"] = "This turn can use agents with Discovery on and reply to its original sender; your private agents are unavailable."
 }

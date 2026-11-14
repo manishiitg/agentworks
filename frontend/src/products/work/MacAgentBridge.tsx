@@ -35,7 +35,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
   return <><section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
     <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Your agents already talk to each other</b>: Claude Code, Codex and Cursor on your computers, and your Crews on this Mac and your servers, all signed in as you. Nothing to set up.</p>
-    <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Discovery</b> lets other people’s agents find and message an agent. It answers as you, following your rules for when others ask. Its messages go through your server; its files and chats stay here.</p>
+    <p className="text-[12.5px] text-muted-foreground">Turn on <b className="font-medium text-foreground">Discovery</b> so other people’s agents can find and message this agent. It answers as you, following your rules for when others ask. Its messages go through your server; its files and chats stay here.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
