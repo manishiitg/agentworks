@@ -78,12 +78,17 @@ func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, perso
 	mark := filepath.Join(state, "setup-applied")
 	last, _ := os.ReadFile(mark)
 	path := filepath.Join(root, crewTeamSetupFile)
+	file, err := os.ReadFile(path)
 	currentSetup := setup
 	if copy != nil && copy.Mounted {
-		currentSetup.SelectedSkills = copy.exportSelectedSkills(setup.SelectedSkills)
+		var shared crewTeamSetup
+		if err == nil {
+			_ = json.Unmarshal(file, &shared)
+		}
+		currentSetup.SelectedSkills = copy.exportSelectedSkills(setup.SelectedSkills, shared.SelectedSkills)
 	}
 	current := currentSetup.encode()
-	file, err := os.ReadFile(path)
+
 	switch {
 	case os.IsNotExist(err):
 		if !write {
@@ -150,12 +155,16 @@ func (b crewTeamLocal) privateSkill(name string) bool {
 	return err == nil
 }
 
-func (b crewTeamLocal) exportSelectedSkills(local []string) []string {
+func (b crewTeamLocal) exportSelectedSkills(local []string, shared ...[]string) []string {
+	common := []string{}
+	if len(shared) > 0 {
+		common = shared[0]
+	}
 	out := []string{}
 	for _, name := range local {
 		if remote := b.remoteRel("skills/" + name); remote != "" {
 			out = append(out, strings.TrimPrefix(remote, "skills/"))
-		} else if !b.privateSkill(name) {
+		} else if slices.Contains(common, name) && !b.privateSkill(name) {
 			out = append(out, name)
 		}
 	}
@@ -165,7 +174,7 @@ func (b crewTeamLocal) exportSelectedSkills(local []string) []string {
 func (b crewTeamLocal) importSelectedSkills(team, local []string) []string {
 	out := []string{}
 	for _, name := range local {
-		if b.privateSkill(name) {
+		if b.remoteRel("skills/"+name) == "" {
 			out = append(out, name)
 		}
 	}
