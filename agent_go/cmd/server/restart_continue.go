@@ -242,6 +242,14 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		case record.QueryID == "" || record.RecoveredQueryID == record.QueryID:
 			reason = "already_considered"
 		}
+		if reason == "turn_not_open" {
+			// Between turns: no turn to continue, but background work that died with the app needs one wake.
+			var handled bool
+			if kept, handled = api.queueRestartBackgroundKilledWake(userID, sessionID, &record, kept); handled {
+				document.Chats[sessionID] = record
+				continue
+			}
+		}
 		if reason != "" {
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s", sessionID, record.QueryID, reason)
 			continue
