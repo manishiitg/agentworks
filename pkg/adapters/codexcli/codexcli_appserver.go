@@ -537,11 +537,15 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 			prompt += "\n\n" + originalPrompt
 		}
 	}
+	nativeInput, err := codexAppNativeInput(ctx, owner, prompt)
+	if err != nil {
+		return nil, err
+	}
 	switch p := params.(type) {
 	case map[string]any:
-		p["input"] = codexAppTextInput(prompt)
+		p["input"] = nativeInput
 	case *codexImageParams:
-		p.base["input"] = codexAppTextInput(prompt)
+		p.base["input"] = nativeInput
 	}
 	turn, err := startCodexGoalTurn(ctx, s, r, thread, params, activateGoal, emit)
 	finishCodexImageDelivery(owner, params, err)
@@ -654,6 +658,17 @@ func codexAppTextInput(text string) []map[string]any {
 	return []map[string]any{{"type": "text", "text": text, "text_elements": []any{}}}
 }
 
+func codexAppNativeInput(ctx context.Context, owner, text string) ([]map[string]any, error) {
+	input := codexAppTextInput(text)
+	if skill, ok := llmtypes.ClaimNativeSkillForSession(ctx, owner); ok {
+		if err := llmtypes.ValidateNativeSkill(skill); err != nil {
+			return nil, err
+		}
+		input = append(input, map[string]any{"type": "skill", "name": skill.Name, "path": skill.Path})
+	}
+	return input, nil
+}
+
 type codexAppTurn struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
@@ -712,7 +727,11 @@ func SendCodexAppServerInput(ctx context.Context, owner, message string) error {
 		return fmt.Errorf("%w: no active Codex turn; start the next turn through GenerateContent", llmtypes.ErrCodingAgentInputNotSent)
 	}
 	s.mu.Unlock()
-	params, closeImages, err := codexParamsWithImages(ctx, owner, map[string]any{"threadId": thread, "expectedTurnId": turn, "input": codexAppTextInput(message)}, nil)
+	nativeInput, err := codexAppNativeInput(ctx, owner, message)
+	if err != nil {
+		return err
+	}
+	params, closeImages, err := codexParamsWithImages(ctx, owner, map[string]any{"threadId": thread, "expectedTurnId": turn, "input": nativeInput}, nil)
 	if err != nil {
 		return err
 	}

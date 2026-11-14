@@ -6,6 +6,14 @@ const { join } = require('node:path');
 const { spawn } = require('node:child_process');
 const { createHelperTracker } = require('./claude_sdk_bridge.cjs');
 
+test('PLAT-746-1008 explicit skill occupies the last text block without losing images or arguments', () => {
+  const { sdkUserContent } = require('./claude_sdk_bridge.cjs');
+  assert.equal(sdkUserContent({ skill_name: 'review', text: 'Inspect this change\n/another is an argument' }), '/review\nInspect this change\n/another is an argument');
+  const blocks = sdkUserContent({ skill_name: 'review', text: 'Inspect this image', images: [{ mediaType: 'image/png', data: 'pixels' }] });
+  assert.equal(blocks[0].type, 'image');
+  assert.deepEqual(blocks.at(-1), { type: 'text', text: '/review\nInspect this image' });
+});
+
 test('PLAT-872 native helper bookends ignore shell/ambient tasks and late runs', () => {
   const events = [], tracker = createHelperTracker(event => events.push(event.helper));
   const system = (subtype, extra) => tracker.observe({ type: 'system', subtype, ...extra });

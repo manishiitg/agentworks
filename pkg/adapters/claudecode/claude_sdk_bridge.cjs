@@ -13,6 +13,14 @@ const emit = value => process.stdout.write(JSON.stringify(value, (key, entry) =>
 
 function sdkUserContent(request) {
   const images = request.images || [];
+  // Exactly one host-admitted explicit skill. Claude expands a leading slash
+  // in the final text block; other slash text remains that skill's arguments.
+  // This requests native expansion, never reports it as executed.
+  if (request.skill_name) {
+    const text = `/${request.skill_name}${request.text ? '\n' + request.text : ''}`;
+    if (!images.length) return text;
+    return [...images.map(image => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } })), { type: 'text', text }];
+  }
   if (!images.length) return request.text;
   return [...(request.text ? [{ type: 'text', text: request.text }] : []),
     ...images.map(image => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } }))];
@@ -414,7 +422,7 @@ async function main() {
     }
   } finally { finishInput(); cancelPermissions(); lines.close(); run.close(); }
 }
-module.exports = { createHelperTracker, applySDKTurnSettings };
+module.exports = { createHelperTracker, applySDKTurnSettings, sdkUserContent };
 if (require.main === module) main().then(() => process.stdout.write("", () => process.exit(0)), error => {
   // SDK errors can contain command-line/environment details: report only a
   // stable category here. Native semantic errors still arrive as result events.

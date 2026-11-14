@@ -85,6 +85,12 @@ func (p *claudeSDKImageParams) close() {
 // written. Only prepared file handles remain open, never decoded pixels. A
 // preparation refusal cannot corrupt framing or interrupt an unrelated turn.
 func claudeSDKParamsWithImages(ctx context.Context, owner string, base map[string]any, messages []llmtypes.MessageContent) (any, func(), error) {
+	if skill, ok := llmtypes.ClaimNativeSkillForSession(ctx, owner); ok {
+		if err := llmtypes.ValidateNativeSkill(skill); err != nil {
+			return nil, func() {}, err
+		}
+		base["skill_name"] = skill.Name
+	}
 	inputs := llmtypes.ClaimNativeImageInputsForSession(ctx, owner)
 	if len(inputs) == 0 {
 		// Direct callers use the same pending-human boundary as their text.
