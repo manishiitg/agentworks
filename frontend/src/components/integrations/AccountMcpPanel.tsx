@@ -16,7 +16,7 @@ const safeSignIn = (url?: string) => {
   try { const parsed = new URL(url || ''); return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : undefined }
   catch { return undefined }
 }
-type FormTarget = { server?: VaultConnectionRow; provider?: string }
+type FormTarget = { server?: VaultConnectionRow; provider?: string; appSetup?: boolean }
 
 /** Saved account management only; the browser never supplies a Crew or Vault owner. */
 export default function AccountMcpPanel() {
@@ -53,7 +53,7 @@ export default function AccountMcpPanel() {
       {busy && <p role="status" className="text-sm text-muted-foreground">Updating connection…</p>}
       {message && <div role="status" className="space-y-2 rounded-md border border-border p-3 text-sm"><p>{message}</p>
         {authUrl && <a href={authUrl} target="_blank" rel="noopener noreferrer" className="inline-block underline">Open sign-in page</a>}
-        {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" onClick={() => setTarget({ server: { id: result.connection_id!, label: 'Saved connection', provider: '', status: 'authentication_required', can_manage: true, tools: [] } })}>Enter app details</Button></div>}
+        {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" disabled={busy} onClick={() => { const saved = vault.items.find(item => item.id === result.connection_id); if (saved) setTarget({ server: saved, appSetup: true }); else setError('Refresh connections, then use Edit connection to enter the OAuth app details.') }}>Enter app details</Button></div>}
         <p className="text-xs text-muted-foreground">After signing in, refresh to check discovery. Saving is not proof of a successful connection.</p>
       </div>}
     <McpConnectionsPanel density="directory"
@@ -93,7 +93,7 @@ function McpAccountForm({ target, busy, error, close, submit }: {
 }) {
   const [label, setLabel] = useState(target.server?.label || target.provider || '')
   const [url, setUrl] = useState('')
-  const [auth, setAuth] = useState('auto')
+  const [auth, setAuth] = useState(target.appSetup ? 'app' : 'auto')
   const [key, setKey] = useState('')
   const [header, setHeader] = useState('Authorization')
   const [format, setFormat] = useState('Bearer {}')
