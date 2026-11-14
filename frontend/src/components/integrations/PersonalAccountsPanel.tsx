@@ -13,8 +13,6 @@ interface Account {
   can_add: boolean; can_manage: boolean; can_reconnect: boolean; can_detach: boolean
   // Why it last failed to connect, in the service's own words (Slack).
   problem?: string
-  used_in?: { label: string; workspace_path: string }[]
-  usage_checked?: boolean
   google?: GmailConnection
 }
 interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean; inbox_available?: boolean; in_use?: { id: string; email: string; company_default: boolean } }
@@ -89,7 +87,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged, heading }: { hea
         {central && provider === 'google' && data?.inbox_available && account.mine && account.google?.personal && <Button size="xs" variant="outline" disabled={busy || account.google.agent_inbox} onClick={() => void act('set_inbox_account', account)}>{account.google.agent_inbox ? 'Crew inbox account' : 'Use for Crew inboxes'}</Button>}
         {central && account.can_manage && <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act('disconnect', account)}>Disconnect everywhere</Button>}
       </div>
-      {central && provider === 'slack' && <div className="mt-2 text-xs text-muted-foreground"><span className="font-medium">Used in: </span>{account.used_in?.length ? account.used_in.map(item => item.label).join(', ') : account.usage_checked ? 'No usage found in projects you manage.' : 'Project usage needs an updated backend.'}</div>}
+
       {account.problem && <p role="alert" className="mt-2 break-words text-xs text-destructive">Not working: {account.problem}</p>}
       {account.google && <><p className="mt-2 text-xs text-muted-foreground">{googleAccessSummary(account.google)}</p><GooglePermissions account={account.google} /></>}
     </div>)}

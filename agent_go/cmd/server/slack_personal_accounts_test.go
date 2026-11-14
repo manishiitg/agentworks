@@ -42,21 +42,3 @@ func TestPersonalSlackIsTheConnectionInAVaultThePersonOwns(t *testing.T) {
 		t.Fatalf("accounts = %+v", out.Accounts)
 	}
 }
-
-// PLAT-746-977: personal Slack usage respects current project ownership and saved selection.
-func TestPersonalSlackUsageKeepsProjectNamesAuthorized(t *testing.T) {
-	api, workspace := setupSlackConnectionTest(t)
-	workspace.files["Workflow/gamma/workflow.json"] = `{"schema_version":1,"id":"wf_gamma","label":"Gamma","access":{"owners":["alice"]}}`
-	r := slackConnectionRequest(t, http.MethodGet, "alice", "")
-	if err := api.setProjectSelectedServers(r.Context(), "Workflow/alpha", func([]string) []string { return []string{vaultServerName("c-example")} }, true); err != nil {
-		t.Fatal(err)
-	}
-	// Gamma explicitly does not use this account; Beta belongs to someone else.
-	if err := api.setProjectSelectedServers(r.Context(), "Workflow/gamma", func([]string) []string { return []string{} }, true); err != nil {
-		t.Fatal(err)
-	}
-	used := api.personalSlackProjectUsage(r, "alice", "c-example")
-	if len(used) != 1 || used[0].Workspace != "Workflow/alpha" {
-		t.Fatalf("usage exposed foreign or unselected project: %+v", used)
-	}
-}
