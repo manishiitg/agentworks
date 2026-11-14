@@ -329,7 +329,15 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 			return err
 		}
 		if !entry.File {
-			if err = os.MkdirAll(to, 0755); err != nil {
+			// A shared file becoming a directory is removed by the ordinary
+			// download delta before its children are written.
+			knownFile := b.Files[entry.Path].Version.Hash != ""
+			info, statErr := os.Lstat(to)
+			waitForDelete := had && knownFile && statErr == nil && info.Mode().IsRegular()
+			if !waitForDelete {
+				err = os.MkdirAll(to, 0755)
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -352,6 +360,23 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 		}
 	}
 	return nil
+}
+
+func (b *crewTeamLocal) receivedMountPath(remote string, removed bool) {
+	for id, m := range b.Mounts {
+		if remote == m.Remote && removed {
+			m.Inode, m.Device = 0, 0
+			b.Mounts[id] = m
+			continue
+		}
+		if remote == m.Remote || m.Inode == 0 && crewTeamUnder(remote, m.Remote) {
+			if info, err := os.Lstat(filepath.Join(b.diskRoot(m.Remote), filepath.FromSlash(m.Local))); err == nil {
+				stamp := crewsync.StampOf(info)
+				m.Inode, m.Device = stamp.Inode, stamp.Device
+				b.Mounts[id] = m
+			}
+		}
+	}
 }
 
 func crewTeamMountParent(rel string) string {

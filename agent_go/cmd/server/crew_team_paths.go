@@ -133,8 +133,22 @@ func (f *crewTeamFolder) addFilePaths(paths []string) bool {
 			name = "skills/" + skill
 		} else if f.Whole {
 			name, _, _ = strings.Cut(rel, "/")
+		} else {
+			for _, folder := range f.Folders {
+				if crewTeamUnder(rel, folder) {
+					name = folder
+					break
+				}
+			}
 		}
-		if name == "" || slices.ContainsFunc(f.Paths, func(p crewTeamSharedPath) bool { return p.Path == name }) {
+		if name == "" {
+			continue
+		}
+		if at := slices.IndexFunc(f.Paths, func(p crewTeamSharedPath) bool { return p.Path == name }); at >= 0 {
+			if f.Paths[at].File != (rel == name) {
+				f.Paths[at].File = rel == name
+				changed = true
+			}
 			continue
 		}
 		f.Paths = append(f.Paths, crewTeamSharedPath{ID: uuid.NewString(), Path: name, File: rel == name})
