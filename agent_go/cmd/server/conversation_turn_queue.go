@@ -1037,7 +1037,14 @@ func (api *StreamingAPI) recordQueuedConversationUserMessage(sessionID string, t
 	if queuedTurnDisplayID(turn) != "" {
 		return
 	}
-	api.recordAttributedCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "", queuedTurnDisplayAttribution(sessionID, turn))
+	presentation := queuedTurnDisplayAttribution(sessionID, turn)
+	if kind := automaticContinueNoticeKind(turn.Request); kind != "" && sessionID == turn.SessionID {
+		if presentation == nil {
+			presentation = map[string]interface{}{}
+		}
+		presentation["system_notice_kind"] = kind
+	}
+	api.recordAttributedCodingAgentUserMessage(sessionID, turn.Request.Query, turn.Request.Provider, turn.ID, "queued_for_turn", "", presentation)
 }
 
 func (api *StreamingAPI) registerQueuedTurnWaiter(turnID string, callback func(event *unifiedevents.AgentEvent)) <-chan queuedConversationTurnResult {

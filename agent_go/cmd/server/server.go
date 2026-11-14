@@ -7760,6 +7760,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
 		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, currentUserIsReadOnly), chatQuery)
 		clearDeliveredSender = api.expectDeliveredAgentMessage(r.Context(), sessionID, chatQuery)
+		agentCtx = automaticContinuePresentation(agentCtx, req, chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)
@@ -11383,7 +11384,7 @@ func (api *StreamingAPI) recordAttributedCodingAgentUserMessage(sessionID, messa
 		"delivery_status": deliveryStatus,
 	}
 	// Display-only fields from admitted delivery; queue IDs/status remain authoritative.
-	for _, key := range []string{"source", "sender_label", "sender_kind", "sender_agent", "sender_channel", "sender_user_id", "display_content", "display_content_truncated", "agent_message_inbox", "agent_message_instructions", "shared_message_id"} {
+	for _, key := range []string{"source", "sender_label", "sender_kind", "sender_agent", "sender_channel", "sender_user_id", "display_content", "display_content_truncated", "agent_message_inbox", "agent_message_instructions", "shared_message_id", "system_notice_kind"} {
 		if value, ok := attribution[key]; ok {
 			eventData.Metadata[key] = value
 		}

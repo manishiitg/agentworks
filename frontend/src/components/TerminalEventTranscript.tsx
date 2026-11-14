@@ -1,4 +1,4 @@
-import { BackgroundWakeNotice } from './chat/BackgroundWakeNotice'
+import { BackgroundWakeNotice, isAutomaticContinueNotice } from './chat/BackgroundWakeNotice'
 import { thinkingSummary } from '../utils/thinkingSummary'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { ReplyFileChanges } from './chat/ReplyFileChanges'
@@ -349,8 +349,8 @@ const TranscriptEvent: React.FC<{
   const storedMetadata = payload.metadata && typeof payload.metadata === 'object'
     ? payload.metadata as Record<string, unknown>
     : undefined
-  if (storedMetadata?.system_notice_kind === 'background_command_finished' || storedMetadata?.system_notice_kind === 'background_work_finished') {
-    return <BackgroundWakeNotice metadata={storedMetadata} />
+  if (isAutomaticContinueNotice(storedMetadata?.system_notice_kind)) {
+    return <BackgroundWakeNotice metadata={storedMetadata} details={content} />
   }
   // Native/replayed user messages can carry the request context without the
   // preparer's attachments metadata. Use the same parser as the chat history.
