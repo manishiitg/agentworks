@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,5 +91,77 @@ func TestCrewSharedAnswerDigestOnlyExactOwnerChat(t *testing.T) {
 	rec.ID = "msg-revoked"
 	if err = saveCrewSharedAnswer("team", rec); err == nil {
 		t.Fatal("revoked agent answer admitted")
+	}
+}
+
+// Actual answer/store/mailbox path, substituting only the remote model call:
+// generation uses asker authority and cannot start the maker's real chat.
+func TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	fixture, _ := newExternalCrewCommandFixture(t)
+	ctx := internalBotRequestContext(t.Context(), "other")
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"one": true}, "other": {"two": true}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	team, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, ok := team.registeredAgent("owner", "one")
+	if !ok {
+		t.Fatal("registered maker missing")
+	}
+	c := agentConversation{ID: "inbox-shared-answer", Endpoints: [2]agentMessageEndpoint{{UserID: "other", Kind: triggerCallerUser, ID: "other", External: true}, {UserID: "owner", Kind: triggerCallerCrew, ID: "team", TeamAgentID: agent.ID, ChatKey: agent.ChatKey}}}
+	m := agentMessage{ID: "msg-shared-question", From: 0, Text: "Please update the shared report", Delivery: "delivered"}
+	c.Messages = []agentMessage{m}
+	agentMessageMu.Lock()
+	err = saveAgentMessageStore(ctx, agentMessageStore{Conversations: []agentConversation{c}})
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := crewSharedAnswerTextForTest
+	defer func() { crewSharedAnswerTextForTest = previous }()
+	calls := 0
+	crewSharedAnswerTextForTest = func(ctx context.Context, actor string, record *publishedProject, input, system string) (string, error) {
+		calls++
+		if actor != "other" || record.OwnerID != "other" || record.ConnectionID != "" {
+			t.Fatal("answer inherited the maker's account")
+		}
+		dir, err := record.historyDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) != 0 {
+			t.Fatal("answer did not start in an empty directory")
+		}
+		return `{"answer":"The report update needs a real turn.","needs_work":true}`, nil
+	}
+	if err = fixture.api.answerCrewSharedMessage(ctx, c, m, c.Endpoints[0], c.Endpoints[1]); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("model calls: %d", calls)
+	}
+	records, err := readCrewSharedAnswers("team")
+	if err != nil || len(records) != 1 || !records[0].NeedsWork || records[0].Presented {
+		t.Fatalf("queued records: %+v %v", records, err)
+	}
+	agentMessageMu.Lock()
+	store, err := readAgentMessageStore(ctx)
+	agentMessageMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := store.Conversations[0].Messages[len(store.Conversations[0].Messages)-1]
+	if last.Kind != "shared_answer" || !strings.Contains(last.Text, "Queued") {
+		t.Fatalf("answer receipt missing: %+v", last)
+	}
+	digest, err := crewSharedAnswerDigest("team", "owner", agent.ChatKey)
+	if err != nil || !strings.Contains(digest, m.Text) {
+		t.Fatalf("queued work not delivered to owner: %q %v", digest, err)
 	}
 }

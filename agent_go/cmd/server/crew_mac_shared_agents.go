@@ -432,6 +432,38 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 			return true
 		}
 	}
+	// MCP teammate asks use exactly the admitted registry/message route too;
+	// they never reach the maker's native agent_ask/resume branch below.
+	if action == "ask" && !IsLocalMode() {
+		if team, e := readCrewTeam(projectID); e == nil && crewTeamAgentsVisible(team, claims.UserID) && claims.UserID != owner {
+			registered, ok := team.registeredAgent(owner, tab)
+			if !ok || !registered.InTeam {
+				externalError(w, 403, "agent_unavailable", "This agent is no longer In team.")
+				return true
+			}
+			target, err := api.resolveTeamAgentTarget(r.Context(), triggerTarget{Kind: triggerCallerCrew, CrewID: projectID, CrewProfile: crewProfileID, CrewOwner: owner}, registered.ID)
+			if err != nil {
+				externalCommunicationError(w, 403, "agent_unavailable", err)
+				return true
+			}
+			caller, err := api.externalMessageCaller(r.Context(), claims, args)
+			if err != nil {
+				externalCommunicationError(w, 400, "message_refused", err)
+				return true
+			}
+			if err = api.externalAuthorizeMessagePeer(r.Context(), claims, targetMessageEndpoint(claims.UserID, target), true); err != nil {
+				externalCommunicationError(w, 403, "access_denied", err)
+				return true
+			}
+			receipt, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), externalArg(args, "inbox_id"), externalArg(args, "submission_id"))
+			if err != nil {
+				externalCommunicationError(w, 400, "message_refused", err)
+				return true
+			}
+			externalJSON(w, receipt)
+			return true
+		}
+	}
 	operation := map[bool]string{true: "agent_ask", false: "agent_read"}[action == "ask"]
 	if action == "reply_input" {
 		operation = "agent_answer"
