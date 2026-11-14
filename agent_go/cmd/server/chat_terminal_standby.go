@@ -5,13 +5,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -23,6 +24,7 @@ type chatTerminalStandby struct {
 	Key          string            `json:"key"`
 	Conversation string            `json:"conversation"`
 	State        chatTerminalState `json:"state"`
+	corruptFile  string
 }
 
 func terminalStandbyPath(project, person string) (string, error) {
@@ -30,36 +32,75 @@ func terminalStandbyPath(project, person string) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	return filepath.Join(root, "chat-terminal-standby", crewTransferDigest(project+"\x00"+person)+".json"), nil
+	return filepath.Join(root, "chat-terminal-standby", crewTransferDigest(project+"\x00"+person)), nil
 }
 func readTerminalStandby(project, person string) (map[string]chatTerminalStandby, error) {
 	p, e := terminalStandbyPath(project, person)
 	if e != nil {
 		return nil, e
 	}
-	raw, e := os.ReadFile(p)
+	files, e := os.ReadDir(p)
 	if os.IsNotExist(e) {
 		return map[string]chatTerminalStandby{}, nil
 	}
 	if e != nil {
 		return nil, e
 	}
-	var entries map[string]chatTerminalStandby
-	e = json.Unmarshal(raw, &entries)
-	if entries == nil && e == nil {
-		entries = map[string]chatTerminalStandby{}
+	entries := map[string]chatTerminalStandby{}
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		var m chatTerminalStandby
+		raw, err := os.ReadFile(filepath.Join(p, file.Name()))
+		if err != nil || json.Unmarshal(raw, &m) != nil || m.Key == "" || file.Name() != crewTransferDigest(m.Key)+".json" {
+			log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session= action=refused reason=standby_marker_unreadable", file.Name())
+			entries["broken:"+file.Name()] = chatTerminalStandby{corruptFile: file.Name()}
+			continue
+		}
+		entries[m.Conversation] = m
 	}
-	return entries, e
+	return entries, nil
 }
 func writeTerminalStandby(project, person string, entries map[string]chatTerminalStandby) error {
 	p, e := terminalStandbyPath(project, person)
 	if e != nil {
 		return e
 	}
-	if e = os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+	if e = os.MkdirAll(p, 0700); e != nil {
 		return e
 	}
-	return fsutil.WriteJSONAtomic(p, entries, 0600)
+	for _, m := range entries {
+		if m.corruptFile != "" {
+			continue
+		}
+		if e = fsutil.WriteJSONAtomic(filepath.Join(p, crewTransferDigest(m.Key)+".json"), m, 0600); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+var errTerminalStandbySuperseded = errors.New("this handoff was superseded; the server's current state was adopted")
+
+func adoptTerminalStandbyReply(c ProductConversationRecord, local chatTerminalState, reply *chatTerminalStandby) error {
+	if reply == nil || reply.Conversation != c.ConversationID {
+		return fmt.Errorf("the server did not acknowledge this exact conversation")
+	}
+	changed := reply.State.Receipt != local.Receipt || reply.State.Out != local.Out
+	local.Revision = reply.State.Revision
+	if changed {
+		local.Receipt = reply.State.Receipt
+		local.Out = reply.State.Out
+	}
+	if e := saveChatTerminal(local); e != nil {
+		return e
+	}
+	if changed {
+		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=standby_superseded", c.ConversationKey, local.Native)
+		return errTerminalStandbySuperseded
+	}
+	return nil
 }
 
 // Called only after own-chat admission and while holding that chat's input
@@ -82,18 +123,21 @@ func (api *StreamingAPI) syncTerminalStandby(ctx context.Context, c ProductConve
 	}
 	key := crewStandbyWireKey(project, c.ConversationKey)
 	marker := &chatTerminalStandby{Peer: project, Key: key, Conversation: c.ConversationID, State: state}
-	_, e = desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "terminal_marker", PairID: binding.PairID, Terminal: marker})
+	reply, e := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "terminal_marker", PairID: binding.PairID, Terminal: marker})
 	if e != nil {
 		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=refused reason=standby_marker_unacknowledged", c.ConversationKey, state.Native)
 	}
-	return e
+	if e != nil {
+		return e
+	}
+	return adoptTerminalStandbyReply(c, state, reply.Terminal)
 }
 
 // The ordinary pair/member admission is retained. Incoming identities select
 // only that person's conversation, never another member's native home.
 func (api *StreamingAPI) receiveTerminalStandby(ctx context.Context, claims *UserClaims, project string, in crewSyncRequest) (crewSyncReply, error) {
 	m := in.Terminal
-	if m == nil || m.Conversation == "" || !strings.HasPrefix(m.Conversation, "conversation-") || !productConversationKeyPattern.MatchString(m.Conversation) || m.State.Receipt == "" || m.State.Revision <= 0 {
+	if m == nil || m.Conversation == "" || !strings.HasPrefix(m.Conversation, "conversation-") || !productConversationKeyPattern.MatchString(m.Conversation) || m.State.Receipt == "" {
 		return crewSyncReply{}, fmt.Errorf("choose your own exact conversation")
 	}
 	_, binding, e := api.crewStandbyAdmit(ctx, claims, project, in.PairID, m.Peer)
@@ -102,6 +146,29 @@ func (api *StreamingAPI) receiveTerminalStandby(ctx context.Context, claims *Use
 	}
 	if binding == nil || crewStandbyKeyTab(binding.PeerProjectID, m.Key) == "" {
 		return crewSyncReply{}, fmt.Errorf("choose a conversation in your paired project")
+	}
+	// Create the recoverable mirror before publishing its pause, never a
+	// marker whose only recovery path would itself be refused before import.
+	if m.State.Out {
+		if eligible, _ := crewStandbyEligible(project, claims.UserID, crewStandbyKeyTab(binding.PeerProjectID, m.Key)); !eligible {
+			return crewSyncReply{ProjectID: project, Terminal: m}, nil
+		}
+		doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID))
+		if err != nil {
+			return crewSyncReply{}, err
+		}
+		mirror := false
+		for _, c := range doc.Entries {
+			if c.ProfileID == crewProfileID && c.ConversationID == m.Conversation && crewResourceProjectID(c.ConversationKey) == project {
+				mirror = true
+				break
+			}
+		}
+		if !mirror {
+			if err = api.importCrewStandby(ctx, claims.UserID, project, crewStandbyKeyTab(binding.PeerProjectID, m.Key), claims.UserID); err != nil {
+				return crewSyncReply{}, fmt.Errorf("this conversation's standby copy is not ready yet; keep using it here")
+			}
+		}
 	}
 	m.State.Owner = claims.UserID // The paired server sign-in, never the Mac login name.
 	lock := crewStandbyLock(project, claims.UserID)
@@ -112,18 +179,31 @@ func (api *StreamingAPI) receiveTerminalStandby(ctx context.Context, claims *Use
 		return crewSyncReply{}, e
 	}
 	prior := entries[m.Conversation]
-	if prior.State.Revision > m.State.Revision {
-		return crewSyncReply{}, fmt.Errorf("this handoff was superseded; recover the chat in AgentWorks")
+	if prior.State.Receipt == m.State.Receipt && prior.State.Out == m.State.Out {
+		return crewSyncReply{ProjectID: project, Terminal: &prior}, nil
 	}
-	if prior.State.Revision == m.State.Revision && prior.State.Receipt != m.State.Receipt {
-		return crewSyncReply{}, fmt.Errorf("this handoff changed; recover the chat in AgentWorks")
+	if prior.State.Receipt != "" && prior.State.Revision != m.State.Revision {
+		// Return authoritative state, not a retryable failure. The Mac adopts
+		// it and invalidates its old terminal receipt without comparing clocks.
+		return crewSyncReply{ProjectID: project, Terminal: &prior}, nil
 	}
+	m.State.Revision = prior.State.Revision + 1 // Assigned by this server under its standby lock.
 	// Admission and saving share the existing standby lock with lazy import and
 	// takeover. Fence every already-imported copy of precisely this conversation.
 	store := defaultProductConversationRegistryStore()
 	doc, e := store.loadDocument(ctx, productConversationRegistryPath(claims.UserID))
 	if e != nil {
 		return crewSyncReply{}, e
+	}
+	mirror := false
+	for _, c := range doc.Entries {
+		if c.ProfileID == crewProfileID && c.ConversationID == m.Conversation && crewResourceProjectID(c.ConversationKey) == project {
+			mirror = true
+			break
+		}
+	}
+	if m.State.Out && !mirror {
+		return crewSyncReply{}, fmt.Errorf("the server has not imported this conversation yet; keep using it here until its standby copy is ready")
 	}
 	var releases []func()
 	defer func() {
@@ -152,7 +232,7 @@ func (api *StreamingAPI) receiveTerminalStandby(ctx context.Context, claims *Use
 		return crewSyncReply{}, e
 	}
 	log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=written reason=standby_marker out=%t", m.Key, m.State.Native, m.State.Out)
-	return crewSyncReply{ProjectID: project}, nil
+	return crewSyncReply{ProjectID: project, Terminal: m}, nil
 }
 
 func applyTerminalStandby(ctx context.Context, project, person string, m chatTerminalStandby) error {
@@ -168,14 +248,7 @@ func applyTerminalStandby(ctx context.Context, project, person string, m chatTer
 		state.Chat = c.ConversationKey
 		state.Session = c.SessionID
 		state.MirrorProject = project
-		old, e := readChatTerminal(c.SessionID)
-		if e != nil {
-			return e
-		}
-		if old.Revision > state.Revision {
-			continue
-		}
-		if e = saveChatTerminal(state); e != nil {
+		if e := saveChatTerminal(state); e != nil {
 			return e
 		}
 		if state.Out {
@@ -201,9 +274,28 @@ func applyImportedTerminalStandby(ctx context.Context, project, person, conversa
 func terminalStandbyCallRefusal(project, person, tab, sender string, ownChat bool) string {
 	entries, e := readTerminalStandby(project, person)
 	if e != nil {
-		return "This chat's terminal handoff could not be checked; ask its owner."
+		log.Printf("[CHAT_TERMINAL_RESUME] chat= session= action=refused reason=standby_directory_unreadable")
+		return ""
+	}
+	peer := ""
+	if person == ownerOfCrewProjectID(project) {
+		if b, err := crewroot.ReadSync(project); err == nil && b != nil {
+			peer = b.PeerProjectID
+		}
+	} else if rows, err := readCrewStandby(project, person); err == nil {
+		peer = rows[tab].Peer
 	}
 	for _, m := range entries {
+		if m.corruptFile != "" {
+			key := macSharedAgentChatKey(peer, tab)
+			if !ownChat {
+				key = sharedThreadKey(peer, tab, sender)
+			}
+			if peer != "" && m.corruptFile == crewTransferDigest(key)+".json" {
+				return "This chat's terminal handoff could not be checked; ask its owner."
+			}
+			continue
+		}
 		key := macSharedAgentChatKey(m.Peer, tab)
 		if !ownChat {
 			key = sharedThreadKey(m.Peer, tab, sender)
@@ -254,7 +346,8 @@ func clearTerminalStandby(state chatTerminalState) error {
 	for id, m := range entries {
 		if m.State.Receipt == state.Receipt {
 			m.State.Out = false
-			m.State.Revision = time.Now().UnixNano()
+			m.State.Revision++
+			m.State.Receipt = uuid.NewString()
 			entries[id] = m
 		}
 	}

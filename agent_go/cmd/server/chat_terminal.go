@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -95,13 +96,17 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(500, "save_failed", "Could not clear the standby handoff. Try again.")
 			return
 		}
-		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Receipt: uuid.NewString(), Revision: time.Now().UnixNano()}
+		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Receipt: uuid.NewString(), Revision: state.Revision}
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Could not return the chat here. Try again.")
 			return
 		}
-		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil {
+		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
 			api.noteCrewStandbyTurn(c.SessionID, c.WorkspacePath)
+		}
+		if current, err := readChatTerminal(c.SessionID); err == nil && current.Out {
+			fail(409, "handoff_changed", "The server has a newer terminal handoff. Try Continue here instead again to recover that copy.")
+			return
 		}
 		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=continue_here", c.ConversationKey, c.SessionID)
 		externalJSON(w, map[string]any{"out": false})
@@ -145,12 +150,12 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		state.Out = false
-		state.Revision = time.Now().UnixNano()
+		// The paired server assigns revisions; local clocks are not identities.
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Use Continue here instead to recover this chat.")
 			return
 		}
-		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil {
+		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
 			api.noteCrewStandbyTurn(c.SessionID, c.WorkspacePath)
 		}
 		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=launch_not_started", c.ConversationKey, c.SessionID)
@@ -184,7 +189,7 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(422, "native_invalid", "This chat's saved native session could not be verified.")
 			return
 		}
-		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Native: b.SessionID, Receipt: uuid.NewString(), Out: true, JournalBytes: b.Files["session.jsonl"].Size, JournalSHA: b.Files["session.jsonl"].SHA256, Revision: time.Now().UnixNano()}
+		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Native: b.SessionID, Receipt: uuid.NewString(), Out: true, JournalBytes: b.Files["session.jsonl"].Size, JournalSHA: b.Files["session.jsonl"].SHA256, Revision: state.Revision}
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "The chat could not be moved. Nothing was started.")
 			return
@@ -261,12 +266,12 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		delete(api.resumeHistorySources, c.SessionID)
 		api.conversationMux.Unlock()
 		state.Out = false
-		state.Revision = time.Now().UnixNano()
+		// The paired server assigns revisions; local clocks are not identities.
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Could not finish returning the chat. Retry attach.")
 			return
 		}
-		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil {
+		if err := api.syncTerminalStandby(r.Context(), c, state); err != nil && !errors.Is(err, errTerminalStandbySuperseded) {
 			api.noteCrewStandbyTurn(c.SessionID, c.WorkspacePath)
 		}
 		log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=attached_back", c.ConversationKey, state.Native)
