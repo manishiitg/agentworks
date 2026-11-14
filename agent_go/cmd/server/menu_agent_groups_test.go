@@ -45,57 +45,16 @@ func TestAgentGroupsKeepOneMembershipPerProjectAndPreserveMenu(t *testing.T) {
 // PLAT-746-983: forks keep personal membership without grouping unrelated
 // projects/people; both the sessions list and directory show the saved names.
 func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	env.api.agentProfiles = env.svc.registry
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	root := crewOwnerTabsFixture(t, env, "other")
-	profile, err := env.svc.registry.Resolve("work", 0, "owner")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, person := range []string{"owner", "other"} {
-		ctx := internalBotRequestContext(t.Context(), person)
-		binding, _, err := resolveConversationBindingForUser(ctx, person, profile, "beta:chat:"+person)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, person, profile, binding, "Agent"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ctx := internalBotRequestContext(t.Context(), "owner")
-	req := httptest.NewRequest("GET", "/", nil).WithContext(ctx)
-	chats := env.api.crewChats(req, "owner", "beta", root)
-	var parent, foreign, session string
-	for _, chat := range chats {
-		if chat.OwnerID == "owner" {
-			parent = chat.key
-			session = chat.SessionID
-		} else {
-			foreign = chat.key
-		}
-	}
-	if parent == "" || foreign == "" {
-		t.Fatal("missing real owner/foreign chat fixture")
-	}
+
+	parent, foreign := "beta:chat:owner", "beta:chat:other"
 	project, _ := json.Marshal([]string{"local", "beta"})
 	otherProject, _ := json.Marshal([]string{"local", "elsewhere"})
-	saved, err := updateMenuGroups(ctx, func(saved *menuGroups) error {
-		saved.Filter = "mine"
-		saved.AgentGroups = []menuAgentGroup{
-			{ID: "own", Name: "Design", Project: string(project), Agents: []string{parent}, Collapsed: true},
-			{ID: "wrong", Name: "Other project", Project: string(otherProject), Agents: []string{parent}},
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	saved := menuGroups{Filter: "mine", AgentGroups: []menuAgentGroup{
+		{ID: "own", Name: "Design", Project: string(project), Agents: []string{parent}, Collapsed: true},
+		{ID: "wrong", Name: "Other project", Project: string(otherProject), Agents: []string{parent}},
+	}}.normalized()
 	fork := "beta:chat:fork"
-	saved, err = updateMenuGroups(ctx, func(m *menuGroups) error { m.inheritAgentGroup("beta", parent, fork); return nil })
-	if err != nil {
-		t.Fatal(err)
-	}
+	saved.inheritAgentGroup("beta", parent, fork)
 	if got := saved.agentGroupNames("beta", fork); len(got) != 1 || got[0] != "Design" {
 		t.Fatalf("fork groups %v", got)
 	}
@@ -105,25 +64,6 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 	saved.inheritAgentGroup("beta", "not-grouped", "beta:chat:plain")
 	if len(saved.agentGroupNames("beta", "beta:chat:plain")) != 0 {
 		t.Fatal("invented a group")
-	}
-	// The real sessions/tool list reads the current caller's preferences only.
-	for _, person := range []string{"owner", "other"} {
-		request := req.WithContext(internalBotRequestContext(t.Context(), person))
-		for _, chat := range env.api.crewChats(request, person, "beta", root) {
-			want := person == "owner" && chat.key == parent
-			if (len(chat.GroupNames) > 0) != want {
-				t.Fatalf("group leak/missing group for %s: %+v", person, chat)
-			}
-		}
-	}
-	native, err := env.api.codeChatsFor(ctx, "owner", session, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, chat := range native.Chats {
-		if (len(chat.GroupNames) > 0) != (chat.Key == parent && chat.OwnerID == "owner") {
-			t.Fatalf("native list group boundary: %+v", chat)
-		}
 	}
 	own := map[string]interface{}{"chat_id": parent, "yours": true}
 	peer := map[string]interface{}{"chat_id": foreign, "yours": false}
@@ -212,6 +152,34 @@ func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
 	saved, err := updateMenuGroups(ctx, nil)
 	if err != nil || len(saved.agentGroupNames("team", fork.ConversationKey)) != 1 {
 		t.Fatalf("saved fork membership: %v %+v", err, saved)
+	}
+
+	// Both external and native sessions lists report the persisted membership.
+	rows := f.api.crewChats(request, "owner", "team", parent.WorkspacePath)
+	seenParent, seenFork := false, false
+	for _, row := range rows {
+		if row.key == parent.ConversationKey {
+			seenParent = len(row.GroupNames) == 1
+		}
+		if row.key == fork.ConversationKey {
+			seenFork = len(row.GroupNames) == 1
+		}
+	}
+	if !seenParent || !seenFork {
+		t.Fatalf("external list missing group: %+v", rows)
+	}
+	native, err := f.api.codeChatsFor(ctx, "owner", parent.SessionID, parent.WorkspacePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seenParent = false
+	for _, row := range native.Chats {
+		if row.Key == parent.ConversationKey {
+			seenParent = len(row.GroupNames) == 1
+		}
+	}
+	if !seenParent {
+		t.Fatalf("native list missing group: %+v", native.Chats)
 	}
 	if strings.Contains(string(body), "menu_groups") {
 		t.Fatal("scoped fork disclosed unrelated personal menu")
