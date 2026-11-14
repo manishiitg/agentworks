@@ -153,14 +153,13 @@ func (api *StreamingAPI) createPromptLink(w http.ResponseWriter, r *http.Request
 	if agent == "" {
 		agent = "main"
 	}
-	chat := findCodeChat(chats, agent)
-	if chat == nil {
-		// Full conversation keys are what the agent tools and composer keep.
-		for i := range chats {
-			if chats[i].Key == agent {
-				chat = &chats[i]
-				break
-			}
+	var chat *codeChat
+	for i := range chats {
+		if chats[i].Key == agent || chats[i].ID == agent || agent == "main" && chats[i].IsMain {
+			// Keep the exact key, including a teammate's own Main. The general
+			// chat-name resolver rewrites Main to a Crew-wide alias.
+			chat = &chats[i]
+			break
 		}
 	}
 	if chat == nil {
@@ -179,7 +178,7 @@ func (api *StreamingAPI) createPromptLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	agentID := strings.TrimPrefix(chat.Key, manifest.ID+codeChatSideMarker)
-	if chat.IsMain {
+	if chat.Key == manifest.ID {
 		agentID = "main"
 	}
 	link := base + "/new?" + url.Values{"prompt": {prompt}, "crew": {id}, "agent": {agentID}}.Encode()
