@@ -78,6 +78,11 @@ func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string
 	}
 	var out strings.Builder
 	fmt.Fprintf(&out, "Agent: %s\nPurpose: %s\n", redaction.Text(agent.Name), redaction.Text(agent.Purpose))
+	// A published copy may already hold its bounded handoff summary. Only
+	// that exact agent's summary is visible, and only under the Live-chat gate.
+	if summary := crewSharedAnswerSavedSummary(ctx, project, agent); summary != "" {
+		fmt.Fprintf(&out, "Shared conversation summary:\n%s\n", summary)
+	}
 	posts := crewTeamActivityPostsFor(team, asker)
 	for _, post := range posts.Decisions {
 		fmt.Fprintf(&out, "Team decision: %s — %s\n", redaction.Text(post.Line), redaction.Text(post.Why))
@@ -242,4 +247,33 @@ func (api *StreamingAPI) crewSharedAnswerDigestForTurn(ctx context.Context, proj
 	} // unavailable informational context never blocks a local turn
 	digest, _ := reply.TeamMessages["digest"].(string)
 	return digest, nil
+}
+
+func crewSharedAnswerSavedSummary(ctx context.Context, project string, agent crewTeamRegisteredAgent) string {
+	if agent.Rule.ChatShare != crewChatShareLive {
+		return ""
+	}
+	registry := productConversationRegistryPath(agent.OwnerID)
+	mu := productConversationRegistryMutex(registry)
+	mu.Lock()
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, registry)
+	mu.Unlock()
+	if err != nil {
+		return ""
+	}
+	key := crewTeamNativeChatKey(project, agent.OwnerID, crewTeamAgent{Tab: agent.Tab, ChatKey: agent.ChatKey})
+	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)]
+	if !ok || record.ProfileID != crewProfileID || crewResourceProjectID(record.ConversationKey) != project || isSharedThreadKey(record.ConversationKey) {
+		return ""
+	}
+	published, err := readPublishedAgent(ctx, record.WorkspacePath, agent.Tab)
+	if err != nil || published == nil || published.OwnerID != agent.OwnerID || published.WorkspaceID != project || published.AgentID != agent.Tab {
+		return ""
+	}
+	summary := redaction.Text(publicationHistorySummary(published))
+	chars := []rune(summary)
+	if len(chars) > 16000 {
+		summary = string(chars[:16000]) + "\n[Summary shortened]"
+	}
+	return summary
 }
