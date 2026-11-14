@@ -33,7 +33,7 @@ describe('native CLI plan projection (PLAT-746)', () => {
 })
 
 it('gives repeated native IDs distinct keys without dropping checklist items', () => {
-  const event = { type: 'coding_agent_plan', data: { plan_id: 'p', items: [
+  const event = { id: 'plan-event', timestamp: '2026-11-14T00:00:00Z', type: 'coding_agent_plan', data: { plan_id: 'p', items: [
     { id: 'same', text: 'First', status: 'completed' },
     { id: 'same', text: 'Second', status: 'pending' },
     { id: 'same:1', text: 'Third', status: 'pending' },
