@@ -29,7 +29,7 @@ func (api *StreamingAPI) teamOnlineDashboardLocation(ctx context.Context, destin
 	if err != nil || target.ID != destination.CrewID {
 		return location, fmt.Errorf("this Team item is unavailable with your current access")
 	}
-	published, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, ID: itemID, Action: "get"})
+	published, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, ID: itemID, Action: "get", Guard: dashboardFileGuard(claims)})
 	if err != nil {
 		return location, err
 	}

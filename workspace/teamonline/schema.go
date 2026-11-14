@@ -240,3 +240,19 @@ func describe(ctx context.Context, tx *sql.Tx, wanted Dataset) (Schema, error) {
 	sort.Slice(out.Tables, func(i, j int) bool { return out.Tables[i].Name < out.Tables[j].Name })
 	return out, nil
 }
+
+// CheckCollisions is the non-mutating destination preview. Import repeats the
+// same check under its write transaction, so a concurrent creation still
+// refuses rather than merging or replacing a Team object.
+func CheckCollisions(ctx context.Context, destination *sql.DB, schema Schema) error {
+	for _, object := range schema.Objects {
+		var count int
+		if err := destination.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema WHERE name=? COLLATE NOCASE", object.Name).Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			return fmt.Errorf("Team %s %q already exists; nothing will be replaced", object.Kind, object.Name)
+		}
+	}
+	return nil
+}

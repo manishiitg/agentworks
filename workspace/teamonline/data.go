@@ -188,7 +188,18 @@ func Export(ctx context.Context, source *sql.DB, wanted Dataset, output io.Write
 // before reading even a byte of the data package. Seed is a server-only value
 // derived by the receive-online mapping, never a request flag.
 func Import(ctx context.Context, destination *sql.DB, input io.Reader, seed bool) error {
+	return ImportWithPublication(ctx, destination, input, seed, nil)
+}
+
+// ImportWithPublication holds the seed transaction through code installation.
+// The publication coordinator must keep normal readers out until commit and
+// restore its prior pointer if this returns an error. It must not use an RPC
+// inside publish: an uncertain network response cannot define a commit point.
+func ImportWithPublication(ctx context.Context, destination *sql.DB, input io.Reader, seed bool, publish func() error) error {
 	if !seed {
+		if publish != nil {
+			return publish()
+		}
 		return nil
 	}
 	scanner := bufio.NewScanner(io.LimitReader(input, publication.MaxBytes+1))
@@ -370,5 +381,10 @@ func Import(ctx context.Context, destination *sql.DB, input io.Reader, seed bool
 		}
 	}
 
+	if publish != nil {
+		if err := publish(); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
