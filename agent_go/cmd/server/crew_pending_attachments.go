@@ -116,6 +116,9 @@ func (api *StreamingAPI) validatePendingChatAttachments(user, session string, re
 	if len(req.PendingAttachments) == 0 {
 		return nil
 	}
+	if len(req.PendingAttachments) > 100 {
+		return errors.New("Attach at most 100 files in one message.")
+	}
 	if req.AgentProfileID != crewProfileID || req.AgentProfileConversationKey == "" {
 		return errors.New("Attach these files in a Crew chat before sending.")
 	}

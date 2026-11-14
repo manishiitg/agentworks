@@ -63,6 +63,17 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 	if err = env.api.validatePendingChatAttachments("owner", "chat", many); err != nil {
 		t.Fatal("attachment count swallowed text", err)
 	}
+	many.PendingAttachments = make([]pendingChatAttachment, 100)
+	for i := range many.PendingAttachments {
+		many.PendingAttachments[i] = req.PendingAttachments[0]
+	}
+	if err = env.api.validatePendingChatAttachments("owner", "chat", many); err != nil {
+		t.Fatal("100 admitted references refused", err)
+	}
+	many.PendingAttachments = append(many.PendingAttachments, req.PendingAttachments[0])
+	if err = env.api.validatePendingChatAttachments("owner", "chat", many); err == nil {
+		t.Fatal("unbounded reference count admitted")
+	}
 	ctx = env.api.bindReadyChatAttachments(ctx, "owner", "chat", &req)
 	principal := queuedPrincipalFromContext(ctx)
 	raw, err := json.Marshal(principal)
