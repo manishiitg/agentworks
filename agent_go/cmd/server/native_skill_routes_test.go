@@ -192,6 +192,14 @@ func TestNativeSkillDiscoveryThroughExistingSkillsMCP(t *testing.T) {
 		t.Fatal("explicit preview did not read instructions")
 	}
 	// Consent for another Crew cannot reuse the captured source selector.
+	readOnly := crewWriter("owner")
+	readOnly.AccessToken.Scopes = []string{"crews:read"}
+	readBody, _ := json.Marshal(map[string]any{"name": "skills", "arguments": map[string]any{"crew_id": "team", "action": "native_discover", "provider": "claude-code"}})
+	readResult := httptest.NewRecorder()
+	f.api.handleExternalCall(readResult, adminRequest(http.MethodPost, "/api/external/call", string(readBody), readOnly, nil))
+	if readResult.Code != 200 || !strings.Contains(readResult.Body.String(), rows.Skills[0].ID) {
+		t.Fatalf("own read-consent inventory refused: %d %s", readResult.Code, readResult.Body.String())
+	}
 	foreign := crewWriter("owner")
 	foreign.AccessToken.AllCrews = false
 	foreign.AccessToken.CrewIDs = []string{"other-crew"}
