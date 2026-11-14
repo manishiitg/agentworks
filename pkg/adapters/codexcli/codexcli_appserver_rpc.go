@@ -40,20 +40,21 @@ type codexRPCError struct {
 }
 
 type codexRPC struct {
-	logger  interfaces.Logger
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	writeMu sync.Mutex
-	mu      sync.Mutex
-	pending map[string]chan codexRPCMessage
-	err     error
-	next    atomic.Uint64
-	events  chan codexRPCMessage
-	done    chan struct{}
-	exited  chan struct{}
-	stop    context.CancelFunc
-	cleanup func()
-	once    sync.Once
+	logger                  interfaces.Logger
+	cmd                     *exec.Cmd
+	stdin                   io.WriteCloser
+	writeMu                 sync.Mutex
+	mu                      sync.Mutex
+	pending                 map[string]chan codexRPCMessage
+	err                     error
+	next                    atomic.Uint64
+	events                  chan codexRPCMessage
+	done                    chan struct{}
+	exited                  chan struct{}
+	stop                    context.CancelFunc
+	cleanup                 func()
+	releaseBridgeCredential func()
+	once                    sync.Once
 }
 
 func (r *codexRPC) write(v any) error {
@@ -148,6 +149,9 @@ func (r *codexRPC) finish(err error) {
 		close(r.done)
 		r.stop()
 		_ = r.stdin.Close()
+		if r.releaseBridgeCredential != nil {
+			r.releaseBridgeCredential()
+		}
 	})
 }
 

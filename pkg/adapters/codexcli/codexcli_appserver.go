@@ -165,6 +165,13 @@ func (c *CodexCLIAdapter) appProcessFingerprint(opts *llmtypes.CallOptions, cwd 
 }
 
 func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.CallOptions, cwd string) (*codexRPC, error) {
+	credential := appBridgeCredential(codexInteractiveSessionIDFromOptions(opts), opts)
+	started := false
+	defer func() {
+		if !started && credential != nil && credential.Release != nil {
+			credential.Release()
+		}
+	}()
 	bin, err := exec.LookPath("codex")
 	if err != nil {
 		return nil, err
@@ -218,6 +225,14 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 		return nil, err
 	}
 	r := &codexRPC{logger: c.logger, cmd: cmd, stdin: stdin, pending: make(map[string]chan codexRPCMessage), events: make(chan codexRPCMessage, 1024), done: make(chan struct{}), exited: make(chan struct{}), stop: stop, cleanup: cleanup}
+	if credential != nil {
+		r.releaseBridgeCredential = credential.Release
+		if credential.Started != nil {
+			credential.Started()
+		}
+	}
+	started = true
+
 	go r.read(stdout)
 	go func() {
 		err := cmd.Wait()
@@ -326,37 +341,50 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		})
 		s.mu.Unlock()
 	}()
-	// Never reuse a process after its account, secret grants, sandbox or launch
-	// config changes. Store only a digest, not another copy of credentials.
-	config := map[string]any{"model": c.modelID, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "system": system, "native_questions": llmtypes.CodingAgentQuestionsAvailable(ctx), "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts)}
-	if opts.Metadata != nil {
-		for k, v := range opts.Metadata.Custom {
-			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderIdleCompactMetadataKey {
-				config[k] = v
+	var config map[string]any
+	var fingerprint, processFingerprint [32]byte
+	var envParts, parts, customParts map[string][32]byte
+	refreshConfiguration := func() error {
+		var refreshErr error
+		opts, refreshErr = codexBridgeCredentialOptions(owner, opts)
+		if refreshErr != nil {
+			return refreshErr
+		}
+		config = map[string]any{"model": c.modelID, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "system": system, "native_questions": llmtypes.CodingAgentQuestionsAvailable(ctx), "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts)}
+		if opts.Metadata != nil {
+			for k, v := range opts.Metadata.Custom {
+				if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderIdleCompactMetadataKey {
+					config[k] = v
+				}
 			}
 		}
-	}
-	raw, err := json.Marshal(config)
-	if err != nil {
-		return nil, err
-	}
-	fingerprint := sha256.Sum256(raw)
-	environment := map[string]string{}
-	for _, entry := range llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts) {
-		if key, value, ok := strings.Cut(entry, "="); ok {
-			environment[key] = value
+		raw, marshalErr := json.Marshal(config)
+		err = marshalErr
+		if err != nil {
+			return err
 		}
+		fingerprint = sha256.Sum256(raw)
+		environment := map[string]string{}
+		for _, entry := range llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts) {
+			if key, value, ok := strings.Cut(entry, "="); ok {
+				environment[key] = value
+			}
+		}
+		envParts = map[string][32]byte{}
+		for key, value := range environment {
+			envParts[key] = sha256.Sum256([]byte(value))
+		}
+		processFingerprint, err = c.appProcessFingerprint(opts, cwd, environment)
+		if err != nil {
+			return err
+		}
+		parts = codexFingerprintParts(config)
+		customParts = codexCustomFingerprintParts(config)
+		return nil
 	}
-	envParts := map[string][32]byte{}
-	for key, value := range environment {
-		envParts[key] = sha256.Sum256([]byte(value))
-	}
-	processFingerprint, err := c.appProcessFingerprint(opts, cwd, environment)
-	if err != nil {
+	if err = refreshConfiguration(); err != nil {
 		return nil, err
 	}
-	parts := codexFingerprintParts(config)
-	customParts := codexCustomFingerprintParts(config)
 	s.mu.Lock()
 	r := s.rpc
 	thread := s.threadID
@@ -386,6 +414,11 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		}
 		r.close()
 		r = nil
+	}
+	if r == nil {
+		if err = refreshConfiguration(); err != nil {
+			return nil, err
+		}
 	}
 	reloadThread := r == nil || oldFingerprint != fingerprint || (resume != "" && resume != thread)
 	if c.logger != nil {
