@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -444,8 +445,14 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	homeTurn := make(chan string, 1)
 	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
-		if user != "team-team" || GetUserIDFromContext(turnCtx) != user {
-			return internalSessionTurnResult{}, fmt.Errorf("offline ask kept source identity: user=%s context=%s", user, GetUserIDFromContext(turnCtx))
+		claims := GetUserFromContext(turnCtx)
+		homeUser := directoryUserFor("team-team", "", "")
+		if homeUser == nil {
+			return internalSessionTurnResult{}, fmt.Errorf("normal home user missing")
+		}
+		wantClaims := &UserClaims{UserID: "team-team", Username: homeUser.Username, Email: homeUser.Email}
+		if user != "team-team" || GetUserIDFromContext(turnCtx) != user || !reflect.DeepEqual(claims, wantClaims) {
+			return internalSessionTurnResult{}, fmt.Errorf("offline ask retained source claims or used the wrong home user/username")
 		}
 		homeTurn <- session
 		return internalSessionTurnResult{}, nil
