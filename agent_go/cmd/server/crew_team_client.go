@@ -607,6 +607,7 @@ func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolde
 	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}, dirNames: map[string]int{}}
 	op := b.onPurpose()
 	full := changed == nil
+	skippedSkills := map[string]bool{}
 	enters := func(rel string) bool {
 		if b.SkipSkillTree && crewTeamUnder(rel, "skills") {
 			return false
@@ -614,7 +615,12 @@ func crewTeamScanCore(ctx context.Context, b *crewTeamLocal, share crewTeamFolde
 		if b.ScanSkillsOnly && rel != "skills" && !strings.HasPrefix(rel, "skills/") {
 			return false
 		}
-		return crewsync.Allowed(crewTeamKey(rel), true) && b.walksDisk(rel, share)
+		allowed := crewsync.Allowed(crewTeamKey(rel), true) && b.walksDisk(rel, share)
+		if b.Mounted && crewTeamUnder(rel, "skills") && !allowed && !skippedSkills[rel] {
+			crewTeamLogPrivateSkill(b, rel)
+			skippedSkills[rel] = true
+		}
+		return allowed
 	}
 	// targets: folder -> whether everything under it is read (deep), or only its own files.
 	targets := map[string]bool{"": full}
@@ -841,6 +847,9 @@ func crewTeamParent(rel string) string {
 // identity and mode; preserving a file's size/mtime cannot hide an edit.
 func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanResult, rel string, d fs.DirEntry, ignored map[string]bool, share crewTeamFolder, seen map[string]bool, tooLarge *[]string) {
 	remote := b.remoteRel(rel)
+	if remote == "" && b.Mounted && strings.HasPrefix(rel, "skills/") {
+		crewTeamLogPrivateSkill(b, rel)
+	}
 	if b.SkipSkillTree && crewTeamUnder(remote, "skills") || b.ScanSkillsOnly && !crewTeamUnder(remote, "skills") {
 		return
 	}

@@ -74,6 +74,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 	}
 	bySource := map[string]string{}
 	byChat := map[string]string{}
+	created := []crewTeamRegisteredAgent{}
 	for id, a := range current.Agents {
 		source := a.OwnerID + "/" + a.Tab
 		chat := a.OwnerID + "/" + a.ChatKey
@@ -130,6 +131,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 					inTeam = a.initialInTeam != nil && *a.initialInTeam
 				}
 				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: inTeam}
+				created = append(created, record)
 				bySource[source] = id
 			}
 			if record.Tab != tab && (record.Tab == macMainTab || tab == macMainTab) {
@@ -154,7 +156,20 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
 		return err
 	}
-	return fsutil.WriteJSONAtomic(filename, current, 0600)
+	if err = fsutil.WriteJSONAtomic(filename, current, 0600); err != nil {
+		return err
+	}
+	for _, a := range created {
+		if _, memberMac := current.memberMac(a.OwnerID); !memberMac {
+			continue
+		}
+		reason := "pre_join_or_unknown"
+		if a.InTeam {
+			reason = "created_after_join"
+		}
+		log.Printf("[TEAM_JOIN] project=%s actor=%s agent=%s event=agent_default_saved in_team=%t reason=%s", current.ProjectID, a.OwnerID, a.ID, a.InTeam, reason)
+	}
+	return nil
 }
 
 // Native keys are accepted only inside the transport/discovery adapter. Team

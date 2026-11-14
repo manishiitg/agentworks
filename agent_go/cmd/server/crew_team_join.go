@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -131,6 +132,18 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	connectionID, project := mux.Vars(r)["connection"], mux.Vars(r)["project"]
+	if r.Method == http.MethodPost {
+		request := uuid.NewString()
+		capture := &crewTeamJoinResponse{ResponseWriter: w}
+		w = capture
+		logProject := ""
+		if crewTeamClientID(project) {
+			logProject = project
+		}
+		log.Printf("[TEAM_JOIN] request_id=%s project=%s event=started", request, logProject)
+		defer capture.finish(request, logProject)
+		r = r.WithContext(context.WithValue(r.Context(), crewTeamJoinLogKey{}, request))
+	}
 	if !crewTeamClientID(project) {
 		externalError(w, 400, "invalid_team", "Choose a team invite.")
 		return
@@ -150,7 +163,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input crewTeamJoinChoice
-	if json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&input) != nil {
+	if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&input) != nil {
 		externalError(w, 400, "invalid_request", "Choose where the team's folder goes on this Mac.")
 		return
 	}
@@ -212,6 +225,11 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	key := crewTeamJoinKey(c.ID, project)
+	kind := "new"
+	if input.LocalProject != "" {
+		kind = "existing"
+	}
+	log.Printf("[TEAM_JOIN] request_id=%s project=%s event=target_chosen target=%s local_project=%s", crewTeamJoinRequestID(r.Context()), project, kind, input.LocalProject)
 	crewTeamJoining.Store(key, true)
 	defer crewTeamJoining.Delete(key)
 	var team crewTeam
@@ -249,8 +267,11 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 			b := crewTeamLocal{SkillRoot: skillRoot, FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
 				Root: folder, LocalProject: input.LocalProject, Status: "pending", Mounted: true, ProtectPrivate: input.LocalProject != ""}
 			if input.LocalProject != "" {
+				projectPresent := fileExists(filepath.Join(folder, "PROJECT_INSTRUCTIONS.md"))
+				setupPresent := fileExists(filepath.Join(folder, crewTeamSetupFile))
 				err = backupCrewTeamJoinSetup(folder, chatInstructions)
 				if err == nil {
+					log.Printf("[TEAM_JOIN] request_id=%s project=%s local_project=%s event=backups_saved chat_settings=true project_file_present=%t setup_file_present=%t", crewTeamJoinRequestID(r.Context()), project, input.LocalProject, projectPresent, setupPresent)
 					backupNote = crewTeamJoinBackupNote(projectName)
 				} else {
 					backupNote = " Some instruction files may already be in (before team) backups; review them before retrying with another project."
@@ -278,6 +299,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	out["project_id"], out["where"] = local, "mac"
+	log.Printf("[TEAM_JOIN] request_id=%s project=%s local_project=%s event=paired", crewTeamJoinRequestID(r.Context()), project, local)
 	log.Printf("[CREW_TEAM_LOCAL] project=%s event=joined_on_mac folder_set=%t", project, out["folder"] != nil)
 	externalJSON(w, out)
 }
