@@ -22,6 +22,12 @@ func teamWayPickup(ctx context.Context, workspacePath string) (apps, secrets []s
 	if err != nil || !team.On || team.OnlineHome == "" || team.RosterSource != "" {
 		return nil, nil
 	}
+	// The Team's items are lent by the Crew's owner, so the owner must still be a current member (the owner of this
+	// Crew and an active account); otherwise nothing of the Team's is picked up. Vault membership checks the same
+	// again on every use.
+	if owner := ownerOfCrewProjectID(project); owner == "" || owner != team.OwnerID || !crewTeamAccountActive(owner) {
+		return nil, nil
+	}
 	rec, err := readTeamWay(project)
 	if err != nil || rec.Vault == "" {
 		return nil, nil
