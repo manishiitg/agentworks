@@ -1,17 +1,16 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Blocks, Cpu, Globe, KeyRound, Plug, Search, Sparkles } from 'lucide-react'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } from './integrations/AccountConnectionPanels'
 import { AccountSlackOverview } from './integrations/AccountSlackOverview'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
-import { OpenVaultButton } from './integrations/OpenVaultButton'
+import { OpenVaultButton, useCanManageVault } from './integrations/OpenVaultButton'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
-import api from '../services/api'
-import { Button } from './ui/Button'
 
 const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel'))
+const VaultSecrets = lazy(() => import('./secrets/SecretSelectionSection'))
 const MCPConfigEditor = lazy(() => import('./MCPConfigEditor'))
 const categories = [
   { id: 'apps', label: 'Apps', icon: Plug },
@@ -56,7 +55,7 @@ function ConnectionsToolsContent() {
             {category === 'browser' && <BrowserConnectionsPanel open onClose={() => {}} inline startSetup />}
             {category === 'mcp' && <div className="space-y-3"><p className="text-sm text-muted-foreground">Manage your personal MCP configuration. Shared MCP connections stay in Vault.</p><MCPConfigEditor /><OpenVaultButton panel="servers" /></div>}
             {category === 'skills' && <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">Skills belong to your work</h3><p className="text-sm text-muted-foreground">Open a Crew’s Skills panel to view, add or manage its skills. Plugin and tool selections also stay with that Crew; there is no separate account-wide plugin library.</p></div>}
-            {category === 'secrets' && <AccountSecretNames />}
+            {category === 'secrets' && <AccountVaultSecrets />}
           </Suspense>
         </>}
       </div>
@@ -64,18 +63,9 @@ function ConnectionsToolsContent() {
   </section>
 }
 
-/** Names only, through the existing authorized inventory; no reveal or selection side effects. */
-function AccountSecretNames() {
-  const [names, setNames] = useState<string[] | null>(null)
-  const [error, setError] = useState(false)
-  const [refresh, setRefresh] = useState(0)
-  useEffect(() => {
-    let active = true
-    setNames(null); setError(false)
-    void api.get('/api/secrets/global', { skipSessionContext: true }).then(response => {
-      if (active) setNames(response.data.map((row: { name: string }) => row.name))
-    }).catch(() => { if (active) setError(true) })
-    return () => { active = false }
-  }, [refresh])
-  return <div className="space-y-3"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">Available secret names. Values stay hidden; access and management stay in Vault.</p><Button variant="ghost" size="sm" onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div>{error ? <p role="alert" className="text-sm text-destructive">Could not load secrets. Try Refresh.</p> : names === null ? <p role="status" className="text-sm text-muted-foreground">Loading secrets…</p> : <ul className="divide-y divide-border rounded-lg border border-border">{names.map(name => <li key={name} className="flex items-center gap-2 px-4 py-3 font-mono text-xs"><KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="break-all">{name}</span></li>)}{names.length === 0 && <li className="p-4 text-sm text-muted-foreground">No secrets available to your account.</li>}</ul>}<OpenVaultButton /></div>
+function AccountVaultSecrets() {
+  const canManage = useCanManageVault()
+  return canManage
+    ? <VaultSecrets mode="vault" />
+    : <p role="status" className="text-sm text-muted-foreground">Secrets are managed by Vault managers. Ask a Vault manager to set up the secrets your Crew needs.</p>
 }
