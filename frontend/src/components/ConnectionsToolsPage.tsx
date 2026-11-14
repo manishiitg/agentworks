@@ -33,7 +33,7 @@ function ConnectionsToolsContent() {
   const [category, setCategory] = useState<Category>('apps')
   const [search, setSearch] = useState('')
   const [app, setApp] = useState<'google' | 'slack' | null>(null)
-  const matching = categories.filter(item => `${item.label} ${item.id === 'apps' ? 'Slack Google Gmail Drive Calendar' : item.id === 'ai' ? 'Claude Codex Cursor Muse models' : item.id === 'browser' ? 'Chrome extension' : item.id === 'secrets' ? 'Vault keys' : ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const matching = categories.filter(item => `${item.label} ${item.id === 'apps' ? 'Slack Google Gmail Drive Calendar GitHub WhatsApp' : item.id === 'ai' ? 'Claude Codex Cursor Muse models' : item.id === 'browser' ? 'Chrome extension' : item.id === 'secrets' ? 'Vault keys' : ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   const choose = (next: Category) => { setCategory(next); setSearch(''); setApp(null) }
   return <section aria-label="Connections & tools" className="flex h-full min-h-0 flex-col bg-background">
     <WorkspacePageHeader page="connections" title="Connections & tools" icon={Plug} />
