@@ -27,6 +27,11 @@ type crewChatContextRequest struct {
 	ConversationKey string `json:"conversation_key"`
 	SessionID       string `json:"session_id"`
 	BrowserSession  string `json:"browser_session"`
+	TerminalTab     int    `json:"terminal_tab"`
+	CommandID       string `json:"command_id"`
+	Text            string `json:"text"`
+	StartLine       int    `json:"start_line"`
+	EndLine         int    `json:"end_line"`
 	models.BrowserChatContextRequest
 }
 
@@ -48,7 +53,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	defer func() {
 		log.Printf("[CHAT_CONTEXT_ADD] actor=%q crew=%q chat=%q session=%q source=%q source_id=%q op=%q bytes=%d ok=%t reason=%s", actor, auditProject, auditChat, auditSession, auditSource, sourceID, auditOperation, size, ok, reason)
 	}()
-	if mux.Vars(r)["id"] != "work" || json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.Source != "browser" || (in.Operation != "probe" && in.Operation != "add") {
+	if mux.Vars(r)["id"] != "work" || json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&in) != nil || (in.Source != "browser" && in.Source != "terminal") || (in.Operation != "probe" && in.Operation != "add") {
 		writeAgentProfileError(w, 400, "Choose an element in this Crew's current browser.")
 		return
 	}
@@ -75,9 +80,9 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	// Source access is independent of being able to upload a file in Run mode.
 	// Capturing the owner's browser does not follow from receiving a dashboard.
 	workspace := crew.Binding.WorkspacePath
-	if !crew.OwnedByCaller || !api.canControlLiveBrowser(r.Context(), claims, workspace) {
+	if !crew.OwnedByCaller || (in.Source == "browser" && !api.canControlLiveBrowser(r.Context(), claims, workspace)) {
 		reason = "source_access"
-		writeAgentProfileError(w, 403, "Only this Crew's owner can add its browser context.")
+		writeAgentProfileError(w, 403, "Only this Crew's owner can add its context.")
 		return
 	}
 	if status, _ := externalCrewAuthorGate(claims); status != 0 {
@@ -90,6 +95,10 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 		return
 	}
 	auditChat, auditSession = in.ConversationKey, in.SessionID
+	if in.Source == "terminal" {
+		sourceID, size, ok, reason = api.addTerminalChatContext(w, r, claims, project, workspace, in)
+		return
+	}
 	sourceID = browserSessionForWorkspace(actor, workspace)
 	if sourceID == "" || (in.BrowserSession != "" && in.BrowserSession != sourceID) || !browser.IsUserBrowserSession(sourceID) {
 		reason = "source_binding"
@@ -212,7 +221,7 @@ func (api *StreamingAPI) externalWorkspaceAddContext(w http.ResponseWriter, r *h
 		externalError(w, 400, "invalid_arguments", "Choose a Crew workspace before adding context.")
 		return
 	}
-	body, err := json.Marshal(map[string]any{"source": externalArg(args, "context_source"), "operation": externalArg(args, "context_op"), "conversation_key": externalArg(args, "conversation_key"), "session_id": externalArg(args, "session_id"), "browser_session": externalArg(args, "browser_session"), "document_token": externalArg(args, "document_token"), "x": args["x"], "y": args["y"]})
+	body, err := json.Marshal(map[string]any{"source": externalArg(args, "context_source"), "operation": externalArg(args, "context_op"), "conversation_key": externalArg(args, "conversation_key"), "session_id": externalArg(args, "session_id"), "browser_session": externalArg(args, "browser_session"), "document_token": externalArg(args, "document_token"), "x": args["x"], "y": args["y"], "terminal_tab": args["terminal_tab"], "command_id": externalArg(args, "command_id"), "text": externalArg(args, "text"), "start_line": args["start_line"], "end_line": args["end_line"]})
 	if err != nil {
 		externalError(w, 400, "invalid_arguments", "Use a current browser selection.")
 		return
