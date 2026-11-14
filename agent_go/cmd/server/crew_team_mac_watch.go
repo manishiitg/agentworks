@@ -24,6 +24,7 @@ import (
 // Their tab lists show them, and the relay streams those conversations, read-only, to the others in the Team.
 
 type crewMacTeamTab struct {
+	InitialInTeam *bool
 	crewTeamMessagePreview
 	Person         string // whose Mac it is
 	Tab            string // "main" or the Mac tab id
@@ -94,6 +95,9 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 	out := slices.Clone(tabs)
 	for i := range out {
 		out[i].OnlyMe = !team.agentInTeam(person, out[i].Tab)
+		if _, known := team.registeredAgent(person, out[i].Tab); !known && out[i].InitialInTeam != nil {
+			out[i].OnlyMe = !*out[i].InitialInTeam
+		}
 	}
 	return out
 }
@@ -186,7 +190,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 			id, ok = macMainTab, true
 		}
 		if ok && crewMacTabID(id) && row.ConversationID != "" {
-			tabs = append(tabs, crewMacTeamTab{crewTeamMessagePreview: crewTeamMessagePreview{LastMessage: row.LastMessage, LastMessageAt: row.LastMessageAt}, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
+			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: crewTeamMessagePreview{LastMessage: row.LastMessage, LastMessageAt: row.LastMessageAt}, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
 	if !withMain {

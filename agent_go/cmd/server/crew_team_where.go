@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -87,7 +88,6 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 	at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == claims.UserID })
 	person := &t.People[at]
 	if in.Agents != nil {
-		person.PrivateNewAgents = true
 		if in.Where != "mac" || len(*in.Agents) > 200 {
 			externalError(w, 400, "invalid_agents", "Choose your own agents on this Mac.")
 			return
@@ -210,6 +210,7 @@ type crewTeamJoinAgent struct {
 
 func (api *StreamingAPI) addCrewTeamToMacChosen(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder, chosen string, agents *[]crewTeamJoinAgent) (string, error) {
 	local := firstNonEmptyTrimmed(chosen, crewTeamMemberCopy(project))
+	joinedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	pair := ""
 	if local != "" {
 		if b, err := crewroot.ReadSync(local); err == nil && b != nil {
@@ -247,6 +248,9 @@ func (api *StreamingAPI) addCrewTeamToMacChosen(ctx context.Context, claims *Use
 		local = id
 	}
 	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) {
+		if s.MemberOf != project || pair == "" || s.JoinedAt == "" {
+			s.JoinedAt = joinedAt
+		}
 		s.MemberOf, s.SharedBy, s.SharedFrom = project, strings.SplitN(team.OwnerName, "@", 2)[0], crewTeamNetworkName(c)
 	}); err != nil {
 		return "", err

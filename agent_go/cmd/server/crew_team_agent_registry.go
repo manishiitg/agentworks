@@ -125,7 +125,11 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			record, ok := current.Agents[id]
 			if !ok {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
-				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: !current.privateNewAgents(people[i].UserID)}
+				inTeam := true
+				if _, memberMac := current.memberMac(people[i].UserID); memberMac {
+					inTeam = a.initialInTeam != nil && *a.initialInTeam
+				}
+				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: inTeam}
 				bySource[source] = id
 			}
 			if record.Tab != tab && (record.Tab == macMainTab || tab == macMainTab) {

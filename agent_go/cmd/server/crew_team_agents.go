@@ -18,12 +18,13 @@ import (
 // them from their own agents.
 
 type crewTeamAgent struct {
-	ID          string `json:"id"`
-	sessionID   string
-	lastMessage crewTeamMessagePreview
-	Tab         string `json:"tab"`
-	Name        string `json:"name"`
-	Purpose     string `json:"purpose,omitempty"`
+	initialInTeam *bool
+	ID            string `json:"id"`
+	sessionID     string
+	lastMessage   crewTeamMessagePreview
+	Tab           string `json:"tab"`
+	Name          string `json:"name"`
+	Purpose       string `json:"purpose,omitempty"`
 	// Place is where it runs: "mac" (its maker's Mac) or "server" (published).
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
@@ -166,7 +167,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				if tab.Tab == macMainTab {
 					name = "Main"
 				}
-				row := crewTeamAgent{lastMessage: tab.crewTeamMessagePreview, Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
+				row := crewTeamAgent{initialInTeam: tab.InitialInTeam, lastMessage: tab.crewTeamMessagePreview, Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
 				// The same chip as the owner's Mac agents (owner, 6 Nov: Team members are equal).
 				row.PlaceLabel, row.PlaceTone = crewAlwaysOnPlaceLabel(t.ProjectID, p.UserID, tab.Tab, person.MacOn, caller == p.UserID, row.InTeam)
 				row.PlaceServer = row.PlaceTone == "server"
