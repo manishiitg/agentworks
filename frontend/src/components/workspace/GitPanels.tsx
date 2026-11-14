@@ -1,3 +1,5 @@
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { useGitDelivery } from './GitDeliveryControls'
 import { FileDiffView } from './FileDiffView'
 import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -206,21 +208,25 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
     try { window.localStorage.setItem(preferenceKey, open ? 'closed' : 'open') } catch { /* Optional viewer preference. */ }
   }
   const [message, setMessage] = useState('')
+  const delivery = useGitDelivery(workspacePath, repo.root, repo.branch, git.delivery === true && open, setMessage)
+  const actionBusy = busy || delivery.busy
   const [menuOpen, setMenuOpen] = useState(false)
   const [graphKey, setGraphKey] = useState(0)
   const staged = repo.files.filter(file => file.index_status)
   const unstaged = repo.files.filter(file => file.worktree_status && file.worktree_status !== 'conflict')
-  const canCommit = message.trim() !== '' && (staged.length > 0 || unstaged.length > 0) && !busy
+  const canCommit = message.trim() !== '' && (staged.length > 0 || unstaged.length > 0) && !actionBusy
   const commit = async (options: { all?: boolean; push?: boolean } = {}) => {
     if (!canCommit) return
     setMenuOpen(false)
+    const identity = captureChatIdentity()
     const all = options.all ?? staged.length === 0
     if (await run(repo, { op: 'commit', message, all })) {
+      if (!isChatIdentityCurrent(identity)) return
       setMessage('')
       setGraphKey(key => key + 1)
       if (options.push) {
         if (git.remoteAction) await run(repo, git.remoteAction('push'))
-        else if (onAsk) void onAsk(gitAgentPrompts.push(repo.root))
+        else if (delivery.capability?.can_push) await run(repo, { op: 'push' })
       }
     }
   }
@@ -239,10 +245,10 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
           {repo.ahead > 0 && <span className="inline-flex items-center text-emerald-500" title={`${repo.ahead} to push`}><ArrowUp className="h-3 w-3" />{repo.ahead}</span>}
           {repo.behind > 0 && <span className="inline-flex items-center text-amber-500" title={`${repo.behind} to pull`}><ArrowDown className="h-3 w-3" />{repo.behind}</span>}
         </div>
-        {(onAsk || git.remoteAction) && (
+        {(onAsk || git.remoteAction || delivery.capability?.can_push) && (
           <>
             <button type="button" title={git.remoteAction ? "Pull live knowledge" : "Ask the agent to pull"} aria-label="Pull" disabled={busy || git.writable === false} onClick={() => { if (git.remoteAction) void run(repo, git.remoteAction('pull')); else void onAsk?.(gitAgentPrompts.pull(repo.root)) }} className={headerButton}><ArrowDown className="h-3.5 w-3.5" />{repo.behind > 0 ? repo.behind : ''}</button>
-            <button type="button" title={git.remoteAction ? "Push knowledge commits" : "Ask the agent to push"} aria-label="Push" disabled={busy || git.writable === false} onClick={() => { if (git.remoteAction) void run(repo, git.remoteAction('push')); else void onAsk?.(gitAgentPrompts.push(repo.root)) }} className={headerButton}><ArrowUp className="h-3.5 w-3.5" />{repo.ahead > 0 ? repo.ahead : ''}</button>
+            <button type="button" title={git.remoteAction ? "Push knowledge commits" : delivery.capability?.note || (!open ? "Expand this repository to load GitHub actions" : "Push commits to GitHub")} aria-label="Push" disabled={actionBusy || git.writable === false || (!git.remoteAction && !delivery.capability?.can_push)} onClick={() => { if (git.remoteAction) void run(repo, git.remoteAction('push')); else if (delivery.capability?.can_push) void run(repo, { op: 'push' }) }} className={headerButton}><ArrowUp className="h-3.5 w-3.5" />{repo.ahead > 0 ? repo.ahead : ''}</button>
           </>
         )}
       </div>
@@ -257,15 +263,16 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
             placeholder="Message (Ctrl+Enter to commit)"
             aria-label="Commit message"
             rows={2}
-            className={`block w-full resize-y rounded-md border border-input bg-muted/40 py-1.5 pl-2 text-[13px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${onAsk ? 'pr-8' : 'pr-2'}`}
+            disabled={actionBusy}
+            className={`block w-full resize-y rounded-md border border-input bg-muted/40 py-1.5 pl-2 text-[13px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${delivery.capability?.can_draft ? 'pr-8' : 'pr-2'}`}
           />
-          {onAsk && (
+          {delivery.capability?.can_draft && (
             <button
               type="button"
-              title="Ask the agent to write the message and commit"
-              aria-label="Ask the agent to write the commit message"
-              disabled={repo.files.length === 0}
-              onClick={() => { void onAsk(gitAgentPrompts.commit(repo.root, staged.length > 0)) }}
+              title="Draft commit message · one small AI request, nothing is committed"
+              aria-label="Draft commit message"
+              disabled={actionBusy || repo.files.length === 0}
+              onClick={() => { void delivery.draftCommit(staged.length === 0) }}
               className="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-40"
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -297,10 +304,12 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
             <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-md border border-border bg-popover shadow-md">
               <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0 }) }}>Commit</button>
               {staged.length > 0 && unstaged.length > 0 && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: true }) }}>Commit All (stage everything)</button>}
-              {(onAsk || git.remoteAction) && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0, push: true }) }}>Commit &amp; Push{git.remoteAction ? "" : " (agent)"}</button>}
+              {(git.remoteAction || delivery.capability?.can_push) && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0, push: true }) }}>Commit &amp; Push</button>}
             </div>
           )}
         </div>
+        {delivery.prControls}
+        {delivery.chooser}
       </div>
       {repo.files.length === 0 && (
         <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />No changes. The working tree is clean.</p>

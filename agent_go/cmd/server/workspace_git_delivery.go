@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
@@ -80,6 +82,23 @@ func workspaceGitDeliveryConfigAllowed(keys string) bool {
 	return true
 }
 
+// Tests substitute only the actual external network process, not admission,
+// command construction, local Git status or local tracking updates.
+var workspaceGitDeliveryRunForTest func(*exec.Cmd) error
+
+func workspaceGitDeliveryTokenAllowed(r *http.Request, canonical string) bool {
+	if externalFileGuard(r.Context(), false) != nil {
+		return false
+	}
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || claims.AccessToken == nil {
+		return true
+	}
+	token := claims.AccessToken
+	roots, found, err := crewroot.Lookup(workspaceGitDocsRoot(), canonical)
+	return found && err == nil && token.ProjectKind == "" && token.BoundAgentID == "" && token.BoundAgentName == "" && token.Allows("crews:write") && token.AllowsCrew(roots.ID)
+}
+
 func workspaceGitDeliveryPush(ctx context.Context, dir string, target *workspaceGitDeliveryTarget) error {
 	if target == nil || !githubRepoPattern.MatchString(target.Repository) || !workspaceGitBranchName(ctx, dir, target.Branch) || target.token == "" {
 		return errors.New("Choose this project's connected GitHub account and a local branch.")
@@ -97,13 +116,26 @@ func workspaceGitDeliveryPush(ctx context.Context, dir string, target *workspace
 		"-c", "http.proxy=", "-c", "http.sslVerify=true", "-c", "http.followRedirects=false",
 		"-c", "push.gpgSign=false", "-c", "push.recurseSubmodules=no",
 		"push", "--porcelain", "--no-verify", "--recurse-submodules=no", "--",
-		"https://github.com/"+target.Repository+".git", "HEAD:refs/heads/"+target.Branch)
+		"https://github.com/"+target.Repository+".git", target.Head+":refs/heads/"+target.Branch)
 	auth := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+target.token))
 	cmd.Env = append(cmd.Env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader", "GIT_CONFIG_VALUE_0="+auth)
 	// Neither git stderr nor exec errors are safe UI/log text: they may contain
 	// remote credentials or repository-controlled material. Status is enough.
-	if err := cmd.Run(); err != nil {
+	var runErr error
+	if workspaceGitDeliveryRunForTest != nil {
+		runErr = workspaceGitDeliveryRunForTest(cmd)
+	} else {
+		runErr = cmd.Run()
+	}
+	if runErr != nil {
 		return errors.New("GitHub did not accept the push. Check the selected account's repository access and whether the remote branch has newer commits. Nothing was force-pushed.")
+	}
+	// Keep ordinary status/ahead counts and the next Push on this branch.
+	if _, err := workspaceGitRunWrite(ctx, dir, nil, "update-ref", "refs/remotes/origin/"+target.Branch, target.Head); err != nil {
+		return errors.New("The push succeeded, but the local tracking reference could not refresh. Refresh Source Control before another action.")
+	}
+	if _, err := workspaceGitRunWrite(ctx, dir, nil, "branch", "--set-upstream-to=origin/"+target.Branch, target.Branch); err != nil {
+		return errors.New("The push succeeded, but tracking could not be saved. Ask the agent to check this branch before pushing again.")
 	}
 	return nil
 }
@@ -132,5 +164,5 @@ func workspaceGitDeliveryOpenPR(ctx context.Context, target *workspaceGitDeliver
 	if created.Number < 1 || created.URL == "" {
 		return nil, errors.New("GitHub returned no pull request confirmation. Check the repository before trying again.")
 	}
-	return &workspaceGitPullRequest{Number: created.Number, URL: created.URL, Base: base}, nil
+	return &workspaceGitPullRequest{Number: created.Number, URL: "https://github.com/" + target.Repository + "/pull/" + strconv.Itoa(created.Number), Base: base}, nil
 }
