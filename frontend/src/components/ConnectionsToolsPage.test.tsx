@@ -3,8 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import ConnectionsToolsPage from './ConnectionsToolsPage'
-const state = vi.hoisted(() => ({ account: 'first', network: 'one', get: vi.fn(), personal: vi.fn(), canManage: true }))
-vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: state.account } }) }))
+const state = vi.hoisted(() => ({ account: 'first', network: 'one', get: vi.fn(), personal: vi.fn(), canManage: true, admin: false }))
+vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: state.account, is_admin: state.admin } }) }))
 vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: state.network }) }))
 vi.mock('../services/api', () => ({ default: { get: state.get } }))
 vi.mock('./workspace/WorkspacePageHeader', () => ({ WorkspacePageHeader: () => null }))
@@ -13,6 +13,8 @@ vi.mock('./integrations/PersonalAccountsPanel', () => ({ default: (props: unknow
 vi.mock('./integrations/AccountSlackOverview', () => ({ AccountSlackOverview: () => { state.personal({ provider: 'slack' }); return <div>Slack as me and bots</div> } }))
 vi.mock('./integrations/AccountConnectionPanels', () => ({ AccountWhatsAppPanel: () => <div>WhatsApp connection</div>, AccountGitHubPanel: () => <div>GitHub accounts</div>, AccountComputerUsePanel: () => <div>Computer use</div> }))
 vi.mock('./secrets/SecretSelectionSection', () => ({ default: ({ mode }: { mode: string }) => <div data-vault-mode={mode}>Vault secrets manager</div> }))
+vi.mock('./UsersPage', () => ({ UsersPageContent: () => <div>User management</div> }))
+vi.mock('./McpConnectPage', () => ({ McpConnectPageContent: () => <div>AI tool connection setup</div> }))
 vi.mock('./BrowserConnectionsDialog', () => ({ BrowserConnectionsPanel: () => null }))
 const host = document.createElement('div')
 const root = createRoot(host)
@@ -50,4 +52,18 @@ it('shows Slack bot identity and authorized project usage alongside Slack as me'
   await act(async () => configure!.click())
   expect(host.querySelector('form[aria-label="Save Slack bot"]')).toBeTruthy()
   expect(host.textContent).not.toContain('Used here')
+})
+
+it('keeps Customize user management behind the existing administrator gate', async () => {
+  state.admin = true
+  await act(async () => root.render(<ConnectionsToolsPage />))
+  const users = [...host.querySelectorAll('button')].find(button => button.textContent === 'Users & access')
+  expect(users).toBeTruthy()
+  await act(async () => users!.click())
+  expect(host.textContent).toContain('User management')
+  state.admin = false
+  await act(async () => root.render(<ConnectionsToolsPage />))
+  expect(host.textContent).not.toContain('User management')
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Users & access')).toBe(false)
+  expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Connect AI tools')).toBe(true)
 })
