@@ -1,3 +1,4 @@
+import { SearchMatch } from './chat/SearchMatch'
 import api from '../services/api'
 import { openAgentTab } from '../utils/openAgentTab'
 import { loadDashboardDirectory, dashboardDisplayName, dashboardDirectoryLink } from '../services/dashboardDirectory'
@@ -133,7 +134,7 @@ interface PanelItem {
 type ChatFindItem = Omit<PanelItem, 'type' | 'panelId' | 'sectionId'> & { type: 'chat-find' }
 const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 'Find in this chat', subtitle: 'Search loaded messages and steps · Ctrl/Cmd+F', searchText: 'search conversation find text', isActive: false, lastAccessedAt: 0, hasLocalActivity: false }
 
-type ResourceItem = { type: 'artifact' | 'schedule' | 'message'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
+type ResourceItem = { chatId?: string; sender?: string; at?: string; type: 'artifact' | 'schedule' | 'message'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
 type SearchCategory = 'all' | 'chat' | 'crew' | 'artifact' | 'schedule'
 const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Crews' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
 type QuickSwitcherItem = ResourceItem | ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
@@ -318,7 +319,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<SearchCategory>('all')
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const [resources, setResources] = useState<{ scope: string; items: ResourceItem[]; error: boolean; loading: boolean }>({ scope: '', items: [], error: false, loading: false })
+  const [resources, setResources] = useState<{ scope: string; items: ResourceItem[]; error: string; loading: boolean }>({ scope: '', items: [], error: '', loading: false })
   const [resourceAttempt, setResourceAttempt] = useState(0)
   const [scopeFilter, setScopeFilter] = useState<QuickNavigationScope | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -373,21 +374,18 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       setMessageSearch({ ...previous, loading: true, error: false })
       const search = async () => {
         let items = [...previous.items], cursor = previous.cursor
-        // Bound automatic work too: at most 1024 indexed message rows per
-        // interaction. Searching farther is explicit; a new query aborts it.
-        for (let page = 0; page < 8; page++) {
-          const { data } = await api.post<{ results: { session_id: string; id: string; title: string; snippet: string; url: string }[]; next_cursor: string }>('/api/chat-search', { query: query.trim(), cursor }, { signal: controller.signal, skipSessionContext: true })
-          if (controller.signal.aborted) return
-          items = [...items, ...data.results.filter(hit => !items.some(item => item.id === `message:${hit.session_id}:${hit.id}`)).map(hit => ({ type: 'message' as const, id: `message:${hit.session_id}:${hit.id}`, label: hit.title, subtitle: hit.snippet, searchText: '', href: hit.url, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }))]
-          cursor = data.next_cursor
-          const batch = { key: messageKey, items, cursor }
-          messageBatch.current = batch
-          setMessageSearch({ ...batch, loading: Boolean(cursor) && page < 7 && items.length - previous.items.length < 20, error: false })
-          if (!cursor || items.length - previous.items.length >= 20) break
-        }
+        // One debounced HTTP request per pause; the server batches the bounded
+        // journal scan. Older history is explicit, never an eight-call burst.
+        const { data } = await api.post<{ results: { session_id: string; id: string; title: string; sender: string; at: string; snippet: string; url: string }[]; next_cursor: string }>('/api/chat-search', { query: query.trim(), cursor, page: messageAttempt }, { signal: controller.signal, skipSessionContext: true })
+        if (controller.signal.aborted) return
+        items = [...items, ...data.results.filter(hit => !items.some(item => item.id === `message:${hit.session_id}:${hit.id}`)).map(hit => ({ type: 'message' as const, id: `message:${hit.session_id}:${hit.id}`, chatId: hit.session_id, sender: hit.sender, at: hit.at, label: hit.title, subtitle: hit.snippet, searchText: '', href: hit.url, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }))]
+        cursor = data.next_cursor
+        const batch = { key: messageKey, items, cursor }
+        messageBatch.current = batch
+        setMessageSearch({ ...batch, loading: false, error: false })
       }
       void search().catch(() => { if (!controller.signal.aborted) setMessageSearch({ ...messageBatch.current, loading: false, error: true }) })
-    }, 250)
+    }, 350)
     return () => { window.clearTimeout(timer); controller.abort() }
   }, [messageEnabled, messageKey, messageAttempt, query])
 
@@ -395,7 +393,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     if (!isOpen || !user) return
     const controller = new AbortController()
     let cancelled = false
-    setResources({ scope: resourceScope, items: [], error: false, loading: true })
+    setResources({ scope: resourceScope, items: [], error: '', loading: true })
     const jobs = async () => {
       const out = []
       for (let offset = 0; ; offset += 200) {
@@ -412,7 +410,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         ...(artifacts.status === 'fulfilled' ? artifacts.value.dashboards.map(row => ({ ...common, type: 'artifact' as const, id: `artifact:${row.dashboard_id}`, label: dashboardDisplayName(row), subtitle: row.project_title || 'Artifact', searchText: `${row.project_title || ''} ${row.title || ''}`, href: dashboardDirectoryLink(row) })) : []),
         ...(schedules.status === 'fulfilled' ? timeScheduledJobs(schedules.value).filter(job => visibleProductSurfaceIDs(user.allowed_products).includes(job.entity_type === 'product' ? 'work' : 'agentworks')).map(job => ({ ...common, type: 'schedule' as const, scheduledProduct: (job.entity_type === 'product' ? 'work' : 'agentworks') as 'work' | 'agentworks', id: `schedule:${job.id}`, label: job.name, subtitle: [job.workflow_label, job.starts, job.status_word || (job.enabled ? 'On' : 'Off'), job.next_run_at ? `Next: ${new Date(job.next_run_at).toLocaleString()}` : ''].filter(Boolean).join(' · '), searchText: `${job.description} ${job.workflow_label || ''} ${job.starts || ''}` })) : []),
       ]
-      setResources({ scope: resourceScope, items, loading: false, error: artifacts.status === 'rejected' || schedules.status === 'rejected' || (artifacts.status === 'fulfilled' && artifacts.value.partial) })
+      setResources({ scope: resourceScope, items, loading: false, error: [artifacts.status === 'rejected' || (artifacts.status === 'fulfilled' && artifacts.value.partial) ? 'artifacts' : '', schedules.status === 'rejected' ? 'schedules' : ''].filter(Boolean).join(' and ') })
     })
     return () => { cancelled = true; controller.abort() }
   }, [isOpen, resourceScope, resourceAttempt])
@@ -681,7 +679,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const categorized = scoped.filter(item => category === 'all' || (category === 'chat' ? item.type === 'chat' || (item.type === 'crew' && !!item.tabId) : category === 'crew' ? (item.type === 'crew' && !item.tabId) || item.type === 'workflow' : item.type === category))
     if (!q) return categorized
 
-    const filtered = categorized.filter(item => item.type === 'panel'
+    const filtered = categorized.filter(item => item.type === 'artifact' || item.type === 'schedule'
+      ? `${item.label} ${item.subtitle}`.toLowerCase().includes(q)
+      : item.type === 'panel'
       ? q.split(/\s+/).every(word => `${item.label} ${item.subtitle} ${item.searchText} ${'action' in item ? item.action : ''}`.toLowerCase().includes(word))
       :
       item.label.toLowerCase().includes(q) ||
@@ -717,10 +717,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
     const explicitScope = query.trim().match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
     const navigation = category === 'chat' || (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
-    return [...navigation, ...(messageEnabled && messageSearch.key === messageKey ? messageSearch.items : [])]
+    const messages = messageEnabled && messageSearch.key === messageKey ? messageSearch.items : []
+    const grouped = new Map<string, ResourceItem[]>()
+    for (const hit of messages) { const key = hit.chatId || hit.id; grouped.set(key, [...(grouped.get(key) || []), hit]) }
+    return [...Array.from(grouped.values()).flat(), ...navigation]
   }, [matchingItems, allItems, query, scopeFilter, category, messageEnabled, messageSearch, messageKey])
   const firstMatchRef = useRef<string | undefined>(undefined)
-  firstMatchRef.current = matchingItems[0]?.id
+  firstMatchRef.current = filteredItems.find(item => item.type === 'message')?.id || matchingItems[0]?.id
 
   // Read filteredItems via a ref so this effect does NOT fire on every new
   // array reference — only on real user intent changes (query, mode, open).
@@ -915,12 +918,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           {searchCategories.map(choice => <button key={choice.id} type="button" role="tab" aria-selected={category === choice.id} onClick={() => { setCategory(choice.id); setScopeFilter(null); setSelectedIndex(0); searchInputRef.current?.focus() }} className={`shrink-0 rounded-md px-2.5 py-1 text-xs ${category === choice.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice.label}</button>)}
         </div>
         {resources.scope === resourceScope && resources.loading && <p role="status" className="px-4 py-1 text-xs text-muted-foreground">Loading artifacts and schedules…</p>}
-        {resources.scope === resourceScope && resources.error && <button type="button" onClick={() => setResourceAttempt(value => value + 1)} className="px-4 py-1 text-xs text-muted-foreground underline">Some artifacts or schedules could not load. Retry</button>}
-        {messageEnabled && messageSearch.key === messageKey && <div className="flex items-center gap-3 px-4 py-1 text-xs text-muted-foreground">
-          {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Search older messages</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
-        </div>}
+        {resources.scope === resourceScope && resources.error && <button type="button" onClick={() => setResourceAttempt(value => value + 1)} className="px-4 py-1 text-xs text-muted-foreground underline">Some {resources.error} could not load. Retry</button>}
         {/* Item list */}
         <div ref={listRef} id="quick-navigation-results" role="listbox" aria-label="Search results" className="overflow-y-auto max-h-[48vh]">
+          {messageSearch.items.length === 0 && messageEnabled && messageSearch.key === messageKey && <div className="flex items-center gap-3 px-4 py-1 text-xs text-muted-foreground">
+          {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
+        </div>}
           {filteredItems.length === 0 ? (
             <div className="px-4 py-8 text-center text-muted-foreground text-sm">
               {emptyText}
@@ -942,7 +945,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
               const activeSession = itemActiveSession(item)
               return (
                 <React.Fragment key={item.id}>
+                {(item.type === 'artifact' || item.type === 'schedule') && filteredItems[index - 1]?.type !== item.type && <h3 className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">{item.type === 'artifact' ? 'Artifacts' : 'Schedules'}</h3>}
                 {item.type === 'message' && filteredItems[index - 1]?.type !== 'message' && <h3 className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">In messages · this workspace</h3>}
+                {item.type === 'message' && (filteredItems[index - 1]?.type !== 'message' || (filteredItems[index - 1] as ResourceItem).chatId !== item.chatId) && <h3 className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">{item.label}</h3>}
                 <div
                   data-navigation-id={item.id}
                   data-navigation-parent={item.treeChild ? projectTreeKey(item) : undefined}
@@ -968,11 +973,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-medium truncate ${item.isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}>
-                        {item.label}
+                        {item.type === 'message' ? item.sender || 'Message' : item.label}
                       </span>
                       {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
                         {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Crew' : item.type === 'chat-find' ? 'search' : item.type}
                       </span>}
+                      {item.type === 'message' && item.at && <time className="ml-auto shrink-0 text-[10px] text-muted-foreground" dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>}
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium flex-shrink-0">
@@ -995,9 +1001,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         </span>
                       )}
                     </div>
-                    {item.subtitle && <div className="text-xs text-muted-foreground truncate">{item.subtitle}</div>}
+                    {item.subtitle && <div className="text-xs text-muted-foreground truncate">{item.type === 'message' ? <SearchMatch text={item.subtitle} query={query} /> : item.subtitle}</div>}
+
                   </div>
                 </div>
+                {item.type === 'message' && filteredItems[index + 1]?.type !== 'message' && messageEnabled && messageSearch.key === messageKey && <div className="flex items-center gap-3 px-4 py-1 text-xs text-muted-foreground">
+          {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
+        </div>}
                 </React.Fragment>
               )
             })
