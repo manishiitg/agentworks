@@ -1,3 +1,5 @@
+import { groupBackgroundShells, endedBackgroundShell, type BackgroundShellGroup } from '../utils/backgroundShellGroups'
+import { NativeBackgroundTaskLine, backgroundTaskLine } from './events/NativeBackgroundTaskLine'
 import { groupTranscriptMessages, type CompactMessageGroup } from '../utils/compactMessageGroups'
 import { BackgroundWakeNotice, isAutomaticContinueNotice } from './chat/BackgroundWakeNotice'
 import { thinkingSummary } from '../utils/thinkingSummary'
@@ -71,7 +73,7 @@ import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 // a bigger reading size without coupling the transcript to its zoom control.
 type WorkingStep = Extract<TranscriptItem, { kind: 'tools' | 'thinking' }>
 
-type TranscriptRenderItem = TranscriptItem | CompactMessageGroup | {
+type TranscriptRenderItem = TranscriptItem | CompactMessageGroup | BackgroundShellGroup | {
   kind: 'live'
   key: string
   text: string
@@ -539,6 +541,24 @@ function CompactMessages({ item, renderEvent }: { item: CompactMessageGroup; ren
       {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : `${item.label} · ${item.events.length} messages`}
     </button>
     {open && <div className="border-l border-border pl-3">{item.events.map(event => <div key={event.id} data-transcript-key={event.id}>{renderEvent(event)}</div>)}</div>}
+  </section>
+}
+
+// Shell summaries keep their real command records and linked tool inspection,
+// without nesting a separate "1 step" disclosure around every ended shell.
+function CompactShells({ item }: { item: BackgroundShellGroup }) {
+  const [open, toggle] = useDisclosure(`shells:${item.key}`)
+  const showTools = useChatDisplayStore(state => state.showTools)
+  const single = item.count === 1 ? item.events.map(endedBackgroundShell).find(Boolean) : undefined
+  if (single && !showTools) return <NativeBackgroundTaskLine record={single} />
+  return <section className="my-1 text-xs text-muted-foreground" data-testid="compact-shell-group">
+    <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
+      {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
+      {single ? backgroundTaskLine(single, Date.now()) : `${item.count} background shells ended`}
+    </button>
+    {open && <div className="border-l border-border pl-3">{item.rows.map(row => row.kind === 'event'
+      ? <div key={row.key} data-transcript-key={row.key}><NativeBackgroundTaskLine record={endedBackgroundShell(row.event)!} /></div>
+      : row.kind === 'tools' && showTools ? <div key={row.key} data-transcript-key={row.key}>{pairToolCalls(row.events).map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div> : null)}</div>}
   </section>
 }
 
@@ -1264,7 +1284,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const rawItems = useMemo<TranscriptRenderItem[]>(
     () => {
       const rows = groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined)
-      return searchable ? groupTranscriptMessages(rows, readingState.anchor?.key) : rows
+      return searchable ? groupTranscriptMessages(groupBackgroundShells(rows, readingState.anchor?.key), readingState.anchor?.key) : rows
     },
     [scoped, questions, searchable, showThinking, readingState.anchor?.key],
   )
@@ -1331,6 +1351,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   }, [items, streamingGeneration, streamingStatus, streamingText, runtimeActivity?.state])
   const searchRows = useCallback(() => listData.map(item => ({ key: item.key, text: item.kind === 'working'
     ? item.steps.map(transcriptSearchText).join('\n')
+    : item.kind === 'shell_group' ? item.rows.map(transcriptSearchText).join('\n')
     : item.kind === 'message_group' ? item.events.map(event => transcriptSearchText({ kind: 'event', key: event.id, event })).join('\n')
     : item.kind === 'live' ? item.text : transcriptSearchText(item) })), [listData])
   const turnSlots = useMemo(() => {
@@ -1521,6 +1542,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             ? <LiveAssistantTranscript nativeBlock={streamingGeneration?.nativeBlock} chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'message_group'
             ? <CompactMessages item={item} renderEvent={event => <TranscriptEvent event={event} onSendMessage={onSendMessage} onResendMessage={onResendMessage} renderInteraction={renderInteraction} assistantLabel={assistantLabel} assistantIcon={assistantIcon} />} />
+            : item.kind === 'shell_group'
+            ? <CompactShells item={item} />
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
