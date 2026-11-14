@@ -46,7 +46,7 @@ it('keeps the restart reason on the clock and clears stale queue presentation on
     await act(async () => root.render(render({ client_message_id: 'm', delivery_status: 'queued_for_turn' })))
     expect(host.textContent).not.toContain('restarts')
     expect(host.querySelector('[data-testid="delivery-tick"]')?.getAttribute('title')).toContain('restarts')
-    for (const receipt of [{ delivery_status: 'sent_to_cli' }, { confirmation: 'confirmed' }]) {
+    for (const receipt of [{ delivery_status: 'sent_to_cli' }, { confirmation: 'confirmed' }, { delivery_status: 'unconfirmed', confirmation: 'confirmed' }]) {
       await act(async () => root.render(render({ client_message_id: 'm', ...receipt })))
       expect(host.querySelector('p')).toBeNull()
       expect(host.querySelector('[title*="restarts"]')).toBeNull()
