@@ -148,3 +148,47 @@ func ImportParts(ctx context.Context, destination *sql.DB, root *os.Root, parts 
 	defer reader.Close()
 	return Import(ctx, destination, reader, true)
 }
+
+// InspectParts lets the common receiver check actual cell bytes against its
+// authorized secret values. Scanning the transport's base64/escaped JSON alone
+// would miss a value in a blob or non-UTF8 text. Nothing is logged or returned
+// except a plain refusal, and this function grants no Vault access itself.
+func InspectParts(root *os.Root, parts []string, containsSecret func([]byte) bool) error {
+	if containsSecret == nil {
+		return fmt.Errorf("the item secret check is unavailable")
+	}
+	reader := &partReader{root: root, parts: parts}
+	defer reader.Close()
+	scanner := bufio.NewScanner(io.LimitReader(reader, publication.MaxBytes+1))
+	scanner.Buffer(make([]byte, 64<<10), int(publication.MaxFileBytes))
+	var total int64
+	for scanner.Scan() {
+		total += int64(len(scanner.Bytes()) + 1)
+		if total > publication.MaxBytes {
+			return fmt.Errorf("dataset exceeds publication limit")
+		}
+		if containsSecret(scanner.Bytes()) {
+			return fmt.Errorf("this dataset contains a secret value; select secret references instead")
+		}
+		var row record
+		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
+			return err
+		}
+		for _, value := range row.Values {
+			var raw []byte
+			switch value.Kind {
+			case "text":
+				raw = []byte(value.Text)
+				if value.Blob != nil {
+					raw = value.Blob
+				}
+			case "blob":
+				raw = value.Blob
+			}
+			if len(raw) > 0 && containsSecret(raw) {
+				return fmt.Errorf("this dataset contains a secret value; select secret references instead")
+			}
+		}
+	}
+	return scanner.Err()
+}
