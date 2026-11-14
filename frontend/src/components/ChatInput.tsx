@@ -1,4 +1,5 @@
 import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
+import { supportsNativeGoal } from '../utils/nativeGoalCapability'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
@@ -838,6 +839,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     tabConfig?.llmConfig?.provider,
     workflowPhasePreset?.llmConfig?.builder_llm?.provider,
     workflowPhasePreset?.llmConfig?.provider])
+  const nativeGoalPrograms = useCapabilitiesStore(state => state.capabilities?.native_goals)
+  const nativeGoalSupported = supportsNativeGoal(nativeGoalPrograms, effectiveProviderForSteer)
+
   // Interactive coding-agent chats use the shared retained tmux path. Prefer
   // the backend-reported transport once a session exists so restored
   // background/structured executions still render correctly.
@@ -1951,6 +1955,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const withoutSlash = trimmedQuery.slice(1).trim()
     if (!withoutSlash) return false
+    if (withoutSlash.split(/\s+/)[0] === 'goal' && !nativeGoalSupported) return false
 
     const resolved = resolveSlashCommandInput(withoutSlash, name => slashCommands
       ? slashCommands.find(c => c.command === name)
@@ -1993,7 +1998,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     clearInputState()
     cmd.execute(ctx)
     return true
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog, slashCommands])
+  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog, slashCommands, nativeGoalSupported])
 
   const getSubmitBlockReason = useCallback((): string | null => {
     if (!hasComposerContent) return null
@@ -2316,7 +2321,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
     else setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog, slashCommands])
+  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog, slashCommands, nativeGoalSupported])
 
   // Command management callbacks
   const handleEditCommand = useCallback((cmd: CommandDefinition) => {
@@ -3549,6 +3554,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         canWriteWorkflow={canWriteCommandWorkflow}
         agentProfileId={activeTab?.metadata?.agentProfileId}
         workspacePath={customCommandWorkspacePath}
+        nativeGoalSupported={nativeGoalSupported}
         commands={slashCommands}
         {...(slashCommands || (isWorkflowMode && !canWriteCommandWorkflow) ? {} : {
           onCreateCommand: handleCreateCommand,

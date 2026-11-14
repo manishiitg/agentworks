@@ -366,6 +366,9 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	if isScheduledSession(sessionID) {
 		scheduleLogfWithContext(newServerLogContext("", "", "", userID, "", sessionID), "[BOT_SESSION] Internal session started: sessionID=%s queryID=%s", sessionID, queryResp.QueryID)
 	}
+	if queryResp.Status == "notice" {
+		return internalSessionTurnResult{FinalResponse: queryResp.Message}, nil
+	}
 	if queryResp.DeliveryStatus == "queued_for_turn" {
 		// The admission UUID is not the execution ID. The queue worker returns
 		// its exact execution and reply through the waiter installed before claim.

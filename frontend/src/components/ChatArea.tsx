@@ -2931,6 +2931,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     // A selected view's cached finalResponse is not evidence for this session.
     // Durable history and session-owned events are the only transcript sources.
 
+    const priorSubmissionUI = { streaming: chatStore.isStreaming, active: chatStore.hasActiveChat, completed: chatStore.isCompleted, tabStreaming: currentTab.isStreaming, tabCompleted: currentTab.isCompleted }
     // Reset UI state for new query
     chatStore.setFinalResponse('')
     chatStore.setIsCompleted(false)
@@ -3116,6 +3117,18 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       if (!isChatIdentityCurrent(identity)) return false
       if (!stillOwnsSubmission()) return response.status === 'started' || response.status === 'workflow_started' || response.status === 'live_input_delivered'
       console.log('[WF_DEBUG] 2. Response', { status: response.status, responseSessionId: response.session_id || response.query_id, tabSessionId, match: (response.session_id || response.query_id) === tabSessionId })
+
+      if (response.status === 'notice' && response.notice) {
+        acceptReceipt()
+        chatStore.patchTabEvents(tabSessionId, events => withoutOptimisticUserMessage(events, optimisticUserEventID))
+        chatStore.addTabEvents(tabSessionId, [response.notice])
+        chatStore.setIsStreaming(priorSubmissionUI.streaming)
+        chatStore.setHasActiveChat(priorSubmissionUI.active)
+        chatStore.setIsCompleted(priorSubmissionUI.completed)
+        chatStore.setTabStreaming(currentTab.tabId, priorSubmissionUI.tabStreaming)
+        chatStore.setTabCompleted(currentTab.tabId, priorSubmissionUI.tabCompleted)
+        return true
+      }
 
       if (response.status === 'started' || response.status === 'workflow_started') {
         const responseSessionId = response.session_id || response.query_id

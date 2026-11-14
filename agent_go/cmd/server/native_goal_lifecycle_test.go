@@ -225,7 +225,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "goal-query-test")
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,muse-cli")
 	t.Setenv("LLM_CONFIG_LOCKED", "")
 	t.Setenv("AGENTWORKS_PROVIDER_POLICY", "")
 	var err error
@@ -272,6 +272,35 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	allowed := send("owner")
 	if allowed.Code != 200 || calls != 1 {
 		t.Fatalf("own admitted control failed: %d %s calls=%d", allowed.Code, allowed.Body.String(), calls)
+	}
+	// Owner live regression: an unsupported /goal is information, not a failed
+	// native turn. Check the same admitted HTTP and internal/MCP input paths.
+	muse := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "muse-cli", "display_name": "Muse test account", "auth_method": "cli_login"})
+	req.Provider, req.ModelID, req.ConnectionID, req.Query = "muse-cli", "muse-cli", muse.ID, "/goal Task"
+	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: "muse-cli"}}
+	info := send("owner")
+	var notice struct {
+		Status  string `json:"status"`
+		QueryID string `json:"query_id"`
+		Notice  struct {
+			Type string `json:"type"`
+		} `json:"notice"`
+	}
+	if info.Code != http.StatusOK || json.Unmarshal(info.Body.Bytes(), &notice) != nil || notice.Status != "notice" || notice.QueryID != "" || notice.Notice.Type != "native_goal_notice" || calls != 1 {
+		t.Fatalf("unsupported goal became a failed/native turn: %d %s", info.Code, info.Body.String())
+	}
+	f.api.agentCancelFuncs = map[string]context.CancelFunc{}
+	request, err := queryRequestToMap(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.api.startSessionInternalWithResult(context.Background(), request, sid, "owner", nil)
+	if err != nil || result.QueryID != "" || result.FinalResponse != "Goal mode is not available for this AI program" {
+		t.Fatal("internal goal notice failed", result, err)
+	}
+	capabilities := nativeGoalProgramCapabilities()
+	if !capabilities["codex-cli"] || capabilities["muse-cli"] || capabilities["claude-code"] || capabilities["cursor-cli"] || capabilities["pi-cli"] || capabilities["agy-cli"] {
+		t.Fatal("server offered unsupported native goals", capabilities)
 	}
 	state, err := f.api.latestNativeGoal(context.Background(), sid)
 	if err != nil || state == nil || state.NativeSessionID != "native" || state.Goal.Status != "paused" {
