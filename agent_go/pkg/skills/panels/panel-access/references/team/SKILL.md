@@ -40,6 +40,18 @@ rather than copying action names or old workflow-team policy fields:
   of open clashes. If an older copy needs to catch up, refresh Team sync first;
   old arbitrary versions can be unavailable even while a clash's saved sides remain.
 
+How the Team works (apps and secrets): `way` lists what the Team shares, `way_add`
+(item `app` or `secret`, id) is **Add to Team** for one of the person's own, and
+`way_remove` takes one off; every Team member may do all three, on the server.
+The login type decides, never the person. An app with no login or an API key,
+and a secret, are copied once into the Team's vault inside the Vault service: the
+person keeps theirs, the value is never shown to you or in chat, and the Team
+(its agent and online routines) uses the copy. An app with a personal sign-in is
+never copied: it is listed as "Team uses GitHub: each person signs in
+themselves", and each member connects their own. Say which of the two happened.
+The first Add to Team makes the Team's online home. Rules and skills are already
+shared through the Team's setup; do not copy them again.
+
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent
 and tab controls remain theirs. Read back the saved result and say what is

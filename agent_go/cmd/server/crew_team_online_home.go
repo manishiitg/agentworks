@@ -130,6 +130,14 @@ func syncCrewTeamHomeMembersLocked(source crewTeam) error {
 	if err := writeCrewTeamRecord(home, nil, true); err != nil {
 		return err
 	}
+	// The Team's vault (PLAT-746-1026) follows the same roster; a no-op until something has been shared.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := syncCrewTeamVault(ctx, source.ProjectID, source); err != nil {
+			log.Printf("[TEAM_WAY] team=%s event=vault_members_failed reason=%q", source.ProjectID, err)
+		}
+	}()
 	log.Printf("[TEAM_HOME] team=%s crew=%s event=members_synced source_count=%d home_count=%d on=%t", source.ProjectID, home.ProjectID, len(source.People)+1, len(home.People), home.On)
 	return nil
 }
