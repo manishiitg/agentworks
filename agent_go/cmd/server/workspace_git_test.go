@@ -297,6 +297,15 @@ func TestWorkspaceGitFindsReposTwoFoldersDeepButNotInDependencies(t *testing.T) 
 // "stage everything" does not add it.
 func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 	_, repo := gitTestEnv(t)
+	// PLAT-746-766: omit untracked dependencies but retain deliberate tracked edits.
+	for _, folder := range []string{"node_modules", "bower_components", "jspm_packages", ".venv", "venv", "__pycache__"} {
+		writeFile(t, filepath.Join(repo, folder, "untracked.txt"), "dependency noise")
+	}
+	tracked := filepath.Join(repo, "node_modules", "tracked.txt")
+	writeFile(t, tracked, "before")
+	gitRun(t, repo, "add", "-f", "node_modules/tracked.txt")
+	gitRun(t, repo, "commit", "-qm", "track dependency fixture")
+	writeFile(t, tracked, "after")
 	private := filepath.Join(repo, ".sandbox-cache", "cli-home", "muse-cli", "tmp", "muse-workspace-probe-abc")
 	if err := os.MkdirAll(private, 0o755); err != nil {
 		t.Fatal(err)
@@ -319,6 +328,12 @@ func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 		t.Fatalf("stage everything: %v %q", err, out)
 	}
 	staged, _ := workspaceGitRunWrite(context.Background(), repo, nil, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, "untracked.txt") {
+		t.Fatalf("stage everything added ignored dependencies: %q", staged)
+	}
+	if !strings.Contains(staged, "node_modules/tracked.txt") {
+		t.Fatalf("tracked dependency edit disappeared: %q", staged)
+	}
 	if strings.Contains(staged, ".sandbox-cache") {
 		t.Fatalf("stage everything added the platform folder: %q", staged)
 	}

@@ -210,7 +210,8 @@ func workspaceGitConfined(base, dir string) (string, bool) {
 // workspaceGitPlatformIgnore lists folders the platform keeps inside a project for its own use (per-person tool homes, CLI state). They belong to the
 // sandbox users, are often unreadable to the service, and must never reach a person's repository: without this the panel listed them as changes, warned
 // about every folder it could not open, and "Commit all" would have added them.
-const workspaceGitPlatformIgnore = "# Platform-private folders: never part of a project\n.sandbox-cache/\n"
+// Ignore untracked dependency noise, without hiding deliberately tracked files.
+const workspaceGitPlatformIgnore = "# Platform-private folders\n.sandbox-cache/\n# Installed dependencies and caches\nnode_modules/\nbower_components/\njspm_packages/\n.venv/\nvenv/\n__pycache__/\n"
 
 var (
 	workspaceGitExcludesOnce sync.Once
