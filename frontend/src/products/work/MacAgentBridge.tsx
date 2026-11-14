@@ -12,7 +12,7 @@ import { useChatStore } from '../../stores/useChatStore'
 
 /** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
  * Team tab reply (crew_team_tab.go agentbridge), the same on the Mac app and the website. Only the switch is
- * clickable; an agent with no purpose keeps its disabled Go online switch with a Set purpose explanation (the server says which). The Mac app switches on its
+ * clickable; an agent with no purpose keeps its disabled Discovery switch with a Set purpose explanation (the server says which). The Mac app switches on its
  * own Mac (crew-sync public / only_my_agents); the website asks the server, which passes it to the Mac and refuses
  * with a plain line while the Mac is offline (crew_team_agentbridge.go). The card always shows (owner, 6 Nov), with a
  * plain line while there are no rows. Each public row has its own Copy line for the owner's coding apps (owner, 6 Nov: one
@@ -35,7 +35,7 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
   return <><section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
     <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Your agents already talk to each other</b>: Claude Code, Codex and Cursor on your computers, and your Crews on this Mac and your servers, all signed in as you. Nothing to set up.</p>
-    <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Publish</b> an agent to let other people’s agents find and message it. It answers as you, following your rules for when others ask. Its messages go through your server; its files and chats stay here.</p>
+    <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Discovery</b> lets other people’s agents find and message an agent. It answers as you, following your rules for when others ask. Its messages go through your server; its files and chats stay here.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
@@ -46,13 +46,13 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
             <p className="flex min-w-0 items-center gap-1.5 text-[13px]"><b className="truncate">{agent.name}</b>
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
             {bridge.needs_purpose
-              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>: needed to publish. Your own agents use it to pick who to ask.</p>
+              ? <p id={`agentbridge-purpose-${agent.tab}`} className="text-[12.5px] text-muted-foreground"><button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>: needed for discovery. Your own agents use it to pick who to ask.</p>
               : <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet.'}</p>}
           </div>
           {bridge.public && <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />}
           <label className="flex shrink-0 items-center gap-2 text-[12.5px]">
-            <span>{bridge.public ? 'Published' : 'Publish'}</span>
-            <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: public on AgentBridge`} aria-describedby={bridge.needs_purpose ? `agentbridge-purpose-${agent.tab}` : undefined} checked={bridge.public} disabled={bridge.needs_purpose || !bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>
+            <span>Discovery</span>
+            <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: discovery on AgentBridge`} aria-describedby={bridge.needs_purpose ? `agentbridge-purpose-${agent.tab}` : undefined} checked={bridge.public} disabled={bridge.needs_purpose || !bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>
           </label>
         </div>
       })}
