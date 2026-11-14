@@ -1158,6 +1158,11 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
 	}
+	// A teammate asks from shared context, never by starting/forking the
+	// maker's CLI. Own-agent messages keep the normal real-turn path.
+	if !IsLocalMode() && dest.TeamAgentID != "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+		return "", api.answerCrewSharedMessage(ctx, c, m, source, dest)
+	}
 	// The admission just verified this stored sender. Preserve its person
 	// before the receiving turn switches to the Crew owner's namespace.
 	ctx = costAgentMessageContext(ctx, source)
