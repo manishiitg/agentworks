@@ -112,6 +112,35 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	round(c2, d2, b2)
 	read(b2.Root, "docs/note.txt", "member edit")
 	read(b2.Root, "my docs/private.txt", "private changed")
+	before := mustReadCrewTeam(t, "existing-join")
+	ids := map[string]string{}
+	for _, p := range before.Folder.Paths {
+		ids[p.Path] = p.ID
+	}
+	if err := os.Rename(filepath.Join(b1.Root, "docs"), filepath.Join(b1.Root, "reports")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(b1.Root, "skills", "report"), filepath.Join(b1.Root, "skills", "analysis")); err != nil {
+		t.Fatal(err)
+	}
+	round(c1, d1, b1)
+	round(c2, d2, b2)
+	read(b2.Root, "reports/note.txt", "member edit")
+	read(b2.Root, "skills/analysis/SKILL.md", "Team skill")
+	read(b2.Root, "skills/report/SKILL.md", "private skill")
+	renamed := mustReadCrewTeam(t, "existing-join")
+	for _, p := range renamed.Folder.Paths {
+		if p.Path == "reports" && p.ID != ids["docs"] {
+			t.Fatal("folder rename replaced its identity")
+		}
+		if p.Path == "skills/analysis" && p.ID != ids["skills/report"] {
+			t.Fatal("skill rename replaced its identity")
+		}
+	}
+	if got := b2.exportSelectedSkills([]string{"report", "analysis"}); len(got) != 1 || got[0] != "analysis" {
+		t.Fatalf("private skill selection leaked into Team setup: %v", got)
+	}
+
 }
 
 // PLAT-746-976: Team-side rename changes a name, never which local private
@@ -231,7 +260,7 @@ func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.
 	if err = writeCrewTeamState("team", func(s *crewTeamLocalState) { s.TeamOn = false }); err != nil {
 		t.Fatal(err)
 	}
-	if err = crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "local", PairID: "independent", ConnectionID: "saved", PeerProjectID: "independent-online"}); err != nil {
+	if err = crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "local", PairID: "independent", Editing: "local", ConnectionID: "saved", PeerProjectID: "independent-online"}); err != nil {
 		t.Fatal(err)
 	}
 	if w := request(`{"local_project":"team","confirm":true}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Already online") || accepts != 0 {
