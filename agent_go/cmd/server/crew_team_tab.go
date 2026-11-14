@@ -150,11 +150,10 @@ type crewTeamTabReply struct {
 	CanLeave   bool   `json:"can_leave"`
 	// LeaveConfirm is the line shown in place after Leave this Team is clicked, before the leave is sent.
 	LeaveConfirm string `json:"leave_confirm,omitempty"`
-	// CanChoose: the viewer switches Folders / Whole Crew and stops sharing a folder, the main owner only (owner, 5 Nov).
+	// Only the main owner may stop sharing a folder; the last folder stays shared.
 	// CanAddFolder: the viewer adds a folder to share, anyone in the Team, picked from the Crew's folders (GET
 	// /folders, crew_team_folders.go) or by name while a Mac Crew's Mac is off; a missing one is made.
 	// CanRemoveFolder: the owner stops sharing a folder; never the last one (Folders shares at least one, 6 Nov).
-	CanChoose       bool `json:"can_choose"`
 	CanAddFolder    bool `json:"can_add_folder"`
 	CanRemoveFolder bool `json:"can_remove_folder"`
 	// Asks are the cards' Ask messages, sent to the viewer's own Main (crewTeamAskPrompts).
@@ -267,7 +266,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 // first, explains it plainly, suggests, and changes only when the person says so). The screen sends them as given.
 var crewTeamAskPrompts = map[string]string{
 	"team":        "Look at this Crew's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
-	"shares":      "Show me what this Crew's Team shares now: each shared folder with its size, or the whole Crew. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
+	"shares":      "Show me what this Crew's Team shares now: each chosen shared folder with its size. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
 	"agents":      "List my agents in this Crew: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
 	"lent":        "List the apps and secrets I lend to this Crew's Team (names only, never values) and which teammates' agents use them. Point out which are my personal accounts and suggest what to keep lending or stop.",
 	"sync":        "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
@@ -447,9 +446,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	out.Sync = crewTeamTabSyncFor(t, viewer)
-	out.CanChoose = view.CanManage && viewer == t.OwnerID
 	out.CanAddFolder = view.CanManage
-	out.CanRemoveFolder = out.CanChoose && len(t.Folder.Folders) > 1
+	out.CanRemoveFolder = view.CanManage && viewer == t.OwnerID && len(t.Folder.Folders) > 1
 	return out
 }
 

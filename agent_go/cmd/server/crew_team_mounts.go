@@ -165,7 +165,7 @@ func (b crewTeamLocal) checkIgnore(ctx context.Context, paths []string) (map[str
 // Refuse links in every existing parent. A collision must never make sync follow
 // a private link out of the registered project root.
 func crewTeamMountPath(root, rel string) (string, error) {
-	if _, err := publication.CleanPath(rel); err != nil || !crewsync.Allowed(crewTeamKey(rel), false) || !(crewTeamFolder{Whole: true}).holds(rel) {
+	if _, err := publication.CleanPath(rel); err != nil || !crewsync.Allowed(crewTeamKey(rel), false) || crewTeamPrivatePath(rel) {
 		return "", fmt.Errorf("invalid Team folder path")
 	}
 	current := root
@@ -322,7 +322,7 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 				}
 			}
 		}
-		// Files in Whole Crew can be roots as well; the incoming writer creates
+		// Shared setup files can be roots as well; the incoming writer creates
 		// files, so only create the parent here.
 		if err = os.MkdirAll(filepath.Dir(to), 0755); err != nil {
 			return err

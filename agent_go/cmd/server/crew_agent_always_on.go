@@ -51,9 +51,7 @@ func crewStandbyServerNote(project, person, tab string) string {
 		}
 	}
 	files := "none of the Crew's files, only this conversation"
-	if t, err := readCrewTeam(project); err == nil && t.Folder.Whole {
-		files = "all of the Crew's files"
-	} else if err == nil && len(t.Folder.Folders) > 0 {
+	if t, err := readCrewTeam(project); err == nil && len(t.Folder.Folders) > 0 {
 		files = "only the Team's shared folders: " + strings.Join(t.Folder.Folders, ", ")
 	}
 	// What is really here: the owner's copy of the team folder, attached as WORK_FOLDER_<NAME> (crew_team_server_copy.go).

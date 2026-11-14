@@ -93,7 +93,7 @@ func refuseCrewOwnerTurnOnMacTwin(ctx context.Context, root, user string) error 
 func (out *crewTeamTabReply) changeOnMac() {
 	out.Team.ChangeOnMac, out.Team.CanManage = crewChangeOnMacLine, false
 	out.NewTeam = false
-	out.CanSwitch, out.CanChoose, out.CanAddFolder, out.CanRemoveFolder = false, false, false, false
+	out.CanSwitch, out.CanAddFolder, out.CanRemoveFolder = false, false, false
 	out.Asks = map[string]string{} // an Ask card's message offers changes
 	for i := range out.People {
 		out.People[i].CanRemove = false

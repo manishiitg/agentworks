@@ -165,7 +165,7 @@ function NeverOnlinePeople({ projectId }: { projectId: string }) {
 
 const changeLabel = (to: CrewPeopleChange['level'], from: string) => to === 'none' ? 'Remove' : from === 'none' ? 'Add' : 'Move'
 
-/** The confirm box for one person's change (owner, 6 Nov, same kind as the Whole Crew box): the server's summary, what
+/** The confirm box for one person's change (owner, 6 Nov): the server's summary, what
  * they gain and lose, and its notes. Nothing is saved until the confirm button. needsDashboard is the server's plain
  * refusal when the Crew has no dashboard yet, with the one button that creates the standard one. */
 function PeopleChangeDialog({ ask, saving, error, onCancel, onConfirm }: { ask: { name: string; level: CrewPeopleChange['level']; preview: CrewPeoplePreview; needsDashboard?: string }; saving: boolean; error: string; onCancel: () => void; onConfirm: (createDashboard: boolean) => void }) {
@@ -461,6 +461,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         </>}
       </>}
     </div>}
+    {team.folder_note && <p className="text-xs text-muted-foreground">{team.folder_note}</p>}
     <p className="text-xs text-muted-foreground">Not shared: your chats and memory, app files, passwords and keys.</p>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
