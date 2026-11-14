@@ -6937,6 +6937,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			if strings.EqualFold(finalProvider, "claude-code") && claudeSummarisesPreToolText(finalModelID) {
+				if err := llmAgent.AddInstructions(claudeReplyHintInstruction); err != nil {
+					logfWithContext(queryLogCtx, "[CLAUDE_REPLY_HINT] Failed to add instruction: %v", err)
+				}
+			}
 			// 2. CONTEXT — skills. Attaching a skill is not an instruction
 			//    section (AttachSkill, not AddInstructions), so it stays here
 			//    rather than in the prompt-section registry below.
