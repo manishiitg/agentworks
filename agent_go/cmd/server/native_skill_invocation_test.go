@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -25,7 +24,7 @@ func TestExplicitNativeSkillUsesCurrentOwnedRuntimeAtDispatch(t *testing.T) {
 	registry := map[string]any{}
 	for _, sid := range []string{"current", "another"} {
 		registry["work:"+sid] = map[string]any{"profile_id": "work", "session_id": sid, "workspace_path": externalCommandCrewRoot, "provider": "codex-cli"}
-		dir, err := cliruntime.PrepareLinkedProject(state, f.docs, "owner", codingAgentWorkspaceWorkingDir(externalCommandCrewRoot), sid, "codex-cli", "builder")
+		dir, err := crewCLIWorkingDir(externalCommandCrewRoot, "owner", sid, "codex-cli", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,5 +105,28 @@ func TestExplicitSkillQueueIdentityAndContinuation(t *testing.T) {
 	raw, _ := json.Marshal(sanitizedQueuedConversationRequest(context.Background(), req))
 	if !strings.Contains(string(raw), `"requested_skill_id":"exact-selection"`) || strings.Contains(string(raw), `requestedSkillName`) {
 		t.Fatal("queue lost selector or persisted a resolved capability")
+	}
+}
+
+// A personal Crew runs directly in its registered project, not the app's
+// isolated runtime cache. Reading it must not substitute a linked-cache path.
+func TestRuntimeSkillLookupUsesRegisteredLocalCrewRoot(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "")
+	docs, state, project := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	recognitionWrite(t, filepath.Join(project, ".agentworks/settings/product.json"), `{"id":"local","product":"work"}`)
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "local", ProjectID: "local", OwnerID: "owner", LocalRoot: project}); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := crewCLIWorkingDir("Crew/local", "owner", "current", "codex-cli", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing, err := existingCrewCLIWorkingDir("Crew/local", "owner", "current", "codex-cli", false)
+	if err != nil || expected != project || existing != expected {
+		t.Fatalf("local runtime: expected=%q existing=%q error=%v", expected, existing, err)
 	}
 }

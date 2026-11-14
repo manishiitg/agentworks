@@ -11,7 +11,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
@@ -155,13 +154,12 @@ func (api *StreamingAPI) loadRuntimeSkillInventory(r *http.Request) (runtimeSkil
 	if err != nil {
 		return response, 500, fmt.Errorf("runtime storage unavailable")
 	}
-	legacy := workspace
-	if shared, ok := workspaceref.MustParse(workspace).SharedProject(); ok {
-		if old := crewLegacyKey(shared); old != "" {
-			legacy = old
-		}
+	var dir string
+	if _, crew := resolveCrewPath(r.Context(), user, workspace); crew {
+		dir, err = existingCrewCLIWorkingDir(workspace, user, session, provider, false)
+	} else {
+		dir, err = cliruntime.ExistingLinkedProject(state, fsutil.WorkspaceDocsRoot(), user, codingAgentWorkspaceWorkingDir(workspace), workspace, session, provider, mode)
 	}
-	dir, err := cliruntime.ExistingLinkedProject(state, fsutil.WorkspaceDocsRoot(), user, codingAgentWorkspaceWorkingDir(workspace), legacy, session, provider, mode)
 	if os.IsNotExist(err) {
 		response.Message = "This Builder's runtime folder is not present on this server. No older session was substituted."
 		return response, 0, nil
