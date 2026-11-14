@@ -27,7 +27,7 @@ Use the existing Watcher with `github_pr` instead of a Python script. List first
 
 After starting a Watcher, confirm it briefly and end this reply. Do not wait in a foreground shell loop, `sleep`, or a blocking task-output call; those keep the person’s next message queued. The Watcher delivers meaningful results to this chat independently.
 
-For other native Claude background work, start it with `run_in_background:true`, report that it started, and end the reply. Do not turn a background task back into a foreground wait. A running background task alone must not be described as an unfinished answer.
+For other native Claude background work, start it with `run_in_background:true`, report that it started, and end the reply. When your answer needs its result (tests, a build), call `wait_for_background_tasks` before you end the reply; never wait in a shell loop or `sleep`. Do not turn a background task back into a foreground wait for dev servers, watchers or PR checks. A running background task alone must not be described as an unfinished answer.
 
 - `checks`: wait for all registered checks on the current PR commit, report once and finish. Pending checks can take30 minutes or longer. No check registered yet means keep waiting.
 - `deployment`: wait for GitHub deployment records for that commit, report once and finish. A provider must report deployment status to GitHub; a green build alone is not proof of deployment.
