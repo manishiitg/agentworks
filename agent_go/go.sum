@@ -1002,3 +1002,5 @@ modernc.org/strutil v1.2.1 h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=
 modernc.org/strutil v1.2.1/go.mod h1:EHkiggD70koQxjVdSBM3JKM7k6L0FbGE5eymy9i3B9A=
 modernc.org/token v1.1.0 h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=
 modernc.org/token v1.1.0/go.mod h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114092039-7a4117289018 h1:6J0XG7LPKj/k+VGAgCMHVDAzl67faX0wAdPsyP7xTWk=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114092039-7a4117289018/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
