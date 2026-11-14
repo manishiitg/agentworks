@@ -16,7 +16,7 @@ import (
 
 // Called under the existing Team writer lock. A Team rename reuses the normal
 // chunk commit/history, including deletion events at the old path.
-func renameCrewTeamPaths(ctx context.Context, project, actor string, before, after crewTeamFolder) error {
+func crewTeamPathRenameChanges(project string, before, after crewTeamFolder) ([]crewTeamChange, error) {
 	changed := false
 	for _, old := range before.Paths {
 		for _, next := range after.Paths {
@@ -26,11 +26,11 @@ func renameCrewTeamPaths(ctx context.Context, project, actor string, before, aft
 		}
 	}
 	if !changed {
-		return nil
+		return nil, nil
 	}
 	state, err := readCrewTeamCurrentState(project)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	changes := []crewTeamChange{}
 	for _, old := range before.Paths {
@@ -44,20 +44,25 @@ func renameCrewTeamPaths(ctx context.Context, project, actor string, before, aft
 				}
 				target := next.Path + strings.TrimPrefix(rel, old.Path)
 				if existing := state.Versions[target]; existing.File != nil {
-					return fmt.Errorf("the Team already has files at %s", target)
+					return nil, fmt.Errorf("the Team already has files at %s", target)
 				}
 				version := &chunkedFile{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}
 				changes = append(changes, crewTeamChange{Path: rel, Before: v.File.Hash}, crewTeamChange{Path: target, After: version})
 			}
 		}
 	}
+	return changes, nil
+}
+
+func applyCrewTeamPathRenames(ctx context.Context, project, actor string, changes []crewTeamChange) error {
+
 	// Respect the protocol's bounded commits; a large rename is still one named
 	// folder identity and ordinary file-history revisions.
 	for len(changes) > 0 {
 		count := min(len(changes), crewTeamCommitBatch)
 		batch := changes[:count]
 		raw, _ := json.Marshal(batch)
-		if _, err = commitCrewTeamChanges(ctx, project, actor, newCrewTeamTransfer(), crewTeamSetupHash(raw), batch); err != nil {
+		if _, err := commitCrewTeamChanges(ctx, project, actor, newCrewTeamTransfer(), crewTeamSetupHash(raw), batch); err != nil {
 			return err
 		}
 		changes = changes[count:]

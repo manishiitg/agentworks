@@ -22,7 +22,7 @@ type crewTeamMacOnlyItem struct {
 	Key    string `json:"key"`
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`
-	Label  string `json:"label"`  // the words the card prints for Kind
+	Label  string `json:"label"` // the words the card prints for Kind
 	Action string `json:"action"` // "copy", "move" or ""
 	Note   string `json:"note,omitempty"`
 }

@@ -652,11 +652,22 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	pathChanges, e := crewTeamPathRenameChanges(project, previous.Folder, input.Folder)
+	if e != nil {
+		externalError(w, 409, "folder_rename_failed", e.Error())
+		return
+	}
+	for _, change := range pathChanges {
+		if !crewTeamGuardAllows(claims, change.Path, true) {
+			externalError(w, 403, "team_folder_forbidden", "This connection cannot rename those shared files.")
+			return
+		}
+	}
 	if e = writeCrewTeam(input); e != nil {
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	if e = renameCrewTeamPaths(r.Context(), project, claims.UserID, previous.Folder, input.Folder); e != nil {
+	if e = applyCrewTeamPathRenames(r.Context(), project, claims.UserID, pathChanges); e != nil {
 		externalError(w, 409, "folder_rename_failed", e.Error())
 		return
 	}

@@ -170,6 +170,13 @@ func crewTeamFreeMount(root, remote, current string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if current != "" {
+			if existing, e := os.Lstat(p); e == nil {
+				if own, e := os.Lstat(filepath.Join(root, filepath.FromSlash(current))); e == nil && os.SameFile(existing, own) {
+					return candidate, nil
+				}
+			}
+		}
 		if _, err = os.Lstat(p); os.IsNotExist(err) {
 			return candidate, nil
 		} else if err != nil {
