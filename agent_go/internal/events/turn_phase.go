@@ -236,6 +236,14 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 			}
 
 		case "retry_attempt":
+			if event.Data != nil {
+				if d, ok := event.Data.Data.(*events.RetryAttemptEvent); ok && d.Phase == "native_retry_end" {
+					if st != nil && st.phase == turnPhaseRetrying {
+						set(turnPhaseRunning)
+					}
+					break
+				}
+			}
 			if st == nil {
 				set(turnPhaseStarting)
 			}
