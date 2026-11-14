@@ -45,7 +45,7 @@ export function WorkspaceAccountMenu() {
       <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Workspace</p>
       {window.electronAPI?.getDesktopConnection?.() === 'local' && <button type="button" role="menuitem" data-product-navigation-action onClick={openLocalSetup}><RotateCcw className="h-4 w-4" aria-hidden="true" /><span>Run setup again</span></button>}
       <ConnectedServersMenuItem />
-      <button type="button" role="menuitem" data-product-navigation-action onClick={() => openWorkspaceSettings('connections')}><Plug className="h-4 w-4" aria-hidden="true" /><span>Customize</span></button>
+      <button type="button" role="menuitem" data-product-navigation-action onClick={() => openWorkspaceSettings('connections')}><Plug className="h-4 w-4" aria-hidden="true" /><span>Settings</span></button>
       <ProvidersControl />
       <UsersControl />
       <NotificationsControl />

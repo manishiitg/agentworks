@@ -17,6 +17,6 @@ export function SidebarActions() {
     <button type="button" className={rowClass} onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}><Search aria-hidden="true" className="h-4 w-4" /><span className="flex-1">Search</span><kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd></button>
     <button type="button" className={rowClass} onClick={() => { openAppPage('/dashboards'); window.dispatchEvent(new Event('close-app-sidebar')) }}><LayoutGrid aria-hidden="true" className="h-4 w-4" />Artifacts</button>
     {schedules && <button type="button" className={rowClass} onClick={() => { openQuickNavigation(schedules); window.dispatchEvent(new Event('close-app-sidebar')) }}><CalendarClock aria-hidden="true" className="h-4 w-4" />Schedules</button>}
-    {items.some(item => item.action === 'providers') && <button type="button" className={rowClass} onClick={() => { openWorkspaceSettings('connections'); window.dispatchEvent(new Event('close-app-sidebar')) }}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" />Customize</button>}
+    {items.some(item => item.action === 'providers') && <button type="button" className={rowClass} onClick={() => { openWorkspaceSettings('connections'); window.dispatchEvent(new Event('close-app-sidebar')) }}><SlidersHorizontal aria-hidden="true" className="h-4 w-4" />Settings</button>}
   </nav>
 }
