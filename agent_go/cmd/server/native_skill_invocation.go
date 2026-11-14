@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -125,6 +126,7 @@ func (api *StreamingAPI) prepareRequestedSkill(r *http.Request, req *QueryReques
 		if skill.ID != req.RequestedSkillID {
 			continue
 		}
+		log.Printf("[NATIVE_SKILL] session=%s provider=%s action=requested", session, provider)
 		req.requestedSkillName = skill.Name
 		if strings.TrimSpace(req.Query) == "" {
 			req.Query = "[Skill requested: " + skill.Name + "]"
