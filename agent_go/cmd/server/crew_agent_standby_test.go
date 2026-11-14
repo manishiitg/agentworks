@@ -141,6 +141,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
 	api := f.api
+	api.projectActions = NewProjectActionDispatcher(api, api.agentProfiles)
 	const helper, solo = "helper01", "solo01"
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatalf("pair fixture: %v", err)
