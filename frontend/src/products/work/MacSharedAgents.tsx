@@ -6,7 +6,7 @@ import type { CrewAsk } from './YourComputerPanel'
 // Opening the Access page at a tab (WorkSurface listens), from an agent's tab or the side panel's Access lines.
 // Team is its own page; Artifacts is its own page; the remaining tabs make up Online (owner, 11 Nov: Share split into Team and Online).
 export type CrewTeamSection = 'people' | 'agents' | 'activity' | 'sync'
-export type CrewAccessSection = 'mac' | 'online-agents' | 'publish' | 'team' | 'artifacts' | 'dashboards'
+export type CrewAccessSection = 'mac' | 'online-agents' | 'agentbridge' | 'publish' | 'team' | 'artifacts' | 'dashboards'
 export const crewAccessDestination = (section: CrewAccessSection): CrewAccessSection => section === 'dashboards' ? 'artifacts' : section
 let pendingAccess: { projectId: string; tab: string; section: CrewAccessSection; teamSection?: CrewTeamSection } | null = null
 export function hasPendingCrewAccess(projectId: string) { return pendingAccess?.projectId === projectId }
@@ -16,6 +16,7 @@ export function pendingCrewTeamSection(projectId: string): CrewTeamSection | und
 export function openCrewAccess(projectId: string, tab: string, section: CrewAccessSection = 'team', teamSection?: CrewTeamSection) {
   section = crewAccessDestination(section)
   if (section === 'artifacts') console.info(`[CREW_ARTIFACTS] project=${projectId} action=opened source=crew_navigation`)
+  if (section === 'mac' || section === 'online-agents' || section === 'agentbridge') console.info(`[CREW_ONLINE] project=${projectId} action=opened section=${section}`)
   pendingAccess = { projectId, tab, section, teamSection }
   window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section, teamSection } }))
 }

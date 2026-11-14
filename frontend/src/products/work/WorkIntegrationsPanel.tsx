@@ -53,6 +53,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
     if (target === 'team') openCrewAccess(projectId, '', 'team')
     if (target === 'online') openCrewAccess(projectId, '', 'mac')
+    if (target === 'agentbridge') openCrewAccess(projectId, '', 'agentbridge')
     if (target === 'agents') openCrewAccess(projectId, '', 'team', 'agents')
     if (target === 'dashboards' || target === 'artifacts') openCrewAccess(projectId, '', 'artifacts')
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack-bot', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)

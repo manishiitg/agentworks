@@ -870,7 +870,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   if (!isOpen) return null
 
-  const placeholder = 'Search chats, Crews, artifacts and schedules…'
+  const placeholder = 'Search chats, Crews, artifacts, schedules, panels and pages…'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div

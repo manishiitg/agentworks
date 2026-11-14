@@ -63,6 +63,7 @@ var crewAccessMacTabs = func() []crewAccessTab {
 	tabs := []crewAccessTab{
 		{ID: "mac", Label: "Mac online", Detail: "you, from anywhere", Group: "online"},
 		{ID: "online-agents", Label: "Online agents", Detail: "runs on the server", Group: "online"},
+		{ID: "agentbridge", Label: "AgentBridge", Detail: "your agents and discovery", Group: "online"},
 	}
 	if crewPublishTabShown {
 		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server", Group: "online"})
@@ -70,8 +71,8 @@ var crewAccessMacTabs = func() []crewAccessTab {
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// Team remains its own page. Online contains Mac online, Online agents and
-// Artifacts. Slack setup is reached through Connections (owner, 14 Nov).
+// Team and Artifacts have their own pages. Online contains Mac online,
+// Online agents and AgentBridge. Slack stays in Connections (owner, 15 Nov).
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
 	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
