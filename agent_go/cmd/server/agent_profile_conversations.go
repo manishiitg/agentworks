@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 
@@ -412,6 +413,12 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		return
 	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
+	if profile.ID == crewProfileID {
+		if err := api.deleteCrewTeamOnlineHome(r, projectID); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	var deleteErr error
 	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
 		deleteErr = rootErr
@@ -423,6 +430,16 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	if err := deleteErr; err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
+	}
+	if profile.ID == crewProfileID {
+		if team, err := readCrewTeam(projectID); err == nil && (team.OnlineHome != "" || team.RosterSource != "") {
+			if dir, err := crewTeamDir(projectID); err == nil {
+				if err := os.RemoveAll(dir); err != nil {
+					writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state needs cleanup.")
+					return
+				}
+			}
+		}
 	}
 	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {
 		writeAgentProfileError(w, 500, "Folder removed; run history cleanup failed: "+err.Error())
