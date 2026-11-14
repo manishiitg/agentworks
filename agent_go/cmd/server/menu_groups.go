@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -32,16 +33,16 @@ type menuGroup struct {
 
 // Agent groups are personal sidebar organization, not membership or access.
 type menuAgentGroup struct {
-	ID string `json:"id"`
-	Name string `json:"name"`
-	Project string `json:"project"`
-	Agents []string `json:"agents"`
-	Collapsed bool `json:"collapsed"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Project   string   `json:"project"`
+	Agents    []string `json:"agents"`
+	Collapsed bool     `json:"collapsed"`
 }
 
 type menuGroups struct {
 	AgentGroups []menuAgentGroup `json:"agent_groups,omitempty"`
-	Groups []menuGroup `json:"groups"`
+	Groups      []menuGroup      `json:"groups"`
 	// The menu's last choices, kept with the groups so they survive a restart and match on every screen (owner,
 	// 10 Nov): Filter is all, mine, shared or group:<id>; Network is a connection id or all.
 	Filter  string `json:"filter,omitempty"`
@@ -158,6 +159,7 @@ func updateMenuGroups(ctx context.Context, change func(*menuGroups) error) (menu
 	if err := writeRawFileToWorkspace(ctx, path, string(data)); err != nil {
 		return saved, menuGroupsError{http.StatusServiceUnavailable, "Could not save your groups. Try again."}
 	}
+	livefeed.Default.PublishToUser(livefeed.MenuGroups, user, "")
 	return saved, nil
 }
 

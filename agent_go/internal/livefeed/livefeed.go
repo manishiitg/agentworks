@@ -23,8 +23,10 @@ const (
 	// Sessions: the set or status of running sessions/executions changed
 	// (header activity monitor). Never published per event, only on status
 	// transitions.
-	Sessions  Kind = "sessions"
-	CrewPanel Kind = "crew_panel"
+	// MenuGroups is an owner-only personal menu preference change.
+	MenuGroups Kind = "menu_groups"
+	Sessions   Kind = "sessions"
+	CrewPanel  Kind = "crew_panel"
 	// Schedules: the workflow schedule summary changed (header).
 	Schedules Kind = "schedules"
 	// Notifications: org-dashboard notifications for a workflow changed.
