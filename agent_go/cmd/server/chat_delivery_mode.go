@@ -454,3 +454,22 @@ func (api *StreamingAPI) launchedAgentProfileDiffers(sessionID string) bool {
 	launched, launchKnown := api.launchedAgentProfileKeyBySession[sessionID]
 	return known && launchKnown && current != "" && launched != current
 }
+
+// Only the server-recorded delivery identity, never a model-supplied inbox or
+// trigger string, makes an agent message eligible for owner live input.
+func ownAgentDeliveryForSteering(ctx context.Context, req QueryRequest) bool {
+	if req.AgentMessageFromOtherPerson || req.SharedAgentSender != "" || req.PinRunMode || req.CrewGuestCaller != "" {
+		return false
+	}
+	if own, _ := ctx.Value(desktopAppOwnDeliveryKey{}).(bool); own {
+		return true
+	}
+	claims := GetUserFromContext(ctx)
+	stamp, _ := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
+	sender, _ := stamp["sender_user_id"].(string)
+	return claims != nil && sender != "" && sender == claims.UserID
+}
+
+func (api *StreamingAPI) deferPendingSetupForLiveInput(ctx context.Context, req QueryRequest, sessionID string, otherRole bool) bool {
+	return !otherRole && api.conversationTurnOccupied(sessionID) && shouldTryRetainedDeliveryBeforeQueue(ctx, req, sessionID)
+}

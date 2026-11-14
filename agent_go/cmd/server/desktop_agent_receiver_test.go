@@ -118,6 +118,7 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 		wantLive bool
 	}{
 		{"own confirmed", true, QueryRequest{}, "sent_to_cli", true},
+		{"own pending refresh", true, QueryRequest{}, "sent_to_cli", true},
 		{"own no target", true, QueryRequest{}, "no_target", true},
 		{"own uncertain", true, QueryRequest{}, "uncertain", true},
 		{"visitor", false, QueryRequest{}, "", false},
@@ -134,6 +135,17 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 			query, err := queryRequestForAgentProfileChat(routeTestProfile("example-product", true, ""), input, record)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.name == "own pending refresh" {
+				api.agentCancelFuncs = map[string]context.CancelFunc{record.SessionID: func() {}}
+				api.setConversationTurnRuntimeChange(record.SessionID, true)
+				query.RestartCodingCLI = true
+				if !api.deferPendingSetupForLiveInput(ctx, query, record.SessionID, false) {
+					t.Fatal("same-account agent input blocked by pending setup")
+				}
+				if api.deferPendingSetupForLiveInput(ctx, query, record.SessionID, true) {
+					t.Fatal("cross-role input bypassed queue")
+				}
 			}
 			prefer := shouldTryRetainedDeliveryBeforeQueue(ctx, query, record.SessionID)
 			if prefer != tc.wantLive {
