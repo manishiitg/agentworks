@@ -29,6 +29,9 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			return true
 		}
 	}
+	if api.externalTeamAnswerRead(w, r, action, args, manifest.ID, chat.OwnerID, chat.Key) {
+		return true
+	}
 	after := externalInt(args, "after", 0)
 	out := map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": chat.Key, "name": chat.Name, "purpose": chat.Purpose, "can_write": false, "shared": true}
 	if action == "ask" {

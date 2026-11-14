@@ -432,6 +432,9 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 			return true
 		}
 	}
+	if api.externalTeamAnswerRead(w, r, action, args, projectID, owner, tab) {
+		return true
+	}
 	// MCP teammate asks use exactly the admitted registry/message route too;
 	// they never reach the maker's native agent_ask/resume branch below.
 	if action == "ask" && !IsLocalMode() {
