@@ -277,6 +277,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	// native turn. Check the same admitted HTTP and internal/MCP input paths.
 	muse := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "muse-cli", "display_name": "Muse test account", "auth_method": "cli_login"})
 	req.Provider, req.ModelID, req.ConnectionID, req.Query = "muse-cli", "muse-cli", muse.ID, "/goal Task"
+	req.LLMConfigSource = llmConfigSourceAgentProfile // the same saved project selection the composer submits
 	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: "muse-cli"}}
 	info := send("owner")
 	var notice struct {
