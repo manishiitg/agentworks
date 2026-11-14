@@ -12,12 +12,12 @@ import (
 
 // All accept surfaces read this one list. Native bytes are available only via
 // an authenticated pair for the named recipient's copy of this same Crew.
-func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.Request) {
+func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
-	project, id, op := mux.Vars(r)["project"], mux.Vars(r)["transfer"], mux.Vars(r)["op"]
+	project, id, op := mux.Vars(r)["project"], mux.Vars(r)["fork"], mux.Vars(r)["op"]
 	fail := func(status int, reason string) { externalError(w, status, "agent_transfer_unavailable", reason) }
 	if claims == nil {
-		fail(403, "Sign in to use agent transfers.")
+		fail(403, "Sign in to use agent forks.")
 		return
 	}
 	dir, err := crewTeamDir(project)
@@ -35,12 +35,12 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 	}
 	now := time.Now().UTC()
 	if id == "" && r.Method == http.MethodGet {
-		offers, err := listCrewAgentTransfers(project, claims.UserID, now)
+		offers, err := listCrewAgentForks(project, claims.UserID, now)
 		if err != nil {
-			fail(409, "Could not read pending transfers.")
+			fail(409, "Could not read pending forks.")
 			return
 		}
-		externalJSON(w, map[string]any{"transfers": offers})
+		externalJSON(w, map[string]any{"forks": offers})
 		return
 	}
 	if !crewTeamMessagePairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
@@ -56,26 +56,26 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 			fail(400, "Choose an agent and teammate.")
 			return
 		}
-		offer, err := newCrewAgentTransfer(team, claims.UserID, in.Recipient, in.AgentID, now)
+		offer, err := newCrewAgentFork(team, claims.UserID, in.Recipient, in.AgentID, now)
 		if err != nil {
 			fail(403, err.Error())
 			return
 		}
-		if err = saveCrewAgentTransfer(offer); err != nil {
-			fail(409, "Could not save this transfer.")
+		if err = saveCrewAgentFork(offer); err != nil {
+			fail(409, "Could not save this fork.")
 			return
 		}
 		externalJSON(w, offer)
 		return
 	}
-	offer, err := readCrewAgentTransfer(project, id)
+	offer, err := readCrewAgentFork(project, id)
 	if err != nil {
-		fail(404, "This transfer is not available.")
+		fail(404, "This fork is not available.")
 		return
 	}
 	if !now.Before(offer.Expires) {
-		_ = removeCrewAgentTransfer(offer)
-		fail(410, "This transfer expired. Ask its maker to send it again.")
+		_ = removeCrewAgentFork(offer)
+		fail(410, "This fork expired. Ask its maker to send it again.")
 		return
 	}
 	download := op == "download" || op == "chunks" && r.Method == http.MethodPost
@@ -84,8 +84,8 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 		return
 	}
 	if op == "cancel" {
-		if err = cancelCrewAgentTransfer(team, offer, claims.UserID, now); err != nil {
-			fail(409, "Could not remove this transfer.")
+		if err = cancelCrewAgentFork(team, offer, claims.UserID, now); err != nil {
+			fail(409, "Could not remove this fork.")
 			return
 		}
 		publishCrewPanelChanged(project)
@@ -93,18 +93,18 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 		return
 	}
 	if download {
-		payload, err := downloadCrewAgentTransfer(team, offer, claims.UserID, now)
+		payload, err := downloadCrewAgentFork(team, offer, claims.UserID, now)
 		if err != nil {
-			fail(409, "Could not read this transfer's conversation.")
+			fail(409, "Could not read this fork's conversation.")
 			return
 		}
 		if op == "download" {
 			externalJSON(w, payload)
 			return
 		}
-		store, err := crewAgentTransferChunkStore(offer)
+		store, err := crewAgentForkChunkStore(offer)
 		if err != nil {
-			fail(409, "Could not read this transfer's files.")
+			fail(409, "Could not read this fork's files.")
 			return
 		}
 		serveChunks(w, r, store, func() (map[string]bool, error) {
@@ -119,12 +119,12 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 		return
 	}
 	if claims.UserID != offer.Sender || offer.Ready {
-		fail(403, "Only the maker can upload this transfer before it is ready.")
+		fail(403, "Only the maker can upload this fork before it is ready.")
 		return
 	}
-	store, err := crewAgentTransferChunkStore(offer)
+	store, err := crewAgentForkChunkStore(offer)
 	if err != nil {
-		fail(409, "Private transfer storage is unavailable.")
+		fail(409, "Private fork storage is unavailable.")
 		return
 	}
 	if op == "chunks" && r.Method == http.MethodPut {
@@ -136,12 +136,12 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 		externalJSON(w, map[string]int{"stored": count})
 		return
 	}
-	var payload crewAgentTransferPayload
+	var payload crewAgentForkPayload
 	if json.NewDecoder(io.LimitReader(r.Body, crewHandoffHistoryLimit+1)).Decode(&payload) != nil {
 		fail(400, "Send this agent's conversation and native file description.")
 		return
 	}
-	if err = validateCrewAgentTransferPayload(payload); err != nil {
+	if err = validateCrewAgentForkPayload(payload); err != nil {
 		fail(400, "This conversation or native session description is invalid.")
 		return
 	}
@@ -153,12 +153,12 @@ func (api *StreamingAPI) handleCrewAgentTransfer(w http.ResponseWriter, r *http.
 		}
 		externalJSON(w, map[string]any{"missing": missingChunks(store, files)})
 	case "commit":
-		if err = stageCrewAgentTransfer(team, offer, claims.UserID, payload, now); err != nil {
-			log.Printf("[CREW_AGENT_TRANSFER] project=%s transfer=%s event=stage_failed", project, id)
+		if err = stageCrewAgentFork(team, offer, claims.UserID, payload, now); err != nil {
+			log.Printf("[AGENT_FORK] project=%s fork=%s event=stage_failed", project, id)
 			fail(409, "The session upload is incomplete. Retry it.")
 			return
 		}
-		log.Printf("[CREW_AGENT_TRANSFER] project=%s transfer=%s event=ready agent=%s", project, id, offer.Agent.ID)
+		log.Printf("[AGENT_FORK] project=%s fork=%s event=ready agent=%s", project, id, offer.Agent.ID)
 		publishCrewPanelChanged(project)
 		externalJSON(w, map[string]any{"ready": true, "transfer_id": id})
 	default:
