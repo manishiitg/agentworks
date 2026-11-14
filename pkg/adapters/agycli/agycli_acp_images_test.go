@@ -1,7 +1,6 @@
 package agycli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
