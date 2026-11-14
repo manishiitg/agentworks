@@ -1,3 +1,4 @@
+import api from '../services/api'
 import { followAppLink } from '../utils/appNavigation'
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowUpRight, Globe2, LayoutDashboard, RefreshCw, Search, Users, X } from 'lucide-react'
@@ -21,6 +22,9 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
   const [attempt, setAttempt] = useState(0)
   const [rows, setRows] = useState<Dashboard[] | null>(null)
   const [failed, setFailed] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const [partial, setPartial] = useState(false)
   const refresh = useCallback(() => setAttempt(value => value + 1), [])
   useEffect(() => {
@@ -41,6 +45,16 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
     })()
     return () => controller.abort()
   }, [account, workspace, attempt])
+
+  const remove = async (row: Dashboard) => {
+    const key = `${row.workspace}/${row.dashboard_id}`
+    setDeleting(key); setDeleteError('')
+    try {
+      await api.post('/api/dashboards', { action: 'delete', workspace: row.workspace, dashboard_id: row.dashboard_id })
+      setConfirmDelete(null); refresh()
+    } catch { setDeleteError('Could not delete this artifact. Try again.') }
+    finally { setDeleting(null) }
+  }
 
   const search = query.trim().toLocaleLowerCase()
   const visible = rows?.filter(row => [dashboardTitle(row), row.project_title]
@@ -122,6 +136,14 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
                         <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{title}</span>
                         <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
                       </a>
+                      {row.managed && row.can_edit && <div className="mt-1 px-1 text-xs">
+                        {confirmDelete === `${row.workspace}/${row.dashboard_id}` ? <div role="group" aria-label={`Delete ${title}`}>
+                          <p className="py-2 text-muted-foreground">Delete this artifact and disable its links? Files and history stay.</p>
+                          <button type="button" disabled={deleting !== null} onClick={() => void remove(row)} className="rounded px-2 py-1 text-destructive hover:bg-destructive/10">{deleting ? 'Deleting…' : 'Delete'}</button>
+                          <button type="button" disabled={deleting !== null} onClick={() => { setConfirmDelete(null); setDeleteError('') }} className="rounded px-2 py-1 text-muted-foreground hover:bg-muted">Cancel</button>
+                          {deleteError && <p role="alert" className="py-1 text-destructive">{deleteError}</p>}
+                        </div> : <button type="button" onClick={() => { setConfirmDelete(`${row.workspace}/${row.dashboard_id}`); setDeleteError('') }} className="rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-destructive">Delete</button>}
+                      </div>}
                     </li>
                   })}
                 </ul>

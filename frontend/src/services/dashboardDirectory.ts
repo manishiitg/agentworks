@@ -11,6 +11,8 @@ export type DashboardDirectoryEntry = {
   project_title?: string
   document_path: string
   short_path?: string
+  can_edit?: boolean
+  managed?: boolean
   shared_with_me: boolean
 }
 
