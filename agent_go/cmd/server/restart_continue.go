@@ -102,6 +102,7 @@ func (api *StreamingAPI) saveRestartContinueRequest(ctx context.Context, userID,
 	// Continue in the same admitted caller scope, but never re-present the
 	// original incoming message or its Ask/submission correlation as new input.
 	principal.DeliveredMessage = nil
+	principal.Attachments = nil
 	principal.CrewAskInput = nil
 	principal.FeedbackOperationID = ""
 	previous := document.Chats[sessionID]

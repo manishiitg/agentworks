@@ -20,6 +20,7 @@ type pendingChatUploadKey struct{ User, Project, Conversation, Session, Hash str
 type pendingChatUpload struct {
 	Ready   chan struct{}
 	Path    string
+	Bytes   int64
 	Error   string
 	Expires time.Time
 }
@@ -56,11 +57,12 @@ func (api *StreamingAPI) pendingChatUpload(key pendingChatUploadKey) (*pendingCh
 	}
 	return item, nil
 }
-func (api *StreamingAPI) finishPendingChatUpload(key pendingChatUploadKey, path string) {
+func (api *StreamingAPI) finishPendingChatUpload(key pendingChatUploadKey, path string, bytes int64) {
 	api.pendingChatUploadsMu.Lock()
 	defer api.pendingChatUploadsMu.Unlock()
 	if item := api.pendingChatUploads[key]; item != nil && item.Path == "" && item.Error == "" {
 		item.Path = path
+		item.Bytes = bytes
 		close(item.Ready)
 	}
 }
@@ -149,6 +151,7 @@ func (api *StreamingAPI) resolvePendingChatAttachments(ctx context.Context, user
 			}
 			// The writer supplied this path after a successful authorized commit.
 			paths = append(paths, item.Path)
+			req.admittedAttachments = append(req.admittedAttachments, admittedChatAttachmentFor(user, session, *req, file.Hash, item.Path, item.Bytes))
 		}
 	}
 	req.Query += "\n\n📁 Files in context: " + strings.Join(paths, ", ")

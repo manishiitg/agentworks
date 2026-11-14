@@ -797,7 +797,8 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
-	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
+	admittedAttachments []admittedChatAttachment // server-only; never request JSON
+	PendingAttachments  []pendingChatAttachment  `json:"pending_attachments,omitempty"`
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
 	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
@@ -3922,6 +3923,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	r = r.WithContext(api.bindReadyChatAttachments(r.Context(), currentUserID, sessionID, &req))
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
@@ -4153,6 +4155,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r = r.WithContext(api.withNativeChatImages(r.Context(), currentUserID, sessionID, turnProvider, req))
 	// SINGLE-ENTRY ROUTING (tmux-transport coding-agent input): the frontend no
 	// longer decides live-input-vs-new-turn from terminal liveness — it always
 	// POSTs /api/query and the backend is the single source of truth. If this
@@ -4876,6 +4879,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// wrapper, so deriving from r.Context() lets stop_workflow_run/terminate_agent
 		// cancel the actual orchestrator context instead of only the wrapper waiter.
 		workflowBaseCtx := context.Background()
+		workflowBaseCtx = llmtypes.WithNativeImageInputs(workflowBaseCtx, sessionID, llmtypes.NativeImageInputsForSession(r.Context(), sessionID))
 		if goal, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
 			workflowBaseCtx = llmtypes.WithNativeGoalCommand(workflowBaseCtx, goal)
 		}
@@ -10583,6 +10587,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
 			if err != nil {
+				if api.queueDeferredChatImage(w, r, sessionID, err) {
+					return true
+				}
 				if liveInputErrorProvesNoTarget(err) {
 					api.recoverUnsentLiveInput(sessionID, err, recovered)
 					// The CLI has no turn, so a retained mark left by earlier live
@@ -10695,6 +10702,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		ClientMessageID: clientMessageIDFromContext(r.Context()),
 	})
 	if err != nil {
+		if api.queueDeferredChatImage(w, r, sessionID, err) {
+			return true
+		}
 		if liveInputErrorProvesNoTarget(err) {
 			api.recoverUnsentLiveInput(sessionID, err, recovered)
 			log.Printf("[QUERY→LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
@@ -10909,6 +10919,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
 			if err != nil {
+				if api.queueDeferredChatImage(w, r, sessionID, err) {
+					return
+				}
 				if liveInputErrorProvesNoTarget(err) {
 					var pending []string
 					api.recoverUnsentLiveInput(sessionID, err, &pending)
@@ -11025,6 +11038,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		ClientMessageID: clientMessageIDFromContext(r.Context()),
 	})
 	if err != nil {
+		if api.queueDeferredChatImage(w, r, sessionID, err) {
+			return
+		}
 		log.Printf("[LIVE INPUT] Live input unavailable for provider %s session %s: %v", mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider, sessionID, err)
 		// The agent refused because no turn is running to take the message:
 		// nothing was delivered, so this is definite, not uncertain. Start

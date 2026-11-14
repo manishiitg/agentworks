@@ -37,7 +37,7 @@ func TestPendingChatAttachmentRequiresSameCallerProjectConversationAndSession(t 
 	}
 	// Only the authorized writer's committed path reaches the prompt, not Name.
 	req.Query = "" // A screenshot may be sent without a caption (PLAT-746-938).
-	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png")
+	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png", 100)
 	if err := api.resolvePendingChatAttachments(context.Background(), "person", "session", &req); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestFailedPendingAttachmentRefusesImmediatelyAndCanBePlannedAgain(t *testin
 		t.Fatal("failed upload accepted")
 	}
 	api.planPendingChatUpload(key)
-	api.finishPendingChatUpload(key, "Crew/example/uploads/retry.png")
+	api.finishPendingChatUpload(key, "Crew/example/uploads/retry.png", 100)
 	if err := api.resolvePendingChatAttachments(context.Background(), "person", "session", &req); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestPendingAttachmentRecallProjectsOnlyReadyPathsForSameConversation(t *tes
 	if !rows[0].AttachmentPending || len(rows[0].AttachmentPaths) != 0 {
 		t.Fatal("incomplete attachment can be recalled without its file")
 	}
-	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png")
+	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png", 100)
 	rows = []PendingQueuedMessage{{MessageID: turn.ID, Content: req.Query}}
 	api.projectPendingChatAttachments(turn.UserID, turn.SessionID, []queuedConversationTurn{turn}, rows)
 	if rows[0].AttachmentPending || len(rows[0].AttachmentPaths) != 1 || rows[0].AttachmentPaths[0] != "Crew/example/uploads/image.png" {
@@ -165,7 +165,7 @@ func TestCrewProfilePendingOnlyUploadWaitsForCommittedFile(t *testing.T) {
 		t.Fatalf("dispatch completed before upload: %v", err)
 	case <-time.After(20 * time.Millisecond):
 	}
-	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png")
+	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png", 100)
 	select {
 	case err := <-done:
 		if err != nil {
