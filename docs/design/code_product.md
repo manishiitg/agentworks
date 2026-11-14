@@ -164,11 +164,11 @@ They return results through internal bindings without attaching Code files.
 
 ### Admin inspection
 
-This is the most important part of Code for teams. **Admins can see what
-everyone does in Code.**
+Administrators and designated reviewers can inspect opted-in project files
+and usage. Dedicated conversation review was removed on 2026-11-14.
 
-- **Read-only.** An admin can open any user's Code files and usage. They cannot send messages, resume a session,
-  or edit files as that user.
+- **Read-only.** An admin can inspect Code files and usage. They cannot send
+  messages, resume a session, or edit files as that user.
 - **Visible to users.** Setup → General ("Access") and the Code landing page
   say that admins and Code reviewers may inspect it, read-only and logged.
   "Private" means private from colleagues; inspection is a separate audited
@@ -187,7 +187,7 @@ everyone does in Code.**
   account whose products are a restricted list, since the inspector lives in
   Code. Only an admin sets it (`/api/admin/users` is admin-only).
 - **Providers → Costs** (user, 2026-09-30; conversations removed 2026-11-14). These review
-  screens are visible only to admins and enabled Code reviewers, including
+  screen is visible only to admins and enabled Code reviewers, including
   the provider account cost section. The Conversations screen and its privileged
   chat-list/transcript HTTP and MCP operations were removed by the owner on
   2026-11-14. Normal owner/shared chat history is unchanged. The global cost overview
@@ -195,16 +195,12 @@ everyone does in Code.**
   their existing work and account visibility filters still apply. The legacy
   unfiltered `/api/cost/summary` is admin-only. Per-workspace cost views retain
   their existing workspace access rules.
-- **Review over MCP / the external API** (built). Token scope `code:review`
-  plus five read-only tools: `list_code_workspaces`, `get_code_costs`,
-  `list_code_files`, `read_code_file`, `get_code_audit`. They run the same inspection handlers, so every call
-  (lists and cost reads included) is audited, with `via: "token:<id>"`. The
-  account is re-checked on every call: a token whose user stops being an admin
-  or reviewer gets 403 at once, and a token holding the scope without such an
-  account gets 403 and does not even list the tools. Only admins and reviewers
-  can mint `code:review` or see and grant it on the OAuth consent screen. This
-  is review of Codes, not calling one: a Code itself is still not callable
-  over MCP.
+- **Review over MCP / the external API.** `workspace_review` retains only
+  `workspaces`, `costs`, `files`, `file` and `audit`. These read-only actions
+  require `crews:review` plus a current admin or Crew reviewer account, and
+  every call is audited with its token attribution. The retired `chats` and
+  `chat` actions are not available. Removing reviewer authority ends access
+  on the next call; it never grants ordinary access to another person's chat.
 - **Scoped to Code.** Today chat history is owner-only even for admins
   (`chatHistoryVisibleTo`, `agent_go/cmd/server/chat_history_routes.go:167`),
   and that deliberate rule stays for Crews and personal chats. Admin
