@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 // Personal agent grouping is single-level and single-membership per project;
@@ -122,5 +125,68 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 	annotateDirectoryAgentGroups([]map[string]interface{}{{"chats": []map[string]interface{}{own, peer}}, remote}, saved, prefs, "")
 	if len(own["group_names"].([]string)) != 1 || peer["group_names"] != nil || remote["group_names"] != nil {
 		t.Fatal("directory grouping crossed person boundary")
+	}
+}
+
+// Real workspace handlers (not the in-memory workspace seam) prove a
+// project-bound fork can update the caller's preferences without widening guards.
+func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
+	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureCrewOwnerDefaultTab(ctx, "owner", profile, "team"); err != nil {
+		t.Fatal(err)
+	}
+	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, ok := workProjectChatHistoryConversationPath("owner", parent.WorkspacePath, parent.SessionID, time.Now())
+	if !ok {
+		t.Fatal("missing history path")
+	}
+	f.write(t, path, `{"session_id":"`+parent.SessionID+`","conversation_history":[{"Role":"human","Parts":[{"Text":"Review this design"}]},{"Role":"ai","Parts":[{"Text":"Reviewed"}]}]}`)
+	project, _ := json.Marshal([]string{"local", "team"})
+	if _, err := updateMenuGroups(ctx, func(saved *menuGroups) error {
+		saved.AgentGroups = []menuAgentGroup{{ID: "design", Name: "Design", Project: string(project), Agents: []string{parent.ConversationKey}}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Same HTTP handler as UI and sessions fork; the token is bound to this Crew.
+	claims := crewWriter("owner")
+	claims.AccessToken.CrewIDs = []string{"team"}
+	tokenCtx := context.WithValue(t.Context(), UserContextKey, claims)
+	request := httptest.NewRequest("POST", "/", nil).WithContext(tokenCtx)
+	status, body := scheduleHandler(request, f.api.handleForkCrewChat, "POST", "/api/agent-profiles/work/conversation/fork", map[string]string{"id": "work"}, nil, map[string]any{"conversation_key": parent.ConversationKey})
+	if status != 200 {
+		t.Fatalf("fork: %d %s", status, body)
+	}
+	var fork struct {
+		ConversationKey string   `json:"conversation_key"`
+		GroupNames      []string `json:"group_names"`
+	}
+	if err := json.Unmarshal(body, &fork); err != nil {
+		t.Fatal(err)
+	}
+	if len(fork.GroupNames) != 1 || fork.GroupNames[0] != "Design" {
+		t.Fatalf("fork membership %+v", fork)
+	}
+	saved, err := updateMenuGroups(ctx, nil)
+	if err != nil || len(saved.agentGroupNames("team", fork.ConversationKey)) != 1 {
+		t.Fatalf("saved fork membership: %v %+v", err, saved)
+	}
+	if strings.Contains(string(body), "menu_groups") {
+		t.Fatal("scoped fork disclosed unrelated personal menu")
 	}
 }
