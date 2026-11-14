@@ -64,6 +64,10 @@ func (api *StreamingAPI) crewSetupOf(ctx context.Context, person, project string
 // reconcileCrewTeamSetup brings this Crew and its team-setup.json together. state is where the last applied version
 // is kept; write is false until a copy has received the team folder, so a new copy never replaces the Team's setup.
 func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write bool) {
+	api.reconcileCrewTeamSetupMapped(ctx, person, project, root, state, write, nil)
+}
+
+func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, person, project, root, state string, write bool, copy *crewTeamLocal) {
 	if project == "" || root == "" || state == "" {
 		return
 	}
@@ -74,7 +78,11 @@ func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, pro
 	mark := filepath.Join(state, "setup-applied")
 	last, _ := os.ReadFile(mark)
 	path := filepath.Join(root, crewTeamSetupFile)
-	current := setup.encode()
+	currentSetup := setup
+	if copy != nil && copy.Mounted {
+		currentSetup.SelectedSkills = copy.exportSelectedSkills(setup.SelectedSkills)
+	}
+	current := currentSetup.encode()
 	file, err := os.ReadFile(path)
 	switch {
 	case os.IsNotExist(err):
@@ -95,14 +103,18 @@ func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, pro
 			return
 		}
 		next := crewTeamSetup{ChatInstructions: in.ChatInstructions, SelectedSkills: in.SelectedSkills}
-		if string(next.encode()) != string(current) {
+		localSkills := next.SelectedSkills
+		if copy != nil && copy.Mounted {
+			localSkills = copy.importSelectedSkills(in.SelectedSkills, setup.SelectedSkills)
+		}
+		if next.ChatInstructions != setup.ChatInstructions || !slices.Equal(localSkills, setup.SelectedSkills) {
 			if next.ChatInstructions != setup.ChatInstructions {
 				if err = updateCrewChatInstructions(ctx, workspace, next.ChatInstructions); err != nil {
 					log.Printf("[CREW_TEAM] project=%s event=setup_apply_failed reason=%q", project, err)
 					return
 				}
 			}
-			if err = updateProductSelectedSkills(ctx, crewProfileID, workspace, func([]string) []string { return next.SelectedSkills }); err != nil {
+			if err = updateProductSelectedSkills(ctx, crewProfileID, workspace, func([]string) []string { return localSkills }); err != nil {
 				log.Printf("[CREW_TEAM] project=%s event=setup_apply_failed reason=%q", project, err)
 				return
 			}
@@ -125,4 +137,45 @@ func crewTeamLocalCrew(b crewTeamLocal) string {
 		return b.LocalProject
 	}
 	return crewTeamMemberCopy(b.Project)
+}
+
+func (b crewTeamLocal) privateSkill(name string) bool {
+	if filepath.Base(name) != name {
+		return false
+	}
+	if b.remoteRel("skills/"+name) != "" {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(b.Root, "skills", name))
+	return err == nil
+}
+
+func (b crewTeamLocal) exportSelectedSkills(local []string) []string {
+	out := []string{}
+	for _, name := range local {
+		if remote := b.remoteRel("skills/" + name); remote != "" {
+			out = append(out, strings.TrimPrefix(remote, "skills/"))
+		} else if !b.privateSkill(name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func (b crewTeamLocal) importSelectedSkills(team, local []string) []string {
+	out := []string{}
+	for _, name := range local {
+		if b.privateSkill(name) {
+			out = append(out, name)
+		}
+	}
+	for _, name := range team {
+		if disk := b.diskRel("skills/" + name); disk != "" {
+			out = append(out, strings.TrimPrefix(disk, "skills/"))
+		} else {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }

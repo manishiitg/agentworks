@@ -29,15 +29,17 @@ import (
 )
 
 type crewTeamLocal struct {
-	FolderID     string                   `json:"folder_id"`
-	Connection   string                   `json:"connection"`
-	Project      string                   `json:"project_id"`
-	LocalProject string                   `json:"local_project_id,omitempty"`
-	RemoteUser   string                   `json:"remote_user"`
-	Client       string                   `json:"client"`
-	Root         string                   `json:"local_folder"`
-	Mounted      bool                     `json:"mounted,omitempty"`
-	Mounts       map[string]crewTeamMount `json:"mounts,omitempty"`
+	FolderID       string                   `json:"folder_id"`
+	Connection     string                   `json:"connection"`
+	Project        string                   `json:"project_id"`
+	LocalProject   string                   `json:"local_project_id,omitempty"`
+	RemoteUser     string                   `json:"remote_user"`
+	Client         string                   `json:"client"`
+	Root           string                   `json:"local_folder"`
+	Mounted        bool                     `json:"mounted,omitempty"`
+	ProtectPrivate bool                     `json:"protect_private,omitempty"`
+	Mounts         map[string]crewTeamMount `json:"mounts,omitempty"`
+	OwnedPaths     map[string]crewTeamMount `json:"owned_paths,omitempty"`
 	// Files is what this copy last had in step with the team, including the
 	// identity/stat stamp observed while reading that version's contents.
 	Files    map[string]crewTeamLocalFile `json:"files"`
@@ -294,11 +296,11 @@ func crewTeamCheckAfter(pushed bool) time.Duration {
 // folder (review 5 Nov: a new member's blank setup replaced the owner's).
 func (api *StreamingAPI) crewTeamMacRound(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
 	local := crewTeamLocalCrew(*b)
-	api.reconcileCrewTeamSetup(ctx, owner, local, b.Root, dir, b.Downloaded)
+	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
 	if err := syncCrewTeamLocal(ctx, owner, c, dir, b); err != nil {
 		return err
 	}
-	api.reconcileCrewTeamSetup(ctx, owner, local, b.Root, dir, b.Downloaded)
+	api.reconcileCrewTeamSetupMapped(ctx, owner, local, b.Root, dir, b.Downloaded, b)
 	return nil
 }
 
@@ -354,6 +356,23 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 	}
 	if !team.FolderAccess {
 		return fmt.Errorf("shared folder access was removed; downloaded files stay on this computer")
+	}
+	// A member's working copy always uses the Team's named identities. Adopt
+	// already-acknowledged files on initialization; private paths have no base.
+	if c.User.ID != team.OwnerID && !b.Mounted {
+		b.Mounted = true
+		b.Mounts = map[string]crewTeamMount{}
+		for _, p := range team.Folder.mounts() {
+			for rel := range b.Files {
+				if crewTeamUnder(rel, p.Path) {
+					b.Mounts[p.ID] = crewTeamMount{Remote: p.Path, Local: p.Path}
+					break
+				}
+			}
+		}
+	}
+	if e = b.reconcileOwnedPaths(ctx, owner, c, &team); e != nil {
+		return e
 	}
 	if e = b.reconcileMounts(team.Folder); e != nil {
 		return e

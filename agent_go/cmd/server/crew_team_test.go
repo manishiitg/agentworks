@@ -246,6 +246,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
 		t.Fatal(err)
 	}
+	// The registry, not a native chat's existence, owns Team choices.
+	if err := assignCrewTeamAgentIDs(mustReadCrewTeam(t, "team-test"), []crewTeamAgentsPerson{{UserID: "member", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: memberMain, Name: "Main"}}}}); err != nil {
+		t.Fatal(err)
+	}
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code < 400 {
 		t.Fatalf("member's all-agents choice was accepted: %d %s", w.Code, w.Body.String())
 	}

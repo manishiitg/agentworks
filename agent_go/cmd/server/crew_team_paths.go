@@ -17,14 +17,15 @@ type crewTeamSharedPath struct {
 }
 
 type crewTeamFolderWire struct {
-	ID      string               `json:"id"`
-	Whole   bool                 `json:"whole,omitempty"`
-	Folders []crewTeamSharedPath `json:"folders,omitempty"`
-	Paths   []crewTeamSharedPath `json:"paths,omitempty"`
+	PathIDsVersion int                  `json:"path_ids_version"`
+	ID             string               `json:"id"`
+	Whole          bool                 `json:"whole,omitempty"`
+	Folders        []crewTeamSharedPath `json:"folders,omitempty"`
+	Paths          []crewTeamSharedPath `json:"paths,omitempty"`
 }
 
 func (f crewTeamFolder) MarshalJSON() ([]byte, error) {
-	w := crewTeamFolderWire{ID: f.ID, Whole: f.Whole, Paths: f.Paths}
+	w := crewTeamFolderWire{PathIDsVersion: 1, ID: f.ID, Whole: f.Whole, Paths: f.Paths}
 	for _, name := range f.Folders {
 		entry := crewTeamSharedPath{Path: name}
 		for _, p := range f.Paths {
@@ -48,6 +49,10 @@ func (f *crewTeamFolder) UnmarshalJSON(raw []byte) error {
 	*f = crewTeamFolder{ID: w.ID, Whole: w.Whole, Paths: w.Paths}
 	for _, p := range w.Folders {
 		f.Folders = append(f.Folders, p.Path)
+		if at := slices.IndexFunc(f.Paths, func(q crewTeamSharedPath) bool { return p.ID != "" && q.ID == p.ID }); at >= 0 {
+			f.Paths[at].Path = p.Path
+			continue
+		}
 		if !slices.ContainsFunc(f.Paths, func(q crewTeamSharedPath) bool { return q.Path == p.Path }) {
 			f.Paths = append(f.Paths, p)
 		}
@@ -60,6 +65,34 @@ func (f *crewTeamFolder) UnmarshalJSON(raw []byte) error {
 func (f *crewTeamFolder) assignPaths(previous crewTeamFolder, owner bool) error {
 	requested := slices.Clone(f.Paths)
 	f.Paths = slices.Clone(previous.Paths)
+	seen := map[string]bool{}
+	for _, p := range requested {
+		if p.ID == "" {
+			continue
+		}
+		if seen[p.ID] {
+			return fmt.Errorf("Choose each shared folder identity once.")
+		}
+		seen[p.ID] = true
+		at := slices.IndexFunc(previous.Paths, func(q crewTeamSharedPath) bool { return q.ID == p.ID })
+		if at < 0 || previous.Paths[at].Path == p.Path {
+			continue
+		}
+		old := previous.Paths[at]
+		if !owner {
+			return fmt.Errorf("Only the Team owner renames shared folders and skills.")
+		}
+		if !crewTeamAllowed(p.Path+"/file.txt") || !(crewTeamFolder{Whole: true}).holds(p.Path+"/file.txt") || crewTeamUnder(p.Path, old.Path) || crewTeamUnder(old.Path, p.Path) {
+			return fmt.Errorf("Choose a separate ordinary folder name.")
+		}
+		if strings.HasPrefix(old.Path, "skills/") != strings.HasPrefix(p.Path, "skills/") {
+			return fmt.Errorf("A shared skill stays in the skills folder.")
+		}
+		if slices.ContainsFunc(f.Paths, func(q crewTeamSharedPath) bool { return q.ID != p.ID && q.Path == p.Path }) {
+			return fmt.Errorf("The Team already has a folder with that name.")
+		}
+		f.Paths[at].Path = p.Path
+	}
 	for _, name := range f.Folders {
 		if !crewTeamAllowed(name + "/file.txt") {
 			return fmt.Errorf("Choose an ordinary shared folder.")
@@ -74,7 +107,7 @@ func (f *crewTeamFolder) assignPaths(previous crewTeamFolder, owner bool) error 
 				break
 			}
 		}
-		at := slices.IndexFunc(previous.Paths, func(p crewTeamSharedPath) bool { return id != "" && p.ID == id })
+		at := slices.IndexFunc(f.Paths, func(p crewTeamSharedPath) bool { return id != "" && p.ID == id })
 		if at >= 0 {
 			if !owner {
 				return fmt.Errorf("Only the Team owner renames shared folders.")
@@ -113,6 +146,9 @@ func (f *crewTeamFolder) addFilePaths(paths []string) bool {
 func (f crewTeamFolder) mounts() []crewTeamSharedPath {
 	out := []crewTeamSharedPath{}
 	for _, p := range f.Paths {
+		if p.Path == "skills" || f.Whole && strings.Contains(p.Path, "/") && !strings.HasPrefix(p.Path, "skills/") {
+			continue
+		}
 		if p.ID != "" && (f.Whole || slices.Contains(f.Folders, p.Path) || strings.HasPrefix(p.Path, "skills/")) {
 			out = append(out, p)
 		}

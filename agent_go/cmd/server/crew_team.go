@@ -656,6 +656,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
+	if e = renameCrewTeamPaths(r.Context(), project, claims.UserID, previous.Folder, input.Folder); e != nil {
+		externalError(w, 409, "folder_rename_failed", e.Error())
+		return
+	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, len(input.People), input.Folder.display(), input.Revision)
 	if folderChanged && input.Folder.ID != "" && input.Folder.ID == previous.Folder.ID {
 		if err := announceCrewTeamSharedAgain(project, claims.UserID, previous.Folder, input.Folder); err != nil {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-746-976: real HTTP/chunk/disk sync must never upload a private sibling
@@ -59,6 +60,7 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 	}
 	c1, d1, b1 := newCopy("owner", false)
 	c2, d2, b2 := newCopy("member", true)
+	b2.ProtectPrivate = true
 	round := func(c desktopConnection, dir string, b *crewTeamLocal) {
 		t.Helper()
 		if err := syncCrewTeamLocal(t.Context(), c.User.ID, c, dir, b); err != nil {
@@ -164,4 +166,128 @@ func teamFolderTestEntries(list string) string {
 	}
 	raw, _ := json.Marshal(entries)
 	return string(raw)
+}
+
+// PLAT-746-976: the real accept handler must reject foreign/Team-on/online
+// targets before accepting the invite, and join with zero agents shared.
+func TestTeamExistingProjectAcceptRechecksAdmissionAndInitialPrivacy(t *testing.T) {
+	desktopTestEnvironment(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	f, _ := newExternalCrewCommandFixture(t)
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	roots, err := f.api.crewSyncRoots(ctx, claims, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(roots.Files, "PROJECT_INSTRUCTIONS.md"), []byte("my original rules"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	main := crewOwnerDefaultChatKey("team", "owner")
+	own := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
+		productConversationRegistryEntryKey(crewProfileID, main):                                 {ProfileID: crewProfileID, ConversationKey: main, SessionID: "own-main", WorkspacePath: externalCommandCrewRoot},
+		productConversationRegistryEntryKey(crewProfileID, "team"+codeChatSideMarker+"research"): {ProfileID: crewProfileID, ConversationKey: "team" + codeChatSideMarker + "research", SessionID: "own-research", WorkspacePath: externalCommandCrewRoot},
+	}}
+	if err = defaultProductConversationRegistryStore().writeDocument(ctx, productConversationRegistryPath("owner"), own); err != nil {
+		t.Fatal(err)
+	}
+	if err = defaultProjectOwners().Register(projectOwnerRecord{Product: crewProfileID, Folder: "invited", OwnerID: "other", ProjectID: "invited"}); err != nil {
+		t.Fatal(err)
+	}
+	remoteTeam := crewTeam{ProjectID: "invited", OwnerID: "other", On: true, Name: "Team example", People: []crewTeamPerson{{UserID: "owner", Invited: true}}, Folder: crewTeamFolder{ID: "invited-files", Folders: []string{"docs"}}}
+	if err = writeCrewTeam(remoteTeam); err != nil {
+		t.Fatal(err)
+	}
+	router := mux.NewRouter()
+	f.api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
+	accepts := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/invite") {
+			accepts++
+		}
+		router.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
+	}))
+	defer remote.Close()
+	if err = writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "remote-test-session", User: UserInfo{ID: "owner"}}}); err != nil {
+		t.Fatal(err)
+	}
+	request := func(body string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r := desktopTestRequest(http.MethodPost, "/api/desktop-connections/saved/crew-teams/invited/join", body, "owner")
+		r = mux.SetURLVars(r, map[string]string{"connection": "saved", "project": "invited"})
+		f.api.handleDesktopCrewTeamJoin(w, r)
+		return w
+	}
+	if w := request(`{"local_project":"invited","confirm":true}`); w.Code < 400 || accepts != 0 {
+		t.Fatalf("foreign target accepted: %d %s", w.Code, w.Body.String())
+	}
+	if err = writeCrewTeamState("team", func(s *crewTeamLocalState) { s.TeamOn = true }); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(`{"local_project":"team","confirm":true}`); w.Code < 400 || accepts != 0 {
+		t.Fatalf("Team-on target accepted: %d %s", w.Code, w.Body.String())
+	}
+	if err = writeCrewTeamState("team", func(s *crewTeamLocalState) { s.TeamOn = false }); err != nil {
+		t.Fatal(err)
+	}
+	if err = crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "local", PairID: "independent", ConnectionID: "saved", PeerProjectID: "independent-online"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(`{"local_project":"team","confirm":true}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Already online") || accepts != 0 {
+		t.Fatalf("independent online link replaced: %d %s", w.Code, w.Body.String())
+	}
+	stateRoot, err := crewroot.StateRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(stateRoot, "crew-sync", "team.json")); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(`{"local_project":"team"}`); w.Code != 409 || accepts != 0 {
+		t.Fatalf("instructions notice skipped: %d %s", w.Code, w.Body.String())
+	}
+	reg := &singleToolCaptureRegistrar{}
+	if err = f.api.registerCrewTeamChatTool(reg, newProductToolGate(nil), claims, false, "own-main", externalCommandCrewRoot, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := reg.exec(ctx, map[string]any{"action": "accept", "project": "invited"})
+	if err != nil || !strings.Contains(preview, "instructions_notice") || !strings.Contains(preview, `"project_id":"team"`) || accepts != 0 {
+		t.Fatalf("chat preview failed: %s %v", preview, err)
+	}
+	result, err := reg.exec(ctx, map[string]any{"action": "accept", "project": "invited", "accept_into": "team", "confirm": true, "agents": []any{}})
+	if err != nil || !strings.Contains(result, `"project_id":"team"`) || accepts != 1 {
+		t.Fatalf("chat join failed: %s %v accepts=%d", result, err, accepts)
+	}
+	saved := mustReadCrewTeam(t, "invited")
+	count := 0
+	for _, agent := range saved.Agents {
+		if agent.OwnerID == "owner" {
+			count++
+			if agent.InTeam {
+				t.Fatal("unselected existing agent became shared")
+			}
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected two private existing agents, got %d", count)
+	}
+	if raw, err := os.ReadFile(filepath.Join(roots.Files, "PROJECT_INSTRUCTIONS (before team).md")); err != nil || string(raw) != "my original rules" {
+		t.Fatal("instructions backup missing")
+	}
+	if b, err := crewroot.ReadSync("team"); err != nil || b == nil || b.PeerProjectID != "invited" {
+		t.Fatal("existing project was not paired")
+	}
+	if state := readCrewTeamState("team"); state.MemberOf != "invited" {
+		t.Fatal("existing project identity was replaced")
+	}
+	after, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, entry := range own.Entries {
+		if after.Entries[key].SessionID != entry.SessionID {
+			t.Fatal("existing chat identity changed")
+		}
+	}
 }
