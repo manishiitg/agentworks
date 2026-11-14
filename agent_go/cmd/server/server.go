@@ -1338,7 +1338,7 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 	}
 	return !isScheduledSessionIdentity(sessionID, req.TriggeredBy) &&
 		!strings.HasPrefix(trigger, "bot:") &&
-		(trigger == "" || trigger == "manual" || trigger == "interactive" || trigger == "workflow_builder")
+		(trigger == "" || trigger == "manual" || trigger == "interactive" || trigger == "workflow_builder" || (trigger == "agent_message" && ownAgentDeliveryForSteering(ctx, req)))
 }
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
@@ -4097,7 +4097,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		return
 	}
-	if req.RestartCodingCLI && isQueuedMessageSteer(r.Context()) && api.conversationTurnOccupied(sessionID) {
+	deferPendingSetup := api.deferPendingSetupForLiveInput(r.Context(), req, sessionID, otherRoleTurn)
+	if req.RestartCodingCLI && deferPendingSetup {
 		api.setConversationTurnRuntimeChange(sessionID, true)
 		req.RestartCodingCLI = false
 		log.Printf("[QUERY->LIVE] session=%s action=steering reason=setup_deferred_to_next_turn", sessionID)
@@ -4149,7 +4150,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// the current definition. Whether a definition change needs a fresh
 	// session (agent-tools mode, a CLI that cannot reload instructions) is
 	// decided per runtime by seedCodingAgentRuntimeFromRestoredConversation.
-	if !retainedProfileCompatible && isQueuedMessageSteer(r.Context()) && api.conversationTurnOccupied(sessionID) {
+	if !retainedProfileCompatible && deferPendingSetup {
 		api.setConversationTurnRuntimeChange(sessionID, true)
 		retainedProfileCompatible = true
 		log.Printf("[QUERY->LIVE] session=%s action=steering reason=profile_refresh_deferred_to_next_turn", sessionID)
