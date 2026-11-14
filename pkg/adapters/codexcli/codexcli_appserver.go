@@ -29,6 +29,7 @@ type codexAppSession struct {
 	goalPausedForWake            bool
 	goalStateChanged             chan struct{}
 	compacting                   bool
+	turnEnded                    bool
 	turnMu                       sync.Mutex
 	mu                           sync.Mutex
 	rpc                          *codexRPC
@@ -554,6 +555,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		s.promptEpoch++
 	}
 	s.turnID = turn
+	s.turnEnded = false
 	s.steers = nil
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.turnID = ""; s.mu.Unlock() }()
@@ -640,6 +642,7 @@ func (c *CodexCLIAdapter) consumeAppTurnWithCapacityRetry(ctx context.Context, s
 			s.promptEpoch++
 		}
 		s.turnID = turn
+		s.turnEnded = false
 		s.mu.Unlock()
 		if c.logger != nil {
 			c.logger.Infof("[CODEX_RETRY] owner=%s thread=%s turn=%s attempt=%d action=started", owner, thread, turn, attempt+1)
@@ -704,7 +707,7 @@ func SendCodexAppServerInput(ctx context.Context, owner, message string) error {
 	}
 	s.mu.Lock()
 	r, thread, turn := s.rpc, s.threadID, s.turnID
-	if r == nil || turn == "" || s.compacting {
+	if r == nil || turn == "" || s.compacting || s.turnEnded {
 		s.mu.Unlock()
 		return fmt.Errorf("%w: no active Codex turn; start the next turn through GenerateContent", llmtypes.ErrCodingAgentInputNotSent)
 	}
@@ -716,7 +719,7 @@ func SendCodexAppServerInput(ctx context.Context, owner, message string) error {
 	defer closeImages()
 	s.mu.Lock()
 	r, thread, turn = s.rpc, s.threadID, s.turnID
-	if r == nil || turn == "" || s.compacting {
+	if r == nil || turn == "" || s.compacting || s.turnEnded {
 		s.mu.Unlock()
 		return fmt.Errorf("%w: native turn ended during image preparation", llmtypes.ErrCodingAgentInputNotSent)
 	}

@@ -248,6 +248,7 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 						s.promptEpoch++
 					}
 					s.turnID = next
+					s.turnEnded = false
 					s.mu.Unlock()
 					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypePromptAccepted, Metadata: map[string]any{"codex_thread_id": thread, "codex_turn_id": next}})
 					if c.logger != nil {
@@ -390,6 +391,9 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 					emit(llmtypes.StreamChunk{Type: kind, Content: codexToolItemLabel(tool), ToolName: codexToolItemName(tool), ToolCallID: tool.ID, ToolArgs: codexToolItemArgs(tool), ToolResult: codexToolItemResult(tool), ToolDuration: duration, Metadata: metadata})
 				}
 			case "turn/completed":
+				s.mu.Lock()
+				s.turnEnded = true
+				s.mu.Unlock()
 				if event.Turn.Status == "completed" && codexGoalActive(s) {
 					finishedResponse = codexAppResponse(s, joined(), usage)
 					followup := time.NewTimer(codexGoalFollowupWait)

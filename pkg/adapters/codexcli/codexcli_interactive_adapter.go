@@ -583,7 +583,7 @@ func InteractiveTurnActive(owner string) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.rpc == nil || s.turnID == "" || s.compacting {
+	if s.rpc == nil || s.turnID == "" || s.compacting || s.turnEnded {
 		return false
 	}
 	select {
