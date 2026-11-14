@@ -37,7 +37,16 @@ func TestExplicitNativeSkillUsesCurrentOwnedRuntimeAtDispatch(t *testing.T) {
 		if !ok {
 			t.Fatal("fixture has no own history path")
 		}
-		f.write(t, file, string(body))
+		// Use the real writer so Crew private-history routing matches production;
+		// joining the logical path to docs would bypass that storage mapping.
+		writer := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+		if err := writeFileToWorkspace(writer, file, string(body)); err != nil {
+			t.Fatal(err)
+		}
+		saved, _, err := ReadChatHistoryRuntimeForSession("owner", sid, externalCommandCrewRoot)
+		if err != nil || saved == nil || saved.AgentSessionHandle == nil {
+			t.Fatalf("runtime fixture not stored at actual history boundary: %v %+v", err, saved)
+		}
 	}
 	raw, _ := json.Marshal(map[string]any{"version": 1, "entries": registry})
 	f.write(t, productConversationRegistryPath("owner"), string(raw))
