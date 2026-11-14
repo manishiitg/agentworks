@@ -18,14 +18,14 @@ export function promptLinkInput(search: string) {
 
 /** Untrusted link text becomes an ordinary, reviewable composer draft only. */
 export function PromptLinkPage() {
-  const [bound, setBound] = useState<{ tabId: string; workspace: string; prompt: string; conflict: boolean }>()
+  const [bound, setBound] = useState<{ tabId: string; workspace: string; prompt: string; conflict: boolean; crewName: string; agentName: string }>()
   const [error, setError] = useState('')
   useEffect(() => {
     const identity = captureChatIdentity(), abort = new AbortController()
     let cancelled = false
     const open = async () => {
       const input = promptLinkInput(window.location.search)
-      const { data } = await api.post<ProjectChat>('/api/prompt-links/open', { crew: input.crew, agent: input.agent }, { signal: abort.signal, skipSessionContext: true })
+      const { data } = await api.post<ProjectChat & { crew_name?: string; agent_name?: string }>('/api/prompt-links/open', { crew: input.crew, agent: input.agent }, { signal: abort.signal, skipSessionContext: true })
       assertChatIdentityCurrent(identity)
       const tabId = await presentProjectAskConversation(data, { activate: false })
       if (cancelled) return
@@ -35,7 +35,7 @@ export function PromptLinkPage() {
       // Clear any old auto-run intent before mounting the composer. A prompt
       // link never calls the queue or a send action, even on an existing tab.
       store.setTabConfig(tabId, { autoRun: false, ...(!conflict ? { inputText: input.prompt } : {}) })
-      setBound({ tabId, workspace: data.workspace, prompt: input.prompt, conflict })
+      setBound({ tabId, workspace: data.workspace, prompt: input.prompt, conflict, crewName: data.crew_name || 'Crew', agentName: data.agent_name || 'Agent' })
     }
     void open().catch(reason => {
       if (cancelled || abort.signal.aborted) return
@@ -52,7 +52,7 @@ export function PromptLinkPage() {
   if (error) return <main className="grid h-full place-items-center p-6"><div className="max-w-md space-y-4 text-center text-sm"><p role="alert">{error}</p><a href="/home" className="underline">Choose a chat from your workspace</a></div></main>
   if (!bound) return <p role="status" className="p-6 text-sm text-muted-foreground">Opening prompt…</p>
   return <main className="flex h-full min-h-0 flex-col">
-    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-sm"><p>Review the draft, then press Send when you are ready.</p><a href="/home" className="text-xs underline">Your workspace</a></header>
+    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-sm"><div><p className="font-medium">{bound.crewName} · {bound.agentName}</p><p className="text-xs text-muted-foreground">Review the draft, then press Send when you are ready.</p></div><a href="/home" className="text-xs underline">Your workspace</a></header>
     {bound.conflict ? <section className="mx-auto w-full max-w-2xl space-y-4 p-6 text-sm">
       <p>This chat already has a draft. Keep it, or replace it with the prompt from the link?</p>
       <pre className="whitespace-pre-wrap break-words rounded-lg border border-border p-4 font-sans">{bound.prompt}</pre>
