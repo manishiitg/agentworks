@@ -243,6 +243,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	registryMu.Unlock()
 	if preferenceErr == nil {
 		annotateDirectoryHiddenAgents(agents, preferences, desktopMachineID())
+		if saved, err := updateMenuGroups(ctx, nil); err == nil {
+			annotateDirectoryAgentGroups(agents, saved, preferences, desktopMachineID())
+		}
 	}
 	sort.SliceStable(agents, func(i, j int) bool {
 		rank := func(row map[string]interface{}) int {
@@ -257,7 +260,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"note":         "Every agent you own or that is shared with you. group_names are your personal sidebar groups, not shared context, Team membership or access. hidden=true means hidden by you and used less often, not disabled or private. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}
 	if networkError != "" {
 		out["network_error"] = networkError
