@@ -127,62 +127,42 @@ func TestCrewTeamFolderChangeKeepsStoreWithoutReupload(t *testing.T) {
 	if s := state(); len(s.Clashes) != 0 {
 		t.Fatalf("folder changes made clashes: %+v", s.Clashes)
 	}
+	// PLAT-746-1020: screen, chat and MCP all set the complete selection.
+	// Members can add, but omitting an existing folder never removes it.
+	for _, adapter := range []string{"chat", "mcp"} {
+		if w := put("owner", `"team"`); w.Code != 200 {
+			t.Fatal(w.Body.String())
+		}
+		change := func(folders []any) bool {
+			claims := &UserClaims{UserID: "member", Username: "member"}
+			ctx := context.WithValue(t.Context(), UserContextKey, claims)
+			if adapter == "chat" {
+				_, err := api.crewTeamConfigureChat(ctx, claims, nil, "fold-test", "fold-test", "configure", map[string]any{"folders": folders})
+				return err == nil
+			}
+			w := httptest.NewRecorder()
+			api.externalCrewTeamSyncCall(w, httptest.NewRequest("POST", "/api/external/call", nil).WithContext(ctx), map[string]any{"crew_id": "fold-test", "action": "settings", "folders": folders})
+			return w.Code == 200
+		}
+		if !change([]any{"team", "code"}) {
+			t.Fatalf("%s could not add a folder", adapter)
+		}
+		if change([]any{"code"}) {
+			t.Fatalf("%s let a member remove team/", adapter)
+		}
+		if change([]any{}) {
+			t.Fatalf("%s accepted no shared folders", adapter)
+		}
+		current := mustReadCrewTeam(t, "fold-test")
+		if current.Folder.ID != "f1" || !slices.Equal(current.Folder.Folders, []string{"code", "team"}) {
+			t.Fatalf("%s changed the store or saved a refused selection: %+v", adapter, current.Folder)
+		}
+	}
+
 }
 
-// Owner, 6 Nov (approved mockup "Whole Crew asks first"): switching to the Whole Crew first shows the server's lines
-// (who gets it, the folders added) and changes nothing; only the Crew's owner gets them, and chat switches only when
-// called again with confirm=true.
-func TestCrewTeamWholeCrewAsksFirst(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	t.Setenv("MULTI_USER_MODE", "true")
-	crewTeamTestDocs(t, "whole-ask", "whole-ask")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]}]}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "whole-ask", OwnerID: "owner", ProjectID: "whole-ask"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "whole-ask", Name: "Example", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
-		t.Fatal(err)
-	}
-	roots, found, err := crewStorageRoots(crewProjectRootByID("whole-ask"))
-	if err != nil || !found {
-		t.Fatal("crew folder", found, err)
-	}
-	for _, rel := range []string{"team/a.md", "code/c.md"} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(roots.Files, rel)), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(roots.Files, rel), []byte(rel), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	api := &StreamingAPI{}
-	router := mux.NewRouter()
-	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
-	ask := func(user string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("GET", "/api/crew-teams/whole-ask/folder-change?whole=1", nil)
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, r)
-		return w
-	}
-	if w := ask("member"); w.Code != 403 {
-		t.Fatalf("a member got the owner's switch: %d %s", w.Code, w.Body.String())
-	}
-	w := ask("owner")
-	var change crewTeamFolderChange
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &change) != nil {
-		t.Fatal("owner preview", w.Code, w.Body.String())
-	}
-	if change.ConfirmLabel == "" || change.Refusal != "" || !slices.Contains(change.FoldersAdded, "code/") || slices.Contains(change.FoldersAdded, "team/") || !slices.Equal(change.People, []string{"member"}) || len(change.Means) == 0 {
-		t.Fatalf("preview: %+v", change)
-	}
-	// A member's chat call gets the owner-only refusal, not "name the folders".
-	memberUser := &UserClaims{UserID: "member", Username: "member"}
-	if _, err := api.crewTeamConfigureChat(context.WithValue(t.Context(), UserContextKey, memberUser), memberUser, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "folders"}); err == nil || !strings.Contains(err.Error(), "Only ") {
-		t.Fatalf("member share=folders: %v", err)
-	}
-	// The files listing is paged so a Whole Crew can still be listed from chat.
+// A long selected folder remains paged in chat.
+func TestCrewTeamFilesPageRetainsContinuation(t *testing.T) {
 	var many []map[string]any
 	for i := range 450 {
 		many = append(many, map[string]any{"path": fmt.Sprintf("d/f%03d.md", i)})
@@ -193,17 +173,5 @@ func TestCrewTeamWholeCrewAsksFirst(t *testing.T) {
 	}
 	if page, _ := crewTeamFilesPage(raw, "d", 0); !strings.Contains(string(page), `"next_offset":200`) || strings.Contains(string(page), "f200.md") {
 		t.Fatalf("first page: %s", page)
-	}
-	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	ctx := context.WithValue(t.Context(), UserContextKey, owner)
-	text, err := api.crewTeamConfigureChat(ctx, owner, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "whole"})
-	if team, _ := readCrewTeam("whole-ask"); err != nil || !strings.Contains(text, "confirm_needed") || team.Folder.Whole {
-		t.Fatalf("chat switched without confirm: %v %s whole=%t", err, text, team.Folder.Whole)
-	}
-	if _, err := api.crewTeamConfigureChat(ctx, owner, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "whole", "confirm": true}); err != nil {
-		t.Fatal("confirmed switch", err)
-	}
-	if team, _ := readCrewTeam("whole-ask"); !team.Folder.Whole {
-		t.Fatal("confirm=true did not switch")
 	}
 }

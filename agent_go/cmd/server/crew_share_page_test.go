@@ -89,7 +89,7 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 			t.Fatalf("HTTP %d: %s", w.Code, w.Body.String())
 		}
 	}
-	mustOK(call("owner", "PUT", "", `{"name":"Example","on":true,"people":[{"user_id":"other"}],"folder":{"whole":true}}`))
+	mustOK(call("owner", "PUT", "", `{"name":"Example","on":true,"people":[{"user_id":"other"}],"folder":{"folders":[{"path":"team"}]}}`))
 	mustOK(call("other", "POST", "/invite", `{"accept":true}`))
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	// PR1730: one shared agent must keep the native lock and explanation;

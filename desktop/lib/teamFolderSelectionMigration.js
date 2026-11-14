@@ -76,8 +76,11 @@ function migrateTeamFolderSelections({stateDir, docsDir, local = false, apply = 
         if (r.local_root) { if (local) root = path.resolve(r.local_root); }
         else if (docsDir && typeof r.folder === 'string' && r.folder && !/[\\/]/.test(r.folder) && !r.folder.startsWith('.')) root = path.join(path.resolve(docsDir),'Crew',r.folder);
       }
-      if (root) selected = topFolders(root);
-      else {
+      if (root) {
+        try { selected = topFolders(root); }
+        catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') root = null; else throw e; }
+      }
+      if (!root) {
         selected = ['team'];
         team.folder_note = 'Only team/ is shared for now. Open the owner’s Mac and add the folders the Team should share.';
       }

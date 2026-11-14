@@ -55,7 +55,7 @@ func crewTeamFolderListing(root, rel string) (map[string]any, int, error) {
 	folders := []string{}
 	for _, entry := range entries {
 		p := filepath.ToSlash(filepath.Join(rel, entry.Name()))
-		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && crewTeamAllowed(p+"/file.txt") && !publication.ExcludedDirectory(p) {
+		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && crewTeamAllowed(p+"/file.txt") && !crewTeamPrivatePath(p+"/file.txt") && !publication.ExcludedDirectory(p) {
 			folders = append(folders, p)
 		}
 	}
