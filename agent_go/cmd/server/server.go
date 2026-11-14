@@ -5981,6 +5981,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			MusePersistentInteractiveSession:       musePersistentInteractive,
 			AgyPersistentInteractiveSession:        agyPersistentInteractive,
 			CodingAgentUserAnswersNativeQuestions:  attendedTurn,
+			BridgeVirtualToolScopeKey:              "host-main",
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,
