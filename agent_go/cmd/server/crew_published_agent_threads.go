@@ -103,7 +103,11 @@ func (api *StreamingAPI) routePublishedAgentMessage(ctx context.Context, c agent
 		if !ok {
 			return c, false, fmt.Errorf("The Team agent isn't ready. Choose its agent and account in the Team Crew settings.")
 		}
-		dest = agentMessageEndpoint{Kind: triggerCallerCrew, ID: home, Profile: crewProfileID, UserID: chat.OwnerID, Path: root, ChatKey: key, Label: chat.Name}
+		main, err := crewTeamSendingAgent(ctx, home, chat.OwnerID, key)
+		if err != nil || main.ID == "" {
+			return c, false, fmt.Errorf("The Team agent isn't shared with this Team.")
+		}
+		dest = agentMessageEndpoint{TeamAgentID: main.ID, Kind: triggerCallerCrew, ID: home, Profile: crewProfileID, UserID: chat.OwnerID, Path: root, ChatKey: key, Label: chat.Name}
 	} else {
 		if crewRelayTwin(dest.ID) || !ordinaryProjectChatKey(dest.ID, dest.ChatKey) {
 			return c, false, nil
@@ -164,6 +168,10 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", source.ID, source.PublishedAsker, source.ChatKey)
 		return "", nil
 	}
+	// A redirect changes the receiving user. Keep all provider/account and
+	// workspace preparation in that normal user's namespace, not the old Mac
+	// agent owner's. Sender authority is still rechecked from the saved message.
+	ctx = internalBotRequestContext(ctx, dest.UserID)
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, dest.UserID)
 	if err != nil {
 		return "", err
