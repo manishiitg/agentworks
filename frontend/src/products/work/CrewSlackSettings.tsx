@@ -29,4 +29,3 @@ function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
     {slack.note && <p className="pt-1 text-xs text-muted-foreground">{slack.note}</p>}
   </div>
 }
-

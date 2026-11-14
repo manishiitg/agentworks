@@ -255,7 +255,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			return crewPanelSection{Rows: []crewPanelRow{{ID: "github", Label: "GitHub", Detail: label, Destination: "mcp:github", Connected: data.Connected}}}, err
 		}},
 		{id: "slack_bot", title: "Slack bot", allowed: connections, noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {
-			// Its row opens Share › Slack, which reads the same choice (crewSlackBotChoiceFor).
+			// Connections → Slack bot reads the same choice (crewSlackBotChoiceFor).
 			bot, err := api.crewSlackBotChoiceFor(r.WithContext(ctx), workspace, vars)
 			section := crewPanelSection{}
 			if !bot.Allowed || !bot.Selected {
