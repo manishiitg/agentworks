@@ -30,6 +30,9 @@ api.interceptors.request.use((config) => {
 })
 
 export const skillsApi = {
+  invocation: async (workspacePath: string, sessionId: string, provider?: string): Promise<NativeSkillCatalog> => {
+    return (await api.get('/api/skills/invocation', { params: { workspace_path: workspacePath, session_id: sessionId, provider } })).data
+  },
   folder: async (workspacePath: string, files: File[], importing: boolean): Promise<{ document?: string; name?: string; files?: string[]; success?: boolean; skill_name?: string }> => {
     const data = new FormData()
     data.append('paths', JSON.stringify(files.map(file => file.webkitRelativePath)))
@@ -110,5 +113,7 @@ export interface DiscoveredSkill {
   document?: string; files?: string[]
 }
 export interface NativeSkillDiscovery { skills: DiscoveredSkill[]; message: string }
+export interface NativeSkillChoice { id: string; name: string; description: string; source: string; provider: string }
+export interface NativeSkillCatalog { skills: NativeSkillChoice[]; provider: string; prepared: boolean; supported: boolean; message: string }
 
 export default skillsApi;

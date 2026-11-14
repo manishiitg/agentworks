@@ -163,11 +163,15 @@ func (api *StreamingAPI) resolvePendingChatAttachments(ctx context.Context, user
 	return nil
 }
 func pendingAttachmentSubmissionQuery(req QueryRequest) string {
+	query := req.Query
+	if req.RequestedSkillID != "" {
+		query += "\n[requested skill identity]" + req.RequestedSkillID
+	}
 	if len(req.PendingAttachments) == 0 {
-		return req.Query
+		return query
 	}
 	data, _ := json.Marshal(req.PendingAttachments)
-	return req.Query + "\n[pending attachment identity]" + string(data)
+	return query + "\n[pending attachment identity]" + string(data)
 }
 
 // A claimed steer already owns this queued message. Sending it back through

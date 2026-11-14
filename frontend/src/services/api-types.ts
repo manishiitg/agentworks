@@ -91,6 +91,7 @@ export type ExtendedLLMConfiguration = Omit<LLMConfiguration, 'api_keys'> & {
 
 // Agent streaming types
 export interface AgentQueryRequest {
+  requested_skill_id?: string
   pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   connection_id?: string
@@ -193,6 +194,7 @@ export interface AgentQueryResponse {
 // skills from the same shared controls as AgentWorks; the server accepts those
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
+  requested_skill_id?: string
   pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   /** Optional Crew laptop connection; the server checks the current owner and live folder grants. */

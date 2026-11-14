@@ -21,6 +21,7 @@ func RegisterSkillRoutes(router *mux.Router, api *StreamingAPI) {
 	router.HandleFunc("/skills", workspaceSkillRoute(false, listSkillsHandler(workspaceAPIURL))).Methods("GET", "OPTIONS")
 	router.HandleFunc("/skills/runtime", workspaceSkillRoute(false, api.runtimeSkillsHandler)).Methods("GET", "OPTIONS")
 	router.HandleFunc("/skills/discover", api.nativeSkillsRoute(false)).Methods("GET", "OPTIONS")
+	router.HandleFunc("/skills/invocation", api.ownNativeSkillRoute(false, api.nativeSkillCatalogHandler)).Methods("GET", "OPTIONS")
 	router.HandleFunc("/skills/discover", api.nativeSkillsRoute(true)).Methods("POST", "OPTIONS")
 	router.HandleFunc("/skills/validate-folder", workspaceSkillRoute(false, skillFolderUpload(false))).Methods("POST", "OPTIONS")
 	router.HandleFunc("/skills/import-folder", workspaceSkillRoute(true, skillFolderUpload(true))).Methods("POST", "OPTIONS")

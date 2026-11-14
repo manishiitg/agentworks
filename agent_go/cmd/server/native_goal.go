@@ -45,6 +45,10 @@ func parseNativeGoalCommand(query, sessionID string) (llmtypes.NativeGoalCommand
 // as a model prompt. Queued commands are parsed again at their own admission.
 func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.Request, req *QueryRequest, sessionID, provider string, allowDirectControl, builder bool) (*http.Request, bool) {
 	command, known, err := parseNativeGoalCommand(req.Query, sessionID)
+	if req.RequestedSkillID != "" {
+		known = false
+		err = nil
+	} // Slash text is this explicit skill's arguments.
 	trustedRestore := false
 	if trusted, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
 		command, known, trustedRestore = trusted, true, true

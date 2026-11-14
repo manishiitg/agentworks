@@ -1149,6 +1149,7 @@ func logTurnQueue(format string, args ...interface{}) {
 
 // PendingQueuedMessage is a keyed message waiting in the durable turn queue.
 type PendingQueuedMessage struct {
+	RequestedSkillID  string                 `json:"requested_skill_id,omitempty"`
 	WaitingSince      *time.Time             `json:"waiting_since,omitempty"`
 	AttachmentPaths   []string               `json:"attachment_paths,omitempty"`
 	AttachmentPending bool                   `json:"attachment_pending,omitempty"`
@@ -1227,16 +1228,17 @@ func pendingQueuedMessagesFromTurnsAt(turns []queuedConversationTurn, userID, se
 			continue
 		}
 		message := PendingQueuedMessage{
-			MessageID:       turn.ID,
-			CanManage:       personTypedQueuedTurn(turn),
-			CanDismiss:      dismissibleIncomingTurn(turn),
-			Steering:        turn.Steering,
-			DeliveryError:   turn.DeliveryError,
-			ClientMessageID: clientMessageID,
-			DisplayMetadata: queuedTurnDisplayAttribution(sessionID, turn),
-			Content:         turn.Request.Query,
-			QueuedAt:        turn.CreatedAt,
-			Started:         turn.StartedAt != nil && !turn.Steering,
+			RequestedSkillID: turn.Request.RequestedSkillID,
+			MessageID:        turn.ID,
+			CanManage:        personTypedQueuedTurn(turn),
+			CanDismiss:       dismissibleIncomingTurn(turn),
+			Steering:         turn.Steering,
+			DeliveryError:    turn.DeliveryError,
+			ClientMessageID:  clientMessageID,
+			DisplayMetadata:  queuedTurnDisplayAttribution(sessionID, turn),
+			Content:          turn.Request.Query,
+			QueuedAt:         turn.CreatedAt,
+			Started:          turn.StartedAt != nil && !turn.Steering,
 		}
 		if !message.Started && !message.Steering && message.DeliveryError == "" && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) >= 15*time.Minute {
 			since := turn.CreatedAt

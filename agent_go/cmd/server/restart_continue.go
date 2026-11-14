@@ -49,6 +49,8 @@ func restartContinueRequest(ctx context.Context, request QueryRequest) QueryRequ
 	// delivery identities for replay. The saved request is only a continuation.
 	request.Query, request.Message = restartContinueMessage, ""
 	request.PendingAttachments = nil
+	request.RequestedSkillID = ""
+	request.requestedSkillName = ""
 	request.ExecutionOptions = nil
 	request.AgentMessageInbox = ""
 	request.IsAutoNotification = true

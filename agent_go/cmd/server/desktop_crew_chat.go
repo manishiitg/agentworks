@@ -210,10 +210,10 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s source=%s", project, conversation.SessionID, conversation.ConversationID, call.ID, crewChatRequestSource(call.Source))
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	case "send":
-		if strings.TrimSpace(call.Message) == "" && len(call.PendingAttachments) == 0 {
+		if strings.TrimSpace(call.Message) == "" && len(call.PendingAttachments) == 0 && call.RequestedSkillID == "" {
 			return fail(400, "Write a message first.")
 		}
-		body, _ = json.Marshal(AgentProfileChatRequest{Message: call.Message, DeliveryMode: call.DeliveryMode, PendingAttachments: call.PendingAttachments, ConversationKey: conversation.ConversationKey})
+		body, _ = json.Marshal(AgentProfileChatRequest{Message: call.Message, DeliveryMode: call.DeliveryMode, RequestedSkillID: call.RequestedSkillID, PendingAttachments: call.PendingAttachments, ConversationKey: conversation.ConversationKey})
 		method, path, handler = http.MethodPost, "/api/agent-profiles/work/query", api.handleAgentProfileChatQuery
 	case "events":
 		path += "/events"

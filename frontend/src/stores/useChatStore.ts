@@ -363,6 +363,7 @@ export interface ChatTabConfig {
   /** Auto-notification IDs already placed in this conversation’s durable message queue. */
   mcpOAuthNotificationIDs?: string[]
   conversationAcknowledged?: boolean
+  requestedSkillId?: string  // One explicit native skill in this draft, not a Crew attachment
   composerRevision?: number  // Store-owned revision survives composer remounts
   inputText: string  // Chat input text
   useCodeExecutionMode: boolean  // Code execution mode toggle
@@ -3114,7 +3115,7 @@ export const useChatStore = create<ChatState>()(
                 config: {
                   ...freshTab.config,
                   ...configUpdate,
-                  composerRevision: (['inputText', 'fileContext'] as const).some(key => key in configUpdate && configUpdate[key] !== freshTab.config[key]) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
+                  composerRevision: (['inputText', 'fileContext', 'requestedSkillId'] as const).some(key => key in configUpdate && configUpdate[key] !== freshTab.config[key]) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
                 }
               }
             }
