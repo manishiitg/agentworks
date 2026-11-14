@@ -2860,8 +2860,8 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 			if onComplete != nil {
 				onComplete(terminalErr)
 			}
-			if goalRestore != nil {
-				go api.restoreNativeGoalAfterWake(sessionID, goalRestore, terminalErr)
+			if goalRestore != nil && terminalErr != nil {
+				api.markNativeGoalWakeFailed(sessionID, goalRestore)
 			}
 
 			// If the session was explicitly stopped while this synthetic turn was running,
@@ -2880,6 +2880,9 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 			// Drain queued auto-notifications only for still-active sessions (batched
 			// to avoid concurrent StreamWithEvents calls).
 			api.drainPendingAutoNotificationsAfterTurn(sessionID)
+			if goalRestore != nil {
+				go api.restoreNativeGoalAfterWake(sessionID, goalRestore, nil)
+			}
 		}()
 
 		// Stream already started above; events flow through already-attached

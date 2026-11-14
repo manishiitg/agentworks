@@ -53,6 +53,10 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 			// continuation message. A normal cold turn keeps a paused goal paused.
 			resumeAfterRestart := req.IsAutoNotification && req.TriggeredBy == "restart_continue" && previous.Goal.Status == "active"
 			resumeAfterQuota := req.IsAutoNotification && req.TriggeredBy == usageLimitContinueTrigger && previous.Goal.Status == "usage_limited"
+			if resumeAfterQuota && api.pendingNativeGoalRestore(r.Context(), sessionID) != nil {
+				resumeAfterQuota = false
+				r = r.WithContext(llmtypes.WithNativeGoalTurnPause(r.Context(), llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: "background_wake"}))
+			}
 			if resumeAfterRestart || resumeAfterQuota {
 				command = llmtypes.NativeGoalCommand{SessionID: sessionID, Action: "resume", Objective: previous.Goal.Objective}
 				known, trustedRestore = true, true
@@ -61,6 +65,9 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 				}
 			} else if previous.Goal.Status == "paused" || (previous.Goal.Status == "active" && !api.sessionTurnRunning(sessionID)) {
 				reason := previous.Reason
+				if !req.IsAutoNotification {
+					reason = "person_message"
+				}
 				if reason == "" {
 					reason = "native_goal_reconnect"
 				}
@@ -73,6 +80,11 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return r, true
+	}
+	if !isToolBackedChatMode(req.AgentMode) {
+		log.Printf("[AGENT_GOAL] session=%s action=skipped status=unavailable reason=unsupported_chat_mode", sessionID)
+		http.Error(w, "Goal mode is available in Crew chats with a supported program.", http.StatusBadRequest)
 		return r, true
 	}
 	if provider != "codex-cli" {

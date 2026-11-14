@@ -19,7 +19,7 @@ import (
 // PLAT-746-988: use the real journal/receipt/Stop projection; mock only native
 // RPC and the final admitted provider turn, never the state deciding to resume.
 func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
-	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "arm_stop_race"} {
+	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "retry_after_failure", "arm_stop_race"} {
 		t.Run(action, func(t *testing.T) {
 			withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":["work"]}]}`)
 			api, store := newDurableChatAPI(t, "goal-lifecycle-"+action, "alice")
@@ -111,13 +111,19 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				}
 			}
 			var failure error
-			if action == "failed_wake" {
+			if action == "failed_wake" || action == "retry_after_failure" {
 				failure = errors.New("wake failed")
 			}
 			api.restoreNativeGoalAfterWake(sid, receipt, failure)
+			if action == "retry_after_failure" {
+				receipt = api.pauseNativeGoalForWake(sid)
+				if receipt == nil || !api.markNativeGoalWakeStarted(sid, receipt, "second-wake") {
+					t.Fatal("existing wake retry lost paused goal restoration")
+				}
+			}
 			api.restoreNativeGoalAfterWake(sid, receipt, nil)
 			want := 0
-			if action == "resume" {
+			if action == "resume" || action == "retry_after_failure" {
 				want = 1
 			}
 			if calls != want {
