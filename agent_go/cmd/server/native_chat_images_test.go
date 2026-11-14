@@ -130,6 +130,23 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 		t.Fatal(piErr)
 	}
 	piReader.Close()
+	t.Setenv("MUSE_CLI_TRANSPORT", "msp")
+	museContext := env.api.withNativeChatImages(replay, "owner", "chat", "muse-cli", req)
+	museImages := llmtypes.NativeImageInputsForSession(museContext, "chat")
+	if len(museImages) != 1 {
+		t.Fatal("Muse MSP lost admitted image")
+	}
+	museReader, _, _, museErr := museImages[0].Open(context.Background())
+	if museErr != nil {
+		t.Fatal(museErr)
+	}
+	museReader.Close()
+	for _, transport := range []string{"tmux", "structured", "exec"} {
+		t.Setenv("MUSE_CLI_TRANSPORT", transport)
+		if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "muse-cli", req), "chat")) != 0 {
+			t.Fatal("image bytes offered to Muse text-only transport")
+		}
+	}
 	sdkRequest.ClaudeCodeTransport = "tmux"
 	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "claude-code", sdkRequest), "chat")) != 0 {
 		t.Fatal("image bytes offered to Claude terminal")

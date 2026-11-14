@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 // Only the upload writer can issue these references. They are private queue
@@ -306,6 +307,12 @@ func (api *StreamingAPI) queueDeferredChatImage(w http.ResponseWriter, r *http.R
 // text-only transports keep paths; no image bytes are ever pasted into tmux.
 func (api *StreamingAPI) nativeChatImagesSupported(ctx context.Context, user, session, provider, carried string) bool {
 	live := liveCodingProviderTransport(session)
+	if provider == "muse-cli" {
+		if live != "" {
+			return live == "msp"
+		}
+		return musecli.MuseMSPSelected()
+	}
 	if provider == "pi-cli" {
 		// Pi's coding runtime uses native RPC for prompts and steers.
 		return true
