@@ -874,6 +874,15 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 
+// Preserve the existing display text while letting callers distinguish a
+// rejected operation from transport, authorization or temporary server failure.
+type crewRemoteHTTPError struct {
+	Status        int
+	Code, Message string
+}
+
+func (e *crewRemoteHTTPError) Error() string { return e.Message }
+
 func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnection, method, route string, input, out any) error {
 	var body io.Reader
 	if input != nil {
@@ -930,7 +939,7 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 		if json.Unmarshal(b, &refusal) == nil && refusal.Error.Code == "team_history_catch_up" {
 			return nil, errCrewTeamHistoryCatchUp
 		}
-		return nil, fmt.Errorf("%s", laptopActionErrorText(string(b)))
+		return nil, &crewRemoteHTTPError{Status: resp.StatusCode, Code: refusal.Error.Code, Message: laptopActionErrorText(string(b))}
 	}
 	return resp, nil
 }
