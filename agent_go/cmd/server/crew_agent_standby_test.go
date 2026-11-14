@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -145,7 +146,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 		t.Fatalf("pair fixture: %v", err)
 	}
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}},
-		Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {solo: false}})}
+		Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {helper: true, solo: false}})}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
@@ -191,9 +192,53 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); !strings.HasPrefix(label, crewAlwaysOnLine+" · answering your team") || tone != "server" {
 		t.Fatalf("In team, Mac off label: %q %q", label, tone)
 	}
-	// PLAT-746-970: teammate asks no longer import or resume the maker's standby
-	// session. TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn covers that
-	// answer/store path with current In-team admission and the asker's account.
+	// PLAT-746-970: a teammate ask must use the asker's tool-free answer,
+	// never import or resume the maker's native standby session.
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "sdk")
+	previousAnswer := crewSharedAnswerTextForTest
+	t.Cleanup(func() { crewSharedAnswerTextForTest = previousAnswer })
+	actors := make(chan string, 1)
+	crewSharedAnswerTextForTest = func(_ context.Context, actor string, record *publishedProject, _, _ string) (string, error) {
+		actors <- actor + "/" + record.OwnerID
+		return `{"answer":"Shared context answer","needs_work":false}`, nil
+	}
+	member := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}}}
+	ask := func(tab string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, member))
+		w := httptest.NewRecorder()
+		api.macSharedAgentCall(w, r, "ask", map[string]any{"chat_id": macSharedAgentChatKey("team", tab), "message": "what changed today?"}, "owner", "team")
+		return w
+	}
+	if w := ask(helper); w.Code != http.StatusOK {
+		t.Fatalf("shared ask refused: %d %s", w.Code, w.Body.String())
+	}
+	select {
+	case actor := <-actors:
+		if actor != "other/other" {
+			t.Fatalf("answer account: %s", actor)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("shared-answer model was not called")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		posts, err := readCrewSharedAnswers("team")
+		if err == nil && len(posts) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("shared answer not saved: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, tab := range []string{solo, "unregistered"} {
+		if w := ask(tab); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "agent_unavailable") {
+			t.Fatalf("private/unregistered target %s: %d %s", tab, w.Code, w.Body.String())
+		}
+	}
+	if len(imported) != 0 || len(ran) != 0 {
+		t.Fatal("teammate ask resumed maker standby")
+	}
 	rows, err := readCrewStandby("team", "owner")
 	if err != nil {
 		t.Fatal(err)
