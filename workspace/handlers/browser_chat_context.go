@@ -55,7 +55,9 @@ const browserContextScript = `([x,y]) => {
  const el = document.elementFromPoint(x,y);
  if (!el || ['HTML','BODY','IFRAME'].includes(el.tagName) || el.closest('input,textarea,[contenteditable]:not([contenteditable="false"])')) return null;
  const r = el.getBoundingClientRect();
- if (r.width<=0 || r.height<=0 || r.x<0 || r.y<0 || r.right>innerWidth || r.bottom>innerHeight) return null;
+ if (r.width<=0 || r.height<=0) return null;
+ const clipped={x:Math.max(0,r.x),y:Math.max(0,r.y),width:Math.min(innerWidth,r.right)-Math.max(0,r.x),height:Math.min(innerHeight,r.bottom)-Math.max(0,r.y)};
+ if(clipped.width<=0 || clipped.height<=0) return null;
  let part=el, path=[];
  for(let n=0;part && n<8;n++,part=part.parentElement) {
    if(part.id && part.id.length<=128) {
@@ -77,7 +79,7 @@ const browserContextScript = `([x,y]) => {
  for(let n=0;n<256 && text.length<4096 && (node=walker.nextNode());n++) {
    if(!node.parentElement?.closest('input,textarea,script,style,[contenteditable]:not([contenteditable="false"])')) text+=node.textContent.slice(0,4096-text.length)+' ';
  }
- return {...out,selector,text:text.trim().slice(0,4096),rect:{x:r.x,y:r.y,width:r.width,height:r.height}};
+ return {...out,selector,text:text.trim().slice(0,4096),rect:clipped};
 }`
 
 func browserContextMetadata(ctx context.Context, dir, session string, x, y *float64) (models.BrowserChatContext, error) {

@@ -91,7 +91,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	}
 	auditChat, auditSession = in.ConversationKey, in.SessionID
 	sourceID = browserSessionForWorkspace(actor, workspace)
-	if sourceID == "" || in.BrowserSession != sourceID || !browser.IsUserBrowserSession(sourceID) {
+	if sourceID == "" || (in.BrowserSession != "" && in.BrowserSession != sourceID) || !browser.IsUserBrowserSession(sourceID) {
 		reason = "source_binding"
 		writeAgentProfileError(w, 409, "Choose the current live browser in this Crew, then pick the element again.")
 		return
@@ -114,7 +114,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 		writeAgentProfileError(w, 409, "Open this Crew's browser, then pick the element again.")
 		return
 	}
-	if (in.Operation == "probe" && (in.X != nil || in.Y != nil)) || (in.Operation == "add" && (in.X == nil || in.Y == nil || len(in.DocumentToken) != 64)) {
+	if (in.Operation == "probe" && (in.X != nil || in.Y != nil)) || (in.Operation == "add" && (in.BrowserSession == "" || in.X == nil || in.Y == nil || len(in.DocumentToken) != 64)) {
 		writeAgentProfileError(w, 400, "Pick the element again before adding it.")
 		return
 	}
@@ -131,6 +131,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 		writeAgentProfileError(w, 409, "The page changed or this element could not be captured. Pick it again.")
 		return
 	}
+	capture.BrowserSession = sourceID
 	if in.Operation == "probe" {
 		ok, reason = true, "ready"
 		writeAgentProfileJSON(w, 200, capture)
@@ -201,4 +202,23 @@ func requestBrowserChatContext(ctx context.Context, session, actor string, input
 		return result, fmt.Errorf("invalid capture response")
 	}
 	return result, nil
+}
+
+// The experience catalog exposes this same handler to chat/MCP. It returns
+// attachment references, never a chat send or an automatic composer action.
+func (api *StreamingAPI) externalWorkspaceAddContext(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	project := workspaceTokenProjectID(externalArg(args, "workspace_id"))
+	if project == "" {
+		externalError(w, 400, "invalid_arguments", "Choose a Crew workspace before adding context.")
+		return
+	}
+	body, err := json.Marshal(map[string]any{"source": externalArg(args, "context_source"), "operation": externalArg(args, "context_op"), "conversation_key": externalArg(args, "conversation_key"), "session_id": externalArg(args, "session_id"), "browser_session": externalArg(args, "browser_session"), "document_token": externalArg(args, "document_token"), "x": args["x"], "y": args["y"]})
+	if err != nil {
+		externalError(w, 400, "invalid_arguments", "Use a current browser selection.")
+		return
+	}
+	request := r.Clone(r.Context())
+	request.Body = io.NopCloser(bytes.NewReader(body))
+	request = mux.SetURLVars(request, map[string]string{"id": "work", "project_id": project})
+	api.handleCrewChatContext(w, request)
 }

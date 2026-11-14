@@ -41,7 +41,7 @@ func writeLocalCrewSettings(t *testing.T, project, name, content string) {
 
 // Drive the MCP transport and the actual workspace file handlers against disk.
 // This catches a tool that reports success but writes outside the app's project.
-func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string) {
+func newExternalCrewCommandFixture(t *testing.T, configure ...func(*gin.Engine)) (*externalToolsFixture, string) {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PROJECT_SHARING", "on")
@@ -92,6 +92,9 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 	router.POST("/api/dashboards", workspacehandlers.DashboardOperation)
 	router.POST("/api/db/initialize", workspacehandlers.InitializeWorkflowDB)
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
+	for _, addRoutes := range configure {
+		addRoutes(router)
+	}
 	ws := httptest.NewServer(router)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)

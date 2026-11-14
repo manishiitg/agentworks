@@ -1326,6 +1326,14 @@
   },
   {
     "family": "workspace",
+    "name": "add_context",
+    "member": "workspace__add_context",
+    "description": "Capture an owned Crew browser element as ordinary chat attachments. Probe the current source first; never clicks, sends or queues a message.",
+    "source": "workspace",
+    "source_action": "add_context"
+  },
+  {
+    "family": "workspace",
     "name": "search_messages",
     "member": "workspace__search_messages",
     "description": "Find readable messages in the selected workspace using query and cursor, with snippets and exact message links.",

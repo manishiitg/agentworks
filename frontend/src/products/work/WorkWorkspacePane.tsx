@@ -172,6 +172,7 @@ export function WorkBrowserPanel({ tabId, workspacePath }: { tabId: string; work
 
   return (
     <BrowserWorkspacePanel
+      chatContextTabId={product.profileId === 'work' ? tabId : undefined}
       workspacePath={workspacePath}
       onSendToAgent={message => sendWorkspacePaneMessageToChat({ tabId, message })}
       browserMode={browserMode}
