@@ -227,6 +227,9 @@ func readCrewProjectBinding(ctx context.Context, callerID string, profile agentp
 		return reader(sharedCrewOwner(filepath.Base(shared.WorkspacePath)), shared)
 	} else if !errors.Is(err, errProjectNotFound) {
 		log.Printf("[CREW_BINDING] stage=shared profile=%s project=%q caller=%q cause=%v", profile.ID, projectID, callerID, err)
+		if retryableWorkspaceFailure(err) {
+			return crewProjectBinding{}, err
+		}
 		return denied()
 	}
 	// The query path already carries the verified physical root: resolve
@@ -234,12 +237,18 @@ func readCrewProjectBinding(ctx context.Context, callerID string, profile agentp
 	if ownerID, ok := crewProjectOwnerID(selectedFolder); ok && ownerID != sanitizeUserIDForPath(callerID) {
 		binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, store)
 		if err != nil {
+			if retryableWorkspaceFailure(err) {
+				return crewProjectBinding{}, err
+			}
 			return denied()
 		}
 		return reader(ownerID, binding)
 	}
 	ownerID, binding, err := scanCrewProjectOwners(ctx, callerID, profile, projectID, store)
 	if err != nil {
+		if retryableWorkspaceFailure(err) {
+			return crewProjectBinding{}, err
+		}
 		return denied()
 	}
 	return reader(ownerID, binding)
@@ -264,6 +273,9 @@ func scanCrewProjectOwners(ctx context.Context, callerID string, profile agentpr
 	for _, ownerID := range owners {
 		binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, store)
 		if err != nil {
+			if retryableWorkspaceFailure(err) {
+				return "", productConversationBinding{}, err
+			}
 			continue
 		}
 		rootOwner, ok := crewProjectOwnerID(binding.WorkspacePath)
