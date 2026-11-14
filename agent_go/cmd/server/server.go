@@ -678,6 +678,7 @@ type StreamingAPI struct {
 	conversationTurnQueueCallbacks     map[string]func(event *unifiedevents.AgentEvent)
 	internalTurnQueueRead              func(context.Context, string) (string, bool, error)
 	internalTurnQueueWrite             func(context.Context, string, string) error
+	internalNativeGoalResume           func(context.Context, map[string]interface{}, string, string) error
 
 	// Last-seen WorkshopMode per session — used to detect mode toggles between
 	// turns. When the mode changes, native coding-agent resume is skipped for
