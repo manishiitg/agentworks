@@ -188,11 +188,16 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	reader.UserID = "other"
 	delivered := make(chan string, 2)
+	publishedSession := ""
 	old := agentMessageTurn
 	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
-		if session != coach.SessionID || user != "owner" {
-			return internalSessionTurnResult{}, fmt.Errorf("wrong existing tab: %s %s", session, user)
+		if session == coach.SessionID || session == "" || user != "owner" {
+			return internalSessionTurnResult{}, fmt.Errorf("wrong published sender thread: %s %s", session, user)
 		}
+		if publishedSession != "" && session != publishedSession {
+			return internalSessionTurnResult{}, fmt.Errorf("same asker lost its published thread: %s", session)
+		}
+		publishedSession = session
 		if restricted, _ := req["crew_ask_read_only"].(bool); restricted {
 			return internalSessionTurnResult{}, fmt.Errorf("selected Builder agent demoted")
 		}
@@ -213,7 +218,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		select {
 		case <-delivered:
 		case <-time.After(deliveryTimeout):
-			t.Fatal("message did not reach existing owner tab")
+			t.Fatal("message did not reach its published sender thread")
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
 	}
@@ -255,7 +260,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(contact.Messages) == 0 || contact.Endpoints[0].UserID != "other" || contact.Endpoints[1].Session != coach.SessionID {
+	if len(contact.Messages) == 0 || contact.Endpoints[0].UserID != "other" || contact.Endpoints[1].Session != publishedSession {
 		t.Fatalf("wrong attributed contact: %+v", contact)
 	}
 	// Removing the selected agent invalidates old reply addresses and pending delivery.
