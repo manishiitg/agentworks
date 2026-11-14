@@ -5,8 +5,10 @@ import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageCont
 
 /** Only an explicit server receipt clears a stale queue snapshot. */
 export function queuedMessageDelivered(metadata?: Record<string, unknown>): boolean {
+  // The durable receipt wins even when its original delivery_status remains.
+  if (metadata?.confirmation === 'confirmed') return true
   if (metadata?.delivery_status === 'unconfirmed' || metadata?.confirmation === 'failed' || metadata?.confirmation === 'accepted_but_unflushed') return false
-  return metadata?.confirmation === 'confirmed' || metadata?.delivery_status === 'sent_to_cli' || metadata?.delivery_status === 'next_turn_started'
+  return metadata?.delivery_status === 'sent_to_cli' || metadata?.delivery_status === 'next_turn_started'
 }
 
 export function queuedMessageReason(message: PendingQueuedMessage): string {
