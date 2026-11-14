@@ -197,6 +197,11 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 		}
 	}
 
+	if profileID == crewProfileID {
+		_, team := teamWayPickup(ctx, workspacePath)
+		names = appendUniqueStrings(names, team...)
+	}
+
 	sort.Strings(names)
 	return &names, nil
 }

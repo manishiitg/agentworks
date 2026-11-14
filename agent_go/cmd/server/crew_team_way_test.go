@@ -63,6 +63,20 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	if err != nil || selected == nil || !containsExactString(*selected, full) {
 		t.Fatalf("the Team Crew does not use the shared secret: %v %v", selected, err)
 	}
+	// Members' agents pick the shared secret up in the Team's own Crew without it being saved there, and lose it when removed.
+	source := crewProjectRootByID(fixtureCrewID)
+	if picked, err := productSelectedGlobalSecrets(f.Ctx(fixtureUserB), crewProfileID, source); err != nil || !containsExactString(*picked, full) {
+		t.Fatalf("a member's agent does not use the Team's secret: %v %v", picked, err)
+	}
+	if rec := post(fixtureUserB, `{"op":"remove","kind":"secret","id":"API_TOKEN"}`); rec.Code != http.StatusOK {
+		t.Fatalf("remove secret: %d %s", rec.Code, rec.Body.String())
+	}
+	if picked, err := productSelectedGlobalSecrets(f.Ctx(fixtureUserB), crewProfileID, source); err != nil || containsExactString(*picked, full) || vault.has(full) {
+		t.Fatalf("a removed Team secret is still used: %v %v", picked, err)
+	}
+	if rec := post(fixtureUserB, `{"op":"add","kind":"secret","id":"API_TOKEN"}`); rec.Code != http.StatusOK {
+		t.Fatalf("re-add secret: %d %s", rec.Code, rec.Body.String())
+	}
 	vault.mu.Lock()
 	members := vault.members[way.Vault]
 	vault.mu.Unlock()

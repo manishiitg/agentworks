@@ -1454,7 +1454,7 @@ func resolveProductProjectBindingInRoot(
 			Description:                 strings.TrimSpace(manifest.Description),
 			AuthoritativeSessionID:      strings.TrimSpace(manifest.SessionID),
 			ProjectLLMConfig:            manifest.Capabilities.LLMConfig,
-			ProjectSelectedServers:      runtimeAppSelection(manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),
+			ProjectSelectedServers:      teamWayServers(ctx, workspacePath, manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),
 			ProjectSelectedSkills:       append([]string(nil), manifest.Capabilities.SelectedSkills...),
 			ProjectWorkflowContextPaths: append([]string(nil), firstNonEmptyStrings(manifest.WorkflowContextPaths, manifest.Capabilities.WorkflowContextPaths)...),
 			// No user switch for a Crew or a Code (user, 2026-09-29): native
