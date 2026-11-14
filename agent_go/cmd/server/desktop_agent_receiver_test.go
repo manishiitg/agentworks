@@ -119,6 +119,10 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 	}{
 		{"own confirmed", true, QueryRequest{}, "sent_to_cli", true},
 		{"own pending refresh", true, QueryRequest{}, "sent_to_cli", true},
+		{"own restart continuation", true, QueryRequest{IsAutoNotification: true, TriggeredBy: "restart_continue"}, "sent_to_cli", true},
+		{"own background wake", true, QueryRequest{IsAutoNotification: true, TriggeredBy: "background"}, "sent_to_cli", true},
+		{"own usage recovery", true, QueryRequest{IsAutoNotification: true, TriggeredBy: "usage_limit_continue"}, "sent_to_cli", true},
+		{"restricted synthetic", true, QueryRequest{IsAutoNotification: true, PinRunMode: true}, "", false},
 		{"own no target", true, QueryRequest{}, "no_target", true},
 		{"own uncertain", true, QueryRequest{}, "uncertain", true},
 		{"visitor", false, QueryRequest{}, "", false},
@@ -130,6 +134,7 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 			api := newConversationTurnQueueTestAPI(map[string]string{})
 			api.internalChatSubmissionStore = newTestChatSubmissionStore()
 			api.lastQueryRequests = map[string]QueryRequest{"recipient": tc.prior}
+			api.activeSessions = map[string]*ActiveSessionInfo{"recipient": {SessionID: "recipient", IsSyntheticTurn: tc.prior.IsAutoNotification}}
 			record := ProductConversationRecord{SessionID: "recipient", ConversationKey: "crew:chat:recipient", WorkspacePath: "Chats"}
 			input := api.desktopAppMessageInput("owner", record, desktopAppIncoming{Own: tc.own}, "admitted agent message")
 			query, err := queryRequestForAgentProfileChat(routeTestProfile("example-product", true, ""), input, record)

@@ -226,6 +226,16 @@ func TestFreshIdleInputAppendsBehindAlreadyAdmittedTurns(t *testing.T) {
 	if _, _, err := api.enqueueConversationTurn(ctx, "u", "s", QueryRequest{AgentMode: "multi-agent", Query: "older"}); err != nil {
 		t.Fatal(err)
 	}
+	// A restart/automatic row waiting behind an active turn must not block
+	// compatible live input; the idle boundary still preserves queue order.
+	release := api.lockSessionInputLane("s")
+	if api.shouldWaitForQueuedConversation(ctx, "u", "s", QueryRequest{AgentMode: "multi-agent"}) {
+		t.Fatal("backlog blocked compatible input into the running turn")
+	}
+	release()
+	if !api.shouldWaitForQueuedConversation(ctx, "u", "s", QueryRequest{AgentMode: "multi-agent"}) {
+		t.Fatal("idle input bypassed the admitted backlog")
+	}
 	// Observe admission without dispatching any paid agent work.
 	ctx = context.WithValue(ctx, internalQueuedTurnAdmissionKey{}, func(string) { api.conversationTurnQueueDraining["s"] = true })
 	r := httptest.NewRequest(http.MethodPost, "/api/query", nil).WithContext(ctx)

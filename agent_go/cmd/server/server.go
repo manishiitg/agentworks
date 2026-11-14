@@ -1375,6 +1375,7 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q delivery_mode=%q disable_live_input=%t pending_attachments=%d queue_reason=%q can_steer=%t",
 		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID),
 		req.DeliveryMode, req.DisableLiveInputDelivery, len(req.PendingAttachments), queueReason, canSteer)
+	log.Printf("[QUERY->LIVE] session=%s query=%s action=queued reason=%s delivery_mode=%s backlog=%t occupant=%s", sessionID, turn.ID, queueReason, req.DeliveryMode, backlog, occupant)
 	api.recordQueuedConversationUserMessage(sessionID, turn)
 	api.kickConversationTurnQueue(sessionID)
 	_ = json.NewEncoder(w).Encode(QueryResponse{
