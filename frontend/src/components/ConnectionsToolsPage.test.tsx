@@ -15,6 +15,7 @@ vi.mock('./integrations/AccountConnectionPanels', () => ({ AccountWhatsAppPanel:
 vi.mock('./secrets/SecretSelectionSection', () => ({ default: ({ mode }: { mode: string }) => <div data-vault-mode={mode}>Vault secrets manager</div> }))
 vi.mock('./UsersPage', () => ({ UsersPageContent: () => <div>User management</div> }))
 vi.mock('./McpConnectPage', () => ({ McpConnectPageContent: () => <div>AI tool connection setup</div> }))
+vi.mock('./providers/SettingsAiAccounts', () => ({ default: () => <div>Compact AI account list</div> }))
 vi.mock('./BrowserConnectionsDialog', () => ({ BrowserConnectionsPanel: () => null }))
 const host = document.createElement('div')
 const root = createRoot(host)
@@ -66,4 +67,14 @@ it('keeps Customize user management behind the existing administrator gate', asy
   expect(host.textContent).not.toContain('User management')
   expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Users & access')).toBe(false)
   expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Connect AI tools')).toBe(true)
+})
+
+// The approved layout has one Settings navigation and no nested provider page.
+it('opens AI accounts in the same settings content area', async () => {
+  await act(async () => root.render(<ConnectionsToolsPage />))
+  const ai = [...host.querySelectorAll('button')].find(button => button.textContent === 'AI accounts')!
+  await act(async () => ai.click())
+  expect(host.querySelectorAll('nav[aria-label="Settings sections"]')).toHaveLength(1)
+  expect(host.textContent).toContain('Compact AI account list')
+  expect(host.textContent).not.toContain('AI models & accounts')
 })
