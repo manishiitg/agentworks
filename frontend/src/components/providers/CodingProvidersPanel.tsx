@@ -1,6 +1,7 @@
 import { codingProviderName } from '../../utils/codingProviderName'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
+import AccountLimits from './AccountLimits'
 import CostsOverview from './CostsOverview'
 import { ServersOverview } from './ProvidersOverview'
 import { takeServersPageRequest } from '../workspace/ConnectedServersMenuItem'
@@ -151,7 +152,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'servers' | 'provider' | 'costs'>(() => takeServersPageRequest() ? 'servers' : 'provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'limits'>(() => takeServersPageRequest() ? 'servers' : 'provider')
   useEffect(() => {
     const show = () => { takeServersPageRequest(); setView('servers') }
     window.addEventListener('show-servers-page', show)
@@ -385,6 +386,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                 </div>
                 </>
               )}
+              <button type="button" onClick={() => setView('limits')} aria-pressed={view === 'limits'} className="mt-4 rounded-lg border px-3 py-2 text-left text-sm font-medium dark:text-gray-100">Subscription limits</button>
               {onThisMac && <>
                 <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Servers</div>
                 {macNavItem('servers')}
@@ -407,6 +409,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
             </aside>}
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
+              {view === 'limits' && <AccountLimits />}
               {view === 'servers' && <ServersOverview providers={orderedProviders} />}
               {canReview && view === 'costs' && <CostsOverview />}
               {selectedProvider && <ConfirmationDialog

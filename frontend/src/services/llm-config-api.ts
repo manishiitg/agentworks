@@ -307,8 +307,20 @@ export type MenuGroups = { agent_groups?: MenuAgentGroup[]; groups: Array<{ id: 
 /** The person's own display choices (server-side, per person). */
 export type ChatPreferences = { show_context_indicator: boolean }
 
+export interface AccountLimitsView {
+  account_id: string
+  provider: string
+  name: string
+  owner: string
+  shared_server: boolean
+  snapshot?: { checked_at: string; source: 'probe' | 'event'; windows: Array<{ label: string; used_percent: number; resets_at?: string }> }
+}
+
 // LLM Configuration API service
 export const llmConfigService = {
+  getAccountLimits: async (): Promise<AccountLimitsView[]> => {
+    return (await llmConfigApi.get('/api/provider-accounts/limits')).data.accounts
+  },
   getChatPreferences: async (): Promise<ChatPreferences> => {
     return (await llmConfigApi.get('/api/chat-preferences')).data
   },
