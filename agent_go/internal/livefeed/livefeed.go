@@ -24,7 +24,8 @@ const (
 	// (header activity monitor). Never published per event, only on status
 	// transitions.
 	// MenuGroups is an owner-only personal menu preference change.
-	MenuGroups Kind = "menu_groups"
+	AccountLimits Kind = "account_limits"
+	MenuGroups    Kind = "menu_groups"
 	// VaultConnections: owner-only notice after account setup or discovery changes.
 	VaultConnections Kind = "vault_connections"
 	Sessions         Kind = "sessions"
