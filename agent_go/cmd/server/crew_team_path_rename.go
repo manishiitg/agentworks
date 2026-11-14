@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -17,7 +18,9 @@ import (
 
 // Called under the existing Team writer lock. A Team rename reuses the normal
 // chunk commit/history, including deletion events at the old path.
-func crewTeamPathRenameChanges(project string, before, after crewTeamFolder) ([]crewTeamChange, error) {
+var errCrewTeamRenameForbidden = errors.New("This connection cannot rename those shared files.")
+
+func crewTeamPathRenameChanges(project string, before, after crewTeamFolder, claims *UserClaims) ([]crewTeamChange, error) {
 	changed := false
 	for _, old := range before.Paths {
 		for _, next := range after.Paths {
@@ -48,6 +51,9 @@ func crewTeamPathRenameChanges(project string, before, after crewTeamFolder) ([]
 					continue
 				}
 				target := next.Path + strings.TrimPrefix(rel, old.Path)
+				if !crewTeamGuardAllows(claims, rel, true) || !crewTeamGuardAllows(claims, target, true) {
+					return nil, errCrewTeamRenameForbidden
+				}
 				if existing := state.Versions[target]; existing.File != nil {
 					return nil, fmt.Errorf("the Team already has files at %s", target)
 				}
@@ -57,6 +63,9 @@ func crewTeamPathRenameChanges(project string, before, after crewTeamFolder) ([]
 		}
 	}
 	if len(skillNames) > 0 && state.Versions[crewTeamSetupFile].File != nil {
+		if !crewTeamGuardAllows(claims, crewTeamSetupFile, false) || !crewTeamGuardAllows(claims, crewTeamSetupFile, true) {
+			return nil, errCrewTeamRenameForbidden
+		}
 		root, e := crewTeamFilesRoot(project)
 		if e != nil {
 			return nil, e

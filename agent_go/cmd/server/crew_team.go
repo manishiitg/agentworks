@@ -652,8 +652,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
-	pathChanges, e := crewTeamPathRenameChanges(project, previous.Folder, input.Folder)
+	pathChanges, e := crewTeamPathRenameChanges(project, previous.Folder, input.Folder, claims)
 	if e != nil {
+		if errors.Is(e, errCrewTeamRenameForbidden) {
+			externalError(w, 403, "team_folder_forbidden", e.Error())
+			return
+		}
 		externalError(w, 409, "folder_rename_failed", e.Error())
 		return
 	}

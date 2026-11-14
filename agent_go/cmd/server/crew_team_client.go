@@ -1014,6 +1014,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		if err := removeCrewTeamFile(b.diskRoot(f.Path), b.diskRel(f.Path)); err != nil {
 			return skipped, crewTeamStep("write", err)
 		}
+		b.receivedMountPath(f.Path, true)
 		delete(b.Files, f.Path)
 	}
 	writes := []crewTeamRemoteFile{}
@@ -1149,6 +1150,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 				return crewTeamStep("write", statErr)
 			}
 			b.Files[f.Path] = crewTeamLocalFile{Stamp: crewsync.StampOf(info), ReadAt: writeStarted, Version: *f.Version}
+			b.receivedMountPath(f.Path, false)
 			log.Printf("[CREW_TEAM_LOCAL] project=%s actor=%s client=%s path=%q event=received", b.Project, b.RemoteUser, b.Client, f.Path)
 		}
 		return nil
