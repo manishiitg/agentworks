@@ -8,9 +8,8 @@ import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { AgentDetails, LeaveTeam, Saving, TeamTab } from './TeamTab'
-import { SlackBotChoice } from '../../components/integrations/ProductSlackPanel'
 import { openCrewAccess } from './MacSharedAgents'
-import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type CrewShareSlack, type TeamTarget } from './teamApi'
+import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
@@ -60,38 +59,6 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
     <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} agents={agents} />
     {!teamOn && !state.view?.new_team && agents}
     {state.view?.can_leave && <LeaveTeam target={target} confirm={state.view?.leave_confirm} />}
-  </div>
-}
-
-/**
- * The Slack tab (owner, 9 Nov: its own Online tab next to Dashboards): the Crew's Slack bot cards with the server's
- * "Who can talk to it" lines from the same /share reply. The Mac app's own Crew before Mac online has no server copy
- * yet, so it shows the bot cards alone.
- */
-export function SlackTab({ projectId, workspacePath }: { projectId: string; workspacePath?: string }) {
-  const { target } = useTeamTab(projectId)
-  const [slack, setSlack] = useState<CrewShareSlack>()
-  useEffect(() => {
-    if (!target) return
-    let active = true
-    const load = () => void crewSharePage(target).then(data => { if (active) setSlack(data.slack) }).catch(() => undefined)
-    load()
-    window.addEventListener('agentworks:team-updated', load)
-    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
-  }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!workspacePath) return <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>
-  return <SlackBotChoice workspacePath={workspacePath} noun="Crew" layout="cards" who={slack && <ShareSlackRules slack={slack} />} />
-}
-
-/** The Slack tab's Who can talk to it: the server's lines (who may message the Crew in a channel, in a direct message,
- * and who is refused), then its note. */
-function ShareSlackRules({ slack }: { slack: CrewShareSlack }) {
-  return <div className="space-y-1.5 text-[13.5px]">
-    {slack.rules.map(rule => <p key={rule.line} className="flex gap-2">
-      <span aria-hidden="true" className={rule.allowed ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>{rule.allowed ? '✓' : '✕'}</span>
-      <span className={rule.allowed ? undefined : 'text-muted-foreground'}>{rule.where && <b>{rule.where} </b>}{rule.line}</span>
-    </p>)}
-    {slack.note && <p className="pt-1 text-xs text-muted-foreground">{slack.note}</p>}
   </div>
 }
 

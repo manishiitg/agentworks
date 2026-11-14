@@ -31,7 +31,7 @@ export function isWorkIntegrationTabEnabled(tab: string, enabledPanels?: Set<str
   if (tab === 'secrets') return enabledPanels.has('secrets') || enabledPanels.has('mcp')
   if (tab === 'message-agents') return true
   if (tab === 'access' || tab === 'computer' || tab === 'laptop' || tab === 'sync' || tab === 'computer-use' || tab === 'mac-folders') return true
-  if (tab === 'cli' || tab === 'agentbridge') return true
+  if (tab === 'cli' || tab === 'agentbridge' || tab === 'slack-bot') return true
   if (tab === 'folders') return enabledPanels.has('folders')
   if (tab === 'brain') return true
   return enabledPanels.has('bots')

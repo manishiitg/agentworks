@@ -1,7 +1,5 @@
 package server
 
-import "net/http"
-
 // The one Access page (owner, 5 Nov: "one Access page, not two"): the Mac app and the website render the same
 // component (YourComputerPanel), and this reply decides its shape. AccessHere "mac" means this app holds the Mac's own
 // controls (the Mac app's local backend); anywhere else the rows only the Mac can change come as text, worded here.
@@ -72,32 +70,11 @@ var crewAccessMacTabs = func() []crewAccessTab {
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// The Crew's Access tabs (owner, 9 Nov: separate tabs for dashboards and for Slack; 11 Nov: Team and Online): Team, the
-// people who work on the Crew with you (crew_share_page.go's team option; its Agents tab holds who can ask your agents
-// and actions, owner 12 Nov), alone on the Team page; then the Online page: Slack, the Crew's Slack bot (added by
-// crewAccessAddSlack only where it is offered), and Dashboards, everything the Crew publishes (crew_dashboards_tab.go).
-// A Crew on a Mac has Mac online first.
+// Team remains its own page. Online contains Mac online, Online agents and
+// Artifacts. Slack setup is reached through Connections (owner, 14 Nov).
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
 	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
-}
-
-var crewAccessSlackTab = crewAccessTab{ID: "slack", Label: "Slack", Detail: "talk to this Crew in Slack", Group: "online"}
-
-// crewAccessAddSlack puts the Slack tab before Dashboards when the server offers it; a tab not listed falls
-// back to the first one on the page.
-func (api *StreamingAPI) crewAccessAddSlack(r *http.Request, out *crewSyncReply, viewer string) {
-	if len(out.AccessTabs) == 0 || out.AccessView == "summary" || !api.crewSlackTabOffered(r, viewer, out.ProjectID) {
-		return
-	}
-	tabs := make([]crewAccessTab, 0, len(out.AccessTabs)+1)
-	for _, tab := range out.AccessTabs {
-		if tab.ID == "dashboards" {
-			tabs = append(tabs, crewAccessSlackTab)
-		}
-		tabs = append(tabs, tab)
-	}
-	out.AccessTabs = tabs
 }
 
 var crewAccessTeamTab = crewAccessPeopleTabs
