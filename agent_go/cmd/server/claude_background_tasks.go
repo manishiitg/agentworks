@@ -146,6 +146,10 @@ func (api *StreamingAPI) showClaudeWake(sessionID string) {
 
 // adoptQueuedClaudeWake runs the chat turn that adopts Claude's waiting wake.
 func (api *StreamingAPI) adoptQueuedClaudeWake(sessionID string) {
+	if chatTerminalTurnRefusal(sessionID) != "" {
+		dropQueuedNativeWakes(sessionID, "continued_in_terminal")
+		return
+	}
 	reason := ""
 	if at, ok := claudeTasksStoppedByPerson.LoadAndDelete(sessionID); ok && time.Since(at.(time.Time)) < 2*time.Minute {
 		reason = "stopped_by_person"

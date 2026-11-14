@@ -375,7 +375,11 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		if action == "continue_here" {
 			op, method = "here", http.MethodPost
 		}
-		status, body := scheduleHandler(r, api.handleChatTerminal, method, "/api/external/v1/chats/terminal", vars, url.Values{"conversation_key": {chat.key}, "action": {op}}, nil)
+		terminalHandler := func(w http.ResponseWriter, req *http.Request) {
+			req.Host = r.Host // The command must name the caller's saved connection, not httptest's default origin.
+			api.handleChatTerminal(w, req)
+		}
+		status, body := scheduleHandler(r, terminalHandler, method, "/api/external/v1/chats/terminal", vars, url.Values{"conversation_key": {chat.key}, "action": {op}}, nil)
 		respond(status, body)
 	case "fork":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))

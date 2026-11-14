@@ -56,3 +56,58 @@ func TestTerminalTransferChecksExactJournalAndRejectsExtraFiles(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-856-569: the wire carries only the root journal. Its return must not
+// erase the original native tool files or falsely fail the importer's lineage check.
+func TestTerminalReturnKeepsOriginalChildFilesAndChecksExportCursor(t *testing.T) {
+	id := "11111111-1111-4111-8111-111111111111"
+	original := []byte(`{"type":"user","sessionId":"` + id + `","message":{"role":"user","content":"Before"}}` + "\n")
+	makeBundle := func(raw []byte) *sessiontransfer.Bundle {
+		root := t.TempDir()
+		if e := os.WriteFile(filepath.Join(root, "session.jsonl"), raw, 0600); e != nil {
+			t.Fatal(e)
+		}
+		sum := sha256.Sum256(raw)
+		return &sessiontransfer.Bundle{Provider: "claude-code", Format: "claude-jsonl", Transport: "structured", SessionID: id, Workspace: t.TempDir(), Root: root, Files: map[string]sessiontransfer.File{"session.jsonl": {Size: int64(len(raw)), SHA256: hex.EncodeToString(sum[:])}}}
+	}
+	before := makeBundle(original)
+	child := []byte("original private tool output")
+	sum := sha256.Sum256(child)
+	childPath, e := sessiontransfer.Path(before.Root, "tool-results/tool-1.txt", true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(childPath, child, 0600); e != nil {
+		t.Fatal(e)
+	}
+	before.Files["tool-results/tool-1.txt"] = sessiontransfer.File{Size: int64(len(child)), SHA256: hex.EncodeToString(sum[:])}
+	returned := makeBundle(append(append([]byte{}, original...), []byte(`{"type":"assistant","sessionId":"`+id+`","message":{"role":"assistant","content":"After"}}`+"\n")...))
+	cursor := before.Files["session.jsonl"]
+	if e = CheckPrefix(returned.Root, cursor.Size, cursor.SHA256); e != nil {
+		t.Fatal(e)
+	}
+	merged, e := MergeRootReturn(before, returned)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(returned.Files) != 1 || len(merged.Files) != 2 {
+		t.Fatal("wire bundle changed or original child lost")
+	}
+	if e = sessiontransfer.Ancestor(before, merged); e != nil {
+		t.Fatal("full importer still rejects root-only return", e)
+	}
+	store := t.TempDir()
+	if e = sessiontransfer.ImportJSONL(store, before.Workspace, before); e != nil {
+		t.Fatal(e)
+	}
+	if e = sessiontransfer.ImportJSONL(store, before.Workspace, merged); e != nil {
+		t.Fatal("native importer rejected preserved original files", e)
+	}
+	divergent := makeBundle(bytes.Replace(original, []byte("Before"), []byte("Branch"), 1))
+	if e = CheckPrefix(divergent.Root, cursor.Size, cursor.SHA256); e == nil {
+		t.Fatal("changed export prefix accepted")
+	}
+	if _, e = MergeRootReturn(before, divergent); e == nil {
+		t.Fatal("divergent return accepted")
+	}
+}

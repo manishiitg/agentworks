@@ -16,12 +16,14 @@ const chatTerminalNotice = "This chat is open in your terminal; attach it back t
 // One private receipt, not a lease. Recovery supersedes the receipt permanently;
 // an old terminal cannot overwrite a chat continued here after recovery.
 type chatTerminalState struct {
-	Owner   string `json:"owner"`
-	Chat    string `json:"chat"`
-	Session string `json:"session"`
-	Native  string `json:"native"`
-	Receipt string `json:"receipt"`
-	Out     bool   `json:"out"`
+	JournalBytes int64  `json:"journal_bytes"`
+	JournalSHA   string `json:"journal_sha"`
+	Owner        string `json:"owner"`
+	Chat         string `json:"chat"`
+	Session      string `json:"session"`
+	Native       string `json:"native"`
+	Receipt      string `json:"receipt"`
+	Out          bool   `json:"out"`
 }
 
 func chatTerminalPath(session string) (string, error) {
@@ -79,4 +81,12 @@ func chatTerminalTurnRefusal(session string) string {
 	}
 	log.Printf("[CHAT_TERMINAL_RESUME] chat=%s session=%s action=refused reason=continued_in_terminal", s.Chat, session)
 	return chatTerminalNotice
+}
+
+func (api *StreamingAPI) chatTerminalWorkRunning(session string) bool {
+	if api.crewAgentTurnRunning(session) || api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(session) {
+		return true
+	}
+	status := api.sessionDisplayStatus(session)
+	return status.HasRunningBackgroundAgents || status.Status == "running" || status.Status == "paused"
 }

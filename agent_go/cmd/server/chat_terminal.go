@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,7 +84,7 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer release()
-	if api.crewAgentTurnRunning(c.SessionID) || op != "here" && api.conversationTurnHasBacklog(user, c.SessionID) {
+	if api.chatTerminalWorkRunning(c.SessionID) || op != "here" && api.conversationTurnHasBacklog(user, c.SessionID) {
 		fail(409, "turn_running", "Wait for this chat's current turn and queued messages to finish.")
 		return
 	}
@@ -108,6 +109,25 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	roots, bound, e := crewStorageRoots(c.WorkspacePath)
+	// A member owns this chat, not the Crew owner's private runtime. Reuse
+	// the existing per-member transfer admission and private staging roots.
+	if e == nil && bound && roots.Owner != user && !IsLocalMode() {
+		team, err := readCrewTeam(project)
+		if err != nil {
+			e = err
+		} else {
+			pair, onMac := team.memberMac(user)
+			if !onMac {
+				e = fmt.Errorf("this member has no synced Mac folder")
+			} else {
+				var member bool
+				roots, _, member, e = api.crewMemberTransfer(r.Context(), claims, project, pair)
+				if e == nil && !member {
+					e = fmt.Errorf("this is not your own Team runtime")
+				}
+			}
+		}
+	}
 	if e != nil || !bound {
 		fail(409, "folder_unavailable", "Open this chat's project folder first.")
 		return
@@ -135,6 +155,8 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(409, "use_mac", "Use Continue in my terminal in the Mac app where this chat runs.")
 			return
 		}
+		closeWorkflowPolicyCLI(c.SessionID, c.Provider, "continued in personal terminal")
+		api.removeSessionAgent(c.SessionID)
 		conversation, err := api.captureCrewHandoffConversation(r.Context(), claims, roots, c, true)
 		if err != nil || conversation == nil || conversation.Native == nil {
 			fail(422, "native_unavailable", "This chat's saved Claude session is unavailable. Keep using it here.")
@@ -147,12 +169,12 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(422, "native_invalid", "This chat's saved native session could not be verified.")
 			return
 		}
-		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Native: b.SessionID, Receipt: uuid.NewString(), Out: true}
+		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Native: b.SessionID, Receipt: uuid.NewString(), Out: true, JournalBytes: b.Files["session.jsonl"].Size, JournalSHA: b.Files["session.jsonl"].SHA256}
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "The chat could not be moved. Nothing was started.")
 			return
 		}
-		closeWorkflowPolicyCLI(c.SessionID, c.Provider, "continued in personal terminal")
+		dropQueuedNativeWakes(c.SessionID, "continued_in_terminal")
 		transfer := chatterminal.Transfer{Receipt: state.Receipt, Session: c.SessionID, Bundle: b}
 		transfer.Reference = chatterminal.Reference{Key: c.ConversationKey, Project: project}
 		if IsLocalMode() {
@@ -181,7 +203,21 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			fail(409, "handoff_changed", "This terminal session no longer matches the live handoff. Continue here instead if you want to recover the chat.")
 			return
 		}
-		runtime, err := api.importCrewNative(r.Context(), claims, roots, c, c.SessionID, t.Bundle, true)
+		if err = chatterminal.CheckPrefix(t.Bundle.Root, state.JournalBytes, state.JournalSHA); err != nil {
+			fail(409, "native_diverged", "The terminal session changed its original history. Both copies were kept; choose Continue here instead.")
+			return
+		}
+		previous, err := api.captureCrewHandoffConversation(r.Context(), claims, roots, c, true)
+		if err != nil || previous == nil || previous.Native == nil {
+			fail(409, "native_unavailable", "The original native session could not be checked. Both copies were kept.")
+			return
+		}
+		merged, err := chatterminal.MergeRootReturn(previous.Native, t.Bundle)
+		if err != nil {
+			fail(409, "native_diverged", "The native history changed in both places. Both copies were kept.")
+			return
+		}
+		runtime, err := api.importCrewNative(r.Context(), claims, roots, c, c.SessionID, merged, true)
 		if err != nil || runtime == nil {
 			fail(409, "import_failed", "Could not restore this native session. Both copies were kept; retry attach or choose Continue here instead.")
 			return
@@ -197,10 +233,14 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		doc["runtime"], _ = json.Marshal(runtime)
-		if err = api.saveTerminalReturnedHistory(r, roots, c, user, doc, t.Bundle.Root); err != nil {
+		if err = api.saveTerminalReturnedHistory(r, roots, c, user, doc, t.Bundle.Root, state); err != nil {
 			fail(500, "history_save_failed", "Could not save the returned conversation. Retry attach.")
 			return
 		}
+		api.conversationMux.Lock()
+		delete(api.conversationHistory, c.SessionID)
+		delete(api.resumeHistorySources, c.SessionID)
+		api.conversationMux.Unlock()
 		state.Out = false
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Could not finish returning the chat. Retry attach.")
@@ -213,12 +253,34 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 	fail(400, "invalid_action", "Use this chat's Continue in my terminal command.")
 }
 
-func (api *StreamingAPI) saveTerminalReturnedHistory(r *http.Request, roots crewroot.Roots, c ProductConversationRecord, user string, doc map[string]json.RawMessage, stage string) error {
-	messages, _, e := readNewClaudeTranscriptMessages(filepath.Join(stage, "session.jsonl"), time.Time{})
+func (api *StreamingAPI) saveTerminalReturnedHistory(r *http.Request, roots crewroot.Roots, c ProductConversationRecord, user string, doc map[string]json.RawMessage, stage string, state chatTerminalState) error {
+	file, e := os.Open(filepath.Join(stage, "session.jsonl"))
 	if e != nil {
 		return e
 	}
-	history := []llmtypes.MessageContent{}
+	defer file.Close()
+	if _, e = file.Seek(state.JournalBytes, io.SeekStart); e != nil {
+		return e
+	}
+	// Unlike the UI's bounded recent-history window, the return cursor must
+	// append every new visible turn, including a long or older terminal run.
+	reader := bufio.NewReader(file)
+	var messages []builderConversationMessage
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if message, _, ok := parseClaudeTranscriptLine(line); ok {
+				messages = append(messages, message)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	newHistory := []llmtypes.MessageContent{}
 	for _, m := range filterNativeContinuityMessagesUncapped(messages) {
 		role := llmtypes.ChatMessageTypeHuman
 		if m.Role == "ai" || m.Role == "assistant" {
@@ -231,13 +293,27 @@ func (api *StreamingAPI) saveTerminalReturnedHistory(r *http.Request, roots crew
 			}
 		}
 		if len(parts) > 0 {
-			history = append(history, llmtypes.TextPart(role, strings.Join(parts, "\n\n")))
+			newHistory = append(newHistory, llmtypes.TextPart(role, strings.Join(parts, "\n\n")))
 		}
 	}
-	if len(history) == 0 {
-		return fmt.Errorf("returned Claude journal has no readable history")
+	var original []json.RawMessage
+	if e = json.Unmarshal(doc["conversation_history"], &original); e != nil {
+		return e
 	}
-	doc["conversation_history"], _ = json.Marshal(history)
+	var returned string
+	_ = json.Unmarshal(doc["terminal_return_receipt"], &returned)
+	if returned != state.Receipt {
+		for _, message := range newHistory {
+			raw, e := json.Marshal(message)
+			if e != nil {
+				return e
+			}
+			original = append(original, raw)
+		}
+		doc["conversation_history"], _ = json.Marshal(original)
+		doc["terminal_return_receipt"], _ = json.Marshal(state.Receipt)
+		doc["updated_at"], _ = json.Marshal(time.Now().UTC().Format(time.RFC3339Nano))
+	}
 	path, found, e := FindChatHistoryConversationPathForSession(user, c.SessionID, c.WorkspacePath)
 	if e != nil {
 		return e
@@ -256,6 +332,10 @@ func (api *StreamingAPI) saveTerminalReturnedHistory(r *http.Request, roots crew
 	if e = write(chatHistoryResumeSnapshotPath(path), string(boundChatHistoryResumeSnapshot(projectChatHistoryConversationForResumePage(data, chatHistoryResumeSnapshotTurns, 0)))); e != nil {
 		return e
 	}
+	var history []llmtypes.MessageContent
+	if e = json.Unmarshal(doc["conversation_history"], &history); e != nil {
+		return e
+	}
 	if e = updatePersistedChatHistoryIndexWithWriter(user, c.SessionID, "multi-agent", history, len(history), nil, path, int64(len(data)), time.Now(), nil, write); e != nil {
 		return e
 	}
@@ -266,16 +346,21 @@ func (api *StreamingAPI) saveTerminalReturnedHistory(r *http.Request, roots crew
 	if e = api.eventStore.SetSessionPersistenceClass(c.SessionID, storeevents.SessionPersistenceInteractiveChat); e != nil {
 		return e
 	}
+	newRaw, e := json.Marshal(map[string]any{"session_id": c.SessionID, "user_id": user, "conversation_history": newHistory})
+	if e != nil {
+		return e
+	}
 	var conversation builderConversationLog
-	if e = json.Unmarshal(data, &conversation); e != nil {
+	if e = json.Unmarshal(newRaw, &conversation); e != nil {
 		return e
 	}
 	var dialogue []storeevents.Event
-	for _, row := range builderConversationToRawEventsLimit(conversation, 0) {
+	for i, row := range builderConversationToRawEventsLimit(conversation, 0) {
 		var event storeevents.Event
 		if e = json.Unmarshal(row, &event); e != nil {
 			return e
 		}
+		event.ID = fmt.Sprintf("terminal:%s:%d", state.Receipt, i)
 		dialogue = append(dialogue, event)
 	}
 	return api.eventStore.ImportDurableChatEvents(c.SessionID, dialogue)
