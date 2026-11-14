@@ -40,7 +40,7 @@ export function WorkspaceAccountMenu() {
       <details className="group/switch">
         <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2.5 rounded-md px-3 py-1.5 text-xs hover:bg-muted"><Laptop className="h-4 w-4" />Switch workspace<ChevronRight className="ml-auto h-3.5 w-3.5 group-open/switch:rotate-90" /></summary>
         <div className="space-y-1 border-l border-border pl-2 ml-4">
-          <ProductSurfaceSwitcher menuOnly menuColumns={1} />
+          <ProductSurfaceSwitcher menuOnly className="!border-t-0 [&>h3]:sr-only [&>div]:!grid-cols-1" />
           <ConnectedServersMenuItem />
         </div>
       </details>
