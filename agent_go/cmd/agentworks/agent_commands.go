@@ -27,7 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share publishes this chat's agent to the network (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare takes it back; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share turns on discovery for this chat's agent (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare turns discovery off; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -270,7 +270,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		}
 		shared := ""
 		if a.Published {
-			shared = " | published to the network"
+			shared = " | discoverable on the network"
 		}
 		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
 	}
@@ -1249,11 +1249,11 @@ func loginLabel(server string) string {
 // which a coding agent may do for its own exact session when the person asked.
 func shareCommand(o *options, unshare bool) *cobra.Command {
 	var agent string
-	use, short := "share [@LOGIN]", "Publish an agent to the network (everyone on the server can find and message it)"
+	use, short := "share [@LOGIN]", "Turn on discovery for an agent (everyone on the server can find and message it)"
 	if unshare {
-		use, short = "unshare [@LOGIN]", "Take an agent back from the network (only you and your agents can reach it)"
+		use, short = "unshare [@LOGIN]", "Turn off discovery for an agent (only you and your agents can reach it)"
 	}
-	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "An agent is connected (reachable only by you and your own agents) or published to the network (everyone on the server can find and message it). Messages from other people's agents arrive marked as untrusted. @LOGIN acts on a network this chat joined with --also.", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "An agent is connected (reachable only by you and your own agents) or discoverable on the network (everyone on the server can find and message it). Messages from other people's agents arrive marked as untrusted. @LOGIN acts on a network this chat joined with --also.", RunE: func(cmd *cobra.Command, args []string) error {
 		network := ""
 		if len(args) == 1 {
 			var ok bool
@@ -1333,12 +1333,12 @@ func shareResultText(raw json.RawMessage) string {
 	}
 	switch data.State {
 	case "published":
-		return fmt.Sprintf("agent:%s is published to the network. Everyone on the server can find and message it; their messages arrive marked as untrusted.", data.Agent)
+		return fmt.Sprintf("Discovery is on for agent:%s. Everyone on the server can find and message it; their messages arrive marked as untrusted.", data.Agent)
 	case "unpublished":
 		if !data.WasPublished {
-			return fmt.Sprintf("agent:%s was not published.", data.Agent)
+			return fmt.Sprintf("Discovery was already off for agent:%s.", data.Agent)
 		}
-		return fmt.Sprintf("agent:%s is no longer published. Only you and your own agents can reach it.", data.Agent)
+		return fmt.Sprintf("Discovery is off for agent:%s. Only you and your own agents can reach it.", data.Agent)
 	}
 	return "AgentWorks sent back an unexpected result, so this may not have changed anything. Check with /agentworks agents."
 }

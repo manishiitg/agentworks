@@ -152,7 +152,7 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 
 // errAgentNotPublished is what a sender is told when a conversation's grant has ended (the agent was
 // unpublished, or the retired group it was in is gone).
-var errAgentNotPublished = fmt.Errorf("That agent isn't published any more; ask its owner to publish it again.")
+var errAgentNotPublished = fmt.Errorf("Discovery is off for that agent; ask its owner to turn it on again.")
 
 // conversationShareErr is the fence for every operation on a cross-account
 // conversation: both ends must carry the same live grant, belong to its owner

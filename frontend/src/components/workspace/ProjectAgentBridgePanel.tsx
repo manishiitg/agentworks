@@ -18,7 +18,7 @@ const providerLabel = (provider?: string) => ({ claude: 'Claude Code', codex: 'C
 export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: {
   target: string; tabId?: string; onAsk: (message: string) => void | Promise<unknown>
   onSend?: (message: string) => void | Promise<unknown>
-  /** coding: coding apps on this Mac (Connections); others: published agents (Full menu, Message other agents). */
+  /** coding: coding apps on this Mac (Connections); others: discoverable agents (Full menu, Message other agents). */
   view: 'coding' | 'others' | 'network'
 }) {
   const user = useAuthStore(state => state.user?.id)
@@ -66,17 +66,17 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading agents…</p>}
     <div className="max-h-80 space-y-1 overflow-y-auto">
       {visible.map((agent, index) => <div key={agent.id}>
-        {(index === 0 || (visible[index - 1].yours === true) !== (agent.yours === true)) && <h4 className="pb-1 pt-2 text-xs font-medium text-muted-foreground">{agent.yours === true ? 'Your agents · only you can message them' : 'Other people’s agents · published or shared with you'}</h4>}
+        {(index === 0 || (visible[index - 1].yours === true) !== (agent.yours === true)) && <h4 className="pb-1 pt-2 text-xs font-medium text-muted-foreground">{agent.yours === true ? 'Your agents · only you can message them' : 'Other people’s agents · discoverable or shared with you'}</h4>}
         <details className="rounded-lg border border-border px-3 py-2">
         <summary className="cursor-pointer text-xs marker:text-muted-foreground">
           <span className="font-medium">{name(agent)}</span>
-          {agent.yours === true && <span className="ml-2 text-[11px] text-muted-foreground">{agent.published ? 'Published' : 'Only you'}</span>}
+          {agent.yours === true && <span className="ml-2 text-[11px] text-muted-foreground">{agent.published ? 'Discoverable' : 'Only you'}</span>}
           <span className={`ml-2 text-[11px] ${agent.online === true ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{agent.online === true ? 'Connected' : agent.presence || (agent.online === false ? 'Offline' : 'Status unknown')}</span>
           <span className="mt-0.5 block truncate text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</span>
         </summary>
         <div className="mt-2 space-y-2 border-t border-border pt-2 text-xs">
           <p className="whitespace-pre-wrap break-words text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</p>
-          {agent.yours === true && <p className="text-muted-foreground">Connected means your own agents can message it now. Publishing lets other people’s agents find and message it too.</p>}
+          {agent.yours === true && <p className="text-muted-foreground">Connected means your own agents can message it now. Discovery lets other people’s agents find and message it too.</p>}
           {agent.provider && <p className="text-muted-foreground">{providerLabel(agent.provider)}</p>}
           <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted" onClick={() => {
             if ((agent.yours === true || agent.published === true) && onSend) {
@@ -106,7 +106,7 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
     {agents && view === 'others' && <section aria-label="Message other agents" className="space-y-3">
-      <p className="text-xs text-muted-foreground">Your own agents, agents people have published, and Crews shared with you.</p>
+      <p className="text-xs text-muted-foreground">Your own agents, discoverable agents, and Crews shared with you.</p>
       {/* Coding chats on this Mac (Claude Code, Codex, Cursor) come first, with their program label; they had their own
           page until the owner removed it (4 Nov). */}
       {local.map(agent => row(agent, true))}
