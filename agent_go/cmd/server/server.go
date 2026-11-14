@@ -2144,6 +2144,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// durable pane snapshot first; retained-turn reconciliation then uses that
 	// authoritative result to settle only the matching main-agent turn.
 	eventStore.SetEventPreparer(func(sessionID string, event *events.Event) {
+		api.prepareNativeGoalEvent(sessionID, event)
 		prepareUserMessageAttachments(event)
 		tagManualCompactionEvent(sessionID, event)
 	})
@@ -2155,6 +2156,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.observeTurnInactivity(sessionID, event)
 		api.observeNativeBackgroundCommands(sessionID, event)
 		api.observeUsageLimitFailure(sessionID, event)
+		api.observeNativeGoalWakeCompletion(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
 		api.notifyNeedsYou(sessionID, event)
@@ -3866,7 +3868,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	queryLogCtx := requestLogContext(r.Context(), req, sessionID)
 	registerServerLogContext(queryLogCtx, sessionID, queryID)
 	queryLogger := queryLogCtx.Logger(api.logger)
-	logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+0ms | Request received | query_preview=%q", truncateForLog(req.Query, 80))
+	queryPreview := truncateForLog(req.Query, 80)
+	if command, known, _ := parseNativeGoalCommand(req.Query, sessionID); known {
+		queryPreview = "native_goal:" + command.Action
+	}
+	logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+0ms | Request received | query_preview=%q", queryPreview)
 	logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] HTTP handler: currentUserID=%q (from auth context)", currentUserID)
 
 	// PLAT-262: resolved fresh from this request's own live auth claims, not
@@ -4340,6 +4346,25 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if receipt, ok := r.Context().Value(nativeGoalRestoreContextKey{}).(string); ok && !api.nativeGoalRestoreCurrent(r.Context(), sessionID, receipt) {
+		log.Printf("[AGENT_GOAL] session=%s restore=%s action=skipped reason=restore_canceled_before_admission", sessionID, receipt)
+		http.Error(w, "Goal restoration was canceled", http.StatusConflict)
+		return
+	}
+	if previous, err := api.latestNativeGoal(r.Context(), sessionID); err == nil && previous != nil {
+		if command, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok && (command.Action == "set" || command.Action == "resume") {
+			if err := api.projectNativeGoal(sessionID, *previous, "intent_"+command.Action); err != nil {
+				http.Error(w, "Could not save goal intent", http.StatusServiceUnavailable)
+				return
+			}
+		} else if !req.IsAutoNotification {
+			if err := api.projectNativeGoal(sessionID, *previous, "intent_message"); err != nil {
+				http.Error(w, "Could not save goal intent", http.StatusServiceUnavailable)
+				return
+			}
+		}
+	}
+
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 
@@ -4348,6 +4373,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		delivered, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
 		combinedPerson := delivered["source"] == "queued_batch" && delivered["combined_person_input"] == true
 		if combinedPerson || (idleCompactPersonTurn(r, sessionID, req) && req.AgentMessageInbox == "" && len(delivered) == 0) {
+			api.cancelNativeGoalRestore(sessionID, "person_message_admitted")
 			api.cancelUsageLimitRecovery(sessionID, "person_message_admitted")
 			backgroundFollowUps.personWrote(sessionID)
 		}
@@ -4839,6 +4865,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// wrapper, so deriving from r.Context() lets stop_workflow_run/terminate_agent
 		// cancel the actual orchestrator context instead of only the wrapper waiter.
 		workflowBaseCtx := context.Background()
+		if goal, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sessionID); ok {
+			workflowBaseCtx = llmtypes.WithNativeGoalCommand(workflowBaseCtx, goal)
+		}
+		if pause, ok := llmtypes.NativeGoalTurnPauseForSession(r.Context(), sessionID); ok {
+			workflowBaseCtx = llmtypes.WithNativeGoalTurnPause(workflowBaseCtx, pause)
+		}
+
 		if directWebhookOptions != nil || (req.TriggeredBy == "chat_tool" && strings.HasPrefix(sessionID, "wfrun_")) {
 			workflowBaseCtx = r.Context()
 		}

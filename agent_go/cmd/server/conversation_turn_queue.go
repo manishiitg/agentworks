@@ -267,6 +267,7 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 		return queuedConversationTurn{}, 0, err
 	}
 	if personQueuedRequest(turn) {
+		api.cancelNativeGoalRestore(sessionID, "person_message_queued")
 		api.cancelUsageLimitRecovery(sessionID, "person_message_queued")
 	}
 	position := 0

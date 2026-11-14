@@ -2692,6 +2692,13 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	if api.botManager != nil {
 		api.botManager.PrepareSyntheticTurn(sessionID)
 	}
+	goalRestore := api.pauseNativeGoalForWake(sessionID)
+	goalRestoreHandled := false
+	defer func() {
+		if !goalRestoreHandled {
+			api.restoreNativeGoalAfterWake(sessionID, goalRestore, fmt.Errorf("wake_not_started"))
+		}
+	}()
 	parentExecutionID = strings.TrimSpace(parentExecutionID)
 	if parentExecutionID == "" {
 		parentExecutionID = api.currentConversationTurnExecutionID(sessionID)
@@ -2748,6 +2755,9 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 		api.terminalStore.MarkTurnRunning(mainTerminalID)
 	}
 
+	if goalRestore != nil && !api.markNativeGoalWakeStarted(sessionID, goalRestore, syntheticExecutionID) {
+		goalRestore = nil
+	}
 	// Create cancellable context for this synthetic turn
 	agentCtx, cancelTurn := context.WithCancelCause(context.Background())
 	agentCancel := func() { cancelTurn(context.Canceled) }
@@ -2767,6 +2777,12 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	}
 	if withContext != nil {
 		agentCtx = withContext(agentCtx)
+	}
+
+	if goalRestore != nil {
+		agentCtx = llmtypes.WithNativeGoalTurnPause(agentCtx, llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: "background_wake"})
+	} else if previous, err := api.latestNativeGoal(agentCtx, sessionID); err == nil && previous != nil && previous.Provider == "codex-cli" && previous.Goal != nil && previous.Goal.Status == "paused" {
+		agentCtx = llmtypes.WithNativeGoalTurnPause(agentCtx, llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: previous.Reason})
 	}
 
 	// Inject user ID into context
@@ -2819,6 +2835,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 		return false
 	}
 
+	goalRestoreHandled = true
 	go func() {
 		syntheticStatus := trackedExecutionStatusCanceled
 		syntheticError := "synthetic turn ended before completion was recorded"
@@ -2842,6 +2859,9 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 			api.completeTrackedExecution(syntheticExecutionID, syntheticStatus, syntheticError, nil)
 			if onComplete != nil {
 				onComplete(terminalErr)
+			}
+			if goalRestore != nil {
+				go api.restoreNativeGoalAfterWake(sessionID, goalRestore, terminalErr)
 			}
 
 			// If the session was explicitly stopped while this synthetic turn was running,
