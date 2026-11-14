@@ -1241,6 +1241,8 @@ func (api *StreamingAPI) markSessionStoppedAs(sessionID string, phase RuntimePha
 	api.stoppedSessionsMu.Lock()
 	api.stoppedSessions[sessionID] = true
 	api.stoppedSessionsMu.Unlock()
+	// Stop also drops background-work wakes still waiting for this chat.
+	dropQueuedNativeWakes(sessionID, "stopped")
 	if api.runtimeCoordinator != nil {
 		api.runtimeCoordinator.MarkTerminalBoundary(sessionID, phase, reason)
 	}
@@ -1441,6 +1443,9 @@ func (api *StreamingAPI) schedulePendingStartNotificationRetry(sessionID string)
 }
 
 func (api *StreamingAPI) drainPendingAutoNotificationsAfterTurn(sessionID string) {
+	// Background work that finished during the turn runs after any queued
+	// results; if those start a turn, its end calls this again.
+	defer api.runQueuedNativeWakes(sessionID)
 	// A turn ended: waiting results start over from the shortest check.
 	api.pendingMu.Lock()
 	delete(api.completionRetryBusyAttempts, sessionID)
@@ -2686,15 +2691,6 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	if api.botManager != nil {
 		api.botManager.PrepareSyntheticTurn(sessionID)
 	}
-	// Get stored agent for this session
-	api.sessionAgentsMux.RLock()
-	llmAgent, ok := api.sessionAgents[sessionID]
-	api.sessionAgentsMux.RUnlock()
-
-	if !ok || llmAgent == nil {
-		log.Printf("[BG AGENT] No stored agent for session %s, cannot trigger synthetic turn", sessionID)
-		return false
-	}
 	parentExecutionID = strings.TrimSpace(parentExecutionID)
 	if parentExecutionID == "" {
 		parentExecutionID = api.currentConversationTurnExecutionID(sessionID)
@@ -2707,6 +2703,16 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	releaseInputLane := api.lockSessionInputLane(sessionID)
 	if api.autoNotificationSessionUnreachable(sessionID) {
 		releaseInputLane()
+		return false
+	}
+	// Read the stored agent only now: a turn that ran while this one waited for
+	// the lane replaced (and closed) the agent stored before it.
+	api.sessionAgentsMux.RLock()
+	llmAgent, ok := api.sessionAgents[sessionID]
+	api.sessionAgentsMux.RUnlock()
+	if !ok || llmAgent == nil {
+		releaseInputLane()
+		log.Printf("[BG AGENT] No stored agent for session %s, cannot trigger synthetic turn", sessionID)
 		return false
 	}
 

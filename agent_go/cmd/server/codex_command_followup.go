@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,9 +21,10 @@ const codexCommandOutputTail = 2000
 
 // backgroundFollowUpChainLimit caps automatic follow-ups in a row, for Codex
 // commands and Claude's own background tasks alike: a follow-up can start
-// more background work that finishes and asks for another follow-up, and
-// each one is a full turn on the person's account.
-const backgroundFollowUpChainLimit = 3
+// more background work that finishes and asks for another follow-up. It is
+// only a loop guard; a long task with several background steps must finish
+// without the person nudging it (owner, 14 Nov 2026), so it is generous.
+const backgroundFollowUpChainLimit = 20
 
 // backgroundFollowUpChain counts follow-up turns started since the person last
 // wrote in each chat.
@@ -34,20 +35,23 @@ type backgroundFollowUpChain struct {
 
 var backgroundFollowUps = &backgroundFollowUpChain{count: map[string]int{}}
 
-// skipReason says why no follow-up may start now, or "" when one may.
-func (c *backgroundFollowUpChain) skipReason(sessionID string, stopped, busy bool) string {
-	switch {
-	case stopped:
+// skipReason says why a follow-up must not run at all, or "" when it may. A
+// busy chat is not a reason: the wake waits for the turn to end instead
+// (nativeWakes), as T3 Code queues it.
+func (c *backgroundFollowUpChain) skipReason(sessionID string, stopped bool) string {
+	if stopped {
 		return "stopped_by_person"
-	case busy:
-		return "chat_busy"
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.count[sessionID] >= backgroundFollowUpChainLimit {
+	if c.atLimit(sessionID) {
 		return "chain_limit"
 	}
 	return ""
+}
+
+func (c *backgroundFollowUpChain) atLimit(sessionID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count[sessionID] >= backgroundFollowUpChainLimit
 }
 
 func (c *backgroundFollowUpChain) started(sessionID string) {
@@ -64,32 +68,32 @@ func (c *backgroundFollowUpChain) personWrote(sessionID string) {
 }
 
 // followUpFinishedCodexCommand runs once per command: CompleteNativeTool
-// closes a command only once. It never starts a turn after the person pressed
-// Stop, while another turn holds the chat, or past the chain limit.
+// closes a command only once. The command waits in nativeWakes until the chat
+// is free; commands that finish together go into one follow-up turn.
 func (api *StreamingAPI) followUpFinishedCodexCommand(sessionID, commandID string, failed bool, output string) {
-	// Let commands that finish together and the reply's own end settle first;
-	// the first follow-up then carries on and the rest see a busy chat.
+	// Let commands that finish together and the reply's own end settle first.
 	time.Sleep(3 * time.Second)
-	if reason := backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID), api.isSessionBusyForAutoNotification(sessionID)); reason != "" {
-		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=%s", sessionID, commandID, reason)
-		return
+	nativeWakes.addCodex(sessionID, codexFinishedCommand{id: commandID, failed: failed, output: output})
+	api.runQueuedNativeWakes(sessionID)
+}
+
+// codexCommandsFinishedText is the follow-up prompt for one or more finished commands.
+func codexCommandsFinishedText(commands []codexFinishedCommand) string {
+	parts := make([]string, 0, len(commands))
+	for _, command := range commands {
+		status := "successfully"
+		if command.failed {
+			status = "with an error"
+		}
+		tail := []rune(command.output)
+		if len(tail) > codexCommandOutputTail {
+			tail = append([]rune("..."), tail[len(tail)-codexCommandOutputTail:]...)
+		}
+		text := string(tail)
+		if text == "" {
+			text = "(no output)"
+		}
+		parts = append(parts, fmt.Sprintf(codexCommandFinishedMessage, status, text))
 	}
-	status := "successfully"
-	if failed {
-		status = "with an error"
-	}
-	tail := []rune(output)
-	if len(tail) > codexCommandOutputTail {
-		tail = append([]rune("..."), tail[len(tail)-codexCommandOutputTail:]...)
-	}
-	text := string(tail)
-	if text == "" {
-		text = "(no output)"
-	}
-	if !api.executeSyntheticTurn(sessionID, fmt.Sprintf(codexCommandFinishedMessage, status, text)) {
-		log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=skip reason=turn_not_started", sessionID, commandID)
-		return
-	}
-	api.noteAutomaticFollowUpStarted(sessionID)
-	log.Printf("[CODEX_BACKGROUND] follow_up session=%s command=%s action=started failed=%t output_len=%d", sessionID, commandID, failed, len(output))
+	return strings.Join(parts, "\n\n")
 }
