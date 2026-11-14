@@ -129,3 +129,57 @@ func TestCrewTeamMessageNamesStayInsideAdmittedRegistry(t *testing.T) {
 		t.Fatalf("outsider discovery: %v", err)
 	}
 }
+
+// PLAT-746-951: a real paired owner send saved Path="." and was accepted,
+// then rejected at crew_binding. Inspect the route's saved endpoint and run
+// the same delivery admission; this is not proof of a live peer reply.
+func TestCrewTeamPairedOwnerSendKeepsAdmittedWorkspace(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env, ctx, root := agentEmailCrewFixture(t)
+	team := crewTeam{ProjectID: "mail-checks", OwnerID: "owner", On: true,
+		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "other-pair"}},
+		Agents: crewTeamAgentFixtures("mail-checks", map[string]map[string]bool{"owner": {"main": true}, "other": {"recipient": true}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("mail-checks", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	var target string
+	for id, a := range team.Agents {
+		if a.OwnerID == "other" {
+			target = id
+		}
+	}
+	r := httptest.NewRequest("POST", "/", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	env.api.crewTeamMessage(w, r, "mail-checks", crewSyncRequest{Action: "team_message", PairID: "pair", TeamMessage: &crewTeamMessageRequest{FromTab: "main", ConversationID: "native-source", AgentID: target, Message: "Review the shared report", SubmissionID: "paired-root"}})
+	if w.Code != 200 {
+		t.Fatalf("paired send refused: %d %s", w.Code, w.Body.String())
+	}
+	store, err := readAgentMessageStore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, c := range store.Conversations {
+		if len(c.Messages) == 0 || c.Messages[0].Submission != "paired-root" {
+			continue
+		}
+		found = true
+		if canonicalCrewWorkspaceRoot(c.Endpoints[0].Path) != canonicalCrewWorkspaceRoot(root) {
+			t.Fatalf("paired sender lost its admitted workspace: %q", c.Endpoints[0].Path)
+		}
+		if err := env.api.recheckAgentMessageAdmission(ctx, c, c.Messages[0]); err != nil {
+			t.Fatalf("paired delivery admission: %v", err)
+		}
+		c.Endpoints[0].Path = "Crew/another-project"
+		if err := env.api.recheckAgentMessageAdmission(ctx, c, c.Messages[0]); err == nil {
+			t.Fatal("wrong stored Crew root bypassed delivery admission")
+		}
+	}
+	if !found {
+		t.Fatal("paired route did not persist its accepted send")
+	}
+}
