@@ -2,8 +2,9 @@ package claudecode
 
 import (
 	"context"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"testing"
+
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // PLAT-746-1008: the SDK wire receives one explicit skill request, not a
@@ -44,4 +45,14 @@ func TestClaudeNativeSkillPromptAndSteerKeepExactSession(t *testing.T) {
 	if err != nil || params.(map[string]any)["skill_name"] != nil {
 		t.Fatal("child inherited skill")
 	}
+	// Existing launch policy, not the UI, decides which native names are disabled.
+	for _, name := range []string{"design", "doctor", "cc-plugin-plugin-authoring:review"} {
+		blocked := llmtypes.WithNativeSkill(context.Background(), owner, llmtypes.NativeSkill{Name: name, Path: skill.Path})
+		_, closeBlocked, err := claudeSDKParamsWithImages(blocked, owner, map[string]any{"type": "prompt", "text": "Do not send"}, nil)
+		closeBlocked()
+		if err == nil {
+			t.Fatalf("disabled launch skill %s admitted", name)
+		}
+	}
+
 }

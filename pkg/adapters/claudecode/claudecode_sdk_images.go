@@ -89,6 +89,9 @@ func claudeSDKParamsWithImages(ctx context.Context, owner string, base map[strin
 		if err := llmtypes.ValidateNativeSkill(skill); err != nil {
 			return nil, func() {}, err
 		}
+		if !NativeSkillInvocable(skill.Name) {
+			return nil, func() {}, llmtypes.NativeSkillUnavailable("this Claude launch")
+		}
 		base["skill_name"] = skill.Name
 	}
 	inputs := llmtypes.ClaimNativeImageInputsForSession(ctx, owner)

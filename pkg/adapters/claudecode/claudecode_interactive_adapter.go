@@ -241,11 +241,22 @@ func claudeAddSkillScopeSettings(settings map[string]any) {
 	if overrides == nil {
 		overrides = map[string]any{}
 	}
-	overrides["design"] = "off"
-	overrides["doctor"] = "off"
+	for name, value := range claudeForcedSkillOverrides() {
+		overrides[name] = value
+	}
 	settings["skillOverrides"] = overrides
 
 	settings["syncClaudeAiSkills"] = false
+}
+
+func claudeForcedSkillOverrides() map[string]any {
+	return map[string]any{"design": "off", "doctor": "off"}
+}
+
+// NativeSkillInvocable shares the launch's forced policy with host discovery.
+// It does not enable a skill or override the native CLI's own settings.
+func NativeSkillInvocable(name string) bool {
+	return claudeForcedSkillOverrides()[name] != "off" && !strings.HasPrefix(name, "cc-plugin-plugin-authoring:")
 }
 
 // writeClaudeSkillScopedSettings adds the skill scope to the launch settings
