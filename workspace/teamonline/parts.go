@@ -139,15 +139,21 @@ func DescribeParts(root *os.Root, parts []string) (Schema, error) {
 	return *header.Schema, nil
 }
 func ImportParts(ctx context.Context, destination *sql.DB, root *os.Root, parts []string, seed bool) error {
+	return ImportPartsWithPublication(ctx, destination, root, parts, seed, nil)
+}
+func ImportPartsWithPublication(ctx context.Context, destination *sql.DB, root *os.Root, parts []string, seed bool, publish func() error) error {
 	if !seed {
+		if publish != nil {
+			return publish()
+		}
 		return nil
-	} // Do not inspect/open old data parts on a republish.
+	}
 	if len(parts) == 0 || len(parts) > publication.MaxFiles {
 		return fmt.Errorf("dataset parts are missing or exceed the publication limit")
 	}
 	reader := &partReader{root: root, parts: parts}
 	defer reader.Close()
-	return Import(ctx, destination, reader, true)
+	return ImportWithPublication(ctx, destination, reader, true, publish)
 }
 
 // InspectParts lets the common receiver check actual cell bytes against its
