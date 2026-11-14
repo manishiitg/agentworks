@@ -65,6 +65,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			fail(409, "Could not save this fork.")
 			return
 		}
+		log.Printf("[AGENT_FORK] project=%s fork=%s source=%s copy=%s event=created", project, offer.ID, offer.Agent.ID, offer.CopyAgentID)
 		externalJSON(w, offer)
 		return
 	}
