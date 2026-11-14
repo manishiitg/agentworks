@@ -119,10 +119,10 @@ profile:
     # itself and are not governed by this list.
   # Product slash commands submit instructions in the current chat.
   commands:
-    - name: deep work
-      description: Plan a complex task, then carry it through with agents as needed
-      icon: brain
-      file: commands/deep-work.md
+    - name: goal
+      description: Work toward an objective using the program’s native goal feature
+      icon: target
+      file: commands/goal.md
   runtime:
     # Managed data uses the same direct bridge in Builder and Run. Registration
     # and session access decide whether the database family has reads or writes.
