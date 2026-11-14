@@ -1325,6 +1325,30 @@
     "source_action": "git_action"
   },
   {
+    "family": "workspace",
+    "name": "search_messages",
+    "member": "workspace__search_messages",
+    "description": "Find readable messages in the selected workspace using query and cursor, with snippets and exact message links.",
+    "source": "workspace",
+    "source_action": "search_messages"
+  },
+  {
+    "family": "workspace",
+    "name": "sync",
+    "member": "workspace__sync",
+    "description": "Read or change this Crew\u2019s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
+    "source": "workspace",
+    "source_action": "sync"
+  },
+  {
+    "family": "workspace",
+    "name": "reply_input",
+    "member": "workspace__reply_input",
+    "description": "Answer a pending question from your own Ask turn using its query_id, request_id and answers.",
+    "source": "workspace",
+    "source_action": "reply_input"
+  },
+  {
     "family": "terminal",
     "name": "local_execute",
     "member": "execute_local_shell_command",
