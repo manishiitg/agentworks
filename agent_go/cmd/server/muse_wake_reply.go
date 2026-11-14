@@ -15,9 +15,21 @@ import (
 func (api *StreamingAPI) recordMuseWakeReply(reply musecli.MuseMSPReply) {
 	sessionID := strings.TrimSpace(reply.Owner)
 	text := strings.TrimSpace(reply.Text)
-	if api == nil || api.eventStore == nil || sessionID == "" || text == "" {
+	if api == nil || api.eventStore == nil || sessionID == "" {
 		return
 	}
+	// Save native text as before, but an empty completed wake still queues a
+	// real continuation. Failed/cancelled turns never trigger another turn.
+	if reply.Terminal == "completed" {
+		defer func() {
+			nativeWakes.addMuse(sessionID, museWake{nativeSessionID: reply.NativeSessionID, turnID: reply.TurnID, sources: museWakeSources(reply.Sources), text: text})
+			api.runQueuedNativeWakes(sessionID)
+		}()
+	}
+	if text == "" {
+		return
+	}
+
 	header := "**Muse, on its own**"
 	if sources := museWakeSources(reply.Sources); sources != "" {
 		header = "**Monitor: " + sources + "**"
@@ -47,4 +59,25 @@ func museWakeSources(sources []string) string {
 		joined = string([]rune(joined)[:117]) + "..."
 	}
 	return strings.ReplaceAll(joined, "*", "")
+}
+
+func museWakesFinishedText(wakes []museWake) string {
+	var b strings.Builder
+	b.WriteString("[Background work finished] Muse completed background work. Review the results and carry on with your task unless it is finished.")
+	for _, wake := range wakes {
+		b.WriteString("\n\n")
+		if wake.sources != "" {
+			b.WriteString(wake.sources + ": ")
+		}
+		text := []rune(wake.text)
+		if len(text) > 2000 {
+			text = text[len(text)-2000:]
+		}
+		if len(text) == 0 {
+			b.WriteString("(no output)")
+		} else {
+			b.WriteString(string(text))
+		}
+	}
+	return b.String()
 }

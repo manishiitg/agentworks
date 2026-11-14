@@ -41,7 +41,7 @@ func TestNativeWakesWaitBatchAndDropOnStop(t *testing.T) {
 	nativeWakes.addCodex(chat, codexFinishedCommand{id: "a", output: "ok"})
 	nativeWakes.addCodex(chat, codexFinishedCommand{id: "b", failed: true})
 	nativeWakes.addCodex(chat, codexFinishedCommand{id: "a", output: "ok"})
-	commands, _ := nativeWakes.take(chat)
+	commands, _, _ := nativeWakes.take(chat)
 	if len(commands) != 2 {
 		t.Fatalf("queued commands = %d, want 2 (one per command)", len(commands))
 	}
@@ -51,7 +51,31 @@ func TestNativeWakesWaitBatchAndDropOnStop(t *testing.T) {
 	}
 	nativeWakes.addCodex(chat, codexFinishedCommand{id: "c"})
 	dropQueuedNativeWakes(chat, "stopped")
-	if commands, claude := nativeWakes.take(chat); len(commands) != 0 || claude {
+	if commands, claude, muse := nativeWakes.take(chat); len(commands) != 0 || claude || len(muse) != 0 {
 		t.Fatalf("Stop left wakes queued: %d %t", len(commands), claude)
+	}
+}
+
+// PLAT-746-941: empty Muse completions are kept and coalesced with other
+// wakes on the existing queue; Stop must clear them without starting a turn.
+func TestMuseWakesBatchEmptyRepliesAndDropOnStop(t *testing.T) {
+	const chat = "muse-wake-chat"
+	t.Cleanup(func() { dropQueuedNativeWakes(chat, "test_end") })
+	nativeWakes.addMuse(chat, museWake{nativeSessionID: "native", turnID: "one"})
+	nativeWakes.addMuse(chat, museWake{nativeSessionID: "native", turnID: "one"})
+	nativeWakes.addMuse(chat, museWake{nativeSessionID: "native", turnID: "two", text: "tests finished"})
+	_, _, wakes := nativeWakes.take(chat)
+	if len(wakes) != 2 {
+		t.Fatalf("wakes=%d", len(wakes))
+	}
+	text := museWakesFinishedText(wakes)
+	if !strings.Contains(text, "(no output)") || !strings.Contains(text, "tests finished") {
+		t.Fatalf("missing wake results: %q", text)
+	}
+	nativeWakes.addMuse(chat, wakes[0])
+	dropQueuedNativeWakes(chat, "stopped")
+	_, _, wakes = nativeWakes.take(chat)
+	if len(wakes) != 0 {
+		t.Fatal("Stop retained Muse wake")
 	}
 }

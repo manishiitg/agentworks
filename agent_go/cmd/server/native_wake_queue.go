@@ -2,6 +2,7 @@ package server
 
 import (
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
@@ -21,10 +22,15 @@ type codexFinishedCommand struct {
 	output string
 }
 
+type museWake struct {
+	nativeSessionID, turnID, sources, text string
+}
+
 type nativeWakeQueue struct {
 	mu     sync.Mutex
 	codex  map[string][]codexFinishedCommand
 	claude map[string]bool
+	muse   map[string][]museWake
 }
 
 var nativeWakes = &nativeWakeQueue{codex: map[string][]codexFinishedCommand{}, claude: map[string]bool{}}
@@ -40,6 +46,20 @@ func (q *nativeWakeQueue) addCodex(sessionID string, command codexFinishedComman
 	q.codex[sessionID] = append(q.codex[sessionID], command)
 }
 
+func (q *nativeWakeQueue) addMuse(sessionID string, wake museWake) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.muse == nil {
+		q.muse = map[string][]museWake{}
+	}
+	for _, queued := range q.muse[sessionID] {
+		if queued.nativeSessionID == wake.nativeSessionID && queued.turnID == wake.turnID {
+			return
+		}
+	}
+	q.muse[sessionID] = append(q.muse[sessionID], wake)
+}
+
 func (q *nativeWakeQueue) addClaude(sessionID string) {
 	q.mu.Lock()
 	q.claude[sessionID] = true
@@ -47,13 +67,14 @@ func (q *nativeWakeQueue) addClaude(sessionID string) {
 }
 
 // take removes and returns everything waiting for one chat.
-func (q *nativeWakeQueue) take(sessionID string) ([]codexFinishedCommand, bool) {
+func (q *nativeWakeQueue) take(sessionID string) ([]codexFinishedCommand, bool, []museWake) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	commands, claude := q.codex[sessionID], q.claude[sessionID]
+	commands, claude, muse := q.codex[sessionID], q.claude[sessionID], q.muse[sessionID]
 	delete(q.codex, sessionID)
 	delete(q.claude, sessionID)
-	return commands, claude
+	delete(q.muse, sessionID)
+	return commands, claude, muse
 }
 
 // runQueuedNativeWakes starts the follow-up turn for a chat's waiting wakes,
@@ -63,33 +84,40 @@ func (api *StreamingAPI) runQueuedNativeWakes(sessionID string) {
 	if !stopped && api.isSessionBusyForAutoNotification(sessionID) {
 		return
 	}
-	commands, claude := nativeWakes.take(sessionID)
+	commands, claude, muse := nativeWakes.take(sessionID)
 	if claude {
 		api.adoptQueuedClaudeWake(sessionID)
 	}
-	if len(commands) == 0 {
+	if len(commands) == 0 && len(muse) == 0 {
 		return
 	}
+	var messages []string
+	if len(commands) > 0 {
+		messages = append(messages, codexCommandsFinishedText(commands))
+	}
+	if len(muse) > 0 {
+		messages = append(messages, museWakesFinishedText(muse))
+	}
 	reason := backgroundFollowUps.skipReason(sessionID, stopped)
-	if reason == "" && !api.executeSyntheticTurn(sessionID, codexCommandsFinishedText(commands)) {
+	if reason == "" && !api.executeSyntheticTurn(sessionID, strings.Join(messages, "\n\n")) {
 		reason = "turn_not_started"
 	}
 	if reason != "" {
-		log.Printf("[CODEX_BACKGROUND] follow_up session=%s commands=%d action=skip reason=%s", sessionID, len(commands), reason)
+		log.Printf("[CODEX_BACKGROUND] follow_up session=%s commands=%d muse=%d action=skip reason=%s", sessionID, len(commands), len(muse), reason)
 		return
 	}
 	api.noteAutomaticFollowUpStarted(sessionID)
-	log.Printf("[CODEX_BACKGROUND] follow_up session=%s commands=%d action=started", sessionID, len(commands))
+	log.Printf("[CODEX_BACKGROUND] follow_up session=%s commands=%d muse=%d action=started", sessionID, len(commands), len(muse))
 }
 
 // dropQueuedNativeWakes forgets a chat's waiting wakes (the person pressed
 // Stop) and releases a Claude wake whose timeout was stopped when queued.
 func dropQueuedNativeWakes(sessionID, reason string) {
-	commands, claude := nativeWakes.take(sessionID)
+	commands, claude, muse := nativeWakes.take(sessionID)
 	if claude {
 		claudecode.DismissClaudeSDKWake(sessionID, reason)
 	}
-	if claude || len(commands) > 0 {
-		log.Printf("[NATIVE_WAKE] dropped session=%s commands=%d claude=%t reason=%s", sessionID, len(commands), claude, reason)
+	if claude || len(commands) > 0 || len(muse) > 0 {
+		log.Printf("[NATIVE_WAKE] dropped session=%s commands=%d claude=%t muse=%d reason=%s", sessionID, len(commands), claude, len(muse), reason)
 	}
 }
