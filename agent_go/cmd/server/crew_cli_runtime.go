@@ -33,6 +33,16 @@ func crewCLIMode(readOnly bool) string {
 }
 
 func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewCLIWorkingDir(folder, user, session, provider, readOnly, true)
+}
+
+// Inspection shares the launch's exact local/slot/agent-root identity, but must
+// never create a runtime, repair permissions or write Git configuration.
+func existingCrewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewCLIWorkingDir(folder, user, session, provider, readOnly, false)
+}
+
+func resolveCrewCLIWorkingDir(folder, user, session, provider string, readOnly, prepare bool) (string, error) {
 	var scopeErr error
 	folder, scopeErr = crewAgentRuntimeFolder(folder, user, session)
 	if scopeErr != nil {
@@ -64,7 +74,7 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state
 				runtimeOwner = owner
-				if roots, bound, rootsErr := crewStorageRoots(folder); bound && rootsErr == nil {
+				if roots, bound, rootsErr := crewStorageRoots(folder); prepare && bound && rootsErr == nil {
 					// The Crew's whole folder: its files are a subfolder of it when they are kept apart.
 					top := roots.Resources
 					if !strings.HasPrefix(roots.Files+string(filepath.Separator), top+string(filepath.Separator)) {
@@ -81,12 +91,19 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	if shared, ok := workspaceref.MustParse(strings.TrimSpace(folder)).SharedProject(); ok {
 		legacyRel = crewLegacyKey(shared)
 	}
-	dir, err := cliruntime.PrepareLinkedProjectMoved(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
+	var dir string
+	if prepare {
+		dir, err = cliruntime.PrepareLinkedProjectMoved(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
+	} else {
+		dir, err = cliruntime.ExistingLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
+	}
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
 	}
-	if err := prepareCrewGit(dir, project, provider, runtimeOwner); err != nil {
-		return "", err
+	if prepare {
+		if err := prepareCrewGit(dir, project, provider, runtimeOwner); err != nil {
+			return "", err
+		}
 	}
 	return dir, nil
 }
