@@ -229,6 +229,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=started_original_not_replayed", turn.SessionID, turn.ID)
 	}
 	kept = api.prepareUsageLimitContinues(&document, userID, kept)
+	var backgroundWakes []restartBackgroundWake
 	for sessionID, record := range document.Chats {
 		backgroundFollowUps.restore(sessionID, record.FollowUps)
 		reason := ""
@@ -244,9 +245,10 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		}
 		if reason == "turn_not_open" {
 			// Between turns: no turn to continue, but background work that died with the app needs one wake.
-			var handled bool
-			if kept, handled = api.queueRestartBackgroundKilledWake(userID, sessionID, &record, kept); handled {
-				document.Chats[sessionID] = record
+			if wake, handled := api.planRestartBackgroundKilledWake(sessionID, record, kept, time.Now()); handled {
+				if len(wake.labels) > 0 {
+					backgroundWakes = append(backgroundWakes, wake)
+				}
 				continue
 			}
 		}
@@ -293,6 +295,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 		}
 		document.Chats[sessionID] = record
 	}
+	kept = queueRestartBackgroundKilledWakes(userID, backgroundWakes, &document, kept, time.Now())
 	if err := api.writeRestartContinueRecords(ctx, userID, document); err != nil {
 		return nil, err
 	}
