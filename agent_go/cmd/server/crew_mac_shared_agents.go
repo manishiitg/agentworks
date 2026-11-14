@@ -407,7 +407,11 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	agent, reason := macSharedAgentFor(manifest.ID, tab, claims.UserID, project.OwnerID)
 	if reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%q action=%s refused reason=%s", manifest.ID, logUsernameForUserID(claims.UserID), tab, action, reason)
-		externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
+		if team, err := readCrewTeam(projectID); err == nil && crewTeamAgentsVisible(team, claims.UserID) && claims.UserID != owner {
+			externalError(w, 403, "agent_unavailable", "This agent is no longer In team.")
+		} else {
+			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
+		}
 		return true
 	}
 	if action != "ask" && action != "read_chat" && action != "reply_input" {
