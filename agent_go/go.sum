@@ -961,3 +961,5 @@ github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114054812-5c1ed956c1ef
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114054812-5c1ed956c1ef/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114055335-e6c1eaaeae68 h1:QATh9lUMbLM/3I3S7W8LDOf/JGaVGZUu3A83wzbGNE4=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114055335-e6c1eaaeae68/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114060855-3e26ed6b190a h1:o5JCAJg1L0CtGS0iMJgWMmCzHihmb2+FhgLczsGTW5k=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261114060855-3e26ed6b190a/go.mod h1:43kXVOvCYR7eyS0UFtDV8t2lVEEdgAZZLR5KLqch4DM=
