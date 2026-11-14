@@ -42,6 +42,8 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"create_dashboard": map[string]any{"type": "boolean", "description": "people, level=dashboards: make the Crew's standard dashboard first when it has none (ask the person first)."},
 		"kind":             map[string]any{"type": "string", "enum": []string{"all", "dashboard", "artifact", "motion"}, "description": "dashboards: which kind to list (default all)."},
 		"confirm":          map[string]any{"type": "boolean", "description": "configure: switching between Folders and the Whole Crew first returns what changes; show it to the person, ask, and call again with confirm=true to switch."},
+		"accept_into":      map[string]any{"type": "string", "description": "accept on this Mac: omit to preview New project and eligible existing projects; then use new or a local project_id from that preview. Existing-project acceptance requires confirm=true after showing the instructions notice. Agent choices default to none."},
+		"agents":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: agent tab keys from the preview to put In team; omit for none."},
 		"project":          map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":             map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "offset": map[string]any{"type": "integer", "description": "files: where the page starts (next_offset from the previous reply)."}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
 		"share": map[string]any{"type": "string", "enum": []string{"whole", "folders"}}, "folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
@@ -135,6 +137,35 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		if (action == "accept" || action == "decline") && sharedSender != "" {
 			return "", fmt.Errorf("Answer a Team invite in your own chat")
 		}
+		if action == "accept" && IsLocalMode() && connection != nil {
+			if readOnly {
+				return "", fmt.Errorf("Accept the Team invite in your own chat.")
+			}
+			choice := externalArg(args, "accept_into")
+			method := http.MethodPost
+			input := crewTeamJoinChoice{Confirm: args["confirm"] == true}
+			if choice != "new" {
+				input.LocalProject = choice
+			} else {
+				input.Folder = externalArg(args, "folder")
+			}
+			for _, a := range crewTeamJoinStringList(args["agents"]) {
+				input.Agents = append(input.Agents, a)
+			}
+			if choice == "" || choice != "new" && !input.Confirm {
+				method = http.MethodGet
+			}
+			body, _ := json.Marshal(input)
+			req := httptest.NewRequest(method, "/api/desktop-connections/"+url.PathEscape(connection.ID)+"/crew-teams/"+url.PathEscape(project)+"/join", bytes.NewReader(body)).WithContext(context.WithValue(ctx, UserContextKey, caller))
+			req = mux.SetURLVars(req, map[string]string{"connection": connection.ID, "project": project})
+			w := httptest.NewRecorder()
+			api.joinCrewTeamOnMac(w, req)
+			if w.Code >= 300 {
+				return "", fmt.Errorf("%s", laptopActionErrorText(w.Body.String()))
+			}
+			return w.Body.String(), nil
+		}
+
 		// Imported/forked chats may already exist before their first resolve call,
 		// so an explicit agent-management request reconciles the current local roster.
 		if connection != nil && (action == "agents" || action == "agent_visibility" || action == "agent_rule") {
@@ -549,4 +580,19 @@ func crewTeamFilesPage(data []byte, path string, offset int) ([]byte, error) {
 		list["note"], _ = json.Marshal(fmt.Sprintf("Showing %d-%d of %d files. Call files again with offset=%d for the next page, or give path=<folder> to list one folder.", offset+1, end, len(files), end))
 	}
 	return json.Marshal(list)
+}
+
+func crewTeamJoinStringList(value any) []string {
+	out := []string{}
+	switch values := value.(type) {
+	case []string:
+		return values
+	case []any:
+		for _, v := range values {
+			if s, ok := v.(string); ok {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }

@@ -431,6 +431,17 @@ func commitCrewTeamChangesAtRevision(ctx context.Context, project, actor, transf
 	if e = saveCrewTeamFileState(project, state); e != nil {
 		return receipt, e
 	}
+	paths := make([]string, 0, len(state.Versions))
+	for name, v := range state.Versions {
+		if v.File != nil {
+			paths = append(paths, name)
+		}
+	}
+	if team.Folder.addFilePaths(paths) {
+		if e = writeCrewTeam(team); e != nil {
+			return receipt, e
+		}
+	}
 	for _, event := range state.Events {
 		if event.Revision == state.Revision && len(changes) <= 50 {
 			log.Printf("[CREW_TEAM_EVENT] project=%s actor=%s path=%q kind=%s revision=%d", project, event.Actor, event.Path, event.Kind, event.Revision)

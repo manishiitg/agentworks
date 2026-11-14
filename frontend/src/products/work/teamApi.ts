@@ -11,7 +11,9 @@ import type { PublicLink, PublicLinkMode } from '../../components/workflow/Publi
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
+export type TeamSharedPath = { id: string; path: string; file?: boolean }
+export type TeamFolder = { id?: string; whole?: boolean; folders?: TeamSharedPath[]; paths?: TeamSharedPath[] }
+export type Team = { change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
 export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[]; groups: { title: string; line: string; key?: boolean; names: string[] }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
@@ -330,7 +332,7 @@ export async function teamSideChats(profileId: string, projectId: string, worksp
 }
 
 /** A Team invite as the invited person sees it (owner, 5 Nov): accept on the web or on this Mac, or decline. */
-export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean; folder?: { whole?: boolean; folders?: string[] } }
+export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean; folder?: TeamFolder }
 
 export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
   await teamRequest<unknown>({ project: invite.project_id, connection: invite.connection }, '/invite', 'POST', { accept })

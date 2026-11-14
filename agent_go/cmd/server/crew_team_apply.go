@@ -20,7 +20,7 @@ func (api *StreamingAPI) applyCrewTeamOnMac(ctx context.Context, project string,
 	madeFolder := false
 	// Every shared folder the record names is made here when missing: team/ on Team on, and a folder a member added
 	// by name from the website (owner, 5 Nov).
-	if t.On && len(t.Folder.Folders) > 0 {
+	if t.On && len(t.Folder.Folders) > 0 && readCrewTeamState(project).MemberOf == "" {
 		if roots, err := api.crewSyncRoots(ctx, &UserClaims{UserID: GetDefaultUserID(), Username: GetDefaultUserID()}, project); err == nil {
 			for _, folder := range t.Folder.Folders {
 				dir := filepath.Join(roots.Files, filepath.FromSlash(folder))
