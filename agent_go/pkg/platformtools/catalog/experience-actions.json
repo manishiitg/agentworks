@@ -932,6 +932,12 @@
   },
   {
     "family": "account",
+    "name": "subscription_limits",
+    "member": "get_subscription_limits",
+    "description": "Read reported provider plan limits for admitted accounts."
+  },
+  {
+    "family": "account",
     "name": "usage",
     "member": "get_token_usage",
     "description": "Use the current account usage operation."

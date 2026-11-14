@@ -44,6 +44,7 @@ import (
 // limits, models and usage leave the server.
 
 var externalTokenLimitTools = map[string]bool{
+	"get_subscription_limits":  true,
 	"get_token_usage":          true,
 	"set_token_limits":         true,
 	"set_allowed_models":       true,
@@ -76,6 +77,12 @@ func externalTokenLimitAllowed(c *UserClaims, name string) bool {
 	}
 	allows := func(scope string) bool { return c.AccessToken == nil || c.AccessToken.Allows(scope) }
 	adminWrite := claimsIsAdmin(c) && allows("users:manage")
+	if name == "get_subscription_limits" {
+		if claimsIsAdmin(c) {
+			return adminWrite
+		}
+		return allows("crews:read")
+	}
 	if isTokenLimitWrite(name) || name == "get_account_availability" {
 		return adminWrite
 	}
@@ -89,6 +96,12 @@ func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
 	}
 	allows := func(scope string) bool { return c.AccessToken == nil || c.AccessToken.Allows(scope) }
 	adminWrite := currentUserIsAdmin(r) && allows("users:manage")
+	if name == "get_subscription_limits" {
+		if currentUserIsAdmin(r) {
+			return adminWrite
+		}
+		return allows("crews:read")
+	}
 	if isTokenLimitWrite(name) || name == "get_account_availability" {
 		return adminWrite
 	}
@@ -96,6 +109,7 @@ func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
 }
 
 func externalTokenLimitDefinitions(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
+	add("get_subscription_limits", "Read provider subscription windows, percent used and reported reset times for accounts you own or may use. Admins see quota-only records for all accounts (requires users:manage); other callers require crews:read. No credentials, private chats, model-use or account-management authority is returned. Unknown usage is not zero.", false, false, nil)
 	date := map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`}
 	who := func(props map[string]any) map[string]any {
 		props["user_id"] = externalString("Person's user ID (from account action=usage).")
@@ -266,6 +280,13 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 			msg = "Changing who can use an AI account needs users:manage and an admin account."
 		}
 		externalError(w, http.StatusForbidden, "forbidden", msg)
+		return
+	}
+	if name == "get_subscription_limits" {
+		status, body := api.externalForward(r, http.MethodGet, "/api/provider-accounts/limits", nil, nil, api.handleAccountLimits)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
 		return
 	}
 	dir, err := readUserDirectoryFile()
