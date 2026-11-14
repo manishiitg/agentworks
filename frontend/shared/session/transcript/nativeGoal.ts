@@ -12,7 +12,12 @@ export type NativeGoalUpdate = { provider: string; native_session_id: string; go
 export function nativeGoalUpdate(event: PollingEvent): NativeGoalUpdate | undefined {
   if (event.type !== 'native_goal_updated') return undefined
   const outer = event.data as Record<string, unknown> | undefined
-  const data = (outer?.data && typeof outer.data === 'object' ? outer.data : outer) as Record<string, unknown> | undefined
+  let data = outer
+  // Live typed events and journal-restored GenericEventData have different envelopes.
+  for (let depth = 0; depth < 3 && data && !('update' in data); depth++) {
+    if (!data.data || typeof data.data !== 'object') return undefined
+    data = data.data as Record<string, unknown>
+  }
   const update = data?.update as NativeGoalUpdate | undefined
   if (!update || typeof update.provider !== 'string' || typeof update.native_session_id !== 'string') return undefined
   if (update.goal === null) return update
@@ -31,7 +36,7 @@ export function collapseNativeGoals(events: PollingEvent[]): PollingEvent[] {
     if (!nativeGoalUpdate(event)) continue
     const key = event.session_id || ''
     const index = positions.get(key)
-    if (index === undefined) { positions.set(key, out.length); out.push(event) }
+    if (index === undefined) { positions.set(key, out.length); out.push({ ...event, id: `native-goal:${key}` }) }
     else out[index] = { ...event, id: out[index].id }
   }
   return out.filter(event => event.type !== 'native_goal_updated' || nativeGoalUpdate(event)?.goal !== null)

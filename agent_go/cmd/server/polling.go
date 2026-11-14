@@ -179,7 +179,8 @@ type GetEventsResponse struct {
 	LatestSequence             int64            `json:"latest_sequence,omitempty"`
 	// PendingMessages are the viewer's queued messages the CLI has not taken
 	// yet (no durable row exists until it does). Restore reads only.
-	PendingMessages []PendingQueuedMessage `json:"pending_messages,omitempty"`
+	PendingMessages    []PendingQueuedMessage `json:"pending_messages,omitempty"`
+	NativeGoalSnapshot *events.Event          `json:"native_goal_snapshot,omitempty"`
 }
 
 // --- POLLING API HANDLERS ---
@@ -431,6 +432,19 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 	}
 	if durableChat && !cursorOnly && sinceStr == "" && beforeSequenceStr == "" {
 		response.PendingMessages = api.pendingQueuedMessages(r.Context(), currentUserID, sessionID)
+		// A goal can predate the retained history tail. Return its latest
+		// accepted snapshot separately so it never changes page cursors.
+		goal, err := api.eventStore.LatestNativeGoal(r.Context(), sessionID)
+		if err != nil {
+			log.Printf("[AGENT_GOAL] session=%s action=failed reason=restore_read_failed", sessionID)
+			http.Error(w, "Failed to restore goal", http.StatusInternalServerError)
+			return
+		}
+		response.NativeGoalSnapshot = goal
+		if goal != nil {
+			log.Printf("[AGENT_GOAL] session=%s event=%s action=done reason=restored_snapshot", sessionID, goal.ID)
+		}
+
 	}
 
 	if err := json.NewEncoder(w).Encode(api.nativeUsageResponse(r, sessionID, response)); err != nil {

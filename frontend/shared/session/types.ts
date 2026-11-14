@@ -88,6 +88,7 @@ export interface GetEventsResponse {
   latest_sequence?: number
   // The viewer's queued messages the CLI has not taken yet (restore reads only).
   pending_messages?: PendingQueuedMessage[]
+  native_goal_snapshot?: PollingEvent
 }
 
 export interface PendingQueuedMessage {
