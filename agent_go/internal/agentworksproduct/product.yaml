@@ -459,6 +459,8 @@ chat:
       - get_review_audit
       # Shared-account token limits and allowed models (get: crews:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
+      # PLAT-746-990: quota-only accounts; admin users:manage, otherwise crews:read plus account admission.
+      - get_subscription_limits
       - set_token_limits
       - set_allowed_models
       # Company account audiences: admins with users:manage, same handler as the screen.
