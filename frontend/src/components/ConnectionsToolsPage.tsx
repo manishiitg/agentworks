@@ -5,13 +5,13 @@ import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } fro
 import { AccountSlackOverview } from './integrations/AccountSlackOverview'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
-import { OpenVaultButton, useCanManageVault } from './integrations/OpenVaultButton'
+import { useCanManageVault } from './integrations/OpenVaultButton'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 
 const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel'))
 const VaultSecrets = lazy(() => import('./secrets/SecretSelectionSection'))
-const MCPConfigEditor = lazy(() => import('./MCPConfigEditor'))
+const AccountMcpPanel = lazy(() => import('./integrations/AccountMcpPanel'))
 const categories = [
   { id: 'apps', label: 'Apps', icon: Plug },
   { id: 'ai', label: 'AI accounts', icon: Cpu },
@@ -53,7 +53,7 @@ function ConnectionsToolsContent() {
             </div>}
             {category === 'ai' && <div className="h-[65vh] min-h-96"><CodingProvidersPanel embedded isOpen onClose={() => choose('apps')} /></div>}
             {category === 'browser' && <BrowserConnectionsPanel open onClose={() => {}} inline startSetup />}
-            {category === 'mcp' && <div className="space-y-3"><p className="text-sm text-muted-foreground">Manage your personal MCP configuration. Shared MCP connections stay in Vault.</p><MCPConfigEditor /><OpenVaultButton panel="servers" /></div>}
+            {category === 'mcp' && <AccountMcpPanel />}
             {category === 'skills' && <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">Skills belong to your work</h3><p className="text-sm text-muted-foreground">Open a Crew’s Skills panel to view, add or manage its skills. Plugin and tool selections also stay with that Crew; there is no separate account-wide plugin library.</p></div>}
             {category === 'secrets' && <AccountVaultSecrets />}
           </Suspense>
