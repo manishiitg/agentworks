@@ -41,11 +41,11 @@ function ConnectionsToolsContent() {
   const [search, setSearch] = useState('')
   const matching = availableCategories.filter(item => `${item.label} ${item.id === 'apps' ? 'Slack Google Gmail Drive Calendar GitHub WhatsApp Computer use desktop' : item.id === 'ai' ? 'Claude Codex Cursor Muse models' : item.id === 'browser' ? 'Chrome extension' : item.id === 'secrets' ? 'Vault keys' : ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   const choose = (next: Category) => { setCategory(next); setSearch('') }
-  return <section aria-label="Customize" className="flex h-full min-h-0 flex-col bg-background">
-    <WorkspacePageHeader page="connections" title="Customize" icon={Plug} />
+  return <section aria-label="Settings" className="flex h-full min-h-0 flex-col bg-background">
+    <WorkspacePageHeader page="connections" title="Settings" icon={Plug} />
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl space-y-5 p-4 sm:p-6">
-        <div><h2 className="text-xl font-semibold tracking-tight">Customize</h2><p className="mt-1 text-sm text-muted-foreground">Manage your accounts and tools here. Choose what each Crew uses in that Crew’s settings.</p></div>
+        <div><h2 className="text-xl font-semibold tracking-tight">Settings</h2><p className="mt-1 text-sm text-muted-foreground">Manage your accounts, connections and tools.</p></div>
         <label className="flex items-center gap-2 rounded-lg border border-border px-3 py-2"><Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" /><input aria-label="Find a connection or tool" placeholder="Find a connection or tool…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>
         {search.trim() ? <div className="divide-y divide-border rounded-lg border border-border" aria-label="Connection search results">{matching.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => choose(id)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-muted"><Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{label}</button>)}{!matching.length && <p className="p-4 text-sm text-muted-foreground">No matching category. Try Slack, browser, models or secrets.</p>}</div> : <>
           <nav aria-label="Connection categories" className="flex gap-1 overflow-x-auto border-b border-border">{availableCategories.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-current={category === id ? 'page' : undefined} onClick={() => choose(id)} className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-xs font-medium ${category === id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}</button>)}</nav>
