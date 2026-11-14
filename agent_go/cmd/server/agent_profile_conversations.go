@@ -414,7 +414,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
 	if profile.ID == crewProfileID {
-		if err := api.deleteCrewTeamOnlineHome(r, projectID); err != nil {
+		if err := api.deleteCrewTeamOnlineHome(r, binding.ResourceID); err != nil {
 			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -432,13 +432,14 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		return
 	}
 	if profile.ID == crewProfileID {
-		if team, err := readCrewTeam(projectID); err == nil && (team.OnlineHome != "" || team.RosterSource != "") {
-			if dir, err := crewTeamDir(projectID); err == nil {
-				if err := os.RemoveAll(dir); err != nil {
-					writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state needs cleanup.")
-					return
-				}
-			}
+		dir, err := crewTeamDir(binding.ResourceID)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state could not be resolved.")
+			return
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state needs cleanup.")
+			return
 		}
 	}
 	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {

@@ -6,12 +6,71 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
 )
+
+// PLAT-746-1025: deleting a Team home through the ordinary Crew handler must
+// terminate at its derived roster, and remove only the two deleted Crew states.
+func TestTeamHomeDeletionDoesNotRecurseOrRemoveSiblingState(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	layout := legacyIdentityLayout()
+	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+	f := newMultiUserFixture(t, layout)
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
+	profile := f.Crew
+	profile.Version++
+	profile.Runtime.Workspace.ProjectsRoot = "Crew"
+	if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Sales", On: true, People: []crewTeamPerson{{UserID: fixtureUserB}}}); err != nil {
+		t.Fatal(err)
+	}
+	homeID, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := readCrewTeam(homeID)
+	if err != nil || home.RosterSource != fixtureCrewID || home.OnlineHome != "" {
+		t.Fatal("home must terminate lifecycle recursion", err)
+	}
+	siblingDir, err := crewTeamDir("unrelated-crew")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(siblingDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(siblingDir, "keep")
+	if err := os.WriteFile(marker, []byte("unrelated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "/api/agent-profiles/work/projects/"+fixtureCrewID, nil).WithContext(f.Ctx(fixtureUserA))
+	req = mux.SetURLVars(req, map[string]string{"id": "work", "project_id": fixtureCrewID})
+	response := httptest.NewRecorder()
+	f.API.handleDeleteAgentProfileProject(response, req)
+	if response.Code >= 300 {
+		t.Fatalf("ordinary delete failed: %d %s", response.Code, response.Body.String())
+	}
+	for _, id := range []string{fixtureCrewID, homeID} {
+		dir, err := crewTeamDir(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("deleted Crew %s retained Team state: %v", id, err)
+		}
+	}
+	if raw, err := os.ReadFile(marker); err != nil || string(raw) != "unrelated" {
+		t.Fatal("unrelated Team state was removed", err)
+	}
+}
 
 // A failed initial manifest is removed; failed optional setup keeps the new
 // identity and returns it with a warning so retrying does not make duplicates.

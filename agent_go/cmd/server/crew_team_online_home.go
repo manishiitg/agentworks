@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-746-1025: on-demand provisioning only. The resulting user, Crew and
@@ -135,11 +136,11 @@ func syncCrewTeamHomeMembersLocked(source crewTeam) error {
 
 // Once at startup; repair existing homes only, never provision idle Teams.
 func repairCrewTeamHomeMembers() {
-	root, err := crewTeamDir("startup")
+	root, err := crewroot.StateRoot()
 	if err != nil {
 		return
 	}
-	entries, err := os.ReadDir(filepath.Dir(root))
+	entries, err := os.ReadDir(filepath.Join(root, "team-folders"))
 	if err != nil {
 		return
 	}
@@ -159,7 +160,7 @@ func repairCrewTeamHomeMembers() {
 		}
 		mu.Unlock()
 		if err != nil {
-			log.Printf("[TEAM_HOME] team=%s event=members_sync_failed", entry.Name())
+			log.Printf("[TEAM_HOME] team=%s event=members_sync_failed reason=%q", entry.Name(), err.Error())
 		}
 	}
 }
@@ -174,13 +175,14 @@ func (api *StreamingAPI) deleteCrewTeamOnlineHome(r *http.Request, project strin
 	if err != nil {
 		return err
 	}
+	backup := ""
 	root := crewProjectRootByID(team.OnlineHome)
 	if root != "" {
 		roots, found, err := crewStorageRoots(root)
 		if err != nil || !found || roots.Owner != "team-"+project {
 			return fmt.Errorf("Team online home could not be backed up")
 		}
-		if _, err := backupCrewRelayTwin(roots); err != nil {
+		if backup, err = backupCrewFolders(roots); err != nil {
 			return err
 		}
 		if err := ensureCrewTeamUser(roots.Owner, team.Name, false); err != nil {
@@ -201,5 +203,9 @@ func (api *StreamingAPI) deleteCrewTeamOnlineHome(r *http.Request, project strin
 		return err
 	}
 	directory.Users = slices.DeleteFunc(directory.Users, func(u UserRecord) bool { return u.ID == "team-"+project })
-	return saveUserDirectory(directory)
+	if err := saveUserDirectory(directory); err != nil {
+		return err
+	}
+	log.Printf("[TEAM_HOME] team=%s crew=%s user=%s event=deleted backup=%s", project, team.OnlineHome, "team-"+project, backup)
+	return nil
 }
