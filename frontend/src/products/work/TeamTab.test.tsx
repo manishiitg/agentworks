@@ -20,6 +20,7 @@ vi.mock('./teamApi', () => ({
 }))
 vi.mock('../../utils/openAgentTab', () => ({ openAgentTab: vi.fn() }))
 vi.mock('./CrewWorksElsewhere', () => ({ CrewWhereRow: () => null }))
+vi.mock('./TeamWay', () => ({ TeamWayCard: () => null }))
 vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {} } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
