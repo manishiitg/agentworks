@@ -1,0 +1,207 @@
+package agycli
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+)
+
+type agyImageFrame struct {
+	ID     json.RawMessage `json:"id"`
+	Method string          `json:"method"`
+	Params struct {
+		Prompt []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+			Data string `json:"data"`
+			MIME string `json:"mimeType"`
+		} `json:"prompt"`
+	} `json:"params"`
+}
+type agyImageWire struct {
+	bytes.Buffer
+	rpc      *agyACP
+	caps     string
+	requests chan agyImageFrame
+	largest  int
+}
+
+func (w *agyImageWire) Close() error                      { return nil }
+func (w *agyImageWire) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+func (w *agyImageWire) Write(p []byte) (int, error) {
+	w.largest = max(w.largest, len(p))
+	n, _ := w.Buffer.Write(p)
+	if bytes.Contains(p, []byte{'\n'}) {
+		var request agyImageFrame
+		if err := json.Unmarshal(w.Bytes(), &request); err != nil {
+			return 0, err
+		}
+		w.Reset()
+		if request.Method == "initialize" {
+			w.reply(request.ID, json.RawMessage(w.caps))
+		} else {
+			w.requests <- request
+		}
+	}
+	return n, nil
+}
+func (w *agyImageWire) reply(id json.RawMessage, result json.RawMessage) {
+	w.rpc.mu.Lock()
+	ch := w.rpc.pending[string(id)]
+	w.rpc.mu.Unlock()
+	ch <- agyACPMessage{Result: result}
+}
+
+type agyImageReader struct {
+	io.Reader
+	closed chan struct{}
+}
+
+func (r *agyImageReader) Close() error { close(r.closed); return nil }
+
+// Explicit native capability is the authorization to open image factories.
+// Prepared readers close after write even while the model response is pending.
+func TestAgyACPImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
+	for _, caps := range []string{`{}`, `{"agentCapabilities":{"promptCapabilities":{"image":false}}}`, `{"agentCapabilities":{"promptCapabilities":{"image":true}}}`} {
+		t.Run(caps, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			wire := &agyImageWire{caps: caps, requests: make(chan agyImageFrame, 1)}
+			rpc := &agyACP{owner: "image-chat", stdin: wire, pending: map[string]chan agyACPMessage{}, done: make(chan struct{}), stop: func() {}}
+			wire.rpc = rpc
+			allowed, err := initializeAgyImageCapability(ctx, rpc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opened, skipped := 0, 0
+			closed := make(chan struct{})
+			pixels := strings.Repeat("pixels", 10000)
+			input := llmtypes.NativeImageInput{Open: func(context.Context) (io.ReadCloser, string, int64, error) {
+				opened++
+				return &agyImageReader{strings.NewReader(pixels), closed}, "image/png", int64(len(pixels)), nil
+			}, Skipped: func(string) { skipped++ }}
+			delivery := llmtypes.WithNativeImageInputs(ctx, "image-chat", []llmtypes.NativeImageInput{input})
+			params, cleanup, err := agyParamsWithImages(delivery, "image-chat", map[string]any{"sessionId": "native", "prompt": []any{map[string]any{"type": "text", "text": "original file path"}}}, nil, allowed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cleanup()
+			done := make(chan error, 1)
+			go func() { done <- rpc.call(ctx, "session/prompt", params, nil) }()
+			var frame agyImageFrame
+			select {
+			case frame = <-wire.requests:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			if frame.Method != "session/prompt" || frame.Params.Prompt[0].Text != "original file path" {
+				t.Fatal("text/path lost")
+			}
+			if allowed {
+				if opened != 1 || skipped != 0 || len(frame.Params.Prompt) != 2 {
+					t.Fatal("native image capability not used")
+				}
+				image := frame.Params.Prompt[1]
+				decoded, err := base64.StdEncoding.DecodeString(image.Data)
+				if err != nil || string(decoded) != pixels || image.MIME != "image/png" || image.Type != "image" {
+					t.Fatal("wrong native content block")
+				}
+				select {
+				case <-closed:
+				case <-ctx.Done():
+					t.Fatal("reader held until model response")
+				}
+				if wire.largest >= len(pixels) {
+					t.Fatal("image marshaled into a full pooled base64 buffer")
+				}
+			} else if opened != 0 || skipped != 1 || len(frame.Params.Prompt) != 1 {
+				t.Fatal("missing/false capability opened an image or lost the notice")
+			}
+			select {
+			case <-done:
+				t.Fatal("model response did not remain pending")
+			default:
+			}
+			wire.reply(frame.ID, json.RawMessage(`{"stopReason":"end_turn"}`))
+			if err = <-done; err != nil {
+				t.Fatal(err)
+			}
+			retry, retryClose, err := agyParamsWithImages(delivery, "image-chat", map[string]any{"prompt": []any{map[string]any{"type": "text", "text": "retry"}}}, nil, allowed)
+			retryClose()
+			if _, images := retry.(*agyImageParams); images || err != nil {
+				t.Fatal("answered image replayed", err)
+			}
+		})
+	}
+}
+
+type agyRepeatedByte byte
+
+func (r agyRepeatedByte) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = byte(r)
+	}
+	return len(p), nil
+}
+
+// The actual reader tolerates diagnostic/bad lines, strips only native content
+// data before its event queue, and ends clearly on retained/wire/depth caps.
+func TestAgyACPImageEchoScopeMalformedLinesAndCaps(t *testing.T) {
+	newRPC := func() *agyACP {
+		exited := make(chan struct{})
+		close(exited)
+		return &agyACP{owner: "reader-test", stdin: agyConfigWireWriter(func(p []byte) (int, error) { return len(p), nil }), events: make(chan agyACPMessage, 4), done: make(chan struct{}), exited: exited, stop: func() {}}
+	}
+	prefix := `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"native","update":{"sessionUpdate":"user_message_chunk","content":{"d\u0061ta":"`
+	suffix := `","mimeType":"image/png","type":"image"}}}}` + "\n"
+	tool := `{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","rawInput":{"content":{"type":"record","data":"keep private tool args"}}}}}` + "\n"
+	source := io.MultiReader(strings.NewReader("diagnostic \"unfinished\n{bad json}\n"+prefix), io.LimitReader(agyRepeatedByte('A'), 33<<20), strings.NewReader(suffix+tool))
+	rpc := newRPC()
+	rpc.read(source)
+	if len(rpc.events) != 2 {
+		t.Fatal("bad lines blocked following frames or native image exceeded old cap", len(rpc.events))
+	}
+	image := <-rpc.events
+	if len(image.Params) > 1024 || !bytes.Contains(image.Params, []byte("[native image omitted]")) {
+		t.Fatal("image bytes entered host events")
+	}
+	args := <-rpc.events
+	if !bytes.Contains(args.Params, []byte("keep private tool args")) {
+		t.Fatal("tool argument data was redacted")
+	}
+	for _, tc := range []struct {
+		name   string
+		source io.Reader
+	}{
+		{"retained", io.MultiReader(strings.NewReader(`{"text":"`), io.LimitReader(agyRepeatedByte('A'), (32<<20)+1))},
+		{"wire", io.MultiReader(strings.NewReader(prefix), io.LimitReader(agyRepeatedByte('A'), 128<<20))},
+		{"depth", strings.NewReader(strings.Repeat("[", 129))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRPC()
+			done := make(chan struct{})
+			go func() { r.read(tc.source); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(30 * time.Second):
+				t.Fatal("bounded reader hung")
+			}
+			select {
+			case <-r.done:
+			default:
+				t.Fatal("cap left session running")
+			}
+			if len(r.events) != 0 || !strings.Contains(r.failure().Error(), "Agy ACP") {
+				t.Fatal("missing clear bounded frame error", r.failure())
+			}
+		})
+	}
+}
