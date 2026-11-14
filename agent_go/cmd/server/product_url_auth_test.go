@@ -3,7 +3,7 @@ package server
 import "testing"
 
 func TestProductURLAuthReturn(t *testing.T) {
-	for _, path := range []string{"/message?chat=saved&id=message&sequence=12", "/bullpen/connect", "/work/projects/example/dashboard", "/brain?folder=Guides%2FGetting+started", "/workflows/example", "/new?prompt=Review+the+plan&crew=team&agent=chosen"} {
+	for _, path := range []string{"/message?chat=saved&id=message&sequence=12", "/bullpen/connect", "/work/projects/example/dashboard", "/brain?folder=Guides%2FGetting+started", "/workflows/example"} {
 		if got := safeProductAuthReturn(path); got != path {
 			t.Errorf("safe return %q: got %q", path, got)
 		}

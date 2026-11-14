@@ -1,4 +1,3 @@
-import { CopyPromptLinkButton } from './chat/CopyPromptLinkButton'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
@@ -3066,7 +3065,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
 <ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 max-w-full flex-wrap items-center gap-1'}>
-                {activeTab?.metadata?.agentProfileId === 'work' && activeTab.metadata.agentProfileProjectId && activeTab.metadata.agentProfileTabCanWrite === true && !activeTab.metadata.isViewOnly && inputText.trim() && <CopyPromptLinkButton crew={activeTab.metadata.agentProfileProjectId} agent={activeTab.metadata.agentProfileConversationKey} prompt={inputText} />}
                 {compactComposerActions && !unifiedComposerMenu && <ComposerActionsMenu
                   key={activeTabId}
                   uploading={isUploadingFiles}
