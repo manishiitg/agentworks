@@ -36,7 +36,10 @@ func (api *StreamingAPI) handleAccountLimits(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	views := []accountLimitsView{}
-	appendView := func(id, provider, name, owner string, server bool) {
+	appendView := func(id, provider, name, owner, probePrincipal string, server bool) {
+		// Admission above chooses this quota-only probe target. Provider calls remain
+		// asynchronous, using only the selected account environment.
+		api.probedChatLimits(probePrincipal, provider, id)
 		view := accountLimitsView{AccountID: id, Provider: provider, Name: name, Owner: owner, SharedServer: server}
 		if snapshot, found := subscriptionLimits.get(provider, id); found {
 			view.Snapshot = &snapshot
@@ -47,7 +50,7 @@ func (api *StreamingAPI) handleAccountLimits(w http.ResponseWriter, r *http.Requ
 		if !admin && !api.serverAccountAvailableToCaller(ctx, userID, provider) {
 			continue
 		}
-		appendView("global:"+provider, provider, adminManagedProviderAccountName, "Shared server account", true)
+		appendView("global:"+provider, provider, adminManagedProviderAccountName, "Shared server account", userID, true)
 	}
 	run := api.describeProviderAccountRun(ctx, providerAccountScope{Principal: userID})
 	for _, record := range records {
@@ -58,7 +61,14 @@ func (api *StreamingAPI) handleAccountLimits(w http.ResponseWriter, r *http.Requ
 		if !admin && !own && (personalProviderConnectionsLocked(record.Provider) || api.userAccountAdmission(ctx, record, userID, run) == "") {
 			continue
 		}
-		appendView(record.ID, record.Provider, record.DisplayName, logUsernameForUserID(record.OwnerUserID), false)
+		probePrincipal := userID
+		if admin {
+			// Quota-only admin access is not general account-use admission. The
+			// selected owner's environment is resolved inside the guarded probe;
+			// neither credentials nor a runtime handle leave this handler.
+			probePrincipal = record.OwnerUserID
+		}
+		appendView(record.ID, record.Provider, record.DisplayName, logUsernameForUserID(record.OwnerUserID), probePrincipal, false)
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"accounts": views})
 }
