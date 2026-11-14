@@ -337,6 +337,11 @@ func (a *Agent) buildBridgeMCPConfig() (string, error) {
 	// to the correct agent's handler (prevents parent/child overwrite)
 	if virtualScopeID := a.virtualToolScopeID(); virtualScopeID != "" {
 		bridgeEnv["MCP_VIRTUAL_SCOPE_ID"] = virtualScopeID
+		mode := "per_build"
+		if a.bridgeVirtualScopeID != "" {
+			mode = "stable_slot"
+		}
+		logger.Info("[CODING_BRIDGE] virtual scope configured", loggerv2.String("session", a.sessionID), loggerv2.String("mode", mode))
 	}
 
 	config := map[string]interface{}{

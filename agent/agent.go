@@ -885,7 +885,8 @@ type Agent struct {
 	// removed one still had it advertised — the CLI then called a tool the
 	// session refuses, and reported the product as broken rather than using its
 	// own native equivalent.
-	bridgeToolAdmit func(name string) bool
+	bridgeToolAdmit      func(name string) bool
+	bridgeVirtualScopeID string
 	// codingAgentSecretEnvironment is copied into each provider call option and
 	// is never included in instructions, history, or observability payloads.
 	codingAgentSecretEnvironment map[string]string
@@ -3503,6 +3504,9 @@ func (a *Agent) getCustomToolCategories() []string {
 func (a *Agent) virtualToolScopeID() string {
 	if a.sessionID == "" {
 		return ""
+	}
+	if a.bridgeVirtualScopeID != "" {
+		return a.sessionID + ":vt:" + a.bridgeVirtualScopeID
 	}
 	return a.sessionID + ":vt:" + string(a.traceID)
 }

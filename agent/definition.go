@@ -134,11 +134,14 @@ type CodingRuntimeConfig struct {
 }
 
 type MCPRuntimeConfig struct {
-	SessionID        string
-	UserID           string
-	RuntimeOverrides mcpclient.RuntimeOverrides
-	APIBaseURL       string
-	APIToken         string
+	// VirtualToolScopeKey identifies a host-owned agent slot within SessionID.
+	// Empty keeps a private per-build scope for helpers and child agents.
+	VirtualToolScopeKey string
+	SessionID           string
+	UserID              string
+	RuntimeOverrides    mcpclient.RuntimeOverrides
+	APIBaseURL          string
+	APIToken            string
 	// BridgeAPIBaseURL is the host-reachable executor URL the coding-CLI
 	// bridge subprocess calls back into, when it differs from APIBaseURL (an
 	// in-Docker URL, say). Explicit values take precedence over the
@@ -372,6 +375,9 @@ func runtimeAgentOptions(runtime RuntimeConfig) []agentOption {
 	}
 
 	mcpConfig := runtime.MCP
+	if mcpConfig.VirtualToolScopeKey != "" {
+		options = append(options, func(a *Agent) { a.bridgeVirtualScopeID = mcpConfig.VirtualToolScopeKey })
+	}
 	if mcpConfig.SessionID != "" {
 		options = append(options, withSessionID(mcpConfig.SessionID))
 	}

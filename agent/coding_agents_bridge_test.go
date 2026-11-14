@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/mcpagent/agent/codeexec"
 	"github.com/manishiitg/mcpagent/llm"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -1182,5 +1183,37 @@ func TestCursorIntegrationForwardsSavedModelReasoning(t *testing.T) {
 	}
 	if call.Metadata == nil || call.Metadata.Custom[cursorcli.MetadataKeyMCPConfig] == nil {
 		t.Fatal("reasoning selection lost the MCP bridge")
+	}
+}
+
+// PLAT-746-941: replacing the main Agent changed the bridge launch scope;
+// child agents sharing its session must still keep their private executors.
+func TestStableBridgeSlotRebindsMainWithoutChangingChildScope(t *testing.T) {
+	session := "stable-main-child-regression"
+	first := bridgeTestAgent()
+	first.sessionID = session
+	first.bridgeVirtualScopeID = "main"
+	first.traceID = "first"
+	second := bridgeTestAgent()
+	second.sessionID = session
+	second.bridgeVirtualScopeID = "main"
+	second.traceID = "second"
+	child := bridgeTestAgent()
+	child.sessionID = session
+	child.traceID = "child"
+	if first.virtualToolScopeID() != second.virtualToolScopeID() || child.virtualToolScopeID() == first.virtualToolScopeID() {
+		t.Fatal("main scope changed or child scope collided")
+	}
+	register := func(a *Agent, result string) {
+		codeexec.InitRegistryVirtualToolsForSession(a.virtualToolScopeID(), map[string]func(context.Context, map[string]interface{}) (string, error){"get_api_spec": func(context.Context, map[string]interface{}) (string, error) { return result, nil }}, nil)
+	}
+	register(first, "old-main")
+	register(child, "child")
+	register(second, "new-main")
+	for _, tc := range []struct{ scope, want string }{{first.virtualToolScopeID(), "new-main"}, {child.virtualToolScopeID(), "child"}} {
+		got, err := codeexec.CallVirtualToolWithSession(context.Background(), tc.scope, "get_api_spec", nil)
+		if err != nil || got != tc.want {
+			t.Fatalf("scoped routing got %q, %v want %q", got, err, tc.want)
+		}
 	}
 }
