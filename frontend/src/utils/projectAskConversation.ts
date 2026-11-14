@@ -4,7 +4,7 @@ import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { assertChatIdentityCurrent, captureChatIdentity } from './chatIdentity'
 import { hydrateTabEvents } from './sessionRestore'
 
-type ProjectChat = {
+export type ProjectChat = {
   product: string; project_id: string; workspace: string; mode: 'run' | 'builder'; profile_id: string
   conversation: { session_id: string; conversation_key: string; conversation_id?: string; provider?: string; connection_id?: string }
 }
@@ -29,6 +29,14 @@ export async function openProjectAskConversation(project: { product?: string; pr
   const target = data
   assertChatIdentityCurrent(identity)
   if (project.projectId && target.project_id !== project.projectId) throw new Error('The project conversation changed. Reopen the dashboard.')
+  return presentProjectAskConversation(target, options)
+}
+
+/** Present a server-admitted Ask conversation without sending a message. */
+export async function presentProjectAskConversation(target: ProjectChat, options?: { activate?: boolean }): Promise<string> {
+  const identity = captureChatIdentity()
+  await waitForChatStoreHydration()
+  assertChatIdentityCurrent(identity)
   const conversation = target.conversation
   const store = useChatStore.getState()
   if (!target.profile_id && !useGlobalPresetStore.getState().workflowPresets.some(preset => preset.id === target.project_id)) {

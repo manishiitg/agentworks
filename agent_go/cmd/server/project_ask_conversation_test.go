@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -22,6 +23,8 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	f.api.eventStore = storeevents.NewEventStore(50)
 	router := mux.NewRouter()
 	router.HandleFunc("/api/project-ask/conversation", f.api.handleProjectAskConversation).Methods(http.MethodPost)
+	router.HandleFunc("/api/prompt-links", f.api.handlePromptLinkCreate).Methods(http.MethodPost)
+	router.HandleFunc("/api/prompt-links/open", f.api.handlePromptLinkOpen).Methods(http.MethodPost)
 	server := httptest.NewServer(AuthMiddleware(router))
 	defer server.Close()
 	selectedAgent := ""
@@ -102,6 +105,68 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	if err != nil || len(listed.Dashboards) != 0 {
 		t.Fatalf("Ask required or created a dashboard: %+v %v", listed, err)
 	}
+	// PLAT-856: prompt links reuse Ask admission; they grant no agent access,
+	// expose no owner session and open only the recipient's normal conversation.
+	t.Run("prompt link keeps recipient ownership and rechecks sharing", func(t *testing.T) {
+		t.Setenv("PUBLIC_URL", "https://agents.example.com")
+		linkCall := func(user, route string, input map[string]any) (int, map[string]any) {
+			t.Helper()
+			token, err := GenerateJWT(user, user, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(input)
+			req, _ := http.NewRequest(http.MethodPost, server.URL+route, bytes.NewReader(raw))
+			req.Header.Set("Authorization", "Bearer "+token)
+			res, err := server.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			var result map[string]any
+			if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+			return res.StatusCode, result
+		}
+		prompt := "Explain A&B + café?"
+		status, generated := linkCall("owner", "/api/prompt-links", map[string]any{"crew": "team", "agent": selectedAgent, "prompt": prompt})
+		if status != 200 {
+			t.Fatalf("create link: %d %v", status, generated)
+		}
+		link, err := url.Parse(generated["url"].(string))
+		if err != nil || link.Path != "/new" || link.Query().Get("prompt") != prompt || len(link.Query()) != 3 {
+			t.Fatalf("invalid draft-only link: %v %v", link, err)
+		}
+		input := map[string]any{"crew": link.Query().Get("crew"), "agent": link.Query().Get("agent")}
+		status, opened := linkCall("other", "/api/prompt-links/open", input)
+		if status != 200 || opened["conversation"].(map[string]any)["session_id"] != readerID || f.api.eventStore.GetSessionOwner(ownerID) != "owner" {
+			t.Fatalf("link adopted the owner's chat: %d %v", status, opened)
+		}
+		if err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+			id := projectOwnerKey(identity.Product, identity.Folder)
+			record := projects[id]
+			record.SharedAgents = nil
+			projects[id] = record
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+				id := projectOwnerKey(identity.Product, identity.Folder)
+				record := projects[id]
+				record.SharedAgents = []string{selectedAgent}
+				projects[id] = record
+				return true, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		if status, opened := linkCall("other", "/api/prompt-links/open", input); status != 404 || opened["conversation"] != nil {
+			t.Fatalf("link retained revoked agent access: %d %v", status, opened)
+		}
+	})
 	// A conflicting stored owner is a refusal, never repaired by adoption.
 	f.api.eventStore.SetSessionOwner(readerID, "owner")
 	if status, _ := call("other"); status != 403 && status != 409 {

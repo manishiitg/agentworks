@@ -15,8 +15,8 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync"}},
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. prompt_link returns a draft-only link from workspace_id, chat_id and message; it grants no access and sends nothing. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "prompt_link"}},
 		"sync_action":  map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off", "server"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac; server to move it online."},
 		"network":      externalString("For sync_action=reach_on with several networks: the network's name."),
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
@@ -131,6 +131,11 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, map[string]any{"workspace_id": crewProfileID + ":" + crew.CrewID, "crew_id": crew.CrewID, "chat_id": "main", "name": agentWorksName, "created": crew.Created,
 			"next": "Talk to it with workspace action=ask and this workspace_id; for its schedules pass project=crew_id. In the app it is AgentWorks in the Crew list."})
+		return
+	}
+
+	if action == "prompt_link" {
+		api.createPromptLink(w, r, externalArg(args, "workspace_id"), externalArg(args, "chat_id"), externalArg(args, "message"))
 		return
 	}
 

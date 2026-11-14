@@ -86,6 +86,8 @@ export function productRoutePath(route: ProductRoute): string {
 export function productReturnPath(value: string | null): string | null {
   if (!value) return null
   if (safeRelativeAppPath(value) === '/home') return '/home'
+  const safe = safeRelativeAppPath(value)
+  if (safe && new URL(safe, 'https://agentworks.invalid').pathname === '/new') return safe
   const route = parseProductRoute(value)
   return route ? productRoutePath(route) : route === null ? '/' : null
 }
