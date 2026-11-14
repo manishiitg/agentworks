@@ -6,7 +6,7 @@ const { randomUUID } = require('crypto');
 
 const PRIVATE = new Set(['memory', 'team-copies', 'mac-dashboards', '_system', '_files', 'tool_output_folder', 'runs', 'settings', 'db', 'planning', 'knowledgebase', 'conversation', 'costs', 'human_inputs', 'builder', 'chat_history', 'browser-profile', 'browser-data', 'node_modules', 'bower_components', 'jspm_packages', 'site-packages', '__pycache__', 'venv', 'credentials', 'secrets', 'keys', 'auth.json', 'kubeconfig', 'credentials.json', 'token.json', 'tokens.json', 'product.json', 'workflow.json', 'functions.json', 'schedules.json', 'webhooks.json', 'product-schedules.json', 'schedule-runs.json']);
 function ordinaryFolder(name) {
-  if (typeof name !== 'string' || !name || name.normalize('NFC') !== name || /[\\/\x00-\x1f\x7f]/.test(name) || ['.', '..'].includes(name)) return false;
+  if (typeof name !== 'string' || !name || name.trim() !== name || name.normalize('NFC') !== name || /[\\/\x00-\x1f\x7f]/.test(name) || ['.', '..'].includes(name)) return false;
   const lower = name.toLowerCase();
   return !PRIVATE.has(lower) && (!name.startsWith('.') || ['.agents', '.github'].includes(name)) && !/\.(pem|key|p12|pfx|kdbx|tfstate|env|ppk|jks|keystore|gpg|asc|tfvars)$/i.test(name) && !['id_rsa', 'id_dsa', 'id_ed25519', 'id_ecdsa'].includes(lower) && !(lower.startsWith('service-account') && lower.endsWith('.json'));
 }
@@ -46,7 +46,7 @@ function topFolders(root) {
   if (!path.isAbsolute(root) || fs.realpathSync(root) !== root || !fs.statSync(root).isDirectory()) throw new Error('Invalid Crew root');
   return fs.readdirSync(root, {withFileTypes:true}).filter(e => e.isDirectory() && !e.isSymbolicLink() && ordinaryFolder(e.name)).map(e=>e.name).sort();
 }
-function migrateTeamFolderSelections({stateDir, docsDir, local = false, apply = true, log = console.log}) {
+function migrateTeamFolderSelections({stateDir, docsDir, local = false, apply = true, serverPlan, log = console.log}) {
   const state = path.resolve(stateDir), planned = [], backupOnly = [], affected = new Set();
   const registry = json(state, path.join(state,'ownership','projects.json'), true)?.document.projects || {};
   for (const entry of entries(state,path.join(state,'team-folders'))) {
@@ -64,30 +64,40 @@ function migrateTeamFolderSelections({stateDir, docsDir, local = false, apply = 
       if (typeof p.id !== 'string' || !p.id || typeof p.path !== 'string' || !p.path || ids.has(p.id) || names.has(p.path)) throw new Error('Invalid Team path identities');
       ids.add(p.id); names.add(p.path);
     }
-    let selected = (folder.folders || []).map(p=>p.path);
+    let selected = (folder.folders || []).map(p=>p.path), rootKind = "unchanged", omitted = 0, authoritative = true;
     if (selected.some(p=>typeof p !== 'string')) throw new Error('Invalid Team folder selection');
     if (wasWhole) {
       const records = Object.values(registry).filter(r => r.product === 'work' && r.project_id === team.project_id && r.owner_id === team.owner_id);
       if (records.length > 1) throw new Error('Ambiguous Crew ownership');
       const r = records[0], sync = json(state,path.join(state,'crew-sync',team.project_id+'.json'),true)?.document;
-      const remoteMac = sync?.side === 'server' && sync?.mode === 'relay';
-      let root = null;
-      if (r && !remoteMac) {
-        if (r.local_root) { if (local) root = path.resolve(r.local_root); }
-        else if (docsDir && typeof r.folder === 'string' && r.folder && !/[\\/]/.test(r.folder) && !r.folder.startsWith('.')) root = path.join(path.resolve(docsDir),'Crew',r.folder);
+      if (!local) {
+        const row = serverPlan?.[team.project_id];
+        if (!row || row.owner !== team.owner_id || !['found','missing','remote'].includes(row.root) || !Array.isArray(row.folders) || !row.folders.length || row.folders.length > 20 || row.folders.some(p=>typeof p !== 'string' || !p || p.startsWith('/') || /[\\\x00-\x1f\x7f]/.test(p) || p.split('/').some(part=>!part || part==='.' || part==='..'))) throw new Error('Generate the server folder selection plan with this release first');
+        rootKind = row.root; selected = row.folders; omitted = row.omitted || 0;
+      } else {
+        // A member Mac has bindings and a local member_of marker, not an
+        // authoritative Team store. Never invent its server's selection.
+        const localTeam = json(state,path.join(state,'crew-sync',team.project_id+'-team.json'),true)?.document;
+        authoritative = !!r && !localTeam?.member_of;
+        let root = null;
+        if (authoritative && !(sync?.side === 'server' && sync?.mode === 'relay')) {
+          if (r.local_root) root = path.resolve(r.local_root);
+          else if (docsDir && typeof r.folder === 'string' && r.folder && !/[\\/]/.test(r.folder) && !r.folder.startsWith('.')) root = path.join(path.resolve(docsDir),'Crew',r.folder);
+        }
+        rootKind = authoritative ? 'missing' : 'remote';
+        if (root) {
+          try { selected = topFolders(root); rootKind = 'found'; }
+          catch (e) { if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e; }
+        }
+        if (rootKind !== 'found') selected = authoritative ? ['team'] : selected;
+        if (selected.length > 20) { omitted = selected.length - 20; selected = selected.slice(0,20); }
       }
-      if (root) {
-        try { selected = topFolders(root); }
-        catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') root = null; else throw e; }
-      }
-      if (!root) {
-        selected = ['team'];
-        team.folder_note = 'Only team/ is shared for now. Open the owner’s Mac and add the folders the Team should share.';
-      }
+      if (authoritative && rootKind !== 'found') team.folder_note = 'Only team/ is shared for now. Open the owner’s Mac and add the folders the Team should share.';
+      if (omitted) team.folder_note = 'The Team shares 20 folders. Review the chosen folders in Team settings; other folders are not shared.';
       // A Crew with no ordinary directories still needs an explicit selection.
-      if (!selected.length) selected = ['team'];
+      if (authoritative && !selected.length) selected = ['team'];
       const known = new Map((folder.paths || []).map(p=>[p.path,p]));
-      folder.folders = selected.map(name => {
+      if (authoritative) folder.folders = selected.map(name => {
         const old = known.get(name);
         if (old?.file) throw new Error('Shared folder identity names a file');
         const p = old || {id:randomUUID(),path:name};
@@ -98,14 +108,11 @@ function migrateTeamFolderSelections({stateDir, docsDir, local = false, apply = 
     delete folder.whole; delete team.last_folders; team.folder = folder;
     if (!Number.isSafeInteger(team.revision || 0) || (team.revision || 0) < 0) throw new Error('Invalid Team revision');
     team.revision = (team.revision || 0) + 1;
-    planned.push({...item, project:team.project_id, count:selected.length, wasWhole}); affected.add(team.project_id);
+    planned.push({...item, project:team.project_id, count:selected.length, wasWhole, rootKind, omitted, authoritative}); affected.add(team.project_id);
   }
   // Current binding.json stores inline file baselines, mounts and receipts, not
   // a Share field. Preserve all bytes and IDs; do not invent a runtime field.
   for (const item of bindings(state,path.join(state,'team-working'))) {
-    if (item.document.share?.whole === true || item.document.Share?.whole === true) {
-      throw new Error('Retired nested Team selection found; inspect before conversion');
-    }
     if (affected.has(item.document.project_id)) backupOnly.push(item);
   }
   if (apply && planned.length) {
@@ -116,14 +123,14 @@ function migrateTeamFolderSelections({stateDir, docsDir, local = false, apply = 
       const temp = item.file + '.convert-' + randomUUID();
       try { fs.writeFileSync(temp,JSON.stringify(item.document,null,2)+'\n',{mode:0o600,flag:'wx'}); fs.renameSync(temp,item.file); }
       finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
-      log(`[TEAM_FOLDER_SELECTION_MIGRATION] project=${item.project} from=${item.wasWhole?'whole':'folders'} folders=${item.count} outcome=converted nested_selections=0`);
+      log(`[TEAM_FOLDER_SELECTION_MIGRATION] project=${item.project} from=${item.wasWhole?'whole':'folders'} root=${item.rootKind} folders=${item.count} omitted=${item.omitted} outcome=${item.authoritative?'converted':'keys_removed'}`);
     }
   }
-  return {converted:planned.length, bindings:backupOnly.length, projects:planned.map(p=>({project:p.project,folders:p.count,from:p.wasWhole?'whole':'folders'}))};
+  return {converted:planned.length, bindings:backupOnly.length, projects:planned.map(p=>({project:p.project,folders:p.count,root:p.rootKind,omitted:p.omitted,selection:p.document.folder.folders.map(f=>f.path),from:p.wasWhole?'whole':'folders'}))};
 }
 module.exports = {migrateTeamFolderSelections, ordinaryFolder};
 if (require.main === module) {
   const args=process.argv.slice(2), arg = key => {const i=args.indexOf(key);return i<0?undefined:args[i+1];};
   if (!arg('--state-root') || !arg('--docs-root')) throw new Error('Use --state-root and --docs-root; preview is the default, --apply requires the stopped service');
-  console.log(JSON.stringify(migrateTeamFolderSelections({stateDir:arg('--state-root'),docsDir:arg('--docs-root'),local:args.includes('--local'),apply:args.includes('--apply')})));
+  console.log(JSON.stringify(migrateTeamFolderSelections({stateDir:arg('--state-root'),docsDir:arg('--docs-root'),local:args.includes('--local'),serverPlan:arg('--plan')?JSON.parse(fs.readFileSync(arg('--plan'))):undefined,apply:args.includes('--apply')})));
 }
