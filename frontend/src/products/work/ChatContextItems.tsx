@@ -30,12 +30,10 @@ export function chatLimitsText(limits: ChatContextView['limits']): string {
   }).join(' · ')
 }
 
-/** Keep the weekly reset date visible beside the 7d plan use. */
-export function chatLimitsShort(limits: ChatContextView['limits']): string {
-  return (limits ?? []).map(limit => {
-    const when = limit.label === '7d' ? resetDate(limit.resets_at, true) : ''
-    return `${limit.label} ${Math.round(limit.used_percent)}%${when ? ` (resets ${when})` : ''}`
-  }).join(' · ')
+/** The chat box keeps only the fullest plan window ("17%"); every window and its reset time are in the hover text. */
+export function chatLimitsPeak(limits: ChatContextView['limits']): string {
+  const peak = Math.max(-1, ...(limits ?? []).map(limit => limit.used_percent))
+  return peak < 0 ? '' : `${Math.round(peak)}%`
 }
 
 /** Plan use without reset times ("5h 42% · 7d 56%"); the times are in its hover text. */

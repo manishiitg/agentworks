@@ -1,12 +1,12 @@
 import { accountConfigured, accountOptionLabel, accountRelation, accountUsable, NO_LONGER_AVAILABLE } from '../../components/providers/ProviderAccounts'
-import { ComposerActionItems, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
+import { ComposerActionItems, ComposerAttachButton, type ComposerActions } from '../../components/chat/ComposerActionsMenu'
 import { ComposerSendKeys } from '../../components/chat/ChatSendModeButton'
 import ChatStatusBar from './ChatStatusBar'
 import { formatTokens } from '../../utils/formatTokens'
 import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem, MicrophoneDisplayMenuItem } from '../../components/chat/ThinkingDisplayMenuItem'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, Loader2, Server, Settings2 } from 'lucide-react'
+import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, Server, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -53,13 +53,28 @@ export function ChoiceItems({ title, choices, value, onPick, keepOpenOnPick = fa
   </>
 }
 
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag, triggerExtra, onCloseAutoFocus }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void }) {
+/**
+ * Reasoning effort as four small bars after the model name. CLIs offer different scales (Claude low–max, Codex
+ * low–ultra, Muse medium–max, Pi low–xhigh), so the bars show where the pick sits on that CLI's own scale; the
+ * name ("Effort: High") is the hover text. CLIs whose model ID carries the effort (Antigravity, most Cursor
+ * models) have no scale and show no bars.
+ */
+export function EffortBars({ index, count, label }: { index: number; count: number; label: string }) {
+  if (count < 2 || index < 0) return null
+  const filled = Math.max(1, Math.round(((index + 1) / count) * 4))
+  return <span role="img" aria-label={`Effort: ${label}`} title={`Effort: ${label}`} className="ml-1 inline-flex shrink-0 items-end gap-px" data-testid="chip-effort">
+    {[0, 1, 2, 3].map(bar => <span key={bar} className={`w-[2px] rounded-sm ${bar < filled ? 'bg-current' : 'bg-current opacity-25'}`} style={{ height: `${4 + bar * 2}px` }} />)}
+  </span>
+}
+
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, columns, tag, triggerExtra, onCloseAutoFocus, effort }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; columns?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void; effort?: { index: number; count: number; label: string } }) {
   const width = columns ? ' w-[min(560px,calc(100vw-24px))] max-h-[min(480px,var(--radix-dropdown-menu-content-available-height))]' : wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={triggerExtra ? chipClass.replace('max-w-40', 'max-w-full') : chipClass}>
       {tag === 'mac' && <Laptop className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       {tag === 'server' && <Server className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 max-w-40 truncate">{label}</span>
+      {effort && <EffortBars {...effort} />}
       {triggerExtra}
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
@@ -145,15 +160,15 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const onMenuClose = (event: Event) => { const action = afterClose.current; afterClose.current = null; if (action) { event.preventDefault(); action() } }
   const triggerExtra = <>
     {showContext && sessionId && <span className="ml-2 flex min-w-0"><ChatStatusBar sessionId={sessionId} busy={busy} inline /></span>}
-    {actions?.uploading && <><Loader2 className="ml-1 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" /><span className="sr-only">Uploading files</span></>}
     {Boolean(actions?.sendOptions?.backgroundWork?.items.length) && <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" aria-label="Background tasks running" role="status" />}
   </>
   // Attach and commands stay available while model choices are loading.
-  const fallbackMenu = actions ? <Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
-    <ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} />
+  const attach = actions ? <ComposerAttachButton uploading={actions.uploading} onAttach={actions.onAttach} /> : null
+  const fallbackMenu = actions ? <>{attach}<Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
+    <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
     {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     <ComposerShortcuts busy={busy} />
-  </Chip> : fallback
+  </Chip></> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
   // Where this chat's model runs, shown only when there is a choice: this program has both an account on
   // this Mac and a company account from a connected server.
@@ -239,7 +254,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   </Menu.SubTrigger>
 
   if (workProviderIds.length < 2 && groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
-  const chipLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+  // The chip names the model; effort is bars on the CLI's own scale, named in the hover and screen-reader text.
+  const chipLabel = modelLabel
+  const effortIndex = levels.findIndex(level => level.id === currentEffort)
+  const chipEffort = effortLabel && levels.length > 1 ? { index: effortIndex, count: levels.length, label: effortLabel } : undefined
   // A chat's menu has two columns: model and links on the left, this chat's Context on the right.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
   const changesCLI = Boolean(pendingSwitch && pendingSwitch.option.id !== selectedOption.id)
@@ -266,7 +284,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const fieldClass = 'flex items-center justify-between gap-3 border-b border-border px-2.5 py-2 text-xs last:border-0'
   const selectClass = 'min-w-0 max-w-[190px] rounded bg-popover p-1 text-right text-popover-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const switchActionClass = 'flex cursor-pointer items-center rounded-md border px-3 py-2.5 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring'
-  return <><Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
+  return <>{attach}<Chip label={chipLabel} effort={chipEffort} ariaLabel={`Model: ${chipLabel}${effortLabel ? `, effort ${effortLabel}` : ''}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
     triggerExtra={triggerExtra} wide={Boolean(pendingSwitch)} columns={Boolean(sessionId) && !pendingSwitch} tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     {pendingSwitch ? <div className="min-w-0 p-2.5" aria-label="Finish changing the model">
       <Menu.Label className="mb-1 text-base font-semibold leading-snug">Switch to {changesCLI ? pendingCLI : pendingModelLabel}?</Menu.Label>
@@ -306,7 +324,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       {sourceTag === 'Mac' ? <Laptop className="h-3 w-3 shrink-0" aria-hidden="true" /> : <Server className="h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 truncate" title={sourceText}>{sourceText}</span>
     </div>}
-    {actions && <><ComposerActionItems {...actions} deferAction={action => { afterClose.current = action }} /><Menu.Separator className="my-1.5 h-px bg-border" /></>}
+    {actions && <><ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} /><Menu.Separator className="my-1.5 h-px bg-border" /></>}
     <Menu.Sub>
       {subRow('CLI', selectedOption.label || selectedOption.provider || selectedOption.id)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
