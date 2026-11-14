@@ -15,6 +15,7 @@ import (
 )
 
 type nativeGoalRestoreRecord struct {
+	Recovered       bool   `json:"recovered,omitempty"`
 	ID              string `json:"id"`
 	NativeID        string `json:"native_id"`
 	ObjectiveHash   string `json:"objective_hash"`
@@ -186,10 +187,19 @@ func (api *StreamingAPI) pauseNativeGoalForWake(sessionID string) *nativeGoalRes
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	previous, err := api.latestNativeGoal(ctx, sessionID)
-	if err != nil || previous == nil || previous.Provider != "codex-cli" || previous.Goal == nil || previous.Goal.Status != "active" {
+	if err != nil || previous == nil || previous.Provider != "codex-cli" || previous.Goal == nil {
 		return nil
 	}
-	update, err := controlNativeGoal(ctx, sessionID, "pause")
+	if previous.Goal.Status == "paused" && previous.Reason == "background_wake" {
+		receipt := api.pendingNativeGoalRestore(ctx, sessionID)
+		if receipt != nil && receipt.NativeID == previous.NativeSessionID && receipt.ObjectiveHash == nativeGoalObjectiveHash(previous.Goal.Objective) {
+			return receipt
+		}
+	}
+	if previous.Goal.Status != "active" {
+		return nil
+	}
+	update, err := controlNativeGoal(ctx, sessionID, "wake_pause")
 	if err != nil {
 		log.Printf("[AGENT_GOAL] session=%s action=failed reason=wake_pause_failed", sessionID)
 		return nil
@@ -250,7 +260,7 @@ func (api *StreamingAPI) restoreNativeGoalAfterWake(sessionID string, receipt *n
 		return
 	}
 	if turnErr != nil {
-		api.cancelNativeGoalRestore(sessionID, "wake_failed")
+		api.markNativeGoalWakeFailed(sessionID, receipt)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -262,7 +272,7 @@ func (api *StreamingAPI) restoreNativeGoalAfterWake(sessionID string, receipt *n
 	record := document.Chats[sessionID]
 	current := record.NativeGoalRestore
 	update, readErr := api.latestNativeGoal(ctx, sessionID)
-	allowed := err == nil && readErr == nil && current != nil && current.ID == receipt.ID && !current.Claimed && !api.isSessionMarkedStopped(sessionID) && update != nil && update.Goal != nil && update.Goal.Status == "paused" && update.Reason == "background_wake" && update.NativeSessionID == receipt.NativeID && nativeGoalObjectiveHash(update.Goal.Objective) == receipt.ObjectiveHash
+	allowed := err == nil && readErr == nil && current != nil && current.ID == receipt.ID && current.WakeExecutionID != "" && current.WakeExecutionID == receipt.WakeExecutionID && !current.Claimed && !api.isSessionMarkedStopped(sessionID) && update != nil && update.Goal != nil && update.Goal.Status == "paused" && update.Reason == "background_wake" && update.NativeSessionID == receipt.NativeID && nativeGoalObjectiveHash(update.Goal.Objective) == receipt.ObjectiveHash
 	if !allowed {
 		lock.Unlock()
 		log.Printf("[AGENT_GOAL] session=%s restore=%s action=skipped reason=restore_superseded", sessionID, receipt.ID)
@@ -326,12 +336,14 @@ func (api *StreamingAPI) markNativeGoalWakeStarted(sessionID string, receipt *na
 		return false
 	}
 	current.WakeExecutionID = executionID
+	current.Recovered = false
 	record.NativeGoalRestore = current
 	document.Chats[sessionID] = record
 	if err = api.writeRestartContinueRecords(ctx, owner, document); err != nil {
 		log.Printf("[AGENT_GOAL] session=%s action=failed reason=wake_identity_write", sessionID)
 		return false
 	}
+	receipt.WakeExecutionID = executionID
 	return true
 }
 
@@ -356,7 +368,7 @@ func (api *StreamingAPI) observeNativeGoalWakeCompletion(sessionID string, event
 	}
 	record := document.Chats[sessionID]
 	receipt := record.NativeGoalRestore
-	if receipt == nil || receipt.Claimed || receipt.WakeExecutionID == "" || receipt.WakeExecutionID != record.QueryID || event.Timestamp.Before(record.SavedAt) {
+	if receipt == nil || !receipt.Recovered || receipt.Claimed || receipt.WakeExecutionID == "" || receipt.WakeExecutionID != record.QueryID || event.Timestamp.Before(record.SavedAt) {
 		return
 	}
 	var payload struct {
@@ -380,8 +392,59 @@ func (api *StreamingAPI) observeNativeGoalWakeCompletion(sessionID string, event
 		return
 	}
 	if payload.Status != "completed" {
-		api.cancelNativeGoalRestore(sessionID, "wake_failed")
+		api.markNativeGoalWakeFailed(sessionID, receipt)
 		return
 	}
 	go api.restoreNativeGoalAfterWake(sessionID, receipt, nil)
+}
+
+func (api *StreamingAPI) pendingNativeGoalRestore(ctx context.Context, sessionID string) *nativeGoalRestoreRecord {
+	if api.eventStore == nil || api.isSessionMarkedStopped(sessionID) {
+		return nil
+	}
+	owner := api.eventStore.GetSessionOwner(sessionID)
+	if owner == "" {
+		return nil
+	}
+	lock := productConversationRegistryMutex(restartContinuePath(owner))
+	lock.Lock()
+	defer lock.Unlock()
+	document, err := api.readRestartContinueRecords(ctx, owner)
+	if err != nil {
+		return nil
+	}
+	receipt := document.Chats[sessionID].NativeGoalRestore
+	if receipt == nil || receipt.Claimed {
+		return nil
+	}
+	return receipt
+}
+func (api *StreamingAPI) markNativeGoalWakeFailed(sessionID string, receipt *nativeGoalRestoreRecord) {
+	if api.eventStore == nil || receipt == nil {
+		return
+	}
+	owner := api.eventStore.GetSessionOwner(sessionID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	lock := productConversationRegistryMutex(restartContinuePath(owner))
+	lock.Lock()
+	defer lock.Unlock()
+	document, err := api.readRestartContinueRecords(ctx, owner)
+	if err != nil {
+		return
+	}
+	record := document.Chats[sessionID]
+	current := record.NativeGoalRestore
+	if current == nil || current.ID != receipt.ID || current.Claimed || current.WakeExecutionID != receipt.WakeExecutionID {
+		return
+	}
+	current.WakeExecutionID = ""
+	current.Recovered = false
+	record.NativeGoalRestore = current
+	document.Chats[sessionID] = record
+	if err = api.writeRestartContinueRecords(ctx, owner, document); err != nil {
+		log.Printf("[AGENT_GOAL] session=%s action=failed reason=wake_failure_write", sessionID)
+		return
+	}
+	log.Printf("[AGENT_GOAL] session=%s restore=%s action=failed status=paused reason=wake_failed_receipt_retained", sessionID, receipt.ID)
 }

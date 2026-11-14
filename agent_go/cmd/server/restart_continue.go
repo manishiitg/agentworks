@@ -105,8 +105,9 @@ func (api *StreamingAPI) saveRestartContinueRequest(ctx context.Context, userID,
 	principal.CrewAskInput = nil
 	principal.FeedbackOperationID = ""
 	previous := document.Chats[sessionID]
-	if previous.NativeGoalRestore != nil && !previous.NativeGoalRestore.Claimed && req.TriggeredBy == "restart_continue" {
+	if previous.NativeGoalRestore != nil && !previous.NativeGoalRestore.Claimed && (req.TriggeredBy == "restart_continue" || req.TriggeredBy == usageLimitContinueTrigger) {
 		previous.NativeGoalRestore.WakeExecutionID = queryID
+		previous.NativeGoalRestore.Recovered = true
 	}
 
 	document.Chats[sessionID] = restartContinueRecord{NativeGoalRestore: previous.NativeGoalRestore, RestartContinues: previous.RestartContinues, SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID)}
