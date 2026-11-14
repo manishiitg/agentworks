@@ -137,6 +137,9 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 // Real workspace handlers (not the in-memory workspace seam) prove a
 // project-bound fork can update the caller's preferences without widening guards.
 func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code")
 	f, _ := newExternalCrewCommandFixture(t)
 	journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
 	if err != nil {
@@ -146,9 +149,6 @@ func TestProjectBoundForkInheritsGroupThroughWorkspaceGuard(t *testing.T) {
 	f.api.eventStore = storeevents.NewEventStore(100)
 	defer f.api.eventStore.Stop()
 	f.api.eventStore.SetDurableJournal(journal)
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code")
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
 	if err != nil {
