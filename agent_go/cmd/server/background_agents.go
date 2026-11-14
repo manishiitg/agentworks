@@ -2693,11 +2693,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 	if api.botManager != nil {
 		api.botManager.PrepareSyntheticTurn(sessionID)
 	}
-	goalRestore, goalPauseErr := api.pauseNativeGoalForWake(sessionID)
-	if goalPauseErr != nil {
-		log.Printf("[AGENT_GOAL] session=%s action=skipped reason=wake_pause_unconfirmed", sessionID)
-		return false
-	}
+	goalRestore := api.pauseNativeGoalForWake(sessionID)
 	goalRestoreHandled := false
 	defer func() {
 		if !goalRestoreHandled {
@@ -2786,7 +2782,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithContext(sessionID, syntheticMsg
 
 	if goalRestore != nil {
 		agentCtx = llmtypes.WithNativeGoalTurnPause(agentCtx, llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: "background_wake"})
-	} else if previous, err := api.latestNativeGoal(agentCtx, sessionID); err == nil && previous != nil && previous.Provider == "codex-cli" && previous.Goal != nil && previous.Goal.Status == "paused" {
+	} else if previous, err := api.latestNativeGoal(agentCtx, sessionID); err == nil && previous != nil && previous.Provider == "codex-cli" && previous.Goal != nil && previous.Goal.Status == "paused" && previous.Reason != "no_live_process" && previous.Reason != "native_pause_failed" {
 		agentCtx = llmtypes.WithNativeGoalTurnPause(agentCtx, llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: previous.Reason})
 	}
 

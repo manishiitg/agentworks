@@ -13,24 +13,33 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // PLAT-746-988: use the real journal/receipt/Stop projection; mock only native
 // RPC and the final admitted provider turn, never the state deciding to resume.
 func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
-	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "retry_after_failure", "arm_stop_race", "pause_failed"} {
+	for _, action := range []string{"resume", "stop", "clear", "changed", "failed_wake", "retry_after_failure", "arm_stop_race", "pause_failed", "no_live_process", "missing_record", "poster_record", "resume_quota"} {
 		t.Run(action, func(t *testing.T) {
-			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]}]}`)
+			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"poster","username":"poster","can_create":true,"products":["work"]}]}`)
 			api, store := newDurableChatAPI(t, "goal-lifecycle-"+action, "owner")
 			sid := "goal-lifecycle-" + action
 			store.SetEventPreparer(api.prepareNativeGoalEvent)
 			files := map[string]string{}
 			api.internalTurnQueueRead = func(_ context.Context, path string) (string, bool, error) { v, ok := files[path]; return v, ok, nil }
 			api.internalTurnQueueWrite = func(_ context.Context, path, raw string) error { files[path] = raw; return nil }
+			recordOwner := "owner"
+			if action == "poster_record" {
+				recordOwner = "poster"
+				api.lastQueryRequests = map[string]QueryRequest{sid: {userID: "poster"}}
+			}
 			record := restartContinueRecord{SessionID: sid, QueryID: "parent", Request: QueryRequest{Query: "Original input must not replay", AgentMode: "multi-agent"}, SavedAt: time.Now()}
-			if err := api.writeRestartContinueRecords(context.Background(), "owner", restartContinueDocument{Chats: map[string]restartContinueRecord{sid: record}}); err != nil {
+			if err := api.writeRestartContinueRecords(context.Background(), recordOwner, restartContinueDocument{Chats: map[string]restartContinueRecord{sid: record}}); err != nil {
 				t.Fatal(err)
+			}
+			if action == "missing_record" {
+				files = map[string]string{}
 			}
 			native := llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Finish the task", Status: "active"}}
 			if err := api.projectNativeGoal(sid, native, "native_update"); err != nil {
@@ -38,13 +47,26 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 			}
 			oldControl := controlNativeGoal
 			t.Cleanup(func() { controlNativeGoal = oldControl })
-			raced := false
+			raced, canceled := false, false
 			controlNativeGoal = func(_ context.Context, owner, op string) (*llmtypes.NativeGoalUpdate, error) {
-				if action == "pause_failed" {
+				if action == "pause_failed" && op != "show" {
 					return nil, errors.New("native pause refused")
+				}
+				if action == "no_live_process" {
+					return nil, llmtypes.NativeGoalUnavailable("this Codex session")
 				}
 				if owner != sid {
 					t.Fatal("control crossed session")
+				}
+				if action == "stop" && op == "pause" && !canceled {
+					t.Fatal("goal pause delayed turn cancellation")
+				}
+				if op == "show" {
+					update := native
+					return &update, nil
+				}
+				if action == "missing_record" {
+					t.Fatal("paused native goal without a restore record")
 				}
 				goal := *native.Goal
 				goal.Status = "paused"
@@ -70,17 +92,30 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 				if !api.nativeGoalRestoreCurrent(ctx, sid, ctx.Value(nativeGoalRestoreContextKey{}).(string)) {
 					t.Fatal("restore did not own its consumed receipt")
 				}
+				if action == "resume_quota" {
+					return &llmerrors.Error{Kind: llmerrors.KindQuotaExhausted, Err: errors.New("typed quota"), RetryAt: time.Now().Add(time.Hour)}
+				}
 				return nil
 			}
-			receipt, pauseErr := api.pauseNativeGoalForWake(sid)
-			if action == "pause_failed" {
-				if pauseErr == nil || receipt != nil {
-					t.Fatal("unconfirmed pause admitted a wake")
+			receipt := api.pauseNativeGoalForWake(sid)
+			if action == "pause_failed" || action == "no_live_process" || action == "missing_record" {
+				if receipt != nil {
+					t.Fatal("unconfirmed pause armed a restore")
+				}
+				state, err := api.latestNativeGoal(context.Background(), sid)
+				if err != nil || state == nil {
+					t.Fatal("wake bookkeeping lost row", err)
+				}
+				if action == "missing_record" && state.Goal.Status != "active" {
+					t.Fatal("missing receipt stranded native pause")
+				}
+				if action != "missing_record" && state.Goal.Status != "paused" {
+					t.Fatal("missing process left active row")
+				}
+				if action == "no_live_process" && state.Reason != "no_live_process" {
+					t.Fatal("missing process not explained")
 				}
 				return
-			}
-			if pauseErr != nil {
-				t.Fatal(pauseErr)
 			}
 			if action == "arm_stop_race" {
 				if receipt != nil {
@@ -91,13 +126,31 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 			if receipt == nil || !api.markNativeGoalWakeStarted(sid, receipt, "wake") {
 				t.Fatal("wake did not arm owned restore")
 			}
+			if action == "poster_record" {
+				if receipt.RecordOwner != "poster" {
+					t.Fatal("receipt read under chat owner instead of poster")
+				}
+				api.cancelNativeGoalRestore(sid, "person_message")
+				if api.pendingNativeGoalRestore(context.Background(), sid) != nil {
+					t.Fatal("poster receipt not cancelled")
+				}
+				return
+			}
 			// A paused SDK read must not erase why the goal is paused.
 			if err := api.projectNativeGoal(sid, native, "native_read"); err != nil {
 				t.Fatal(err)
 			}
 			switch action {
 			case "stop":
-				api.pauseNativeGoalForStop(sid)
+				api.activeSessions = map[string]*ActiveSessionInfo{sid: {SessionID: sid, UserID: "owner"}}
+				api.agentCancelFuncs = map[string]context.CancelFunc{sid: func() { canceled = true }}
+				r := sharedSecretsRequest(http.MethodPost, "/api/cancel-turn", "owner", nil)
+				r.Header.Set("X-Session-ID", sid)
+				w := httptest.NewRecorder()
+				api.handleCancelCurrentTurn(w, r)
+				if w.Code != http.StatusNoContent || !canceled {
+					t.Fatal("Stop did not cancel owned turn", w.Code)
+				}
 			case "clear":
 				api.cancelNativeGoalRestore(sid, "person_goal_command")
 				native.Goal = nil
@@ -128,18 +181,28 @@ func TestNativeGoalWakeRestoreIsOnceAndStopClearCancelIt(t *testing.T) {
 			}
 			api.restoreNativeGoalAfterWake(sid, receipt, failure)
 			if action == "retry_after_failure" {
-				receipt, pauseErr = api.pauseNativeGoalForWake(sid)
-				if pauseErr != nil {
-					t.Fatal(pauseErr)
-				}
+				receipt = api.pauseNativeGoalForWake(sid)
 				if receipt == nil || !api.markNativeGoalWakeStarted(sid, receipt, "second-wake") {
 					t.Fatal("existing wake retry lost paused goal restoration")
 				}
 			}
 			api.restoreNativeGoalAfterWake(sid, receipt, nil)
 			want := 0
-			if action == "resume" || action == "retry_after_failure" {
+			if action == "resume" || action == "retry_after_failure" || action == "resume_quota" {
 				want = 1
+			}
+			if action == "resume_quota" {
+				state, _ := api.latestNativeGoal(context.Background(), sid)
+				if state == nil || state.Goal == nil || state.Goal.Status != "usage_limited" {
+					t.Fatal("claimed restore quota left paused goal")
+				}
+				r := sharedSecretsRequest(http.MethodPost, "/api/query", "owner", nil)
+				req := QueryRequest{Query: usageLimitContinueMessage, AgentMode: "multi-agent", IsAutoNotification: true, TriggeredBy: usageLimitContinueTrigger}
+				r, handled := api.prepareNativeGoalQuery(httptest.NewRecorder(), r, &req, sid, "codex-cli", true, true)
+				command, ok := llmtypes.NativeGoalCommandForSession(r.Context(), sid)
+				if handled || !ok || command.Action != "resume" {
+					t.Fatal("reset did not resume quota-blocked restore")
+				}
 			}
 			if calls != want {
 				t.Fatalf("restore calls=%d want%d", calls, want)
@@ -190,6 +253,14 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	if refused.Code != 404 || calls != 0 || !strings.Contains(refused.Body.String(), "Session not found") {
 		t.Fatalf("foreign refusal not from session boundary: %d %s calls=%d", refused.Code, refused.Body.String(), calls)
 	}
+	for _, action := range []string{"Task", "pause", "clear"} {
+		req.Query, req.PinRunMode = "/goal "+action, true
+		denied := send("owner")
+		if denied.Code != http.StatusForbidden || calls != 0 || !strings.Contains(denied.Body.String(), "chat's Builder") {
+			t.Fatalf("Run goal control escaped owner/Builder gate: %d %s", denied.Code, denied.Body.String())
+		}
+	}
+	req.Query, req.PinRunMode = "/goal pause", false
 	allowed := send("owner")
 	if allowed.Code != 200 || calls != 1 {
 		t.Fatalf("own admitted control failed: %d %s calls=%d", allowed.Code, allowed.Body.String(), calls)

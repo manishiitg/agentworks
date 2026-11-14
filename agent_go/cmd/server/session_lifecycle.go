@@ -104,7 +104,6 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 		return
 	}
 
-	api.pauseNativeGoalForStop(sessionID)
 	api.cancelUsageLimitRecovery(sessionID, "stopped")
 	// Preserve the user's intent even if the foreground cancel function has just
 	// completed and disappeared. A scheduled sequencer may be between turns at
@@ -125,6 +124,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 		log.Printf("[SESSION DEBUG] Canceled current LLM turn for session %s", sessionID)
 	}
 	api.agentCancelMux.Unlock()
+	api.pauseNativeGoalForStop(sessionID)
 
 	if !exists {
 		if api.isSessionBusy(sessionID) && !api.retainedMainTurnTracked(sessionID) {
@@ -150,7 +150,6 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 		return
 	}
 	log.Printf("[STOP] session=%s begin runtime cancel (reason=%q phase=%s)", sessionID, closeReason, terminalPhase)
-	api.pauseNativeGoalForStop(sessionID)
 	api.markSessionStoppedAs(sessionID, terminalPhase, closeReason)
 
 	api.agentCancelMux.Lock()
@@ -161,6 +160,7 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 		turnCanceled = true
 	}
 	api.agentCancelMux.Unlock()
+	api.pauseNativeGoalForStop(sessionID)
 	log.Printf("[STOP] session=%s active turn context canceled=%v", sessionID, turnCanceled)
 
 	api.sessionQueryIDMux.Lock()
@@ -323,7 +323,6 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	// goroutines that race with this stop handler will see the flag and bail out
 	// instead of re-creating workshop sessions or spawning new CLI processes.
 	// See stoppedSessions field comment for the full race condition description.
-	api.pauseNativeGoalForStop(sessionID)
 	api.markSessionStopped(sessionID)
 	if isScheduledSession(sessionID) {
 		api.markSessionTurnInterrupted(sessionID)
@@ -337,6 +336,7 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 		log.Printf("[SESSION DEBUG] Canceled agent execution context for session %s", sessionID)
 	}
 	api.agentCancelMux.Unlock()
+	api.pauseNativeGoalForStop(sessionID)
 
 	// Update active session status to stopped
 	api.updateSessionStatus(sessionID, "stopped")

@@ -437,8 +437,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		goal, err := api.eventStore.LatestNativeGoal(r.Context(), sessionID)
 		if err != nil {
 			log.Printf("[AGENT_GOAL] session=%s action=failed reason=restore_read_failed", sessionID)
-			http.Error(w, "Failed to restore goal", http.StatusInternalServerError)
-			return
+			goal = nil
 		}
 		response.NativeGoalSnapshot = goal
 		if goal != nil {
