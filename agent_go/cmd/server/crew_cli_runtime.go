@@ -142,6 +142,14 @@ func crewCLIWorkspaceInstructions(folder string) string {
 }
 
 func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewPrivateRuntimeDir(folder, user, session, provider, readOnly, true)
+}
+
+func existingCrewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	return resolveCrewPrivateRuntimeDir(folder, user, session, provider, readOnly, false)
+}
+
+func resolveCrewPrivateRuntimeDir(folder, user, session, provider string, readOnly, prepare bool) (string, error) {
 	roots, bound, err := localCrewRoots(folder)
 	if err != nil || !bound {
 		return "", err
@@ -150,8 +158,13 @@ func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool
 	if err != nil {
 		return "", err
 	}
-	dir, err := cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
-	if err == nil {
+	var dir string
+	if prepare {
+		dir, err = cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
+	} else {
+		dir, err = cliruntime.ExistingMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
+	}
+	if prepare && err == nil {
 		err = prepareCrewGit(dir, roots.Files, provider, user)
 	}
 	return dir, err

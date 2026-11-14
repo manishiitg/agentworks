@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
@@ -51,6 +53,20 @@ func currentNativeSkillChoices(snapshot runtimeSkillsResponse, requestedProvider
 		out.Message = "Explicit skill invocation is not supported by this program or transport here. You can still import project skills."
 		return out
 	}
+	// A local Claude does not load the host's private attached-instruction
+	// projections as slash skills. Do not equate filesystem presence with native
+	// availability, enable extra roots or fall back to generic prompting.
+	projectOnly := snapshot.Provider == "claude-code" && snapshot.WorkingDirectory != "" && snapshot.Directory != snapshot.WorkingDirectory
+	if projectOnly {
+		inventory, err := skills.ReadRuntimeInventory(snapshot.WorkingDirectory)
+		if err != nil {
+			out.Supported = false
+			out.Message = "This chat's native project skills are unavailable. Refresh or remove the selection."
+			return out
+		}
+		snapshot.RuntimeInventory = inventory
+		snapshot.Directory = snapshot.WorkingDirectory
+	}
 	prefix := ".agents/skills"
 	if snapshot.Provider == "claude-code" {
 		prefix = ".claude/skills"
@@ -80,6 +96,9 @@ func currentNativeSkillChoices(snapshot runtimeSkillsResponse, requestedProvider
 		out.Skills = append(out.Skills, nativeSkillChoice{ID: hex.EncodeToString(hash[:16]), Name: name, Description: skill.Frontmatter.Description, Source: "Prepared for this chat", Provider: snapshot.Provider, NativePath: native.Path})
 	}
 	out.Message = "Choose one skill for this message. Selection requests native invocation; it is not proof the skill ran. Only this chat's prepared native skill files are listed."
+	if projectOnly {
+		out.Message = "Claude can explicitly invoke native project skills here. Private attached instructions are not native slash skills; they remain available through read_skill."
+	}
 	return out
 }
 
