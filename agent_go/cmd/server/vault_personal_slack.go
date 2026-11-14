@@ -250,8 +250,6 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 		account := row(actor, "Your Slack", own)
 		if workspace == "" {
 			account.Label = firstNonBlank(own.Label, account.Label)
-			account.UsedIn = api.personalSlackProjectUsage(r, actor, own.ID)
-			account.UsageChecked = true
 		}
 		out.Accounts = append(out.Accounts, account)
 	}
@@ -405,20 +403,4 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 	}
 	log.Printf("[SLACK_ACCOUNTS] actor=%s account=%s owner=%s item=%s reason=%s", actor, id, owner, root, action)
 	return map[string]any{"connection_id": id, "selected": action == "attach", "notice": slackAccountNotice}, nil
-}
-
-// The account overview reuses the same current, owner-authorized scope inventory
-// as saved Slack bots. A label never grants access or selects the connection.
-func (api *StreamingAPI) personalSlackProjectUsage(r *http.Request, actor, connectionID string) []slackVaultScope {
-	out := []slackVaultScope{}
-	for _, scope := range api.slackVaultScopes(r) {
-		if api.projectSecretsOwner(actor, scope.Workspace) != actor {
-			continue
-		}
-		servers, chosenOnly, err := projectAppSelection(r.Context(), scope.Workspace)
-		if err == nil && projectVaultAppInUse(servers, chosenOnly, connectionID) {
-			out = append(out, scope)
-		}
-	}
-	return out
 }

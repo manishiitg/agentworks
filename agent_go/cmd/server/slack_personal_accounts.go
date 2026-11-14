@@ -31,9 +31,7 @@ type slackAccountRow struct {
 	// Mine marks the caller's own account; others appear only when added here.
 	Mine bool `json:"mine"`
 	// Problem is why the account last failed to connect, in Slack's own words; empty once it connects again.
-	Problem      string            `json:"problem,omitempty"`
-	UsedIn       []slackVaultScope `json:"used_in,omitempty"`
-	UsageChecked bool              `json:"usage_checked,omitempty"`
+	Problem string `json:"problem,omitempty"`
 }
 
 type slackAccountsResponse struct {
