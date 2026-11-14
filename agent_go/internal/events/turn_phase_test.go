@@ -1,6 +1,7 @@
 package events
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -195,5 +196,26 @@ func TestGenerationAndStreamEndsDoNotCloseTurn(t *testing.T) {
 				t.Fatalf("%s did not close both live and persisted turn state", end)
 			}
 		})
+	}
+}
+
+// PLAT-746-987: native Pi retry completion clears retrying but never revives an ended turn.
+func TestTurnPhaseTracksNativeRetryWithoutRevivingFinishedTurn(t *testing.T) {
+	es := NewEventStore(100)
+	defer es.Stop()
+	es.EnableTurnPhase()
+	session := "native-pi-retry"
+	add(es, session, "user_message", nil)
+	add(es, session, "retry_attempt", mcpevents.NewRetryAttemptEvent(0, 0, 3, "example-model", "pi-cli", "native_retry_start", false, time.Second, "The provider request is being retried."))
+	add(es, session, "retry_attempt", mcpevents.NewRetryAttemptEvent(0, 0, 3, "example-model", "pi-cli", "native_retry_end", true, 0, ""))
+	got := phaseEvents(es, session)
+	if len(got) < 3 || !strings.HasPrefix(got[len(got)-1], "running:") {
+		t.Fatalf("native retry never cleared: %v", got)
+	}
+	add(es, session, "unified_completion", nil)
+	before := len(phaseEvents(es, session))
+	add(es, session, "retry_attempt", mcpevents.NewRetryAttemptEvent(0, 0, 3, "example-model", "pi-cli", "native_retry_end", true, 0, ""))
+	if len(phaseEvents(es, session)) != before {
+		t.Fatal("late native retry end invented an active turn")
 	}
 }
