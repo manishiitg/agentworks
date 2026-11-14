@@ -356,16 +356,23 @@ func (api *StreamingAPI) deliverDesktopAppMessage(ctx context.Context, owner, co
 
 // Called only after authenticated inbox and exact-recipient admission above.
 // Own mail may steer an unrestricted owner turn. It must not borrow a visitor,
-// bot or function turn's running runtime, or interrupt an automatic follow-up.
+// bot or function turn's running runtime, including a compatible automatic follow-up.
 func (api *StreamingAPI) desktopAppMessageInput(owner string, record ProductConversationRecord, message desktopAppIncoming, text string) AgentProfileChatRequest {
 	input := AgentProfileChatRequest{Message: text, ConversationKey: record.ConversationKey, DeliveryMode: "queue"}
 	api.lastQueryMu.RLock()
 	prior := api.lastQueryRequests[record.SessionID]
 	api.lastQueryMu.RUnlock()
 	role := api.agentMessageCallerRole(agentMessageEndpoint{UserID: owner, Kind: triggerCallerCrew, Session: record.SessionID})
-	if message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" && !api.isSyntheticTurn(record.SessionID) {
+	if message.Own && !desktopAppTurnRestricted(prior, owner) && role.FunctionCallID == "" {
 		input.DeliveryMode = ""
 	}
+	reason := "restricted_or_function_turn"
+	if !message.Own {
+		reason = "other_person"
+	} else if input.DeliveryMode == "" {
+		reason = "own_compatible_turn"
+	}
+	log.Printf("[QUERY->LIVE] session=%s action=admission source=agentbridge_app live_first=%t synthetic=%t reason=%s", record.SessionID, input.DeliveryMode != "queue", api.isSyntheticTurn(record.SessionID), reason)
 	return input
 }
 

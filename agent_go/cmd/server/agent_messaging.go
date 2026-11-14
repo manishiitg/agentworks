@@ -914,7 +914,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				current := conv
 				current.Endpoints[0] = api.agentMessageCallerRole(current.Endpoints[0])
 				current.Endpoints[1] = api.agentMessageCallerRole(current.Endpoints[1])
-				if steer = agentMessageMaySteer(current, msg) && api.canSteerSession(dest.Session) && !api.isSyntheticTurn(dest.Session); !steer {
+				if steer = agentMessageMaySteer(current, msg) && api.canSteerSession(dest.Session); !steer {
 					busyWaits[msg.ID]++
 					lane.Unlock()
 					time.Sleep(time.Second)
@@ -1054,7 +1054,7 @@ func (api *StreamingAPI) steerAgentMessageReply(ctx context.Context, c agentConv
 	api.runningAgentsMux.RLock()
 	runningAgent := api.runningAgents[dest.Session]
 	api.runningAgentsMux.RUnlock()
-	if runningAgent == nil || !api.canSteerSession(dest.Session) || api.isSyntheticTurn(dest.Session) {
+	if runningAgent == nil || !api.canSteerSession(dest.Session) {
 		return false, nil
 	}
 	text := agentMessageText(c, m)
@@ -1096,6 +1096,7 @@ func (api *StreamingAPI) finishAgentMessageSteer(ctx context.Context, c agentCon
 		log.Printf("[AGENT-MESSAGE] steer %s into %s unconfirmed; held without automatic resend", m.ID, dest.Session)
 		return true, errAgentMessageSteerUnconfirmed
 	}
+	log.Printf("[QUERY->LIVE] session=%s message=%s action=steered source=agent_message reason=own_compatible_turn", dest.Session, m.ID)
 	log.Printf("[AGENT-MESSAGE] steered reply %s from %s into running turn of %s", m.ID, c.ID, dest.Session)
 	return true, nil
 }
