@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"slices"
 	"strings"
@@ -44,6 +45,7 @@ func (api *StreamingAPI) crewTeamJoinTarget(ctx context.Context, claims *UserCla
 		return out, crewroot.Roots{}, fmt.Errorf("This project's Team settings could not be checked.")
 	}
 	if state.TeamOn || state.MemberOf != "" || team.On {
+		log.Printf("[TEAM_JOIN] local_project=%s event=target_skipped reason=team_on", project)
 		return out, crewroot.Roots{}, fmt.Errorf("This project already has a Team. Pick a project with Team off.")
 	}
 	binding, err := crewroot.ReadSync(project)
@@ -51,6 +53,7 @@ func (api *StreamingAPI) crewTeamJoinTarget(ctx context.Context, claims *UserCla
 		return out, crewroot.Roots{}, fmt.Errorf("This project's online setup could not be checked.")
 	}
 	if binding != nil {
+		log.Printf("[TEAM_JOIN] local_project=%s event=target_skipped reason=already_online", project)
 		out.Reason = crewTeamJoinAlreadyOnline
 		return out, crewroot.Roots{}, nil
 	}
