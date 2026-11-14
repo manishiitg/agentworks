@@ -2931,6 +2931,9 @@ func FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath 
 	if sessionID == "" {
 		return "", false, nil
 	}
+	if path, ok := findWorkflowBuilderConversationPath(userID, sessionID, workspacePath); ok {
+		return path, true, nil
+	}
 	sessions, err := ListChatHistorySessions(userID, maxChatHistoryFallbackScan, 0, workspacePath)
 	if err != nil {
 		return "", false, err
@@ -2941,6 +2944,50 @@ func FindChatHistoryConversationPathForSession(userID, sessionID, workspacePath 
 		}
 	}
 	return "", false, nil
+}
+
+// findWorkflowBuilderConversationPath finds a chat's transcript in its
+// workflow's builder/conversation folder from file names and stat alone. The
+// session list it replaces parsed up to maxChatHistoryFallbackScan whole
+// transcripts on every turn just to learn one path; a 14 Nov 2026 heap profile
+// on a laptop showed about 700 MB of decoded history held by that lookup. The
+// same visibility rules as the list apply; anything not found here falls back
+// to the full list.
+func findWorkflowBuilderConversationPath(userID, sessionID, workspacePath string) (string, bool) {
+	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
+	if workspacePath == "" || crewBuilderDiskHiddenFromUser(userID, workspacePath) {
+		return "", false
+	}
+	builder := workspacePath
+	if owned, isWorkProject := ownedWorkProjectWorkspacePath(userID, workspacePath); isWorkProject {
+		builder = owned
+	}
+	dir, ok := resolveLocalWorkflowDir(builder)
+	if !ok {
+		return "", false
+	}
+	matches, err := workflowBuilderConversationFiles(dir)
+	if err != nil {
+		return "", false
+	}
+	best, bestModTime := "", time.Time{}
+	for _, convPath := range matches {
+		if chatHistorySessionIDFromFileName(filepath.Base(convPath)) != sessionID {
+			continue
+		}
+		info, err := os.Stat(convPath)
+		if err != nil {
+			continue
+		}
+		if best == "" || newerBuilderConversationFile(convPath, info.ModTime(), best, bestModTime) {
+			best, bestModTime = convPath, info.ModTime()
+		}
+	}
+	if best == "" {
+		return "", false
+	}
+	path := workflowRelativeConversationPath(builder, dir, best)
+	return path, strings.TrimSpace(path) != ""
 }
 
 const maxChatHistoryTitleRunes = 120
