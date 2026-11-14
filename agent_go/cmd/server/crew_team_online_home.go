@@ -63,6 +63,9 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 		if _, err := api.createWorkspaceFromSpec(context.WithValue(ctx, UserContextKey, claims), claims, crewProfileID, crewSpec{Name: string(name)}, false, home); err != nil {
 			return "", err
 		}
+		if err := api.createCrewTeamHomeMain(ctx, user, home); err != nil {
+			return "", err
+		}
 		log.Printf("[TEAM_HOME] team=%s crew=%s user=%s actor=%s event=created", project, home, user, person)
 	}
 	if team.OnlineHome == "" {
