@@ -40,6 +40,11 @@ func TestTeamHomeDeletionDoesNotRecurseOrRemoveSiblingState(t *testing.T) {
 	if err != nil || home.RosterSource != fixtureCrewID || home.OnlineHome != "" {
 		t.Fatal("home must terminate lifecycle recursion", err)
 	}
+	// Normal private Share plus the derived Team roster is not Everyone.
+	homeRoot := crewProjectRootByID(homeID)
+	if !crewSharedWith(homeRoot, fixtureUserB) || crewSharedWith(homeRoot, "not-a-member") {
+		t.Fatal("home audience is not the current Team roster")
+	}
 	siblingDir, err := crewTeamDir("unrelated-crew")
 	if err != nil {
 		t.Fatal(err)

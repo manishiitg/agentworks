@@ -115,13 +115,18 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 				return admissionRefused("sending named agent is no longer authorized")
 			}
 		}
-		view := hostedInboxReplyClaims(claims, c, m.From)
-		peer, peerErr := publishedAgentAuthorizationPeer(ctx, dest)
-		if peerErr != nil {
-			return peerErr
-		}
-		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, peer, view == claims); err != nil {
-			return err
+		// A published runtime may reply only in the inbox already admitted for
+		// this exact asker (checked above). That message delivery does not need
+		// or grant product tools in the asker's private Crew.
+		if source.PublishedAgent == "" {
+			view := hostedInboxReplyClaims(claims, c, m.From)
+			peer, peerErr := publishedAgentAuthorizationPeer(ctx, dest)
+			if peerErr != nil {
+				return peerErr
+			}
+			if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, peer, view == claims); err != nil {
+				return err
+			}
 		}
 	}
 	for _, e := range c.Endpoints {
