@@ -396,3 +396,14 @@ export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardCho
     throw cause
   }
 }
+
+/** How the Team works (crew_team_way.go): the apps and keys the whole Team uses, and the apps each person signs in to
+ * themselves. The server decides what is shared by login type; every screen shows it and sends the choice. */
+export type TeamWayItem = { kind: 'app' | 'secret' | 'needs_sign_in'; id?: string; name: string; login?: 'shared' | 'sign_in'; note?: string; added_by?: string; connected?: boolean }
+export type TeamWayView = { items: TeamWayItem[]; on_team: string[]; notice?: string }
+export const teamWay = (target: TeamTarget) => teamRequest<TeamWayView>(target, '/way')
+export async function changeTeamWay(target: TeamTarget, change: { op: 'add' | 'remove'; kind: TeamWayItem['kind'] | 'app'; id: string }): Promise<TeamWayView> {
+  const view = await teamRequest<TeamWayView>(target, '/way', 'POST', change)
+  changed()
+  return view
+}
