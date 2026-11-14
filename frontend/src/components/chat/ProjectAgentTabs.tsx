@@ -1,3 +1,4 @@
+import { ForkToTeammate } from './ForkToTeammate'
 import { continueInTerminal } from './TerminalResume'
 import { SidebarCrewAgents } from '../workspace/SidebarCrewAgents'
 import { forkChatTab } from '../../utils/forkChatTab'
@@ -64,6 +65,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const activeTabId = useChatStore(state => state.activeTabId)
   const chatTabs = useChatStore(state => state.chatTabs)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
+  const [forkTo, setForkTo] = useState<{ id: string; name: string } | null>(null)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
   useEffect(() => { if (createRequest) { setNewTabName(''); setAddMode('new') } }, [createRequest])
@@ -246,7 +248,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const position = ownedListed.findIndex(chat => chat.conversation_key === key)
     const before = position > 0 ? ownedListed[position - 1].conversation_key : undefined
     const after = position >= 0 ? ownedListed[position + 1]?.conversation_key : undefined
+    const shareSource = canControl(tab) ? teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) : undefined
     return {
+      forkTo: surface === 'work' && canControl(tab) && team?.team.on && shareSource ? () => setForkTo({ id: shareSource.id, name: shareSource.name }) : undefined,
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
       terminal: surface === 'work' && isAgentTab(tab) && canControl(tab) && (tab.metadata?.agentProfileChatProvider || tab.metadata?.agentProfileEngine) === 'claude-code' ? () => continueInTerminal(tab.tabId) : undefined,
       editorWorkspace: surface === 'work' && localMode && isAgentTab(tab) && canControl(tab) ? tab.metadata?.agentProfileWorkspace : undefined,
@@ -572,6 +576,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
+      {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && <AgentHeaderLine tabId={headerTab} crewName={projectName} showName={menuMode} onOpenIdentity={onOpenIdentity} onReturn={watchingOther && headerTab ? () => selectTab(headerTab) : undefined} />}

@@ -74,6 +74,7 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
   editorWorkspace?: string
+  forkTo?: () => void
   fork?: () => void | Promise<void>
   terminal?: () => void | Promise<void>
   /** Asks the agent to make its online copy (crew_run_online.go); only on the Mac, for your own agents. */
@@ -238,6 +239,7 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     }}
     onBlur={() => setDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" />
   return <div role="menu" aria-label={`${name} actions`} className="space-y-0.5">
+    {actions.forkTo && <button type="button" role="menuitem" className={item} onClick={() => { actions.forkTo!(); onDone() }}><GitFork aria-hidden="true" className="h-3.5 w-3.5" />Fork to…</button>}
     {actions.fork && <button type="button" role="menuitem" disabled={forking} aria-busy={forking} className={`${item} disabled:cursor-wait disabled:opacity-70`} onClick={async () => {
       if (forking) return
       setForking(true)
