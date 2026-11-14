@@ -100,7 +100,7 @@ export default function ConfirmationDialog({
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]"
       data-workspace-collapse-ignore={ignoreWorkspaceAutoCollapse ? 'true' : undefined}
     >
-      <div className="bg-card rounded-md shadow-md border border-border max-w-md w-full mx-4">
+      <div role="dialog" aria-modal="true" aria-label={title} className="bg-card rounded-md shadow-md border border-border max-w-md w-full mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">

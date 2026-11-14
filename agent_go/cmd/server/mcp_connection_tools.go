@@ -321,7 +321,6 @@ func (api *StreamingAPI) mcpToolOAuthRedirect(ctx context.Context, person string
 	return ""
 }
 
-
 // mcpConnectionScreenOAuth returns only the sign-in link and public app-setup
 // requirements produced by the authorized native path, never saved credentials.
 func mcpConnectionScreenOAuth(id string, start *OAuthStartResponse, discovery *OAuthDiscoveryResponse) (string, error) {
