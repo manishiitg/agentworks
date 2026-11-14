@@ -41,7 +41,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
   const events = [before, ...first, thought, ...middle, empty, status, ...last, after]
   const original = JSON.stringify(events)
   const host = document.createElement('div'), root = createRoot(host)
-  const render = (rows = events) => act(async () => root.render(<TerminalEventTranscript terminal={null} events={rows} searchable scrollKey="combined-steps-regression" />))
+  const render = (rows = events) => act(async () => root.render(<TerminalEventTranscript terminal={null} events={rows.map((row, index) => ({ ...row, sequence: index + 1 }))} searchable scrollKey="combined-steps-regression" />))
   try {
     useChatDisplayStore.setState({ showThinking: false, showTools: false })
     await render()
