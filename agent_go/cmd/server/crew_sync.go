@@ -248,7 +248,14 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		project := mux.Vars(r)["project"]
 		if binding, _, ok := api.resolveExternalWorkspace(r.Context(), claims, project); ok && binding.OwnerID != claims.UserID && crewTeamAccountActive(binding.OwnerID) {
 			w.Header().Set("Cache-Control", "no-store")
-			externalJSON(w, crewSyncReply{ProjectID: project, Role: "shared", AccessView: "summary", AccessSummary: "Shared with you by " + shareOwnerLabel(binding.OwnerID)})
+			hasDashboard, err := crewHasPublishedDashboardEntry(r.Context(), binding.Binding.WorkspacePath)
+			if err != nil {
+				log.Printf("[DASHBOARD_DELETE] project=%s event=failed reason=shared_entry_read", project)
+				externalError(w, 503, "dashboard_unavailable", "Could not load this Crew's dashboard.")
+				return
+			}
+			log.Printf("[DASHBOARD_DELETE] project=%s event=shared_entry dashboard=%t ask_only=%t", project, hasDashboard, !hasDashboard)
+			externalJSON(w, crewSyncReply{ProjectID: project, Role: "shared", AccessView: "summary", AccessSummary: "Shared with you by " + shareOwnerLabel(binding.OwnerID), ChatOnly: !hasDashboard})
 			return
 		}
 	}
