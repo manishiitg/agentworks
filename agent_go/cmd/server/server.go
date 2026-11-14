@@ -2431,8 +2431,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/workspaces", api.handleAdminListCodeWorkspaces).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/files", api.handleAdminCodeFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/file", api.handleAdminCodeFile).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats", api.handleAdminCodeChats).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	// A Code workspace's plain shell: sandboxed, one per person with editor access.
