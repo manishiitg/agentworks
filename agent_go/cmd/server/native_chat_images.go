@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
@@ -312,6 +313,13 @@ func (api *StreamingAPI) nativeChatImagesSupported(ctx context.Context, user, se
 			return live == "sdk"
 		}
 		return strings.ToLower(strings.TrimSpace(os.Getenv("CURSOR_CLI_TRANSPORT"))) != "tmux"
+	}
+	if provider == "agy-cli" {
+		if live != "" {
+			return live == "acp"
+		}
+		// initialize must still explicitly advertise image support before Open.
+		return agycli.AgyACPSelected()
 	}
 	if provider == "muse-cli" {
 		if live != "" {

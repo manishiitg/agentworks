@@ -161,6 +161,22 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 			t.Fatal("image bytes offered to Muse text-only transport")
 		}
 	}
+	// ACP has no live steer: the same durable host-queue replay carries its
+	// original references into the next prompt, not a new path-derived grant.
+	t.Setenv("AGY_CLI_TRANSPORT", "acp")
+	agyImages := llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "agy-cli", req), "chat")
+	if len(agyImages) != 1 {
+		t.Fatal("ACP queue lost admitted image")
+	}
+	agyReader, _, _, agyErr := agyImages[0].Open(context.Background())
+	if agyErr != nil {
+		t.Fatal(agyErr)
+	}
+	agyReader.Close()
+	t.Setenv("AGY_CLI_TRANSPORT", "tmux")
+	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "agy-cli", req), "chat")) != 0 {
+		t.Fatal("image bytes offered to ACP terminal")
+	}
 	sdkRequest.ClaudeCodeTransport = "tmux"
 	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "claude-code", sdkRequest), "chat")) != 0 {
 		t.Fatal("image bytes offered to Claude terminal")
