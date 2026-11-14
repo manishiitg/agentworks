@@ -171,8 +171,11 @@ func (api *StreamingAPI) openAdmittedChatImage(ctx context.Context, ref admitted
 func (api *StreamingAPI) withNativeChatImages(ctx context.Context, user, session, provider string, req QueryRequest) context.Context {
 	refs := append(admittedChatAttachmentsFromContext(ctx), req.admittedAttachments...)
 	ctx = withAdmittedChatAttachments(ctx, refs)
+	if len(refs) == 0 {
+		return llmtypes.WithNativeImageInputs(ctx, session, nil)
+	}
 	var inputs []llmtypes.NativeImageInput
-	unavailable := provider != "codex-cli" || req.ClaudeCodeTransport == "tmux" || liveCodingProviderTransport(session) == "tmux"
+	unavailable := !api.nativeChatImagesSupported(ctx, user, session, provider, req.ClaudeCodeTransport)
 	fallbackNotice := false
 	var sourceBytes int64
 
@@ -297,4 +300,29 @@ func (api *StreamingAPI) queueDeferredChatImage(w http.ResponseWriter, r *http.R
 		return api.queueLiveInputTurnResponse(w, r, GetUserIDFromContext(r.Context()), session, input.Request)
 	}
 	return api.queueConversationTurnResponse(w, r, GetUserIDFromContext(r.Context()), session, input.Request)
+}
+
+// Use the same saved chat choice/server default as the coding runtime. Live
+// text-only transports keep paths; no image bytes are ever pasted into tmux.
+func (api *StreamingAPI) nativeChatImagesSupported(ctx context.Context, user, session, provider, carried string) bool {
+	live := liveCodingProviderTransport(session)
+	if provider == "codex-cli" {
+		transport := live
+		if transport == "" {
+			transport = strings.ToLower(strings.TrimSpace(os.Getenv("CODEX_CLI_TRANSPORT")))
+		}
+		return transport == "" || transport == "app-server"
+	}
+	if provider == "claude-code" {
+		if live != "" {
+			return live == "sdk"
+		}
+		transport := chatClaudeCodeTransport(ctx, user, session, carried)
+		if strings.TrimSpace(transport) == "" {
+			transport = os.Getenv("CLAUDE_CODE_TRANSPORT")
+		}
+		transport = strings.ToLower(strings.TrimSpace(transport))
+		return transport == "" || transport == "sdk"
+	}
+	return false
 }

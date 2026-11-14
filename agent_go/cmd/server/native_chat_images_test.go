@@ -106,6 +106,29 @@ func TestNativeChatImagesUseAdmittedReferencesAndCurrentCrewAccess(t *testing.T)
 		t.Fatal(err)
 	}
 	reader.Close()
+	// Claude SDK consumes the same admitted factory and access checks. Its
+	// terminal transport (and a cold Codex terminal default) stays path-only.
+	sdkRequest := req
+	sdkRequest.ClaudeCodeTransport = "sdk"
+	sdkContext := env.api.withNativeChatImages(replay, "owner", "chat", "claude-code", sdkRequest)
+	sdkImages := llmtypes.NativeImageInputsForSession(sdkContext, "chat")
+	if len(sdkImages) != 1 {
+		t.Fatal("Claude SDK lost admitted image")
+	}
+	sdkReader, _, _, sdkErr := sdkImages[0].Open(context.Background())
+	if sdkErr != nil {
+		t.Fatal(sdkErr)
+	}
+	sdkReader.Close()
+	sdkRequest.ClaudeCodeTransport = "tmux"
+	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "claude-code", sdkRequest), "chat")) != 0 {
+		t.Fatal("image bytes offered to Claude terminal")
+	}
+	t.Setenv("CODEX_CLI_TRANSPORT", "tmux")
+	if len(llmtypes.NativeImageInputsForSession(env.api.withNativeChatImages(replay, "owner", "chat", "codex-cli", req), "chat")) != 0 {
+		t.Fatal("image bytes offered to cold Codex terminal")
+	}
+	t.Setenv("CODEX_CLI_TRANSPORT", "app-server")
 	if len(llmtypes.NativeImageInputsForSession(delivery, "another-chat")) != 0 {
 		t.Fatal("grant crossed native session")
 	}
