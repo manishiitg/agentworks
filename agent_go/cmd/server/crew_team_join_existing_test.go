@@ -148,6 +148,21 @@ func TestTeamExistingProjectSyncKeepsPrivateFoldersAndSkills(t *testing.T) {
 		}
 	}
 
+	// Even a fresh New-project member copy must not publish a separately
+	// installed local skill merely because Team skills use the same resource root.
+	c3, d3, b3 := newCopy("member", true)
+	b3.Client = "fresh-member-copy"
+	b3.SkillRoot = filepath.Join(t.TempDir(), "skills")
+	write(filepath.Dir(b3.SkillRoot), "skills/local-only/SKILL.md", "private installed skill")
+	round(c3, d3, b3)
+	round(c3, d3, b3)
+	latest, err := readCrewTeamCurrentState("existing-join")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Versions["skills/local-only/SKILL.md"].File != nil {
+		t.Fatal("New-project member published an unchosen installed skill")
+	}
 	selectedLocal := b2.importSelectedSkills([]string{"analysis"}, []string{"report", "company-skill"})
 	if !slices.Contains(selectedLocal, "company-skill") {
 		t.Fatal("uninstalled company skill selection was dropped")
