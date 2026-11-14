@@ -128,10 +128,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, team_live: Users, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert }
   // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
   const openLine = (line: CrewAccessLine) => {
-    // The dashboard line (owner, 6 Nov) opens the Online page's Dashboards tab, where the server lists them, or says
+    // The dashboard line (owner, 6 Nov) opens the Artifacts page, where the server lists them, or says
     // there are none and offers its Ask.
     if (line.kind === 'team_live') { openCrewAccess(projectId, '', 'team', 'activity'); return }
-    if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'dashboards'); return }
+    if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'artifacts'); return }
     if (line.kind === 'folder' || line.kind === 'clash') openCrewAccess(projectId, '', 'team', 'sync')
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
   }
@@ -143,12 +143,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (line.kind === 'dashboard' && line.dashboards?.length) {
       const dashboard = byId.get('dashboard')
       return <div key={`${line.kind}:${index}`} role="listitem">
-        <button type="button" aria-expanded={dashboardsOpen} onClick={toggleDashboards} className={`${lineButton} items-center`}>
-          <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
+        <div className="flex items-center">
+        <button type="button" aria-label="Show artifacts" aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="shrink-0 rounded p-1 hover:bg-muted">
+          <ChevronRight aria-hidden="true" className={`h-3 w-3 text-muted-foreground transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
+        </button>
+        <button type="button" onClick={() => openLine(line)} className={`${lineButton} items-center`}>
           <span className="font-medium text-foreground">{line.title}</span>
           {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
           {line.tag && <span className="ml-auto shrink-0 rounded-full border border-border px-1.5 text-[10px] leading-4 text-muted-foreground">{line.tag}</span>}
         </button>
+        </div>
         {dashboardsOpen && <div className="ml-3 border-l border-border pl-1.5">
           {dashboard && line.dashboards.map(item => <button key={item.path} type="button" title={item.name} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} group/dash items-center`}>
             <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
@@ -171,7 +175,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Each row's lines sit under it as a sub-list (owner, 5 Nov: "put inside access only like a sub menu"; 11 Nov: Team
   // and Online), as the server groups them; who asked sits under Online. Each line opens its page at its place.
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team')
-  const onlineLines = accessTree.filter(line => line.group !== 'team')
+  const onlineLines = accessTree.filter(line => line.group !== 'team' && line.kind !== 'dashboard')
+  const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = teamLines.length > 0 && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1">{treeLines(teamLines)}</div>
   const asksTree = (asking.length > 0 || onlineLines.length > 0) && <div role="list" aria-label="Online details" className="ml-3 border-l border-border pl-2 pb-1">
     {treeLines(onlineLines)}
@@ -182,13 +187,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </button>)}
     {asking.length > 5 && <p className="px-1.5 text-[11px] text-muted-foreground">+{asking.length - 5} more</p>}
   </div>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{accessRow(item)}{item.id === 'mcp:team' ? teamTree : item.id === 'mcp:online' ? asksTree : null}</div>)}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : item.id === 'mcp:online' ? asksTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
-    {/* With an Online row the dashboards are a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
+    {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}

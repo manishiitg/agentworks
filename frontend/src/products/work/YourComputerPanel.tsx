@@ -18,7 +18,7 @@ export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { MacAgentBridge } from './MacAgentBridge'
 import { OnlineAgentsCard, type OnlineAgentPlacement } from './OnlineAgentsCard'
-import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
+import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 type MoveReport = { place?: CloudState; message?: string }
@@ -174,10 +174,10 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'publish' || saved === 'dashboards') return saved } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'publish' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
     return 'mac'
   })
-  const setSection = (next: CrewAccessSection) => { setSectionState(next); if (next !== 'team') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
+  const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
   const [publishConnection, setPublishConnection] = useState('')
   useEffect(() => {
     const openTeam = (event: Event) => { const detail = (event as CustomEvent<{ projectId: string; section?: CrewAccessSection }>).detail; if (detail?.projectId === projectId) setSection(detail.section || 'team') }
@@ -248,11 +248,16 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   // Team page shows the team tab, the Online page the rest. A tab the server does not list for this person falls back
   // to its page's first one.
   const page = section === 'team' ? 'team' : 'online'
-  const allTabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
+  const allTabs = (status?.access_tabs || []).filter(item => item.id !== 'dashboards' && item.id !== 'artifacts').map(item => ({ ...item, tone }))
   const pageTabs = allTabs.filter(item => (item.group || 'online') === page)
   const tabs = pageTabs.length ? pageTabs : allTabs
   const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
   const needsServer = here && !connections.length && !online
+  // Old tab links and saved choices resolve to this standalone page, not Online.
+  if (section === 'artifacts') return <section aria-label="Artifacts page" className="space-y-3 text-sm">
+    {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+    <CrewDashboardsTab projectId={projectId} />
+  </section>
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
   // A row only the Mac can change, as the server words it here.
@@ -348,11 +353,6 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
         turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />
-    </section>}
-    {/* Dashboards (owner, 9 Nov: their own Online tab): everything this Crew publishes, or "No dashboard yet" with
-        its Ask; a Mac Crew that was never online lists its own. */}
-    {shown === 'dashboards' && <section role="tabpanel" id={`crew-access-panel-${projectId}-dashboards`} aria-labelledby={`crew-access-${projectId}-dashboards`} className="space-y-3">
-      <CrewDashboardsTab projectId={projectId} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
