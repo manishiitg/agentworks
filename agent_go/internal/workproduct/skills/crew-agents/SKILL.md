@@ -62,7 +62,7 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 
 - Split work into another tab only when it clearly makes sense, and ask the
   person first (say what you would hand over and to which tab), unless they
-  asked for it; a /deep-work request counts as asking.
+  asked for it.
 - Give part of a job to a tab with `sessions action=ask`; make the message
   self-contained, since tabs share the folder but not your conversation.
 - Prefer `sessions action=fork chat="<source id>" name="<purpose>"` for related
