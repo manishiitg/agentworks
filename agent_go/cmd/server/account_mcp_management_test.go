@@ -37,16 +37,22 @@ func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testi
 	gateway.mu.Lock()
 	label := gateway.connections["c-00000001"]["Label"]
 	gateway.mu.Unlock()
-	if label != "Renamed tools" { t.Fatalf("edit did not persist: %v", label) }
+	if label != "Renamed tools" {
+		t.Fatalf("edit did not persist: %v", label)
+	}
 	for _, operation := range []string{"edit_connection", "remove_connection", "sign_in", "sync"} {
-		refused := call(`{"operation":"`+operation+`","connection_id":"`+crewForeignConnection+`","label":"Must not change"}`)
+		refused := call(`{"operation":"` + operation + `","connection_id":"` + crewForeignConnection + `","label":"Must not change"}`)
 		if refused.Code == http.StatusOK || !strings.Contains(refused.Body.String(), "connection") {
 			t.Fatalf("foreign %s: %d %s", operation, refused.Code, refused.Body.String())
 		}
 	}
 	removed := call(`{"operation":"remove_connection","connection_id":"c-00000001"}`)
-	if removed.Code != http.StatusOK || gateway.count() != 0 { t.Fatalf("remove: %d %s", removed.Code, removed.Body.String()) }
-	if after := f.read(t, externalCommandCrewRoot+"/workflow.json"); after != before { t.Fatal("global management changed Crew selections") }
+	if removed.Code != http.StatusOK || gateway.count() != 0 {
+		t.Fatalf("remove: %d %s", removed.Code, removed.Body.String())
+	}
+	if after := f.read(t, externalCommandCrewRoot+"/workflow.json"); after != before {
+		t.Fatal("global management changed Crew selections")
+	}
 	// The screen link is the authorized OAuth result, not text-parsed instructions,
 	// and does not expose internal OAuth state or any saved credential.
 	raw, err := mcpConnectionScreenOAuth("c-00000001", &OAuthStartResponse{AuthURL: "https://auth.example.com/authorize", State: "internal-state"}, nil)

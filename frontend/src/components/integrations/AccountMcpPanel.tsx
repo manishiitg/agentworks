@@ -50,6 +50,12 @@ export default function AccountMcpPanel() {
   }
   const authUrl = safeSignIn(result?.auth_url)
   return <>
+      {busy && <p role="status" className="text-sm text-muted-foreground">Updating connection…</p>}
+      {message && <div role="status" className="space-y-2 rounded-md border border-border p-3 text-sm"><p>{message}</p>
+        {authUrl && <a href={authUrl} target="_blank" rel="noopener noreferrer" className="inline-block underline">Open sign-in page</a>}
+        {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" onClick={() => setTarget({ server: { id: result.connection_id!, label: 'Saved connection', provider: '', status: 'authentication_required', can_manage: true, tools: [] } })}>Enter app details</Button></div>}
+        <p className="text-xs text-muted-foreground">After signing in, refresh to check discovery. Saving is not proof of a successful connection.</p>
+      </div>}
     <McpConnectionsPanel density="directory"
       description="Manage your saved MCP connections here. Choose what each Crew uses in that Crew’s settings."
       headerActions={vault.canConnect && <Button size="sm" onClick={() => { setError(''); setTarget({}) }} disabled={busy}><Plus className="h-4 w-4" />Add MCP server</Button>}
@@ -62,7 +68,8 @@ export default function AccountMcpPanel() {
             { label: 'Edit connection', disabled: busy, run: () => { setError(''); setTarget({ server: saved }) } },
             { label: 'Remove connection', destructive: true, disabled: busy, run: () => { setError(''); setRemoving(saved) } },
           ] : [],
-          controls: !saved.can_manage ? <span className="text-xs text-muted-foreground">Managed by owner</span> : undefined,
+          controls: !saved.can_manage ? <span className="text-xs text-muted-foreground">Managed by owner</span>
+            : saved.status === 'authentication_required' || saved.status === 'pending' ? <Button size="xs" variant="outline" disabled={busy} onClick={() => void operate('sign_in', { connection_id: saved.id })}>Sign in</Button> : undefined,
         }
       })}
       catalog={catalog.map(app => ({ id: app.name, name: app.name, description: app.needs_admin_setup ? 'OAuth app setup required' : app.oauth ? 'Sign in with your account' : 'Connect an account',
@@ -71,12 +78,7 @@ export default function AccountMcpPanel() {
       loading={vault.loading} refresh={refresh}
       notices={[...vault.notices, ...(catalogError ? [{ message: catalogError, retry: refresh }] : []), ...(error && !target && !removing ? [{ message: error }] : [])]}
     >
-      {busy && <p role="status" className="text-sm text-muted-foreground">Updating connection…</p>}
-      {message && <div role="status" className="space-y-2 rounded-md border border-border p-3 text-sm"><p>{message}</p>
-        {authUrl && <a href={authUrl} target="_blank" rel="noopener noreferrer" className="inline-block underline">Open sign-in page</a>}
-        {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" onClick={() => setTarget({ server: { id: result.connection_id!, label: 'Saved connection', provider: '', status: 'authentication_required', can_manage: true, tools: [] } })}>Enter app details</Button></div>}
-        <p className="text-xs text-muted-foreground">After signing in, refresh to check discovery. Saving is not proof of a successful connection.</p>
-      </div>}
+
     </McpConnectionsPanel>
     {target && <McpAccountForm target={target} busy={busy} error={error} close={() => setTarget(undefined)}
       submit={fields => operate(target.server ? 'edit_connection' : 'connect', fields)} />}
