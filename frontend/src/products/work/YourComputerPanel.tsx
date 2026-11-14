@@ -17,6 +17,7 @@ import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { MacAgentBridge } from './MacAgentBridge'
+import { OnlineAgentsCard, type OnlineAgentPlacement } from './OnlineAgentsCard'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
@@ -30,7 +31,7 @@ type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?
 type AccessText = { line: string; note?: string }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
-type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number
+type SyncStatus = MoveReport & { binding: Binding | null; placements?: Record<string, OnlineAgentPlacement>; on_server?: ServerCopy[]; shared_agents?: number
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
@@ -323,6 +324,9 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
           </div>
           {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this Crew in a browser or on your phone.</p>}
         </section>
+        {binding && <OnlineAgentsCard key={`${projectId}:${binding.connection_id || ''}:${binding.peer_project_id}`} projectId={projectId}
+          placements={status.placements} connection={here ? binding.connection_id : undefined}
+          serverProject={binding.peer_project_id} network={pairedName || network} website={reachLink} />}
         {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
         <MacAgentBridge projectId={projectId} />
       </>}
