@@ -68,6 +68,7 @@ function isKeptInteraction(event: PollingEvent, keep?: ReadonlySet<string>): boo
 }
 
 const NON_TRANSCRIPT_TYPES = new Set([
+  'next_prompt', // Ephemeral composer suggestion, never a reply or step.
   'token_usage',
   'status_line',
   // The server's phase is rendered by the Working line, never as a transcript

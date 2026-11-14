@@ -1374,6 +1374,21 @@ func (w *LLMAgentWrapper) StreamWithEventsAndOutcome(ctx context.Context, prompt
 				w.config.Provider, before, len(messages)))
 		}
 		turn := buildSessionTurn(prompt, messages, mcpagent.ToolPolicy{}, streamingCallback)
+		if scope := llmtypes.NextPromptFor(ctx, string(w.config.Provider), w.config.SessionID); scope.Complete != nil {
+			scope.TurnID = turn.ID
+			previousHuman := false
+			for _, message := range messages {
+				if message.Role == llmtypes.ChatMessageTypeHuman {
+					previousHuman = true
+					break
+				}
+			}
+			scope.Eligible = scope.Eligible && previousHuman
+			ctx = llmtypes.WithNextPrompt(ctx, scope)
+			defer func() {
+				time.AfterFunc(5*time.Second, func() { scope.Finish(llmtypes.NextPromptResult{Reason: "unsupported_or_no_suggestion"}) })
+			}()
+		}
 
 		w.logger.Info(fmt.Sprintf("[CANCEL_DEBUG] AskWithHistory starting | history_msgs=%d", len(messages)))
 
