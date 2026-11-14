@@ -267,6 +267,14 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		t.Fatalf("saved outline count unavailable: %d %t want %d", got, known, count)
 	}
 	write(graphRoot+"/code/main.py", "# edited saved source\nprint('different outline')\n")
+	// A match is trusted for crewStepCountTrust; an edit is seen once that window has passed.
+	if _, known := cachedCrewStepCount(t.Context(), graphRoot); !known {
+		t.Fatal("count was re-checked inside its trust window")
+	}
+	trusted, _ := crewStepCounts.Load(crewStepCountKey(graphRoot))
+	expired := trusted.(crewStepCount)
+	expired.Checked = time.Now().Add(-2 * crewStepCountTrust)
+	crewStepCounts.Store(crewStepCountKey(graphRoot), expired)
 	if _, known := cachedCrewStepCount(t.Context(), graphRoot); known {
 		t.Fatal("edited saved source reused its previous outline count")
 	}

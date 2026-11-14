@@ -24,7 +24,12 @@ type crewStepStamp struct {
 type crewStepCount struct {
 	Count int
 	Files map[string]crewStepStamp
+	// Checked is when every stamp last matched. The menu count is display-only, so a match is trusted for
+	// crewStepCountTrust instead of stat-ing every file of code/ on each panel read (one workspace call each).
+	Checked time.Time
 }
+
+const crewStepCountTrust = 30 * time.Second
 
 var crewStepCounts sync.Map
 
@@ -39,7 +44,7 @@ func rememberCrewStepCount(root string, files map[string]string, graph json.RawM
 	if json.Unmarshal(graph, &outline) != nil || len(outline.Nodes) == 0 {
 		return
 	}
-	entry := crewStepCount{Files: map[string]crewStepStamp{}}
+	entry := crewStepCount{Files: map[string]crewStepStamp{}, Checked: time.Now()}
 	for _, node := range outline.Nodes {
 		if node.Role == "" {
 			entry.Count++
@@ -71,6 +76,9 @@ func cachedCrewStepCount(ctx context.Context, root string) (int, bool) {
 		return 0, false
 	}
 	entry := value.(crewStepCount)
+	if time.Since(entry.Checked) < crewStepCountTrust {
+		return entry.Count, true
+	}
 	filesystem := workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: root}
 	for name, stamp := range entry.Files {
 		if ctx.Err() != nil {
@@ -82,6 +90,8 @@ func cachedCrewStepCount(ctx context.Context, root string) (int, bool) {
 			return 0, false
 		}
 	}
+	entry.Checked = time.Now()
+	crewStepCounts.Store(key, entry)
 	return entry.Count, true
 }
 

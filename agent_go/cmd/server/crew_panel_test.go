@@ -365,3 +365,51 @@ func TestSessionNoticeScopesKnownCrewAndKeepsUnknownRefresh(t *testing.T) {
 		t.Fatalf("unknown session lost broad refresh: %+v resync=%v", notices, resync)
 	}
 }
+
+// A background section shows its last snapshot at once once it is older than refreshFor, reads the new one off the
+// request, and never starts a second read while one is running (the Git status over every checkout took ~5 s per panel read).
+func TestCrewPanelBackgroundSectionServesLastSnapshotWhileRefreshing(t *testing.T) {
+	cache := &crewPanelCache{}
+	key := crewPanelCacheKey{caller: "u", project: "p", authority: "a"}
+	release, reads := make(chan struct{}), make(chan int, 8)
+	label := "old"
+	source := crewPanelSource{id: "changes", title: "Changes", allowed: true, refreshFor: time.Minute, background: true, timeout: 5 * time.Second,
+		read: func(ctx context.Context) (crewPanelSection, error) {
+			reads <- 1
+			if label == "new" {
+				<-release
+			}
+			return crewPanelSection{Rows: []crewPanelRow{{ID: "r", Label: label}}}, nil
+		}}
+	cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second) // first read waits and fills the cache
+	key.section = "changes"
+	cache.mu.Lock()
+	old := cache.entries[key]
+	old.at = time.Now().Add(-2 * time.Minute)
+	cache.entries[key] = old
+	cache.mu.Unlock()
+	key.section = ""
+	label = "new"
+	for i := 0; i < 3; i++ {
+		start := time.Now()
+		got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+		if time.Since(start) > time.Second || len(got[0].Rows) != 1 || got[0].Rows[0].Label != "old" {
+			t.Fatalf("read %d did not serve the last snapshot at once: %+v after %s", i, got, time.Since(start))
+		}
+	}
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+		if got[0].Rows[0].Label == "new" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background read never replaced the snapshot")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := len(reads); n != 2 { // the first read and exactly one background read
+		t.Fatalf("source read %d times, want 2", n)
+	}
+}
