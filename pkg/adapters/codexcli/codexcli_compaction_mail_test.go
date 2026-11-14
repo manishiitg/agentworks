@@ -35,7 +35,7 @@ func (w *compactionMailWriter) Write(raw []byte) (int, error) {
 	result := `{}`
 	switch q.Method {
 	case "thread/start", "thread/resume":
-		result = `{"thread":{"id":"thread"}}`
+		result = `{"thread":{"id":"123e4567-e89b-12d3-a456-426614174000"}}`
 	case "thread/compact/start":
 		if InteractiveTurnActive(w.owner) {
 			w.t.Fatal("maintenance is steerable")
@@ -43,16 +43,16 @@ func (w *compactionMailWriter) Write(raw []byte) (int, error) {
 		if err := SendCodexAppServerInput(context.Background(), w.owner, "waiting first input"); !errors.Is(err, llmtypes.ErrCodingAgentInputNotSent) {
 			w.t.Fatal("maintenance accepted person input")
 		}
-		w.notify("turn/started", `{"threadId":"thread","turn":{"id":"compact"}}`)
-		w.notify("turn/completed", `{"threadId":"thread","turn":{"id":"compact","status":"completed"}}`)
+		w.notify("turn/started", `{"threadId":"123e4567-e89b-12d3-a456-426614174000","turn":{"id":"compact"}}`)
+		w.notify("turn/completed", `{"threadId":"123e4567-e89b-12d3-a456-426614174000","turn":{"id":"compact","status":"completed"}}`)
 	case "turn/start":
 		w.starts++
 		id := fmt.Sprintf("message-%d", w.starts)
 		result = fmt.Sprintf(`{"turn":{"id":%q}}`, id)
 		// A late duplicate maintenance completion must not settle either message.
-		w.notify("turn/completed", `{"threadId":"thread","turn":{"id":"compact","status":"completed"}}`)
-		w.notify("item/agentMessage/delta", fmt.Sprintf(`{"threadId":"thread","turnId":%q,"itemId":"answer","delta":"reply"}`, id))
-		w.notify("turn/completed", fmt.Sprintf(`{"threadId":"thread","turn":{"id":%q,"status":"completed"}}`, id))
+		w.notify("turn/completed", `{"threadId":"123e4567-e89b-12d3-a456-426614174000","turn":{"id":"compact","status":"completed"}}`)
+		w.notify("item/agentMessage/delta", fmt.Sprintf(`{"threadId":"123e4567-e89b-12d3-a456-426614174000","turnId":%q,"itemId":"answer","delta":"reply"}`, id))
+		w.notify("turn/completed", fmt.Sprintf(`{"threadId":"123e4567-e89b-12d3-a456-426614174000","turn":{"id":%q,"status":"completed"}}`, id))
 	case "turn/steer":
 		w.t.Fatal("input was sent into compaction")
 	}
@@ -87,7 +87,7 @@ func TestCodexMessagesAfterCompactionStartTheirOwnTurns(t *testing.T) {
 	adapter := NewCodexCLIAdapter("fixture-account", "test", &MockLogger{})
 	makeOpts := func(compact bool) *llmtypes.CallOptions {
 		o := &llmtypes.CallOptions{}
-		for _, f := range []llmtypes.CallOption{WithInteractiveSessionID(owner), WithPersistentInteractiveSession(true), WithProjectDirID(dir), WithResumeSessionID("thread")} {
+		for _, f := range []llmtypes.CallOption{WithInteractiveSessionID(owner), WithPersistentInteractiveSession(true), WithProjectDirID(dir), WithResumeSessionID("123e4567-e89b-12d3-a456-426614174000")} {
 			f(o)
 		}
 		if compact {
