@@ -344,9 +344,15 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	var config map[string]any
 	var fingerprint, processFingerprint [32]byte
 	var envParts, parts, customParts map[string][32]byte
-	refreshConfiguration := func() error {
+	refreshConfiguration := func() (configurationErr error) {
+		var credential *AppBridgeCredential
+		defer func() {
+			if configurationErr != nil && credential != nil && credential.ReleasePending != nil {
+				credential.ReleasePending()
+			}
+		}()
 		var refreshErr error
-		opts, refreshErr = codexBridgeCredentialOptions(owner, opts)
+		opts, credential, refreshErr = codexBridgeCredentialOptions(owner, opts)
 		if refreshErr != nil {
 			return refreshErr
 		}

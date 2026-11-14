@@ -36,11 +36,17 @@ func TestCodexProcessBridgeCredentialReusesAndReleasesExactGeneration(t *testing
 		if current == nil {
 			generation++
 			entry := &AppBridgeCredential{Token: fmt.Sprintf("fixture-generation-%d", generation)}
-			entry.Started = func() {}
+			active := false
+			entry.Started = func() { active = true }
 			entry.Release = func() {
 				if current == entry {
 					current = nil
 					closed++
+				}
+			}
+			entry.ReleasePending = func() {
+				if !active {
+					entry.Release()
 				}
 			}
 			current = entry
@@ -100,6 +106,12 @@ func TestCodexProcessBridgeCredentialReusesAndReleasesExactGeneration(t *testing
 	}()) != nil {
 		t.Fatal("child acquired host process lease")
 	}
+	savedPath := os.Getenv("PATH")
+	t.Setenv("PATH", t.TempDir())
+	if _, err := adapter.generateContentAppServer(context.Background(), nil, options("preflight-warm")); err == nil || current == nil || closed != 0 {
+		t.Fatal("preflight failure revoked a live process")
+	}
+	t.Setenv("PATH", savedPath)
 	adapter.apiKey = "account-two"
 	run(options("hour-three"))
 	if launches != 2 || generation != 2 || closed != 1 {
@@ -115,8 +127,12 @@ func TestCodexProcessBridgeCredentialReusesAndReleasesExactGeneration(t *testing
 	}
 	// Constructor failure releases even before cmd.Start (no process to own it).
 	t.Setenv("PATH", t.TempDir())
-	_, err := adapter.launchAppServer(context.Background(), options("hour-four"), dir)
-	if err == nil || current != nil || closed != 3 {
+	_, preflightErr := adapter.generateContentAppServer(context.Background(), nil, options("hour-four"))
+	if preflightErr == nil || current != nil || closed != 3 {
+		t.Fatal("preflight retained an unowned credential")
+	}
+	_, err := adapter.launchAppServer(context.Background(), options("hour-five"), dir)
+	if err == nil || current != nil || closed != 4 {
 		t.Fatal("failed constructor retained credential")
 	}
 }

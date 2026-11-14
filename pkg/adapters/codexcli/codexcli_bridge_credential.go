@@ -9,9 +9,10 @@ import (
 // logged. Started follows a successful process start; Release is idempotent and
 // generation-bound, so an old process cannot revoke its replacement.
 type AppBridgeCredential struct {
-	Token   string
-	Started func()
-	Release func()
+	Token          string
+	Started        func()
+	Release        func()
+	ReleasePending func() // preflight cleanup: must never revoke a live generation
 }
 
 // AppBridgeCredentialForOwner is installed once by the host. Unregistered
@@ -41,10 +42,10 @@ func appBridgeCredential(owner string, opts *llmtypes.CallOptions) *AppBridgeCre
 
 // Refresh only the host bridge's authentication. Preserve all other effective
 // child environment and policy fields as real process-relaunch gates.
-func codexBridgeCredentialOptions(owner string, opts *llmtypes.CallOptions) (*llmtypes.CallOptions, error) {
+func codexBridgeCredentialOptions(owner string, opts *llmtypes.CallOptions) (*llmtypes.CallOptions, *AppBridgeCredential, error) {
 	credential := appBridgeCredential(owner, opts)
 	if credential == nil || credential.Token == "" {
-		return opts, nil
+		return opts, nil, nil
 	}
 	copy := *opts
 	if opts.Metadata != nil {
@@ -63,11 +64,11 @@ func codexBridgeCredentialOptions(owner string, opts *llmtypes.CallOptions) (*ll
 	}
 	raw := codexOptionString(opts, MetadataKeyMCPServers)
 	if raw == "" {
-		return &copy, nil
+		return &copy, credential, nil
 	}
 	var config map[string]any
 	if err := json.Unmarshal([]byte(raw), &config); err != nil {
-		return nil, err
+		return nil, credential, err
 	}
 	servers := config
 	if nested, ok := config["mcpServers"].(map[string]any); ok {
@@ -81,10 +82,10 @@ func codexBridgeCredentialOptions(owner string, opts *llmtypes.CallOptions) (*ll
 			}
 			updated, err := json.Marshal(config)
 			if err != nil {
-				return nil, err
+				return nil, credential, err
 			}
 			WithMCPServers(string(updated))(&copy)
 		}
 	}
-	return &copy, nil
+	return &copy, credential, nil
 }
