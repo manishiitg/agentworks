@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,6 +44,15 @@ func TestCrewSharedAnswerReadsOnlyAdmittedFiles(t *testing.T) {
 	denied, err := crewSharedAnswerFiles(team, state, root, func(string) bool { return false })
 	if err != nil || denied != "" {
 		t.Fatal("narrowed connection file guard bypassed")
+	}
+	// The original connection guard still narrows access when delivery has
+	// no token ID (for example an internal Crew tool call).
+	snapshot := &wf.FolderGuard{ReadPaths: []string{"different-folder"}}
+	if crewSharedAnswerAllowsFile(&UserClaims{UserID: "other"}, snapshot, "team/report.md") {
+		t.Fatal("empty token ID widened the captured file guard")
+	}
+	if !crewSharedAnswerAllowsFile(&UserClaims{UserID: "other"}, nil, "team/report.md") {
+		t.Fatal("unrestricted admitted caller lost access")
 	}
 	for _, private := range []string{"PRIVATE_REPORT", "PRIVATE_MEMORY", "PRIVATE_CREDENTIAL"} {
 		if strings.Contains(got, private) {
@@ -117,6 +128,7 @@ func TestCrewSharedAnswerDigestOnlyExactOwnerChat(t *testing.T) {
 // Actual answer/store/mailbox path, substituting only the remote model call:
 // generation uses asker authority and cannot start the maker's real chat.
 func TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "sdk")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	fixture, _ := newExternalCrewCommandFixture(t)
@@ -183,5 +195,21 @@ func TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn(t *testing.T) {
 	digest, err := crewSharedAnswerDigest("team", "owner", agent.ChatKey)
 	if err != nil || !strings.Contains(digest, m.Text) {
 		t.Fatalf("queued work not delivered to owner: %q %v", digest, err)
+	}
+}
+
+func TestCrewSharedAnswerClaudeRefusesNonSDK(t *testing.T) {
+	for _, transport := range []string{"tmux", "", "SDK", " sdk ", "structured"} {
+		t.Run(transport, func(t *testing.T) {
+			t.Setenv("CLAUDE_CODE_TRANSPORT", transport)
+			api := &StreamingAPI{}
+			_, err := api.publicationText(t.Context(), "asker", "shared_agent_answer", &publishedProject{Provider: "claude-code"}, "data", "system")
+			if !errors.Is(err, errSharedAnswerClaudeNeedsSDK) {
+				t.Fatalf("not refused by transport rule: %v", err)
+			}
+		})
+	}
+	if err := crewSharedAnswerTransportAllowed("claude-code", "sdk"); err != nil {
+		t.Fatal(err)
 	}
 }
