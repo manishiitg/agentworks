@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 )
@@ -8,6 +9,8 @@ import (
 // Project panel and personal Vault endpoints reuse native operations. The
 // caller's current project/Vault authority is rechecked; bodies can carry secret
 // values and must never be logged.
+
+type vaultScreenRedirectKey struct{}
 
 var myVaultScreenOperations = map[string]bool{
 	"github_status": true, "github_connect": true, "github_disconnect": true,
@@ -56,7 +59,8 @@ func (api *StreamingAPI) handleMyVaultsOp(w http.ResponseWriter, r *http.Request
 	}
 	// Presentation only: the native connection path returns structured OAuth data for this screen.
 	args["_screen"] = true
-	result, err := api.myVaultsOperation(r.Context(), person, args)
+	screenContext := context.WithValue(r.Context(), vaultScreenRedirectKey{}, deriveOAuthRedirectURI(r))
+	result, err := api.myVaultsOperation(screenContext, person, args)
 	if err != nil {
 		writeUsersError(w, http.StatusBadRequest, err.Error())
 		return
