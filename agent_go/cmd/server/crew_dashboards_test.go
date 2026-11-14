@@ -101,3 +101,13 @@ func TestWorkflowMeasurementReadRefusesCrewRootsAndCreatesNothing(t *testing.T) 
 		t.Fatalf("reader created Crew DB: %v", err)
 	}
 }
+
+// PLAT-746-1023: namespaced asset rewriting must not corrupt longer paths.
+func TestTeamOnlineAssetRewriteMatchesWholePathTokens(t *testing.T) {
+	input := `<img src="db/assets/x.png"><img src="db/assets/x.png?v=1#preview"> url(db/assets/x.png) db/assets/x.png.bak other/db/assets/x.png`
+	got := rewriteTeamOnlineAssetToken(input, "db/assets/x.png", "db/assets/item/x.png")
+	want := `<img src="db/assets/item/x.png"><img src="db/assets/item/x.png?v=1#preview"> url(db/assets/item/x.png) db/assets/x.png.bak other/db/assets/x.png`
+	if got != want {
+		t.Fatalf("asset rewrite changed nonmatching paths: %s", got)
+	}
+}

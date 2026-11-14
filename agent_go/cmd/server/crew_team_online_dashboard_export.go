@@ -30,7 +30,7 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 	if err != nil || !dashboardAuthoringAllowed(claims, &target) {
 		return item, fmt.Errorf("this source item is unavailable")
 	}
-	current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: source.Path, ID: ref.ItemID, Action: "get"})
+	current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: source.Path, ID: ref.ItemID, Action: "get", Guard: dashboardFileGuard(claims)})
 	if err != nil {
 		return item, err
 	}
@@ -42,22 +42,25 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 		decoder := json.NewDecoder(strings.NewReader(declaration))
 		decoder.DisallowUnknownFields()
 		if err = decoder.Decode(&item.Dependencies); err != nil {
-			return item, fmt.Errorf("read this item's online.json dependencies: %w", err)
+			return item, fmt.Errorf(teamOnlinePreparationNeeded)
 		}
 		if decoder.Decode(new(any)) != io.EOF {
-			return item, fmt.Errorf("online.json must declare one dependency object")
+			return item, fmt.Errorf(teamOnlinePreparationNeeded)
 		}
 	} else if !item.Snapshot.Artifact {
-		return item, fmt.Errorf("declare this dashboard's tables, functions and assets in online.json before putting it online")
+		return item, fmt.Errorf(teamOnlinePreparationNeeded)
 	}
 	if len(item.Dependencies.Dataset.Tables) == 0 && (len(item.Dependencies.Dataset.Views) > 0 || len(item.Dependencies.Dataset.Triggers) > 0) {
-		return item, fmt.Errorf("declare the whole tables used by this item's views and triggers")
+		return item, fmt.Errorf(teamOnlinePreparationNeeded)
 	}
 	roots, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), source.Path)
 	if err != nil || !found || roots.ID != source.CrewID {
 		return item, fmt.Errorf("the source Crew storage is unavailable")
 	}
 	for _, asset := range item.Dependencies.Assets {
+		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(asset, false) {
+			return item, fmt.Errorf("a declared item asset is outside this connection's file access")
+		}
 		if _, err := publication.CleanPath(asset); err != nil || !strings.HasPrefix(asset, "db/assets/") || publication.CredentialPath(asset) {
 			return item, fmt.Errorf("declare only this item's files under db/assets")
 		}

@@ -15,12 +15,13 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	"github.com/manishiitg/coding-agent-loop/workspace/teamonline"
 )
+
+const teamOnlinePreparationNeeded = "Ask your agent to prepare this dashboard for the Team."
 
 type teamOnlineDashboardRef struct {
 	ItemID, Revision, SubmissionID, Kind string
@@ -73,6 +74,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	result.Revision = item.Revision
 	result.Automations = item.Dependencies.Automations
 	result.OfferAutomations = ref.Seed && len(result.Automations) > 0
+	var dataSchema teamonline.Schema
 	// Updates never even inspect the attached data stream. Preview of a new
 	// item reads its immutable source snapshot header, never a live Team DB.
 	if ref.Seed {
@@ -82,18 +84,42 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 				return result, err
 			}
 			result.Tables = schema.Tables
+			dataSchema = schema
 		} else if len(item.Dependencies.Dataset.Tables) > 0 {
-			return result, fmt.Errorf("this item's used tables were not included in its package")
+			return result, fmt.Errorf(teamOnlinePreparationNeeded)
 		}
 	}
 	if preview {
+		if ref.Seed && len(item.DatasetParts) > 0 && destination.CrewID != "" {
+			target, err = api.dashboardTarget(ctx, claims, destination.Path)
+			if err != nil || !dashboardAuthoringAllowed(claims, &target) {
+				return result, fmt.Errorf("this Team Crew is unavailable")
+			}
+			db, err := teamOnlineDatasetDatabase(destination, true)
+			if err != nil {
+				return result, err
+			}
+			if db != nil {
+				err = teamonline.CheckCollisions(ctx, db, dataSchema)
+				db.Close()
+				if err != nil {
+					return result, err
+				}
+			}
+		}
 		return result, nil
 	}
 	target, err = api.dashboardTarget(ctx, claims, destination.Path)
 	if err != nil || !dashboardAuthoringAllowed(claims, &target) {
 		return result, fmt.Errorf("this Team Crew is unavailable")
 	}
-	current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: destination.Path, Action: "list", IncludeDraft: true})
+	if publication, err := readPublishedProject(ctx, destination.Path); err != nil {
+		return result, err
+	} else if publication != nil {
+		return result, fmt.Errorf("this item must be updated in its editable Team Crew")
+	}
+	guard := dashboardFileGuard(claims)
+	current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: destination.Path, Action: "list", IncludeDraft: true, Guard: guard})
 	if err != nil {
 		return result, err
 	}
@@ -107,28 +133,17 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	if ref.Seed && existing != nil {
 		return result, fmt.Errorf("this Team item ID already exists; nothing was replaced")
 	}
+	var dataset *sql.DB
 	if ref.Seed && len(item.DatasetParts) > 0 {
-		// Same managed initialization used when an ordinary Crew is opened;
-		// no virtual-user account or filesystem permission path is added.
-		if _, err := api.reportPreviewWorkspaceClient(ctx, claims, destination.Path).InitializeWorkflowDB(ctx, workspace.InitializeWorkflowDBParams{DBPath: path.Join(destination.Path, "db/db.sqlite")}); err != nil {
-			return result, err
-		}
-		roots, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), destination.Path)
-		if err != nil || !found || roots.ID != destination.CrewID {
-			return result, fmt.Errorf("the Team dataset is unavailable")
-		}
-		full, err := crewMoveRecordPath(roots, "db/db.sqlite")
+		dataset, err = teamOnlineDatasetDatabase(destination, false)
 		if err != nil {
 			return result, err
 		}
-		db, err := sql.Open("sqlite", sqliteopen.DSN(full)+"&mode=rw&_pragma=foreign_keys(1)")
-		if err != nil {
-			return result, err
+		if dataset == nil {
+			return result, fmt.Errorf("the Team Crew's database is still being prepared; try again in a moment")
 		}
-		db.SetMaxOpenConns(1)
-		err = teamonline.ImportParts(ctx, db, ref.Package, item.DatasetParts, true)
-		db.Close()
-		if err != nil {
+		defer dataset.Close()
+		if err = teamonline.CheckCollisions(ctx, dataset, dataSchema); err != nil {
 			return result, err
 		}
 	}
@@ -162,16 +177,16 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 			return result, fmt.Errorf("this Team item asset could not be saved with current access")
 		}
 		for file, content := range item.Snapshot.Files {
-			content = strings.ReplaceAll(content, source.Path+"/"+asset, destination.Path+"/"+name)
-			content = strings.ReplaceAll(content, asset, name)
+			content = rewriteTeamOnlineAssetToken(content, source.Path+"/"+asset, destination.Path+"/"+name)
+			content = rewriteTeamOnlineAssetToken(content, asset, name)
 			item.Snapshot.Files[file] = content
 		}
 	}
-	request := dashboards.Request{Root: destination.Path, ID: result.DestinationItemID, Title: item.Snapshot.Title, Artifact: &item.Snapshot.Artifact, Motion: &item.Snapshot.Motion, Files: item.Snapshot.Files, IncludeDraft: true, Action: "create"}
+	request := dashboards.Request{Root: destination.Path, ID: result.DestinationItemID, Title: item.Snapshot.Title, Artifact: &item.Snapshot.Artifact, Motion: &item.Snapshot.Motion, Files: item.Snapshot.Files, IncludeDraft: true, Action: "create", Guard: guard}
 	if existing != nil {
 		request.Action = "update"
 		request.ExpectedRevision = existing.Revision
-		old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: destination.Path, ID: existing.ID, Action: "get", IncludeDraft: true})
+		old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: destination.Path, ID: existing.ID, Action: "get", IncludeDraft: true, Guard: guard})
 		if err != nil {
 			return result, err
 		}
@@ -183,20 +198,88 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 			}
 		}
 	}
-	updated, err := dashboardWorkspaceRequest(ctx, request)
-	if err != nil {
-		return result, err
+	var published dashboards.Result
+	if dataset != nil {
+		// This same-process coordinator holds the normal publication lock until
+		// the seed transaction commits, and restores its pointer on any failure.
+		published, err = dashboards.InstallWithData(ctx, fsutil.WorkspaceDocsRoot(), request, func(publish func() error) error {
+			return teamonline.ImportPartsWithPublication(ctx, dataset, ref.Package, item.DatasetParts, true, publish)
+		})
+	} else {
+		var updated dashboards.Result
+		updated, err = dashboardWorkspaceRequest(ctx, request)
+		if err == nil && updated.Dashboard != nil {
+			published, err = dashboardWorkspaceRequest(ctx, dashboards.Request{Root: destination.Path, ID: result.DestinationItemID, Action: "publish", ExpectedRevision: updated.Dashboard.Revision, IncludeDraft: true, Guard: guard})
+		}
 	}
-	if updated.Dashboard == nil {
-		return result, fmt.Errorf("the online item could not be saved")
-	}
-	published, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: destination.Path, ID: result.DestinationItemID, Action: "publish", ExpectedRevision: updated.Dashboard.Revision, IncludeDraft: true})
 	if err != nil {
 		return result, err
 	}
 	if published.Dashboard == nil || strings.TrimSpace(published.Dashboard.Published) == "" {
 		return result, fmt.Errorf("the online item could not be published")
 	}
+
 	result.Updated = existing != nil
 	return result, nil
+}
+
+// Rewrite whole path tokens only: x.png is not a match in x.png.bak, in a
+// longer pathname, or in an identifier. Query/fragment suffixes remain intact.
+func rewriteTeamOnlineAssetToken(content, old, replacement string) string {
+	if old == "" || old == replacement {
+		return content
+	}
+	pathByte := func(c byte) bool {
+		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("_./%~-", rune(c)) || c >= 0x80
+	}
+	var out strings.Builder
+	start := 0
+	for search := 0; search < len(content); {
+		relative := strings.Index(content[search:], old)
+		if relative < 0 {
+			break
+		}
+		at := search + relative
+		end := at + len(old)
+		if (at == 0 || !pathByte(content[at-1])) && (end == len(content) || !pathByte(content[end])) {
+			out.WriteString(content[start:at])
+			out.WriteString(replacement)
+			start = end
+		}
+		search = end
+	}
+	if start == 0 {
+		return content
+	}
+	out.WriteString(content[start:])
+	return out.String()
+}
+
+// Paths come from the normal registered Team target. Database initialization
+// belongs to ordinary Crew setup before the atomic item operation, not to an
+// import that could later fail and leave new schema behind.
+func teamOnlineDatasetDatabase(destination triggerTarget, readonly bool) (*sql.DB, error) {
+	roots, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), destination.Path)
+	if err != nil || !found || roots.ID != destination.CrewID {
+		return nil, fmt.Errorf("the Team dataset is unavailable")
+	}
+	full, err := crewMoveRecordPath(roots, "db/db.sqlite")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(full); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	pragma := "&_pragma=foreign_keys(1)"
+	if readonly {
+		pragma = "&_pragma=query_only(true)"
+	}
+	db, err := sql.Open("sqlite", sqliteopen.DSN(full)+"&mode=rw"+pragma)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	return db, nil
 }

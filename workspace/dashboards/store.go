@@ -241,16 +241,25 @@ func revisionReadable(s state, rev string, draft bool) bool {
 }
 
 func Execute(ctx context.Context, docs string, req Request) (Result, error) {
+	clean, err := wf.CleanRelative(req.Root)
+	if err != nil || clean != req.Root || clean == "." {
+		return Result{}, fail(400, "canonical project root required")
+	}
+	release, err := wf.LockWorkspace(ctx, docs)
+	if err != nil {
+		return Result{}, err
+	}
+	defer release()
+	return executeLocked(ctx, docs, req)
+}
+
+func executeLocked(ctx context.Context, docs string, req Request) (Result, error) {
 	var out Result
 	clean, err := wf.CleanRelative(req.Root)
 	if err != nil || clean != req.Root || clean == "." {
 		return out, fail(400, "canonical project root required")
 	}
-	release, err := wf.LockWorkspace(ctx, docs)
-	if err != nil {
-		return out, err
-	}
-	defer release()
+
 	root, err := openProjectRoot(docs, clean)
 	if err != nil {
 		return out, err
