@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
@@ -147,6 +148,20 @@ func TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn(t *testing.T) {
 	}
 	c := agentConversation{ID: "inbox-shared-answer", Endpoints: [2]agentMessageEndpoint{{UserID: "other", Kind: triggerCallerUser, ID: "other", External: true}, {UserID: "owner", Kind: triggerCallerCrew, ID: "team", TeamAgentID: agent.ID, ChatKey: agent.ChatKey}}}
 	m := agentMessage{ID: "msg-shared-question", From: 0, Text: "Please update the shared report", Delivery: "delivered"}
+	askerAgent, ok := team.registeredAgent("other", "two")
+	if !ok {
+		t.Fatal("asker fixture missing")
+	}
+	teamDir, _ := crewTeamDir("team")
+	// Viewer-filtered posts include the asker's own Only-you posts. These
+	// must still be excluded from an answer whose digest goes to the maker.
+	posts := crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}, Decisions: []crewTeamActivityPost{
+		{Private: true, OwnerID: "other", AgentID: askerAgent.ID, Line: "PRIVATE_ASKER_DECISION"},
+		{OwnerID: "owner", AgentID: agent.ID, Line: "PUBLIC_TEAM_DECISION"},
+	}}
+	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "activity.json"), posts, 0600); err != nil {
+		t.Fatal(err)
+	}
 	c.Messages = []agentMessage{m}
 	agentMessageMu.Lock()
 	err = saveAgentMessageStore(ctx, agentMessageStore{Conversations: []agentConversation{c}})
@@ -159,6 +174,10 @@ func TestCrewSharedAnswerUsesAskerAndQueuesWithoutMakerTurn(t *testing.T) {
 	calls := 0
 	crewSharedAnswerTextForTest = func(ctx context.Context, actor string, record *publishedProject, input, system string) (string, error) {
 		calls++
+		if strings.Contains(input, "PRIVATE_ASKER_DECISION") || !strings.Contains(input, "PUBLIC_TEAM_DECISION") {
+			t.Fatal("answer context did not keep posts shared-only")
+		}
+
 		if actor != "other" || record.OwnerID != "other" || record.ConnectionID != "" {
 			t.Fatal("answer inherited the maker's account")
 		}
