@@ -26,7 +26,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("team_sync")
-	return reg.RegisterCustomToolWithTimeout("team_sync", "Work with this Crew's Team. doing posts one short line about your current work (replaces your previous line); decision posts one short decision plus why (kept); decisions reads the 10 most recent shared decisions. finding posts one short line from a scheduled run to Team Activity under the schedule's name; only during a scheduled run, and a run with nothing to report posts nothing. These are explicit Team posts visible to teammates, never private chat excerpts: do not include secrets. Post doing when you start a longer task in the shared folder, and post decision when you settle something a teammate would otherwise redo or contradict. Post as your actual current chat; no agent_key is needed. In-team posts are shared; posts from your own Only-me or unregistered agent are visible only to you. A shared ask can post only publicly as its trusted In-team source. Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files (at most 200 entries a call: next_offset in the reply is the offset for the next page; path narrows to one folder) and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) shares one of your own agents with the Team (in_team=true) or not (false), (new agents are shared; keep at least one shared). agents lists the Team's agents as the Team tab shows them, each with its key (your own ones have can_edit_rule). agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_share) sets what your own agent does when someone else asks it and what teammates see of its chat; agent_key is its key from agents, or simply its name. directory lists company people (find a person by name there, then use their user_id). configure, like the Team tab: people replaces the roster with user_id (anyone in the Team; the owner always stays); folders=[…] adds folders to share (anyone in the Team; a missing folder is made); only the Crew's owner turns the Team on or off (on=true/false; on starts with the team/ folder when nothing is shared), switches share=whole / share=folders (the first call only returns what changes, worded for the person: show it, ask, then repeat with confirm=true), or stops sharing a folder. Whole Crew is everything except chats, memory, app files, node_modules/.git/caches and files that look like passwords or keys. A person added is invited and joins only when they accept; every member reads and writes the shared folder. status with project shows the Team, including what your agents use from the owner (lent). status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
+	return reg.RegisterCustomToolWithTimeout("team_sync", "Work with this Crew's Team. doing posts one short line about your current work (replaces your previous line); decision posts one short decision plus why (kept); decisions reads the 10 most recent shared decisions. finding posts one short line from a scheduled run to Team Activity under the schedule's name; only during a scheduled run, and a run with nothing to report posts nothing. These are explicit Team posts visible to teammates, never private chat excerpts: do not include secrets. Post doing when you start a longer task in the shared folder, and post decision when you settle something a teammate would otherwise redo or contradict. Post as your actual current chat; no agent_key is needed. In-team posts are shared; posts from your own Only-me or unregistered agent are visible only to you. A shared ask can post only publicly as its trusted In-team source. Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files (at most 200 entries a call: next_offset in the reply is the offset for the next page; path narrows to one folder) and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) shares one of your own agents with the Team (in_team=true) or not (false), (new agents are shared; keep at least one shared). agents lists the Team's agents as the Team tab shows them, each with its key (your own ones have can_edit_rule). agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_share) sets what your own agent does when someone else asks it and what teammates see of its chat; agent_key is its key from agents, or simply its name. directory lists company people (find a person by name there, then use their user_id). configure, like the Team tab: people replaces the roster with user_id (anyone in the Team; the owner always stays); folders=[…] sets the complete chosen-folder list (at least one; include existing folders to keep them). Anyone in the Team may add folders; a missing folder is made. Only the Crew's owner stops sharing an existing folder or turns the Team on or off (on=true/false; on starts with team/ when nothing is shared). Chats, personal memory, app files, passwords and keys stay private. A person added is invited and joins only when they accept; every member reads and writes the shared folder. status with project shows the Team, including what your agents use from the owner (lent). status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
 		"action":           map[string]any{"type": "string", "enum": []string{"doing", "decision", "finding", "decisions", "status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "people", "configure", "accept", "decline", "leave", "agents", "agent_visibility", "agent_rule", "dashboards"}},
 		"line":             map[string]any{"type": "string", "maxLength": 320, "description": "doing, decision or finding: one short line shared with this Crew's Team."},
 		"why":              map[string]any{"type": "string", "maxLength": 800, "description": "decision: one short reason; required."},
@@ -41,13 +41,13 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"level":            map[string]any{"type": "string", "enum": []string{"works", "dashboards", "none"}, "description": "people: works = Works with me (the Team), dashboards = Dashboards only (the owner's; all this Crew's dashboards and asking it, no files), none = remove. The change first returns what the person gains or loses: show it, ask, then call again with confirm=true."},
 		"create_dashboard": map[string]any{"type": "boolean", "description": "people, level=dashboards: make the Crew's standard dashboard first when it has none (ask the person first)."},
 		"kind":             map[string]any{"type": "string", "enum": []string{"all", "dashboard", "artifact", "motion"}, "description": "dashboards: which kind to list (default all)."},
-		"confirm":          map[string]any{"type": "boolean", "description": "configure: switching between Folders and the Whole Crew first returns what changes; show it to the person, ask, and call again with confirm=true to switch."},
+		"confirm":          map[string]any{"type": "boolean", "description": "people: show the returned gain/loss preview, ask, then confirm the same change."},
 		"accept_into":      map[string]any{"type": "string", "description": "accept on this Mac: omit to preview New project and eligible existing projects; then use new or a local project_id from that preview. Existing-project acceptance requires confirm=true after showing the instructions notice. Agent choices default to none."},
 		"agents":           map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: agent tab keys from the preview to put In team; omit for none."},
 		"project":          map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":             map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "offset": map[string]any{"type": "integer", "description": "files: where the page starts (next_offset from the previous reply)."}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
-		"share": map[string]any{"type": "string", "enum": []string{"whole", "folders"}}, "folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-		"folder": map[string]any{"type": "string", "description": "One folder; the same as share=folders folders=[folder]."}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"user_id": map[string]any{"type": "string"}}, "required": []string{"user_id"}}},
+		"folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"folder":  map[string]any{"type": "string", "description": "One folder; the same complete selection as folders=[folder]."}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"user_id": map[string]any{"type": "string"}}, "required": []string{"user_id"}}},
 		"keep": map[string]any{"type": "string", "description": "resolve: current, other or revision:N."}, "content": map[string]any{"type": "string", "description": "save_file: the file's text. resolve: the merged text to save instead of keep."}, "base": map[string]any{"type": "string", "description": "Last hash from files; empty for a new file."},
 	}, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		caller := GetUserFromContext(ctx)
@@ -463,73 +463,28 @@ func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *User
 			return "", fmt.Errorf("choose people from the directory by user_id")
 		}
 	}
-	// What the team shares (owner, 5 Nov): folders=[…] (or one folder="…") adds folders, anyone in the Team;
-	// share=whole for the Whole Crew and share=folders with folders=[…] as the whole list are the owner's.
+	// Match the screen's complete folder selection. The shared save handler
+	// lets members add folders, but only the owner may remove an existing one.
 	if folder, ok := args["folder"].(string); ok {
 		args["folders"] = []any{folder}
-		if folder == "whole" {
-			args["share"] = "whole"
-		}
 	}
 	if on, ok := args["on"].(bool); ok {
 		team.On = on
 	}
-	wasWhole := team.Folder.Whole
-	previous := team
-	list, _ := args["folders"].([]any)
-	folders := []string{}
-	for _, item := range list {
-		if text, ok := item.(string); ok {
-			folders = append(folders, text)
+	if value, provided := args["folders"]; provided {
+		list, ok := value.([]any)
+		if !ok || len(list) == 0 {
+			return "", fmt.Errorf("Choose at least one folder, such as folders=[\"team\"].")
 		}
-	}
-	switch share, _ := args["share"].(string); share {
-	case "whole":
-		team.Folder = crewTeamFolder{Whole: true}
-	case "folders":
-		if len(folders) == 0 {
-			// A member asking to replace the folder list gets the owner-only answer, not a hint for a call that can't work.
-			if refusal := crewTeamOwnerOnlyChange(previous, crewTeam{On: team.On, Folder: crewTeamFolder{Folders: []string{}}}, caller.UserID); refusal != "" {
-				return "", fmt.Errorf("%s", refusal)
+		folders := make([]string, 0, len(list))
+		for _, item := range list {
+			folder, ok := item.(string)
+			if !ok {
+				return "", fmt.Errorf("Choose folder names inside this Crew.")
 			}
-			return "", fmt.Errorf("name the folders to share, such as folders=[\"team\"]")
+			folders = append(folders, folder)
 		}
 		team.Folder = crewTeamFolder{Folders: folders}
-	case "":
-		if len(folders) > 0 && team.Folder.Whole {
-			return "", fmt.Errorf("the team shares the Whole Crew already")
-		}
-		if len(folders) > 0 {
-			team.Folder.Folders = append(slices.Clone(team.Folder.Folders), folders...)
-		}
-	default:
-		return "", fmt.Errorf("share is whole or folders")
-	}
-	// Folders <-> Whole Crew asks first (owner, 6 Nov): the same lines as the Team tab's confirm box, and the switch
-	// only when the person said yes (confirm=true).
-	if confirm, _ := args["confirm"].(bool); team.Folder.Whole != wasWhole && !confirm {
-		query := url.Values{"whole": {map[bool]string{true: "1", false: "0"}[team.Folder.Whole]}}
-		if !team.Folder.Whole {
-			query["folder"] = team.Folder.Folders
-		}
-		route := "/api/crew-teams/" + url.PathEscape(project) + "/folder-change?" + query.Encode()
-		var preview json.RawMessage
-		if connection != nil {
-			if err := crewTeamRemoteJSON(ctx, caller.UserID, *connection, http.MethodGet, route, nil, &preview); err != nil {
-				return "", err
-			}
-		} else {
-			r := httptest.NewRequest(http.MethodGet, route, nil).WithContext(context.WithValue(ctx, UserContextKey, caller))
-			w := httptest.NewRecorder()
-			api.handleCrewTeamFolderChange(w, mux.SetURLVars(r, map[string]string{"project": project}))
-			if w.Code >= 300 {
-				return result(w)
-			}
-			preview = w.Body.Bytes()
-		}
-		next := "Nothing changed yet. Show the person this summary in plain words and ask. Switch only when they agree: call configure again with the same arguments and confirm=true. If refusal is set, tell them that line instead; it can't be switched."
-		out, _ := json.Marshal(map[string]any{"confirm_needed": true, "preview": preview, "next": next})
-		return string(out), nil
 	}
 	raw, _ := json.Marshal(team)
 	w := httptest.NewRecorder()
@@ -555,7 +510,7 @@ func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *User
 const crewTeamFilesPageSize = 200
 
 // crewTeamFilesPage cuts the shared folder's listing to one page (offset, crewTeamFilesPageSize entries) with a
-// plain note and next_offset, so a Whole Crew can still be listed from chat. path narrows it to one folder (or file).
+// plain note and next_offset, so large shared folders can still be listed from chat. path narrows it to one folder (or file).
 func crewTeamFilesPage(data []byte, path string, offset int) ([]byte, error) {
 	var list map[string]json.RawMessage
 	if json.Unmarshal(data, &list) != nil {
