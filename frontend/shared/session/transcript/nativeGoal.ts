@@ -11,6 +11,7 @@ export type NativeGoalUpdate = { provider: string; native_session_id: string; go
 
 export function nativeGoalUpdate(event: PollingEvent): NativeGoalUpdate | undefined {
   if (event.type !== 'native_goal_updated') return undefined
+  if ((event.parent_execution_id && event.parent_execution_id !== `session:${event.session_id}`) || (event.execution_kind && event.execution_kind !== 'main_agent')) return undefined
   const outer = event.data as Record<string, unknown> | undefined
   let data = outer
   // Live typed events and journal-restored GenericEventData have different envelopes.
