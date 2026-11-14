@@ -84,6 +84,16 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		fail(403, err.Error())
 		return
 	}
+	if op == "accept" {
+		copy, err := prepareCrewAgentForkCopy(team, offer, claims.UserID, now)
+		if err != nil {
+			fail(409, "Could not prepare your own private copy of this agent.")
+			return
+		}
+		log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s actor=%s event=accept_started", project, id, copy.ID, claims.UserID)
+		externalJSON(w, map[string]any{"copy": copy, "fork_id": id})
+		return
+	}
 	if op == "complete" {
 		if err = completeCrewAgentFork(team, offer, claims.UserID, now); err != nil {
 			log.Printf("[AGENT_FORK] project=%s fork=%s actor=%s event=refused reason=copy_not_imported", project, id, claims.UserID)
@@ -173,6 +183,6 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		publishCrewPanelChanged(project)
 		externalJSON(w, map[string]any{"ready": true, "fork_id": id})
 	default:
-		fail(400, "Choose plan, chunks, commit, download, complete or cancel.")
+		fail(400, "Choose plan, chunks, commit, download, accept, complete or cancel.")
 	}
 }

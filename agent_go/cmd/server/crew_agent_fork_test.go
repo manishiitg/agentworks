@@ -120,7 +120,20 @@ func TestCrewAgentForkPrivateStageAndCleanup(t *testing.T) {
 	if err = completeCrewAgentFork(team, offer, "recipient", now); err == nil {
 		t.Fatal("accept removed the payload before an imported copy existed")
 	}
-	copy := crewTeamRegisteredAgent{ID: offer.CopyAgentID, OwnerID: "recipient", Tab: "fork-copy", ChatKey: crewAgentForkChatKey(offer)}
+	if _, err = prepareCrewAgentForkCopy(team, offer, "other", now); err == nil {
+		t.Fatal("third party prepared a private copy")
+	}
+	copy, err := prepareCrewAgentForkCopy(team, offer, "recipient", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedTeam, err := readCrewTeam(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved := savedTeam.Agents[copy.ID]; saved.InTeam || saved.OwnerID != "recipient" || saved.ChatKey != crewAgentForkChatKey(offer) {
+		t.Fatal("copy was not saved as recipient-owned Only me before discovery")
+	}
 	team.Agents[copy.ID] = copy
 	if err = completeCrewAgentFork(team, offer, "maker", now); err == nil {
 		t.Fatal("maker accepted the recipient's fork")
