@@ -16,7 +16,7 @@ import (
 // PLAT-746-919: reconstruct the API/store from durable events and queue JSON;
 // nothing executes a model, and an already-started original is never replayed.
 func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.T) {
-	for _, scenario := range []string{"started", "agent_message", "schedule", "stopped", "finished", "error", "person_queued", "graceful_shutdown", "stopped_then_shutdown", "finished_during_shutdown"} {
+	for _, scenario := range []string{"started", "agent_message", "schedule", "stopped", "finished", "error", "person_queued", "graceful_shutdown", "stopped_then_shutdown", "finished_during_shutdown", "callback_lock"} {
 		t.Run(scenario, func(t *testing.T) {
 			const user, sid = "owner", "restart-chat"
 			backgroundFollowUps.personWrote(sid)
@@ -45,6 +45,56 @@ func TestRestartContinuesInterruptedChatWithoutReplayingStartedInput(t *testing.
 				api.eventStore.AddEvent(sid, event)
 			}
 			api := newAPI()
+			if scenario == "callback_lock" {
+				// PLAT-746-988: startup settles an interrupted turn while holding
+				// queue -> restart locks. Its inline event callbacks must return.
+				api.eventStore.SetSessionOwner(sid, user)
+				readDone := make(chan struct{}, 1)
+				read := api.internalTurnQueueRead
+				api.internalTurnQueueRead = func(ctx context.Context, path string) (string, bool, error) {
+					raw, exists, err := read(ctx, path)
+					if path == restartContinuePath(user) {
+						select {
+						case readDone <- struct{}{}:
+						default:
+						}
+					}
+					return raw, exists, err
+				}
+				api.eventStore.SetEventAddedCallback(func(session string, event storeevents.Event) {
+					api.observeUsageLimitFailure(session, event)
+					api.observeNativeGoalWakeCompletion(session, event)
+				})
+				queueLock := productConversationRegistryMutex(conversationTurnQueuePath(user))
+				restartLock := productConversationRegistryMutex(restartContinuePath(user))
+				queueLock.Lock()
+				restartLock.Lock()
+				finished := make(chan struct{})
+				go func() { api.emitInterruptedTurnEnd(sid, "app_restart"); close(finished) }()
+				blocked := false
+				select {
+				case <-finished:
+				case <-time.After(3 * time.Second):
+					blocked = true
+				}
+				restartLock.Unlock()
+				queueLock.Unlock()
+				// Release even on failure so the old blocking callback can finish.
+				select {
+				case <-finished:
+				case <-time.After(3 * time.Second):
+					t.Fatal("restart settlement did not finish after lock release")
+				}
+				select {
+				case <-readDone:
+				case <-time.After(3 * time.Second):
+					t.Fatal("goal callback did not inspect the recovered record")
+				}
+				if blocked {
+					t.Fatal("restart event callback re-entered a registry mutex held by its emitter")
+				}
+				return
+			}
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
 			request := QueryRequest{Query: "original task", AgentMode: "multi-agent", Provider: "codex-cli", ModelID: "example-model"}
 			if scenario == "schedule" {
