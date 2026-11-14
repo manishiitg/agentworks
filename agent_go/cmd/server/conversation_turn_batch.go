@@ -12,7 +12,7 @@ import (
 // Only ordinary ready person/agent deliveries combine. Explicit live steering,
 // restart continuations and quota retries keep their own dispatch semantics.
 func (api *StreamingAPI) queuedBatchEligible(turn queuedConversationTurn) bool {
-	if turn.StartedAt != nil || turn.Steering || turn.DeliveryError != "" || turn.RetryAt != nil || (turn.Request.TriggeredBy == "restart_continue" || turn.Request.TriggeredBy == usageLimitContinueTrigger) {
+	if turn.StartedAt != nil || turn.Steering || turn.DeliveryError != "" || turn.UsageLimitRecoveryID != "" || turn.RetryAt != nil || (turn.Request.TriggeredBy == "restart_continue" || turn.Request.TriggeredBy == usageLimitContinueTrigger) {
 		return false
 	}
 	if !personQueuedRequest(turn) && turn.Principal.DeliveredMessage["source"] != "agent_message" {
@@ -88,6 +88,30 @@ func (api *StreamingAPI) claimQueuedBatch(turns []queuedConversationTurn, head q
 		return a.CreatedAt.Before(b.CreatedAt)
 	})
 	scope := queuedBatchScope(head)
+	if head.UsageLimitRecoveryID != "" {
+		var members []queuedConversationTurn
+		for _, i := range ordered {
+			candidate := turns[i]
+			if candidate.UsageLimitRecoveryID != head.UsageLimitRecoveryID {
+				continue
+			}
+			if (candidate.RetryAt != nil && now.Before(*candidate.RetryAt)) || queuedBatchScope(candidate) != scope {
+				return queuedConversationTurn{}, turns
+			}
+			turns[i].StartedAt = &now
+			turns[i].RetryAt = nil
+			turns[i].BatchID = head.ID
+			members = append(members, turns[i])
+		}
+		if len(members) == 0 {
+			return queuedConversationTurn{}, turns
+		}
+		claimed := members[0]
+		if len(members) > 1 {
+			claimed.Batch = members
+		}
+		return claimed, turns
+	}
 	canCombine := api.queuedBatchEligible(head) && scope != ""
 	started := false
 	var members []queuedConversationTurn

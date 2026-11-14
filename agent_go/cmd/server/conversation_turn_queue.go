@@ -145,20 +145,21 @@ type queuedConversationPrincipal struct {
 }
 
 type queuedConversationTurn struct {
-	BatchID       string                      `json:"batch_id,omitempty"`
-	Batch         []queuedConversationTurn    `json:"-"`
-	RetryAt       *time.Time                  `json:"retry_at,omitempty"`
-	ID            string                      `json:"id"`
-	ComposerInput bool                        `json:"composer_input,omitempty"`
-	UserID        string                      `json:"user_id"`
-	SessionID     string                      `json:"session_id"`
-	Request       QueryRequest                `json:"request"`
-	Principal     queuedConversationPrincipal `json:"principal,omitempty"`
-	SubmissionID  string                      `json:"submission_id,omitempty"`
-	CreatedAt     time.Time                   `json:"created_at"`
-	StartedAt     *time.Time                  `json:"started_at,omitempty"`
-	Steering      bool                        `json:"steering,omitempty"`
-	DeliveryError string                      `json:"delivery_error,omitempty"`
+	UsageLimitRecoveryID string                      `json:"usage_limit_recovery_id,omitempty"`
+	BatchID              string                      `json:"batch_id,omitempty"`
+	Batch                []queuedConversationTurn    `json:"-"`
+	RetryAt              *time.Time                  `json:"retry_at,omitempty"`
+	ID                   string                      `json:"id"`
+	ComposerInput        bool                        `json:"composer_input,omitempty"`
+	UserID               string                      `json:"user_id"`
+	SessionID            string                      `json:"session_id"`
+	Request              QueryRequest                `json:"request"`
+	Principal            queuedConversationPrincipal `json:"principal,omitempty"`
+	SubmissionID         string                      `json:"submission_id,omitempty"`
+	CreatedAt            time.Time                   `json:"created_at"`
+	StartedAt            *time.Time                  `json:"started_at,omitempty"`
+	Steering             bool                        `json:"steering,omitempty"`
+	DeliveryError        string                      `json:"delivery_error,omitempty"`
 }
 
 type conversationTurnQueueDocument struct {
@@ -349,12 +350,6 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			lock.Unlock()
 			return queuedConversationTurn{}, false, usageErr
 		}
-		if len(usagePruned) != len(turns) {
-			if err := api.writeConversationTurnQueue(ctx, owner, usagePruned); err != nil {
-				lock.Unlock()
-				return queuedConversationTurn{}, false, err
-			}
-		}
 		turns = usagePruned
 
 		head := conversationQueueHead(turns, owner, sessionID, time.Now())
@@ -480,14 +475,22 @@ func (api *StreamingAPI) claimNextConversationTurn(ctx context.Context, userID, 
 	if err != nil {
 		return queuedConversationTurn{}, false
 	}
-	if len(pruned) != len(turns) {
-		if err := api.writeConversationTurnQueue(ctx, userID, pruned); err != nil {
-			return queuedConversationTurn{}, false
-		}
-	}
 	turns = pruned
 
 	head := conversationQueueHead(turns, userID, sessionID, time.Now())
+	if head.UsageLimitRecoveryID != "" && (head.RetryAt == nil || !time.Now().Before(*head.RetryAt)) {
+		claimed, updated := api.claimQueuedBatch(turns, head, nil, time.Now().UTC())
+		if claimed.ID == "" {
+			return queuedConversationTurn{}, false
+		}
+		if ok, err := api.consumeUsageLimitContinue(ctx, userID, claimed); err != nil || !ok {
+			return queuedConversationTurn{}, false
+		}
+		if err := api.writeConversationTurnQueue(ctx, userID, updated); err != nil {
+			return queuedConversationTurn{}, false
+		}
+		return claimed, true
+	}
 	for i := range turns {
 		if turns[i].ID != head.ID || turns[i].SessionID != sessionID || turns[i].StartedAt != nil || turns[i].DeliveryError != "" || (turns[i].RetryAt != nil && time.Now().Before(*turns[i].RetryAt)) {
 			continue
@@ -889,21 +892,24 @@ func (api *StreamingAPI) finishQueuedConversationTurn(turn queuedConversationTur
 		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if err != nil {
+	if err != nil && !api.usageIncomingRetryArmed(storageCtx, turn) {
 		// Preserve the failed original for explicit resolution. Typed quota
-		// recovery has its own synthetic continuation, never a replay here.
+		// recovery either retries the still-unanswered incoming delivery or sends
+		// a separate continuation for the chat's own interrupted work.
 		if persistErr := api.failConversationTurn(storageCtx, turn); persistErr != nil {
 			logTurnQueue("cannot persist failed turn %s: %v", turn.ID, persistErr)
 		} else {
 			api.recordFailedQueuedConversationUserMessage(turn)
 		}
 
-	} else if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
-		logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
-		err = removeErr
+	} else if err == nil {
+		if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
+			logTurnQueue("cannot persist completion for %s: %v", turn.ID, removeErr)
+			err = removeErr
+		}
 	}
 	cancel()
-	if turn.Request.TriggeredBy == usageLimitContinueTrigger {
+	if turn.UsageLimitRecoveryID != "" {
 		action, reason := "done", "turn_completed"
 		if err != nil {
 			action, reason = "failed", "turn_failed"

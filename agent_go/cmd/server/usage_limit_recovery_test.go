@@ -16,7 +16,7 @@ import (
 // documents, and claim. Only provider execution is absent; original input must
 // never be replayed, including when the failure came from an incoming message.
 func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) {
-	for _, scenario := range []string{"future", "due_after_restart", "fresh_past", "too_overdue", "stopped", "person_queued", "stop_after_claim", "child", "other_turn", "different_native", "missing_reset", "stopped_before_failure"} {
+	for _, scenario := range []string{"future", "due_after_restart", "fresh_past", "too_overdue", "stopped", "person_queued", "stop_after_claim", "child", "other_turn", "different_native", "missing_reset", "stopped_before_failure", "incoming_future", "incoming_due", "incoming_batch", "incoming_stopped"} {
 		t.Run(scenario, func(t *testing.T) {
 			const user, sid = "owner", "usage-limit-chat"
 			files := map[string]string{}
@@ -41,6 +41,10 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			}
 			api := newAPI()
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
+			incoming := strings.HasPrefix(scenario, "incoming_")
+			if incoming {
+				ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "reply_address": "original-inbox"})
+			}
 			req := QueryRequest{Query: "original task with side effects", AgentMode: "multi-agent", Provider: "codex-cli", ModelID: "example-model", AgentMessageInbox: "incoming"}
 			if err := api.saveRestartContinueRequest(ctx, user, sid, "failed-query", req); err != nil {
 				t.Fatal(err)
@@ -48,7 +52,7 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			now := time.Now().UTC()
 			failedAt, reset := now.Add(-time.Hour), now.Add(time.Hour)
 			switch scenario {
-			case "due_after_restart", "stop_after_claim":
+			case "due_after_restart", "stop_after_claim", "incoming_due", "incoming_batch", "incoming_stopped":
 				reset = now.Add(-time.Second)
 			case "fresh_past":
 				failedAt = now
@@ -69,7 +73,18 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			}
 			started := failedAt
 			original := queuedConversationTurn{ID: "started-original", UserID: user, SessionID: sid, Request: req, StartedAt: &started}
-			if err := api.writeConversationTurnQueue(ctx, user, []queuedConversationTurn{original}); err != nil {
+			if incoming {
+				original.Principal = queuedPrincipalFromContext(ctx)
+				original.Principal.DeliveredMessageSession = sid
+				original.Principal.DeliveredMessageUser = user
+			}
+			originals := []queuedConversationTurn{original}
+			if scenario == "incoming_batch" {
+				second := original
+				second.ID = "started-original2"
+				originals = append(originals, second)
+			}
+			if err := api.writeConversationTurnQueue(ctx, user, originals); err != nil {
 				t.Fatal(err)
 			}
 			completion := unifiedevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "", "error", 0, 1)
@@ -101,11 +116,13 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			}
 			expected := scenario != "fresh_past" && scenario != "too_overdue" && scenario != "child" && scenario != "other_turn" && scenario != "different_native" && scenario != "missing_reset" && scenario != "stopped_before_failure"
 			quotaTurns, notices := 0, 0
+			groups := map[string]bool{}
 			for _, turn := range turns {
-				if turn.Request.TriggeredBy == usageLimitContinueTrigger {
-					quotaTurns++
+				if turn.UsageLimitRecoveryID != "" {
+					groups[turn.UsageLimitRecoveryID] = true
 				}
 			}
+			quotaTurns = len(groups)
 			for _, e := range api.eventStore.GetAllEventsRaw(sid) {
 				if e.Type == "usage_limit_notice" {
 					notices++
@@ -124,7 +141,7 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 			if strings.Contains(files[restartContinuePath(user)], req.Query) {
 				t.Fatal("recovery stored original prompt")
 			}
-			if scenario == "stopped" {
+			if scenario == "stopped" || scenario == "incoming_stopped" {
 				api.markSessionStopped(sid)
 			}
 			if scenario == "person_queued" {
@@ -151,8 +168,13 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 				t.Fatal(err)
 			}
 			for _, turn := range turns {
-				if turn.ID == original.ID {
+				if turn.ID == original.ID && !incoming {
 					t.Fatal("failed original replayed")
+				}
+				if incoming && turn.UsageLimitRecoveryID != "" {
+					if turn.Request.Query != req.Query || turn.Request.AgentMessageInbox != req.AgentMessageInbox || turn.Principal.DeliveredMessage["reply_address"] != "original-inbox" {
+						t.Fatal("incoming retry lost its message or original reply authority")
+					}
 				}
 				if turn.Request.TriggeredBy == usageLimitContinueTrigger {
 					if turn.Request.Query != usageLimitContinueMessage || !turn.Request.IsAutoNotification || turn.Request.AgentMessageInbox != "" || turn.Request.Provider != req.Provider {
@@ -160,7 +182,7 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 					}
 				}
 			}
-			if scenario == "future" {
+			if scenario == "future" || scenario == "incoming_future" {
 				if len(dropStaleWaitingTurns(turns, now.Add(30*time.Minute))) != 1 {
 					t.Fatal("waiting recovery pruned")
 				}
@@ -169,17 +191,24 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 				}
 				return
 			}
-			if scenario == "stopped" || scenario == "person_queued" {
+			if scenario == "stopped" || scenario == "person_queued" || scenario == "incoming_stopped" {
 				for _, turn := range turns {
-					if turn.Request.TriggeredBy == usageLimitContinueTrigger {
+					if turn.UsageLimitRecoveryID != "" {
 						t.Fatal("person cancellation lost across restart")
 					}
 				}
 				return
 			}
 			claimed, ok := fresh.claimNextConversationTurn(ctx, user, sid)
-			if !ok || claimed.Request.Query != usageLimitContinueMessage {
+			wantQuery := usageLimitContinueMessage
+			if incoming {
+				wantQuery = req.Query
+			}
+			if !ok || claimed.Request.Query != wantQuery {
 				t.Fatal("due continuation not claimable")
+			}
+			if scenario == "incoming_batch" && len(claimed.Batch) != 2 {
+				t.Fatal("incoming batch split into more than one retry")
 			}
 			if !fresh.usageLimitContinuationCurrent(ctx, claimed) {
 				t.Fatal("claimed recovery rejected")
@@ -195,12 +224,25 @@ func TestUsageLimitRecoveryUsesOneSyntheticTurnAndSurvivesRestart(t *testing.T) 
 				t.Fatal("claim did not consume receipt")
 			}
 			restarted := newAPI()
-			queued, err := restarted.prepareRestartContinues(ctx, user, []queuedConversationTurn{claimed})
+			claimedRows, err := restarted.readConversationTurnQueue(ctx, user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			queued, err := restarted.prepareRestartContinues(ctx, user, claimedRows)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(queued) != 0 {
 				t.Fatal("claimed recovery replayed after process loss")
+			}
+			if incoming {
+				secondFailure := event
+				secondFailure.ID = "second-quota-failure"
+				restarted.observeUsageLimitFailure(sid, secondFailure)
+				receipt, err := restarted.readRestartContinueRecords(ctx, user)
+				if err != nil || receipt.Chats[sid].UsageLimit.EventID != event.ID {
+					t.Fatal("incoming message got a second automatic retry")
+				}
 			}
 			// JSON replay of the consumed failure cannot arm another retry.
 			raw, _ := json.Marshal(event)
