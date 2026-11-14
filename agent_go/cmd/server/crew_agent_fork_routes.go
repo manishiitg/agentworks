@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -16,7 +17,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	claims := GetUserFromContext(r.Context())
 	project, id, op := mux.Vars(r)["project"], mux.Vars(r)["fork"], mux.Vars(r)["op"]
 	fail := func(status int, reason string) { externalError(w, status, "agent_fork_unavailable", reason) }
-	if claims == nil {
+	if !crewTeamClaims(claims, project, r.Method != http.MethodGet) {
 		fail(403, "Sign in to use agent forks.")
 		return
 	}
@@ -29,7 +30,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	mu.Lock()
 	defer mu.Unlock()
 	team, err := readCrewTeam(project)
-	if err != nil || !team.On || !team.member(claims.UserID) {
+	if err != nil || !team.On || !team.member(claims.UserID) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
 		fail(403, "This Crew's Team is not available to you.")
 		return
 	}
@@ -43,7 +44,9 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		externalJSON(w, map[string]any{"forks": offers})
 		return
 	}
-	if !crewTeamMessagePairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
+	macSource := crewTeamMemberOnMac(project, claims.UserID)
+	upload := op == "plan" || op == "commit" || op == "chunks" && r.Method == http.MethodPut
+	if (upload || id == "" && macSource) && !crewTeamMessagePairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
 		fail(403, "Use your own paired computer for this Crew.")
 		return
 	}
@@ -66,6 +69,37 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		log.Printf("[AGENT_FORK] project=%s fork=%s source=%s copy=%s event=created", project, offer.ID, offer.Agent.ID, offer.CopyAgentID)
+		if !macSource {
+			// Native export may be slow. Do not hold the membership lock during
+			// capture; recheck current admission when committing the snapshot.
+			mu.Unlock()
+			payload, captureErr := api.captureCrewAgentFork(r.Context(), claims, offer)
+			mu.Lock()
+			// Cancellation during export must not resurrect the pending record.
+			pending, pendingErr := readCrewAgentFork(project, offer.ID)
+			if captureErr == nil {
+				captureErr = pendingErr
+			}
+			if captureErr == nil && (pending.Ready || pending.CopyAgentID != offer.CopyAgentID) {
+				captureErr = fmt.Errorf("this fork changed during capture")
+			}
+			current, readErr := readCrewTeam(project)
+			if captureErr == nil {
+				captureErr = readErr
+			}
+			if captureErr == nil {
+				captureErr = stageCrewAgentFork(current, offer, claims.UserID, payload, time.Now().UTC())
+			}
+			if captureErr != nil {
+				_ = removeCrewAgentFork(offer)
+				log.Printf("[AGENT_FORK] project=%s fork=%s event=capture_failed reason=source_unavailable", project, offer.ID)
+				fail(409, "Could not copy this agent's saved conversation. Open it where it runs and try again.")
+				return
+			}
+			offer.Ready = true
+			publishCrewPanelChanged(project)
+			log.Printf("[AGENT_FORK] project=%s fork=%s event=ready", project, offer.ID)
+		}
 		externalJSON(w, offer)
 		return
 	}
