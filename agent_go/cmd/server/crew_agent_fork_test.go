@@ -22,6 +22,9 @@ func TestCrewAgentForkOnlyNamedCurrentRecipient(t *testing.T) {
 	if err := offer.admit(team, "recipient", true, now); err == nil {
 		t.Fatal("incomplete uploads must not be downloadable")
 	}
+	if offer.CopyAgentID == "" || offer.CopyAgentID == agent.ID {
+		t.Fatal("a fork must allocate a new identity, never transfer the maker's")
+	}
 	offer.Ready = true
 	if err := offer.admit(team, "recipient", true, now); err != nil {
 		t.Fatal(err)
@@ -110,5 +113,32 @@ func TestCrewAgentForkPrivateStageAndCleanup(t *testing.T) {
 	}
 	if _, err = os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatal("expired fork retained private data")
+	}
+	if err = saveCrewAgentFork(offer); err != nil {
+		t.Fatal(err)
+	}
+	if err = completeCrewAgentFork(team, offer, "recipient", now); err == nil {
+		t.Fatal("accept removed the payload before an imported copy existed")
+	}
+	copy := crewTeamRegisteredAgent{ID: offer.CopyAgentID, OwnerID: "recipient", Tab: "fork-copy", ChatKey: "room:chat:fork-copy"}
+	team.Agents[copy.ID] = copy
+	if err = completeCrewAgentFork(team, offer, "maker", now); err == nil {
+		t.Fatal("maker accepted the recipient's fork")
+	}
+	copy.InTeam = true
+	team.Agents[copy.ID] = copy
+	if err = completeCrewAgentFork(team, offer, "recipient", now); err == nil {
+		t.Fatal("fork accepted without the required Only-me boundary")
+	}
+	copy.InTeam = false
+	team.Agents[copy.ID] = copy
+	if err = completeCrewAgentFork(team, offer, "recipient", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("accepted fork retained staged private data")
+	}
+	if source := team.Agents[agent.ID]; source.OwnerID != agent.OwnerID || source.ChatKey != agent.ChatKey || source.InTeam != agent.InTeam {
+		t.Fatal("accept changed the maker's agent")
 	}
 }

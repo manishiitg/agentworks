@@ -15,7 +15,7 @@ import (
 func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project, id, op := mux.Vars(r)["project"], mux.Vars(r)["fork"], mux.Vars(r)["op"]
-	fail := func(status int, reason string) { externalError(w, status, "agent_transfer_unavailable", reason) }
+	fail := func(status int, reason string) { externalError(w, status, "agent_fork_unavailable", reason) }
 	if claims == nil {
 		fail(403, "Sign in to use agent forks.")
 		return
@@ -82,6 +82,16 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	download := op == "download" || op == "chunks" && r.Method == http.MethodPost
 	if err = offer.admit(team, claims.UserID, download, now); err != nil {
 		fail(403, err.Error())
+		return
+	}
+	if op == "complete" {
+		if err = completeCrewAgentFork(team, offer, claims.UserID, now); err != nil {
+			log.Printf("[AGENT_FORK] project=%s fork=%s actor=%s event=refused reason=copy_not_imported", project, id, claims.UserID)
+			fail(409, "Finish importing your own private copy before accepting this fork.")
+			return
+		}
+		publishCrewPanelChanged(project)
+		externalJSON(w, map[string]bool{"accepted": true})
 		return
 	}
 	if op == "cancel" {
@@ -161,8 +171,8 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		}
 		log.Printf("[AGENT_FORK] project=%s fork=%s event=ready agent=%s", project, id, offer.Agent.ID)
 		publishCrewPanelChanged(project)
-		externalJSON(w, map[string]any{"ready": true, "transfer_id": id})
+		externalJSON(w, map[string]any{"ready": true, "fork_id": id})
 	default:
-		fail(400, "Choose plan, chunks, commit, download or cancel.")
+		fail(400, "Choose plan, chunks, commit, download, complete or cancel.")
 	}
 }

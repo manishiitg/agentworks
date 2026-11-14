@@ -83,7 +83,7 @@ func saveCrewAgentFork(offer crewAgentFork) error {
 	return fsutil.WriteJSONAtomic(filepath.Join(dir, "fork.json"), offer, 0600)
 }
 
-// Called after successful import, decline/cancel, or expiry. Transfer-scoped
+// Called after successful import, decline/cancel, or expiry. Fork-scoped
 // chunks and history live under this same directory, so no private chat copy
 // is retained after its pending record goes away. Never removes project files.
 func removeCrewAgentFork(offer crewAgentFork) error {
@@ -96,5 +96,25 @@ func removeCrewAgentFork(offer crewAgentFork) error {
 		return err
 	}
 	log.Printf("[AGENT_FORK] project=%s fork=%s event=removed", offer.Project, offer.ID)
+	return nil
+}
+
+// Completion is an acknowledgement of a registered recipient-owned import,
+// never permission to mutate the maker. The importer must register the fresh
+// copy as Only me before any discovery can expose it. Caller holds the Team
+// record lock so membership and ownership cannot change across this check.
+func completeCrewAgentFork(team crewTeam, offer crewAgentFork, person string, now time.Time) error {
+	if err := offer.admit(team, person, true, now); err != nil {
+		return err
+	}
+	copy, ok := team.Agents[offer.CopyAgentID]
+	if !ok || copy.ID == offer.Agent.ID || copy.OwnerID != person || copy.InTeam ||
+		copy.ChatKey == "" || copy.ChatKey == offer.Agent.ChatKey || copy.Tab == "" {
+		return fmt.Errorf("import this fork as your own new private agent first")
+	}
+	if err := removeCrewAgentFork(offer); err != nil {
+		return err
+	}
+	log.Printf("[AGENT_FORK] project=%s fork=%s source=%s copy=%s actor=%s event=accepted", offer.Project, offer.ID, offer.Agent.ID, copy.ID, person)
 	return nil
 }
