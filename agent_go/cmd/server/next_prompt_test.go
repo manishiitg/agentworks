@@ -45,7 +45,7 @@ func TestNextPromptPublishesOnlyForItsExactLatestInput(t *testing.T) {
 		t.Fatal("old prediction survived a newer input")
 	}
 	var entries []costledger.Entry
-	if err := ledger.VisitEntries(context.Background(), "", "", func(e costledger.Entry) error { entries = append(entries, e); return nil }); err != nil {
+	if err := ledger.VisitEntries(context.Background(), time.Now().UTC().Format("2006-01-02"), time.Now().UTC().Format("2006-01-02"), func(e costledger.Entry) error { entries = append(entries, e); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 {
