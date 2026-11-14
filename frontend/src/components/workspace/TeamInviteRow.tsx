@@ -78,7 +78,7 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
           {chosen.agents.map(agent => <label key={agent.tab} className="flex items-center gap-2"><input type="checkbox" checked={selectedAgents.includes(agent.tab)} onChange={event => setSelectedAgents(current => event.target.checked ? [...current, agent.tab] : current.filter(tab => tab !== agent.tab))} />{agent.name}</label>)}
         </fieldset>
       </>}
-      {!invite.folder?.whole && !!invite.folder?.folders?.length && <p>Shared folders: {invite.folder.folders.map(entry => `${entry.path}/`).join(', ')}. Same-name folders are kept beside yours.</p>}
+      {!!invite.folder?.folders?.length && <p>Shared folders: {invite.folder.folders.map(entry => `${entry.path}/`).join(', ')}. Same-name folders are kept beside yours.</p>}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" disabled={busy || (target !== 'new' && !chosen?.can_join)} onClick={() => void addToMac()} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-foreground shadow-sm hover:bg-muted">OK</button>
         {target === 'new' && window.electronAPI?.pickWorkflowFolder && <button type="button" disabled={busy} onClick={async () => { const picked = await window.electronAPI?.pickWorkflowFolder?.(); if (picked) setFolder(picked) }} className="rounded-full px-2.5 py-0.5 text-xs hover:bg-muted">Choose another folder</button>}
