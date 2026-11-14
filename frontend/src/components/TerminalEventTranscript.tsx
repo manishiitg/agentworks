@@ -1339,22 +1339,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     setSearchMatch(key ? { key, query } : null)
     if (key) scroll.jumpToKey(key)
   }, [scroll.jumpToKey])
-  const latestUserMessageKey = useMemo(() => {
-    for (let index = items.length - 1; index >= 0; index--) {
-      const item = items[index]
-      if (item.kind === 'event' && item.event.type === 'user_message'
-        && !isInternalTranscriptMessage(item.event) && !isExecutionPromptTranscriptMessage(item.event)) return item.key
-    }
-    return undefined
-  }, [items])
-  const previousUserMessageKey = useRef(latestUserMessageKey)
-  useEffect(() => {
-    const previous = previousUserMessageKey.current
-    previousUserMessageKey.current = latestUserMessageKey
-    // Sending another message starts a new turn at the bottom. Hydrating or
-    // prepending history must not reset a restored reading position.
-    if (previous && latestUserMessageKey !== previous && keys.includes(previous)) scroll.jumpToLatest()
-  }, [keys, latestUserMessageKey, scroll.jumpToLatest])
+  // A changed latest row can come from history hydration or an incoming agent,
+  // not only a send. The composer explicitly calls followTranscriptLatest;
+  // cached transcript refreshes must not override a deliberate reading anchor.
   const [initialPosition, setInitialPosition] = useState<{ index: number; align: 'start' | 'end'; offset?: number } | null>(null)
   if (!initialPosition && keys.length > 0) {
     const anchorIndex = readingState.anchor ? keys.indexOf(readingState.anchor.key) : -1
