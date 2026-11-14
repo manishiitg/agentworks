@@ -377,6 +377,7 @@ func (api *StreamingAPI) workspaceGitDelivery(w http.ResponseWriter, r *http.Req
 			writeWorkspaceGitJSON(w, 409, map[string]string{"error": err.Error()})
 			return
 		}
+		markCrewPanelChangesDirty(canonical)
 		publishCrewPanelPathChanged(canonical)
 		repo, _ := workspaceGitStatus(ctx, dir)
 		writeWorkspaceGitJSON(w, 200, map[string]any{"repo": repo, "head": target.Head})
@@ -391,6 +392,8 @@ func (api *StreamingAPI) workspaceGitDelivery(w http.ResponseWriter, r *http.Req
 		writeWorkspaceGitJSON(w, 409, map[string]string{"error": err.Error()})
 		return
 	}
+	markCrewPanelChangesDirty(canonical) // the Git row shows how a branch stands against its remote
+	publishCrewPanelPathChanged(canonical)
 	// The normal PR link/card and Watcher controls consume the same identity.
 	writeWorkspaceGitJSON(w, 200, map[string]any{"pr": pr, "repository": target.Repository, "branch": target.Branch, "head": target.Head, "number": pr.Number, "url": pr.URL, "state": "open"})
 }

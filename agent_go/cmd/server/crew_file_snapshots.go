@@ -198,6 +198,8 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		defer api.crewTurnSnapshots.Delete(snapshot.executionID)
 		// The send never waited for the before-capture; the after-capture does.
 		<-snapshot.beforeDone
+		// The turn may have changed any checkout; the panel's Git row must not keep a snapshot from before it.
+		markCrewPanelChangesDirty(snapshot.root)
 		roots, found, err := crewStorageRoots(snapshot.root)
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return

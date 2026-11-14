@@ -187,6 +187,15 @@ func (c *crewPanelCache) refreshInBackground(base context.Context, key crewPanel
 		log.Printf("[CREW_PANEL] project=%s section=%s background_refresh ok=%t ms=%d", key.project, source.id, err == nil, time.Since(started).Milliseconds())
 	}()
 }
+
+// dropBefore forgets a snapshot taken before at, so the next read waits for a current one.
+func (c *crewPanelCache) dropBefore(key crewPanelCacheKey, at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if v, ok := c.entries[key]; ok && v.at.Before(at) {
+		delete(c.entries, key)
+	}
+}
 func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -238,6 +247,9 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			continue
 		}
 		if !source.noCache && source.refreshFor > 0 {
+			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && source.background {
+				c.dropBefore(k, marked.(time.Time))
+			}
 			if previous, found := c.previous(k, source.refreshFor); found {
 				out[i] = previous
 				continue
