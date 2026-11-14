@@ -27,6 +27,7 @@ const (
 )
 
 type codeChat struct {
+	GroupNames  []string
 	TeamAgentID string // Team identity; Key remains the native conversation binding.
 	OwnerID     string
 	IsMain      bool
@@ -130,6 +131,13 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 					}
 					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, SessionID: agent.sessionID, IsMain: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
 				}
+			}
+		}
+	}
+	if saved, err := updateMenuGroups(ctx, nil); err == nil {
+		for i := range project.Chats {
+			if project.Chats[i].OwnerID == userID {
+				project.Chats[i].GroupNames = saved.agentGroupNames(project.ProjectID, project.Chats[i].Key)
 			}
 		}
 	}
@@ -289,6 +297,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				name = "Main"
 			}
 			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": shareOwnerLabel(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			if len(chat.GroupNames) > 0 {
+				item["group_names"] = chat.GroupNames
+			}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}
@@ -308,7 +319,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. Use it before ask_project_chat. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
+		{"list_project_chats", "List the agents of this project: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. Use it before ask_project_chat. group_names are the person's personal sidebar groups, not shared context, Team membership or access. All agents means these: tabs the person hid are left out unless include_hidden is true.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 			"include_hidden": map[string]interface{}{"type": "boolean", "description": "Also list tabs the person hid. Only when they ask for hidden agents."},
 		}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -418,7 +429,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
 			}},
-		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. No model turn starts; use sessions action=ask afterwards.", map[string]interface{}{
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork inherits the parent's personal sidebar group. No model turn starts; use sessions action=ask afterwards.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
 				"chat": map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
 				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},

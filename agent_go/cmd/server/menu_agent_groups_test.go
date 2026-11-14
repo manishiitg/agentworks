@@ -56,10 +56,11 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	req := httptest.NewRequest("GET", "/", nil).WithContext(ctx)
 	chats := env.api.crewChats(req, "owner", "beta", root)
-	var parent, foreign string
+	var parent, foreign, session string
 	for _, chat := range chats {
 		if chat.OwnerID == "owner" {
 			parent = chat.key
+			session = chat.SessionID
 		} else {
 			foreign = chat.key
 		}
@@ -103,6 +104,15 @@ func TestForkGroupInheritanceAndToolListsStayPersonal(t *testing.T) {
 			if (len(chat.GroupNames) > 0) != want {
 				t.Fatalf("group leak/missing group for %s: %+v", person, chat)
 			}
+		}
+	}
+	native, err := env.api.codeChatsFor(ctx, "owner", session, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chat := range native.Chats {
+		if (len(chat.GroupNames) > 0) != (chat.Key == parent && chat.OwnerID == "owner") {
+			t.Fatalf("native list group boundary: %+v", chat)
 		}
 	}
 	own := map[string]interface{}{"chat_id": parent, "yours": true}
