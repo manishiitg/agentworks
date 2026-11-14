@@ -11,7 +11,7 @@ it('formats reported running/finished facts, with no invented command usage', ()
   expect(backgroundTaskLine(record, Date.parse(start) + 134000)).toBe('Background agent running… · 2m 14s · 18.4k tokens')
   const done = { ...record, state: 'finished', ended_at: '2026-11-13T10:03:02Z', tokens: 24100 }
   expect(backgroundTaskLine(done, Date.parse(start) + 999999)).toBe('Background agent finished · 3m 02s · 24.1k tokens')
-  expect(backgroundTaskLine({ ...record, kind: 'background_command', tokens: undefined }, Date.parse(start) + 1000)).toBe('Background task running… · 1s')
+  expect(backgroundTaskLine({ ...record, kind: 'background_command', command_label: 'deploy.sh verify', tokens: undefined }, Date.parse(start) + 1000)).toBe('Background shell running… · deploy.sh verify · 1s')
   expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={done} />)).not.toContain('<button')
 })
 

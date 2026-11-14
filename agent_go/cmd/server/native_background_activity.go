@@ -76,6 +76,12 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 	}
 	sameRun := previous.WorkID != "" && (r.TaskRunID == "" || previous.TaskRunID == "" || r.TaskRunID == previous.TaskRunID)
 	if sameRun {
+		if r.CommandLabel == "" {
+			r.CommandLabel = previous.CommandLabel
+		}
+		if r.BackgroundMode == "" {
+			r.BackgroundMode = previous.BackgroundMode
+		}
 		if r.TaskRunID == "" && !previous.StartedAt.IsZero() && !r.Timestamp.IsZero() && r.Timestamp.Before(previous.StartedAt) {
 			return previous
 		}
