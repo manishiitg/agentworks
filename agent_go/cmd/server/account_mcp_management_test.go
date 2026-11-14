@@ -15,10 +15,12 @@ import (
 func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work","mcp-gateway"]},{"id":"other","role":"editor","products":["work","mcp-gateway"]}]}`)
+	withMCPConnectionsRoot(t)
 	gateway := newCrewConnectionVaultFixture(t)
 	f.api.mcpConfigPath = gateway.catalog
 	f.api.logger = loggerv2.NewNoop()
-	before := f.read(t, externalCommandCrewRoot+"/workflow.json")
+	before := f.read(t, externalCommandCrewSettings+"/workflow.json")
 	call := func(body string) *httptest.ResponseRecorder {
 		t.Helper()
 		request := adminRequest(http.MethodPost, "/api/my-vaults/op", body, &UserClaims{UserID: "owner", Username: "owner"}, nil)
@@ -50,7 +52,7 @@ func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testi
 	if removed.Code != http.StatusOK || gateway.count() != 0 {
 		t.Fatalf("remove: %d %s", removed.Code, removed.Body.String())
 	}
-	if after := f.read(t, externalCommandCrewRoot+"/workflow.json"); after != before {
+	if after := f.read(t, externalCommandCrewSettings+"/workflow.json"); after != before {
 		t.Fatal("global management changed Crew selections")
 	}
 	// The screen link is the authorized OAuth result, not text-parsed instructions,

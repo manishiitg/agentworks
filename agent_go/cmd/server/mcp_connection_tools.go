@@ -312,6 +312,9 @@ func (api *StreamingAPI) mcpToolOAuthRedirect(ctx context.Context, person string
 	if redirect := deriveOAuthRedirectURIFromEnv(); redirect != "" {
 		return redirect
 	}
+	if redirect, ok := ctx.Value(vaultScreenRedirectKey{}).(string); ok && redirect != "" {
+		return redirect
+	}
 	api.lastQueryMu.RLock()
 	request, found := api.lastQueryRequests[chatSessionIDFromContext(ctx)]
 	api.lastQueryMu.RUnlock()
