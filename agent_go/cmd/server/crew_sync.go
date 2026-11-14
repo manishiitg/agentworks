@@ -19,6 +19,7 @@ import (
 )
 
 type crewSyncRequest struct {
+	Terminal              *chatTerminalStandby       `json:"terminal,omitempty"`
 	IncludeOnlineAgents   bool                       `json:"include_online_agents,omitempty"`
 	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
 	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
@@ -310,6 +311,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
+	if input.Action == "terminal_marker" {
+		return api.receiveTerminalStandby(ctx, claims, id, input)
+	}
 	if input.Action == "publish_accounts" || input.Action == "publish_agent" || input.Action == "stage_agent" {
 		return api.receiveCrewAgentPublish(ctx, claims, id, input)
 	}

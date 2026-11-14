@@ -24,6 +24,14 @@ func (api *StreamingAPI) publishedAgentCall(ctx context.Context, owner, project 
 func (api *StreamingAPI) standbyAgentCall(ctx context.Context, owner, project string, call crewChatCall, byAgent bool) crewChatResult {
 	started := time.Now()
 	result := api.serverAgentCall(ctx, owner, project, call, byAgent, true)
+	// An agent message may also reach a public agent; a person's own ask needs the audience.
+	if member {
+		if reason := crewMemberStandbyAudience(ctx, project, owner, call.Tab, args.SenderID); reason != "" {
+			return fail(403, "This agent is no longer shared with you.")
+		}
+	} else if _, reason := macSharedAgentAccess(project, call.Tab, args.SenderID, owner, byAgent); reason != "" {
+		return fail(403, "This agent is no longer shared with you.")
+	}
 	if call.Operation != "agent_read" {
 		// The turn is running or queued now (or was refused): the routed call is no longer in flight for a hand back.
 		releaseCrewStandbyFlight(project, owner, call.Tab)
@@ -59,18 +67,16 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		}
 	}
 	var args struct {
-		SenderID string `json:"sender_id"`
+		SenderID  string `json:"sender_id"`
+		TeamInbox string `json:"team_inbox"`
 	}
 	if json.Unmarshal(call.Args, &args) != nil || args.SenderID == "" {
 		return fail(403, "This agent is unavailable.")
 	}
-	// An agent message may also reach a public agent; a person's own ask needs the audience.
-	if member {
-		if reason := crewMemberStandbyAudience(ctx, project, owner, call.Tab, args.SenderID); reason != "" {
-			return fail(403, "This agent is no longer shared with you.")
+	if call.Operation != "agent_read" {
+		if reason := terminalStandbyCallRefusal(project, owner, call.Tab, args.SenderID, args.TeamInbox != ""); reason != "" {
+			return fail(409, reason)
 		}
-	} else if _, reason := macSharedAgentAccess(project, call.Tab, args.SenderID, owner, byAgent); reason != "" {
-		return fail(403, "This agent is no longer shared with you.")
 	}
 	if call.Operation != "agent_ask" && call.Operation != "agent_read" && call.Operation != "agent_answer" {
 		return fail(400, "Send a message, read its reply or answer its question.")

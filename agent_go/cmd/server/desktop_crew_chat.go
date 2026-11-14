@@ -520,6 +520,11 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	if err != nil {
 		return reply(409, map[string]string{"error": "This agent is unavailable right now."})
 	}
+	if call.Operation != "agent_read" {
+		if notice := chatTerminalTurnRefusal(conversation.SessionID); notice != "" {
+			return reply(409, map[string]string{"error": notice})
+		}
+	}
 	if err := markCrewStandbySession(ctx, project, claims.UserID, conversation.SessionID); err != nil {
 		log.Printf("[STANDBY_TURN] project=%s mark_failed=%q", project, err)
 		return reply(503, map[string]string{"error": "This agent can't answer from the server right now."})

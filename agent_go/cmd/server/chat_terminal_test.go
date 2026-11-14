@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
@@ -145,11 +146,28 @@ func TestChatTerminalOwnerRecoverySupersedesOldSession(t *testing.T) {
 // PLAT-856-569: returning a native tail must never replace older provider
 // history, attachments or tool cards, and a retried return appends only once.
 func TestChatTerminalReturnAppendsHistoryWithoutLosingEarlierCards(t *testing.T) {
-	const user = "alice"
-	const workspace = "_users/alice/Chats/Work/projects/demo-12345678"
+	const user = "owner"
 	const session = "terminal-history"
-	path := workspace + "/builder/conversation/2026-11-14/" + chatHistoryConversationFileName(session)
-	original := `{"session_id":"terminal-history","user_id":"alice","conversation_history":[{"Role":"human","Parts":[{"Text":"Pre-switch question","attachment":{"file":"kept.png"}}],"unknown_metadata":"keep"},{"Role":"tool","Parts":[{"Text":"Earlier tool card"}]}],"ui_events":[{"id":"prior-tool"}]}`
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	workspace := registerTestCrew(t, "terminal-history-crew", user, true)
+	date := time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)
+	path, ok := workProjectChatHistoryConversationPath(user, workspace, session, date)
+	if !ok {
+		t.Fatal("missing own canonical history path")
+	}
+	original := `{"session_id":"terminal-history","user_id":"owner","conversation_history":[{"Role":"human","Parts":[{"Text":"Pre-switch question","attachment":{"file":"kept.png"}}],"unknown_metadata":"keep"},{"Role":"tool","Parts":[{"Text":"Earlier tool card"}]}],"ui_events":[{"id":"prior-tool"}]}`
+	physical, ok := resolveLocalWorkflowDir(workspace)
+	if !ok {
+		t.Fatal("missing private Crew storage")
+	}
+	physical = filepath.Join(physical, "builder", "conversation", "2026-11-14", chatHistoryConversationFileName(session))
+	if e := os.MkdirAll(filepath.Dir(physical), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(physical, []byte(original), 0600); e != nil {
+		t.Fatal(e)
+	}
 	mock := &mockWorkspaceAPI{files: map[string]string{path: original}}
 	ws := httptest.NewServer(mock)
 	defer ws.Close()
