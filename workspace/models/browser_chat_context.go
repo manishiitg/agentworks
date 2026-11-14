@@ -16,12 +16,13 @@ type BrowserContextRect struct {
 }
 
 type BrowserChatContext struct {
-	DocumentToken string             `json:"document_token"`
-	URL           string             `json:"url"`
-	Width         float64            `json:"width"`
-	Height        float64            `json:"height"`
-	Selector      string             `json:"selector,omitempty"`
-	Text          string             `json:"text,omitempty"`
-	Rect          BrowserContextRect `json:"rect"`
-	ImageBase64   string             `json:"image_base64,omitempty"`
+	BrowserSession string             `json:"browser_session,omitempty"`
+	DocumentToken  string             `json:"document_token"`
+	URL            string             `json:"url"`
+	Width          float64            `json:"width"`
+	Height         float64            `json:"height"`
+	Selector       string             `json:"selector,omitempty"`
+	Text           string             `json:"text,omitempty"`
+	Rect           BrowserContextRect `json:"rect"`
+	ImageBase64    string             `json:"image_base64,omitempty"`
 }

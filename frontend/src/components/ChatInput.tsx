@@ -1,3 +1,4 @@
+import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
 import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
 import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
@@ -914,8 +915,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // File context operations (always update tab config)
   const removeFileFromContext = useCallback((path: string) => {
     if (activeTabId && activeTab) {
-      const newFileContext = chatFileContext.filter(f => f.path !== path)
-      writeComposerText(removeFileReferences(inputText, path), { fileContext: newFileContext })
+      const removed = contextAttachmentRemoval(chatFileContext, path)
+      const newFileContext = chatFileContext.filter(f => !removed.has(f.path))
+      writeComposerText([...removed].reduce((text, item) => removeFileReferences(text, item), inputText), { fileContext: newFileContext })
     }
   }, [activeTabId, activeTab, chatFileContext, inputText, writeComposerText])
 

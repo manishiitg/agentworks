@@ -7,6 +7,7 @@ import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLi
 import { BrowserScriptSetup } from './BrowserScriptSetup'
 
 interface BrowserWorkspacePanelProps {
+  chatContextTabId?: string
   workspacePath: string | null
   browserMode: BrowserAutomationMode
   onBrowserModeChange: (mode: BrowserAutomationMode) => void
@@ -26,7 +27,7 @@ interface BrowserWorkspacePanelProps {
 }
 
 /** Browser configuration and observing a running session are separate actions. */
-export function BrowserWorkspacePanel({ workspacePath, browserMode, onBrowserModeChange, cdpPort = 9222, onCdpPortChange, cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false, dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId, onSendToAgent }: BrowserWorkspacePanelProps) {
+export function BrowserWorkspacePanel({ chatContextTabId, workspacePath, browserMode, onBrowserModeChange, cdpPort = 9222, onCdpPortChange, cdpConnected, cdpError, cdpChecking, onCheckCdpConnection, readOnly = false, dirty = false, saving = false, onSave, scopeNoun = 'workflow', profileId, onSendToAgent }: BrowserWorkspacePanelProps) {
   const [cdpSetupOpen, setCdpSetupOpen] = useState(false)
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const configurable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
@@ -72,5 +73,5 @@ export function BrowserWorkspacePanel({ workspacePath, browserMode, onBrowserMod
     {connection.loading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking browser connections…</p> : <ChromeExtensionConnection key={`${extensionProfile}:${workspacePath}`} connection={connection} mac={mac} ownCard={currentOwn(actions)} otherWays={modes.includes('cdp') || modes.includes('headless') ? <>{modes.includes('cdp') && ownChrome(actions)}{modes.includes('headless') && serverBrowser(actions)}</> : undefined} />}
   </> : undefined
 
-  return <div className="flex h-full min-h-0 flex-1 flex-col"><WorkflowLiveBrowser key={workspacePath} workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} overview={overview} overviewFooter={configurable ? <BrowserScriptSetup onSendToAgent={onSendToAgent} /> : undefined} /></div>
+  return <div className="flex h-full min-h-0 flex-1 flex-col"><WorkflowLiveBrowser key={workspacePath} chatContextTabId={chatContextTabId} workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} overview={overview} overviewFooter={configurable ? <BrowserScriptSetup onSendToAgent={onSendToAgent} /> : undefined} /></div>
 }
