@@ -1,3 +1,5 @@
+import { applyNextPromptKey } from '../utils/nextPrompt'
+import { useNextPrompt } from './chat/useNextPrompt'
 import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
@@ -2123,6 +2125,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments])
 
+  const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showWorkflowDialog && !showSkillPopup && !showServerPopup)
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
     if (showCommandDialog || showFileDialog) {
@@ -2132,6 +2136,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     } else if (showWorkflowDialog || showSkillPopup || showServerPopup) {
       if (!isPlainPickerKey(e.nativeEvent)) e.stopPropagation()
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return
+    }
+
+    // A prediction only fills a draft. Explicitly clear autoRun, which other
+    // composer actions use for intentional one-click sends.
+    if (!latestInputTextRef.current && isChatIdentityCurrent(composerIdentityRef.current) && applyNextPromptKey(e.nativeEvent, nextPrompt.text, writeComposerText, nextPrompt.dismiss)) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
     }
 
     // Recall the latest waiting message before forwarding Up to the CLI.
@@ -2204,7 +2216,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId])
+  }, [nextPrompt, showFileDialog, showCommandDialog, showWorkflowDialog, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -3060,7 +3072,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               onDragLeave={handleTextareaDragLeave}
               onDrop={handleTextareaDrop}
               rows={isProductSurface ? 1 : undefined}
-              placeholder={placeholder}
+              placeholder={nextPrompt.text || placeholder}
+              title={nextPrompt.text ? 'Suggested next message. Tab to use; Escape to dismiss.' : undefined}
               className={isDraggingFiles ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : undefined}
               disabled={inputDisabled}
               data-testid="chat-input-textarea"
