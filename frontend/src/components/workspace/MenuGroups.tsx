@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
+import { liveFeed } from '../../services/liveFeed'
 import { Check, FolderPlus, ListFilter, Pencil, Plus, X } from 'lucide-react'
 import { llmConfigService, type MenuGroups, type MenuAgentGroup } from '../../services/llm-config-api'
 
@@ -53,6 +54,8 @@ export function useMenuNetwork() {
 
 export function useMenuGroups() {
   const state = useMenuGroupsStore()
+  // Owner-only notices include forks made through tools; no inventory poll.
+  useEffect(() => liveFeed.subscribe(['menu_groups'], null, () => { void loadGroups() }), [])
   useEffect(() => { if (!state.loaded) void loadGroups() }, [state.loaded])
   // Groups can change from chat or MCP too (the menu_groups tool); read them again when the window comes back.
   useEffect(() => {
