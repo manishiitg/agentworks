@@ -16,13 +16,14 @@ import (
 
 type runtimeSkillsResponse struct {
 	*skills.RuntimeInventory
-	SessionID string `json:"session_id"`
-	Provider  string `json:"provider,omitempty"`
-	Transport string `json:"transport,omitempty"`
-	Directory string `json:"directory,omitempty"`
-	Prepared  bool   `json:"prepared"`
-	Message   string `json:"message,omitempty"`
-	ReadAt    string `json:"read_at"`
+	SessionID        string `json:"session_id"`
+	Provider         string `json:"provider,omitempty"`
+	Transport        string `json:"transport,omitempty"`
+	Directory        string `json:"directory,omitempty"`
+	WorkingDirectory string `json:"-"`
+	Prepared         bool   `json:"prepared"`
+	Message          string `json:"message,omitempty"`
+	ReadAt           string `json:"read_at"`
 }
 
 // currentSkillBuilder never rotates a conversation, scans history for the newest
@@ -166,6 +167,23 @@ func (api *StreamingAPI) loadRuntimeSkillInventory(r *http.Request) (runtimeSkil
 	}
 	if err != nil || !cliruntime.CanResume(dir, runtime.AgentSessionHandle.Provider.WorkingDir) {
 		return response, 409, fmt.Errorf("current runtime does not match this Builder and workspace")
+	}
+	response.WorkingDirectory = dir
+	if _, crew := resolveCrewPath(r.Context(), user, workspace); crew {
+		artifact, readErr := existingCrewPrivateRuntimeDir(workspace, user, session, provider, false)
+		if os.IsNotExist(readErr) {
+			response.Message = "This chat's private skill files are not present. Send a message to prepare them."
+			return response, 0, nil
+		}
+		if readErr != nil {
+			return response, 409, fmt.Errorf("current private skill storage does not match this chat")
+		}
+		if artifact != "" {
+			if !cliruntime.CanResume(artifact, runtime.AgentSessionHandle.Provider.RuntimeDir) {
+				return response, 409, fmt.Errorf("current private runtime does not match this chat")
+			}
+			dir = artifact
+		}
 	}
 	inventory, err := skills.ReadRuntimeInventory(dir)
 	if err != nil {
