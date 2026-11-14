@@ -91,6 +91,21 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 		t.Fatalf("the Team's vault members are not the Team's people: %v", members)
 	}
 
+	// The Team agent works by the Team Crew's skills, read when its turn starts and never saved in its own Crew.
+	if err := updateProductSelectedSkills(f.Ctx(fixtureUserA), crewProfileID, source, func([]string) []string { return []string{"review"} }); err != nil {
+		t.Fatal(err)
+	}
+	home := crewProjectRootByID(team.OnlineHome)
+	if got := teamHomeSkills(f.Ctx(fixtureUserA), home); !containsExactString(got, "review") {
+		t.Fatalf("the Team agent does not use the Team Crew's skills: %v", got)
+	}
+	if own, err := productSelectedSkills(f.Ctx(fixtureUserA), crewProfileID, home); err != nil || containsExactString(own, "review") {
+		t.Fatalf("the Team's skills were copied into the home Crew: %v %v", own, err)
+	}
+	if got := teamHomeSkills(f.Ctx(fixtureUserA), source); len(got) != 0 {
+		t.Fatalf("an ordinary Crew must not take another Crew's skills: %v", got)
+	}
+
 	vault.mu.Lock()
 	personal := vault.personal[fixtureUserB]
 	vault.connectors["c-aaaaaaaa"] = map[string]string{"ID": "c-aaaaaaaa", "OAuthServer": "github", "OAuthCredentialID": "c-aaaaaaaa", "Label": "Priya personal GitHub", "VaultID": personal}

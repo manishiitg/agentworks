@@ -731,6 +731,13 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 
+	if !isGlobalScope && isProjectProfileID(profile.ID) {
+		// The Team agent works by the Team Crew's own rules, read now from the server (PLAT-746-1026).
+		if rules := api.teamHomeRules(ctx, workspacePath); rules != "" {
+			projectInstructions = strings.TrimSpace(projectInstructions + "\n\n" + rules)
+		}
+	}
+
 	if publication != nil {
 		for _, name := range []string{projectinstructions.FileName} {
 			if publication.AgentID == "" && name == projectinstructions.FileName {
