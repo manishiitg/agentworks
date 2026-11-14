@@ -120,7 +120,7 @@ func TestCrewAgentForkPrivateStageAndCleanup(t *testing.T) {
 	if err = completeCrewAgentFork(team, offer, "recipient", now); err == nil {
 		t.Fatal("accept removed the payload before an imported copy existed")
 	}
-	copy := crewTeamRegisteredAgent{ID: offer.CopyAgentID, OwnerID: "recipient", Tab: "fork-copy", ChatKey: "room:chat:fork-copy"}
+	copy := crewTeamRegisteredAgent{ID: offer.CopyAgentID, OwnerID: "recipient", Tab: "fork-copy", ChatKey: crewAgentForkChatKey(offer)}
 	team.Agents[copy.ID] = copy
 	if err = completeCrewAgentFork(team, offer, "maker", now); err == nil {
 		t.Fatal("maker accepted the recipient's fork")
