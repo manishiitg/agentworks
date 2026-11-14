@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -24,6 +26,11 @@ func (api *StreamingAPI) publicationSummary(ctx context.Context, actor, operatio
 // This is a fresh, tool-free summary request, not native session resume or a
 // continuation of unfinished local work. Its result remains Builder-only.
 func (api *StreamingAPI) publicationText(ctx context.Context, actor, operation string, record *publishedProject, handoff, system string) (string, error) {
+	if operation == "shared_agent_answer" {
+		if err := crewSharedAnswerTransportAllowed(record.Provider, os.Getenv("CLAUDE_CODE_TRANSPORT")); err != nil {
+			return "", err
+		}
+	}
 	scope := providerAccountScope{Principal: record.OwnerID, WorkspacePath: record.Root, Product: record.ProfileID}
 	keys, err := api.connectionAPIKeys(ctx, scope, record.Provider, record.ConnectionID)
 	if err != nil {
@@ -88,9 +95,24 @@ func (api *StreamingAPI) publicationText(ctx context.Context, actor, operation s
 				metadata[k] = v
 			}
 			metadata["llm_call_count"] = 1
-			observer := newCostObserver(api.costLedger, "publication-"+operation, actor, "publication_summary", withCostAccount("global:"+record.Provider), withCostBillingUser(record.OwnerID), costobserver.WithProductAttribution(costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: actor, ProductKind: record.ProfileID, ProductID: record.WorkspaceID, ProductOwnerID: record.OwnerID, Activity: "publication_summary"}))
-			_ = observer.HandleEvent(ctx, &events.AgentEvent{Type: events.TokenUsage, Timestamp: time.Now(), Component: "publication_summary", Data: &events.TokenUsageEvent{Provider: record.Provider, ModelID: record.ModelID, PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens, TotalTokens: usage.TotalTokens, GenerationInfo: metadata, Duration: time.Since(started)}})
+			activity, productOwner, account := "publication_summary", record.OwnerID, "global:"+record.Provider
+			if operation == "shared_agent_answer" {
+				activity = "shared_answer"
+				productOwner = firstNonEmptyTrimmed(record.PublisherID, record.OwnerID)
+				account = firstNonEmptyTrimmed(record.ConnectionID, account)
+			}
+			observer := newCostObserver(api.costLedger, "publication-"+operation, actor, activity, withCostAccount(account), withCostBillingUser(record.OwnerID), costobserver.WithProductAttribution(costledger.Attribution{AttributionVersion: costledger.AttributionVersion, ActorID: actor, ProductKind: record.ProfileID, ProductID: record.WorkspaceID, ProductOwnerID: productOwner, Activity: activity}))
+			_ = observer.HandleEvent(ctx, &events.AgentEvent{Type: events.TokenUsage, Timestamp: time.Now(), Component: activity, Data: &events.TokenUsageEvent{Provider: record.Provider, ModelID: record.ModelID, PromptTokens: usage.InputTokens, CompletionTokens: usage.OutputTokens, TotalTokens: usage.TotalTokens, GenerationInfo: metadata, Duration: time.Since(started)}})
 		}
 	}
 	return strings.TrimSpace(choice.Content), nil
+}
+
+var errSharedAnswerClaudeNeedsSDK = errors.New("tool-free shared answers require Claude SDK transport")
+
+func crewSharedAnswerTransportAllowed(provider, transport string) error {
+	if provider == "claude-code" && transport != "sdk" {
+		return errSharedAnswerClaudeNeedsSDK
+	}
+	return nil
 }

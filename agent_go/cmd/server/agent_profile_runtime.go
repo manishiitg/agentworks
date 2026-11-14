@@ -877,8 +877,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			if digestErr != nil {
 				return nil, digestErr
 			}
-			projectInstructions += digest
-			rootInstructionKey += ":" + projectinstructions.Key(digest)
+			if digest != "" {
+				req.Query += digest
+				log.Printf("[CREW_SHARED_ANSWER] project=%s session=%s event=digest_user_content", project, sessionID)
+			}
 		}
 	}
 	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,

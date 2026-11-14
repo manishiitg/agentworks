@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -72,6 +73,8 @@ type agentMessageEndpoint struct {
 	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
+	// Captured only from authenticated claims. It can narrow, never grant, file access.
+	SenderFileGuard *wf.FolderGuard `json:"sender_file_guard,omitempty"`
 	// Removing an incoming message affects only its recipient's inbox. The sender
 	// keeps the original message and receipts in the shared conversation record.
 	InboxRemovedAt       time.Time `json:"inbox_removed_at,omitempty"`
@@ -600,8 +603,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		s.NextAgentSequence++
 		m.AgentSequence = s.NextAgentSequence
 	}
-	if claims := GetUserFromContext(ctx); c.Endpoints[side].External && claims != nil && claims.AccessToken != nil {
+	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 		m.SenderConnectionID = claims.AccessToken.ID
+		m.SenderFileGuard = claims.AccessToken.FileGuard
 	}
 	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken == nil && c.Endpoints[side].NamedAgentID != "" {
 		if _, err := appAgentLoginID(claims); err == nil {
