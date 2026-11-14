@@ -528,17 +528,18 @@ func isTmuxLossContinuationError(err error) bool {
 
 // streamingManager handles streaming state and goroutine management
 type streamingManager struct {
-	lastPlanSnapshot  string
-	toolArgsByCallID  map[string]string
-	streamChan        chan llmtypes.StreamChunk
-	streamingDone     chan bool
-	contentChunkIndex int
-	totalChunks       int
-	sawTerminal       bool
-	suppressEvents    bool
-	callback          func(llmtypes.StreamChunk)
-	startTime         time.Time
-	turn              int // conversation turn for event emission
+	accountConnectionID string // immutable selected account for this generation
+	lastPlanSnapshot    string
+	toolArgsByCallID    map[string]string
+	streamChan          chan llmtypes.StreamChunk
+	streamingDone       chan bool
+	contentChunkIndex   int
+	totalChunks         int
+	sawTerminal         bool
+	suppressEvents      bool
+	callback            func(llmtypes.StreamChunk)
+	startTime           time.Time
+	turn                int // conversation turn for event emission
 	// CLIToolCalls accumulates completed tool call chunks from CLI providers (Claude Code,
 	// Claude Code, Codex CLI). Used by AskWithHistory to reconstruct conversation history
 	// with tool calls that ran inside the CLI subprocess.
@@ -564,12 +565,13 @@ func (a *Agent) startStreaming(ctx context.Context, attempt int, turn int, opts 
 	}
 
 	sm := &streamingManager{
-		streamChan:     make(chan llmtypes.StreamChunk, 100),
-		streamingDone:  make(chan bool, 1),
-		startTime:      time.Now(),
-		turn:           turn,
-		suppressEvents: a.suppressGenerationStreamingEvents,
-		callback:       streamingCallbackFromContext(ctx, a.streamingCallback),
+		accountConnectionID: a.getLLMModelConfig().ConnectionID,
+		streamChan:          make(chan llmtypes.StreamChunk, 100),
+		streamingDone:       make(chan bool, 1),
+		startTime:           time.Now(),
+		turn:                turn,
+		suppressEvents:      a.suppressGenerationStreamingEvents,
+		callback:            streamingCallbackFromContext(ctx, a.streamingCallback),
 	}
 
 	// Per-session/turn raw-stream debug log. Reuses the LOG_AGENT_PROMPTS
@@ -942,6 +944,7 @@ func (sm *streamingManager) processChunks(ctx context.Context, a *Agent) {
 				// terminal in the session.
 				tmuxSession, _ := chunk.StatusLine.Metadata["tmux_session"].(string)
 				a.emitTypedEvent(ctx, &events.StreamingStatusLineEvent{
+					ConnectionID:             sm.accountConnectionID,
 					BaseEventData:            events.BaseEventData{Timestamp: time.Now()},
 					Provider:                 chunk.StatusLine.Provider,
 					Model:                    chunk.StatusLine.Model,

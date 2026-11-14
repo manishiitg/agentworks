@@ -1302,6 +1302,8 @@ func (e *StreamingEndEvent) GetEventType() EventType {
 // between the adapter and the UI.
 type StreamingStatusLineEvent struct {
 	BaseEventData
+	// ConnectionID is captured by the runtime when this generation starts, never supplied by provider text.
+	ConnectionID             string                 `json:"connection_id,omitempty"`
 	Provider                 string                 `json:"provider"`
 	Model                    string                 `json:"model,omitempty"`
 	TmuxSession              string                 `json:"tmux_session,omitempty"` // identifies the owning coding-agent pane so consumers can target it
