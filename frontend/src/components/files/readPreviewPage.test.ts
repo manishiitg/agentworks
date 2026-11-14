@@ -14,3 +14,10 @@ describe('bounded text preview', () => {
     expect(() => decodePreviewPage(206, 'bytes 1-5/6', bytes.buffer, 0)).toThrow('bounded')
   })
 })
+
+it('rejects oversized office files before allocating or reading subsequent pages', async () => {
+  const { readBoundedDocument } = await import('./readBoundedDocument')
+  const read = vi.fn(async () => ({ bytes: new Uint8Array([1, 2]), total: 33 * 1024 * 1024 }))
+  await expect(readBoundedDocument(read)).rejects.toThrow('too large')
+  expect(read).toHaveBeenCalledTimes(1)
+})
