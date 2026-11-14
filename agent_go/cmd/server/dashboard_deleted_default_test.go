@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,6 +43,16 @@ func TestDeletedDefaultDashboardStaysDeletedOnReadAndSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reader := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read"}, WorkflowIDs: []string{"invoices"}}}
+	denied := httptest.NewRecorder()
+	denyPayload, _ := json.Marshal(map[string]string{"action": "delete", "workspace": target.Root, "dashboard_id": defaultDashboardID})
+	f.api.handleDashboards(denied, adminRequest(http.MethodPost, "/api/dashboards", string(denyPayload), reader, nil))
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("read-only token deleted dashboard: %d %s", denied.Code, denied.Body.String())
+	}
+	if exists, err := crewHasPublishedDashboardEntry(ctx, target.Root); err != nil || !exists {
+		t.Fatalf("live entry missing: %t %v", exists, err)
+	}
 	deleted := httptest.NewRecorder()
 	payload, _ := json.Marshal(map[string]string{"action": "delete", "workspace": target.Root, "dashboard_id": defaultDashboardID})
 	f.api.handleDashboards(deleted, adminRequest(http.MethodPost, "/api/dashboards", string(payload), owner, nil))
@@ -59,6 +70,9 @@ func TestDeletedDefaultDashboardStaysDeletedOnReadAndSync(t *testing.T) {
 		t.Fatalf("public snapshot retained authority: %+v %v", public, err)
 	}
 
+	if exists, err := crewHasPublishedDashboardEntry(ctx, target.Root); err != nil || exists {
+		t.Fatalf("deleted entry still opens dashboard: %t %v", exists, err)
+	}
 	if err = f.api.refreshPublicationDashboard(ctx, owner, target); err != nil {
 		t.Fatal(err)
 	}
