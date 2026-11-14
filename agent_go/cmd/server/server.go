@@ -371,7 +371,8 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
-	crewPanels crewPanelCache
+	desktopFailedAcks desktopFailedAckCache
+	crewPanels        crewPanelCache
 
 	crewTurnSnapshots sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
 

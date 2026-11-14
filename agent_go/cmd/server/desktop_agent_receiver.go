@@ -282,6 +282,10 @@ func (api *StreamingAPI) desktopAgentBridgeSession(ctx context.Context, connecti
 }
 
 func (api *StreamingAPI) receiveDesktopAppInbox(ctx context.Context, owner string, connection desktopConnection, recipient desktopAppRecipient) error {
+	return api.receiveDesktopAppInboxWithDelivery(ctx, owner, connection, recipient, api.deliverDesktopAppMessage)
+}
+
+func (api *StreamingAPI) receiveDesktopAppInboxWithDelivery(ctx context.Context, owner string, connection desktopConnection, recipient desktopAppRecipient, deliver func(context.Context, string, string, ProductConversationRecord, desktopAppIncoming) error) error {
 	after := 0
 	for {
 		bounded, done := context.WithTimeout(ctx, 60*time.Second)
@@ -296,8 +300,12 @@ func (api *StreamingAPI) receiveDesktopAppInbox(ctx context.Context, owner strin
 				if message.Kind != "" {
 					continue
 				} // person pings are not model turns
+				key := desktopFailedAckKey{owner: owner, connection: connection.ID, conversation: recipient.Record.ConversationID, message: message.ID}
+				if api.desktopFailedAcks.contains(key) {
+					continue
+				}
 				delivery := "delivered"
-				if err = api.deliverDesktopAppMessage(bounded, owner, connection.ID, recipient.Record, message); err != nil {
+				if err = deliver(bounded, owner, connection.ID, recipient.Record, message); err != nil {
 					var admission *desktopAppAdmissionError
 					if !errors.As(err, &admission) || admission.status != http.StatusForbidden {
 						break
@@ -307,6 +315,14 @@ func (api *StreamingAPI) receiveDesktopAppInbox(ctx context.Context, owner strin
 				}
 				ack := map[string]any{"action": "ack", "agent_name": recipient.Registration.Name, "attachment_id": recipient.Registration.Attachment, "message_id": message.ID, "delivery": delivery}
 				if err = crewTeamRemoteJSON(bounded, owner, connection, http.MethodPost, "/api/external/v1/agents/app", ack, nil); err != nil {
+					var refusal *crewRemoteHTTPError
+					if delivery == "failed" && errors.As(err, &refusal) && refusal.Status == http.StatusBadRequest && refusal.Code == "invalid_arguments" {
+						if api.desktopFailedAcks.remember(key) {
+							log.Printf("[AGENTBRIDGE_APP] event=failed_ack_unsupported connection=%s message=%s", connection.ID, message.ID)
+						}
+						err = nil
+						continue
+					}
 					break
 				}
 			}
