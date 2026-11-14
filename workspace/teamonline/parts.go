@@ -2,6 +2,7 @@ package teamonline
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -171,8 +172,17 @@ func InspectParts(root *os.Root, parts []string, containsSecret func([]byte) boo
 			return fmt.Errorf("this dataset contains a secret value; select secret references instead")
 		}
 		var row record
-		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&row); err != nil {
 			return err
+		}
+		if row.Schema != nil {
+			for _, object := range row.Schema.Objects {
+				if containsSecret([]byte(object.SQL)) {
+					return fmt.Errorf("this dataset schema contains a secret value; select secret references instead")
+				}
+			}
 		}
 		for _, value := range row.Values {
 			var raw []byte
