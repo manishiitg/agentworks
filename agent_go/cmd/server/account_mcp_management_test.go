@@ -14,6 +14,7 @@ import (
 // the request's inherited chat project or a browser-selected Vault.
 func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("PUBLIC_URL", "")
 	f, _ := newExternalCrewCommandFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work","mcp-gateway"]},{"id":"other","role":"editor","products":["work","mcp-gateway"]}]}`)
 	withMCPConnectionsRoot(t)
@@ -24,6 +25,7 @@ func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testi
 	call := func(body string) *httptest.ResponseRecorder {
 		t.Helper()
 		request := adminRequest(http.MethodPost, "/api/my-vaults/op", body, &UserClaims{UserID: "owner", Username: "owner"}, nil)
+		request.Host = "app.example.test"
 		response := httptest.NewRecorder()
 		f.api.handleMyVaultsOp(response, request)
 		return response
@@ -54,6 +56,11 @@ func TestAccountMCPManagementKeepsProjectAndForeignConnectionsUntouched(t *testi
 	}
 	if after := f.read(t, externalCommandCrewSettings+"/workflow.json"); after != before {
 		t.Fatal("global management changed Crew selections")
+	}
+	// A standalone Settings request works before any chat and ignores JSON callback URLs.
+	pending := call(`{"operation":"connect","provider":"Example","label":"Needs sign-in","redirect_uri":"https://foreign.example/callback"}`)
+	if pending.Code != http.StatusOK || !strings.Contains(pending.Body.String(), "http://app.example.test/api/oauth/callback") || strings.Contains(pending.Body.String(), "foreign.example") {
+		t.Fatalf("request-owned OAuth callback: %d %s", pending.Code, pending.Body.String())
 	}
 	// The screen link is the authorized OAuth result, not text-parsed instructions,
 	// and does not expose internal OAuth state or any saved credential.
