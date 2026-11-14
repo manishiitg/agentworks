@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // PLAT-746-1008: the real workspace edge may copy only an explicitly selected
@@ -55,7 +56,7 @@ func TestNativeSkillDiscoveryImportKeepsOwnerAndFileBoundaries(t *testing.T) {
 		request := httptest.NewRequest(method, "/api/skills/discover?workspace_path="+url.QueryEscape(externalCommandCrewRoot)+"&provider=claude-code&id="+id, strings.NewReader(body))
 		request = request.WithContext(context.WithValue(request.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
 		response := httptest.NewRecorder()
-		workspaceSkillRoute(method == http.MethodPost, f.api.discoverNativeSkills)(response, request)
+		f.api.nativeSkillsRoute(method == http.MethodPost)(response, request)
 		return response
 	}
 	listed := call("owner", http.MethodGet, "", "")
@@ -69,6 +70,27 @@ func TestNativeSkillDiscoveryImportKeepsOwnerAndFileBoundaries(t *testing.T) {
 		t.Fatal("list returned document or linked secret")
 	}
 	id := inventory.Skills[0].ID
+	for _, kind := range []string{"own-project", "different-project", "limited-files"} {
+		claims := crewWriter("owner")
+		claims.AccessToken.AllCrews = false
+		claims.AccessToken.CrewIDs = []string{roots.ID}
+		if kind == "different-project" {
+			claims.AccessToken.CrewIDs = []string{"another-crew"}
+		}
+		if kind == "limited-files" {
+			claims.AccessToken.FileGuard = &wf.FolderGuard{}
+		}
+		request := httptest.NewRequest(http.MethodGet, "/api/skills/discover?workspace_path="+url.QueryEscape(externalCommandCrewRoot)+"&provider=claude-code", nil)
+		request = request.WithContext(context.WithValue(request.Context(), UserContextKey, claims))
+		response := httptest.NewRecorder()
+		f.api.nativeSkillsRoute(false)(response, request)
+		if kind == "own-project" && (response.Code != 200 || !strings.Contains(response.Body.String(), id)) {
+			t.Fatalf("allowed token missing source: %d %s", response.Code, response.Body.String())
+		}
+		if kind != "own-project" && response.Code != 403 {
+			t.Fatalf("%s token read native source: %d %s", kind, response.Code, response.Body.String())
+		}
+	}
 	preview := call("owner", http.MethodGet, "", id)
 	if preview.Code != 200 || !strings.Contains(preview.Body.String(), "Read references") {
 		t.Fatalf("preview: %d %s", preview.Code, preview.Body.String())
