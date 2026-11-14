@@ -27,10 +27,11 @@ const stuckSteerQueueAge = 5 * time.Minute
 type CodingAgentDeliveryErrorKind string
 
 const (
-	DeliveryErrorKindEmptyMessage CodingAgentDeliveryErrorKind = "empty_message"
-	DeliveryErrorKindNotSupported CodingAgentDeliveryErrorKind = "not_supported"
-	DeliveryErrorKindNoSession    CodingAgentDeliveryErrorKind = "no_active_session"
-	DeliveryErrorKindTimeout      CodingAgentDeliveryErrorKind = "delivery_timed_out"
+	DeliveryErrorKindEmptyMessage  CodingAgentDeliveryErrorKind = "empty_message"
+	DeliveryErrorKindNotSupported  CodingAgentDeliveryErrorKind = "not_supported"
+	DeliveryErrorKindNoSession     CodingAgentDeliveryErrorKind = "no_active_session"
+	DeliveryErrorKindTimeout       CodingAgentDeliveryErrorKind = "delivery_timed_out"
+	DeliveryErrorKindQueueRequired CodingAgentDeliveryErrorKind = "host_queue_required"
 )
 
 // CodingAgentDeliveryError is returned when DeliverUserMessage cannot route a
@@ -224,6 +225,9 @@ func (a *Agent) deliverUserMessage(ctx context.Context, req UserMessageDeliveryR
 			}
 		}
 		if err != nil {
+			if (isInteractiveSessionNotRegistered(err) || errors.Is(err, llmtypes.ErrCodingAgentInputNotSent)) && len(llmtypes.NativeImageInputsForSession(ctx, req.SessionID)) > 0 {
+				return result, &CodingAgentDeliveryError{Kind: DeliveryErrorKindQueueRequired, Provider: provider, Reason: "native image input was not taken; retain admitted attachments in the host queue"}
+			}
 			if (isInteractiveSessionNotRegistered(err) || errors.Is(err, llmtypes.ErrCodingAgentInputNotSent)) && a.isTurnInFlight() {
 				// No pooled TUI while a turn runs: an API-continuation turn,
 				// or a TUI turn whose pane is still booting. Either way the
@@ -266,6 +270,9 @@ func (a *Agent) deliverUserMessage(ctx context.Context, req UserMessageDeliveryR
 		return result, nil
 	}
 
+	if len(llmtypes.NativeImageInputsForSession(ctx, req.SessionID)) > 0 {
+		return result, &CodingAgentDeliveryError{Kind: DeliveryErrorKindQueueRequired, Provider: provider, Reason: "text-only steer queue cannot retain native image input"}
+	}
 	// The steer queue is drained only inside a running turn. Accepting a
 	// message into it while idle strands it: the caller reports success and no
 	// turn ever reads it (RTS 2026-09-25, a structured agent left behind by a

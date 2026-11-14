@@ -246,3 +246,19 @@ func TestNativeSteerDuringTurnStartIsDeliveredNotQueued(t *testing.T) {
 		t.Fatalf("message parked in the steer queue: %#v", got)
 	}
 }
+
+// PLAT-746-1000: an image whose native steer was not taken must remain in the
+// host's durable attachment lane, never be silently accepted as text-only.
+func TestNativeImageDeliveryCannotFallIntoTextOnlySteerQueue(t *testing.T) {
+	agent := &Agent{provider: llm.ProviderMuseCLI, modelID: "muse-spark-1.3-contributor"}
+	agent.setTurnInFlight(true)
+	ctx := llmtypes.WithNativeImageInputs(context.Background(), "image-chat", []llmtypes.NativeImageInput{{ID: "admitted"}})
+	_, err := agent.deliverUserMessage(ctx, UserMessageDeliveryRequest{SessionID: "image-chat", Message: "Inspect attached image", Intent: UserMessageDeliveryIntentLiveInput})
+	var deliveryErr *CodingAgentDeliveryError
+	if !errors.As(err, &deliveryErr) || deliveryErr.Kind != DeliveryErrorKindQueueRequired {
+		t.Fatalf("expected host queue, got %v", err)
+	}
+	if len(agent.drainSteerMessages()) != 0 {
+		t.Fatal("attachment was accepted as text only")
+	}
+}
