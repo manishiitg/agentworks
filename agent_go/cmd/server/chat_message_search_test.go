@@ -75,6 +75,18 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "needle shared text") || !strings.Contains(w.Body.String(), "needle own text") || strings.Contains(w.Body.String(), "stranger secret") {
 		t.Fatalf("admitted search = %d %s", w.Code, w.Body.String())
 	}
+
+	// PLAT-856-568 live shape: incoming agent user_message carries the visible
+	// body in metadata; both query cases must find it through the real handler.
+	incoming := agentevents.NewUserMessageEvent(2, "transport says DEADLOCK", "user")
+	incoming.Metadata = map[string]interface{}{"source": "agent_message", "display_content": "This was a DEADLOCK from goal mode", "sender_label": "Reviewer", "client_message_id": "incoming-1", "delivery_status": "sent_to_cli"}
+	store.AddEvent("only-other", storeevents.Event{ID: "incoming-message", Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(incoming)})
+	for _, query := range []string{"deadlock", "DEADLOCK"} {
+		w = call(f.api.handleChatMessageSearch, "other", chatSearchInput{Query: query})
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "This was a DEADLOCK") || !strings.Contains(w.Body.String(), `"sender":"Reviewer"`) {
+			t.Fatalf("incoming case search = %d %s", w.Code, w.Body.String())
+		}
+	}
 	input := map[string]any{"chat": "owner-main", "id": "owner-main-message", "sequence": 1}
 	if w = call(f.api.handleChatMessageOpen, "other", input); w.Code != 200 || !strings.Contains(w.Body.String(), "needle shared text") {
 		t.Fatalf("admitted link = %d %s", w.Code, w.Body.String())
@@ -98,7 +110,7 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 
 	// A full page of private rows cannot expose its boundary chat through the
 	// continuation token. A forged position cannot grant another chat's access.
-	for i := 0; i < 130; i++ {
+	for i := 0; i < 1030; i++ {
 		store.AddEvent("private-stranger", storeevents.Event{ID: fmt.Sprintf("private-%d", i), Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(agentevents.NewUserMessageEvent(1, "needle private tail", "user"))})
 	}
 	w = search("other")

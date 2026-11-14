@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -310,6 +311,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 		seen[target.Root] = true
 		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: dashboardAuthoringAllowed(claims, &target) && !publishedOnly})
 		if err != nil {
+			log.Printf("[DASHBOARD_DIRECTORY] user=%s project=%s ok=false reason=list_failed", GetUserIDFromContext(r.Context()), target.ID)
 			failed = append(failed, target.Root)
 			continue
 		}
