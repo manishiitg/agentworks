@@ -228,3 +228,28 @@ func TestOwnAgentBridgeMailSteersOrQueuesWithoutReplayingUncertainSend(t *testin
 		})
 	}
 }
+
+// PLAT-746-941: repeated app mail replayed an old 403 without any current gate
+// running. Diagnose the cached refusal, but never redispatch the same input.
+func TestOwnAgentMailReportsReplayedSubmissionRefusal(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.internalChatSubmissionStore = newTestChatSubmissionStore()
+	ctx := internalBotRequestContext(context.Background(), "owner")
+	request := func() *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/api/query", nil).WithContext(ctx)
+		r.Header.Set("Idempotency-Key", "agentbridge:example:message")
+		return r
+	}
+	first := httptest.NewRecorder()
+	w, _, finish, accepted := api.beginChatSubmission(first, request(), "recipient", "example-project", "example input")
+	if !accepted {
+		t.Fatal("initial request refused before the gate")
+	}
+	http.Error(w, "refused", http.StatusForbidden)
+	finish()
+	second := httptest.NewRecorder()
+	_, _, _, accepted = api.beginChatSubmission(second, request(), "recipient", "example-project", "example input")
+	if accepted || second.Code != http.StatusForbidden || second.Header().Get("X-Query-Refusal-Reason") != "submission_outcome_replay" {
+		t.Fatal("cached refusal was redispatched or lacked its replay reason")
+	}
+}

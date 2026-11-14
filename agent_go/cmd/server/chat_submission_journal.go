@@ -405,6 +405,10 @@ func replayChatSubmissionOutcome(w http.ResponseWriter, record chatSubmissionRec
 		http.Error(w, "Incomplete durable submission outcome", http.StatusServiceUnavailable)
 		return
 	}
+	if record.HTTPStatus == http.StatusForbidden {
+		w.Header().Set("X-Query-Refusal-Reason", "submission_outcome_replay")
+		log.Printf("[QUERY_ADMISSION] session=%s submission=%s action=refused reason=submission_outcome_replay original_status=%d", record.Session, record.ID, record.HTTPStatus)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(record.HTTPStatus)
 	_, _ = w.Write([]byte(record.Response))
