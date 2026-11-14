@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ const crewSharedAnswerBytes = 96 << 10
 func crewSharedAnswerFiles(team crewTeam, state crewTeamFileState, root string) (string, error) {
 	names := []string{}
 	for name, v := range state.held(team.Folder) {
-		if v.File != nil && crewTeamAllowed(name, state.onPurpose()) {
+		if v.File != nil && crewTeamAllowed(name) {
 			names = append(names, name)
 		}
 	}
@@ -104,7 +105,7 @@ func crewSharedAnswerContext(ctx context.Context, project, asker, agentID string
 	// expose an old result to the model or to the asker.
 	current, err := readCrewTeam(project)
 	a, exists := current.Agents[agentID]
-	if err != nil || !crewTeamAgentsVisible(current, asker) || !exists || !a.InTeam || a.OwnerID != agent.OwnerID || a.Rule != agent.Rule || current.Revision != team.Revision || !current.member(a.OwnerID) || !crewTeamAccountActive(a.OwnerID) {
+	if err != nil || !crewTeamAgentsVisible(current, asker) || !exists || !a.InTeam || a.OwnerID != agent.OwnerID || a.Rule != agent.Rule || current.Revision != team.Revision || !reflect.DeepEqual(current.Folder, team.Folder) || !current.member(a.OwnerID) || !crewTeamAccountActive(a.OwnerID) {
 		return agent, "", fmt.Errorf("this agent's sharing changed; ask again")
 	}
 	return agent, text, nil
