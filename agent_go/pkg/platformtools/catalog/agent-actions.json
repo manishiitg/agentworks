@@ -1450,5 +1450,21 @@
     "description": "Copy a listed native conversation into an independent private Crew tab with its original account and history. Opening does not start a turn.",
     "source": "manage_crew_chats",
     "source_action": "native_resume"
+  },
+  {
+    "family": "sessions",
+    "name": "terminal",
+    "member": "sessions_terminal_crew",
+    "description": "Show the command to continue your own Claude chat in your terminal; showing it does not move the chat.",
+    "source": "manage_crew_chats",
+    "source_action": "terminal"
+  },
+  {
+    "family": "sessions",
+    "name": "continue_here",
+    "member": "sessions_continue_here_crew",
+    "description": "Recover your own chat here instead of its terminal copy, superseding the old handoff.",
+    "source": "manage_crew_chats",
+    "source_action": "continue_here"
   }
 ]

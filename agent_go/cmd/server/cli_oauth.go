@@ -307,6 +307,9 @@ func cliOAuthAllowedPath(method, path string) bool {
 	if method == http.MethodPost && path == "/api/external/v1/secrets" {
 		return true // `agentworks secret set|import`; the handler requires the CLI sign-in token and checks the target's permission.
 	}
+	if path == "/api/external/v1/chats/terminal" && (method == http.MethodGet || method == http.MethodPost) {
+		return true
+	}
 	return (method == http.MethodGet && path == "/api/external/v1/devices/connect") || (method == http.MethodGet && path == "/api/external/v1/tools") || (method == http.MethodPost && path == "/api/external/v1/call") || ((method == http.MethodGet || method == http.MethodHead) && path == "/api/external/v1/files/content") || (method == http.MethodGet && (path == "/api/external/v1/skill.md" || path == "/api/external/v1/skill.zip" || path == "/api/external/v1/agentworks.plugin"))
 }
 

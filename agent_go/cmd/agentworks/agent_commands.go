@@ -554,6 +554,9 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	if chosen.host == "" {
 		return errors.New("cannot verify the provider process")
 	}
+	if handled, err := returnTerminalChat(ctx, o, chosen); handled {
+		return err
+	}
 	if installPlugin && chosen.provider != "pi" {
 		if err = installAgentPlugin(ctx, o, chosen.provider); err != nil {
 			return err
