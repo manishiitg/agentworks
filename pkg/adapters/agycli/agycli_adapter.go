@@ -3,6 +3,7 @@ package agycli
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -96,8 +97,12 @@ func (a *AgyCLIAdapter) generateContentInteractive(ctx context.Context, messages
 	}
 	if effort, err := agyExecEffort(opts); err != nil {
 		return nil, err
-	} else if effort != "" && !strings.HasSuffix(model, "-"+effort) {
-		return nil, fmt.Errorf("agy interactive effort %q does not match the booted model %q; choose a model with that effort", effort, model)
+	} else if effort != "" {
+		if !strings.HasSuffix(model, "-"+effort) {
+			log.Printf("[AGY_CONFIG] action=refused lane=interactive reason=effort_not_in_booted_model level=%s model=%s", effort, model)
+			return nil, fmt.Errorf("agy interactive effort %q does not match the booted model %q; choose a model with that effort", effort, model)
+		}
+		log.Printf("[AGY_CONFIG] action=applied lane=interactive level=%s model=%s", effort, model)
 	}
 	launchOnly := llmtypes.CodingProviderLaunchOnlyFromOptions(opts)
 	prompt := ""

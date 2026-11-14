@@ -53,6 +53,10 @@ func TestAgyACPReassertsThoughtCategoryEveryTurnAndLogsRefusal(t *testing.T) {
 		return len(raw), nil
 	})
 	ctx := context.Background()
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
 	for _, thought := range []string{"low", "high"} {
 		s.turnMu.Lock()
 		err := s.applySelection(ctx, "same-model", "model-option", thought)
@@ -64,10 +68,11 @@ func TestAgyACPReassertsThoughtCategoryEveryTurnAndLogsRefusal(t *testing.T) {
 	if modelCalls != 1 || strings.Join(thoughtValues, ",") != "low,high" {
 		t.Fatalf("model=%d thinking=%v", modelCalls, thoughtValues)
 	}
-	var output bytes.Buffer
-	previous := log.Writer()
-	log.SetOutput(&output)
-	defer log.SetOutput(previous)
+	// Every accepted level is logged, so a chosen level that reaches agy leaves a trace (the log carries no values).
+	if !strings.Contains(output.String(), "[AGY_CONFIG] action=applied lane=acp level=low model=same-model") || !strings.Contains(output.String(), "action=applied lane=acp level=high") {
+		t.Fatalf("missing applied log: %q", output.String())
+	}
+	output.Reset()
 	failThought = true
 	s.turnMu.Lock()
 	err := s.applySelection(ctx, "same-model", "model-option", "high")
@@ -75,7 +80,7 @@ func TestAgyACPReassertsThoughtCategoryEveryTurnAndLogsRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal("thought failure added a fail-closed turn gate")
 	}
-	if !strings.Contains(output.String(), "thought_level_set_failed=true code=-32602") || strings.Contains(output.String(), "PRIVATE_VALUE") {
+	if !strings.Contains(output.String(), "action=refused lane=acp thought_level_set_failed=true code=-32602") || strings.Contains(output.String(), "PRIVATE_VALUE") {
 		t.Fatalf("missing or unsafe error log: %q", output.String())
 	}
 	// Missing capability metadata must not discard a previously supported setting.

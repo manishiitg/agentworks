@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -322,6 +323,7 @@ func (a *AgyCLIAdapter) generateContentExec(ctx context.Context, messages []llmt
 	}
 	if effort != "" {
 		argv = append(argv, "--effort", effort)
+		log.Printf("[AGY_CONFIG] action=applied lane=exec level=%s model=%s", effort, model)
 	}
 	toolMode, err := agyToolModeForLaunch(opts)
 	if err != nil {

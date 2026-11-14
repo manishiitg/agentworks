@@ -738,7 +738,7 @@ func (s *agyACPSession) applySelection(ctx context.Context, model, modelOption, 
 	}
 	s.mu.Unlock()
 	if id == "" {
-		log.Printf("[AGY_CONFIG] thought_level_unavailable=true")
+		log.Printf("[AGY_CONFIG] action=refused lane=acp reason=model_has_no_thought_level thought_level_unavailable=true level=%s model=%s", thought, model)
 		return nil
 	}
 	var result agyACPConfigResult
@@ -749,9 +749,10 @@ func (s *agyACPSession) applySelection(ctx context.Context, model, modelOption, 
 		if errors.As(err, &rpcError) {
 			code = rpcError.Code
 		}
-		log.Printf("[AGY_CONFIG] thought_level_set_failed=true code=%d", code)
+		log.Printf("[AGY_CONFIG] action=refused lane=acp thought_level_set_failed=true code=%d level=%s model=%s", code, thought, model)
 	} else {
 		s.rememberConfigOptions(result.ConfigOptions)
+		log.Printf("[AGY_CONFIG] action=applied lane=acp level=%s model=%s", thought, model)
 	}
 	return nil
 }
