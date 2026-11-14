@@ -214,3 +214,46 @@ func TestPrivateCrewSharedWithNamedPeopleOpensOnlyForThem(t *testing.T) {
 		t.Fatal("anyone not named must stay out of a private Crew")
 	}
 }
+
+// PLAT-750-93: Team builders may edit the Crew but cannot widen its audience.
+func TestDashboardShareRequiresMainOwnerNotTeamBuilder(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]}]}`)
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
+		t.Fatal(err)
+	}
+	member := &UserClaims{UserID: "member", Username: "member"}
+	ref, ok := resolveCrewPath(context.Background(), "member", externalCommandCrewRoot)
+	if !ok || crewAccessFor(member, ref) != crewAccessOwner {
+		t.Fatal("fixture must admit the joined Team builder before testing sharing")
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	created, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: externalCommandCrewRoot, Action: "create", ID: "summary", Title: "Summary", IncludeDraft: true, Files: map[string]string{"index.html": "<p>Summary</p>"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dashboardWorkspaceRequest(ctx, dashboards.Request{Root: externalCommandCrewRoot, Action: "publish", ID: "summary", IncludeDraft: true, ExpectedRevision: created.Dashboard.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	// Real dashboard dispatch, not the helper alone: the refusal must reach the
+	// owner gate, not fail because the member lacks project authoring access.
+	call := func(user string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"action":"share","workspace":"`+externalCommandCrewRoot+`","mode":"everyone"}`, &UserClaims{UserID: user, Username: user}, nil))
+		return w
+	}
+	w := call("member")
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only the owner changes who can open these") {
+		t.Fatalf("member share: %d %s", w.Code, w.Body.String())
+	}
+	if crewSharedWithOthers(externalCommandCrewRoot) {
+		t.Fatal("refused sharing changed the audience")
+	}
+	w = call("owner")
+	if w.Code != http.StatusOK || !crewSharedWithOthers(externalCommandCrewRoot) {
+		t.Fatalf("owner share: %d %s", w.Code, w.Body.String())
+	}
+}

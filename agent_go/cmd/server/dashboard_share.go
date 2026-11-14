@@ -124,7 +124,7 @@ func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserCl
 	switch target.Kind {
 	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
-		return ok && crewAccessFor(claims, crew) == crewAccessOwner
+		return ok && crew.OwnerID == sanitizeUserIDForPath(claims.UserID)
 	case "workflow", "relay":
 		access, _ := workflowAccessForWorkspacePath(ctx, claims, target.Root)
 		return access == WorkflowAccessOwner
@@ -215,6 +215,9 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	stage = "owner"
 
 	if !api.dashboardShareOwner(ctx, claims, target) {
+		if target.Kind == "crew" {
+			return runShareState{}, dashboardFailure(403, "Only the owner changes who can open these")
+		}
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
 	// Sharing is sharing the dashboard: there must be one published to share. Making it private needs none.
