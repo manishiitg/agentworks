@@ -11,7 +11,7 @@ import (
 
 var myVaultScreenOperations = map[string]bool{
 	"github_status": true, "github_connect": true, "github_disconnect": true,
-	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true,
+	"project": true, "project_select": true, "laptops": true, "apps": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true, "edit_connection": true,
 }
 
 func (api *StreamingAPI) myVaultsPerson(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -54,6 +54,8 @@ func (api *StreamingAPI) handleMyVaultsOp(w http.ResponseWriter, r *http.Request
 		writeUsersError(w, http.StatusBadRequest, "that operation is not available here")
 		return
 	}
+	// Presentation only: the native connection path returns structured OAuth data for this screen.
+	args["_screen"] = true
 	result, err := api.myVaultsOperation(r.Context(), person, args)
 	if err != nil {
 		writeUsersError(w, http.StatusBadRequest, err.Error())

@@ -163,7 +163,11 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		if _, err := vaultPersonRequest(ctx, person, http.MethodDelete, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors/"+id, nil); err != nil {
 			return "", err
 		}
+		mutex := platformMCPOAuthMutex("vault:" + id)
+		mutex.Lock()
+		advanceVaultOAuthGeneration(id)
 		removeVaultCredentialFiles(id)
+		mutex.Unlock()
 		return "Removed the connection from Vault.", nil
 	}
 	if !exists {
@@ -267,6 +271,9 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	if err != nil {
 		return "", err
 	}
+	if args["_screen"] == true {
+		return mcpConnectionScreenOAuth(id, start, discovery)
+	}
 	if discovery != nil {
 		return mcpOAuthAppSetupMessage(vaultServerName(id), discovery), nil
 	}
@@ -312,4 +319,21 @@ func (api *StreamingAPI) mcpToolOAuthRedirect(ctx context.Context, person string
 		return request.oauthRedirectURI
 	}
 	return ""
+}
+
+
+// mcpConnectionScreenOAuth returns only the sign-in link and public app-setup
+// requirements produced by the authorized native path, never saved credentials.
+func mcpConnectionScreenOAuth(id string, start *OAuthStartResponse, discovery *OAuthDiscoveryResponse) (string, error) {
+	out := map[string]any{"connection_id": id}
+	if start != nil {
+		out["auth_url"] = start.AuthURL
+		out["message"] = "Open the sign-in page, then refresh this connection after approving access."
+	}
+	if discovery != nil {
+		out["setup"] = discovery
+		out["message"] = discovery.Message
+	}
+	data, err := json.Marshal(out)
+	return string(data), err
 }
