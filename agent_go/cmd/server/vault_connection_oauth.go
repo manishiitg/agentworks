@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
 )
@@ -300,6 +301,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			}
 			log.Printf("[VAULT_SIGNIN] connection=%s app=%s sign-in finished after %s ok=%t detail=%q", id, name, time.Since(started).Round(time.Second), success, shown)
 			recordVaultSignInOutcome(id, started, success, shown)
+			livefeed.Default.PublishToUser(livefeed.VaultConnections, userID, "")
 			if sessionID == "" {
 				return
 			}

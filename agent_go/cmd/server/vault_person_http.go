@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 )
 
 // Project panel and personal Vault endpoints reuse native operations. The
@@ -64,6 +67,18 @@ func (api *StreamingAPI) handleMyVaultsOp(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		writeUsersError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	// Only result metadata; operation bodies and authorization URLs carry secrets.
+	var summary struct {
+		ConnectionID string          `json:"connection_id"`
+		Connected    bool            `json:"connected"`
+		ToolCount    int             `json:"tool_count"`
+		AuthURL      string          `json:"auth_url"`
+		Setup        json.RawMessage `json:"setup"`
+	}
+	if json.Unmarshal([]byte(result), &summary) == nil && summary.ConnectionID != "" {
+		livefeed.Default.PublishToUser(livefeed.VaultConnections, person, "")
+		log.Printf("[MCP_SETTINGS] operation=%s connection_id=%s connected=%t tools=%d sign_in_started=%t app_setup=%t", operation, summary.ConnectionID, summary.Connected, summary.ToolCount, summary.AuthURL != "", len(summary.Setup) > 0)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeUsersJSON(w, http.StatusOK, map[string]string{"result": result})

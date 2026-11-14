@@ -25,8 +25,10 @@ const (
 	// transitions.
 	// MenuGroups is an owner-only personal menu preference change.
 	MenuGroups Kind = "menu_groups"
-	Sessions   Kind = "sessions"
-	CrewPanel  Kind = "crew_panel"
+	// VaultConnections: owner-only notice after account setup or discovery changes.
+	VaultConnections Kind = "vault_connections"
+	Sessions         Kind = "sessions"
+	CrewPanel        Kind = "crew_panel"
 	// Schedules: the workflow schedule summary changed (header).
 	Schedules Kind = "schedules"
 	// Notifications: org-dashboard notifications for a workflow changed.
