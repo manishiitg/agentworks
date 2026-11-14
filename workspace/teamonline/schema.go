@@ -42,6 +42,7 @@ func describe(ctx context.Context, tx *sql.Tx, wanted Dataset) (Schema, error) {
 	out := Schema{}
 	objects := map[string]Object{}
 	roots := map[int64]string{}
+	var schemaBytes int64
 	rows, err := tx.QueryContext(ctx, `SELECT type,name,tbl_name,coalesce(sql,''),rootpage FROM sqlite_schema WHERE type IN ('table','view','index','trigger')`)
 	if err != nil {
 		return out, err
@@ -51,6 +52,11 @@ func describe(ctx context.Context, tx *sql.Tx, wanted Dataset) (Schema, error) {
 		if err = rows.Scan(&object.Kind, &object.Name, &object.Table, &object.SQL, &object.RootPage); err != nil {
 			rows.Close()
 			return out, err
+		}
+		schemaBytes += int64(len(object.SQL) + len(object.Name) + len(object.Table))
+		if len(objects) >= publication.MaxFiles || schemaBytes > publication.MaxFileBytes {
+			rows.Close()
+			return out, fmt.Errorf("database schema exceeds the normal item publication limits")
 		}
 		objects[strings.ToLower(object.Name)] = object
 		if object.RootPage > 0 {
