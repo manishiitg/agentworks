@@ -206,3 +206,33 @@ func TestPublishAgentContentBundleKeepsOtherAgentAndPrivateFiles(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-856-566: online status lists only confirmed placements and associates
+// server automations with their exact agent, including full conversation keys.
+func TestOnlineAgentRowsKeepServerAutomationsWithTheirAgent(t *testing.T) {
+	placements := map[string]crewAgentPlacement{
+		"writer": {Tab: "writer", Name: "Writer · online", Location: "server"},
+		"main":   {Tab: "main", Name: "Main", Location: "server"},
+		"failed": {Tab: "failed", Name: "Failed", Location: "publishing"},
+	}
+	key := productConversationRegistryEntryKey(crewProfileID, crewAgentPublishKey("crew", "writer"))
+	rows := crewOnlineAgentRows("crew", placements, map[string]ProductConversationRecord{key: {Provider: "muse-cli"}}, []crewTabAutomation{
+		{Tab: "crew:chat:writer", Kind: "Schedule", Name: "Hourly", On: true},
+		{Tab: "writer", Kind: "Watcher", Name: "New mail", On: false},
+		{Tab: "writer", Kind: "Webhook", Name: "Incoming", On: true},
+		{Tab: "main", Kind: "Schedule", Name: "Main only", On: true},
+		{Tab: "other", Kind: "Schedule", Name: "Other agent", On: true},
+	})
+	if len(rows) != 2 || rows[0].Tab != "main" || len(rows[0].Automations) != 1 || rows[0].Automations[0].Name != "Main only" {
+		t.Fatalf("unconfirmed placement or wrong Main automations: %+v", rows)
+	}
+	writer := rows[1]
+	if writer.Tab != "writer" || writer.Program != providerAccountProductName("muse-cli") || len(writer.Automations) != 3 {
+		t.Fatalf("missing online program or mixed agent automations: %+v", writer)
+	}
+	for _, item := range writer.Automations {
+		if item.Kind == "Watcher" && item.On {
+			t.Fatal("disabled server watcher shown as enabled")
+		}
+	}
+}

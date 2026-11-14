@@ -19,6 +19,7 @@ import (
 )
 
 type crewSyncRequest struct {
+	IncludeOnlineAgents   bool                       `json:"include_online_agents,omitempty"`
 	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
 	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
 	Provider              string                     `json:"provider,omitempty"`
@@ -63,6 +64,7 @@ type crewSyncReply struct {
 	// ChatOnlyLine is the one line above that chat: which copy this is and what stays on the Mac (owner, 12 Nov).
 	ChatOnlyLine string                        `json:"chat_only_line,omitempty"`
 	Role         string                        `json:"role,omitempty"`
+	OnlineAgents []crewOnlineAgent             `json:"online_agents,omitempty"`
 	OnServer     []crewServerCopy              `json:"on_server,omitempty"`
 	Publish      *crewAgentPublishPreview      `json:"publish,omitempty"`
 	Placements   map[string]crewAgentPlacement `json:"placements,omitempty"`
@@ -200,6 +202,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
 		input.Action = "status"
+		input.IncludeOnlineAgents = r.URL.Query().Get("online_agents") == "1"
 	} else if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(15 * time.Minute)); err != nil {
 		// A Crew upload carries its files and takes longer than the server's 30-second read limit.
 		log.Printf("[CREW_SYNC] project=%s read deadline not extended: %v", mux.Vars(r)["project"], err)
@@ -359,6 +362,12 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		for _, entry := range out.Placements {
 			out.OnServer = append(out.OnServer, crewServerCopy{Name: entry.Name, Detail: "native chat, memory, skills and selected working files"})
+		}
+		if input.IncludeOnlineAgents && !IsLocalMode() && len(out.Placements) > 0 {
+			out.OnlineAgents, e = api.crewOnlineAgents(ctx, claims.UserID, roots, out.Placements)
+			if e != nil {
+				return out, e
+			}
 		}
 		return out, nil
 	}
