@@ -1,4 +1,5 @@
 import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
+import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
 import { workConversationKey, workOpeningAgentKey } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -656,6 +657,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   })))
   const projectSeed = workProjectChatSeed(projectSession, profileId)
   const [importLocalChat, setImportLocalChat] = useState(false)
+  const [discoverSkills, setDiscoverSkills] = useState(false)
   useEffect(() => { if (importRequest) setImportLocalChat(true) }, [importRequest])
   const [localImportProject, setLocalImportProject] = useState('')
   useEffect(() => {
@@ -964,6 +966,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   return <><AgentRemovalDialog projectId={projectId} /><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} createRequest={createRequest} projectId={projectId}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
     onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
+    onDiscoverSkills={allowSideChats ? () => setDiscoverSkills(true) : undefined}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
       // The list pass opens a tab for every agent the server lists; then switch to this one.
@@ -975,6 +978,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
     onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />
     {importLocalChat && <LocalChatPicker key={projectId} projectId={projectId} onClose={() => setImportLocalChat(false)} onImported={openImportedChat} />}
+    {discoverSkills && <DiscoverSkillsDialog key={projectSession.workspacePath} workspacePath={projectSession.workspacePath} close={() => setDiscoverSkills(false)} />}
   </>
 }
 
