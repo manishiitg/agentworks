@@ -38,7 +38,7 @@ func stripNativeAccountFields(value interface{}, usage, statusLine bool) {
 		for key, child := range v {
 			if usage {
 				switch strings.ToLower(key) {
-				case "rate_limits", "rate_limit_windows", "limit_id", "plan_type", "plan", "credits", "usage_limit", "usage_limits":
+				case "connection_id", "rate_limits", "rate_limit_windows", "limit_id", "plan_type", "plan", "credits", "usage_limit", "usage_limits":
 					delete(v, key)
 					continue
 				case "status_extras":
