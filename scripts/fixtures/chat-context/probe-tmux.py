@@ -8,7 +8,7 @@ with tempfile.TemporaryDirectory(prefix='tmux-context-',dir=root.parent) as work
  rc=pathlib.Path(work)/'rc';rc.write_text('PROMPT_COMMAND='+shlex.quote("PS1='PROBE> '; "+hook)+'\n')
  env={**os.environ,'TERM':'xterm-256color','HISTFILE':'/dev/null','BASH_SILENCE_DEPRECATION_WARNING':'1','HISTCONTROL':'','HISTIGNORE':''}
  base=[tmux,'-f','/dev/null','-S',socket]
- subprocess.run(base+['start-server',';','set-option','-g','allow-passthrough','on',';','set-option','-g','status','off',';','new-session','-d','-s','probe',f"/bin/bash --noprofile --rcfile '{rc}' -i"],env=env,check=True)
+ subprocess.run(base+['start-server',';','set-option','-g','allow-passthrough','on',';','set-option','-g','status','off',';','new-session','-d','-s','probe','/bin/bash','--noprofile','--rcfile',str(rc),'-i'],env=env,check=True)
  pid,fd=pty.fork()
  if not pid: os.execve(tmux,base+['attach','-t','probe'],env)
  def read():
@@ -20,7 +20,9 @@ with tempfile.TemporaryDirectory(prefix='tmux-context-',dir=root.parent) as work
    elif out:break
   return out
  try:
-  read();os.write(fd,b'printf TMUX-PROOF | cat\n');out=read()
+  initial=read()
+  assert b'PROBE>' in initial, ('tmux failed before the fixture prompt',initial)
+  os.write(fd,b'printf TMUX-PROOF | cat\n');out=read()
   starts=re.findall(rb'6973;C;probe-\d+;([^\x07]*)\x07',out)
   assert [base64.b64decode(x).decode() for x in starts]==['printf TMUX-PROOF | cat'],out
   assert b'6973;D;probe-1;0\x07' in out,out
