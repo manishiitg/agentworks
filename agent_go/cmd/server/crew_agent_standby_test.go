@@ -1119,7 +1119,9 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	}
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "folder-1", Folders: []string{"team"}},
 		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "other-pair"}, {UserID: "third"}}}
-	if err := writeCrewTeam(team); err != nil {
+	// The current registry is authoritative for In team, not the cached Mac tab.
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"main": true}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatalf("team fixture: %v", err)
 	}
 	crewMacTeamTabsCache.Store("team\x00other", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "other", Tab: "main", Name: "Helper", Purpose: "helps"}}})

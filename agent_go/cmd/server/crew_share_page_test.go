@@ -114,8 +114,13 @@ func TestCrewShareMainPublicationActionsStayFixed(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
 			t.Fatal(err)
 		}
+		// Share cards use the stable Team ID, not the native chat key.
+		registered, ok := mustReadCrewTeam(t, "team").registeredAgent("owner", main)
+		if !ok {
+			t.Fatal("Main has no Team registry identity")
+		}
 		for _, agent := range page.Agents {
-			if agent.Key == main && agent.Ask != nil {
+			if agent.Key == registered.ID && agent.Ask != nil {
 				return *agent.Ask
 			}
 		}
