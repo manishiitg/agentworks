@@ -10,11 +10,15 @@ export function codingAgentPlan(event: PollingEvent): CodingAgentPlan | undefine
   const data = (outer?.data && typeof outer.data === 'object' ? outer.data : outer) as Record<string, unknown> | undefined
   if (!data || typeof data.plan_id !== 'string' || !Array.isArray(data.items)) return undefined
   const items: CodingAgentPlanItem[] = []
+  const keys = new Set<string>()
   for (const raw of data.items) {
     if (!raw || typeof raw !== 'object') return undefined
     const item = raw as Record<string, unknown>
     if (typeof item.id !== 'string' || typeof item.text !== 'string' || !['pending', 'running', 'completed'].includes(String(item.status))) return undefined
-    items.push(item as CodingAgentPlanItem)
+    let id = item.id
+    while (keys.has(id)) id = `${id}:${items.length}`
+    keys.add(id)
+    items.push({ id, text: item.text, status: item.status as CodingAgentPlanItem['status'] })
   }
   return { plan_id: data.plan_id, provider: typeof data.provider === 'string' ? data.provider : '', items }
 }
