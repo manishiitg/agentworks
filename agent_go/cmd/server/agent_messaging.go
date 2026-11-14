@@ -467,7 +467,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 							return nil, err
 						}
 						receipt := agentMessageReceipt(prior.ID, m)
-						for k, v := range s.receiptFields(m, peer) {
+						for k, v := range s.receiptFields(ctx, m, peer) {
 							receipt[k] = v
 						}
 						agentMessageMu.Unlock()
@@ -560,7 +560,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 					return nil, fmt.Errorf("submission_id already used for a different message")
 				}
 				out := agentMessageReceipt(c.ID, m)
-				for k, v := range s.receiptFields(m, dest) {
+				for k, v := range s.receiptFields(ctx, m, dest) {
 					out[k] = v
 				}
 				agentMessageMu.Unlock()
@@ -614,7 +614,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	id := c.ID
 	out := agentMessageReceipt(id, m)
-	for k, v := range s.receiptFields(m, dest) {
+	for k, v := range s.receiptFields(ctx, m, dest) {
 		out[k] = v
 	}
 	err = saveAgentMessageStore(ctx, s)
@@ -712,7 +712,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			log.Printf("[AGENT-READ] filter=inbox agent=%s inbox=%s after=%d returned=%d next=%d", caller.NamedAgentID, inboxID, after, len(items), next)
 			for side := 0; side < 2; side++ {
 				if messageEndpointMatches(c.Endpoints[side], userID, caller) {
-					out["sent"] = s.sentReceipts(c, side, 20)
+					out["sent"] = s.sentReceipts(ctx, c, side, 20)
 				}
 			}
 			return out, nil

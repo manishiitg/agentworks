@@ -579,7 +579,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				for _, c := range freshConversations {
 					for side, end := range c.Endpoints {
 						if end.NamedAgentID == a.ID && end.UserID == claims.UserID {
-							sent = append(sent, fresh.sentReceipts(c, side, 10)...)
+							sent = append(sent, fresh.sentReceipts(ctx, c, side, 10)...)
 						}
 					}
 				}

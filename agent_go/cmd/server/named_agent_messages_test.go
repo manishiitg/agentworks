@@ -495,10 +495,43 @@ func TestAgentMessageCardsNameNamedAgentsByCurrentLabel(t *testing.T) {
 	if got := s.endpointName(named, "u1"); got != "Website (fork)" {
 		t.Fatalf("named agent shown as %q", got)
 	}
-	if got := s.receiptFields(agentMessage{}, named)["to_label"]; got != "Website (fork)" {
+	if got := s.receiptFields(context.Background(), agentMessage{}, named)["to_label"]; got != "Website (fork)" {
 		t.Fatalf("send result to_label = %v", got)
 	}
 	if got := s.endpointName(agentMessageEndpoint{UserID: "u1", Label: "Research Crew"}, "u1"); got != "Research Crew" {
 		t.Fatalf("plain endpoint shown as %q", got)
+	}
+}
+
+// PLAT-746: never resolve a recipient name from another owner's registry or
+// another chat just because its Crew label is the same.
+func TestCrewReceiptNameRequiresExactAdmittedConversation(t *testing.T) {
+	store, files := memoryProductConversationStore()
+	key := productConversationRegistryEntryKey("work", "project:chat:review")
+	doc := productConversationRegistryDocument{
+		Entries: map[string]ProductConversationRecord{key: {ProfileID: "work", ConversationKey: "project:chat:review", SessionID: "session-review", WorkspacePath: "Crew/example", Title: "Old title"}},
+		Agents:  map[string]ProductAgentIdentity{key: {Name: "Reviewer"}},
+	}
+	if err := store.writeDocument(context.Background(), productConversationRegistryPath("owner"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 {
+		t.Fatal("fixture did not persist")
+	}
+	endpoint := agentMessageEndpoint{UserID: "owner", Profile: "work", ChatKey: "project:chat:review", Session: "session-review", Path: "Crew/example"}
+	if got := store.messageRecipientName(context.Background(), endpoint); got != "Reviewer" {
+		t.Fatalf("exact recipient: %q", got)
+	}
+	for _, change := range []func(*agentMessageEndpoint){
+		func(e *agentMessageEndpoint) { e.UserID = "other" },
+		func(e *agentMessageEndpoint) { e.ChatKey = "project:chat:other" },
+		func(e *agentMessageEndpoint) { e.Session = "session-other" },
+		func(e *agentMessageEndpoint) { e.Path = "Crew/other" },
+	} {
+		wrong := endpoint
+		change(&wrong)
+		if got := store.messageRecipientName(context.Background(), wrong); got != "" {
+			t.Fatalf("unbound endpoint got name %q", got)
+		}
 	}
 }

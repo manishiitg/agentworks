@@ -38,6 +38,10 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	recipientName := "Review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &recipientName, nil, "owner"); err != nil {
+		t.Fatal(err)
+	}
 	target, err = env.api.resolveAgentChatTarget(ctx, target, record.ConversationKey)
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +62,9 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	receipt, err := env.api.sendAgentMessage(ctx, "owner", caller, target, "Please check this", "", "submission-first")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if receipt["to_label"] != recipientName {
+		t.Fatalf("receipt names Crew instead of recipient agent: %v", receipt)
 	}
 	id := receipt["inbox_id"].(string)
 	if receipt["accepted"] != true || receipt["call_id"] != nil {
@@ -88,6 +95,19 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	page, err := env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("final chat leaked: %v %v", page, err)
+	}
+	recipientName = "Renamed review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &recipientName, nil, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	// Read again after renaming: existing inboxes resolve the current exact agent.
+	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := page["sent"].([]map[string]interface{})
+	if len(sent) != 1 || sent[0]["to_label"] != recipientName || sent[0]["to"] != recipientName {
+		t.Fatalf("sent history lost exact recipient: %v", sent)
 	}
 	chat := conv.Endpoints[1].Session
 	// Request JSON and pasted text cannot manufacture the private delivery context.
