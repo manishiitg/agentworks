@@ -1,3 +1,4 @@
+import { visibleNativeGoalCommands } from '../utils/nativeGoalCapability'
 import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore, useId } from 'react'
 import { Terminal, Pencil, Trash2, Plus } from 'lucide-react'
 import type { ModeCategory } from '../stores/useModeStore'
@@ -9,6 +10,7 @@ import { isPlainPickerKey } from '../utils/composerReferences'
 import { useComposerPicker, isComposerPickerEvent, type ComposerPickerProps } from '../hooks/useComposerPicker'
 
 interface CommandSelectionDialogProps extends ComposerPickerProps {
+  nativeGoalSupported?: boolean
   standalone?: boolean
   onSearchQueryChange?: (query: string) => void
   triggerRef?: React.RefObject<HTMLElement | null>
@@ -43,7 +45,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   onCreateCommand,
   onEditCommand,
   onDeleteCommand, inputRef, listId, onActiveOptionChange,
-  standalone = false, onSearchQueryChange, triggerRef, commands
+  nativeGoalSupported = false, standalone = false, onSearchQueryChange, triggerRef, commands
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const revision = useSyncExternalStore(subscribeCommands, getCommandRevision)
@@ -66,9 +68,9 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
 
   // Filter commands based on search query and current mode
   const filteredCommands = useMemo(() => {
-    const allCommands = commands ?? (agentProfileId
+    const allCommands = visibleNativeGoalCommands(commands ?? (agentProfileId
       ? getProductAndUserCommands(modeCategory, workshopMode, canWriteWorkflow)
-      : getCommands(modeCategory, workshopMode, canWriteWorkflow))
+      : getCommands(modeCategory, workshopMode, canWriteWorkflow)), nativeGoalSupported)
 
     if (!searchQuery.trim()) {
       return allCommands
@@ -98,7 +100,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
     })
 
     return filtered
-  }, [agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands])
+  }, [nativeGoalSupported, agentProfileId, searchQuery, modeCategory, workshopMode, canWriteWorkflow, revision, commands])
 
   useEffect(() => { setSelectedIndex(0) }, [searchQuery, isOpen, filteredCommands])
   useEffect(() => {

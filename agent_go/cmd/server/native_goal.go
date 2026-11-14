@@ -6,9 +6,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -77,6 +80,16 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	if !known || ((req.IsAutoNotification || req.AgentMessageInbox != "") && !trustedRestore) {
 		return r, false
 	}
+	if !nativeGoalSupported(provider) || !isToolBackedChatMode(req.AgentMode) {
+		log.Printf("[AGENT_GOAL] session=%s provider=%s action=skipped status=unavailable reason=unsupported_program", sessionID, provider)
+		event := storeevents.Event{ID: fmt.Sprintf("native-goal-notice:%d", time.Now().UnixNano()), Type: "native_goal_notice", SessionID: sessionID, Timestamp: time.Now(), ExecutionID: "main:" + sessionID, ParentExecutionID: "session:" + sessionID, ExecutionKind: "main_agent", Data: unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{Data: map[string]interface{}{"message": "Goal mode is not available for this AI program"}})}
+		if api.eventStore != nil {
+			api.eventStore.AddEvent(sessionID, event)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "notice", "session_id": sessionID, "notice": event, "message": "Goal mode is not available for this AI program"})
+		return r, true
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return r, true
@@ -95,16 +108,6 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 			http.Error(w, "Only this chat's Builder can change its goal.", http.StatusForbidden)
 			return r, true
 		}
-	}
-	if !isToolBackedChatMode(req.AgentMode) {
-		log.Printf("[AGENT_GOAL] session=%s action=skipped status=unavailable reason=unsupported_chat_mode", sessionID)
-		http.Error(w, "Goal mode is available in Crew chats with a supported program.", http.StatusBadRequest)
-		return r, true
-	}
-	if provider != "codex-cli" {
-		log.Printf("[AGENT_GOAL] session=%s provider=%s action=skipped status=unavailable reason=unsupported_program", sessionID, provider)
-		http.Error(w, "Goal mode is not available for this program.", http.StatusBadRequest)
-		return r, true
 	}
 	if command.Action != "show" && !trustedRestore && allowDirectControl {
 		api.cancelNativeGoalRestore(sessionID, "person_goal_command")
@@ -136,4 +139,14 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	req.DisableLiveInputDelivery = true
 	log.Printf("[AGENT_GOAL] session=%s action=started reason=person_%s", sessionID, command.Action)
 	return r.WithContext(llmtypes.WithNativeGoalCommand(r.Context(), command)), false
+}
+
+// Program support is a backend fact, shared by admission and composer metadata.
+func nativeGoalSupported(provider string) bool { return provider == "codex-cli" }
+func nativeGoalProgramCapabilities() map[string]bool {
+	out := make(map[string]bool, len(supportedLLMProviders))
+	for _, provider := range supportedLLMProviders {
+		out[provider] = nativeGoalSupported(provider)
+	}
+	return out
 }

@@ -155,6 +155,7 @@ export interface AgentQueryRequest {
 }
 
 export interface AgentQueryResponse {
+  notice?: PollingEvent
   sync_notice?: string
   query_id: string
   // 'started' | 'workflow_started' | 'live_input_delivered' | 'accepted' | error states.
@@ -1730,6 +1731,7 @@ export interface WorkflowPhase {
 }
 
 export interface CapabilitiesResponse {
+  native_goals?: Record<string, boolean>;
   providers: string[];
   streaming: boolean;
   sse: boolean;
