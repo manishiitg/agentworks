@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
@@ -33,6 +35,7 @@ type agyACPError struct {
 func (e *agyACPError) Error() string { return fmt.Sprintf("(%d): %s", e.Code, e.Message) }
 
 type agyACP struct {
+	owner   string
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
 	writeMu sync.Mutex
@@ -50,6 +53,16 @@ type agyACP struct {
 func (r *agyACP) write(v any) error {
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()
+	if stream, ok := v.(agyStreamingParams); ok {
+		err := stream.writeJSON(r.stdin)
+		if err == nil {
+			_, err = io.WriteString(r.stdin, "\n")
+		}
+		if err != nil {
+			r.finish(fmt.Errorf("agy image frame write failed"))
+		}
+		return err
+	}
 	return json.NewEncoder(r.stdin).Encode(v)
 }
 
@@ -61,8 +74,34 @@ func (r *agyACP) call(ctx context.Context, method string, params any, result any
 	r.pending[string(key)] = ch
 	r.mu.Unlock()
 	defer func() { r.mu.Lock(); delete(r.pending, string(key)); r.mu.Unlock() }()
-	if err := r.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
-		return fmt.Errorf("agy ACP %s: %w", method, err)
+	request := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
+	if image, ok := params.(*agyImageParams); ok {
+		writeCtx, cancel := context.WithTimeout(image.writeCtx, 10*time.Second)
+		written := make(chan error, 1)
+		go func() { written <- r.write(&agyImageRequest{header: request, params: image}) }()
+		var writeErr error
+		select {
+		case writeErr = <-written:
+		case <-writeCtx.Done():
+			writeErr = writeCtx.Err()
+			r.finish(writeErr)
+			<-written
+		case <-r.done:
+			writeErr = r.failure()
+			<-written
+		}
+		cancel()
+		finishAgyImageDelivery(image.owner, image, writeErr)
+		image.close() // Prompt response may take minutes; readers end at write.
+		image.wrote <- writeErr
+		if writeErr != nil {
+			return fmt.Errorf("agy ACP %s: %w", method, writeErr)
+		}
+	} else {
+		request["params"] = params
+		if err := r.write(request); err != nil {
+			return fmt.Errorf("agy ACP %s: %w", method, err)
+		}
 	}
 	select {
 	case response := <-ch:
@@ -112,12 +151,22 @@ func (r *agyACP) finish(err error) {
 }
 
 func (r *agyACP) read(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 32*1024*1024)
-	for scanner.Scan() {
+	reader := bufio.NewReaderSize(stdout, 64*1024)
+	for {
+		raw, err := readAgyImageSafeFrame(reader)
+		if err != nil {
+			if err == io.EOF {
+				<-r.exited
+				return
+			}
+			log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli action=failed reason=frame_limit_or_read_error", r.owner)
+			r.finish(fmt.Errorf("read agy ACP: %w", err))
+			return
+		}
 		var msg agyACPMessage
-		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			continue // agy may print a non-protocol line; the protocol is never JSON-broken
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli action=skipped reason=non_protocol_line", r.owner)
+			continue // Preserve agy's harmless diagnostic-line tolerance.
 		}
 		if msg.Method == "" && len(msg.ID) > 0 {
 			r.mu.Lock()
@@ -134,11 +183,6 @@ func (r *agyACP) read(stdout io.Reader) {
 			return
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		r.finish(fmt.Errorf("read agy ACP: %w", err))
-		return
-	}
-	<-r.exited
 }
 
 func (r *agyACP) close() {

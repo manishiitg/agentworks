@@ -42,6 +42,7 @@ type agyACPConfigResult struct {
 }
 
 type agyACPSession struct {
+	imagesAllowed  bool
 	transcriptHome string
 	status         *llmtypes.StatusLine
 	configOptions  []agyACPConfigOption
@@ -175,7 +176,7 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 		}
 		return nil, fmt.Errorf("start agy acp: %w", err)
 	}
-	r := &agyACP{cmd: cmd, stdin: stdin, pending: map[string]chan agyACPMessage{}, events: make(chan agyACPMessage, 4096), done: make(chan struct{}), exited: make(chan struct{}), stop: stop}
+	r := &agyACP{owner: agyStringMetadata(opts, MetadataKeyInteractiveSessionID), cmd: cmd, stdin: stdin, pending: map[string]chan agyACPMessage{}, events: make(chan agyACPMessage, 4096), done: make(chan struct{}), exited: make(chan struct{}), stop: stop}
 	go r.read(stdout)
 	go func() {
 		err := cmd.Wait()
@@ -190,10 +191,12 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 	go s.pump()
 	initCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	if err := r.call(initCtx, "initialize", map[string]any{"protocolVersion": 1, "clientCapabilities": map[string]any{}, "clientInfo": map[string]any{"name": "agentworks", "version": "1"}}, nil); err != nil {
+	imagesAllowed, initErr := initializeAgyImageCapability(initCtx, r)
+	if initErr != nil {
 		s.closeNow()
-		return nil, err
+		return nil, initErr
 	}
+	s.imagesAllowed = imagesAllowed
 	// The service's Gemini key, when the chat's account gives one, signs in;
 	// otherwise agy uses its stored login.
 	if agyEnvHas(cmd.Env, "GEMINI_API_KEY") || agyEnvHas(cmd.Env, "GOOGLE_API_KEY") {
@@ -386,10 +389,25 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 			if t := strings.TrimSpace(strings.Join(parts, "")); t != "" {
 				systems = append(systems, t)
 			}
-		case llmtypes.ChatMessageTypeHuman:
-			human = strings.Join(parts, "")
+
 		}
 	}
+	var pending []string
+	for _, message := range llmtypes.PendingHumanMessages(messages) {
+		var parts []string
+		for _, part := range message.Parts {
+			switch v := part.(type) {
+			case llmtypes.TextContent:
+				parts = append(parts, v.Text)
+			case *llmtypes.TextContent:
+				if v != nil {
+					parts = append(parts, v.Text)
+				}
+			}
+		}
+		pending = append(pending, strings.Join(parts, ""))
+	}
+	human = strings.Join(pending, "\n\n")
 	system = strings.Join(systems, "\n\n")
 	resume := agyStringMetadata(opts, MetadataKeyResumeSessionID)
 	fingerprint := strings.Join([]string{workdir, agyStringMetadata(opts, MetadataKeyMCPConfig), agyStringMetadata(opts, MetadataKeyNativeToolsMode), system}, "\x00")
@@ -426,10 +444,10 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 	if llmtypes.CodingProviderLaunchOnlyFromOptions(opts) {
 		return agyACPResponse(s, "", nil), nil
 	}
-	if strings.TrimSpace(human) == "" {
+	if strings.TrimSpace(human) == "" && !agyHasPendingImages(ctx, owner, messages) {
 		return nil, fmt.Errorf("agy prompt is empty")
 	}
-	return a.consumeAgyACPTurn(ctx, s, human, emit)
+	return a.consumeAgyACPTurn(ctx, s, human, emit, agyImageTurn{owner: owner, messages: messages})
 }
 
 type agyACPTool struct {
@@ -438,7 +456,7 @@ type agyACPTool struct {
 	open, ended        bool
 }
 
-func (a *AgyCLIAdapter) consumeAgyACPTurn(ctx context.Context, s *agyACPSession, prompt string, emit func(llmtypes.StreamChunk)) (*llmtypes.ContentResponse, error) {
+func (a *AgyCLIAdapter) consumeAgyACPTurn(ctx context.Context, s *agyACPSession, prompt string, emit func(llmtypes.StreamChunk), images ...agyImageTurn) (*llmtypes.ContentResponse, error) {
 	meta := map[string]any{"agy_session_id": s.sessionID, "agy_stream_source": "acp"}
 	events := s.listen()
 	defer s.stopListening()
@@ -453,12 +471,31 @@ func (a *AgyCLIAdapter) consumeAgyACPTurn(ctx context.Context, s *agyACPSession,
 			Total       int `json:"totalTokens"`
 		} `json:"usage"`
 	}
+	imageTurn := agyImageTurn{owner: s.sessionID}
+	if len(images) > 0 {
+		imageTurn = images[0]
+	}
+	input := []any{}
+	if prompt != "" {
+		input = append(input, map[string]any{"type": "text", "text": prompt})
+	}
+	params, cleanup, prepErr := agyParamsWithImages(ctx, imageTurn.owner, map[string]any{"sessionId": s.sessionID, "prompt": input}, imageTurn.messages, s.imagesAllowed)
+	if prepErr != nil {
+		return nil, prepErr
+	}
+	defer cleanup()
 	outcome := beginAgyACPOutcome(s.transcriptHome, s.sessionID)
 	complete := make(chan error, 1)
 	go func() {
 		// The turn's own lifetime, not ctx: on Stop it is cancelled and waits for agy's answer.
-		complete <- s.rpc.call(context.Background(), "session/prompt", map[string]any{"sessionId": s.sessionID, "prompt": []any{map[string]any{"type": "text", "text": prompt}}}, &result)
+		complete <- s.rpc.call(context.Background(), "session/prompt", params, &result)
 	}()
+	if image, ok := params.(*agyImageParams); ok {
+		if writeErr := <-image.wrote; writeErr != nil {
+			return nil, writeErr
+		}
+	}
+
 	emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypePromptAccepted, Metadata: meta})
 	var text strings.Builder
 	tools := map[string]*agyACPTool{}

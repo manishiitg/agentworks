@@ -53,6 +53,13 @@ func (a *AgyCLIAdapter) GenerateContent(ctx context.Context, messages []llmtypes
 	for _, opt := range options {
 		opt(opts)
 	}
+	if agyStringMetadata(opts, MetadataKeyPersistentInteractive) != "true" || !AgyACPSelected() {
+		for _, input := range llmtypes.ClaimNativeImageInputsForSession(ctx, agyStringMetadata(opts, MetadataKeyInteractiveSessionID)) {
+			if input.Skipped != nil {
+				input.Skipped("text_only_transport")
+			}
+		}
+	}
 	if agyStringMetadata(opts, MetadataKeyPersistentInteractive) == "true" {
 		// Chats run on `agy acp` by default; tmux stays selectable (AGY_CLI_TRANSPORT=tmux).
 		if AgyACPSelected() {
