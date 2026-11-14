@@ -159,13 +159,13 @@ func (r *agyACP) read(stdout io.Reader) {
 				<-r.exited
 				return
 			}
-			log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli action=failed reason=frame_limit_or_read_error", r.owner)
+			log.Printf("[AGY_ACP] session=%s action=failed reason=frame_limit_or_read_error", r.owner)
 			r.finish(fmt.Errorf("read agy ACP: %w", err))
 			return
 		}
 		var msg agyACPMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
-			log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli action=skipped reason=non_protocol_line", r.owner)
+			log.Printf("[AGY_ACP] session=%s action=skipped reason=non_protocol_line", r.owner)
 			continue // Preserve agy's harmless diagnostic-line tolerance.
 		}
 		if msg.Method == "" && len(msg.ID) > 0 {

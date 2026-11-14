@@ -141,10 +141,10 @@ func agyParamsWithImages(ctx context.Context, owner string, base map[string]any,
 					continue
 				}
 				v := *image
-				if v.SourceType != "base64" {
-					return nil, func() {}, errors.New("Agy native images require base64 image content; URLs are not fetched")
-				}
 				inputs = append(inputs, llmtypes.NativeImageInput{Open: func(context.Context) (io.ReadCloser, string, int64, error) {
+					if v.SourceType != "base64" {
+						return nil, "", 0, errors.New("image_source_unavailable") // Never fetch URLs.
+					}
 					if int64(len(v.Data)) > int64(base64.StdEncoding.EncodedLen(int(agyImageMaxBytes))+4) {
 						return nil, "", 0, errors.New("image_too_large")
 					}
@@ -207,7 +207,7 @@ func agyParamsWithImages(ctx context.Context, owner string, base map[string]any,
 	if len(p.images) == 0 {
 		return base, func() {}, nil
 	}
-	log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli images=%d bytes=%d native=true action=started", owner, len(inputs), total)
+	log.Printf("[CHAT_IMAGE] session=%s provider=agy-cli images=%d bytes=%d native=true action=started", owner, len(p.images), total)
 	return p, func() { p.close() }, nil
 }
 
@@ -220,7 +220,7 @@ func finishAgyImageDelivery(owner string, params any, err error) {
 	for _, image := range p.images {
 		n += image.bytes
 	}
-	action, reason := "done", "accepted"
+	action, reason := "done", "bridge_written"
 	if err != nil {
 		action, reason = "failed", "native_rpc_failed"
 		if errors.Is(err, llmtypes.ErrCodingAgentInputNotSent) {

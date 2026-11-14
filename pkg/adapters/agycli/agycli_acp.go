@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -12,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
@@ -149,8 +149,8 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 		release()
 		return nil, err
 	}
-	stderr := &clisandbox.StderrTail{}
-	cmd.Stderr = stderr
+	// Native diagnostics can echo prompt image bytes. Do not retain or log stderr.
+	cmd.Stderr = io.Discard
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		stop()
@@ -180,9 +180,7 @@ func (a *AgyCLIAdapter) launchAgyACP(ctx context.Context, opts *llmtypes.CallOpt
 	go r.read(stdout)
 	go func() {
 		err := cmd.Wait()
-		if tail := strings.TrimSpace(stderr.String()); tail != "" {
-			log.Printf("[CLI_EXIT] provider=agy-cli acp exited (%v): %s", err, tail)
-		}
+		log.Printf("[CLI_EXIT] session=%s provider=agy-cli transport=acp action=done exit_code=%d reason=process_exited", r.owner, cmd.ProcessState.ExitCode())
 		r.finish(fmt.Errorf("agy acp exited: %v", err))
 		cleanupSandbox()
 		close(r.exited)
@@ -389,7 +387,6 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 			if t := strings.TrimSpace(strings.Join(parts, "")); t != "" {
 				systems = append(systems, t)
 			}
-
 		}
 	}
 	var pending []string

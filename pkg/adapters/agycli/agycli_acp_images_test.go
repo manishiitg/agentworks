@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -141,6 +142,41 @@ func TestAgyACPImagesRequireCapabilityAndCloseAtWrite(t *testing.T) {
 			}
 		})
 	}
+	t.Run("stop_unblocks_partial_write", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		readEnd, writeEnd := io.Pipe()
+		defer readEnd.Close()
+		rpc := &agyACP{owner: "stopped-image", stdin: writeEnd, pending: map[string]chan agyACPMessage{}, done: make(chan struct{}), stop: func() {}}
+		closed := make(chan struct{})
+		delivery := llmtypes.WithNativeImageInputs(ctx, "stopped-image", []llmtypes.NativeImageInput{{Open: func(context.Context) (io.ReadCloser, string, int64, error) {
+			return &agyImageReader{strings.NewReader("image"), closed}, "image/png", 5, nil
+		}}})
+		params, cleanup, err := agyParamsWithImages(delivery, "stopped-image", map[string]any{"prompt": []any{}}, nil, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanup()
+		done := make(chan error, 1)
+		go func() { done <- rpc.call(context.Background(), "session/prompt", params, nil) }()
+		// Read the start only, then stop while the large/private frame is blocked.
+		if _, err := io.ReadFull(readEnd, make([]byte, 1)); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatal("Stop lost cancellation", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("Stop hung behind frame write")
+		}
+		select {
+		case <-closed:
+		default:
+			t.Fatal("stopped delivery retained its reader")
+		}
+	})
 }
 
 type agyRepeatedByte byte
