@@ -516,6 +516,7 @@ func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, canonical, 
 	}
 
 	// Git index/tree writes do not pass through the file-mutation hooks.
+	markCrewPanelChangesDirty(canonical)
 	publishCrewPanelPathChanged(canonical)
 	repo, err := workspaceGitStatus(ctx, repoDir)
 	if err != nil {

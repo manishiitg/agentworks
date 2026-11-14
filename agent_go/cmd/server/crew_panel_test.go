@@ -412,4 +412,11 @@ func TestCrewPanelBackgroundSectionServesLastSnapshotWhileRefreshing(t *testing.
 	if n := len(reads); n != 2 { // the first read and exactly one background read
 		t.Fatalf("source read %d times, want 2", n)
 	}
+	// A Git action or turn end after the snapshot drops it: the next read shows a current one, not the old rows.
+	label = "committed"
+	crewPanelChangesDirty.Store(key.project, time.Now())
+	t.Cleanup(func() { crewPanelChangesDirty.Delete(key.project) })
+	if got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second); got[0].Rows[0].Label != "committed" {
+		t.Fatalf("a snapshot older than the last Git action was shown: %+v", got[0].Rows)
+	}
 }

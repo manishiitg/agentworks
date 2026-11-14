@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 )
@@ -35,13 +37,29 @@ func publishCrewPanelRoundChanged(dir string) {
 // A committed workspace write already passed its existing file guard. Resolve
 // its registered Crew ID rather than placing any private path on the feed.
 func publishCrewPanelPathChanged(filePath string) {
+	if project := crewPanelProjectForPath(filePath); project != "" {
+		publishCrewPanelChanged(project)
+	}
+}
+func crewPanelProjectForPath(filePath string) string {
 	parts := strings.Split(strings.Trim(filePath, "/"), "/")
 	if len(parts) > 1 && parts[0] == "Crew" {
 		if record, ok := defaultProjectOwners().Lookup("work", parts[1]); ok {
-			publishCrewPanelChanged(record.ProjectID)
+			return record.ProjectID
 		}
 	} else if len(parts) > 2 && parts[0] == "_system" && parts[1] == "crew-data" {
-		publishCrewPanelChanged(parts[2])
+		return parts[2]
+	}
+	return ""
+}
+
+// The panel's Git row keeps its last snapshot for a while (crewPanelSource.background). A Git action or the end of
+// an agent turn changes the checkouts at a known moment, so a snapshot taken before it must not be shown again.
+var crewPanelChangesDirty sync.Map // project -> time.Time
+
+func markCrewPanelChangesDirty(filePath string) {
+	if project := crewPanelProjectForPath(filePath); project != "" {
+		crewPanelChangesDirty.Store(project, time.Now())
 	}
 }
 func publishCrewPanelForPerson(person string) {
