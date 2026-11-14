@@ -6,10 +6,16 @@ import (
 	"hash/crc32"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
+	"os"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // PLAT-746-1000: compressed image headers must be bounded before decoding;
@@ -51,6 +57,14 @@ func TestNativeChatImagePreparationBoundsPixelsAndEncodedOutput(t *testing.T) {
 				}
 			}
 		})
+	}
+	var gifFile, gifOut bytes.Buffer
+	if err := gif.Encode(&gifFile, image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.Transparent, color.White}), nil); err != nil {
+		t.Fatal(err)
+	}
+	preparedGIF, err := prepareNativeChatImage(bytes.NewReader(gifFile.Bytes()), &gifOut)
+	if err != nil || !preparedGIF.FirstFrame || preparedGIF.MIME != "image/png" {
+		t.Fatal("GIF first-frame preparation not identified", err)
 	}
 	var pngFile bytes.Buffer
 	if err := png.Encode(&pngFile, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
@@ -96,4 +110,76 @@ func TestNativeChatImagePreparationBoundsPixelsAndEncodedOutput(t *testing.T) {
 			t.Fatal("phone orientation lost", prepared, err)
 		}
 	}
+}
+
+// The owner requested a measured 10 MB delivery, not an unqualified memory
+// claim. Generate the source before measuring; preparation reads a file and
+// releases decoded/encoded buffers when it returns. Logs contain sizes only.
+func TestNativeChatImageTenMBPeakMemory(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "source-*.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := image.NewNRGBA(image.Rect(0, 0, 2100, 1600))
+	seed := uint32(0x5ea127c3)
+	for i := 0; i < len(picture.Pix); i += 4 {
+		for c := range 3 {
+			seed ^= seed << 13
+			seed ^= seed >> 17
+			seed ^= seed << 5
+			picture.Pix[i+c] = byte(seed)
+		}
+		picture.Pix[i+3] = 255
+	}
+	if err = png.Encode(file, picture); err != nil {
+		t.Fatal(err)
+	}
+	stat, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.Size() > nativeChatImageMaxBytes {
+		t.Fatal("measurement source exceeded limit", stat.Size())
+	}
+	if err = file.Truncate(nativeChatImageMaxBytes); err != nil {
+		t.Fatal(err)
+	}
+	picture = nil
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	var peak atomic.Uint64
+	peak.Store(before.HeapAlloc)
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				var stats runtime.MemStats
+				runtime.ReadMemStats(&stats)
+				for old := peak.Load(); stats.HeapAlloc > old; old = peak.Load() {
+					if peak.CompareAndSwap(old, stats.HeapAlloc) {
+						break
+					}
+				}
+			}
+		}
+	}()
+	prepared, err := prepareNativeChatImage(file, io.Discard)
+	close(done)
+	<-stopped
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	t.Logf("VERIFY-METRIC: [CHAT_IMAGE_MEMORY] source_bytes=%d prepared_bytes=%d width=%d height=%d baseline_heap=%d peak_heap=%d peak_delta=%d after_gc_heap=%d", nativeChatImageMaxBytes, prepared.Bytes, prepared.Width, prepared.Height, before.HeapAlloc, peak.Load(), peak.Load()-before.HeapAlloc, after.HeapAlloc)
 }

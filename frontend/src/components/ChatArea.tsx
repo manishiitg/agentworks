@@ -13,7 +13,7 @@ import { rememberIfVoice } from '../voice/voiceMessages'
 import { intermediateUpdateFromTranscriptChunk, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
 import { applyLiveInputConfirmations, readLiveInputConfirmation, resolveLiveInputConfirmations, stampLiveInputIdentity, withLiveInputReceipt, withPendingProvider } from '../utils/liveInputReceipt'
 import { useRenderLogger, useMemoLogger } from '../utils/renderLogger'
-import { hasChatSubmissionContent, acquireBuilderSubmission, isConfirmedUndeliveredSubmission, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
+import { hasChatSubmissionContent, submittedChatAttachmentReferences, acquireBuilderSubmission, isConfirmedUndeliveredSubmission, type ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { isTurnRunningConflict } from '../services/turnRunningRetry'
 import { configureChatQueueController } from '../utils/chatQueueController'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -3035,7 +3035,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         restoredConversationPath,
       }), currentTab)
 
-      requestPayload.pending_attachments = options?.pendingAttachments
+      requestPayload.pending_attachments = submittedChatAttachmentReferences(options?.fileContext ?? currentTab.config.fileContext, options?.pendingAttachments)
 
       // Validate execution groups for workflow mode
       const executionPhaseId = currentTab?.metadata?.phaseId

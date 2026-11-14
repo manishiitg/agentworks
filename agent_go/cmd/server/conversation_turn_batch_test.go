@@ -129,7 +129,7 @@ func TestQueuedBatchKeepsPrincipalBoundariesAgentReplyAndAttachments(t *testing.
 	agent.Request.PendingAttachments = []pendingChatAttachment{{Hash: hash, Name: "example.png"}}
 	key := pendingAttachmentKey(agent.UserID, agent.SessionID, agent.Request, hash)
 	api.planPendingChatUpload(key)
-	api.finishPendingChatUpload(key, "Crew/example/uploads/example.png")
+	api.finishPendingChatUpload(key, "Crew/example/uploads/example.png", 100)
 	claimed, _ = api.claimQueuedBatch([]queuedConversationTurn{base, agent}, base, nil, now)
 	if len(claimed.Batch) != 2 {
 		t.Fatal("same-owner person/agent rows did not combine")

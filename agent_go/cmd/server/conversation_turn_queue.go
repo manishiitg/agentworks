@@ -127,8 +127,9 @@ func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) Q
 // attributes needed to reconstruct and revalidate a delayed turn. It never
 // stores a bearer token or an execution principal.
 type queuedConversationPrincipal struct {
-	DeliveredMessageSession string `json:"delivered_message_session,omitempty"`
-	DeliveredMessageUser    string `json:"delivered_message_user,omitempty"`
+	Attachments             []admittedChatAttachment `json:"attachments,omitempty"`
+	DeliveredMessageSession string                   `json:"delivered_message_session,omitempty"`
+	DeliveredMessageUser    string                   `json:"delivered_message_user,omitempty"`
 	// Display attribution only; never reconstructed from request JSON or used as admission.
 	DeliveredMessage        map[string]interface{} `json:"delivered_message,omitempty"`
 	CrewAskInput            *crewAskInputScope     `json:"crew_ask_input,omitempty"`
@@ -183,6 +184,7 @@ func queuedPrincipalFromContext(ctx context.Context) queuedConversationPrincipal
 	}
 	delivery, _ := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
 	principal := queuedConversationPrincipal{
+		Attachments:          admittedChatAttachmentsFromContext(ctx),
 		DeliveredMessage:     maps.Clone(delivery),
 		DeliveredMessageUser: claims.UserID,
 		CrewAskInput:         crewAskInputFromContext(ctx),
@@ -1000,6 +1002,7 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 		}
 		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, stamp)
 	}
+	ctx = withAdmittedChatAttachments(ctx, turn.Principal.Attachments)
 	ctx = costobserver.ContextWithAttribution(ctx, turn.Principal.CostAttribution)
 	return ctx, nil
 }
