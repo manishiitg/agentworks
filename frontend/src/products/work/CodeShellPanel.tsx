@@ -1,3 +1,5 @@
+import { trackTerminalContext, type TerminalContextSelection } from '../../utils/terminalContextSelection'
+import { captureChatContextDestination, isChatContextDestinationCurrent, requestTerminalContext, stageCapturedChatContext, type ChatContextDestination } from '../../utils/chatContextAttachment'
 import { WorkspacePanelActions } from '../../components/workspace/WorkspacePanelHeaderSlots'
 import { useProjectProduct } from './projectProduct'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -8,7 +10,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
-import { ChevronDown, ChevronUp, ClipboardPaste, Copy, Eraser, Loader2, Maximize2, Minimize2, Minus, MoreHorizontal, Palette, Plus, Power, RefreshCw, Search, Terminal as TerminalIcon, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, ClipboardPaste, Copy, Eraser, Loader2, Maximize2, Minimize2, Minus, MoreHorizontal, Palette, Plus, Power, RefreshCw, Search, Terminal as TerminalIcon, MessageSquarePlus, X } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useTheme } from '../../hooks/useTheme'
 import { isTerminalPasteShortcut } from '../../utils/interactiveXterm'
@@ -58,7 +60,7 @@ const toolbarButton = 'inline-flex h-6 w-6 items-center justify-center rounded t
 // is closed and stops after 30 idle minutes, on Stop, or when the Code is deleted.
 // Up to SHELL_MAX_TABS terminals per Code, each its own shell (same sandbox, same home). The tab strip sits above the active one;
 // the others stay connected while hidden, so switching back keeps their output. The open tabs are remembered per Code.
-export function CodeShellPanel({ projectId }: { projectId: string }) {
+export function CodeShellPanel({ projectId, chatContextTabId }: { projectId: string; chatContextTabId?: string }) {
   const { profileId } = useProjectProduct()
   const [state, setState] = useState<ShellTabs>(() => readShellTabs(projectId, storage()))
   useEffect(() => { setState(readShellTabs(projectId, storage())) }, [projectId])
@@ -108,16 +110,45 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
   return (
     <>
       {state.tabs.map(tab => (
-        <CodeShellTerminal key={`${projectId}:${tab}`} projectId={projectId} tab={tab} active={tab === state.active} tabStrip={tabStrip} onTabAction={onTabAction} />
+        <CodeShellTerminal key={`${projectId}:${tab}`} projectId={projectId} chatContextTabId={chatContextTabId} tab={tab} active={tab === state.active} tabStrip={tabStrip} onTabAction={onTabAction} />
       ))}
     </>
   )
 }
 
-function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { projectId: string; tab: number; active: boolean; tabStrip: ReactNode; onTabAction: (action: ShellAction) => void }) {
+function CodeShellTerminal({ projectId, chatContextTabId, tab, active, tabStrip, onTabAction }: { projectId: string; chatContextTabId?: string; tab: number; active: boolean; tabStrip: ReactNode; onTabAction: (action: ShellAction) => void }) {
   const { profileId } = useProjectProduct()
   const { theme } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
+  const contextRef = useRef<ReturnType<typeof trackTerminalContext> | null>(null)
+  const contextRequest = useRef<AbortController | null>(null)
+  const [selectedContext, setSelectedContext] = useState<TerminalContextSelection>()
+  const [contextPreview, setContextPreview] = useState<{ destination: ChatContextDestination; selection: TerminalContextSelection }>()
+  const [contextError, setContextError] = useState('')
+  const [addingContext, setAddingContext] = useState(false)
+  const destinationRef = useRef(chatContextTabId)
+  destinationRef.current = chatContextTabId
+  const activeRef = useRef(active); activeRef.current = active
+  useEffect(() => { contextRequest.current?.abort(); setContextPreview(undefined); setContextError('') }, [chatContextTabId, active, projectId])
+  useEffect(() => () => contextRequest.current?.abort(), [])
+  const previewContext = () => {
+    const destination = destinationRef.current && captureChatContextDestination(destinationRef.current)
+    const selection = contextRef.current?.take()
+    if (!destination || destination.projectId !== projectId || !selection) return
+    setContextPreview({ destination, selection }); setMenuOpen(false); setContextError('')
+  }
+  const addContext = async () => {
+    const preview = contextPreview, controller = new AbortController()
+    if (!preview || !activeRef.current || !isChatContextDestinationCurrent(preview.destination)) { setContextPreview(undefined); return }
+    contextRequest.current?.abort(); contextRequest.current = controller; setAddingContext(true)
+    try {
+      const captured = await requestTerminalContext(preview.destination, tab, preview.selection, controller.signal)
+      if (controller.signal.aborted || !activeRef.current || contextRequest.current !== controller) return
+      if (!stageCapturedChatContext(preview.destination, captured)) throw new Error('changed')
+      setContextPreview(undefined)
+    } catch { if (!controller.signal.aborted) setContextError('This selection could not be added. Select the output again in the intended chat.') }
+    finally { if (contextRequest.current === controller) setAddingContext(false) }
+  }
   const menuRef = useRef<HTMLDivElement>(null)
   // The key handler is installed once per terminal; it calls the latest actions through this ref.
   const actionRef = useRef<(action: ShellAction) => void>(() => undefined)
@@ -136,6 +167,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
   const [generation, setGeneration] = useState(0)
   const [fontSize, setFontSize] = useState(fontSizeRef.current)
   const [expanded, setExpanded] = useState(false)
+  useEffect(() => { if (state !== 'connected') { contextRequest.current?.abort(); setContextPreview(undefined); setAddingContext(false) } }, [state, generation])
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -176,6 +208,11 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       term.loadAddon(webgl)
     } catch { /* no WebGL: the default renderer is fine */ }
     try { fit.fit() } catch { /* hidden pane */ }
+    const context = trackTerminalContext(term)
+    contextRef.current = context
+    const clearContext = () => { context.clear(); setSelectedContext(undefined) }
+    const contextSelection = term.onSelectionChange(() => setSelectedContext(context.take()))
+    const contextBuffer = term.buffer.onBufferChange(() => clearContext())
     termRef.current = term
     searchRef.current = search
 
@@ -196,6 +233,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       socket.binaryType = 'arraybuffer'
       socketRef.current = socket
       socket.onopen = () => {
+        clearContext()
         attemptRef.current = 0
         setState('connected')
         term.focus()
@@ -206,6 +244,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
         term.write(event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : String(event.data))
       }
       socket.onclose = () => {
+        clearContext()
         if (disposed) return
         setState(current => {
           if (current === 'stopped') return current
@@ -238,6 +277,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       pendingLines = 0
     }
     term.attachCustomWheelEventHandler(event => {
+      clearContext()
       wheelPixels += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
       const lines = Math.trunc(wheelPixels / 16)
       if (lines !== 0) {
@@ -249,6 +289,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       return false
     })
     const input = term.onData(data => {
+      clearContext()
       const socket = socketRef.current
       if (!socket || socket.readyState !== WebSocket.OPEN) return
       if (scrolledBack) {
@@ -258,6 +299,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       socket.send(encoder.encode(data))
     })
     const resize = term.onResize(({ cols, rows }) => {
+      clearContext()
       const socket = socketRef.current
       if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'resize', cols, rows }))
     })
@@ -267,6 +309,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       disposed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
       observer.disconnect()
+      context.dispose(); contextSelection.dispose(); contextBuffer.dispose(); contextRef.current = null
       input.dispose()
       resize.dispose()
       socketRef.current?.close()
@@ -352,7 +395,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       case 'search': setSearchOpen(true); requestAnimationFrame(() => searchInputRef.current?.focus()); return
       case 'copy': void copySelection(); return
       case 'paste': void pasteClipboard(); return
-      case 'clear': termRef.current?.clear(); termRef.current?.focus(); return
+      case 'clear': contextRef.current?.clear(); setSelectedContext(undefined); termRef.current?.clear(); termRef.current?.focus(); return
       case 'larger': changeFontSize(1); return
       case 'smaller': changeFontSize(-1); return
       case 'fullscreen': setExpanded(value => !value); return
@@ -402,6 +445,13 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
           <span className={state === 'connected' ? 'sr-only' : ''}>{statusLabel}</span>
         </span>
         <span className="flex-1" />
+        {contextPreview && <div role="dialog" aria-label="Add terminal selection to chat" onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); contextRequest.current?.abort(); setContextPreview(undefined) } }} className="absolute inset-x-4 top-12 z-50 mx-auto max-w-lg rounded-xl border border-border bg-background p-4 text-foreground shadow-xl">
+          <h3 className="text-sm font-medium">Terminal selection</h3>
+          <p className="my-2 break-all font-mono text-xs text-muted-foreground">{contextPreview.selection.command}</p>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{contextPreview.selection.text}</pre>
+          {contextError && <p role="alert" className="mt-2 text-xs text-destructive">{contextError}</p>}
+          <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => { contextRequest.current?.abort(); setContextPreview(undefined); setAddingContext(false) }} className="rounded px-3 py-1.5 text-xs hover:bg-muted">Cancel</button><button type="button" disabled={addingContext} onClick={() => void addContext()} className="rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-40">{addingContext ? 'Adding…' : 'Add to chat'}</button></div>
+        </div>}
         <WorkspacePanelActions local={expanded || !active}>
         <button type="button" className={toolbarButton} title={`Search (${shellShortcutLabel('search', IS_MAC)})`} aria-label="Search the terminal" onClick={() => runAction('search')}><Search className="h-3.5 w-3.5" /></button>
         <div ref={menuRef} className="relative">
@@ -410,6 +460,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
           </button>
           {menuOpen && (
             <div role="menu" aria-label="Terminal" className="absolute right-0 top-[calc(100%+4px)] z-50 w-64 rounded-lg border border-border bg-popover p-1 shadow-xl">
+              {chatContextTabId && <button type="button" role="menuitem" disabled={!selectedContext || !active || state !== 'connected'} onClick={previewContext} title="Select output from the most recent completed command. Repainted history has no reliable command label." className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-foreground hover:bg-muted disabled:opacity-40"><MessageSquarePlus className="h-3.5 w-3.5" /> Add to chat</button>}
               {menuItem('Copy selection', 'copy', <Copy className="h-3.5 w-3.5" />)}
               {menuItem('Paste', 'paste', <ClipboardPaste className="h-3.5 w-3.5" />)}
               {menuItem('Clear screen', 'clear', <Eraser className="h-3.5 w-3.5" />)}

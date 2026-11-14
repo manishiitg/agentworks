@@ -1,10 +1,10 @@
 # Isolated real Bash regression for managed terminal provenance. No app/build.
-import os,pty,select,time,re,base64,tempfile,pathlib,signal
+import os,pty,select,time,re,base64,tempfile,pathlib,signal,shlex
 root=pathlib.Path(__file__).resolve().parents[3]
 hook=(root/'workspace/handlers/interactive_shell_context.bash').read_text().replace('__AW_GENERATION__','probe')
 # Keep artifacts within the owned worktree, never the owner's shell startup.
 with tempfile.TemporaryDirectory(prefix='shell-context-',dir=pathlib.Path(__file__).parent) as work:
- rc=pathlib.Path(work)/'rc'; rc.write_text("PROMPT_COMMAND='PS1=\"PROBE> \"'\n"+hook)
+ rc=pathlib.Path(work)/'rc'; rc.write_text('PROMPT_COMMAND='+shlex.quote("PS1='PROBE> '; "+hook)+'\n')
  pid,fd=pty.fork()
  if not pid:
   os.environ.update(HISTFILE='/dev/null',BASH_SILENCE_DEPRECATION_WARNING='1',HISTCONTROL='',HISTIGNORE='')

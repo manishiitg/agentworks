@@ -7,6 +7,8 @@ export type ChatContextDestination = { identity: number; tabId: string; projectI
 export type BrowserContextMetadata = { browser_session?: string; document_token: string; url: string; width: number; height: number; selector?: string; text?: string; rect: { x: number; y: number; width: number; height: number } }
 export type CapturedChatContext = { source: 'browser'; capture: BrowserContextMetadata; files: { name: string; path: string; type: 'file' }[]; preview_path: string }
 
+export type CapturedTerminalContext = Omit<CapturedChatContext, 'source' | 'capture'> & { source: 'terminal'; capture: { command: string; text: string } }
+
 export function captureChatContextDestination(tabId: string): ChatContextDestination | undefined {
   const store = useChatStore.getState(), tab = store.getTab(tabId)
   const meta = tab?.metadata
@@ -31,10 +33,10 @@ export async function requestBrowserContext<T extends BrowserContextMetadata | C
 
 // This is the only draft mutation. It appends ordinary completed files to the
 // latest draft; it never inserts paths in a live CLI, calls Send or queues work.
-export function stageCapturedChatContext(destination: ChatContextDestination, captured: CapturedChatContext): boolean {
-  if (!isChatContextDestinationCurrent(destination) || captured.source !== 'browser' || !captured.files.some(file => file.path === captured.preview_path)) return false
+export function stageCapturedChatContext(destination: ChatContextDestination, captured: CapturedChatContext | CapturedTerminalContext): boolean {
+  if (!isChatContextDestinationCurrent(destination) || (captured.source !== 'browser' && captured.source !== 'terminal') || (captured.source === 'browser' && !captured.files.some(file => file.path === captured.preview_path)) || !captured.files.length) return false
   const store = useChatStore.getState(), tab = store.getTab(destination.tabId)!
-  const files: FileContextItem[] = captured.files.map(file => ({ ...file, ...(file.path.endsWith('.json') ? { context: { kind: 'browser' as const, label: 'Page element', previewPath: captured.preview_path } } : {}) }))
+  const files: FileContextItem[] = captured.files.map(file => ({ ...file, ...(file.path.endsWith('.json') ? { context: { kind: captured.source, label: captured.source === 'browser' ? 'Page element' : 'Terminal selection', ...(captured.preview_path ? { previewPath: captured.preview_path } : {}) } } : {}) }))
   const fileContext = [...tab.config.fileContext]
   for (const file of files) if (!fileContext.some(current => current.path === file.path)) fileContext.push(file)
   store.setTabConfig(destination.tabId, { fileContext, autoRun: false })
@@ -45,4 +47,11 @@ export function stageCapturedChatContext(destination: ChatContextDestination, ca
 export function contextAttachmentRemoval(files: FileContextItem[], path: string): Set<string> {
   const selected = files.find(file => file.path === path)
   return new Set([path, ...(selected?.context?.previewPath ? [selected.context.previewPath] : [])])
+}
+
+export async function requestTerminalContext(destination: ChatContextDestination, terminalTab: number, selection: { command_id: string; text: string; start_line: number; end_line: number }, signal?: AbortSignal): Promise<CapturedTerminalContext> {
+  if (!isChatContextDestinationCurrent(destination)) throw new Error('The chat changed. Select the output again.')
+  const { data } = await api.post<CapturedTerminalContext>(`/api/agent-profiles/work/projects/${encodeURIComponent(destination.projectId)}/chat-context`, { source: 'terminal', operation: 'add', conversation_key: destination.conversationKey, session_id: destination.sessionId, terminal_tab: terminalTab, ...selection }, { signal, timeout: 20000 })
+  if (!isChatContextDestinationCurrent(destination)) throw new Error('The chat changed. Select the output again.')
+  return data
 }

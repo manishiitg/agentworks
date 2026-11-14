@@ -30,7 +30,12 @@ func (api *StreamingAPI) addTerminalChatContext(w http.ResponseWriter, r *http.R
 		writeAgentProfileError(w, status, "Open an available terminal in this Crew.")
 		return "", 0, false, "terminal_access"
 	}
-	commands := codeShellContextCommands(shellID)
+	commands := []codeShellContextCommand{}
+	for _, command := range codeShellContextCommands(shellID) {
+		if command.ExitCode != nil {
+			commands = append(commands, command)
+		}
+	}
 	if in.Operation == "probe" {
 		writeAgentProfileJSON(w, 200, map[string]any{"source": "terminal", "terminal_tab": in.TerminalTab, "commands": commands})
 		return shellID, 0, true, "ready"
