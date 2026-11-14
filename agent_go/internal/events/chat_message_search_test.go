@@ -118,7 +118,7 @@ func TestChatMessageSearchSkipsToolStore500MB(t *testing.T) {
 	if err != nil || len(page.Messages) != 1 || page.Scanned != 1 || page.Bytes > 65536 {
 		t.Fatalf("scan read tool store: %+v %v", page, err)
 	}
-	rows, err := j.db.Query(`EXPLAIN QUERY PLAN SELECT payload FROM structured_chat_events WHERE ` + chatMessagePredicate + ` ORDER BY created_at DESC,session_id DESC,sequence DESC LIMIT 129`)
+	rows, err := j.db.Query(`EXPLAIN QUERY PLAN SELECT rowid,payload FROM structured_chat_events WHERE json_valid(payload)=1 AND ` + chatMessagePredicate + ` ORDER BY rowid DESC LIMIT 129`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +137,10 @@ func TestChatMessageSearchSkipsToolStore500MB(t *testing.T) {
 	}
 	t.Logf("VERIFY-METRIC: chat_message_search fixture_bytes=%d index_ms=%d scan_us=%d scanned=%d payload_bytes=%d plan=%s", len(tool)*1000, installMS, elapsed.Microseconds(), page.Scanned, page.Bytes, plan)
 
-	// Measure the feature's write overhead on the same populated store, using
-	// the real per-event transaction/fsync path, not a bulk-insert shortcut.
-	// Both phases insert 10,000 bounded 4 KB events: 10% messages, 90% tools.
+	// Isolate the feature's index-maintenance cost on the same populated
+	// store: two identical 10,000-row transactions, 10% 4 KB messages and 90%
+	// 4 KB tools. This measures SQLite insert overhead, not user-visible save
+	// latency (which also includes serialization and per-message fsync).
 	if err = rows.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -148,24 +149,32 @@ func TestChatMessageSearchSkipsToolStore500MB(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var toolEvent Event
 	toolRaw, _ := json.Marshal(map[string]any{"type": "tool_call_end", "data": map[string]any{"data": map[string]any{"result": strings.Repeat("x", 4000)}}})
-	if err = json.Unmarshal(toolRaw, &toolEvent); err != nil {
-		t.Fatal(err)
-	}
-	userEvent := journalTestEvent("insert", strings.Repeat("x", 4000))
+	userRaw, _ := json.Marshal(map[string]any{"type": "user_message", "data": map[string]any{"data": map[string]any{"content": strings.Repeat("x", 4000)}}})
 	insert := func(prefix string) time.Duration {
 		started := time.Now()
+		tx, err := j.db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stmt, err := tx.Prepare(`INSERT INTO structured_chat_events(session_id,sequence,event_id,payload,created_at) VALUES(?,?,?,?,?)`)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for i := 0; i < 10000; i++ {
-			event := toolEvent
+			payload := toolRaw
 			if i%10 == 0 {
-				event = userEvent
+				payload = userRaw
 			}
-			event.ID = fmt.Sprintf("%s-%d", prefix, i)
-			event.Timestamp = time.Now()
-			if _, _, err = j.Append(prefix, event); err != nil {
+			if _, err = stmt.Exec(prefix, i+1, fmt.Sprintf("%s-%d", prefix, i), payload, "fixture-insert"); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if err = stmt.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err = tx.Commit(); err != nil {
+			t.Fatal(err)
 		}
 		return time.Since(started)
 	}
@@ -174,5 +183,5 @@ func TestChatMessageSearchSkipsToolStore500MB(t *testing.T) {
 		t.Fatal(err)
 	}
 	indexed := insert("indexed")
-	t.Logf("VERIFY-METRIC: chat_message_insert rows=10000 message_percent=10 text_bytes=4000 baseline_ms=%d indexed_ms=%d added_us_per_insert=%.2f", baseline.Milliseconds(), indexed.Milliseconds(), float64((indexed-baseline).Microseconds())/10000)
+	t.Logf("VERIFY-METRIC: chat_message_insert rows=10000 transaction=single message_percent=10 text_bytes=4000 baseline_ms=%d indexed_ms=%d added_us_per_insert=%.2f", baseline.Milliseconds(), indexed.Milliseconds(), float64((indexed-baseline).Microseconds())/10000)
 }
