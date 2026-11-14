@@ -27,6 +27,9 @@ func TestDeletedDefaultDashboardStaysDeletedOnReadAndSync(t *testing.T) {
 	if _, _, err = f.api.ensureDefaultDashboard(ctx, owner, target); err != nil {
 		t.Fatal(err)
 	}
+	// A real managed publication remains discoverable even beside an older
+	// raw index. After deletion that same orphaned file must not count.
+	f.write(t, target.Root+"/db/reports/index.html", "<html>orphaned raw page</html>")
 	// Deletion must disable both authenticated and public links, but preserve
 	// the saved revision files. Use the same HTTP action as chat and the card.
 	code, err := newDashboardPublicCode()
