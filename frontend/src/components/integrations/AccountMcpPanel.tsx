@@ -21,6 +21,8 @@ type FormTarget = { server?: VaultConnectionRow; provider?: string; appSetup?: b
 /** Saved account management only; the browser never supplies a Crew or Vault owner. */
 export default function AccountMcpPanel() {
   const vault = useVaultMcpConnections()
+  const [view, setView] = useState<'connected' | 'available'>('connected')
+  const [selectedServerId, setSelectedServerId] = useState<string>()
   const [catalog, setCatalog] = useState<VaultCatalogApp[]>([])
   const [catalogError, setCatalogError] = useState('')
   const [error, setError] = useState('')
@@ -62,6 +64,7 @@ export default function AccountMcpPanel() {
       if (signIn) window.open(signIn, '_blank', 'noopener,noreferrer')
       setTarget(undefined); setRemoving(undefined)
       await vault.refresh()
+      if (next.connection_id && operation !== 'remove_connection') { setView('connected'); setSelectedServerId('vault_' + next.connection_id) }
     } catch (cause) { if (alive.current) { setError(errorText(cause)); await vault.refresh() } }
     finally { if (alive.current) setBusy(false) }
   }
@@ -72,12 +75,12 @@ export default function AccountMcpPanel() {
         {authUrl && <><a href={authUrl} target="_blank" rel="noopener noreferrer" className="inline-block underline">Continue sign-in</a><p className="text-xs text-muted-foreground">If no sign-in page opened, use this link. Return here after approving access; tools are checked automatically.</p></>}
         {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" disabled={busy} onClick={() => { const saved = vault.items.find(item => item.id === result.connection_id); if (saved) setTarget({ server: saved, appSetup: true }); else setError('Refresh connections, then use Edit connection to enter the OAuth app details.') }}>Enter app details</Button></div>}
       </div>}
-    <McpConnectionsPanel density="directory"
+    <McpConnectionsPanel density="directory" view={view} onViewChange={setView} selectedServerId={selectedServerId}
       description="Manage your saved MCP connections here. Choose what each Crew uses in that Crew’s settings."
       headerActions={vault.canConnect && <Button size="sm" onClick={() => { setError(''); setTarget({}) }} disabled={busy}><Plus className="h-4 w-4" />Add MCP server</Button>}
       servers={vault.servers.map(server => {
         const saved = vault.items.find(item => 'vault_' + item.id === server.id)!
-        return { ...server, source: 'Remote · ' + (server.source || 'Saved in Vault'),
+        return { ...server, source: 'Remote · ' + (catalog.some(app => app.name.toLowerCase() === saved.provider.toLowerCase() && !app.oauth) ? 'No sign-in required' : server.source === 'Personal account' ? 'Saved in your Vault' : server.source || 'Saved connection'),
           actions: saved.can_manage ? [
             { label: 'Test connection', disabled: busy, run: () => operate('sync', { connection_id: saved.id }) },
             ...(saved.status === 'authentication_required' ? [{ label: 'Sign in', disabled: busy, run: () => operate('sign_in', { connection_id: saved.id }) }] : []),
@@ -89,7 +92,7 @@ export default function AccountMcpPanel() {
         }
       })}
       catalog={catalog.map(app => ({ id: app.name, name: app.name, description: app.needs_admin_setup ? 'OAuth app setup required' : app.oauth ? 'Sign in with your account' : 'No sign-in required',
-        connect: vault.canConnect ? { label: busy && connecting === app.name ? 'Connecting…' : 'Connect', icon: busy && connecting === app.name ? <Loader2 className="animate-spin" /> : undefined, disabled: busy, run: () => operate('connect', { provider: app.name, label: app.name }) } : undefined,
+        connect: vault.canConnect ? { label: busy && connecting === app.name ? 'Connecting…' : !app.oauth && vault.items.some(item => item.can_manage && item.provider.toLowerCase() === app.name.toLowerCase()) ? 'View connection' : 'Connect', icon: busy && connecting === app.name ? <Loader2 className="animate-spin" /> : undefined, disabled: busy, run: () => { const saved = !app.oauth && vault.items.find(item => item.can_manage && item.provider.toLowerCase() === app.name.toLowerCase()); if (saved) { setView('connected'); setSelectedServerId('vault_' + saved.id); return }; return operate('connect', { provider: app.name, label: app.name }) } } : undefined,
       }))}
       loading={vault.loading} refresh={refresh}
       notices={[...vault.notices, ...(catalogError ? [{ message: catalogError, retry: refresh }] : []), ...(error && !target && !removing ? [{ message: error }] : [])]}
