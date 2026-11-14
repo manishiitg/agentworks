@@ -9,16 +9,21 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
 // Display-only, ephemeral control data on the existing authorized session
 // stream. Never a user message, a send/queue action or durable model history.
-func (api *StreamingAPI) withNextPrompt(ctx context.Context, session, provider, query string, attended bool) context.Context {
+func (api *StreamingAPI) withNextPrompt(ctx context.Context, session, provider, query string, attended bool, cost *costObserver) context.Context {
 	if provider != "claude-code" && provider != "codex-cli" {
 		log.Printf("[NEXT_PROMPT] session=%s provider=%s skipped reason=unsupported_program", session, provider)
 		return ctx
 	}
 	return llmtypes.WithNextPrompt(ctx, llmtypes.NextPromptScope{Owner: session, Provider: provider, TurnID: query, Eligible: attended, StillCurrent: func(turn string) bool { return api.nextPromptBoundary(session, turn) != "" }, Complete: func(result llmtypes.NextPromptResult) {
+		// The request already spent tokens even if new input hides its hint.
+		if u := result.Usage; u != nil {
+			cost.RecordNativeSample(nativeusage.Record{ID: u.ResponseID, NativeSessionID: result.NativeThread, TurnID: result.NativeTurn, OwnerType: "prediction", Model: u.Model, Input: u.Input, Output: u.Output, CacheRead: u.CachedInput, InputIncludesCache: true})
+		}
 		reason := result.Reason
 		text := strings.TrimSpace(result.Text)
 		boundary := ""
