@@ -50,6 +50,9 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 	} else if !item.Snapshot.Artifact {
 		return item, fmt.Errorf("declare this dashboard's tables, functions and assets in online.json before putting it online")
 	}
+	if len(item.Dependencies.Dataset.Tables) == 0 && (len(item.Dependencies.Dataset.Views) > 0 || len(item.Dependencies.Dataset.Triggers) > 0) {
+		return item, fmt.Errorf("declare the whole tables used by this item's views and triggers")
+	}
 	roots, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), source.Path)
 	if err != nil || !found || roots.ID != source.CrewID {
 		return item, fmt.Errorf("the source Crew storage is unavailable")
