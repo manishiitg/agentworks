@@ -141,7 +141,7 @@ func (p crewTeamScanPlan) mode() string {
 func crewTeamScanKey(b crewTeamLocal, share crewTeamFolder) string {
 	folders := append([]string(nil), share.Folders...)
 	mounts, _ := json.Marshal(b.Mounts)
-	return strings.Join([]string{b.Root, map[bool]string{true: "whole"}[share.Whole], strings.Join(folders, "\x00"),
+	return strings.Join([]string{b.Root, strings.Join(folders, "\x00"),
 		strings.Join(sortedOnPurpose(b.onPurpose()), "\x00"), strings.Join(b.StopSyncing, "\x00"), string(mounts)}, "\x01")
 }
 

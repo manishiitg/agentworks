@@ -12,8 +12,8 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 export type TeamSharedPath = { id: string; path: string; file?: boolean }
-export type TeamFolder = { id?: string; whole?: boolean; folders?: TeamSharedPath[]; paths?: TeamSharedPath[] }
-export type Team = { change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
+export type TeamFolder = { id?: string; folders?: TeamSharedPath[]; paths?: TeamSharedPath[] }
+export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
 export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[]; groups: { title: string; line: string; key?: boolean; names: string[] }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
@@ -94,7 +94,7 @@ export type TeamTabSync = { line: string; problem?: boolean; last?: string; prog
 export type TeamTabView = {
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
-  can_choose: boolean; can_add_folder: boolean; can_remove_folder: boolean
+  can_add_folder: boolean; can_remove_folder: boolean
   // The cards' Ask messages, written by the server and sent as given (crew_team_tab.go crewTeamAskPrompts).
   asks: Record<string, string>
   // The Crew has no Team yet and the viewer owns it: open the first-time wizard (crew_team_wizard.go).

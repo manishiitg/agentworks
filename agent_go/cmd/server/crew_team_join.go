@@ -29,7 +29,7 @@ var crewTeamJoining sync.Map
 func crewTeamJoinKey(connection, project string) string { return connection + "\x00" + project }
 
 // crewTeamDefaultJoinFolder is ~/AgentWorks/<Crew name>, with the name made safe for a folder: the shared files keep
-// the Crew's own layout inside it (team/…, or the Whole Crew).
+// the Crew's own layout inside it (team/…, code/…).
 func crewTeamDefaultJoinFolder(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -50,8 +50,8 @@ func crewTeamDefaultJoinFolder(name string) (string, error) {
 
 // crewTeamJoinFolderOK: an absolute folder outside the app's private state. It may hold the person's own files when
 // the Team shares named folders (owner, 10 Nov): only those folders, skills/ and the setup file sync, so each must be
-// absent or empty and everything else stays on this Mac, untouched and never uploaded. A Whole Crew Team, or one whose
-// shared folders are not known yet, needs a new or empty folder.
+// absent or empty and everything else stays on this Mac, untouched and never uploaded.
+// If the shared folders are not known yet, require a new or empty folder.
 func crewTeamJoinFolderOK(folder string, shared *crewTeamFolder) (string, error) {
 	if !filepath.IsAbs(folder) {
 		return "", fmt.Errorf("choose a folder on this Mac")
@@ -78,8 +78,8 @@ func crewTeamJoinFolderOK(folder string, shared *crewTeamFolder) (string, error)
 	if len(entries) == 0 {
 		return folder, nil
 	}
-	if shared == nil || shared.Whole || len(shared.Folders) == 0 {
-		return "", fmt.Errorf("this team shares its whole Crew, so choose an empty folder; your other files stay out of the team's folder")
+	if shared == nil || len(shared.Folders) == 0 {
+		return "", fmt.Errorf("the shared folders are not known yet; choose an empty folder so your other files stay untouched")
 	}
 	for _, rel := range append(slices.Clone(shared.Folders), "skills", crewTeamSetupFile) {
 		path := filepath.Join(folder, filepath.FromSlash(rel))

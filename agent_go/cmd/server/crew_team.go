@@ -51,14 +51,13 @@ type crewTeamInvite struct {
 	Folder crewTeamFolder `json:"folder"`
 }
 
-// crewTeamFolder is what the Team shares (owner, 5 Nov): one or more of the Crew's folders, or the Whole Crew. Files
+// crewTeamFolder is what the Team shares (owner, 5 Nov): one or more chosen folders inside the Crew. Files
 // sync relative to the Crew's own folder, so a teammate's copy has the same layout (team/…, code/…). ID names the
 // Team's file store. It stays the same when the choice changes (6 Nov: a new store for every added folder made every
 // copy upload all its files again, thousands of false clashes): only what holds() admits changes, so files still
 // shared stay in step and nothing is uploaded again.
 type crewTeamFolder struct {
 	ID      string               `json:"id"`
-	Whole   bool                 `json:"whole,omitempty"`
 	Folders []string             `json:"-"` // derived path list; the wire and saved record use identities
 	Paths   []crewTeamSharedPath `json:"-"`
 }
@@ -66,22 +65,21 @@ type crewTeamFolder struct {
 // crewTeamMaxFolders keeps the folder list a choice people can read.
 const crewTeamMaxFolders = 20
 
-func (f crewTeamFolder) shared() bool { return f.Whole || len(f.Folders) > 0 }
+func (f crewTeamFolder) shared() bool { return len(f.Folders) > 0 }
 
-// holds: the path (relative to the Crew) is inside what the Team shares. Whole Crew leaves out each person's own
-// memory as well as everything crewTeamAllowed always keeps private.
+// Personal memory and the private per-member working copies never enter a Team share.
+func crewTeamPrivatePath(rel string) bool {
+	return rel == "MEMORY.md" || rel == "memory" || strings.HasPrefix(rel, "memory/") ||
+		rel == crewroot.TeamCopiesFolder || strings.HasPrefix(rel, crewroot.TeamCopiesFolder+"/")
+}
+
+// holds admits only a selected folder or the deliberately shared Crew setup.
 func (f crewTeamFolder) holds(rel string) bool {
-	if rel == "MEMORY.md" || rel == "memory" || strings.HasPrefix(rel, "memory/") {
-		return false // personal in every sharing choice, even a selected folder
-	}
-	if rel == crewroot.TeamCopiesFolder || strings.HasPrefix(rel, crewroot.TeamCopiesFolder+"/") {
-		return false // each member's own copy (crew_team_member_copy.go), never shared, Whole Crew included
+	if crewTeamPrivatePath(rel) {
+		return false
 	}
 	if crewTeamSetupPath(rel) {
 		return f.shared() // the Crew's setup is always part of what a Team shares (crew_team_setup.go)
-	}
-	if f.Whole {
-		return true
 	}
 	for _, folder := range f.Folders {
 		if rel == folder || strings.HasPrefix(rel, folder+"/") {
@@ -93,14 +91,11 @@ func (f crewTeamFolder) holds(rel string) bool {
 
 // walks: a capture descends into this folder (relative to the Crew): it is shared or leads to a shared folder.
 func (f crewTeamFolder) walks(rel string) bool {
-	return f.holds(rel) || !f.Whole && slices.ContainsFunc(f.Folders, func(folder string) bool { return strings.HasPrefix(folder, rel+"/") })
+	return f.holds(rel) || slices.ContainsFunc(f.Folders, func(folder string) bool { return strings.HasPrefix(folder, rel+"/") })
 }
 
-// display is how people read the choice: "Whole Crew" or "team/, code/express/".
+// display names the selected folders, for example "team/, code/express/".
 func (f crewTeamFolder) display() string {
-	if f.Whole {
-		return "Whole Crew"
-	}
 	names := make([]string, 0, len(f.Folders))
 	for _, folder := range f.Folders {
 		names = append(names, folder+"/")
@@ -109,7 +104,7 @@ func (f crewTeamFolder) display() string {
 }
 
 func (f crewTeamFolder) same(g crewTeamFolder) bool {
-	return f.Whole == g.Whole && slices.Equal(f.Folders, g.Folders)
+	return slices.Equal(f.Folders, g.Folders)
 }
 
 // cleanCrewTeamFolders checks a folder choice and keeps it short: sorted, no repeats, no folder inside another. A
@@ -122,7 +117,7 @@ func cleanCrewTeamFolders(in, previous []string) ([]string, error) {
 	out := []string{}
 	for _, folder := range in {
 		folder = strings.Trim(strings.TrimSpace(folder), "/")
-		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || !(crewTeamFolder{Whole: true}).holds(folder+"/file.txt") {
+		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || crewTeamPrivatePath(folder+"/file.txt") {
 			if folder == "" {
 				return nil, fmt.Errorf("Choose a folder inside this Crew to share.")
 			}
@@ -162,12 +157,12 @@ type crewTeam struct {
 	Agents map[string]crewTeamRegisteredAgent `json:"agents,omitempty"`
 	People []crewTeamPerson                   `json:"people"`
 	Folder crewTeamFolder                     `json:"folder"`
-	// LastFolders are the folders shared before the Whole Crew, for going back to Folders (owner only).
-	LastFolders  []string `json:"last_folders,omitempty"`
-	Revision     uint64   `json:"revision"`
-	OwnerName    string   `json:"owner_name,omitempty"`
-	CanManage    bool     `json:"can_manage"`
-	FolderAccess bool     `json:"folder_access"`
+	// FolderNote is a server/migration-authored setup note, never accepted from a settings caller.
+	FolderNote   string `json:"folder_note,omitempty"`
+	Revision     uint64 `json:"revision"`
+	OwnerName    string `json:"owner_name,omitempty"`
+	CanManage    bool   `json:"can_manage"`
+	FolderAccess bool   `json:"folder_access"`
 	// Lent is what the owner lends the Team's agents in this Crew (names only, from the server, never saved).
 	Lent *crewTeamLent `json:"lent,omitempty"`
 	// Where the caller's own agents in this Crew work, for a member: "mac" or "web" (crew_team_where.go; never saved).
@@ -319,9 +314,7 @@ func crewTeamOwnerOnlyChange(previous, input crewTeam, user string) string {
 	switch {
 	case input.On != previous.On:
 		return fmt.Sprintf("Only %s can turn the Team on or off.", owner)
-	case input.Folder.Whole != previous.Folder.Whole:
-		return fmt.Sprintf("Only %s can switch between Folders and the Whole Crew.", owner)
-	case !input.Folder.Whole && slices.ContainsFunc(previous.Folder.Folders, func(f string) bool { return !slices.Contains(input.Folder.Folders, f) }):
+	case slices.ContainsFunc(previous.Folder.Folders, func(f string) bool { return !slices.Contains(input.Folder.Folders, f) }):
 		return fmt.Sprintf("Only %s can stop sharing a folder.", owner)
 	}
 	return ""
@@ -383,9 +376,6 @@ func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 	// Team-only members can discover shared agents but do not learn folder contents.
 	if !t.FolderAccess && !t.CanManage {
 		t.Folder = crewTeamFolder{}
-	}
-	if !t.CanManage {
-		t.LastFolders = nil
 	}
 	return t
 }
@@ -560,30 +550,18 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
 		return
 	}
-	if input.Folder.Whole {
-		input.Folder.Folders = nil
-	} else if folders, e := cleanCrewTeamFolders(input.Folder.Folders, previous.Folder.Folders); e != nil {
+	if folders, e := cleanCrewTeamFolders(input.Folder.Folders, previous.Folder.Folders); e != nil {
 		externalError(w, 400, "invalid_folder", e.Error())
 		return
 	} else {
 		input.Folder.Folders = folders
 	}
-	// The Crew's main owner alone turns the Team on or off, switches Folders / Whole Crew and stops sharing a folder
+	// The Crew's main owner alone turns the Team on or off and stops sharing a folder
 	// (owner, 5 Nov). Members add people and folders. Every caller (website, Mac app, chat,
 	// MCP) saves here, so this is the one check.
 	if refusal := crewTeamOwnerOnlyChange(previous, input, claims.UserID); refusal != "" {
 		externalError(w, 403, "team_owner_only", refusal)
 		return
-	}
-	// Whole Crew is refused only when the Crew is over the Team's limits now (owner, 6 Nov), with one plain line.
-	if input.Folder.Whole && !previous.Folder.Whole {
-		if count, bytes, measured := crewTeamWholeSize(r.Context(), owner, project); measured {
-			if line := crewTeamTooBigLine("This Crew", count, bytes); line != "" {
-				log.Printf("[CREW_TEAM] project=%s actor=%s event=whole_refused files=%d bytes=%d", project, logUsernameForUserID(claims.UserID), count, bytes)
-				externalError(w, 400, "crew_too_big", line)
-				return
-			}
-		}
 	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
@@ -609,20 +587,9 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	if input.On && !previous.On && !input.Folder.shared() {
 		input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
 	}
-	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
-	input.LastFolders = previous.LastFolders
-	if len(previous.Folder.Folders) > 0 {
-		input.LastFolders = previous.Folder.Folders
-	}
-	if previous.Folder.Whole && !input.Folder.Whole && len(input.Folder.Folders) == 0 {
-		input.Folder.Folders = input.LastFolders
-		if len(input.Folder.Folders) == 0 {
-			input.Folder.Folders = []string{crewTeamDefaultFolder}
-		}
-	}
 	// Folders always shares at least one (owner, 6 Nov): stopping the last one is refused for every caller.
 	if previous.Folder.shared() && !input.Folder.shared() {
-		externalError(w, 400, "last_folder", "The Team shares at least one folder. Share another folder first, or switch to Whole Crew.")
+		externalError(w, 400, "last_folder", "The Team shares at least one folder. Share another folder first.")
 		return
 	}
 	// The same store for a changed choice (crewTeamFolder): copies keep what is still shared, nothing goes up again.
@@ -632,8 +599,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	folderChanged := !previous.Folder.same(input.Folder)
+	input.FolderNote = previous.FolderNote
 	if folderChanged {
-		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d store=%s", project, logUsernameForUserID(claims.UserID), input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
+		input.FolderNote = ""
+	}
+	if folderChanged {
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder folders=%d store=%s", project, logUsernameForUserID(claims.UserID), len(input.Folder.Folders), input.Folder.ID)
 	}
 	if input.Folder.shared() && input.Folder.ID == "" {
 		input.Folder.ID = uuid.NewString()
@@ -995,28 +966,14 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, id); ok {
 			input.Name = firstNonEmptyTrimmed(manifest.Title, manifest.Label)
 		}
-		// Each chosen folder is an existing ordinary folder in this Crew; Whole Crew is the Crew's folder itself.
+		// Each chosen folder is an ordinary folder inside this Crew, never its root.
 		for _, rel := range input.Folder.Folders {
 			if folder, err := crewTeamFolderPath(roots.Files, rel); err != nil || folder == roots.Files {
 				externalError(w, 400, "invalid_folder", "Choose existing folders inside this Crew.")
 				return
 			}
 		}
-		if input.Folder.Whole {
-			files, bytes := crewTeamShareSize(roots.Files, input.Folder)
-			log.Printf("[CREW_TEAM] local project=%s event=folder whole=true files=%d bytes=%d", roots.ID, files, bytes)
-		} else if len(input.Folder.Folders) == 0 {
-			// Back to Folders with none chosen before: the server picks team/, so it exists here (as Team on makes it).
-			var current crewTeam
-			if crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID), nil, &current) == nil && current.Folder.Whole && len(current.LastFolders) == 0 {
-				if dir := filepath.Join(roots.Files, crewTeamDefaultFolder); !fileExists(dir) {
-					if err := os.MkdirAll(dir, 0o755); err != nil {
-						externalError(w, 409, "invalid_folder", "The team folder could not be made on this Mac.")
-						return
-					}
-				}
-			}
-		}
+
 	}
 	var out crewTeam
 	if e = crewTeamRemoteJSON(r.Context(), claims.UserID, c, r.Method, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID), input, &out); e != nil {

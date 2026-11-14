@@ -61,7 +61,6 @@ type crewWizardChoice struct {
 		UserID string `json:"user_id"`
 		Level  string `json:"level"`
 	} `json:"people"`
-	Whole           bool     `json:"whole"`
 	Folder          string   `json:"folder"`
 	Agents          []string `json:"agents"` // keys of the agents the Team may ask (Main is always on)
 	CreateDashboard bool     `json:"create_dashboard"`
@@ -170,11 +169,7 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	if in.Whole {
-		team.Folder = crewTeamFolder{Whole: true}
-	} else {
-		team.Folder = crewTeamFolder{Folders: []string{firstNonEmptyTrimmed(in.Folder, crewTeamDefaultFolder)}}
-	}
+	team.Folder = crewTeamFolder{Folders: []string{firstNonEmptyTrimmed(in.Folder, crewTeamDefaultFolder)}}
 	// PLAT-746: ask for a dashboard before saving the Team, so the wizard and its choices stay available.
 	// This is the same explicit creation choice as People; checking Dashboards only is not creation consent.
 	if len(dashboards) > 0 {
@@ -233,7 +228,7 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=wizard_finished works=%d dashboards=%d whole=%t left=%d", project, logUsernameForUserID(claims.UserID), len(team.People), len(dashboards), in.Whole, len(left))
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=wizard_finished works=%d dashboards=%d folders=%d left=%d", project, logUsernameForUserID(claims.UserID), len(team.People), len(dashboards), len(team.Folder.Folders), len(left))
 	if len(left) > 0 {
 		externalError(w, 409, "setup_partial", "The Team is on, but some choices were not saved. "+strings.Join(left, " · "))
 		return

@@ -127,7 +127,7 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 			return "", nil
 		}
 		// The copy itself is in the Crew's folder, team-copies/<member>/ (crew_team_member_copy.go). A copy made after
-		// the Team's shared folder changed (Folders <-> Whole Crew) keeps what is already there, unsent edits
+		// the Team's shared folder changed (chosen folders) keeps what is already there, unsent edits
 		// included: its first download adopts what matches the team and what differs goes up as the member's edit,
 		// as a Mac copy does (previousCrewTeamMemberRoot).
 		root, err := crewTeamMemberCopyRoot(project, member)
@@ -308,7 +308,7 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 				continue
 			}
 		}
-		// Only the shared folder changed (Folders <-> Whole Crew): the member still works here. The old record cannot
+		// Only the shared folder changed (chosen folders): the member still works here. The old record cannot
 		// send anything any more (the server refuses a previous folder's copy), so its folder is kept, unsent edits
 		// included, and the new record adopts it right away (syncCrewTeamServerCopy).
 		folderChanged := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID != "" && t.Folder.ID != b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project) && !onMac

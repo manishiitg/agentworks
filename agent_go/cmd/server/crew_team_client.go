@@ -153,7 +153,7 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 			if err != nil {
 				return dir, b, err
 			}
-			// The Team syncs relative to the Crew's own folder (Whole Crew or chosen folders inside it).
+			// The Team syncs relative to the Crew's own folder (chosen folders inside it).
 			b.Root = roots.Files
 			b.setSkillRoot(filepath.Join(roots.Resources, "skills"))
 			b.LocalProject = rec.ProjectID
@@ -544,7 +544,7 @@ type crewTeamScanResult struct {
 
 // crewTeamScan finds what changed in this copy since it was last in step: a file with a trusted unchanged stamp
 // is not read; any other is chunked. Only what the share holds is looked at (crewTeamAllowed, Sync it
-// anyway, Whole Crew or the chosen folders, .gitignore), as the old capture did.
+// anyway, the chosen folders, .gitignore), as the old capture did.
 func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (crewTeamScanResult, error) {
 	return crewTeamScanChanged(ctx, b, share, nil, false)
 }

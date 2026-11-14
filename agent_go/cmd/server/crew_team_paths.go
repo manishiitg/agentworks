@@ -19,13 +19,12 @@ type crewTeamSharedPath struct {
 type crewTeamFolderWire struct {
 	PathIDsVersion int                  `json:"path_ids_version"`
 	ID             string               `json:"id"`
-	Whole          bool                 `json:"whole,omitempty"`
 	Folders        []crewTeamSharedPath `json:"folders,omitempty"`
 	Paths          []crewTeamSharedPath `json:"paths,omitempty"`
 }
 
 func (f crewTeamFolder) MarshalJSON() ([]byte, error) {
-	w := crewTeamFolderWire{PathIDsVersion: 1, ID: f.ID, Whole: f.Whole, Paths: f.Paths}
+	w := crewTeamFolderWire{PathIDsVersion: 1, ID: f.ID, Paths: f.Paths}
 	for _, name := range f.Folders {
 		entry := crewTeamSharedPath{Path: name}
 		for _, p := range f.Paths {
@@ -43,10 +42,12 @@ func (f crewTeamFolder) MarshalJSON() ([]byte, error) {
 // once, with a backup, before running this schema.
 func (f *crewTeamFolder) UnmarshalJSON(raw []byte) error {
 	var w crewTeamFolderWire
-	if err := json.Unmarshal(raw, &w); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&w); err != nil {
 		return err
 	}
-	*f = crewTeamFolder{ID: w.ID, Whole: w.Whole, Paths: w.Paths}
+	*f = crewTeamFolder{ID: w.ID, Paths: w.Paths}
 	for _, p := range w.Folders {
 		f.Folders = append(f.Folders, p.Path)
 		if at := slices.IndexFunc(f.Paths, func(q crewTeamSharedPath) bool { return p.ID != "" && q.ID == p.ID }); at >= 0 {
@@ -82,7 +83,7 @@ func (f *crewTeamFolder) assignPaths(previous crewTeamFolder, owner bool) error 
 		if !owner {
 			return fmt.Errorf("Only the Team owner renames shared folders and skills.")
 		}
-		if !crewTeamAllowed(p.Path+"/file.txt") || !(crewTeamFolder{Whole: true}).holds(p.Path+"/file.txt") || crewTeamUnder(p.Path, old.Path) || crewTeamUnder(old.Path, p.Path) {
+		if !crewTeamAllowed(p.Path+"/file.txt") || crewTeamPrivatePath(p.Path+"/file.txt") || crewTeamUnder(p.Path, old.Path) || crewTeamUnder(old.Path, p.Path) {
 			return fmt.Errorf("Choose a separate ordinary folder name.")
 		}
 		if strings.HasPrefix(old.Path, "skills/") != strings.HasPrefix(p.Path, "skills/") {
@@ -131,8 +132,7 @@ func (f *crewTeamFolder) addFilePaths(paths []string) bool {
 			rest := strings.TrimPrefix(rel, "skills/")
 			skill, _, _ := strings.Cut(rest, "/")
 			name = "skills/" + skill
-		} else if f.Whole {
-			name, _, _ = strings.Cut(rel, "/")
+
 		} else {
 			for _, folder := range f.Folders {
 				if crewTeamUnder(rel, folder) {
@@ -160,10 +160,10 @@ func (f *crewTeamFolder) addFilePaths(paths []string) bool {
 func (f crewTeamFolder) mounts() []crewTeamSharedPath {
 	out := []crewTeamSharedPath{}
 	for _, p := range f.Paths {
-		if p.Path == "skills" || f.Whole && strings.Contains(p.Path, "/") && !strings.HasPrefix(p.Path, "skills/") {
+		if p.Path == "skills" {
 			continue
 		}
-		if p.ID != "" && (f.Whole || slices.Contains(f.Folders, p.Path) || strings.HasPrefix(p.Path, "skills/")) {
+		if p.ID != "" && (slices.Contains(f.Folders, p.Path) || strings.HasPrefix(p.Path, "skills/")) {
 			out = append(out, p)
 		}
 	}
