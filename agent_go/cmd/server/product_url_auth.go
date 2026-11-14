@@ -34,7 +34,7 @@ func safeProductAuthReturn(value string) string {
 			}
 			root := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")[0]
 			switch root {
-			case "", "new", "message", "goals", "agentworks", "workflows", "relays", "crew", "work", "brain", "knowledgebase", "vault", "mcp-gateway", "llm-gateway", "bullpen", "agentbridge":
+			case "", "message", "goals", "agentworks", "workflows", "relays", "crew", "work", "brain", "knowledgebase", "vault", "mcp-gateway", "llm-gateway", "bullpen", "agentbridge":
 				u.Fragment = ""
 				return u.String()
 			}
