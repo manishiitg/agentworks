@@ -52,6 +52,7 @@ func (w *compactionMailWriter) Write(raw []byte) (int, error) {
 		// A late duplicate maintenance completion must not settle either message.
 		w.notify("turn/completed", `{"threadId":"123e4567-e89b-12d3-a456-426614174000","turn":{"id":"compact","status":"completed"}}`)
 		w.notify("item/agentMessage/delta", fmt.Sprintf(`{"threadId":"123e4567-e89b-12d3-a456-426614174000","turnId":%q,"itemId":"answer","delta":"reply"}`, id))
+		w.notify("item/completed", fmt.Sprintf(`{"threadId":"123e4567-e89b-12d3-a456-426614174000","turnId":%q,"item":{"id":"answer","type":"agentMessage","phase":"final_answer","text":"reply"}}`, id))
 		w.notify("turn/completed", fmt.Sprintf(`{"threadId":"123e4567-e89b-12d3-a456-426614174000","turn":{"id":%q,"status":"completed"}}`, id))
 	case "turn/steer":
 		w.t.Fatal("input was sent into compaction")
