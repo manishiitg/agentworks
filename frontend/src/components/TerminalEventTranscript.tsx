@@ -1,3 +1,4 @@
+import { thinkingSummary } from '../utils/thinkingSummary'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { ReplyFileChanges } from './chat/ReplyFileChanges'
 import { replyFileChangesByMessage, replyPullRequestsByMessage } from '../utils/replyFileChanges'
@@ -437,7 +438,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
             {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <span>{metadata.source === 'agent_message' ? `From ${metadata.sender_label}` : metadata.sender_label}</span>}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
-            <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
+            <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
             <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
           </div>
         )}
@@ -463,7 +464,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
           {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <span>{metadata.source === 'agent_message' ? `From ${metadata.sender_label}` : metadata.sender_label}</span>}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
-          <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
+          <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
             <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
         </div>
       </div>
@@ -899,11 +900,13 @@ const ToolCallField: React.FC<{ label: string; value: string }> = ({ label, valu
   )
 }
 
-// Show thinking reveals the supplied text directly in chat, for every provider.
+// Bold-headed provider summaries use the existing thinking disclosure. Other
+// supplied thinking keeps its current Show thinking presentation.
 // Execution inspectors retain their recorded-event disclosure.
 const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking' }>; live: boolean; showText?: boolean }> = ({ item, live, showText = false }) => {
   const [expanded, toggle] = useDisclosure(`thinking:${item.key}`, false)
-  const hasText = Boolean(item.text.trim())
+  const summary = item.assistantUpdate ? null : thinkingSummary(item.text)
+  const hasText = Boolean((summary ? summary.body : item.text).trim())
   const [dots, setDots] = React.useState(1)
   React.useEffect(() => {
     if (!live || showText) return
@@ -919,7 +922,7 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
     )
   }
 
-  if (showText) {
+  if (showText && !summary) {
     return hasText ? (
       <p
         data-testid="terminal-clear-thinking-batch-content"
@@ -940,17 +943,18 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <span>Thinking{live ? <span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span> : null}</span>
+        {summary && <span className="min-w-0 truncate">· {summary.title}</span>}
         {hasText && (expanded
           ? <ChevronDown className="h-3 w-3 shrink-0" />
           : <ChevronRight className="h-3 w-3 shrink-0" />)}
       </button>
       {hasText && expanded && (
-        <p
+        <div
           data-testid="terminal-clear-thinking-batch-content"
           className="mt-1 whitespace-pre-wrap break-words border-l border-border pl-3 text-xs leading-5 text-muted-foreground"
         >
-          {item.text}
-        </p>
+          {summary ? <ConversationMarkdownRenderer content={summary.body} framed={false} maxHeight="none" /> : item.text}
+        </div>
       )}
     </div>
   )
