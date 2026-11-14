@@ -601,7 +601,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		m.Text = m.File.message(message)
 	}
-	if dest.External || c.Endpoints[side].PublishedAgent != "" {
+	if dest.External {
 		m.Delivery = "stored"
 	}
 	if dest.NamedAgentID != "" {
@@ -922,7 +922,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			lane := laneValue.(*sync.Mutex)
 			lane.Lock()
 			steer := false
-			if !publishedConversation(conv) && dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
+			if dest.Session != "" && !api.agentMessageSessionClosed(dest.Session) && api.conversationTurnOccupied(dest.Session) {
 				// Same-person agent communications enter the running owner turn;
 				// restricted or other-person communications wait for their own turn.
 				current := conv
@@ -1153,11 +1153,17 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	if publishedConversation(c) {
 		return api.deliverPublishedAgentMessage(ctx, c, m)
 	}
+	return api.deliverNativeAgentMessage(ctx, c, m, false)
+}
+
+// replyInbox is set only after generic published-inbox admission. It permits
+// delivery to that original asker's endpoint, never a new contact or tool grant.
+func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentConversation, m agentMessage, replyInbox bool) (string, error) {
 	dest := c.Endpoints[1-m.From]
 	source := c.Endpoints[m.From]
 	// Old native-chat addresses must not bypass the Team's registry route
 	// and start the maker's chat. Askers refresh the one current directory ID.
-	if !IsLocalMode() && dest.Kind == triggerCallerCrew && dest.TeamAgentID == "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+	if !replyInbox && !IsLocalMode() && dest.Kind == triggerCallerCrew && dest.TeamAgentID == "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
 		if team, e := readCrewTeam(dest.ID); e == nil && crewTeamAgentsVisible(team, source.UserID) {
 			if _, registered := team.registeredAgent(dest.UserID, dest.ChatKey); registered {
 				return "", fmt.Errorf("this Team address is out of date; run messages action=list_agents and use the current agent id")
@@ -1167,13 +1173,17 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	var teamRoute string
 	if dest.TeamAgentID != "" {
 		var err error
-		dest, teamRoute, err = resolveTeamMessageEndpoint(ctx, dest, source.UserID)
+		viewer := source.UserID
+		if replyInbox {
+			viewer = dest.UserID
+		}
+		dest, teamRoute, err = resolveTeamMessageEndpoint(ctx, dest, viewer)
 		if err != nil {
 			return dest.Session, err
 		}
 		c.Endpoints[1-m.From] = dest
 	}
-	if source.TeamAgentID != "" {
+	if source.TeamAgentID != "" && !replyInbox {
 		var err error
 		source, _, err = resolveTeamMessageEndpoint(ctx, source, dest.UserID)
 		if err != nil {
@@ -1184,7 +1194,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
 	}
-	if !IsLocalMode() && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+	if !replyInbox && !IsLocalMode() && publishedAsker(source) != dest.UserID && m.Kind != "shared_answer" {
 		routed, changed, err := api.routePublishedAgentMessage(ctx, c, m, source, dest, teamRoute)
 		if err != nil {
 			return "", err
@@ -1195,7 +1205,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	// A teammate asks from shared context, never by starting/forking the
 	// maker's CLI. Own-agent messages keep the normal real-turn path.
-	if !IsLocalMode() && dest.TeamAgentID != "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+	if !replyInbox && !IsLocalMode() && dest.TeamAgentID != "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
 		return "", api.answerCrewSharedMessage(ctx, c, m, source, dest)
 	}
 	// The admission just verified this stored sender. Preserve its person
@@ -1248,6 +1258,11 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	{
 		if api.agentProfiles == nil {
 			return session, fmt.Errorf("Crew runtime unavailable")
+		}
+		if replyInbox {
+			if paired, err := api.deliverPublishedReplyToMac(ctx, c, m, dest); paired {
+				return session, err
+			}
 		}
 		// An agent shared from a Crew on its owner's Mac runs there; its answer comes back to this inbox (PLAT-856-509).
 		// A Team member's own server agent in a Mac Crew runs here like any server chat (review 5 Nov: it was sent to

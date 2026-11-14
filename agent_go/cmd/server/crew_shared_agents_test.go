@@ -355,16 +355,19 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Reply to the private caller", inbox, "team-reply"); err != nil {
 		t.Fatal(err)
 	}
-	// The reply belongs to the admitted inbox, not a turn or read grant in
-	// the asker's private Crew. Its agent reads the same normal reply address.
+	// The reply stays in the admitted inbox and arrives as a new message in
+	// the asker's own original chat, without granting the publisher Crew access.
 	got, err := f.api.readAgentMessages(otherCtx, "other", caller, inbox, 0, 30, 0)
 	if err != nil || !strings.Contains(fmt.Sprint(got), "Reply to the private caller") {
 		t.Fatalf("published reply missing from admitted inbox: %v %v", got, err)
 	}
 	select {
 	case session := <-turns:
-		t.Fatalf("published reply started a private caller turn: %s", session)
-	default:
+		if session != callerTab.SessionID {
+			t.Fatalf("reply did not reach original asker chat: %s", session)
+		}
+	case <-time.After(deliveryTimeout):
+		t.Fatal("reply did not arrive in the asker's original chat")
 	}
 	contact, _, found, err := callerAgentMailboxConversation(otherCtx, inbox, "other", caller)
 	if err != nil || !found {
@@ -385,6 +388,11 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	forged.Endpoints[1].PublishedAsker = "another-person"
 	if recheckAgentConversationContact(ctx, forged) == nil {
 		t.Fatal("published reply changed its asker")
+	}
+	forged = contact
+	forged.Endpoints[0].Guest = "another-person"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("a runtime owner substituted for the admitted human asker")
 	}
 	wrong := caller
 	wrong.Chat = &codeChat{Key: "calling:chat:someone-else", SessionID: "another-session"}
@@ -443,6 +451,17 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-source-pair", PeerProjectID: "source-mac"}); err != nil {
 		t.Fatal(err)
 	}
+	probe := agentConversation{ID: "no-home-probe", Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("other", caller), targetMessageEndpoint("other", target)}}
+	if _, changed, err := f.api.routePublishedAgentMessage(otherCtx, probe, agentMessage{From: 0}, probe.Endpoints[0], probe.Endpoints[1], "owner_mac"); err != nil || changed || directoryUserFor("team-team", "", "") != nil {
+		t.Fatalf("an offline ask created a home before any hand-off: changed=%t err=%v", changed, err)
+	}
+	// The explicit hand-off provisions the home; later offline asks only use it.
+	if _, err := f.api.ensureCrewTeamOnlineHome(otherCtx, "team"); err != nil {
+		t.Fatal(err)
+	}
+	offlineTab := create("other", "calling:chat:offline-asker", "Offline asker", "")
+	offlineCaller := caller
+	offlineCaller.Chat = &codeChat{OwnerID: "other", Key: offlineTab.ConversationKey, SessionID: offlineTab.SessionID}
 	homeTurn := make(chan string, 1)
 	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
 		claims := GetUserFromContext(turnCtx)
@@ -457,7 +476,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		homeTurn <- session
 		return internalSessionTurnResult{}, nil
 	}
-	offline, err := f.api.sendAgentMessage(otherCtx, "other", caller, target, "Ask while source is offline", "", "offline-home-ask")
+	offline, err := f.api.sendAgentMessage(otherCtx, "other", offlineCaller, target, "Ask while source is offline", "", "offline-home-ask")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +485,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	case <-time.After(deliveryTimeout):
 		t.Fatal("offline ask did not reach its home agent")
 	}
-	homeContact, _, found, err := callerAgentMailboxConversation(otherCtx, offline["inbox_id"].(string), "other", caller)
+	homeContact, _, found, err := callerAgentMailboxConversation(otherCtx, offline["inbox_id"].(string), "other", offlineCaller)
 	if err != nil || !found || homeContact.Endpoints[1].UserID != "team-team" || homeContact.Endpoints[1].TeamAgentID == "" {
 		t.Fatalf("offline ask did not bind the normal home audience: %+v %v", homeContact, err)
 	}

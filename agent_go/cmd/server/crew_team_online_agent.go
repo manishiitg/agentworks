@@ -29,5 +29,7 @@ func (api *StreamingAPI) createCrewTeamHomeMain(ctx context.Context, owner, proj
 	if err := store.writeMainChatPointer(ctx, path.Join(binding.WorkspacePath, "product.json"), record.ConversationKey, record.SessionID); err != nil {
 		return err
 	}
+	// private=true with no RunPeople is not Everyone. Joined members receive
+	// access through the normal derived Team roster (crewSharedWith/co-owners).
 	return defaultProjectOwners().SetAudience(crewProfileID, path.Base(binding.WorkspacePath), true, nil, []string{record.ConversationKey})
 }
