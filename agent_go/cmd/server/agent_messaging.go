@@ -630,7 +630,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	return out, nil
 }
 func agentMessageReceipt(id string, m agentMessage) map[string]interface{} {
-	return map[string]interface{}{"accepted": true, "status": "accepted", "delivery": m.Delivery, "message_id": m.ID, "inbox_id": id, "conversation_id": id, "sequence": m.Sequence, "next": "Replies are optional. Read explicitly sent messages with read_agent_messages or messages action=read using inbox_id."}
+	return map[string]interface{}{"accepted": true, "status": "accepted", "delivery": m.Delivery, "message_id": m.ID, "inbox_id": id, "conversation_id": id, "sequence": m.Sequence, "next": "Message sent. Continue with your own task unless it is finished. Replies are optional; final chat text is not forwarded. Read explicitly sent messages with read_agent_messages or messages action=read using inbox_id."}
 }
 
 func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, caller triggerLinkCaller, inboxID string, after, limit int, wait time.Duration) (map[string]interface{}, error) {
@@ -1359,7 +1359,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. Replies are optional; final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. Replies are optional; final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx)
 			if err != nil {
