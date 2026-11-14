@@ -174,7 +174,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'dashboards' || saved === 'slack') return saved } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'online-agents' || saved === 'publish' || saved === 'dashboards' || saved === 'slack') return saved } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { setSectionState(next); if (next !== 'team') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
@@ -324,12 +324,15 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
           </div>
           {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this Crew in a browser or on your phone.</p>}
         </section>
-        {binding && <OnlineAgentsCard key={`${projectId}:${binding.connection_id || ''}:${binding.peer_project_id}`} projectId={projectId}
-          placements={status.placements} connection={here ? binding.connection_id : undefined}
-          serverProject={binding.peer_project_id} network={pairedName || network} website={reachLink} />}
+
         {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
         <MacAgentBridge projectId={projectId} />
       </>}
+    </section>}
+    {shown === 'online-agents' && <section role="tabpanel" id={`crew-access-panel-${projectId}-online-agents`} aria-labelledby={`crew-access-${projectId}-online-agents`} className="space-y-3">
+      {binding ? <OnlineAgentsCard key={`${projectId}:${binding.connection_id || ''}:${binding.peer_project_id}`} projectId={projectId}
+          placements={status.placements} connection={here ? binding.connection_id : undefined}
+          serverProject={binding.peer_project_id} network={pairedName || network} website={reachLink} /> : <div className="space-y-2 rounded-xl border border-border p-3"><h3 className="font-semibold">Online agents</h3><p className="text-[12.5px] text-muted-foreground">Connect this Crew to a server from Mac online to see its online agents.</p><Button size="sm" variant="outline" onClick={() => setSection('mac')}>Open Mac online</Button></div>}
     </section>}
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       <div className="flex justify-end"><AskButton projectId={projectId} card="publish" /></div>
