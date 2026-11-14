@@ -856,6 +856,7 @@ func (api *StreamingAPI) settleStoredTurnForOwner(r *http.Request, sessionID str
 	if err != nil || strings.TrimSpace(owner) == "" || caller == "" || owner != caller {
 		return false
 	}
+	api.pauseNativeGoalForStop(sessionID)
 	api.cancelUsageLimitRecovery(sessionID, "stopped_after_restart")
 	if !api.eventStore.PersistedTurnOpen(sessionID) {
 		log.Printf("[SESSION STOP] cancel-turn session=%s: no live session and the stored events show no open turn", sessionID)
