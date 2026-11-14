@@ -76,6 +76,10 @@ func (api *StreamingAPI) nativeBackgroundFacts(session string, r llmtypes.Native
 	}
 	sameRun := previous.WorkID != "" && (r.TaskRunID == "" || previous.TaskRunID == "" || r.TaskRunID == previous.TaskRunID)
 	if sameRun {
+		// A helper stays with its launching turn even when a completion arrives during a later parent turn.
+		if previous.TurnID != "" {
+			r.TurnID = previous.TurnID
+		}
 		if r.HelperType == "" {
 			r.HelperType = previous.HelperType
 		}
