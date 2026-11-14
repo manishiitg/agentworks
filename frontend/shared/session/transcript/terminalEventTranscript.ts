@@ -1,3 +1,4 @@
+import { collapseNativeGoals } from './nativeGoal'
 import { collapseCodingAgentPlans } from './codingAgentPlan'
 import { collapseContextCompactions } from './contextCompaction'
 import { normalizeTranscriptChunkEvents } from '../transcriptChunkUpdates'
@@ -1178,7 +1179,7 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
   // Filter wrapper noise before lifecycle deduplication. Otherwise a generic
   // completion can supersede the richer delegated completion and then be
   // removed itself, accidentally hiding both records.
-  const transcriptEvents = collapseContextCompactions(withRunLaunchResults(normalizeTranscriptChunkEvents(collapseCodingAgentPlans(events)))).filter(isTranscriptEvent)
+  const transcriptEvents = collapseContextCompactions(withRunLaunchResults(normalizeTranscriptChunkEvents(collapseCodingAgentPlans(collapseNativeGoals(events))))).filter(isTranscriptEvent)
   const visibleEvents = dropRepeatedAssistantResponses(dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
     dropDuplicateExecutionPromptMessages(collapseCompletedLifecycleStarts(transcriptEvents)),
   ))))

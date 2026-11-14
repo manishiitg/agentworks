@@ -1,3 +1,4 @@
+import { NativeGoalRow } from './NativeGoal'
 import { CodingAgentPlan } from './CodingAgentPlan'
 import { NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
 import React from 'react'
@@ -316,6 +317,8 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </div>
     )
   }
+
+  if (event.type === 'native_goal_updated') return <NativeGoalRow event={event} onSendMessage={onSendMessage} />
 
   if (event.type === 'coding_agent_plan') return <CodingAgentPlan event={event} />
 
