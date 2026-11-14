@@ -27,7 +27,6 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
   const [step, setStep] = useState(1)
   const [yes, setYes] = useState(true)
   const [picked, setPicked] = useState<Record<string, CrewPeopleLevelKey>>({})
-  const [whole, setWhole] = useState(false)
   const [folder, setFolder] = useState('')
   const [agents, setAgents] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -45,7 +44,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
     try {
       await finishTeamWizard(target, {
         create_dashboard: createDashboard,
-        people: Object.entries(picked).map(([user_id, level]) => ({ user_id, level })), whole, folder,
+        people: Object.entries(picked).map(([user_id, level]) => ({ user_id, level })), folder,
         agents: options.agents.filter(agent => agent.main || agents.includes(agent.key)).map(agent => agent.key),
       })
     } catch (e) {
@@ -79,12 +78,12 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
             </select>} />
         })}
       </div>}
-      {step === 3 && <div role="radiogroup" aria-label={heading} className="space-y-2">
-        <Option kind="radio" on={whole} title="The whole Crew" line="Every file and folder in it." onClick={() => setWhole(true)} />
-        <Option kind="radio" on={!whole} title="Only a team folder" line="Just this folder, shared with the Team." onClick={() => setWhole(false)}
-          aside={!whole && <select aria-label="Team folder" value={folder} onChange={event => setFolder(event.target.value)} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-xs">
-            {options.folders.folders.map(item => <option key={item} value={item}>{item}/</option>)}
-          </select>} />
+      {step === 3 && <div className="space-y-2">
+        <label className="block text-xs font-medium" htmlFor="team-shared-folder">Folder to share</label>
+        <select id="team-shared-folder" aria-label="Team folder" value={folder} onChange={event => setFolder(event.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
+          {options.folders.folders.map(item => <option key={item} value={item}>{item}/</option>)}
+        </select>
+        <p className="text-xs text-muted-foreground">Only chosen folders are shared. You can add more in Team settings.</p>
         {options.folders.offline && <p className="text-xs text-muted-foreground">{options.folders.offline}</p>}
       </div>}
       {step === 4 && <div className="space-y-2">

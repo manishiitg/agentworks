@@ -7,14 +7,13 @@ import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
-import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamLent, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { TeamActivity } from './TeamActivity'
 import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
-import { TeamFolderChangeDialog } from './TeamFolderChangeDialog'
 
 type Person = { id: string; username: string; email?: string }
 
@@ -56,7 +55,7 @@ export function AskButton({ projectId, card, prompt, label = 'Ask' }: { projectI
     onClick={() => { if (!sendToMain(projectId, text)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>{label}</button>
 }
 
-/** One read of the Crew's folders through the server (a size: path=…, or whole=1); undefined until it answers. */
+/** One read of the Crew's folders through the server (a size: path=…); undefined until it answers. */
 function useFolderSize(target: TeamTarget, query?: string) {
   const [size, setSize] = useState<TeamFolderListing>()
   useEffect(() => {
@@ -398,16 +397,16 @@ function FolderRow({ folder, target, canRemove, saving, disabled, onRemove }: { 
 /** "They work in: team/ · change" (owner, 9 Nov mock): the shared folders in one line; change opens the folder card. */
 function FolderLine({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
   const [open, setOpen] = useState(false)
-  const { folder, name } = view.team
-  const where = folder.whole ? `the whole ${name} folder` : (folder.folders || []).map(item => `${item.path}/`).join(', ') || 'no folder yet'
+  const { folder } = view.team
+  const where = (folder.folders || []).map(item => `${item.path}/`).join(', ') || 'no folder yet'
   return <div className="space-y-2">
     <p className="px-1 text-xs text-muted-foreground">They work in: <span className="text-foreground">{where}</span> · <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-primary hover:underline">{open ? 'done' : 'change'}</button></p>
     {open && <SharesCard view={view} target={target} projectId={projectId} />}
   </div>
 }
 
-/** What the team shares: Folders or the Whole Crew. The Crew's owner switches it, after the server's confirm box
- * (owner, 6 Nov: Whole Crew asks first), and stops sharing a folder (can_choose; never the last one, can_remove_folder); anyone in the Team adds one with "+ Share this folder"
+/** What the team shares: chosen folders only.
+ * Only the owner stops sharing a folder (never the last one); anyone in the Team adds one with "+ Share this folder"
  * (can_add_folder), picked from the Crew's folders the server lists where the Crew is. While a Mac Crew's Mac is off
  * the server says so, and the folder is named instead (the server makes it when the Mac is back). */
 function SharesCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
@@ -417,8 +416,6 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   const [parent, setParent] = useState('')
   const [listing, setListing] = useState<TeamFolderListing>()
   const [name, setName] = useState('')
-  const [change, setChange] = useState<TeamFolderChange>()
-  const choose = view.can_choose
   useEffect(() => {
     if (!picking) return
     let active = true
@@ -426,7 +423,6 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     void teamFolders(target, `path=${encodeURIComponent(parent)}`).then(data => { if (active) setListing(data) }).catch(e => { if (active) setError(teamError(e)) })
     return () => { active = false }
   }, [picking, parent, target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  const whole = useFolderSize(target, team.folder.whole ? 'whole=1' : undefined)
   const entries = team.folder.folders || []
   const folders = entries.map(entry => entry.path)
   const save = (key: string, next: Team) => run(key, () => saveTeam(target, next))
@@ -439,25 +435,16 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">What the team shares</h3>
       <AskButton projectId={projectId} card="shares" />
-      {!choose ? <span className="text-xs text-muted-foreground">{team.folder.whole ? 'Whole Crew' : 'Folders'}</span>
-        : <div role="radiogroup" aria-label="What the team shares" className="flex overflow-hidden rounded-md border border-border text-xs">
-        {([[false, 'Folders'], [true, 'Whole Crew']] as const).map(([value, label]) => {
-          const on = Boolean(team.folder.whole) === value
-          return <button key={label} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)}
-            onClick={() => { if (!on) void run(`share:${label}`, async () => setChange(await teamFolderChange(target, value))) }}
-            className={`inline-flex items-center gap-1 px-2.5 py-0.5 disabled:cursor-not-allowed ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted disabled:opacity-50'}`}><Saving on={pending === `share:${label}`}>{null}</Saving>{label}</button>
-        })}
-      </div>}
+      <span className="text-xs text-muted-foreground">Shared folders</span>
     </div>
-    {team.folder.whole ? <p className="text-xs text-muted-foreground">The whole <b className="text-foreground">{team.name}</b> folder{whole?.files ? `: ${sizeLine(whole)}` : ''}. Everyone in the Team reads and edits it.</p>
-      : <div className="space-y-1.5">
-        {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={view.can_remove_folder} saving={pending === `remove:${folder}`} disabled={Boolean(pending)}
-          onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: entries.filter(f => f.path !== folder) } })} />)}
-        {!folders.length && <p className="text-xs text-muted-foreground">Nothing is shared yet{choose ? ': add a folder, or share the Whole Crew' : ''}.</p>}
-        {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
-          onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
-      </div>}
-    {picking && !team.folder.whole && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
+    <div className="space-y-1.5">
+      {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={view.can_remove_folder} saving={pending === `remove:${folder}`} disabled={Boolean(pending)}
+        onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: entries.filter(f => f.path !== folder) } })} />)}
+      {!folders.length && <p className="text-xs text-muted-foreground">Add a folder to share with the Team.</p>}
+      {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
+        onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
+    </div>
+    {picking && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
       {listing?.offline ? <>
         <p>{listing.offline}</p>
         <form className="flex items-center gap-2" onSubmit={e => { e.preventDefault(); void add(name) }}>
@@ -476,8 +463,6 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     </div>}
     <p className="text-xs text-muted-foreground">Not shared: your chats and memory, app files, passwords and keys.</p>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {change && <TeamFolderChangeDialog change={change} saving={pending === 'confirm'} onCancel={() => setChange(undefined)}
-      onConfirm={() => void save('confirm', { ...team, folder: change.whole ? { whole: true } : { folders: [] } }).then(() => setChange(undefined))} />}
   </section>
 }
 

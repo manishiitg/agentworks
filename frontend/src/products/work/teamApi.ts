@@ -262,7 +262,7 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
   return agents.find(agent => agent.can_set_purpose && agent.tab === tab)
 }
 
-/** One folder of the Crew for the Team's "+ Share this folder" and the shared folders' sizes (path=, or whole=1),
+/** One folder of the Crew for the Team's "+ Share this folder" and the shared folders' sizes (path=),
  * the same for the Mac app and the website: the server reads it where the Crew is (its own folder, or the owner's
  * Mac over Mac online) and, with that Mac off, says so in offline (crew_team_folders.go). */
 export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; offline?: string }
@@ -308,12 +308,6 @@ export function crewSharePage(target: TeamTarget): Promise<CrewSharePage> {
 export async function setCrewAction(target: TeamTarget, action: { target: string; name: string; on: boolean }): Promise<void> {
   await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/action', 'POST', action)
   changed()
-}
-
-/** The Folders / Whole Crew confirm box, worded by the server (crew_team_folder_switch.go); refusal when too big. */
-export type TeamFolderChange = { whole: boolean; title: string; sub: string; people: string[]; folders_added?: string[]; folders_kept?: string[]; means: string[]; note?: string; confirm_label?: string; refusal?: string }
-export function teamFolderChange(target: TeamTarget, whole: boolean): Promise<TeamFolderChange> {
-  return teamRequest<TeamFolderChange>({ project: target.project, connection: target.connection }, `/folder-change?whole=${whole ? 1 : 0}`)
 }
 
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
@@ -383,7 +377,7 @@ export type TeamWizardView = {
   folders: { default: string; folders: string[]; offline?: string }
   agents: { key: string; name: string; main?: boolean }[]
 }
-export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; whole: boolean; folder: string; agents: string[]; create_dashboard?: boolean }
+export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; create_dashboard?: boolean }
 export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {
   return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, '/setup')
 }
