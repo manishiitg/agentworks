@@ -38,6 +38,13 @@ type teamOnlineDashboardResult struct {
 	OfferAutomations  bool
 }
 
+// The common mapping and this component use one namespace calculation. A new
+// revision changes code, not the destination item or its first-copy dataset.
+func teamOnlineDashboardItemID(sourceProject, kind, itemID string) string {
+	sum := sha256.Sum256([]byte(sourceProject + "\x00" + kind + "\x00" + itemID))
+	return "online-" + hex.EncodeToString(sum[:12])
+}
+
 // Called only by receive-online, after current Team/source admission. This
 // component uses ordinary dashboard Builder checks, not a virtual-user bypass.
 func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source, destination triggerTarget, ref teamOnlineDashboardRef, preview bool) (teamOnlineDashboardResult, error) {
@@ -62,8 +69,7 @@ func (api *StreamingAPI) receiveTeamOnlineDashboard(ctx context.Context, source,
 	if item.ID != ref.ItemID || item.Revision != ref.Revision || (ref.Kind != "dashboard" && ref.Kind != "artifact") || (ref.Kind == "artifact") != item.Snapshot.Artifact {
 		return result, fmt.Errorf("the source item changed; preview it again")
 	}
-	sum := sha256.Sum256([]byte(source.CrewID + "\x00" + ref.Kind + "\x00" + ref.ItemID))
-	result.DestinationItemID = "online-" + hex.EncodeToString(sum[:12])
+	result.DestinationItemID = teamOnlineDashboardItemID(source.CrewID, ref.Kind, ref.ItemID)
 	result.Revision = item.Revision
 	result.Automations = item.Dependencies.Automations
 	result.OfferAutomations = ref.Seed && len(result.Automations) > 0
