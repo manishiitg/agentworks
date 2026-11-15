@@ -34,6 +34,7 @@ type HelperTool struct {
 }
 
 type Cursor struct {
+	PlanOffset int64 `json:"plan_offset,omitempty"`
 	// Checklist content lives only in memory and in the admitted chat events.
 	PlanTurn      string                  `json:"-"`
 	Plan          llmtypes.ClaudeTaskPlan `json:"-"`
@@ -151,6 +152,11 @@ func Read(ctx context.Context, provider, sessionID, path string, cursor Cursor) 
 			return b, fmt.Errorf("native record source changed; explicit rebind required")
 		}
 		b.Next.PrefixHash, b.Next.PrefixBytes = hash, n
+	}
+	if provider == "claude-code" && cursor.Offset > 0 && b.Next.PlanTurn == "" {
+		if err := restoreClaudePlan(ctx, sessionID, f, &b); err != nil {
+			return b, err
+		}
 	}
 	r := bufio.NewReaderSize(io.LimitReader(f, MaxBatchBytes), 64<<10)
 	for {
@@ -283,4 +289,38 @@ func decode(b *Batch, provider, session string, row map[string]any) {
 	case "muse-cli":
 		decodeMuse(b, session, row)
 	}
+}
+
+// A checkpoint deliberately omits task text and inputs. Rebuild just this
+// turn's ephemeral reducer from the already-admitted, identity-checked journal
+// before consuming new rows. The persisted start offset contains no payload.
+func restoreClaudePlan(ctx context.Context, sessionID string, f *os.File, b *Batch) error {
+	start, end := b.Next.PlanOffset, b.Next.Offset
+	if start < 0 || start > end {
+		return fmt.Errorf("invalid native plan boundary")
+	}
+	reader := bufio.NewReaderSize(io.NewSectionReader(f, start, end-start), 64<<10)
+	replay := Batch{Next: cloneCursor(Cursor{}), Unknown: map[string]int{}}
+	for offset := start; offset < end; {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			return fmt.Errorf("native plan replay boundary: %w", err)
+		}
+		if len(line) > MaxRecordBytes {
+			return fmt.Errorf("native plan record exceeds supported size")
+		}
+		replay.Next.TailOffset = offset
+		offset += int64(len(line))
+		var row map[string]any
+		if json.Unmarshal(line, &row) != nil {
+			continue
+		}
+		decodeClaude(&replay, sessionID, row)
+		replay.Records = nil
+	}
+	b.Next.PlanTurn, b.Next.Plan, b.Next.PlanInputs = replay.Next.PlanTurn, replay.Next.Plan, replay.Next.PlanInputs
+	return nil
 }

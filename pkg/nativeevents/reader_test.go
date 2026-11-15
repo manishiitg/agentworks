@@ -289,7 +289,13 @@ func TestClaudeNativePlanAcrossIncrementalReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := Read(context.Background(), "claude-code", "native", p, one.Next)
+	// The actual app persists this checkpoint before the next read/restart.
+	rawCursor, _ := json.Marshal(one.Next)
+	var restored Cursor
+	if err := json.Unmarshal(rawCursor, &restored); err != nil {
+		t.Fatal(err)
+	}
+	two, err := Read(context.Background(), "claude-code", "native", p, restored)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,6 +315,38 @@ func TestClaudeNativePlanAcrossIncrementalReads(t *testing.T) {
 	raw2, _ := json.Marshal(two)
 	if strings.Contains(string(raw), "PRIVATE_PLAN") || strings.Contains(string(raw2), "PRIVATE_PLAN") {
 		t.Fatal("plan text leaked into checkpoint/activity")
+	}
+	// A second restore must recover the existing task itself, not just its inputs.
+	checkpoint, _ := json.Marshal(two.Next)
+	if err := json.Unmarshal(checkpoint, &restored); err != nil {
+		t.Fatal(err)
+	}
+	f, err = os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.WriteString(`{"type":"assistant","uuid":"c","parentUuid":"s","message":{"content":[{"type":"tool_use","id":"again","name":"TaskUpdate","input":{"taskId":"1","status":"in_progress"}}]}}
+{"type":"user","uuid":"t","parentUuid":"c","message":{"content":[{"type":"tool_result","tool_use_id":"again","content":"Updated task #1 status"}]}}
+`)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	three, err := Read(context.Background(), "claude-code", "native", p, restored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, r := range three.Records {
+		if r.Plan != nil {
+			count++
+			if len(r.Plan.Items) != 1 || r.Plan.Items[0].Status != "running" {
+				t.Fatal("restored task lost its state")
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatal("restored plan was not updated")
 	}
 	// Reading a candidate batch must not mutate the caller's committed cursor.
 	if len(one.Next.Plan.Snapshot().Items) != 0 {

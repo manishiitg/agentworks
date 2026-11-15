@@ -42,6 +42,7 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 			b.Next.TurnID, b.Next.Origin, b.Next.TaskID = id, "human", ""
 			lineage = Lineage{TurnID: id, Origin: "human"}
 			r.TurnID, r.Origin, r.TaskID = id, "human", ""
+			b.Next.PlanOffset = b.Next.TailOffset
 			b.Next.PlanTurn = id
 			b.Next.Plan = llmtypes.ClaudeTaskPlan{}
 			b.Next.PlanInputs = map[string]string{}
