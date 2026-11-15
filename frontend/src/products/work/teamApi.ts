@@ -303,7 +303,7 @@ export type CrewShareOptionKey = 'team'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean; can_make_changes: boolean
   title: string; line: string; changes_label: string; changes_options: { value: boolean; label: string; line: string }[]
-  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string }
+  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string }[]; rules_label: string; hidden_line?: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; target: string; starts: string; who: string }
 export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */

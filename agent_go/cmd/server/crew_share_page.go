@@ -51,14 +51,16 @@ type crewShareAsk struct {
 	// CanEdit: the viewer sets the permissions (their own agent).
 	CanEdit        bool `json:"can_edit"`
 	CanMakeChanges bool `json:"can_make_changes"`
-	// ChangesLabel heads the two choices in ChangesOptions (Get answers; Get answers and make changes).
+	// ChangesLabel heads the two choices in ChangesOptions (Get answers; Answers + make changes).
 	ChangesLabel     string                `json:"changes_label"`
 	ChangesOptions   []crewShareChangeOpt  `json:"changes_options"`
 	ChatShare        string                `json:"chat_share"`
 	ChatShareLabel   string                `json:"chat_share_label"`
 	ChatShareOptions []crewChatShareOption `json:"chat_share_options"`
-	// RulesLabel is the link to the agent's permissions ("Permissions for coach…").
+	// RulesLabel is the link to the agent's permissions ("Permissions…").
 	RulesLabel string `json:"rules_label"`
+	// HiddenLine is the card's one hint while the viewer's own chat is Hidden.
+	HiddenLine string `json:"hidden_line"`
 }
 
 // crewShareChangeOpt is one choice of what teammates can do: Value is the can_make_changes it sends.
@@ -648,13 +650,13 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
 		locked := a.InTeam && !a.CanUnshare
 		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
-			Title: "Teammates can ask it", Line: "Off: only you use it.",
-			ChangesLabel: "What teammates can do with " + a.Name,
+			Title: "Teammates can ask it", Line: "Only you and your agents can reach it.",
+			ChangesLabel: "When they ask",
 			ChangesOptions: []crewShareChangeOpt{
-				{Value: false, Label: "Get answers", Line: "They ask, " + a.Name + " answers. " + a.Name + " changes nothing."},
-				{Value: true, Label: "Get answers and make changes", Line: a.Name + " can also change files and settings when they ask."}},
-			ChatShare: a.ChatShare, ChatShareLabel: "Can teammates see your own chat with " + a.Name + "?", ChatShareOptions: crewShareChatOptions,
-			RulesLabel: "Permissions for " + a.Name + "…"}
+				{Value: false, Label: "Get answers", Line: "They ask, " + a.Name + " answers and changes nothing."},
+				{Value: true, Label: "Answers + make changes", Line: a.Name + " can also change files and settings when teammates ask."}},
+			ChatShare: a.ChatShare, ChatShareLabel: "Your chat", ChatShareOptions: crewShareChatOptions,
+			HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
 		if a.InTeam {
 			ask.Line = "Teammates can chat with " + a.Name + " and get answers."
 		}
