@@ -38,6 +38,31 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
+	// A solo home is an explicit owner action, never a side effect of reads
+	// or a saved teammate asking while the source Team is Off.
+	if _, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID); err == nil {
+		t.Fatal("Team-off read provisioned a home")
+	}
+	if _, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserB), fixtureCrewID, "put_online"); err == nil {
+		t.Fatal("saved teammate provisioned an owner-only home")
+	}
+	soloID, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserA), fixtureCrewID, "put_online")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := readCrewTeam(fixtureCrewID)
+	if err != nil || source.On || source.OnlineHome != soloID {
+		t.Fatal("explicit online enabled the source Team", err)
+	}
+	solo, err := readCrewTeam(soloID)
+	if err != nil || !solo.member(fixtureUserA) || solo.member(fixtureUserB) || len(solo.People) != 1 {
+		t.Fatal("solo home admitted saved teammates", err)
+	}
+	directory, err := loadUserDirectory()
+	if err != nil || directory.byID(solo.OwnerID) == nil || directory.byID(solo.OwnerID).Disabled {
+		t.Fatal("solo virtual user is not active", err)
+	}
+	team = source
 	team.On = true
 	body, _ := json.Marshal(team)
 	enable := httptest.NewRequest(http.MethodPut, "/api/crew-teams/"+fixtureCrewID, bytes.NewReader(body)).WithContext(f.Ctx(fixtureUserA))
