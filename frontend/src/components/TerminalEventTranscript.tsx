@@ -18,7 +18,7 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Send, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Terminal as TerminalIcon, XCircle } from 'lucide-react'
 import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath } from '../utils/chatMessageContent'
@@ -67,6 +67,7 @@ import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './C
 import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
 import { isAgentMessageSendToolCall, parseAgentMessageSend } from '../utils/agentMessageSend'
+import { AgentMessageIdentity } from './AgentMessageIdentity'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 
 
@@ -371,7 +372,7 @@ const TranscriptEvent: React.FC<{
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
   const inboxMessage = agentInboxMessage(metadata)
-  if (inboxMessage) return <><AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} queueStatus={<><QueuedInboxStatus sessionId={event.session_id} metadata={metadata} /><QueuedMessageControls sessionId={event.session_id} metadata={metadata} /></>} /><QueuedMessageNotice sessionId={event.session_id} metadata={metadata} /></>
+  if (inboxMessage) return <><AgentInboxMessage sessionID={event.session_id} message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} queueStatus={<><QueuedInboxStatus sessionId={event.session_id} metadata={metadata} /><QueuedMessageControls sessionId={event.session_id} metadata={metadata} /></>} /><QueuedMessageNotice sessionId={event.session_id} metadata={metadata} /></>
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
@@ -448,7 +449,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
-            {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <span>{metadata.source === 'agent_message' ? `From ${metadata.sender_label}` : metadata.sender_label}</span>}
+            {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} />}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
@@ -474,7 +475,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         </button>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
           <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
-          {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <span>{metadata.source === 'agent_message' ? `From ${metadata.sender_label}` : metadata.sender_label}</span>}
+          {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} />}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
@@ -539,7 +540,7 @@ function CompactMessages({ item, renderEvent }: { item: CompactMessageGroup; ren
   return <section className="my-2 text-xs text-muted-foreground" data-testid="compact-message-group">
     <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
       {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
-      {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : `${item.label} · ${item.events.length} messages`}
+      {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : <><AgentMessageIdentity inboxID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.inboxID} messageID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.messageID} sessionID={item.events[0].session_id} /><span>· {item.events.length} messages</span></>}
     </button>
     {open && <div className="border-l border-border pl-3">{item.events.map(event => <div key={event.id} data-transcript-key={event.id}>{renderEvent(event)}</div>)}</div>}
   </section>
@@ -1111,11 +1112,7 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
         aria-expanded={open}
         className="flex w-full items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <Send className={`h-3.5 w-3.5 shrink-0 ${view.failed ? 'text-red-500' : 'text-primary/70'}`} aria-hidden="true" />
-        {/* The server sends the recipient's name; its address stays in the tooltip, never as the label. */}
-        <span className="truncate" title={view.target || undefined}>
-          You → <span className="font-medium text-foreground/85">{view.targetLabel || 'another agent'}</span>
-        </span>
+        <span className="min-w-0 font-medium text-foreground/85"><AgentMessageIdentity inboxID={view.inboxID} messageID={view.messageID} sent /></span>
         <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
         {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}
       </button>
