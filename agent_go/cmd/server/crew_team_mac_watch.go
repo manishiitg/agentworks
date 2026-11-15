@@ -372,8 +372,7 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 	onMac := crewTeamMemberOnMac(project, caller)
 	out := slices.DeleteFunc(rows, func(row AgentProfileSideChat) bool {
 		// The owner's agents live on the Mac; a member on their Mac has no server agents here. The same for another
-		// member on their Mac: a chat of theirs here is the Always on standby copy of a Mac agent listed below from
-		// their Mac, so listing it too showed that agent twice (owner, 10 Nov: two "Main" under one teammate).
+		// member on their Mac: their agents are listed from that Mac below, not from old server rows.
 		return row.TabOwnerID == owner || onMac && (row.TabOwnerID == caller || row.TabOwnerID == "") ||
 			row.TabOwnerID != "" && row.TabOwnerID != caller && crewTeamMemberOnMac(project, row.TabOwnerID)
 	})
@@ -500,7 +499,7 @@ const crewMemberMacOffLine = "Their Mac is off and their agent can't answer from
 
 // deliverToMemberMacAgent hands an agent message to a Team member's agent on their Mac, like the owner's Mac agents:
 // it runs there in the sender's own thread, the answer comes back to this inbox. With their Mac off an In team agent
-// that has a standby copy answers from the server AS THE MEMBER (crew_standby_runas.go); otherwise the message waits
+// on their Mac receives the message there; otherwise the message waits
 // for the Mac.
 func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
 	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID, source.ID == dest.ID && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
@@ -510,12 +509,8 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	}
 	pair, _ := crewMacPairFor(person, dest.ID)
 	sender := shareOwnerLabel(source.UserID)
-	// With their Mac off, the agent answers from its standby copy on the server, as the member.
-	standby := api.crewStandbyRoute(ctx, person, dest.ID, agent.Tab, source.UserID, true, true)
+	// Member agents run on their admitted paired Mac.
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
-		if standby {
-			return api.standbyAgentCall(context.Background(), person, dest.ID, call, true)
-		}
 		return callCrewMacPair(context.Background(), person, dest.ID, pair, call, timeout)
 	}
 
@@ -537,13 +532,8 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
-	// The standby copy was dropped between the route and the call (the agent turned Only me, the person left): the
-	// message is not lost, it waits for the Mac like any other.
-	if standby && (status == http.StatusForbidden || status == http.StatusConflict || status == http.StatusServiceUnavailable) {
-		standby, status = false, http.StatusServiceUnavailable
-	}
-	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d standby=%t", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status, standby)
-	if status == http.StatusServiceUnavailable && !standby {
+	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status)
+	if status == http.StatusServiceUnavailable {
 		if err := holdForPersonMac(dest.ID, person, "mac_off", ask, c.ID, from); err != nil {
 			if errors.Is(err, errCrewMacHeldFull) {
 				return fmt.Errorf("Too many of your messages are already waiting for this Mac. Try again when it is back.")
@@ -556,7 +546,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, Standby: standby, SenderID: source.UserID, Caller: sender})
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, SenderID: source.UserID, Caller: sender})
 	return nil
 }
 

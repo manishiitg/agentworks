@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
@@ -67,23 +66,6 @@ func crewMacConversationActivitySince(owner, project, conversation string) (stri
 // crewServerChatRunning: a turn is going in this server chat now.
 func crewServerChatRunning(sessionID string) bool {
 	return runningServerAPI != nil && sessionID != "" && runningServerAPI.sessionTurnRunning(sessionID)
-}
-
-// crewStandbyServedRunning: the server is answering for this Mac agent and a turn of its own chats here is going.
-func crewStandbyServedRunning(owner, project, tab string) bool {
-	if rows, err := readCrewStandby(project, owner); err != nil || rows[tab].Writer != "server" {
-		return false
-	}
-	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner))
-	if err != nil {
-		return false
-	}
-	for _, record := range doc.Entries {
-		if record.ProfileID == crewProfileID && crewResourceProjectID(record.ConversationKey) == project && crewStandbyTabForKey(project, record.ConversationKey) == tab && crewServerChatRunning(record.SessionID) {
-			return true
-		}
-	}
-	return false
 }
 
 // One live-state rule for every Team projection. The maker retains their own

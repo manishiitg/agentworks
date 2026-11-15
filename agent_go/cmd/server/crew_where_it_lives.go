@@ -91,18 +91,10 @@ func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 	// A Team member's own agents run on the server, as them (owner, 5 Nov); only the owner's agents live on the Mac.
 	// After "Add to my Mac" a member's own agents work on their Mac instead (crew_team_where.go).
 	if caller != "" && caller != ownerOfCrewProjectID(project) {
-		// A thread on the member's own agent that the server answers for while their Mac is off runs here, as them.
-		if _, served := crewStandbyServedTabOf(caller, conversationKey); served {
-			return false
-		}
 		if t, err := readCrewTeam(project); err == nil && t.member(caller) {
 			_, onMac := t.memberMac(caller)
 			return onMac
 		}
-	}
-	// A teammate's thread on an In team agent the server answers for from its standby copy (Always on) runs here.
-	if crewStandbyServesKey(conversationKey) {
-		return false
 	}
 	placement, err := crewPublishedAgent(project, crewAgentPublishTab(conversationKey))
 	return err != nil || placement == nil || placement.Location != "server"

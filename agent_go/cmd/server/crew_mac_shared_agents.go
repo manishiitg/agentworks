@@ -168,7 +168,6 @@ func writeMacSharedAgents(project string, agents []macSharedAgent) (result error
 	defer func() {
 		if result == nil {
 			publishCrewPanelChanged(project)
-			pruneCrewStandby(project) // an agent off the Team's list drops its standby copy
 		}
 	}()
 	path, err := macSharedAgentsPath(project)
@@ -502,16 +501,10 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	if action == "reply_input" {
 		call.Answer, _ = json.Marshal(map[string]any{"provider": args["provider"], "prompt_id": args["request_id"], "answers": args["answers"], "auto": args["auto"]})
 	}
-	// A published agent lives on the server now: only it answers, never the Mac (856-523). An In team agent answers on
-	// the server from its standby copy while its owner's Mac is off (Always on).
+	// A published agent answers only from its server workspace; otherwise use its Mac.
 	published := crewPublishedTarget(manifest.ID, agent.Tab)
-	if published || api.crewStandbyRoute(r.Context(), project.OwnerID, manifest.ID, agent.Tab, claims.UserID, operation != "agent_read") {
-		var result crewChatResult
-		if published {
-			result = api.publishedAgentCall(r.Context(), project.OwnerID, manifest.ID, call, false)
-		} else {
-			result = api.standbyAgentCall(r.Context(), project.OwnerID, manifest.ID, call, false)
-		}
+	if published {
+		result := api.publishedAgentCall(r.Context(), project.OwnerID, manifest.ID, call, false)
 		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s published=%t server_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, published, result.Status)
 		var out map[string]any
 		if result.Status == http.StatusOK && json.Unmarshal(result.Body, &out) == nil {
@@ -606,7 +599,7 @@ func macSharedAgentRows(caller string, byAgent bool) []map[string]any {
 				continue
 			}
 			presence, available := "Its owner's Mac is off; messages wait for it", online
-			if crewPublishedTarget(project, agent.Tab) || crewStandbyCanAnswer(project, owner, agent.Tab) {
+			if crewPublishedTarget(project, agent.Tab) {
 				presence, available = "Answers now, on the server", true
 			} else if online {
 				presence = "Answers now, on its owner's Mac"
@@ -979,16 +972,11 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
 	sender := shareOwnerLabel(source.UserID)
-	// The answer is read from the same Mac, the agent's published server workspace, or its standby copy on the server
-	// while the Mac is off (Always on).
+	// Read the answer from the Mac or the published server workspace that took this message.
 	published := crewPublishedTarget(dest.ID, tab)
-	standby := !published && api.crewStandbyRoute(ctx, dest.UserID, dest.ID, tab, source.UserID, true, true)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		if published {
 			return api.publishedAgentCall(context.Background(), dest.UserID, dest.ID, call, true)
-		}
-		if standby {
-			return api.standbyAgentCall(context.Background(), dest.UserID, dest.ID, call, true)
 		}
 		return callCrewMacFor(context.Background(), dest.UserID, dest.ID, call, timeout)
 	}
@@ -1009,13 +997,8 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
-	// The standby copy was dropped between the route and the call (the agent turned Only me, the person left): the
-	// message is not lost, it waits for the Mac like any other.
-	if standby && (status == http.StatusForbidden || status == http.StatusConflict || status == http.StatusServiceUnavailable) {
-		standby, status = false, http.StatusServiceUnavailable
-	}
-	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d published=%t standby=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, published, standby)
-	if status == http.StatusServiceUnavailable && !IsLocalMode() && !published && !standby {
+	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d published=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, published)
+	if status == http.StatusServiceUnavailable && !IsLocalMode() && !published {
 		if err := holdForMac(dest.ID, "mac_off", ask, c.ID, from); err != nil {
 			if errors.Is(err, errCrewMacHeldFull) {
 				return fmt.Errorf("Too many of your messages are already waiting for this Mac. Try again when it is back.")
@@ -1031,7 +1014,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s agent could not take your message, so it was not delivered. Ask again in a moment; if it keeps failing, tell "+shareOwnerLabel(dest.UserID)+".")
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: tab, Mac: dest.UserID, Published: published, Standby: standby, SenderID: source.UserID, Caller: sender})
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: tab, Mac: dest.UserID, Published: published, SenderID: source.UserID, Caller: sender})
 	return nil
 }
 
@@ -1047,11 +1030,9 @@ type macAgentAwaiting struct {
 	Project    string `json:"project"`
 	Tab        string `json:"tab"`
 	// Mac is whose Mac runs the agent (the Crew owner, or a Team member when Member); Published: it runs on the server;
-	// Standby: it runs on the server from its standby copy while its owner's Mac is off (Always on).
 	Mac       string    `json:"mac"`
 	Member    bool      `json:"member,omitempty"`
 	Published bool      `json:"published,omitempty"`
-	Standby   bool      `json:"standby,omitempty"`
 	SenderID  string    `json:"sender_id"`
 	Caller    string    `json:"caller"`
 	Started   time.Time `json:"started"`
@@ -1111,8 +1092,6 @@ func macAgentAnswerRead(api *StreamingAPI, w macAgentAwaiting, after, wait int) 
 	switch {
 	case w.Published:
 		result = api.publishedAgentCall(context.Background(), w.Mac, w.Project, call, true)
-	case w.Standby:
-		result = api.standbyAgentCall(context.Background(), w.Mac, w.Project, call, true)
 	case w.Member:
 		pair, _ := crewMacPairFor(w.Mac, w.Project)
 		result = callCrewMacPair(context.Background(), w.Mac, w.Project, pair, call, timeout)
@@ -1260,4 +1239,18 @@ func macSharedAgentDirectoryItems(user string) []map[string]interface{} {
 		}
 	}
 	return items
+}
+
+// crewMacAgentTabForKey maps the owner's saved Main pointer as well as side
+// and shared-thread keys to the corresponding Mac agent, without a server copy.
+func crewMacAgentTabForKey(project, key string) string {
+	key = strings.TrimSpace(key)
+	if project == "" || key == "" {
+		return ""
+	}
+	owner := ownerOfCrewProjectID(project)
+	if key == crewOwnerDefaultChatKey(project, owner) || key == crewOwnerMainChatKey(project) {
+		return macMainTab
+	}
+	return crewAgentPublishTab(key)
 }

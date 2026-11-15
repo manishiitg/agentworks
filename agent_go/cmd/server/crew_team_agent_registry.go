@@ -371,7 +371,6 @@ func removeCrewAgentListing(project, person, key string) error {
 	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
 	mu.Unlock()
 	if err == nil {
-		pruneCrewStandby(project)
 		go pushCrewTeamRecordChanged(t)
 	}
 	return err

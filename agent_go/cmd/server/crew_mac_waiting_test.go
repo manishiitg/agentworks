@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -28,6 +30,19 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
 		t.Fatal(err)
+	}
+	// PLAT-746-1024: Team membership is not admission to the owner's private
+	// native-session transport. The owner's current pair still reaches validation.
+	for _, tc := range []struct {
+		user   string
+		status int
+	}{{"other", 403}, {"owner", 400}} {
+		request := adminRequest(http.MethodPost, "/native?pair=pair", "not-json", &UserClaims{UserID: tc.user, Username: tc.user}, map[string]string{"project": "team", "op": "plan"})
+		response := httptest.NewRecorder()
+		f.api.handleCrewNativeSync(response, request)
+		if response.Code != tc.status {
+			t.Fatalf("native session admission user=%s: %d %s", tc.user, response.Code, response.Body.String())
+		}
 	}
 	// The watched Main tab uses its physical key, not the AgentBridge address.
 	mainKey := originalMainChatKey("team", "main-conversation")
@@ -57,10 +72,10 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
 		t.Fatal(err)
 	}
-	if tab := crewStandbyTabForKey("team", sideKey); tab != "0986645f" {
+	if tab := crewMacAgentTabForKey("team", sideKey); tab != "0986645f" {
 		t.Fatalf("a registered side agent routed as %q, not its own tab", tab)
 	}
-	if tab := crewStandbyTabForKey("team", mainKey); tab != macMainTab {
+	if tab := crewMacAgentTabForKey("team", mainKey); tab != macMainTab {
 		t.Fatalf("the owner's Main under its root key must be Main, got %q", tab)
 	}
 	// PLAT-746-355: promoting an imported Builder keeps its physical key and session.
@@ -74,7 +89,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	for _, pointer := range []string{promotedKey, originalMainChatKey("team", "another-owner"), mainKey} {
 		f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+pointer+`"}`)
-		for name, route := range map[string]func(string, string) string{"standby": crewStandbyTabForKey, "shared": macSharedAgentTab} {
+		for name, route := range map[string]func(string, string) string{"relay": crewMacAgentTabForKey, "shared": macSharedAgentTab} {
 			if got := route("team", promotedKey); (got == macMainTab) != (pointer == promotedKey) {
 				t.Fatalf("%s promoted chat with pointer %q routed as %q", name, pointer, got)
 			}
@@ -184,7 +199,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
-	delivered := false
+	delivered, answered := false, false
 	for {
 		select {
 		case m := <-commands:
@@ -192,18 +207,26 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 				continue
 			}
 			var args struct {
-				Sender    string `json:"sender_id"`
-				TeamInbox string `json:"team_inbox"`
+				Sender     string `json:"sender_id"`
+				Submission string `json:"submission"`
 			}
 			_ = json.Unmarshal(m.Call.Args, &args)
 			if args.Sender != "other" {
 				t.Fatalf("revoked sender reached the Mac: %s", args.Sender)
 			}
-			// A Team message carries its original inbox, so the agent can answer there.
-			delivered = delivered || m.Call.Operation == "agent_ask" && args.TeamInbox == "inbox-other"
+			// Both operations address the asker's isolated agent thread. No
+			// native conversation/history operation may be used for the reply.
+			if m.Call.Operation != "agent_ask" && m.Call.Operation != "agent_read" {
+				t.Fatalf("unexpected native-chat operation: %s", m.Call.Operation)
+			}
+			if m.Call.Operation == "agent_ask" {
+				delivered = m.Call.SubmissionID == "ask-other"
+			} else if args.Submission != "ask-other" {
+				t.Fatalf("reply read from another turn: %s", args.Submission)
+			}
 			body := json.RawMessage(`{"ok":true}`)
 			if m.Call.Operation == "agent_read" {
-				body = json.RawMessage(`{"working":false,"messages":[{"role":"assistant","text":"answer from original Mac"}]}`)
+				body = json.RawMessage(`{"working":false,"messages":[{"role":"assistant","text":"answer from asker thread"}]}`)
 			}
 			f.api.crewRelayHandle(ctx, sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: m.Call.ID, Status: 200, Body: body}})
 		case <-time.After(20 * time.Millisecond):
@@ -217,13 +240,17 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 					if c.ID == "inbox-removed" && m.From == 1 && strings.Contains(m.Text, "isn't shared with you anymore") {
 						refused = true
 					}
-					// Messages are async: the Mac agent's final chat text is never forwarded (owner, 7 Nov).
-					if m.Text == "answer from original Mac" {
-						t.Fatalf("final answer forwarded: %+v", m)
+					// The isolated ask's answer goes only to the original inbox,
+					// not another person's inbox or the maker's native chat.
+					if m.Text == "answer from asker thread" {
+						if c.ID != "inbox-other" || m.From != 1 {
+							t.Fatalf("answer crossed inbox boundary: %+v", m)
+						}
+						answered = true
 					}
 				}
 			}
-			if delivered && refused && waitingCount() == 0 {
+			if delivered && answered && refused && waitingCount() == 0 {
 				return
 			}
 		case <-ctx.Done():

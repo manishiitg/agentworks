@@ -69,7 +69,7 @@ type crewTeamTabAgent struct {
 	Place       string `json:"place"`
 	StatusLabel string `json:"status_label,omitempty"`
 	// PlaceLabel / PlaceTone: where an agent of the owner's Mac answers now and where its server copy stands (Always
-	// on, crewAlwaysOnPlaceLabel), shown as the row's chip; the tone ("ok", "wait", "server" or "") only picks its colour.
+	// on, crewMacPlaceLabel), shown as the row's chip; the tone ("ok", "wait", "server" or "") only picks its colour.
 	PlaceLabel string `json:"place_label,omitempty"`
 	PlaceTone  string `json:"place_tone,omitempty"`
 	// Activity is "running" while a turn is going in the agent now (crew_team_activity.go): the chip's working mark.
@@ -328,13 +328,13 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		out.LeaveConfirm = "Leave this Team? You'll lose access to its files and agents."
 	}
 	if twin {
-		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, shared agents answer teammates from the server; agents that are not shared wait for it."
+		out.Intro = "People work with you here. The shared folder is kept on the server. Your Mac agents run only while your Mac is on. Offline questions go to the Team agent when it is available."
 	}
 	bridges := crewTeamBridgesFor(t)
 	setups := crewTabSetupSourceFor(ctx, t, twin)
 	setups.mainKey = mainKey
 	if viewer == t.OwnerID && twin {
-		out.AgentsLine = crewAlwaysOnAgentsLine
+		out.AgentsLine = "Your agents work on your Mac. Add an agent to the Team to let teammates ask it."
 	}
 	out.NewTeam = crewTeamIsNew(t, viewer)
 	if !t.On {
@@ -705,3 +705,6 @@ func crewTeamCopyState(b crewTeamLocal) (string, bool) {
 	}
 	return "Changes waiting to send · " + files, false
 }
+
+// New-agent sharing follows the existing Team registry policy.
+const crewTeamAgentsLine = "New agents are shared; turn one off to keep it to yourself. Keep at least one shared."

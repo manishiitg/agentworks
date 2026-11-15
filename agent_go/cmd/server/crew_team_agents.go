@@ -31,7 +31,7 @@ type crewTeamAgent struct {
 	ChatKey     string `json:"chat_key"`
 	StatusLabel string `json:"status_label,omitempty"`
 	// PlaceLabel is where an agent of the owner's Mac answers now and where its server copy stands (Always on,
-	// crewAlwaysOnPlaceLabel); PlaceTone colours it ("ok", "wait", "server" or ""); PlaceServer is set when the
+	// crewMacPlaceLabel); PlaceTone colours it ("ok", "wait", "server" or ""); PlaceServer is set when the
 	// server answers for it.
 	PlaceLabel  string `json:"place_label,omitempty"`
 	PlaceTone   string `json:"place_tone,omitempty"`
@@ -142,8 +142,8 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			row.ChatKey = mainKey
 		}
 		if place == "mac" {
-			// Always on: an In team agent answers from the server while the Mac is off; an Only me one waits for it.
-			row.PlaceLabel, row.PlaceTone = crewAlwaysOnPlaceLabel(t.ProjectID, t.OwnerID, agent.Tab, owner.MacOn, caller == t.OwnerID, row.InTeam)
+			// A Mac agent is available only while its Mac is connected.
+			row.PlaceLabel, row.PlaceTone = crewMacPlaceLabel(owner.MacOn, caller == t.OwnerID)
 			row.PlaceServer = row.PlaceTone == "server"
 			if !owner.MacOn && !row.PlaceServer {
 				row.StatusLabel = "Mac off"
@@ -155,8 +155,6 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				if activity == "waiting" {
 					row.StatusLabel = crewTeamWaitingLabel(owner.Name, owner.You)
 				}
-			} else if crewStandbyServedRunning(t.OwnerID, t.ProjectID, agent.Tab) {
-				row.Activity = "running"
 			}
 		}
 		owner.Agents = append(owner.Agents, row)
@@ -180,7 +178,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				}
 				row := crewTeamAgent{initialInTeam: tab.InitialInTeam, lastMessage: tab.crewTeamMessagePreview, Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
 				// The same chip as the owner's Mac agents (owner, 6 Nov: Team members are equal).
-				row.PlaceLabel, row.PlaceTone = crewAlwaysOnPlaceLabel(t.ProjectID, p.UserID, tab.Tab, person.MacOn, caller == p.UserID, row.InTeam)
+				row.PlaceLabel, row.PlaceTone = crewMacPlaceLabel(person.MacOn, caller == p.UserID)
 				row.PlaceServer = row.PlaceTone == "server"
 				if !person.MacOn && !row.PlaceServer {
 					row.StatusLabel = "Mac off"
@@ -356,5 +354,16 @@ func crewPersonShortName(userID string) string {
 }
 
 // crewServerAgentPlaceLabel is the status of an agent that lives on the server: it answers any time (the same row as a Mac
-// agent's "Always online · updated …", owner 6 Nov: one row for every own agent).
+// agent, with no automatic server stand-in for a Mac agent.
 const crewServerAgentPlaceLabel = "Runs on the server, always available"
+
+// crewMacPlaceLabel never claims a server copy is answering for a Mac agent.
+func crewMacPlaceLabel(on, yours bool) (string, string) {
+	if on {
+		if yours {
+			return "On your Mac", "ok"
+		}
+		return "On their Mac", "ok"
+	}
+	return "Mac off", ""
+}

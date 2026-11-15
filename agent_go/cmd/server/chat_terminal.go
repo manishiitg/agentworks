@@ -357,3 +357,6 @@ func (api *StreamingAPI) saveTerminalReturnedHistory(r *http.Request, roots crew
 	}
 	return api.eventStore.ImportDurableChatEvents(c.SessionID, dialogue)
 }
+
+// A shared ask must not interfere with the owner's active native terminal.
+const chatTerminalPeerNotice = "This chat is open in its owner's terminal right now; try again later or ask the owner."

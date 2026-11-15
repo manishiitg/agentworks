@@ -26,7 +26,7 @@ import (
 
 type sessionSecretSource struct {
 	User          string
-	Session       string    // the session this was recorded for: a standby turn lends the member's Vault (turnSecretsOwner)
+	Session       string    // the session this was recorded for: Vault lending follows the project owner (turnSecretsOwner)
 	Folder        string    // req.SelectedFolder: whose project secrets and lent Vault apply (projectSecretsOwner)
 	WorkspacePath string    // req.secretsWorkspacePath: where this turn's selected secrets are stored
 	ProfileID     string    // a product profile's ID for a Crew chat

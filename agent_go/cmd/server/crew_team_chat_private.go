@@ -130,7 +130,7 @@ func (api *StreamingAPI) crewSessionChatLimit(r *http.Request, session string) *
 		}
 		key := record.ConversationKey
 		if crewTeamAgentOnMac(t, owner) {
-			tab := crewStandbyTabForKey(project, key)
+			tab := crewMacAgentTabForKey(project, key)
 			if key == sharedThreadKey(project, tab, caller) {
 				return nil
 			}
