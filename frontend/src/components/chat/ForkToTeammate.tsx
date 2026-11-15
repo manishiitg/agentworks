@@ -1,6 +1,7 @@
+import { actOnAgentFork } from './agentForkApi'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { teamError, teamRequest, type TeamTabState } from '../../products/work/teamApi'
+import { teamError, type TeamTabState } from '../../products/work/teamApi'
 
 /** One maker confirmation sends the whole conversation, never changes its owner. */
 export function ForkToTeammate({ state, agentId, name, close }: { state: TeamTabState; agentId: string; name: string; close: () => void }) {
@@ -14,7 +15,7 @@ export function ForkToTeammate({ state, agentId, name, close }: { state: TeamTab
     if (!state.target || !person || busy) return
     setBusy(true); setError('')
     try {
-      await teamRequest(state.target, '/agent-forks', 'POST', { agent_id: agentId, recipient_id: person.user_id })
+      await actOnAgentFork(state.target, 'send', { agent_id: agentId, recipient_id: person.user_id })
       setSent(true)
     } catch (error) { setError(teamError(error)) }
     finally { setBusy(false) }

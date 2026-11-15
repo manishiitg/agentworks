@@ -10,6 +10,10 @@ import (
 // account. The request selects an owned registry agent, never a history path,
 // session ID or native directory. Only the portable conversation travels.
 func (api *StreamingAPI) captureCrewAgentFork(ctx context.Context, claims *UserClaims, offer crewAgentFork) (crewAgentForkPayload, error) {
+	return api.captureCrewAgentForkAtKey(ctx, claims, offer, offer.Project, offer.Agent.ChatKey)
+}
+
+func (api *StreamingAPI) captureCrewAgentForkAtKey(ctx context.Context, claims *UserClaims, offer crewAgentFork, localProject, key string) (crewAgentForkPayload, error) {
 	var payload crewAgentForkPayload
 	if claims == nil || claims.UserID != offer.Sender {
 		return payload, fmt.Errorf("send one of your own agents")
@@ -18,8 +22,8 @@ func (api *StreamingAPI) captureCrewAgentFork(ctx context.Context, claims *UserC
 	if err != nil {
 		return payload, err
 	}
-	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, offer.Agent.ChatKey)]
-	if !ok || record.ProfileID != crewProfileID || record.ConversationKey != offer.Agent.ChatKey || crewResourceProjectID(record.ConversationKey) != offer.Project {
+	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)]
+	if !ok || record.ProfileID != crewProfileID || record.ConversationKey != key || crewResourceProjectID(record.ConversationKey) != localProject || isSharedThreadKey(key) {
 		return payload, fmt.Errorf("this agent has no saved conversation on this computer")
 	}
 	roots, found, err := crewStorageRoots(record.WorkspacePath)

@@ -12,18 +12,17 @@ import (
 // The caller reserves the Only-me registry row before releasing the Team lock.
 func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crewAgentFork) (ProductConversationRecord, error) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.UserID != offer.Recipient || crewTeamMemberOnMac(offer.Project, claims.UserID) {
+	if claims == nil || claims.UserID != offer.Recipient {
 		return ProductConversationRecord{}, fmt.Errorf("accept this copy where your Crew runs")
 	}
 	team, err := readCrewTeam(offer.Project)
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
-	payload, err := downloadCrewAgentFork(team, offer, claims.UserID, time.Now())
-	if err != nil {
-		return ProductConversationRecord{}, err
+	if crewAgentForkRunsOnMac(team, claims.UserID) {
+		return ProductConversationRecord{}, fmt.Errorf("accept this copy on your computer")
 	}
-	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
+	payload, err := downloadCrewAgentFork(team, offer, claims.UserID, time.Now())
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
@@ -31,7 +30,7 @@ func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crew
 	request.Header = r.Header.Clone()
 	request.Header.Del("X-Session-ID")
 	request.Header.Del("X-Conversation-Continuation")
-	destination, err := api.resolveAgentProfileConversation(request, profile, crewAgentForkChatKey(offer), offer.Agent.Name+" (fork)")
+	destination, err := api.resolveCrewAgentForkDestination(request, crewAgentForkChatKey(offer), offer.Agent.Name+" (fork)")
 	if err != nil {
 		return destination, err
 	}
@@ -49,5 +48,41 @@ func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crew
 		log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s event=import_failed reason=destination_unavailable", offer.Project, offer.ID, offer.CopyAgentID)
 		return destination, err
 	}
+	return destination, nil
+}
+
+// Choose only the recipient's normal model/account; a portable session bundle
+// cannot select the maker's provider connection on the destination.
+func (api *StreamingAPI) resolveCrewAgentForkDestination(r *http.Request, key, name string) (ProductConversationRecord, error) {
+	claims := GetUserFromContext(r.Context())
+	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
+	destination, err := api.resolveAgentProfileConversation(r, profile, key, name)
+	if err != nil {
+		return destination, err
+	}
+	binding, _, err := resolveConversationBindingForUser(r.Context(), claims.UserID, profile, key)
+	if err != nil {
+		return destination, err
+	}
+	store := defaultProductConversationRegistryStore()
+	doc, err := store.loadDocument(r.Context(), productConversationRegistryPath(claims.UserID))
+	if err != nil {
+		return destination, err
+	}
+	choice, err := effectiveProfileChatModel(profile, binding, destination, doc.Agents[productConversationRegistryEntryKey(crewProfileID, key)])
+	if err != nil {
+		return destination, err
+	}
+	query := QueryRequest{Provider: choice.Provider, ModelID: choice.ModelID, ConnectionID: choice.ConnectionID}
+	if err = constrainProductChatModel(r.Context(), &query); err != nil {
+		return destination, err
+	}
+	if _, err = store.setAgentModel(r.Context(), claims.UserID, crewProfileID, key, choice.Engine, query.ModelID, choice.ReasoningEffort, query.ConnectionID, claims.UserID); err != nil {
+		return destination, err
+	}
+	destination.Provider, destination.ModelID, destination.ConnectionID = query.Provider, query.ModelID, query.ConnectionID
 	return destination, nil
 }

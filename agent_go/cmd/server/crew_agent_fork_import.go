@@ -28,6 +28,17 @@ func (api *StreamingAPI) importCrewAgentForkCopy(r *http.Request, offer crewAgen
 	if err = offer.admit(team, claims.UserID, true, time.Now()); err != nil {
 		return err
 	}
+	return api.saveCrewAgentForkCopy(r, offer, payload, destination, roots)
+}
+
+// Called only after the current server has admitted this named recipient's
+// download. Mac acceptance uses its local project key and local account here;
+// server completion independently rechecks the remote membership afterwards.
+func (api *StreamingAPI) saveCrewAgentForkCopy(r *http.Request, offer crewAgentFork, payload crewAgentForkPayload, destination ProductConversationRecord, roots crewroot.Roots) error {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || claims.UserID != offer.Recipient || destination.ConversationKey != crewAgentForkChatKey(offer) || destination.WorkspacePath != roots.Virtual {
+		return fmt.Errorf("import into your own new chat in this Crew")
+	}
 	if err := validateCrewAgentForkPayload(payload); err != nil {
 		return err
 	}
