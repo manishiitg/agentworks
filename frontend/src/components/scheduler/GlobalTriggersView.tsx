@@ -88,7 +88,7 @@ export default function GlobalTriggersView({ kind, onOpen, mode = 'webhooks' }: 
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
         <h2 className="text-sm font-semibold text-foreground">{label}</h2>
-        <p className="text-xs text-muted-foreground">{loading || loadedScope !== scope ? `Loading ${label.toLowerCase()}…` : `${rows.length} ${label.toLowerCase()}`}</p>
+        <p className="text-xs text-muted-foreground">{error ? 'Unable to load' : loading || loadedScope !== scope ? `Loading ${label.toLowerCase()}…` : `${rows.length} ${label.toLowerCase()}`}</p>
       </div>
       <button type="button" onClick={refresh} disabled={loading} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50">
         <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh

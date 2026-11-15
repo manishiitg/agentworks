@@ -2,6 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
+import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import SchedulesPage from '../SchedulesPage'
 import { ScheduleListView } from './scheduleRuns/ScheduleListView'
 
@@ -9,7 +10,7 @@ const state = vi.hoisted(() => ({ local: true }))
 vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: (select: (value: unknown) => unknown) => select({ capabilities: { local_mode: state.local } }) }))
 vi.mock('../workspace/WorkspacePageHeader', () => ({ WorkspacePageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }))
 vi.mock('./SimpleSchedulesOverview', () => ({ default: () => <div>Saved schedules</div> }))
-vi.mock('./GlobalTriggersView', () => ({ default: ({ mode }: { mode: string }) => <div data-kind={mode}>Saved {mode}</div> }))
+vi.mock('./GlobalTriggersView', () => ({ default: ({ mode, onOpen }: { mode: string; onOpen: (owner: unknown) => void }) => <div data-kind={mode}>Saved {mode}<button onClick={() => onOpen({ kind: 'crew', id: 'example', label: 'Example' })}>Open example</button></div> }))
 vi.mock('../ScheduleExecutionHistoryList', () => ({ ScheduleExecutionHistoryList: () => null }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -21,13 +22,17 @@ it('keeps local webhooks under More and exposes server automation categories', a
     const button = [...host.querySelectorAll('button')].find(item => item.textContent?.startsWith(label))
     expect(button).toBeTruthy(); button!.click()
   })
+  const surface = useProductSurfaceStore.getState()
   try {
+    useProductSurfaceStore.setState({ productSurface: 'work' })
     state.local = true
     await act(async () => root.render(<SchedulesPage />))
     expect(host.textContent).toContain('requires your Mac to be on')
     expect(host.querySelector('details')?.textContent).toContain('Webhooks')
     await click('Watchers')
     expect(host.querySelector('[data-kind="watchers"]')).toBeTruthy()
+    await click('Open example')
+    expect(useProductSurfaceStore.getState().pendingWorkView).toBe('conditions')
     await click('Webhooks')
     expect(host.querySelector('[data-kind="webhooks"]')).toBeTruthy()
     state.local = false
@@ -35,7 +40,7 @@ it('keeps local webhooks under More and exposes server automation categories', a
     expect(host.textContent).toContain('runs while your Mac is off')
     expect(host.querySelector('nav details')).toBeNull()
     expect(host.querySelector('nav')?.textContent).toContain('Webhooks')
-  } finally { await act(async () => root.unmount()) }
+  } finally { await act(async () => root.unmount()); useProductSurfaceStore.setState(surface) }
 })
 
 // The reported over-wide list must not expose a giant switch or combine every

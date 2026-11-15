@@ -1289,9 +1289,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [selected?.id, isShared, selectWorkspaceView])
   useEffect(() => {
     if (!pendingWorkView) return
-    if (pendingWorkView === 'triggers') {
+    if (pendingWorkView === 'triggers' || pendingWorkView === 'conditions') {
       if (selected?.id !== selectedProjectIdFor(product)) return
-      openWorkPresentationView('schedules', 'triggers')
+      openWorkPresentationView('schedules', pendingWorkView)
     } else {
       openWorkPresentationView(pendingWorkView)
     }
