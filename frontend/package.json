@@ -8,11 +8,11 @@
     "dev:caplayer": "vite --config vite.caplayer.config.ts",
     "build:caplayer": "tsc -b && vite build --config vite.caplayer.config.ts",
     "dev:no-server": "VITE_API_BASE_URL=http://localhost:99999 vite",
-    "build": "npm run check:slack-chat && tsc -b && vite build && npm run build:dashboard && npm run build:report-preview && npm run build:mcp-apps && npm run check:release-assets && npm run check:bundle-budget",
+    "build": "npm run check:theme-contract && npm run check:slack-chat && tsc -b && vite build && npm run build:dashboard && npm run build:report-preview && npm run build:mcp-apps && npm run check:release-assets && npm run check:bundle-budget",
     "check:release-assets": "node scripts/check-release-assets.mjs",
     "build:report-preview": "vite build --config vite.report-preview.config.ts && mkdir -p ../agent_go/cmd/server/static dist && cp ../agent_go/static/report-preview.js ../agent_go/cmd/server/static/report-preview.js && cp ../agent_go/static/report-preview.js dist/report-preview.js",
     "check:bundle-budget": "node scripts/check-bundle-budget.mjs",
-    "lint": "eslint . && npm run check:unused",
+    "lint": "npm run check:theme-contract && eslint . && npm run check:unused",
     "check:unused": "python3 ../scripts/check-unused.py ts",
     "preview": "vite preview",
     "test": "vitest run",
@@ -24,7 +24,8 @@
     "build:mcp-apps": "MCP_APP_ENTRY=document vite build --config vite.mcp-apps.config.ts && vite build --config vite.mcp-apps.config.ts && mkdir -p ../agent_go/static ../agent_go/cmd/server/static && cp dist/mcp-dashboard*.js ../agent_go/static/ && cp dist/mcp-dashboard*.js ../agent_go/cmd/server/static/",
     "build:dashboard": "npm --prefix dashboard-runtime ci --include=dev --no-audit --no-fund && npm --prefix dashboard-runtime run catalog -- --check && npm --prefix dashboard-runtime run build",
     "build:slack-chat": "node scripts/build-slack-chat-renderer.mjs",
-    "check:slack-chat": "node scripts/build-slack-chat-renderer.mjs --check"
+    "check:slack-chat": "node scripts/build-slack-chat-renderer.mjs --check",
+    "check:theme-contract": "node scripts/check-theme-contract.mjs"
   },
   "dependencies": {
     "@chat-adapter/slack": "4.44.0",

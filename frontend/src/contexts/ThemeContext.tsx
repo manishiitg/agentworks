@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useState } from 'react'
 import { useAppearanceStore } from '../stores/useAppearanceStore'
-import { codeFontFamily, hexToHsl, interfaceFontFamily } from '../stores/appearanceTheme'
+import { applyAppearanceTokens } from './appThemeTokens'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { liveFeed } from '../services/liveFeed'
@@ -30,20 +30,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement
     root.classList.remove('light', 'dark'); root.classList.add(profile)
     root.dataset.appearance = profile; root.dataset.theme = profile; root.style.colorScheme = profile
-    root.style.setProperty('--app-font', interfaceFontFamily(current.interface_font))
-    root.style.setProperty('--chat-font', interfaceFontFamily(current.interface_font))
-    root.style.setProperty('--app-font-size', `${current.interface_size}px`)
-    root.style.setProperty('--app-code-font', codeFontFamily(current.code_font))
-    root.style.setProperty('--app-code-size', `${current.code_size}px`)
-    const names: string[] = []
-    for (const [role, hex] of Object.entries(current.colors[profile] ?? {})) {
-      const name = role === 'accent' ? '--primary' : role === 'sidebar' ? '--appearance-sidebar' : `--${role.replace(/_/g, '-')}`
-      root.style.setProperty(name, hexToHsl(hex)); names.push(name)
-      if (role === 'accent') { root.style.setProperty('--ring', hexToHsl(hex)); names.push('--ring'); root.style.setProperty('--appearance-link', hex); names.push('--appearance-link') }
-      if (role === 'foreground') { for (const token of ['--card-foreground','--popover-foreground','--secondary-foreground','--accent-foreground']) {root.style.setProperty(token, hexToHsl(hex));names.push(token)};root.style.setProperty('--appearance-bold',hex);names.push('--appearance-bold') }
-      if (role === 'card') {root.style.setProperty('--popover',hexToHsl(hex));names.push('--popover')}
-    }
-    return () => { for (const name of names) root.style.removeProperty(name) }
+    return applyAppearanceTokens(root, current, profile)
   }, [current, profile])
   useLayoutEffect(() => {
     try {

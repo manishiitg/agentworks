@@ -15,7 +15,7 @@ function ImagePreview({ src, alt, className }: { src: string; alt: string; class
       <button type="button" disabled={!loaded} className="inline-block max-w-full cursor-zoom-in align-middle" aria-label={`Enlarge image${alt ? `: ${alt}` : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(true) }}>
         <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} className={`${className ?? 'max-h-80 max-w-full rounded-lg object-contain'} ${!loaded ? 'opacity-0' : ''}`} />
       </button>}
-    {open && <ModalPortal><dialog ref={dialog} onClose={() => setOpen(false)} onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) dialog.current?.close() }} className="fixed inset-0 m-auto max-h-[95dvh] w-fit max-w-[95vw] overflow-auto rounded-xl border border-border bg-background p-4 text-foreground shadow-xl backdrop:bg-black/80">
+    {open && <ModalPortal><dialog ref={dialog} onClose={() => setOpen(false)} onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) dialog.current?.close() }} className="fixed inset-0 m-auto max-h-[95dvh] w-fit max-w-[95vw] overflow-auto rounded-xl border border-border bg-background p-4 text-foreground shadow-xl backdrop:bg-overlay/80">
       <div className="mb-3 flex items-center justify-between gap-4">
         <span className="truncate text-sm">{alt || 'Image'}</span>
         <div className="flex shrink-0 items-center gap-3">

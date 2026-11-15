@@ -173,6 +173,7 @@ fi
 if [[ "$frontend_needed" == true ]]; then
   cd "$WORK/repo/frontend"
   run "npm ci" npm ci --no-audit --no-fund
+  run "semantic theme contract" npm run check:theme-contract
   run "tsc -b" npx tsc -b
   files="$(grep -E '^Verify-Vitest:' "$WORK/message.txt" | sed 's/^Verify-Vitest:[[:space:]]*//' | tr '\n' ' ' || true)"
   if [[ -n "${files// }" ]]; then run "vitest $files" npx vitest run $files; else echo "No Verify-Vitest lines; type check only."; fi

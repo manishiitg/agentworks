@@ -41,12 +41,14 @@ it('copies the editable appearance request and resets through the existing perso
 
 // Preserve the personal runtime boundary after removing its visual editors.
 it('applies agent theme notices globally and clears them before switching accounts', async () => {
-  let doc: AppearanceDocument = { current: { ...defaultAppearance(),interface_font:'fira-code',colors:{dark:{background:'#102030'}} },saved:[] }
+  let doc: AppearanceDocument = { current: { ...defaultAppearance(),interface_font:'fira-code',colors:{dark:{background:'#102030',accent:'#aaffdd',border:'#112233'}} },saved:[] }
   fixture.get.mockImplementation(async () => ({ data: structuredClone(doc) }))
   host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
   const render=()=>root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>)
   await act(async()=>render())
   expect(document.documentElement.style.getPropertyValue('--app-font')).toContain('Fira Code')
+  expect(document.documentElement.style.getPropertyValue('--primary-foreground')).toBe('0 0% 0%')
+  expect(document.documentElement.style.getPropertyValue('--input')).toBe(document.documentElement.style.getPropertyValue('--border'))
   doc.current={...doc.current,interface_font:'jetbrains-mono'}
   await act(async()=>{fixture.wake?.();await Promise.resolve()})
   expect(document.documentElement.style.getPropertyValue('--app-font')).toContain('JetBrains Mono')
@@ -55,6 +57,8 @@ it('applies agent theme notices globally and clears them before switching accoun
   expect(useAppearanceStore.getState().saved).toEqual([])
   expect(document.documentElement.style.getPropertyValue('--app-font')).toContain('system-ui')
   expect(document.documentElement.style.getPropertyValue('--background')).toBe('')
+  expect(document.documentElement.style.getPropertyValue('--input')).toBe('')
+  expect(document.documentElement.style.getPropertyValue('--primary-foreground')).toBe('')
 })
 
 // The actual account control applies the same saved document as Appearance.
