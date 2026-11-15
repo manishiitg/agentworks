@@ -693,7 +693,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
 			reachable := crewTeamReachableIn(ctx, beta, "other")
-			found := false
+			found = false
 			for _, a := range reachable {
 				found = found || a.ID == betaID
 			}
