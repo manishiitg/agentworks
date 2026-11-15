@@ -73,7 +73,7 @@ export function quickNavigationItems(
       projectDescription: PROJECT_CREATION_DESCRIPTIONS[surface] })
   }
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
-    menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
+    menu('schedules', 'Automations', 'Schedules, watchers and webhooks')
   }
   if (products.some(surface => GLOBAL_PAGE_SURFACES.includes(surface))) {
     menu('providers', 'AI models & accounts', 'AI accounts, models and costs')
