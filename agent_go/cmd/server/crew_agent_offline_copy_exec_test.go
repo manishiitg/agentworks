@@ -66,10 +66,22 @@ func TestCrewOfflineCopyBindingAndReadiness(t *testing.T) {
 	if _, ready, _ := crewOfflineCopyReady(team, a); ready {
 		t.Fatal("a partial bootstrap (offset short of source size) must not be ready")
 	}
+	// An explicit Put online intent, recorded even before the first build, applies only to the current binding.
+	row := crewTeamReachableAgent{ID: agent, Kind: "agent"}
+	write(crewTeamOfflineCopyRef{Home: "home", Binding: b, PutOnline: true}, "copy.json")
+	if on, err := crewOfflineCopyPutOnline(team, row); err != nil || !on {
+		t.Fatalf("a recorded Put online intent must select the copy: on=%v err=%v", on, err)
+	}
+	if _, ready, _ := crewOfflineCopyReady(team, a); ready {
+		t.Fatal("an intent recorded before any build is not a ready copy")
+	}
 	rebound := a
 	rebound.Terminal = &crewTeamTerminal{Provider: "claude", AttachmentID: "attach-2"}
 	if _, bound, _ := crewOfflineCopyBound(team, rebound); bound {
 		t.Fatal("a rebound source attachment must not reuse the old copy")
+	}
+	if on, _ := crewOfflineCopyPutOnline(crewTeam{ProjectID: team.ProjectID, OnlineHome: "home", Agents: map[string]crewTeamRegisteredAgent{agent: rebound}}, row); on {
+		t.Fatal("a rebound source attachment must drop the Put online intent")
 	}
 	moved := team
 	moved.OnlineHome = "home-2"

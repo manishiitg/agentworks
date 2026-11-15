@@ -48,10 +48,28 @@ func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeam
 // Routing is not a second grant: the original target was admitted above and
 // the Team agent is selected from that same viewer's current reachable rows.
 func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgent) (crewTeamReachableAgent, error) {
+	viewer := GetUserIDFromContext(ctx)
+	// An explicit "Put online" intent sends NEW asks to the server copy even while the Mac is on; an auto-shared copy
+	// stays offline-only. A requested copy that is not ready yet refuses plainly instead of falling back to the Mac.
+	intent, err := crewOfflineCopyPutOnline(t, row)
+	if err != nil {
+		return crewTeamReachableAgent{}, admissionRefused("This agent's online copy is unavailable now.")
+	}
+	if intent {
+		copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
+		if err != nil {
+			return crewTeamReachableAgent{}, err
+		}
+		if !ready {
+			log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask outcome=refused reason=online_copy_preparing", t.ProjectID, row.ID, viewer)
+			return crewTeamReachableAgent{}, admissionRefused("This agent's online copy is still being prepared. Try again in a few minutes.")
+		}
+		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=offline_copy reason=put_online", t.ProjectID, row.ID, viewer)
+		return copy, nil
+	}
 	if row.Online {
 		return row, nil
 	}
-	viewer := GetUserIDFromContext(ctx)
 	copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
 	if err != nil {
 		return crewTeamReachableAgent{}, err // revocation/read failure is not no-copy fallback
