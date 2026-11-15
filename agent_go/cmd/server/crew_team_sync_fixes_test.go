@@ -344,6 +344,22 @@ func TestCrewMacDashboardsReadCopy(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(root, crewroot.MacDashboardsFolder, "db", "reports", "index.html")); !os.IsNotExist(err) {
 		t.Fatalf("a removed dashboard stayed in the copy: %v", err)
 	}
+	// PLAT-750-94: an unsuccessful attempt must not recur on each Team poll,
+	// but unchanged files must remain retryable after the attempt interval.
+	const project = "dashboard-attempt-regression"
+	defer crewMacDashboardsAttempted.Delete(project)
+	if !crewMacDashboardsDue(project, root) {
+		t.Fatal("initial changed files were not due")
+	}
+	crewMacDashboardsAttempted.Store(project, time.Now())
+	if crewMacDashboardsDue(project, root) {
+		t.Fatal("failed attempt would repeat on the next poll")
+	}
+	crewMacDashboardsAttempted.Store(project, time.Now().Add(-crewMacDashboardsEvery-time.Second))
+	if !crewMacDashboardsDue(project, root) {
+		t.Fatal("failed attempt hid unchanged files from retry")
+	}
+
 }
 
 // PLAT-856-509 (Showcase test, 6 Nov): an agent's shell runs as the slot group, so a Team copy written into a setgid
