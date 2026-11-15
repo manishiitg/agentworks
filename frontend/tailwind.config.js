@@ -13,8 +13,8 @@ export default {
   theme: {
   	extend: {
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'system-ui', '"Segoe UI"', 'sans-serif'],
-        mono: ['"AgentWorks SF Mono Terminal"', '"SF Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        sans: ['var(--app-font, system-ui)', 'sans-serif'],
+        mono: ['var(--app-code-font, monospace)', 'monospace'],
       },
   		borderRadius: {
   			lg: 'var(--radius)',

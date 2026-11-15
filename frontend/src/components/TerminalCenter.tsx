@@ -1,4 +1,4 @@
-import { APPLE_MONO_FONT, useAppearanceStore } from '../stores/useAppearanceStore'
+import { APPLE_MONO_FONT, codeFontFamily, useAppearanceStore } from '../stores/useAppearanceStore'
 import { dropFilesOnTerminal } from '../utils/terminalFileDrop'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { transcriptReadingKey } from './useTranscriptScroll'
@@ -594,7 +594,9 @@ export const LIGHT_XTERM_THEME: ITheme = {
 export const RAW_XTERM_THEMES: Record<Theme, ITheme> = { dark: DARK_XTERM_THEME, light: LIGHT_XTERM_THEME }
 
 function rawXtermFont() {
-  return { fontFamily: RAW_XTERM_FONT_FAMILY, fontSize: RAW_XTERM_FONT_SIZE }
+  const state = useAppearanceStore.getState()
+  const theme = state.preview ?? state.current
+  return { fontFamily: codeFontFamily(theme.code_font), fontSize: theme.code_size }
 }
 
 function applyRawXtermTheme(term: XTerm, theme: ITheme) {
@@ -1507,6 +1509,7 @@ const LiveAttachXtermPaneInner: React.FC<{
   loadSnapshot?: () => Promise<TerminalSnapshot>
   interactive?: boolean
 }> = ({ terminalId, tmuxSession, sessionId, className, contentRef, xtermTheme, authoritativeContent, authoritativeVersion, reconnectOnClose, onViewportStickChange, onScrollToBottomReady, onOutputText, streamUrl, loadSnapshot, interactive = false }) => {
+  const typography = useAppearanceStore(state => { const theme = state.preview ?? state.current; return `${theme.code_font}:${theme.code_size}` })
   const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting' | 'snapshot' | 'settled' | 'superseded' | 'revoked' | 'exited'>('connecting')
   // Set inside the socket effect so the superseded badge's "Take over" button
   // can re-attach this pane without remounting it.
@@ -2260,7 +2263,7 @@ const LiveAttachXtermPaneInner: React.FC<{
     if (!term) return
     applyRawXtermTheme(term, xtermTheme)
     appearanceFitRef.current?.()
-  }, [xtermTheme])
+  }, [xtermTheme, typography])
 
   useEffect(() => {
     const content = authoritativeContent || ''
@@ -2430,6 +2433,7 @@ const StaticXtermPaneInner: React.FC<{
 }> = ({ content, className, contentRef, xtermTheme, onViewportStickChange, onScrollToBottomReady }) => {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTerm | null>(null)
+  const typography = useAppearanceStore(state => { const theme = state.preview ?? state.current; return `${theme.code_font}:${theme.code_size}` })
   const fitRef = useRef<FitAddon | null>(null)
   const outputQueueRef = useRef<TerminalOutputQueue | null>(null)
   const onViewportStickChangeRef = useRef(onViewportStickChange)
@@ -2521,7 +2525,7 @@ const StaticXtermPaneInner: React.FC<{
     if (!term) return
     applyRawXtermTheme(term, xtermTheme)
     try { fitRef.current?.fit() } catch { /* The pane may be hidden. */ }
-  }, [xtermTheme])
+  }, [xtermTheme, typography])
 
   useEffect(() => {
     const term = terminalRef.current
