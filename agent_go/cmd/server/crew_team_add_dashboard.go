@@ -27,7 +27,7 @@ type teamDashboardStart struct {
 func (api *StreamingAPI) addDashboardToTeam(ctx context.Context, root, id string) (teamDashboardStart, error) {
 	out := teamDashboardStart{}
 	claims := GetUserFromContext(ctx)
-	if claims == nil || claims.Scope != "" {
+	if claims == nil || claims.Scope != "" && (claims.AccessToken == nil || !claims.AccessToken.Allows("crews:write")) {
 		return out, fmt.Errorf("use your own Builder connection to add this item")
 	}
 	target, err := api.dashboardTarget(ctx, claims, root)
@@ -35,7 +35,7 @@ func (api *StreamingAPI) addDashboardToTeam(ctx context.Context, root, id string
 		return out, fmt.Errorf("add an item from your own Crew")
 	}
 	source, err := resolveTriggerTarget(ctx, claims, "workspace:work:"+target.ID)
-	if err != nil || source.CrewOwner != claims.UserID {
+	if err != nil || source.CrewOwner != claims.UserID || !crewTeamClaims(claims, source.CrewID, true) {
 		return out, fmt.Errorf("add an item from your own Crew")
 	}
 	current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, ID: id, Action: "get", Guard: dashboardFileGuard(claims)})

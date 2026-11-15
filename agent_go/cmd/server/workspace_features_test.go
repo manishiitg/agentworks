@@ -11,7 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/spf13/viper"
 )
 
 // PLAT-746-1025: deleting a Team home through the ordinary Crew handler must
@@ -298,5 +302,72 @@ func TestProjectCreationLocationKeepsAccessAndDoesNotCreate(t *testing.T) {
 	}
 	if len(f.Mock.files) != filesBefore {
 		t.Fatal("location lookup wrote workspace files")
+	}
+}
+
+// PLAT-746-1023: only an explicit, source-validated begin provisions a Team
+// agent. Repeated begin returns the same ordinary Main, without applying data.
+func TestDashboardHandoffBeginValidatesSourceBeforeIdempotentProvision(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	layout := legacyIdentityLayout()
+	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+	f := newMultiUserFixture(t, layout)
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
+	profile := f.Crew
+	profile.Version++
+	profile.Runtime.Workspace.ProjectsRoot = "Crew"
+	if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: fixtureCrewID, OwnerID: fixtureUserA, Name: "Sales", On: true, People: []crewTeamPerson{{UserID: fixtureUserB}}}); err != nil {
+		t.Fatal(err)
+	}
+	oldDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", f.Docs)
+	t.Cleanup(func() { viper.Set("docs-dir", oldDocs) })
+	router := gin.New()
+	router.POST("/api/dashboards", workspacehandlers.DashboardOperation)
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/dashboards" {
+			router.ServeHTTP(w, r)
+			return
+		}
+		f.Mock.ServeHTTP(w, r)
+	}))
+	defer proxy.Close()
+	t.Setenv("WORKSPACE_API_URL", proxy.URL)
+	root := "Crew/" + fixtureCrewFolder
+	ctx := f.Ctx(fixtureUserA)
+	created, err := dashboards.Execute(ctx, f.Docs, dashboards.Request{Root: root, ID: "orders", Action: "create", Title: "Orders", Files: map[string]string{"index.html": "<h1>Orders</h1>", "online.json": `{"dataset":{"tables":[]}}`}, IncludeDraft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dashboards.Execute(ctx, f.Docs, dashboards.Request{Root: root, ID: "orders", Action: "publish", ExpectedRevision: created.Dashboard.Revision, IncludeDraft: true}); err != nil {
+		t.Fatal(err)
+	}
+	input := teamOnlineRequest{TeamProjectID: fixtureCrewID, SourceProjectID: fixtureCrewID, Kind: "dashboard", ItemID: "orders", Revision: strings.Repeat("a", 64), SubmissionID: "begin-orders", Preview: true}
+	if _, err = f.API.beginTeamDashboardHandoff(ctx, input); err == nil {
+		t.Fatal("stale source revision provisioned a home")
+	}
+	team, err := readCrewTeam(fixtureCrewID)
+	if err != nil || team.OnlineHome != "" {
+		t.Fatalf("refused begin created home: %+v %v", team, err)
+	}
+	input.Revision = created.Dashboard.Revision
+	if _, err = f.API.beginTeamDashboardHandoff(f.Ctx(fixtureUserB), input); err == nil {
+		t.Fatal("another member used the owner's source item")
+	}
+	first, err := f.API.beginTeamDashboardHandoff(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.API.beginTeamDashboardHandoff(ctx, input)
+	if err != nil || first.HomeProjectID == "" || first.Address == "" || first.Address != second.Address || first.HomeProjectID != second.HomeProjectID {
+		t.Fatalf("idempotent ordinary Main: %+v %+v %v", first, second, err)
+	}
+	rows, err := readTeamOnlineMappings(ctx, triggerTarget{CrewID: first.HomeProjectID})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("begin applied an item: %+v %v", rows, err)
 	}
 }

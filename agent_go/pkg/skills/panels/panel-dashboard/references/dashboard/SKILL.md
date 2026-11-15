@@ -32,6 +32,12 @@ When a live dashboard returns a source-agent task, carry out that task below:
 do not repeatedly call add_to_team to request the same task again. For a live dashboard:
 - Inspect its current queries, assets, functions and feeding routines; prepare
   its `online.json` dependencies from actual use, never guess IDs or rows.
+- After preparing and publishing this item's dependencies, call `dashboard
+  action=begin_handoff` in this Crew with its `dashboard_id`, current published
+  `revision` and one stable `submission_id`. This explicit request alone may
+  create the normal Team home; it copies nothing and starts no AI turn.
+  Use its returned admitted `agent:` address for the Team agent; do not construct
+  an address, provision on an ordinary ask/preview, or fake a way_add.
 - Discover the Team agent's exact `agent:` address through AgentBridge. Use
   `messages` to agree on needed data, feeding schedules/Watchers, online Ask
   targets and available connections. No sessions, substitute messaging or
