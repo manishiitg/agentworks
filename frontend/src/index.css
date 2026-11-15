@@ -2032,11 +2032,13 @@ html[data-appearance] .agent-inbox-prose .conversation-markdown :is(p, li) {
 
 /* One app-wide typography boundary. Authored documents retain their own design. */
 html[data-appearance] { --runloop-mono: var(--app-code-font, monospace); }
-html[data-appearance] :is(button, input, select, textarea) { font-family: inherit; }
+html[data-appearance] :is(button, input, select, textarea):not(:where(.force-light *, [data-report-theme] *)) { font-family: inherit; }
 html[data-appearance] :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) { font-family: var(--app-code-font, monospace) !important; }
 html[data-appearance] :is(code, pre):not(:where(.force-light *, [data-report-theme] *)) { font-size: var(--app-code-size, 12px); }
 html[data-appearance] aside[aria-label="Projects"] { background: hsl(var(--appearance-sidebar, var(--muted))); }
 .force-light, [data-report-theme] {
+  font-family: var(--report-font-sans, system-ui);
+  font-size: 14px;
   --app-font: var(--report-font-sans, system-ui);
   --chat-font: var(--report-font-sans, system-ui);
   --app-font-size: 14px;
