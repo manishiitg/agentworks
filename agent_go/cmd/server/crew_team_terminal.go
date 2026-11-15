@@ -179,16 +179,29 @@ func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project st
 	return crewChatResult{ID: call.ID, Status: 200, Body: raw}
 }
 
-// Validate on each use; saved leases never authorize a replacement session.
+// Transport proof only; not an audience grant. The shared Team reach function
+// admits the sender/In-team row before using this per-row liveness adapter.
 func currentCrewTeamTerminal(ctx context.Context, t crewTeam, a crewTeamRegisteredAgent) (namedMessageAgent, error) {
-	if a.Kind != "terminal" || a.Terminal == nil || !t.member(a.OwnerID) || !crewTeamAgentsVisible(t, a.OwnerID) {
-		return namedMessageAgent{}, fmt.Errorf("Team agent unavailable or access removed")
+	if a.Kind != "terminal" || a.Terminal == nil {
+		return namedMessageAgent{}, fmt.Errorf("terminal route unavailable")
 	}
 	named, err := namedAgentByID(ctx, a.OwnerID, a.Terminal.NamedAgentID)
 	if err != nil || named.Attachment == nil || named.Attachment.ID != a.Terminal.AttachmentID || named.Attachment.SessionID != a.ChatKey || named.Attachment.Provider != a.Terminal.Provider {
-		return namedMessageAgent{}, fmt.Errorf("Team agent unavailable or access removed")
+		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
 	}
-	return named, nil
+	claims, err := agentMessageConnectionClaims(ctx, named.Attachment.ConnectionID)
+	if err != nil || claims == nil || claims.UserID != a.OwnerID {
+		return namedMessageAgent{}, fmt.Errorf("terminal connection unavailable")
+	}
+	current, _, err := currentAgentAttachment(ctx, claims, named.Name, named.Attachment.ID)
+	if err != nil || current.ID != named.ID {
+		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
+	}
+	pair, ok := crewMacPairFor(a.OwnerID, t.ProjectID)
+	if !ok || pair != a.Terminal.MacPair {
+		return namedMessageAgent{}, fmt.Errorf("terminal Mac pair changed")
+	}
+	return current, nil
 }
 
 // Same defaults as an app agent's explicit Only-me/Answers-only choices.
