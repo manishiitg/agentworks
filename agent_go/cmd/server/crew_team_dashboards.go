@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
@@ -34,10 +35,28 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 			Dashboards []dashboards.Dashboard `json:"dashboards"`
 			HasMore    bool                   `json:"has_more"`
 		}
-		if err := crewPanelRead(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset}, &page); err != nil {
+		status, raw := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset})
+		if status < 200 || status >= 300 {
+			var failure struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(raw, &failure)
+			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d code=%q reason=%q", t.ProjectID, status, failure.Error.Code, failure.Error.Message)
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
 			return nil, false
 		}
+		if err := r.Context().Err(); err != nil {
+			return nil, false
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d reason=%q", t.ProjectID, status, err)
+			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
+			return nil, false
+		}
+
 		for _, d := range page.Dashboards {
 			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion}
 			if canShare && d.Managed {
