@@ -144,7 +144,7 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 		case agent.Audience == "" && !agent.AgentBridgePublic:
 			return nil, fmt.Errorf("choose who can message %s, or make it public for agents", agent.Name)
 		case agent.Audience != "" && agent.Audience != "team":
-			return nil, fmt.Errorf("choose In team or Only me for %s", agent.Name)
+			return nil, fmt.Errorf("choose Shared with team or Not shared for %s", agent.Name)
 		}
 		if slices.ContainsFunc(out, func(a macSharedAgent) bool { return a.Tab == agent.Tab }) {
 			continue
@@ -407,7 +407,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	if reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%q action=%s refused reason=%s", manifest.ID, logUsernameForUserID(claims.UserID), tab, action, reason)
 		if team, err := readCrewTeam(projectID); err == nil && crewTeamAgentsVisible(team, claims.UserID) && claims.UserID != owner {
-			externalError(w, 403, "agent_unavailable", "This agent is no longer In team.")
+			externalError(w, 403, "agent_unavailable", "This agent is no longer shared with the team.")
 		} else {
 			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
 		}
@@ -441,7 +441,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		if team, e := readCrewTeam(projectID); e == nil && crewTeamAgentsVisible(team, claims.UserID) && claims.UserID != owner {
 			registered, ok := team.registeredAgent(owner, tab)
 			if !ok || !registered.InTeam {
-				externalError(w, 403, "agent_unavailable", "This agent is no longer In team.")
+				externalError(w, 403, "agent_unavailable", "This agent is no longer shared with the team.")
 				return true
 			}
 			profile, err := api.agentProfiles.Resolve(crewProfileID, 0, owner)

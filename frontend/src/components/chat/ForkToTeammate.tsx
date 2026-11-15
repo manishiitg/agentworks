@@ -29,7 +29,7 @@ export function ForkToTeammate({ state, agentId, name, close }: { state: TeamTab
           {people.map(person => <option key={person.user_id} value={person.user_id}>{person.name}</option>)}
         </select></label>
         {person && <p className="text-sm">{person.name} will get a copy of this whole conversation, including anything you pasted into it.</p>}
-        <p className="text-xs text-muted-foreground">Their copy starts Only me. Files, memory, skills and logins are not included. Unaccepted copies expire after 7 days.</p>
+        <p className="text-xs text-muted-foreground">Their copy starts Not shared. Files, memory, skills and logins are not included. Unaccepted copies expire after 7 days.</p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </>}
       <div className="flex justify-end gap-2"><button type="button" disabled={busy} className="rounded-md px-3 py-2 text-sm hover:bg-muted" onClick={close}>{sent ? 'Done' : 'Cancel'}</button>

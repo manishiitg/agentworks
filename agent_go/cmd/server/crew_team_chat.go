@@ -53,7 +53,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"include_automations": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "receive_online: optionally choose a subset of preview.dependencies.automations; default empty."},
 		"replace":             map[string]any{"type": "boolean", "description": "way_add secret: replace the value already on the Team."},
 		"accept_into":         map[string]any{"type": "string", "description": "accept on this Mac: omit to preview New project and eligible existing projects; then use new or a local project_id from that preview. Existing-project acceptance requires confirm=true after showing the instructions notice. Agent choices default to none."},
-		"agents":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: agent tab keys from the preview to put In team; omit for none."},
+		"agents":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: agent tab keys from the preview to share with the team; omit for none."},
 		"project":             map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":                map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "offset": map[string]any{"type": "integer", "description": "files: where the page starts (next_offset from the previous reply)."}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
 		"folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
@@ -248,7 +248,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 					return "", fmt.Errorf("Could not save activity. Use one short line from your own agent in this Crew.")
 				}
 				if !actor.InTeam {
-					return "Saved. Only you see it, because this agent isn't In team.", nil
+					return "Saved. Only you see it, because this agent isn't shared with the team.", nil
 				}
 				return "Posted to the Team as a finding from " + name + ".", nil
 			}
@@ -413,7 +413,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		if action == "doing" || action == "decision" || action == "finding" {
 			var post crewTeamActivityPost
 			if json.Unmarshal(data, &post) == nil && post.Private {
-				return "Saved. Only you see it, because this agent isn't In team.", nil
+				return "Saved. Only you see it, because this agent isn't shared with the team.", nil
 			}
 		}
 		if action == "decisions" {

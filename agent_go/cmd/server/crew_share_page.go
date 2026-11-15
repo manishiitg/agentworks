@@ -650,7 +650,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
 		locked := a.InTeam && !a.CanUnshare
 		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
-			Title: "Teammates can ask it", Line: "Only you and your agents can reach it.",
+			Title: "Shared with team", Line: "Not shared: only you and your agents can reach it.",
 			ChangesLabel: "When they ask",
 			ChangesOptions: []crewShareChangeOpt{
 				{Value: false, Label: "Get answers", Line: "They ask, " + a.Name + " answers and changes nothing."},
