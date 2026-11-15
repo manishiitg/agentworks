@@ -468,14 +468,14 @@ export async function removeTeamRoutine(target: TeamTarget, home: string, id: st
 }
 
 /** Normal admitted home schedules (including Watchers), not a second Team store. */
-export type TeamHomeRoutine = {id:string;name:string;line?:string;enabled:boolean;last_run_at?:string;last_status?:string;chat_id?:string}
+export type TeamHomeRoutine = {id:string;name:string;line?:string;enabled:boolean;last_run_at?:string;last_status?:string;next_run_at?:string;chat_id?:string}
 export async function teamHomeRoutines(target:TeamTarget,home:string,workspace:string):Promise<TeamHomeRoutine[]> {
- type Job={id:string;name:string;timing_summary?:string;enabled:boolean;last_run_at?:string;last_status?:string;chat_id?:string;product_project_id?:string;product_profile_id?:string}
+ type Job={id:string;name:string;timing_summary?:string;enabled:boolean;last_run_at?:string;last_status?:string;next_run_at?:string;chat_id?:string;product_project_id?:string;product_profile_id?:string}
  const jobs:Job[]=[]
  for(let offset=0;;) {
   const result=await serverRequest<{jobs?:Job[];total:number}>(target,`/api/scheduler/jobs?workspace_path=${encodeURIComponent(workspace)}&entity_type=product&limit=200&offset=${offset}`)
   const page=result.jobs||[];jobs.push(...page);offset+=page.length
   if(!page.length||offset>=result.total) break
  }
- return jobs.filter(job=>job.product_project_id===home&&job.product_profile_id==='work').map(job=>({id:job.id,name:job.name,line:job.timing_summary,enabled:job.enabled,last_run_at:job.last_run_at,last_status:job.last_status,chat_id:job.chat_id===`${home}:chat:main`?'main':job.chat_id}))
+ return jobs.filter(job=>job.product_project_id===home&&job.product_profile_id==='work').map(job=>({id:job.id,name:job.name,line:job.timing_summary,enabled:job.enabled,last_run_at:job.last_run_at,last_status:job.last_status,next_run_at:job.next_run_at,chat_id:job.chat_id===`${home}:chat:main`?'main':job.chat_id}))
 }
