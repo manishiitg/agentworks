@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-746-1030: joining is not consent to share the session or its transcript.
@@ -173,5 +174,22 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	row := saved.Agents[id]
 	if row.ID == "" || row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 		t.Fatal("join did not preserve exact native identity and private defaults")
+	}
+
+	// A disconnected stream is valid offline, but rebinding the same named
+	// agent to a different native session must not inherit this Team route.
+	current, e := currentCrewTeamTerminal(t.Context(), saved, row)
+	if e != nil || current.ID != attached.AgentID || namedAgentOnline(current) {
+		t.Fatalf("matching offline binding must remain valid: %v", e)
+	}
+	replacement, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: "claude", SessionID: "private-replacement-session"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if replacement.AgentID != attached.AgentID || replacement.ID == attached.ID {
+		t.Fatal("fixture did not rotate the same named agent's native binding")
+	}
+	if _, e = currentCrewTeamTerminal(t.Context(), saved, row); e == nil {
+		t.Fatal("a replacement private session inherited the old Team binding")
 	}
 }
