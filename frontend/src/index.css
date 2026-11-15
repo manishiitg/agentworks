@@ -1903,15 +1903,9 @@
 }
 /* App-wide colors inherit into navigation and portaled dialogs. Explicit
    report/force-light themes still define their own tokens on their boundary. */
-/* Default uses the original .dark palette above, not an alternate dark theme.
-   Keep only the independently approved typography here. */
-html.dark[data-appearance="dark"] {
-  --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
-}
 /* Neutral surfaces separate content from chrome without tinting the whole app.
    Blue is reserved for links/actions/focus; status colors keep their meanings. */
 html.light[data-appearance="light"] {
-  --runloop-mono: "AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
   --background: 0 0% 98.824%;
   --foreground: 0 0% 15%;
   --card: 0 0% 100%;
