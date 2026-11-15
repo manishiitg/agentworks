@@ -97,8 +97,8 @@ With Team on, a new session starts **Shared with team**, **Answers only**, with 
 
 Team doing/decision posts use `action=team_sync`, `team_action=doing|decision`. Normal AgentBridge handles discovery, asks, replies and server-owned instructions. Offline ASKs go to the Team agent if available; direct sends wait. Answer questions/work in the original inbox, not final chat text. Joining does not grant general Crew tools or copy Team keys or logins to the Mac. Leave removes only the listing, not files or the attachment.
 
-### Optional terminal status (draft)
+### Terminal status
 
-Start `claude` with `AGENTWORKS_TERMINAL_STATUS=1` to opt in to one quiet metadata line. Leave it unset to show nothing. No hook trust or app setting is changed automatically. Claude uses its existing mod band; Codex uses the hook's visible systemMessage at session/prompt start. Status refreshes only at existing lifecycle boundaries, never on a timer or every repaint.
+Attached sessions show one quiet metadata line by default. Start `claude` with `AGENTWORKS_TERMINAL_STATUS=0` to turn it off. Unattached sessions show nothing. No hook trust or app setting is changed automatically. Claude uses its existing mod band; Codex uses the hook's visible systemMessage at session/prompt start. Status refreshes only at existing lifecycle boundaries, never on a timer or every repaint.
 
 Joined + Team on: `AgentWorks · Crew Design workspace · Shared with team · 2 online · 1 new`; hidden: `AgentWorks · Crew Design workspace · Not shared`; no Team: `AgentWorks · Crew Design workspace`; attached only: `AgentWorks · connected`; unattached or unavailable: nothing. Counts are omitted when unavailable. Nothing reads or displays chat text, sends a message, or acknowledges mail. Exact current attachment and Crew membership are rechecked by the server.
