@@ -243,6 +243,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				if action == "inbox" {
 					operation = "inbox"
 				}
+				if action == "status" {
+					operation = "terminal_status"
+				}
 				raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": crewProject, "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 				req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 				req.Header.Set("Authorization", "Bearer "+auth)
@@ -257,6 +260,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 					t.Fatal(e)
 				}
 				return res.StatusCode, out
+			}
+			if status, out := request(token, attached, "status"); status != 200 || out["attached"] != true || out["crew_name"] != nil || calls != 0 {
+				t.Fatalf("connected-only status leaked a Crew or touched native data: %d %v", status, out)
+			}
+			if status, _ := request(wrongConnection, attached, "status"); status != 403 || calls != 0 {
+				t.Fatal("another connection read attached-session status")
 			}
 			if status, _ := request(wrongConnection, attached); status != 403 || calls != 0 {
 				t.Fatalf("another connection reached the Mac: %d calls=%d", status, calls)
@@ -290,6 +299,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			if status, again := request(token, attached); status != 200 || again["in_team"] != false {
 				t.Fatalf("rejoin changed Only me: %d %v", status, again)
+			}
+			if status, out := request(token, attached, "status"); status != 200 || out["crew_name"] != "Alpha" || out["in_team"] != false || out["online"] != nil || out["unread"] != nil {
+				t.Fatalf("Not shared status widened visibility or ignored the current row: %d %v", status, out)
 			}
 			if status, out = request(token, attached, "doing"); status != 200 || out["private"] != true {
 				t.Fatalf("Only-me activity through a messaging child must stay private: %d %v", status, out)

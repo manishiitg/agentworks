@@ -151,3 +151,9 @@ With Team on, a new session starts **Shared with team**, **Answers only**, with 
 Team doing/decision posts use `action=team_sync`, `team_action=doing|decision`. Normal AgentBridge handles discovery, asks, replies and server-owned instructions. Offline ASKs go to the Team agent if available; direct sends wait. Answer questions/work in the original inbox, not final chat text. Joining does not grant general Crew tools or copy Team keys or logins to the Mac. Leave removes only the listing, not files or the attachment.
 
 Existing approved Codex hooks check delivery at turn boundaries; idle wake is weaker than Claude’s live channel. `agentworks bridge message watch --provider codex --after 0` waits up to 20 seconds once, returns messages and next_cursor, then exits. Use the returned cursor for later explicit reads, not a polling loop. It does not attach or approve hooks.
+
+### Optional terminal status (draft)
+
+Start `codex` with `AGENTWORKS_TERMINAL_STATUS=1` to opt in to one quiet metadata line. Leave it unset to show nothing. No hook trust or app setting is changed automatically. Claude uses its existing mod band; Codex uses the hook's visible systemMessage at session/prompt start. Status refreshes only at existing lifecycle boundaries, never on a timer or every repaint.
+
+Joined + Team on: `AgentWorks · Crew Design workspace · Shared with team · 2 online · 1 new`; hidden: `AgentWorks · Crew Design workspace · Not shared`; no Team: `AgentWorks · Crew Design workspace`; attached only: `AgentWorks · connected`; unattached or unavailable: nothing. Counts are omitted when unavailable. Nothing reads or displays chat text, sends a message, or acknowledges mail. Exact current attachment and Crew membership are rechecked by the server.

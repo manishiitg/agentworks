@@ -353,10 +353,17 @@ func pluginCommand(o *options) *cobra.Command {
 				out.Notice = strings.TrimSpace(out.Notice + "\n" + line)
 			}
 		}
+		statusLine := ""
+		if args[0] == "codex" && o.getenv("AGENTWORKS_TERMINAL_STATUS") == "1" && out.Attached && (input.Event == "SessionStart" || input.Event == "UserPromptSubmit") {
+			statusLine = readPluginTerminalStatus(ctx, root, req.Provider, req.SessionID, req.HostKey)
+		}
 		if out.Attached && out.Notice != "" && len(out.Messages) == 0 && out.SetupContext == "" {
-			return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": out.Notice}})
+			return json.NewEncoder(o.stdout).Encode(withTerminalStatus(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": out.Notice}}, statusLine))
 		}
 		if !out.Attached || len(out.Messages) == 0 && out.SetupContext == "" && out.Held == 0 {
+			if statusLine != "" {
+				return json.NewEncoder(o.stdout).Encode(map[string]any{"systemMessage": statusLine})
+			}
 			return nil
 		}
 		// Held or waiting messages with nothing to deliver now never stop the turn from ending: Stop used to
@@ -378,7 +385,7 @@ func pluginCommand(o *options) *cobra.Command {
 		if input.Event == "Stop" {
 			written = json.NewEncoder(o.stdout).Encode(map[string]any{"decision": "block", "reason": text})
 		} else {
-			written = json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": text}})
+			written = json.NewEncoder(o.stdout).Encode(withTerminalStatus(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": text}}, statusLine))
 		}
 		if written == nil {
 			recordHookRendered(root, out, input.Event, req.Transport)
@@ -389,6 +396,7 @@ func pluginCommand(o *options) *cobra.Command {
 		return written
 	}}
 	root.AddCommand(hook)
+	root.AddCommand(pluginTerminalStatusCommand(o))
 	root.AddCommand(&cobra.Command{Use: "mcp PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if args[0] == "cursor" {
 			return cursorMessagingChild(cmd.Context(), o)
