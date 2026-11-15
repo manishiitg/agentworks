@@ -39,7 +39,7 @@ it('previews typography and colours, saves through the personal endpoint and res
   expect(document.documentElement.style.getPropertyValue('--app-font')).toContain('Fira Code')
   expect(document.documentElement.style.getPropertyValue('--app-code-font')).toContain('IBM Plex Mono')
   expect(fixture.put).not.toHaveBeenCalled()
-  await act(async () => { const input = host.querySelector<HTMLInputElement>('[aria-label="Page background"]')!;input.value = '#102030'; input.dispatchEvent(new Event('change', { bubbles: true })) })
+  await act(async () => { const input = host.querySelector<HTMLInputElement>('[aria-label="Page background"]')!;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '#102030'); input.dispatchEvent(new Event('change', { bubbles: true })) })
   expect(document.documentElement.style.getPropertyValue('--background')).not.toBe('')
   await click('Save theme')
   expect(fixture.put).toHaveBeenCalledWith('/api/appearance', expect.objectContaining({ operation: 'save', replace: true, theme: expect.objectContaining({ interface_font: 'fira-code', code_font: 'ibm-plex-mono' }) }), { skipSessionContext: true })

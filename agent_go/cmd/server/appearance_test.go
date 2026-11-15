@@ -49,6 +49,10 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if json.Unmarshal(read.Body.Bytes(), &doc) != nil || doc.Current.InterfaceFont != "fira-code" || len(doc.Saved) != 1 {
 		t.Fatalf("not persisted: %s", read.Body.String())
 	}
+	toolRead := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "read"})
+	if toolRead.Code != 200 || !strings.Contains(toolRead.Body.String(), "fira-code") {
+		t.Fatalf("same tool document unavailable: %d %s", toolRead.Code, toolRead.Body.String())
+	}
 	other := invoke("other", `{"operation":"read"}`)
 	var foreign appearanceDocument
 	if json.Unmarshal(other.Body.Bytes(), &foreign) != nil || len(foreign.Saved) != 0 || foreign.Current.InterfaceFont != "system" {

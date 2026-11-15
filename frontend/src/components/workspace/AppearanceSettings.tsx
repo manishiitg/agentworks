@@ -62,7 +62,7 @@ export default function AppearanceSettings() {
       <pre className="overflow-auto rounded-md bg-muted p-3" style={{ fontFamily: codeFontFamily(theme.code_font), fontSize: theme.code_size }}>{'const ready = changes.every(check => check.passed)\n// 0123456789 · { } [ ] != =>'}</pre>
     </section>
     <details className="space-y-3 rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">Advanced · custom CSS & agent styling</summary>
-      <p className="text-xs text-muted-foreground">CSS applies after app styles. Style the stable selectors below; generated utility classes may change. External resources are blocked; embedded data images are allowed. Agents can use settings action=appearance to read, apply, save or reset this same theme.</p>
+      <p className="text-xs text-muted-foreground">CSS applies after app styles and can override same-page elements it matches. Avoid .force-light and [data-report-theme] to preserve authored designs. Style the stable selectors below; generated utility classes may change. External resources are blocked; embedded data images are allowed. Agents can use settings action=appearance to read, apply, save or reset this same theme.</p>
       <textarea aria-label="Custom CSS" className={`${inputClass} min-h-40 font-mono`} maxLength={20000} spellCheck={false} value={theme.css} onChange={event => update({ css: event.target.value })} placeholder={'[data-chat-composer-card] { border-radius: 20px; }'} />
       <p className="text-xs text-muted-foreground">{new TextEncoder().encode(theme.css).length}/20,000 bytes</p>
       <div className="flex flex-wrap gap-2">{APPEARANCE_HOOKS.map(hook => <code key={hook} className="rounded bg-muted px-1.5 py-1 text-xs">{hook}</code>)}</div>
