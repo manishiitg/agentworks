@@ -25,7 +25,7 @@ are built in. A named look is the person's data, not a product preset.
 
 Other people's chats/accounts remain private. The theme changes only the caller's
 appearance on that connection, never a Crew, sharing, providers or authored files.
-The app's own visibility/activity projections are presentation, not authority.
+The app's own visibility/activity projections are presentation, not authority. Team summary booleans below are retained; new per-row Team hooks require its Manager's separate contract and are not offered by this slice.
 
 ## Current fields (read the live guide first)
 
@@ -88,7 +88,6 @@ native role selectors. These attributes add no observers, timers or permission.
 | `[data-theme-control]` | Shared `button/input/textarea/select/composer-input`. Native `:disabled`, `:focus-visible`, `aria-expanded` etc. retain their real meanings. |
 | `[data-theme-composer-controls]`, `[data-theme-action]` | Actions band; `send/stop/attach/microphone/composer-menu`. Never hide or cover these. |
 | `[data-theme-surface="dialog"]`, `"menu"`, `"popover"` | Shared surfaces. `[role="dialog"]`/`[role="menu"]` also cover semantic legacy dialogs/menus; menu rows have `role="menuitem"`. |
-| `[data-theme-surface="team"]`, `[data-theme-row="team-agent"]` | Existing admitted Team summary panel/rows; no new Team lookup or state. |
 | `[data-theme-agent-state]`, `[data-theme-agent-selected]` | Existing row/state glyph `running/waiting/failed/done/quiet`, selected `true/false`. Some inactive rows expose state on the glyph: use `:has()` on the row. Quiet is not idle proof; unread done/failed clear on open; visual holds remain. |
 | `[data-theme-turn-live]`, `[data-theme-tools-running]` | Existing live group booleans. Gate tool effects on true, not historical status. Absence from virtualized/unmounted rows is unknown. |
 | `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing viewer-admitted summary booleans, not a global exact agent count. Waiting is often a teammate reply, not an alarm. |
