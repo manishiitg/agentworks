@@ -127,7 +127,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			env.api.agentProfiles = env.svc.registry
 			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 			t.Setenv("AGENT_PRODUCTS", "")
-			t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
+			t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,bullpen")
 			t.Setenv("AUTH_SECRET", "terminal-join-fixture")
 			oauth, err := openMCPOAuthStore()
 			if err != nil {
