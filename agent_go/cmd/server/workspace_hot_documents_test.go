@@ -8,13 +8,20 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 )
 
 // PLAT-856-572: reuse unchanged bytes, never a stale access decision. Exercise
 // the actual workspace handlers and store writes, including preserved-mtime
 // external edits, deletion/creation and a write racing a cache fill.
 func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
-	f, _ := newExternalCrewCommandFixture(t)
+	f, _ := newExternalCrewCommandFixture(t, func(router *gin.Engine) {
+		// The shared command fixture has GET/PUT/POST but not DELETE. Exercise the
+		// real deletion route; a router-level 404 is not proof the file was deleted.
+		router.DELETE("/api/documents/*filepath", workspacehandlers.DeleteDocument)
+	})
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	const file = "config/user-product-access.json"
 	const alpha = `{"owner":{"workflow_ids":["alpha"]}}`
