@@ -7,11 +7,12 @@ import { AgentSetupMark } from '../../components/chat/AgentIcon'
 import { agentSetupForTab, teamAgentForTab, useTeamTab } from './teamApi'
 
 const mode = vi.hoisted(() => ({ local: true as boolean | undefined }))
+const notices = vi.hoisted(() => ({ reload: () => {} }))
 vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: { getState: () => ({ capabilities: { local_mode: mode.local } }) } }))
 vi.mock('../productSurfaceConfig', () => ({ isLocalDeployment: () => true }))
 vi.mock('../../services/api', () => ({ default: { get: vi.fn(), request: vi.fn() }, getAuthToken: () => '', getDesktopApiBaseUrl: () => '', getLocalApiBaseUrl: () => '' }))
 vi.mock('../../services/desktopConnections', () => ({ desktopRequest: vi.fn() }))
-vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: () => () => {} } }))
+vi.mock('../../services/liveFeed', () => ({ liveFeed: { subscribe: (_topics: unknown, _session: unknown, reload: () => void) => { notices.reload = reload; return () => {} } } }))
 vi.mock('../../utils/desktopConnection', () => ({ getRawActiveWorkspaceId: () => 'local' }))
 vi.mock('../../utils/remoteSessions', () => ({ registerRemoteSession: vi.fn() }))
 vi.mock('../../stores/useConnectedWorkStore', () => ({ hasDesktopConnections: () => false, useConnectedWorkStore: { getState: () => ({ connections: [] }) } }))
@@ -71,4 +72,43 @@ it('keeps server-hosted Team reads direct even when runtime fallback says local'
     expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ url: '/api/crew-teams/server-crew/tab' }))
     expect(host.textContent).toBe('server-crew')
   } finally { await act(async () => root.unmount()) }
+})
+
+// PLAT-856-572: a notice storm during a slow Team read previously set `again`
+// and re-read immediately on completion, bypassing the refresh throttle.
+it('coalesces slow Team notice storms and stops automatic reads while hidden', async () => {
+  mode.local = false
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+  let hidden = false
+  const visible = vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
+  let finish!: (value: never) => void
+  const reply = { data: { team: { folder: {} }, agents: [] } } as never
+  vi.mocked(api.request).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    .mockResolvedValue(reply)
+  const host = document.createElement('div'), root = createRoot(host)
+  function Probe() { useTeamTab('notice-storm'); return null }
+  try {
+    await act(async () => root.render(<><Probe /><Probe /></>))
+    expect(api.request).toHaveBeenCalledTimes(1)
+    for (let i = 0; i < 100; i++) notices.reload()
+    await act(async () => { finish(reply) })
+    expect(api.request).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(14999) })
+    expect(api.request).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(api.request).toHaveBeenCalledTimes(2)
+    hidden = true
+    for (let i = 0; i < 100; i++) notices.reload()
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000) })
+    expect(api.request).toHaveBeenCalledTimes(2)
+    hidden = false
+    document.dispatchEvent(new Event('visibilitychange'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(api.request).toHaveBeenCalledTimes(3)
+  } finally {
+    await act(async () => root.unmount())
+    visible.mockRestore()
+    vi.useRealTimers()
+  }
 })

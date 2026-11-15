@@ -33,9 +33,10 @@ func (api *StreamingAPI) handleAgentMessageIdentity(w http.ResponseWriter, r *ht
 		defer done()
 		query := url.Values{"inbox_id": {peer}, "direction": {r.URL.Query().Get("direction")}, "message_id": {r.URL.Query().Get("message_id")}}
 		if session := r.Header.Get("X-Session-ID"); session != "" {
-			if records, err := desktopAppAgentRecords(r.Context(), claims.UserID); err == nil {
-				for _, record := range records {
-					if record.SessionID == session {
+			// This selects a Live-view authorization identity, not cached labels.
+			if doc, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(claims.UserID)); err == nil {
+				for _, record := range doc.Entries {
+					if record.SessionID == session && record.ProfileID == crewProfileID && record.ResourceID != "" && record.ConversationID != "" && ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) && crewProjectOwnedByCallerStrict(claims.UserID, record.WorkspacePath) {
 						query.Set("viewer_agent_name", desktopAppAgentName(desktopMachineID(), record.ConversationID))
 						break
 					}

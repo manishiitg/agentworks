@@ -128,8 +128,13 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 	if !yours && !publicOnly {
 		address, _ := row["id"].(string)
 		if admitted, ok := api.reachableAgentRuntimeInfo(ctx, claims.UserID)[address]; ok {
-			if admitted.Doing != "" {
-				row["current_task"] = admitted.Doing
+			if team, err := readCrewTeam(admitted.Reach.Team); err == nil {
+				if post, ok := crewTeamActivityPostsFor(team, claims.UserID).Doing[admitted.Reach.ID]; ok {
+					row["current_task"] = crewTeamMessageLine(post.Line)
+				}
+			}
+			if admitted.Reach.ChatShare == crewChatShareLive && admitted.Info.OwnerStatus == nil && admitted.Record != nil {
+				admitted.Info.OwnerStatus = api.ownerStatusForRecord(ctx, admitted.Owner, *admitted.Record)
 			}
 			if admitted.Reach.ChatShare == crewChatShareLive && admitted.Info.OwnerStatus != nil {
 				if lines := admitted.Info.OwnerStatus.LastMessages; len(lines) > 0 {
@@ -171,27 +176,40 @@ type agentOwnerStatus struct {
 	LastMessages []string `json:"last_messages,omitempty"`
 }
 
-func (api *StreamingAPI) ownerStatusForRecord(ctx context.Context, owner string, record ProductConversationRecord, cached ...map[string]crewTeamMessagePreview) *agentOwnerStatus {
+type agentOwnerStatusSnapshot struct {
+	Previews map[string]crewTeamMessagePreview
+	Tasks    map[string]string
+}
+
+// Read posts and message previews once per Crew batch, not once per agent.
+func agentOwnerStatusSources(ctx context.Context, owner, project string) agentOwnerStatusSnapshot {
+	source := agentOwnerStatusSnapshot{Previews: crewTeamMessagePreviews(ctx, owner, project), Tasks: map[string]string{}}
+	if team, err := readCrewTeam(project); err == nil {
+		for _, post := range crewTeamActivityPostsFor(team, owner).Doing {
+			if post.OwnerID == owner {
+				source.Tasks[post.ChatKey] = crewTeamMessageLine(post.Line)
+			}
+		}
+	}
+	return source
+}
+
+func (api *StreamingAPI) ownerStatusForRecord(ctx context.Context, owner string, record ProductConversationRecord, cached ...agentOwnerStatusSnapshot) *agentOwnerStatus {
 	status := &agentOwnerStatus{}
 	if session, ok := api.getActiveSession(record.SessionID); ok && session != nil && session.UserID == owner {
 		status.CurrentTask = crewTeamMessageLine(session.Title)
 		status.CurrentStep = crewTeamMessageLine(session.PhaseName)
 	}
-	if team, err := readCrewTeam(record.ResourceID); err == nil {
-		posts := crewTeamActivityPostsFor(team, owner)
-		for _, post := range posts.Doing {
-			if post.OwnerID == owner && post.ChatKey == record.ConversationKey {
-				status.CurrentTask = crewTeamMessageLine(post.Line)
-				break
-			}
-		}
-	}
-	previews := map[string]crewTeamMessagePreview{}
+	var source agentOwnerStatusSnapshot
 	if len(cached) > 0 {
-		previews = cached[0]
+		source = cached[0]
 	} else {
-		previews = crewTeamMessagePreviews(ctx, owner, record.ResourceID)
+		source = agentOwnerStatusSources(ctx, owner, record.ResourceID)
 	}
+	if task := source.Tasks[record.ConversationKey]; task != "" {
+		status.CurrentTask = task
+	}
+	previews := source.Previews
 	if preview := previews[record.ConversationKey]; preview.LastMessage != "" {
 		status.LastMessages = []string{preview.LastMessage}
 	}

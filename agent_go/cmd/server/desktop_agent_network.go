@@ -110,7 +110,9 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if err != nil {
 		return nil, err
 	}
-	records, err := api.desktopAppAgentRecords(ctx, owner)
+	// Sender admission is fresh, just like recipient admission. The display
+	// snapshot must not keep a removed/replaced chat eligible to send.
+	records, err := desktopAppAgentRecords(ctx, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +126,11 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	}
 	if exact == nil {
 		return nil, fmt.Errorf("this app chat was removed or replaced")
+	}
+	if metadata, err := api.desktopAppAgentRecords(ctx, owner); err == nil {
+		if current, ok := metadata[exact.ConversationID]; ok && current.SessionID == exact.SessionID {
+			exact.runtimeInfo = current.runtimeInfo
+		}
 	}
 	registration, err := registerDesktopAppAgent(ctx, owner, connection, *exact)
 	if err != nil {

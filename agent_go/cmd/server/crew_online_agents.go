@@ -99,6 +99,7 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 	}
 	rows = crewOnlineAgentRows(roots.ID, placements, doc.Entries, automations)
 	groups, _ := updateMenuGroups(ctx, nil)
+	statusSources := agentOwnerStatusSources(ctx, owner, roots.ID)
 	for i := range rows {
 		row := &rows[i]
 		key := crewAgentPublishKey(roots.ID, row.Tab)
@@ -106,7 +107,7 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 		row.CrewName = manifest.displayTitle()
 		row.GroupNames = groups.agentGroupNames(roots.ID, key)
 		if record, ok := doc.Entries[entry]; ok {
-			row.Status = api.ownerStatusForRecord(ctx, owner, record)
+			row.Status = api.ownerStatusForRecord(ctx, owner, record, statusSources)
 			activity := api.activityForRecord(record)
 			row.Activity = activity.Activity
 			if !activity.LastActiveAt.IsZero() {
@@ -125,7 +126,7 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 			}
 		}
 	}
-	log.Printf("[AGENT_INFO] owner=%s project=%s action=done audience=owner agents=%d", owner, roots.ID, len(rows))
+	log.Printf("[AGENT_ACTIVITY] owner=%s project=%s action=batch source=online_agents rows=%d", owner, roots.ID, len(rows))
 	return rows, nil
 }
 
