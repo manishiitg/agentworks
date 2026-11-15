@@ -467,11 +467,6 @@ func crewHandbackDecide(mine, server *sessiontransfer.Bundle) string {
 	return "diverged"
 }
 
-func isSharedThreadKey(key string) bool {
-	_, chatID, ok := strings.Cut(key, codeChatSideMarker)
-	return ok && strings.HasPrefix(chatID, sharedThreadChatPrefix)
-}
-
 // crewHandbackThread makes this Mac's record for a teammate's thread that started on the server while the Mac was off.
 func (api *StreamingAPI) crewHandbackThread(ctx context.Context, claims *UserClaims, key string) (ProductConversationRecord, error) {
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
