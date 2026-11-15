@@ -95,4 +95,65 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if json.Unmarshal(reset.Body.Bytes(), &doc) != nil || doc.Current.InterfaceFont != "system" || len(doc.Saved) != 1 {
 		t.Fatal("reset lost presets or kept current")
 	}
+	// Agentic saved-theme operations keep the same own-person document. Export is
+	// read-only; imports/copies do not unexpectedly replace the applied look.
+	sub.Drain()
+	exported := invoke("owner", `{"operation":"export","name":"Warm"}`)
+	var pack struct {
+		Theme appearanceTheme `json:"theme"`
+	}
+	if exported.Code != 200 || json.Unmarshal(exported.Body.Bytes(), &pack) != nil || pack.Theme.InterfaceFont != "fira-code" {
+		t.Fatalf("own export: %d %s", exported.Code, exported.Body.String())
+	}
+	if notices, _ := sub.Drain(); len(notices) != 0 {
+		t.Fatal("export published a mutation")
+	}
+	if got := invoke("other", `{"operation":"export","name":"Warm"}`); got.Code != 404 {
+		t.Fatal("foreign person's named theme exported")
+	}
+	applied := invoke("owner", `{"operation":"apply","name":"Warm"}`)
+	if applied.Code != 200 || json.Unmarshal(applied.Body.Bytes(), &doc) != nil || doc.Current.InterfaceFont != "fira-code" {
+		t.Fatal("apply by saved name did not select the saved content")
+	}
+	var theme map[string]any
+	rawTheme, _ := json.Marshal(pack.Theme)
+	if json.Unmarshal(rawTheme, &theme) != nil {
+		t.Fatal("export theme object")
+	}
+	imported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "import", "name": "Imported", "theme": theme})
+	var reply struct {
+		Summary string         `json:"summary"`
+		Current map[string]any `json:"current"`
+		Changed []string       `json:"changed_fields"`
+		Saved   any            `json:"saved"`
+	}
+	if imported.Code != 200 || json.Unmarshal(imported.Body.Bytes(), &reply) != nil || reply.Summary == "" || reply.Current["name"] != "Warm" || reply.Current["css"] != nil || reply.Saved != nil {
+		t.Fatalf("short import reply or current selection: %d %s", imported.Code, imported.Body.String())
+	}
+	copied := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "duplicate", "name": "Imported", "new_name": "Copy"})
+	if copied.Code != 200 {
+		t.Fatalf("duplicate: %s", copied.Body.String())
+	}
+	renamed := invoke("owner", `{"operation":"rename","name":"Copy","new_name":"Renamed"}`)
+	if renamed.Code != 200 {
+		t.Fatalf("rename: %s", renamed.Body.String())
+	}
+	roundTrip := invoke("owner", `{"operation":"export","name":"Renamed"}`)
+	if roundTrip.Code != 200 || json.Unmarshal(roundTrip.Body.Bytes(), &pack) != nil || pack.Theme.CSS != "[data-chat-composer-card]{border-radius:20px}" {
+		t.Fatal("export/import/copy/rename lost CSS")
+	}
+	if got := invoke("owner", `{"operation":"rename","name":"Renamed","new_name":"Warm"}`); got.Code != 400 {
+		t.Fatal("rename overwrote another saved name")
+	}
+	if got := invoke("other", `{"operation":"duplicate","name":"Warm","new_name":"Stolen"}`); got.Code != 404 {
+		t.Fatal("duplicate selected another person's saved theme")
+	}
+	if got := invoke("owner", `{"operation":"import","theme":{"name":"Bad","unexpected":true}}`); got.Code != 400 {
+		t.Fatal("import skipped field validation")
+	}
+	noChange := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "name": "Warm"})
+	if noChange.Code != 200 || json.Unmarshal(noChange.Body.Bytes(), &reply) != nil || len(reply.Changed) != 0 {
+		t.Fatalf("no-op claimed changes: %s", noChange.Body.String())
+	}
+
 }
