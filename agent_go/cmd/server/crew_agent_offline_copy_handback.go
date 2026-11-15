@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -135,4 +138,105 @@ func crewOfflineReturnedText(records []crewOfflineReturnedAnswer) string {
 		}
 	}
 	return out.String()
+}
+
+// Called only after the mailbox has admitted this exact reply. The source
+// receives the actual inbox exchange, not the copy's transcript or other threads.
+func queueCrewOfflineReply(ctx context.Context, c agentConversation, m agentMessage) error {
+	source := c.Endpoints[m.From]
+	if source.OfflineCopyTeam == "" || source.PublishedAgent == "" {
+		return nil
+	}
+	dir, err := crewTeamDir(source.OfflineCopyTeam)
+	if err != nil {
+		return err
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	defer mu.Unlock()
+	team, err := readCrewTeam(source.OfflineCopyTeam)
+	if err != nil {
+		return err
+	}
+	asker := publishedAsker(c.Endpoints[1-m.From])
+	if source.ReplyInbox != c.ID || source.PublishedAsker != asker {
+		return fmt.Errorf("copy reply inbox changed")
+	}
+	if err := crewOfflineCopyEndpointAdmits(team, asker, source); err != nil {
+		return err
+	}
+	row := team.Agents[source.TeamAgentID]
+	ref, bound, err := crewOfflineCopyBound(team, row)
+	if err != nil || !bound {
+		return fmt.Errorf("copy source changed")
+	}
+	question := ""
+	for _, prior := range c.Messages {
+		if prior.Sequence < m.Sequence && prior.From != m.From {
+			question = prior.Text
+		}
+	}
+	dir, err = crewOfflineDirectory(team.ProjectID, row.ID)
+	if err != nil {
+		return err
+	}
+	return appendCrewOfflineReturn(team.ProjectID, row.ID, dir, ref.Binding, crewOfflineReturnedAnswer{ID: m.ID, At: m.SentAt, Asker: asker, Question: question, Answer: m.Text})
+}
+
+// The source's same attachment/pair proof gates both read and acknowledgement;
+// sharing a copy never lets an asker read its private return queue.
+func (api *StreamingAPI) handleCrewOfflineHandback(w http.ResponseWriter, r *http.Request) {
+	project, agent, op := mux.Vars(r)["project"], mux.Vars(r)["agent"], mux.Vars(r)["op"]
+	fail := func(status int, reason string) {
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=refused reason=%s", project, agent, reason)
+		externalError(w, status, "handback_unavailable", "This source session or its sharing changed.")
+	}
+	var in struct {
+		crewOfflineBinding
+		IDs []string `json:"ids"`
+	}
+	if r.Method != http.MethodPost || json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&in) != nil || !in.crewOfflineBinding.valid() {
+		fail(400, "invalid_handback")
+		return
+	}
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		fail(403, "handback_source_unavailable")
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	defer mu.Unlock()
+	team, err := readCrewTeam(project)
+	if err != nil || crewOfflineRequestSource(r, team, agent, in.crewOfflineBinding, "") != nil {
+		fail(403, "handback_source_unavailable")
+		return
+	}
+	dir, err = crewOfflineDirectory(project, agent)
+	if err != nil {
+		fail(503, "handback_store_unavailable")
+		return
+	}
+	state, err := readCrewOfflineReturns(dir, in.crewOfflineBinding)
+	if err != nil {
+		fail(409, "handback_binding_changed")
+		return
+	}
+	switch op {
+	case "handback":
+		pending := state.Pending
+		if len(pending) > 200 {
+			pending = pending[:200]
+		}
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=handback_read count=%d", project, agent, len(pending))
+		externalJSON(w, map[string]any{"records": pending, "text": crewOfflineReturnedText(pending)})
+	case "handback-ack":
+		if err := acknowledgeCrewOfflineReturns(project, agent, dir, in.crewOfflineBinding, in.IDs); err != nil {
+			fail(409, "handback_ack_changed")
+			return
+		}
+		externalJSON(w, map[string]bool{"acknowledged": true})
+	default:
+		fail(400, "invalid_handback_operation")
+	}
 }

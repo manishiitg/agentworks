@@ -303,6 +303,7 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}/put-online", api.handleCrewPutOnline).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/offline-copy-status", api.handleCrewOfflineAppStatus).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/agents/{agent}/offline-copy/{op:status|plan|chunks|commit}", api.handleCrewOfflineCopy).Methods("POST", "PUT")
+	r.HandleFunc("/crew-teams/{project}/agents/{agent}/offline-copy/{op:handback|handback-ack}", api.handleCrewOfflineHandback).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/terminal/{agent}/live", api.handleCrewTeamTerminalLive).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/terminal-agents", api.handleCrewOwnTerminalAgents).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/terminal/{agent}/ask", api.handleCrewOwnTerminalAsk).Methods("POST")
