@@ -292,6 +292,11 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		return out[i].ConversationKey < out[j].ConversationKey
 	})
 	if main != nil {
+		if address, err := crewRetiredOnlineSource(projectID, main.ConversationKey); err != nil {
+			return nil, err
+		} else if address != "" {
+			main.OnlineCopyAddress, main.ChatLocation, main.CanWrite = address, "online_copy", false
+		}
 		out = append([]AgentProfileSideChat{*main}, out...)
 	}
 	return out, nil
