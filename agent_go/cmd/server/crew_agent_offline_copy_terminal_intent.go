@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -51,7 +52,11 @@ func (api *StreamingAPI) externalTerminalPutOnline(w http.ResponseWriter, r *htt
 	}
 	out, err := api.putCrewAgentOnline(r.Context(), claims.UserID, team.ProjectID, in)
 	if err != nil {
-		externalError(w, 400, "online_unavailable", fmt.Sprint(err))
+		code := "online_unavailable"
+		if errors.Is(err, errCrewTeamLastShared) {
+			code = "last_shared_agent"
+		}
+		externalError(w, 400, code, fmt.Sprint(err))
 		return
 	}
 	externalJSON(w, out)
