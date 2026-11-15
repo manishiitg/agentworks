@@ -137,6 +137,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 			mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
+			mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
 			mux.HandleFunc("/api/external/v1/agents/sharing", env.api.handleAgentSharing)
 			srv := httptest.NewServer(AuthMiddleware(mux))
 			defer srv.Close()
@@ -290,6 +291,57 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if row.ID == "" || !row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 				t.Fatal("join did not preserve exact native identity and private defaults")
 			}
+
+			// PLAT-746-1030: real attachment label requests drive the shared
+			// activity projection, never a private native journal or browser guess.
+			streamCtx, stopStream := context.WithCancel(t.Context())
+			connected, streamDone := make(chan struct{}), make(chan struct{})
+			go func() {
+				defer close(streamDone)
+				_ = owner.StreamAgentMessages(streamCtx, attached, func(agentworksclient.AgentLiveMessage) error { return nil }, func() { close(connected) })
+			}()
+			defer func() { stopStream(); <-streamDone }()
+			select {
+			case <-connected:
+			case <-time.After(3 * time.Second):
+				t.Fatal("exact native stream did not connect")
+			}
+			checkActivity := func(want string) {
+				t.Helper()
+				for _, person := range teamAgentsByPerson(t.Context(), saved, "owner") {
+					for _, agent := range person.Agents {
+						if agent.ID == id {
+							if agent.Activity != want {
+								t.Fatalf("native turn activity = %q, want %q", agent.Activity, want)
+							}
+							return
+						}
+					}
+				}
+				t.Fatal("registered terminal missing from shared projection")
+			}
+			reported := attached
+			reported.Activity, reported.ActivityAt = "busy", time.Now().UTC()
+			if err = sender.UpdateAgentLabel(t.Context(), reported, "Terminal"); err == nil {
+				t.Fatal("another connection changed native turn activity")
+			}
+			checkActivity("")
+			if err = owner.UpdateAgentLabel(t.Context(), reported, "Terminal"); err != nil {
+				t.Fatal(err)
+			}
+			checkActivity("running")
+			stale := reported
+			reported.Activity, reported.ActivityAt = "idle", reported.ActivityAt.Add(time.Millisecond)
+			if err = owner.UpdateAgentLabel(t.Context(), reported, "Terminal"); err != nil {
+				t.Fatal(err)
+			}
+			checkActivity("")
+			if err = owner.UpdateAgentLabel(t.Context(), stale, "Terminal"); err != nil {
+				t.Fatal(err)
+			}
+			checkActivity("") // delayed busy cannot overwrite the newer Stop
+			stopStream()
+			<-streamDone
 
 			// Explicit Only me remains available and survives rejoin.
 			row.InTeam = false

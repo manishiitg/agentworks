@@ -454,3 +454,20 @@ func terminalSessionLiveHere(ctx context.Context, provider, session, lease, agen
 	}
 	return false
 }
+
+// Turn hooks already report busy/idle over the exact attachment's label channel.
+// Notify the existing Team projection without writing another activity registry.
+func crewTeamTerminalActivityChanged(ctx context.Context, named namedMessageAgent) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	t, row, joined, err := terminalCrewForNamed(named.ID)
+	if err != nil || !joined || named.Attachment == nil {
+		return
+	}
+	current, err := currentCrewTeamTerminal(ctx, t, row)
+	if err != nil || current.Attachment.ID != named.Attachment.ID {
+		return
+	}
+	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s attachment=%s outcome=activity activity=%s", t.ProjectID, row.ID, row.ChatKey, named.Attachment.ID, current.Attachment.Activity)
+	pushCrewTeamBusy(t.ProjectID)
+}

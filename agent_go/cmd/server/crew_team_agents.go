@@ -231,6 +231,10 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 					row.PlaceLabel = "Mac · online"
 					row.StatusLabel = "Online"
 					row.PlaceTone = "ok"
+					// Only the exact live attachment's hook state, never journal text.
+					if named.Attachment.Activity == "busy" {
+						row.Activity = "running"
+					}
 				}
 			}
 			out[i].Agents = append(out[i].Agents, row)
