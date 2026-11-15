@@ -62,3 +62,10 @@ Team does not silently copy all Vault sign-ins. Secret-looking files skipped by
 sync remain local. `sync_anyway` requires the person's exact requested skipped
 path and means sharing it with everyone in the Team; never enable it as a repair
 for a missing credential. Never print secret values.
+
+
+## In-team agents
+
+Teammates' In-team agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and In team are checked on every use. Use `messages action=ask` for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox.
+
+Claude Code can join from the installed plugin with `/agentworks:team <Team Crew ID>` after this exact session is connected and the Team is added to the running Mac app. Join returns the accepted local copy and selected folders; work there for sync. It starts Only me and Answers only; the person chooses In team and optionally Live. Keep the Mac app running. Team keys stay on the server.

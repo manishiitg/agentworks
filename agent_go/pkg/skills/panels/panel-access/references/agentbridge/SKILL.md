@@ -62,3 +62,10 @@ Sharing keeps the person's own Ask history and selected-agent boundaries. A
 message does not let its sender type in or control another person's tab, or
 expand their access. Workflows run as Python scripts; discuss them with the
 Crew agent and inspect their Runs.
+
+
+## In-team agents
+
+Teammates' In-team agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and In team are checked on every use. Use `messages action=ask` for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox.
+
+Claude Code can join from the installed plugin with `/agentworks:team <Team Crew ID>` after this exact session is connected and the Team is added to the running Mac app. Join returns the accepted local copy and selected folders; work there for sync. It starts Only me and Answers only; the person chooses In team and optionally Live. Keep the Mac app running. Team keys stay on the server.
