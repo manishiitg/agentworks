@@ -173,6 +173,8 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 			fail(409, "delta_refused")
 			return
 		}
+		// Build or refresh the home copy in the background, outside the source lock; the upload never waits on it.
+		go api.refreshCrewOfflineCopy(project, agent)
 		externalJSON(w, ack)
 	default:
 		fail(400, "invalid_operation")

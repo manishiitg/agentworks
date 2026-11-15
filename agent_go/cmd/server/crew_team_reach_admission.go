@@ -52,8 +52,17 @@ func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgen
 		return row, nil
 	}
 	viewer := GetUserIDFromContext(ctx)
+	copy, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
+	if err != nil {
+		return crewTeamReachableAgent{}, err // revocation/read failure is not no-copy fallback
+	}
+	if ready {
+		log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=offline_copy", t.ProjectID, row.ID, viewer)
+		return copy, nil
+	}
 	for _, candidate := range crewTeamReachableIn(ctx, t, viewer) {
 		if candidate.Kind == "team_agent" {
+			log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask route=team_agent reason=no_ready_copy", t.ProjectID, row.ID, viewer)
 			return candidate, nil
 		}
 	}
@@ -84,6 +93,9 @@ func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (strin
 		}
 		return "agent:" + shareOwnerLabel(e.UserID) + "/" + named.Name, nil
 	}
+	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" && e.OfflineCopyTeam != "" {
+		return crewTeamAgentAddress(e.OfflineCopyTeam, e.TeamAgentID), nil
+	}
 	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" {
 		return crewTeamAgentAddress(e.ID, e.TeamAgentID), nil
 	}
@@ -101,6 +113,12 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 	}
 	if row.ID != e.TeamAgentID {
 		return admissionRefused("This Team agent is no longer reachable.")
+	}
+	if e.OfflineCopyTeam != "" {
+		if t.ProjectID != e.OfflineCopyTeam {
+			return admissionRefused("This agent's offline copy changed.")
+		}
+		return crewOfflineCopyEndpointAdmits(t, viewer, e)
 	}
 	if row.Kind == "team_agent" {
 		if e.ID != t.OnlineHome || e.UserID != ownerOfCrewProjectID(t.OnlineHome) {
@@ -239,6 +257,11 @@ func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget)
 	if err != nil {
 		return target, err
 	}
+	// A copy keeps the source address and sharing identity. Bind its private
+	// execution capability before the ordinary same-address fast path.
+	if routed.OfflineCopyID != "" {
+		return crewTeamBindOfflineCopyAsk(askCtx, viewer, target, routed)
+	}
 	if routed.Address == row.Address {
 		return target, nil
 	}
@@ -248,6 +271,9 @@ func crewTeamAskTarget(ctx context.Context, viewer string, target triggerTarget)
 // Per-asker conversations reuse the existing publication thread mechanism, but
 // current In-team admission (not general Crew sharing) selects the native agent.
 func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*codeChat, bool) {
+	if chat, ok := crewOfflineCopySharedChat(viewer, project, key); ok {
+		return chat, true
+	}
 	t, err := readCrewTeam(project)
 	if err != nil {
 		return nil, false
