@@ -1,5 +1,5 @@
 import type { TeamLiveView } from '../../components/workspace/TeamLiveAgents'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
@@ -176,7 +176,7 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
   }
 }
 
-export function useTeamTab(project?: string, connection?: string): TeamTabState {
+export function useTeamTab(project?: string, connection?: string): TeamTabState & { retry: () => void } {
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const user = useAuthStore(s => s.user?.id)
   const source = connection ?? workspace
@@ -186,7 +186,8 @@ export function useTeamTab(project?: string, connection?: string): TeamTabState 
     if (!project || !user) return
     return watchTeamTab(project, key, source, state => setLoaded({ key, state }))
   }, [project, source, user, key])
-  return loaded?.key === key ? loaded.state : { error: '' }
+  const retry = useCallback(() => { void tabCache.get(key)?.load() }, [key])
+  return { ...(loaded?.key === key ? loaded.state : { error: '' }), retry }
 }
 
 const changed = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))

@@ -12,6 +12,8 @@ export type DashboardDirectoryEntry = {
   document_path: string
   short_path?: string
   can_edit?: boolean
+  artifact?: boolean
+  motion?: boolean
   managed?: boolean
   shared_with_me: boolean
 }
