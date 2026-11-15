@@ -29,7 +29,8 @@ it('does not draft in a foreign or Run chat when no own writable tab exists',()=
 // The Add to Team click starts a real own turn, but cannot auto-send an
 // unrelated human draft or select a watched/foreign/Run agent when Main is off.
 it('starts the own source agent for Add to Team without overwriting a human draft',async()=>{
- f.tabs={own:tab('own'),peer:{...tab('peer','crew',{agentProfileTabOwnerID:'peer'}),lastAccessedAt:99},watch:tab('watch','crew',{isViewOnly:true}),run:tab('run','crew',{agentProfileBuilder:false}),scheduled:{...tab('scheduled','crew',{isScheduledRun:true}),lastAccessedAt:100},bot:tab('bot','crew',{isBotRun:true})}
+ // Real WorkSurface metadata: false means an ordinary chat, not Run access.
+ f.tabs={own:tab('own','crew',{agentProfileBuilder:false}),peer:{...tab('peer','crew',{agentProfileTabOwnerID:'peer'}),lastAccessedAt:99},watch:tab('watch','crew',{isViewOnly:true}),run:tab('run','crew',{agentProfileTabCanWrite:false}),setup:{...tab('setup','crew',{agentProfileBuilder:true}),lastAccessedAt:101},scheduled:{...tab('scheduled','crew',{isScheduledRun:true}),lastAccessedAt:100},bot:tab('bot','crew',{isBotRun:true})}
  await startTeamDashboardHandoff('crew','Add this dashboard')
  expect(f.queue).toHaveBeenCalledWith({tabId:'own',message:'Add this dashboard'})
  expect(f.set).not.toHaveBeenCalled()
