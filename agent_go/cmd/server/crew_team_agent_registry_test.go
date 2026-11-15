@@ -499,6 +499,22 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 	if rows := crewTeamReachableIn(t.Context(), team, "owner"); len(rows) != 1 {
 		t.Fatalf("chosen teammate cannot reach the agent: %+v", rows)
 	}
+	// A disabled teammate is refused by the canonical gate (crewTeamReachOpen), not a per-path copy: the offline
+	// copy's source-row admission delegates to it for everyone but the maker.
+	withMember := team
+	withMember.People = append(slices.Clone(team.People), crewTeamPerson{UserID: "member"})
+	whole := withMember.Agents[shared]
+	whole.Rule.Audience, whole.Rule.People = "", nil
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]}]}`)
+	if !crewTeamSourceRowAdmits(withMember, "member", whole) {
+		t.Fatal("an active teammate must reach a whole-Team agent")
+	}
+	*directory = strings.Replace(*directory, `{"id":"member","role":"editor"`, `{"id":"member","role":"editor","disabled":true`, 1)
+	invalidateUserDirectoryCache()
+	if crewTeamSourceRowAdmits(withMember, "member", whole) || crewTeamReachRow(withMember, "member", whole) {
+		t.Fatal("a disabled teammate reached a Team agent")
+	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]}]}`)
 	if err := removeCrewAgentListing("team", "other", "team:chat:helper"); err != nil {
 		t.Fatal(err)
 	}
