@@ -25,11 +25,10 @@ async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='s
 const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.getAttribute('aria-label')?.includes(text)||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
 
-it('shows admitted working people only, pins the Team agent, and replaces live lines without inventing targets',async()=>{
+it('shows admitted working people only, does not pin idle agents, and replaces live lines without inventing targets',async()=>{
  await render()
  const panel=host.querySelector('[aria-label="Team live panel"]')!
- expect(panel.querySelector('button')?.textContent).toContain('Team agent')
- expect(panel.querySelector('button')?.title).toContain('ran Morning summary')
+ expect(panel.querySelector('[aria-label="Open Team agent"]')).toBeNull()
  expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(2)
  expect(panel.textContent).toContain('typing…')
  expect(panel.textContent).toContain('waiting for Colleague')
@@ -119,22 +118,25 @@ it('hides empty links and restores them only when admitted items arrive',async()
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
 })
 
-// Owner-approved compact mock: use real scheduler metadata, not an online slogan.
-it('shows Team work before its next routine, then last work, then an ask invitation',async()=>{
- const home=agents.filter(row=>row.team_agent)
- const upcoming=[...routines,{id:'next',name:'Next summary',enabled:true,next_run_at:'2099-11-15T09:00:00Z',chat_id:'main'},{id:'off',name:'Disabled routine',enabled:false,next_run_at:'2099-11-15T08:00:00Z'}]
- await render('live',home,events,'home',upcoming)
- expect(host.textContent).toContain('next: Next summary')
- expect(host.textContent).not.toContain('Disabled routine')
- await render('live',home.map(row=>({...row,activity:'running',last_message:'Updating the Team'})),events,'home',upcoming)
- expect(host.textContent).toContain('running — Updating the Team')
- expect(host.textContent).not.toContain('next:')
- await render('live',home,events,'home')
- expect(host.textContent).toContain('ran Morning summary')
- await render('live',home,events,'home',[])
- expect(host.textContent).toContain('Ask the Team agent')
- expect(host.querySelector('[aria-label="Team details"]')?.classList.contains('flex')).toBe(true)
- expect(host.textContent).not.toContain('always online')
+// Owner: Team agent is ordinary, not pinned; only its running work enters the live list.
+it('shows the Team agent only while running and keeps its normal cloud row in Agents',async()=>{
+ const home={...agents[5],place:'server'}
+ await render('live',[home])
+ expect(host.querySelector('[aria-label="Open Team agent"]')).toBeNull()
+ await render('live',[agents[1],{...home,activity:'running',last_message:'Updating the Team'}])
+ const list=host.querySelector('[aria-label="Working now"]')!
+ const rows=list.querySelectorAll('button')
+ expect(rows).toHaveLength(2)
+ expect(rows[0].getAttribute('aria-label')).toContain('Review')
+ expect(rows[1].textContent).toContain('Team agent · Team · running — Updating the Team')
+ expect(rows[1].querySelector('[aria-label="Runs on the server, always available"]')).toBeTruthy()
+ await act(async()=>rows[1].click());expect(ask).toHaveBeenLastCalledWith(expect.objectContaining({id:home.id,team_agent:true}))
+ await render('live',[{...home,activity:'waiting'}])
+ expect(host.querySelector('[aria-label="Open Team agent"]')).toBeNull()
+ await render('agents',[home])
+ const detail=host.querySelector('[aria-label="Open Team agent"]')!
+ expect(detail.textContent).toContain('idle')
+ expect(detail.querySelector('[aria-label="Runs on the server, always available"]')).toBeTruthy()
 })
 
 // The compact panel must not duplicate own working agents or clip its navigation.
