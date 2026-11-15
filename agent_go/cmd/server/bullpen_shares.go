@@ -406,6 +406,9 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "label": agentLabel(a), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}
 			addAgentPresence(item, a)
 			item["agent_id"] = a.ID
+			if a.Attachment != nil {
+				projectAgentRuntimeInfo(item, a.Attachment.RuntimeInfo, a.UserID == userID)
+			}
 			if a.Attachment != nil && a.Attachment.Provider != "agentworks" {
 				item["cli"] = providerAccountProductName(a.Attachment.Provider)
 			}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -166,6 +167,12 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	if !validID(device) || !validID(session) || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
 		return empty, fmt.Errorf("register an exact device and conversation with a single-line purpose of at most 512 characters")
 	}
+	// Only the signed-in app registration accepts this backend-generated
+	// projection. Agent/MCP registration arguments do not accept these fields.
+	info, err := decodeAppAgentRuntimeInfo(args["runtime_info"])
+	if err != nil {
+		return empty, err
+	}
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
 	store, err := readAgentMessageStore(ctx)
@@ -198,10 +205,11 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	if a.Attachment != nil && a.Attachment.ConnectionID != connection {
 		oldAttachment = a.Attachment.ID
 	}
-	changed := a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose)
+	changed := a.Attachment == nil || a.Attachment.ConnectionID != connection || a.Label != cleanAgentLabel(externalArg(args, "label")) || a.Purpose != cleanAgentPurpose(purpose) || (a.Attachment != nil && !reflect.DeepEqual(a.Attachment.RuntimeInfo, info))
 	if a.Attachment == nil || a.Attachment.ConnectionID != connection {
 		a.Attachment = &namedAgentAttachment{ID: "attach-" + uuid.NewString(), DeliveryContract: 2, DeliveryRoute: appAgentDeliveryRoute, Provider: "agentworks", DeviceID: device, SessionID: session, ConnectionID: connection}
 	}
+	a.Attachment.RuntimeInfo = info
 	a.Label, a.Purpose = cleanAgentLabel(externalArg(args, "label")), cleanAgentPurpose(purpose)
 	a.EverAttached = true
 	if !changed {
@@ -210,6 +218,7 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 	if err := saveAgentMessageStore(ctx, store); err != nil {
 		return empty, err
 	}
+	log.Printf("[AGENT_INFO] agent=%s action=stored source=app_backend present=%t", a.ID, info != nil)
 	if oldAttachment != "" {
 		log.Printf("[AGENT_REG] superseded agent=%s old_attachment=%s new_attachment=%s", a.ID, oldAttachment, a.Attachment.ID)
 	}

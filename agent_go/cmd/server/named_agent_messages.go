@@ -176,6 +176,9 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 			}()}
 			item["label"] = agentLabel(a)
 			addAgentPresence(item, a)
+			if a.Attachment != nil {
+				projectAgentRuntimeInfo(item, a.Attachment.RuntimeInfo, a.UserID == userID)
+			}
 			if a.Attachment != nil && a.Attachment.Provider != "agentworks" {
 				item["cli"] = providerAccountProductName(a.Attachment.Provider)
 			}
