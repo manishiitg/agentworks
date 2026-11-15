@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { TeamPanel, type TeamPanelAgent, type TeamPanelPost } from './TeamPanel'
+import { TeamPanel, type TeamPanelAgent, type TeamPanelPost, type TeamPanelShared } from './TeamPanel'
 import { teamRequest, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -52,5 +52,8 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
   }
   useChatStore.getState().addToast('Open your own agent in this Crew, then try again.','error')
  }
- return <TeamPanel scope={scope} agents={rows} posts={loaded?.scope===scope?loaded.posts:[]} error={loaded?.scope===scope?loaded.error:undefined} onAsk={ask} onActivity={()=>openCrewAccess(projectId,'','team','activity')}/>
+ // Shared by you: the person's own agents shared with the team, with their mode and audience from the server rows.
+ const shared:TeamPanelShared[]=team.view.agents.filter(agent=>agent.mine&&agent.in_team).map(agent=>({key:agent.key,name:agent.name,canChange:Boolean(agent.can_make_changes),chosen:agent.audience==='chosen'?(agent.chosen_people||[]).length:undefined}))
+ const openShared=(row:TeamPanelShared)=>{openCrewAccess(projectId,'','team','agents');window.setTimeout(()=>document.getElementById(`team-agent-card-${row.key}`)?.scrollIntoView({block:'center'}),300)}
+ return <TeamPanel shared={shared} onShared={openShared} scope={scope} agents={rows} posts={loaded?.scope===scope?loaded.posts:[]} error={loaded?.scope===scope?loaded.error:undefined} onAsk={ask} onActivity={()=>openCrewAccess(projectId,'','team','activity')}/>
 }

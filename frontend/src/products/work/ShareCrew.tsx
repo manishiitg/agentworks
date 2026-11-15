@@ -126,7 +126,7 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
   const togglePerson = (id: string) => void rule('who', { audience: 'chosen', chosen_people: picked.includes(id) ? picked.filter(item => item !== id) : [...picked, id] })
   const hint = !ask ? '' : !ask.on ? ask.line : hidden && ask.hidden_line ? ask.hidden_line : chosen?.line || ''
   const segment = (on: boolean) => `px-2.5 py-1 text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
-  return <div className="rounded-xl border border-border bg-card px-3.5 py-3 text-sm">
+  return <div id={`team-agent-card-${agent.key}`} className="rounded-xl border border-border bg-card px-3.5 py-3 text-sm">
     <div className="flex items-center gap-2.5">
       <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
       <span className="min-w-0 flex-1">

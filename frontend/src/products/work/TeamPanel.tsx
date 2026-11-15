@@ -1,6 +1,6 @@
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Pencil, Users } from 'lucide-react'
 
 /** Rows are admitted and their message lines filtered by the server, not by this view. */
 export type TeamPanelAgent = AvatarFields & {
@@ -10,6 +10,8 @@ export type TeamPanelAgent = AvatarFields & {
   online: boolean; place: string; activity?: string
   last_message?: string; last_message_at?: string; typing?: boolean
 }
+/** One of the person's own agents shared with the team, from the Team tab's server rows. */
+export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
 export type TeamPanelPost = { id: string; kind: string; person: string; agent: string; line: string; at: string }
 
 function saved(key: string) { try { return localStorage.getItem(key) || '' } catch { return '' } }
@@ -29,12 +31,16 @@ const time = (at: string) => Date.parse(at) || 0
 
 /** The same compact Team content in the web and Mac right panel. The scope includes
  * the signed-in person and server, so another account never inherits disclosures. */
-export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
+export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shared = [], onShared }: {
   scope: string; agents: TeamPanelAgent[]; posts: TeamPanelPost[]
   onAsk: (agent: TeamPanelAgent) => void; onActivity: () => void; error?: string
+  shared?: TeamPanelShared[]; onShared?: (row: TeamPanelShared) => void
 }) {
   const [agentsChoice, setAgentsChoice] = useRemembered(scope, 'agents')
   const [activityChoice, setActivityChoice] = useRemembered(scope, 'activity')
+  const [sharedChoice, setSharedChoice] = useRemembered(scope, 'shared')
+  const sharedOpen = sharedChoice === 'open'
+  const sharedLine = (row: TeamPanelShared) => `Shared with team · ${row.canChange ? 'can make changes' : 'answers only'} · ${row.chosen === undefined ? 'whole team' : `${row.chosen} chosen ${row.chosen === 1 ? 'person' : 'people'}`}`
   const [seen, setSeen] = useRemembered(scope, 'seen')
   const agentsOpen = agentsChoice === 'open', activityOpen = activityChoice === 'open'
   const ordered = [...agents.filter(row => row.team_agent), ...agents.filter(row => !row.team_agent && !row.mine)]
@@ -66,6 +72,15 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
         </span>
       </button>)}
       {!ordered.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No agents shared with the team yet.</p>}
+    </div>}
+    {summary('Shared by you', sharedOpen, `${shared.length}`, shared.slice(0, 2).map(row => row.name).join(', ') || 'None yet', () => setSharedChoice(sharedOpen ? '' : 'open'))}
+    {sharedOpen && <div role="group" aria-label="Shared by you" className="space-y-0.5">
+      {shared.map(row => <button key={row.key} type="button" title={sharedLine(row)} onClick={() => onShared?.(row)} className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span aria-hidden="true" className="relative inline-flex shrink-0"><Users className={`h-3 w-3 ${row.canChange ? 'text-primary' : 'text-muted-foreground'}`} />{row.canChange && <Pencil className="absolute -bottom-1 -right-1 h-2 w-2 text-primary" />}</span>
+        <span className="min-w-0 flex-1 truncate text-xs">{row.name}</span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">{row.chosen === undefined ? 'Whole team' : `${row.chosen} chosen`}</span>
+      </button>)}
+      {!shared.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">None of your agents is shared with the team.</p>}
     </div>}
     {summary('Activity', activityOpen, `${newCount} new`, latest[0] ? `${latest[0].agent}: ${latest[0].line}` : 'No recent posts', () => setActivityChoice(activityOpen ? '' : 'open'))}
     {activityOpen && <div role="group" aria-label="Recent Team activity">
