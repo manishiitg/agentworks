@@ -1,6 +1,7 @@
+import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { useEffect, useRef, useState } from 'react'
 import { TeamPanel, type TeamPanelAgent, type TeamPanelPost, type TeamPanelShared } from './TeamPanel'
-import { teamRequest, type TeamTabState } from './teamApi'
+import { crewDashboardsTab, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openTeammateAgent } from './openTeammateAgent'
@@ -18,6 +19,8 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
  const target = team.target
  const enabled = !!target && !!team.view?.team.on && !team.error
  const [loaded,setLoaded] = useState<{scope:string;posts:TeamPanelPost[];error?:string}>()
+ const [onlineError,setOnlineError]=useState('')
+ const [online, setOnline] = useState<{scope:string;workspace:string;items:(CrewDashboardsTab['items'][number] & {addedBy?:string})[]}>()
  const refresh = useRef(()=>{})
  useEffect(()=>{
   let active=true, reading=false, again=false
@@ -35,6 +38,22 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
   refresh.current=()=>{void read()};void read()
   return ()=>{active=false;refresh.current=()=>{}}
  },[scope,enabled,target?.project,target?.connection])
+ useEffect(()=>{
+  let active=true
+  const identity=captureChatIdentity()
+  const read=async()=>{
+   if(!enabled || !target) return
+   try {
+    const mapping=await teamRequest<TeamOnlineView>(target,'/online-items')
+    if(!mapping.home_project_id) { if(active && isChatIdentityCurrent(identity)) {setOnline({scope,workspace:'',items:[]});setOnlineError('')} return }
+    const home=await crewDashboardsTab({...target,project:mapping.home_project_id},'all')
+    const accepted=new Map((mapping.items||[]).filter(item=>item.kind!=='automation').map(item=>[item.destination_item_id,item]))
+    if(active && isChatIdentityCurrent(identity)) {setOnline({scope,workspace:home.workspace,items:home.items.filter(item=>accepted.has(item.id)).map(item=>({...item,addedBy:accepted.get(item.id)?.added_by_name}))});setOnlineError('');console.info('[TEAM_ARTIFACTS]', {project:target.project,items:accepted.size})}
+   } catch { if(active && isChatIdentityCurrent(identity)) {setOnline(undefined);setOnlineError('Could not load Team artifacts. Retrying.')} }
+  }
+  void read();window.addEventListener('agentworks:team-updated',read)
+  return ()=>{active=false;window.removeEventListener('agentworks:team-updated',read)}
+ },[scope,enabled,target?.project,target?.connection,loaded])
  useLiveRefetch(()=>refresh.current(),{kinds:['crew_panel'],project:projectId,scopeKey:scope,enabled,fallbackMs:15000,safetyMs:60000,minIntervalMs:3000})
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
@@ -55,5 +74,11 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
  // Shared by you: the person's own agents shared with the team, with their mode and audience from the server rows.
  const shared:TeamPanelShared[]=team.view.agents.filter(agent=>agent.mine&&agent.in_team).map(agent=>({key:agent.key,name:agent.name,canChange:Boolean(agent.can_make_changes),chosen:agent.audience==='chosen'?(agent.chosen_people||[]).length:undefined}))
  const openShared=(row:TeamPanelShared)=>{openCrewAccess(projectId,'','team','agents');window.setTimeout(()=>document.getElementById(`team-agent-card-${row.key}`)?.scrollIntoView({block:'center'}),300)}
- return <TeamPanel shared={shared} onShared={openShared} scope={scope} agents={rows} posts={loaded?.scope===scope?loaded.posts:[]} error={loaded?.scope===scope?loaded.error:undefined} onAsk={ask} onActivity={()=>openCrewAccess(projectId,'','team','activity')}/>
+ const artifacts=online?.scope===scope?online.items:[]
+ const openArtifact=(id:string)=>{
+  if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server || online?.scope!==scope) return
+  const item=online.items.find(row=>row.id===id)
+  if(item) selectReportDocument(online.workspace,item.path,true)
+ }
+ return <TeamPanel artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} posts={loaded?.scope===scope?loaded.posts:[]} error={onlineError || (loaded?.scope===scope?loaded.error:undefined)} onAsk={ask} onActivity={()=>openCrewAccess(projectId,'','team','activity')}/>
 }

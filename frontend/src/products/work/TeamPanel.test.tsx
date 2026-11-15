@@ -86,3 +86,17 @@ it('explains offline asks only when the server supplied an admitted Team agent',
  expect(host.textContent).not.toContain('new asks go to the Team agent')
  expect(host.textContent).toContain('Offline · no Team agent available')
 })
+
+// Team artifacts are collapsed with the other groups; clicking uses the accepted Team copy.
+it('lists online artifacts from every member in the Team group and opens that copy', async () => {
+  const open = vi.fn()
+  await act(async () => root.render(<TeamPanel scope="team-artifacts" agents={agents} posts={posts} onAsk={ask} onActivity={activity} artifacts={[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]} onArtifact={open} />))
+  expect(disclosure('Artifacts').getAttribute('aria-expanded')).toBe('false')
+  expect(disclosure('Artifacts').textContent).toContain('1 on the Team')
+  expect(host.textContent).not.toContain('Team proposal')
+  await click('Artifacts')
+  const row = host.querySelector('[aria-label="Team artifacts"] button') as HTMLButtonElement
+  expect(row.textContent).toContain('Added by Colleague')
+  await act(async () => row.click())
+  expect(open).toHaveBeenCalledWith('team-copy')
+})
