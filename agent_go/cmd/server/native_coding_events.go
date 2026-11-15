@@ -446,6 +446,34 @@ func (api *StreamingAPI) saveNativeCodingActivity(sessionID string, record llmty
 }
 
 func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.NativeRecord) error {
+	if record.Kind == "plan" && record.Plan != nil {
+		// Active library turns own their stream/retained checklist. The observer
+		// publishes only a turn typed directly in the admitted terminal session.
+		if session, ok := mcpagent.LookupSession(o.snapshot.SessionID); ok && session.ActiveTurnID() != "" {
+			return nil
+		}
+		if record.TurnID == "" {
+			return nil
+		}
+		plan := *record.Plan
+		plan.Items = append([]llmtypes.CodingAgentPlanItem{}, record.Plan.Items...)
+		plan.PlanID, plan.NativeTurnID = "native:"+record.TurnID, record.TurnID
+		event := &agentevents.CodingAgentPlanEvent{BaseEventData: agentevents.BaseEventData{EventID: nativeCodingEventID(o.snapshot.SessionID, record) + ":plan", Timestamp: time.Now()}, CodingAgentPlan: plan}
+		wrapped := agentevents.NewAgentEvent(event)
+		wrapped.SessionID, wrapped.TurnID = o.snapshot.SessionID, "native:"+record.TurnID
+		err := o.api.eventStore.AddEventChecked(o.snapshot.SessionID, storeevents.Event{ID: event.EventID, Type: string(agentevents.CodingAgentPlan), Timestamp: event.Timestamp, SessionID: o.snapshot.SessionID, ExecutionKind: "main_agent", Data: wrapped})
+		if err == nil {
+			done := 0
+			for _, item := range plan.Items {
+				if item.Status == "completed" {
+					done++
+				}
+			}
+			log.Printf("[CODING_AGENT_PLAN] provider=%s session=%s turn=%s items=%d done=%d", record.Provider, o.snapshot.SessionID, record.TurnID, len(plan.Items), done)
+		}
+		return err
+	}
+
 	if record.Provider == "codex-cli" && record.Kind == "question" && record.Name == "request_user_input_async" {
 		if err := o.api.observeNativeAsyncQuestion(o.snapshot.SessionID, record); err != nil {
 			return err
