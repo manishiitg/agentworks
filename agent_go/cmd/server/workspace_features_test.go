@@ -181,6 +181,32 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 			t.Fatalf("home leaked into Crew list (%s): %d %s", detail, out.Code, out.Body.String())
 		}
 	}
+	// A home read resolves the source Team, not a different permission path.
+	for _, viewer := range []string{fixtureUserA, fixtureUserB, fixtureUserC} {
+		out := httptest.NewRecorder()
+		r := mux.SetURLVars(httptest.NewRequest("GET", "/online-items", nil).WithContext(f.Ctx(viewer)), map[string]string{"project": homeID})
+		f.API.handleCrewTeamOnlineItems(out, r)
+		if viewer == fixtureUserC {
+			if out.Code != 403 {
+				t.Fatalf("outsider read home mappings: %d", out.Code)
+			}
+		} else if out.Code != 200 {
+			t.Fatalf("member home items: %d %s", out.Code, out.Body.String())
+		}
+	}
+	for _, allowed := range []bool{false, true} {
+		claims := f.Claims(fixtureUserB)
+		claims.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{homeID}}
+		if allowed {
+			claims.AccessToken.CrewIDs = append(claims.AccessToken.CrewIDs, fixtureCrewID)
+		}
+		out := httptest.NewRecorder()
+		r := mux.SetURLVars(httptest.NewRequest("GET", "/online-items", nil).WithContext(context.WithValue(f.Ctx(fixtureUserB), UserContextKey, claims)), map[string]string{"project": homeID})
+		f.API.handleCrewTeamOnlineItems(out, r)
+		if allowed && out.Code != 200 || !allowed && out.Code != 403 {
+			t.Fatalf("source consent allowed=%t: %d %s", allowed, out.Code, out.Body.String())
+		}
+	}
 	// The saved name, including a rename, must survive registry/reach projection (f97a70da42).
 	key := crewOwnerMainChatKey(homeID)
 	name := "Operations helper"
