@@ -16,7 +16,12 @@ func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeam
 		project, _, valid := strings.Cut(rest, "/agent/")
 		if valid {
 			if t, err := readCrewTeam(project); err == nil {
-				candidates = crewTeamReachableIn(ctx, t, viewer)
+				if t.RosterSource != "" {
+					t, err = readCrewTeam(t.RosterSource)
+				}
+				if err == nil {
+					candidates = crewTeamReachableIn(ctx, t, viewer)
+				}
 			}
 		}
 	} else if strings.HasPrefix(address, "agent:") {
@@ -68,4 +73,90 @@ func crewTeamBridgeDirectoryItems(ctx context.Context, viewer string) []map[stri
 		items = append(items, map[string]interface{}{"agent_name": row.Address, "name": row.Name, "label": row.Name, "id": row.Address, "target": row.Address, "agent_id": row.ID, "team_project_id": row.Team, "team_name": row.TeamName, "owner": row.Person, "kind": "team_agent", "type": "In-team agent", "shared": true, "online": row.Online, "presence": presence, "reach": "Ask or send through AgentBridge; replies stay in the original inbox."})
 	}
 	return items
+}
+
+// Existing endpoint identity pins the Team row; the registry remains the only
+// audience record. A renamed/rebound mailbox never inherits another row.
+func crewTeamEndpointAddress(ctx context.Context, e agentMessageEndpoint) (string, error) {
+	if e.NamedAgentID != "" {
+		named, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
+		if err != nil {
+			return "", err
+		}
+		return "agent:" + shareOwnerLabel(e.UserID) + "/" + named.Name, nil
+	}
+	if e.Kind == triggerCallerCrew && e.TeamAgentID != "" {
+		return crewTeamAgentAddress(e.ID, e.TeamAgentID), nil
+	}
+	return "", fmt.Errorf("Team endpoint unavailable")
+}
+
+func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEndpoint) error {
+	address, err := crewTeamEndpointAddress(ctx, e)
+	if err != nil {
+		return err
+	}
+	row, t, err := crewTeamAdmitAddress(ctx, viewer, address)
+	if err != nil || row.ID != e.TeamAgentID {
+		return admissionRefused("This Team agent is no longer reachable.")
+	}
+	if row.Kind == "team_agent" {
+		if e.ID != t.OnlineHome || e.UserID != ownerOfCrewProjectID(t.OnlineHome) {
+			return admissionRefused("Team agent identity changed.")
+		}
+		return nil
+	}
+	registered, ok := t.Agents[row.ID]
+	if !ok || registered.OwnerID != e.UserID {
+		return admissionRefused("Team agent identity changed.")
+	}
+	if e.NamedAgentID != "" {
+		if registered.Terminal == nil || registered.Terminal.NamedAgentID != e.NamedAgentID {
+			return admissionRefused("Terminal binding changed.")
+		}
+	} else {
+		key := e.ChatKey
+		if e.PublishedAgent != "" {
+			key = e.PublishedAgent
+		}
+		if registered.ChatKey != key && !(crewRelayTwin(t.ProjectID) && registered.OwnerID == t.OwnerID && macSharedAgentChatKey(t.ProjectID, registered.Tab) == key) {
+			return admissionRefused("Team chat binding changed.")
+		}
+	}
+	return nil
+}
+
+func crewTeamConversationAdmission(ctx context.Context, c agentConversation) (bool, error) {
+	if publishedAsker(c.Endpoints[0]) == publishedAsker(c.Endpoints[1]) {
+		return false, nil
+	}
+	handled := false
+	for i, e := range c.Endpoints {
+		if e.TeamAgentID == "" {
+			continue
+		}
+		handled = true
+		if err := crewTeamAdmitEndpoint(ctx, publishedAsker(c.Endpoints[1-i]), e); err != nil {
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s inbox=%s event=send outcome=refused reason=current_audience_or_binding", publishedAsker(c.Endpoints[1-i]), e.TeamAgentID, c.ID)
+			return true, err
+		}
+	}
+	return handled, nil
+}
+
+// Authority is for this already-owned mailbox only, never Crew/file tools.
+func (api *StreamingAPI) externalAuthorizeConversationPeer(ctx context.Context, claims *UserClaims, c agentConversation, side int, send bool) error {
+	if handled, err := crewTeamConversationAdmission(ctx, c); handled {
+		if err != nil {
+			return err
+		}
+		if side < 0 || side > 1 || claims == nil || claims.UserID != publishedAsker(c.Endpoints[side]) || !namedAgentOperationAllowed(claims, send) {
+			return admissionRefused("Team mailbox unavailable.")
+		}
+		if token := claims.AccessToken; token != nil && token.BoundAgentID != "" && token.BoundAgentID != c.Endpoints[side].NamedAgentID {
+			return admissionRefused("Team mailbox belongs to another agent.")
+		}
+		return nil
+	}
+	return api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], send)
 }

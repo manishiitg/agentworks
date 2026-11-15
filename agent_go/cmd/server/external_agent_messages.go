@@ -36,7 +36,7 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
-				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims); err != nil {
+				if err := api.externalAuthorizeConversationPeer(ctx, peerClaims, conversation, side, send && peerClaims == claims); err != nil {
 					if send {
 						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
 					}
@@ -95,6 +95,10 @@ func messagePeerView(claims *UserClaims, send bool) *UserClaims {
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
+	if peer.TeamAgentID != "" && peer.UserID != claims.UserID && namedAgentOperationAllowed(claims, send) {
+		return crewTeamAdmitEndpoint(ctx, claims.UserID, peer)
+	}
+
 	// A published sender thread is mail to an admitted audience, not a grant of
 	// Crew tools to an attached agent's messaging-only connection.
 	if peer.PublishedAgent != "" && token != nil && token.BoundAgentID != "" {

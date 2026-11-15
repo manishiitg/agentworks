@@ -124,7 +124,8 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			if peerErr != nil {
 				return peerErr
 			}
-			if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, peer, view == claims); err != nil {
+			_ = peer // publication identity was checked above; mailbox authority stays scoped to c
+			if err := api.externalAuthorizeConversationPeer(context.WithValue(ctx, UserContextKey, claims), view, c, m.From, view == claims); err != nil {
 				return err
 			}
 		}
