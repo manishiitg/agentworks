@@ -315,7 +315,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, row := range out["agents"].([]map[string]interface{}) {
-			if row["chat_id"] == id {
+			if row["agent_id"] == id {
 				return true
 			}
 		}
@@ -324,7 +324,10 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if !directoryHas(shared.ID) || directoryHas(privateAgent.ID) {
 		t.Fatal("directory visibility differs from Team privacy")
 	}
-	target, err := f.api.resolveAgentChatTarget(otherCtx, triggerTarget{Kind: triggerCallerCrew, CrewID: "team", CrewProfile: crewProfileID, CrewOwner: "owner", Path: externalCommandCrewRoot}, shared.ID)
+	// PLAT-746-1034: the exact agent: address offered in discovery must also
+	// resolve through the CLI/MCP messages target parser, not a UI-only alias.
+	teamAddress := crewTeamAgentAddress("team", shared.ID)
+	target, err := f.api.externalMessageTarget(otherCtx, &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"messages:read", "messages:send"}}}, map[string]any{"target": teamAddress})
 	if err != nil {
 		t.Fatal(err)
 	}

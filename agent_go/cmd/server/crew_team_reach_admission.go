@@ -2,9 +2,14 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A Team row is the grant. No cached/persisted duplicate audience is consulted.
@@ -12,19 +17,7 @@ import (
 func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeamReachableAgent, crewTeam, error) {
 	address = strings.TrimSpace(address)
 	var candidates []crewTeamReachableAgent
-	if rest, ok := strings.CutPrefix(address, "workspace:"+crewProfileID+":"); ok {
-		project, _, valid := strings.Cut(rest, "/agent/")
-		if valid {
-			if t, err := readCrewTeam(project); err == nil {
-				if t.RosterSource != "" {
-					t, err = readCrewTeam(t.RosterSource)
-				}
-				if err == nil {
-					candidates = crewTeamReachableIn(ctx, t, viewer)
-				}
-			}
-		}
-	} else if strings.HasPrefix(address, "agent:") {
+	if strings.HasPrefix(address, "agent:") {
 		candidates = crewTeamReachableAgents(ctx, viewer)
 	}
 	for _, row := range candidates {
@@ -42,8 +35,12 @@ func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeam
 			}
 		}
 	}
-	log.Printf("[TEAM_AGENT_REACH] caller=%s event=admit outcome=refused reason=not_reachable", viewer)
-	return crewTeamReachableAgent{}, crewTeam{}, admissionRefused("This agent is not In team for you now. Refresh the agent list.")
+	reason := "not_reachable"
+	if crewTeamBindingChangedForAddress(ctx, viewer, address) {
+		reason = "binding_changed"
+	}
+	log.Printf("[TEAM_AGENT_REACH] caller=%s event=admit outcome=refused reason=%s", viewer, reason)
+	return crewTeamReachableAgent{}, crewTeam{}, agentAdmissionRefusal{err: crewTeamReachRefusal{reason: reason}}
 }
 
 // Routing is not a second grant: the original target was admitted above and
@@ -97,7 +94,10 @@ func crewTeamAdmitEndpoint(ctx context.Context, viewer string, e agentMessageEnd
 		return err
 	}
 	row, t, err := crewTeamAdmitAddress(ctx, viewer, address)
-	if err != nil || row.ID != e.TeamAgentID {
+	if err != nil {
+		return err
+	}
+	if row.ID != e.TeamAgentID {
 		return admissionRefused("This Team agent is no longer reachable.")
 	}
 	if row.Kind == "team_agent" {
@@ -137,7 +137,7 @@ func crewTeamConversationAdmission(ctx context.Context, c agentConversation) (bo
 		}
 		handled = true
 		if err := crewTeamAdmitEndpoint(ctx, publishedAsker(c.Endpoints[1-i]), e); err != nil {
-			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s inbox=%s event=send outcome=refused reason=current_audience_or_binding", publishedAsker(c.Endpoints[1-i]), e.TeamAgentID, c.ID)
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s inbox=%s event=send outcome=refused reason=%s", publishedAsker(c.Endpoints[1-i]), e.TeamAgentID, c.ID, crewTeamReachReason(err))
 			return true, err
 		}
 	}
@@ -277,4 +277,55 @@ func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*code
 		return &codeChat{OwnerID: a.OwnerID, ID: key, Key: key, Name: a.Name, Purpose: a.Purpose, SessionID: session}, true
 	}
 	return nil, false
+}
+
+type crewTeamReachRefusal struct{ reason string }
+
+func (e crewTeamReachRefusal) Error() string {
+	return "This agent is not In team for you now, or its attached session changed. Refresh the agent list."
+}
+func crewTeamReachReason(err error) string {
+	var refused crewTeamReachRefusal
+	if errors.As(err, &refused) {
+		return refused.reason
+	}
+	return "current_audience_or_binding"
+}
+
+// This classifies a refusal only; it never grants access. A current teammate
+// must not bypass a rebound terminal binding through a broader Discovery share.
+func crewTeamBindingChangedForAddress(ctx context.Context, viewer, address string) bool {
+	if !strings.HasPrefix(address, "agent:") || !crewTeamAccountActive(viewer) {
+		return false
+	}
+	root, err := crewroot.StateRoot()
+	if err != nil {
+		return false
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "team-folders"))
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		t, err := readCrewTeam(entry.Name())
+		if err != nil {
+			continue
+		}
+		for _, a := range t.Agents {
+			if a.Kind != "terminal" || a.Terminal == nil || !crewTeamReachRow(t, viewer, a) {
+				continue
+			}
+			named, err := namedAgentByID(ctx, a.OwnerID, a.Terminal.NamedAgentID)
+			if err != nil || address != "agent:"+shareOwnerLabel(a.OwnerID)+"/"+named.Name {
+				continue
+			}
+			if _, err = currentCrewTeamTerminal(ctx, t, a); err != nil {
+				return true
+			}
+		}
+	}
+	return false
 }

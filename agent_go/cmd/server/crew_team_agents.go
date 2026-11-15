@@ -2,12 +2,13 @@ package server
 
 import (
 	"context"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"log"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
+
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -62,13 +63,23 @@ func crewTeamWaitingLabel(name string, you bool) string {
 	return "Waiting for " + firstNonEmptyTrimmed(name, "its owner")
 }
 
-// crewTeamAgentAddress is the send_message target of one of the Team's agents in this Crew's online copy; on a Mac
-// send_message maps it to the Crew paired with that copy (crew_team_message.go).
-func crewTeamAgentAddress(project, chatKey string) string {
-	if project == "" || chatKey == "" {
+// One AgentBridge address works from a native CLI or an app chat.
+func crewTeamAgentBridgeAddress(owner, id string) string {
+	if owner == "" || id == "" {
 		return ""
 	}
-	return "workspace:" + crewProfileID + ":" + project + "/agent/" + chatKey
+	return "agent:" + shareOwnerLabel(owner) + "/" + id
+}
+func crewTeamAgentAddress(project, id string) string {
+	t, err := readCrewTeam(project)
+	if err != nil {
+		return ""
+	}
+	a, ok := t.Agents[id]
+	if !ok {
+		return ""
+	}
+	return crewTeamAgentBridgeAddress(a.OwnerID, a.ID)
 }
 
 type crewTeamAgentsPerson struct {

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -340,6 +341,9 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 	if owner == nil {
 		return triggerTarget{}, denied
 	}
+	if strings.HasPrefix(name, crewTeamAgentIDPrefix) {
+		return crewTeamBridgeTarget(ctx, subjectID, "agent:"+ownerName+"/"+name)
+	}
 	if owner.ID == subjectID {
 		// A published Mac agent has the same owner-prefixed address in the directory as any shared agent.
 		// Resolve only that explicit publication; private tabs and named-agent shares retain their own rules.
@@ -359,6 +363,9 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		}
 		if row, _, teamErr := crewTeamAdmitAddress(ctx, subjectID, "agent:"+ownerName+"/"+a.Name); teamErr == nil {
 			return triggerTarget{TeamAgentID: row.ID, NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID}, nil
+		} else if crewTeamReachReason(teamErr) == "binding_changed" {
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s event=send outcome=refused reason=binding_changed", subjectID, a.ID)
+			return triggerTarget{}, teamErr
 		}
 		var best *agentShare
 		for i := range s.Shares {

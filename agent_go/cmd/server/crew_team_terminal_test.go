@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -305,6 +304,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		}
 		return out
 	}
+	if _, err := sender.Call(t.Context(), "messages", map[string]any{"action": "ask", "target": "agent:owner/terminal", "message": "Offline question", "submission_id": "offline-question"}); err == nil {
+		t.Fatal("offline ASK without a Team home was not refused")
+	}
 	receipt := mail(sender, map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Team fixture question", "submission_id": "team-question"})
 	inbox, _ := receipt["inbox_id"].(string)
 	if inbox == "" {
@@ -353,4 +355,12 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	if _, e = currentCrewTeamTerminal(t.Context(), saved, row); e == nil {
 		t.Fatal("a replacement private session inherited the old Team binding")
 	}
+	saved.People[0].Invited = false
+	if e = writeCrewTeamAgentFixture(saved); e != nil {
+		t.Fatal(e)
+	}
+	if _, err := sender.Call(t.Context(), "messages", map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Must not reach replacement", "submission_id": "team-rebound"}); err == nil {
+		t.Fatal("rebound terminal accepted Team mail before explicit rejoin")
+	}
+
 }

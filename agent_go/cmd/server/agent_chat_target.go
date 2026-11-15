@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -15,42 +14,7 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 	}
 	caller := GetUserIDFromContext(ctx)
 	chatID = strings.TrimSpace(chatID)
-	if target.Kind == triggerCallerCrew && !IsLocalMode() {
-		if strings.HasPrefix(chatID, crewTeamAgentIDPrefix) {
-			return api.resolveTeamAgentTarget(ctx, target, chatID)
-		}
-		t, err := readCrewTeam(target.CrewID)
-		if err != nil && !os.IsNotExist(err) {
-			return target, err
-		}
-		if err == nil && t.On && t.member(caller) {
-			mainKey := crewOwnerMainChatKey(t.ProjectID)
-			id := target.TeamAgentID
-			if id == "" && target.Chat != nil {
-				// A verified sibling-chat caller carries its actual owner and binding.
-				for _, p := range teamAgentsByPersonWithMain(ctx, t, caller, mainKey) {
-					for _, a := range p.Agents {
-						if p.UserID == target.Chat.OwnerID && a.ChatKey == target.Chat.Key {
-							id = a.ID
-						}
-					}
-				}
-			}
-			if id == "" && target.Chat == nil && (chatID == "" || chatID == "main") {
-				for _, p := range teamAgentsByPersonWithMain(ctx, t, caller, mainKey) {
-					for _, a := range p.Agents {
-						if p.UserID == caller && crewTeamMainAgentWithKey(t, caller, a.ChatKey, mainKey) {
-							id = a.ID
-						}
-					}
-				}
-			}
-			if id == "" {
-				return target, fmt.Errorf("Choose this Team agent's chat_id from list_agents")
-			}
-			return api.resolveTeamAgentTarget(ctx, target, id)
-		}
-	}
+
 	if target.Chat != nil || target.NamedAgentID != "" {
 		return target, nil
 	}
