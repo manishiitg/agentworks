@@ -123,25 +123,25 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return r, true
 		}
-		log.Printf("[AGENT_GOAL] session=%s action=started reason=person_%s", sessionID, command.Action)
+		log.Printf("[AGENT_GOAL] session=%s action=started reason=%s%s", sessionID, nativeGoalOrigin(r.Context(), command.Action), nativeGoalCallerLog(r.Context()))
 		update, err := controlNativeGoal(r.Context(), sessionID, command.Action)
 		if err != nil {
 			log.Printf("[AGENT_GOAL] session=%s action=failed status=unknown reason=control_failed", sessionID)
 			http.Error(w, err.Error(), http.StatusConflict)
 			return r, true
 		}
-		if err := api.projectNativeGoal(sessionID, *update, "person_"+command.Action); err != nil {
+		if err := api.projectNativeGoal(sessionID, *update, nativeGoalOrigin(r.Context(), command.Action)); err != nil {
 			http.Error(w, "Could not save goal state", http.StatusInternalServerError)
 			return r, true
 		}
 
-		log.Printf("[AGENT_GOAL] session=%s action=done reason=person_%s", sessionID, command.Action)
+		log.Printf("[AGENT_GOAL] session=%s action=done reason=%s%s", sessionID, nativeGoalOrigin(r.Context(), command.Action), nativeGoalCallerLog(r.Context()))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "completed", "session_id": sessionID})
 		return r, true
 	}
 	req.DisableLiveInputDelivery = true
-	log.Printf("[AGENT_GOAL] session=%s action=started reason=person_%s", sessionID, command.Action)
+	log.Printf("[AGENT_GOAL] session=%s action=started reason=%s%s", sessionID, nativeGoalOrigin(r.Context(), command.Action), nativeGoalCallerLog(r.Context()))
 	return r.WithContext(llmtypes.WithNativeGoalCommand(r.Context(), command)), false
 }
 
