@@ -295,6 +295,10 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	}
 	mail := func(client *agentworksclient.Client, args map[string]any) map[string]any {
 		t.Helper()
+		args["agent_name"] = "terminal"
+		if client == sender {
+			args["agent_name"] = "member-terminal"
+		}
 		raw, err := client.Call(t.Context(), "messages", args)
 		if err != nil {
 			t.Fatal(err)
@@ -305,7 +309,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		}
 		return out
 	}
-	if _, err := sender.Call(t.Context(), "messages", map[string]any{"action": "ask", "target": "agent:owner/terminal", "message": "Offline question", "submission_id": "offline-question"}); err == nil {
+	if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "ask", "target": "agent:owner/terminal", "message": "Offline question", "submission_id": "offline-question"}); err == nil {
 		t.Fatal("offline ASK without a Team home was not refused")
 	}
 	receipt := mail(sender, map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Team fixture question", "submission_id": "team-question"})
@@ -336,7 +340,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	if e = writeCrewTeamAgentFixture(saved); e != nil {
 		t.Fatal(e)
 	}
-	if _, err := sender.Call(t.Context(), "messages", map[string]any{"action": "send", "inbox_id": inbox, "message": "Refused after leaving", "submission_id": "team-revoked"}); err == nil {
+	if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "send", "inbox_id": inbox, "message": "Refused after leaving", "submission_id": "team-revoked"}); err == nil {
 		t.Fatal("removed Team member could reply in the old inbox")
 	}
 
@@ -360,7 +364,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	if e = writeCrewTeamAgentFixture(saved); e != nil {
 		t.Fatal(e)
 	}
-	if _, err := sender.Call(t.Context(), "messages", map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Must not reach replacement", "submission_id": "team-rebound"}); err == nil {
+	if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "send", "target": "agent:owner/terminal", "message": "Must not reach replacement", "submission_id": "team-rebound"}); err == nil {
 		t.Fatal("rebound terminal accepted Team mail before explicit rejoin")
 	}
 
