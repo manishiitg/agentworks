@@ -62,6 +62,7 @@ type crewTeamActivityOther struct {
 }
 
 type crewTeamActivityView struct {
+	OnlineItems    []teamOnlineItemMapping   `json:"-"`
 	Feed           []crewTeamFeedItem        `json:"feed"`
 	Decisions      []crewTeamActivityPost    `json:"-"`
 	Findings       []crewTeamActivityPost    `json:"-"`
@@ -149,6 +150,13 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 			if t.Folder.holds(path) {
 				out.Other = append(out.Other, crewTeamActivityOther{Kind: "clash", Path: path, Line: "Clash in " + path + " — not sorted out yet"})
 			}
+		}
+	}
+	// Accepted online items contain only Team-owned item metadata and the
+	// actual person's attribution, never a maker's private chat contents.
+	if t.OnlineHome != "" && t.On && t.member(caller) {
+		if destination, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workspace:work:"+t.OnlineHome); err == nil {
+			out.OnlineItems, _ = readTeamOnlineMappings(ctx, destination)
 		}
 	}
 	out.Feed, out.NextCursor = crewTeamFeedPage(crewTeamActivityFeed(out, caller), before)
