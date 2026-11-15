@@ -337,7 +337,7 @@ func crewMacTeamMember(project, caller string) (string, bool) {
 }
 
 // crewTeamMacMemberTabs are the Mac agents of members on their Mac, for someone else in the Team (the owner's list
-// adds them through crewTeamMemberTabs).
+// adds them directly).
 func crewTeamMacMemberTabs(ctx context.Context, project, viewer string) []AgentProfileSideChat {
 	out := []AgentProfileSideChat{}
 	owner := ownerOfCrewProjectID(project)
@@ -396,7 +396,7 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 			add(row)
 		}
 	}
-	for _, row := range crewTeamMemberTabs(r.Context(), project, caller) {
+	for _, row := range crewTeamMacMemberTabs(r.Context(), project, caller) {
 		add(row)
 	}
 	writeAgentProfileJSON(w, http.StatusOK, out)

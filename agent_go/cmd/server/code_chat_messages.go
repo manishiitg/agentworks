@@ -575,7 +575,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				// Another person's agent from a Crew on its owner's Mac answers only when it is shared with this person: say so
 				// now, plainly, rather than accepting a message that is refused on delivery.
-				if !IsLocalMode() && chat.OwnerID != userID && crewRelayTwin(project.ProjectID) && crewTeamMemberTab(ctx, project.ProjectID, chat.Key) == "" {
+				if !IsLocalMode() && chat.OwnerID != userID && crewRelayTwin(project.ProjectID) {
 					if _, reason := macSharedAgentForAgent(project.ProjectID, macSharedAgentTab(project.ProjectID, chat.Key), userID, chat.OwnerID); reason != "" {
 						log.Printf("[CREW_SHARED_AGENT] project=%s chat=%s action=message refused_at_send reason=%s user=%s", project.ProjectID, chat.ID, reason, logUsernameForUserID(userID))
 						return "", fmt.Errorf("%s's %s isn't shared with you, so it can't be asked. Ask %s to share it from the Team tab", shareOwnerLabel(chat.OwnerID), chat.Name, shareOwnerLabel(chat.OwnerID))

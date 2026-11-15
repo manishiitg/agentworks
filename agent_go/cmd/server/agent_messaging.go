@@ -1255,15 +1255,14 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 			}
 		}
 		// An agent shared from a Crew on its owner's Mac runs there; its answer comes back to this inbox (PLAT-856-509).
-		// A Team member's own server agent in a Mac Crew runs here like any server chat (review 5 Nov: it was sent to
-		// the owner's Mac and refused as "not shared").
+		// Member agents use their admitted member-Mac pair, not server shadow tabs.
 		if teamRoute == "owner_mac" {
 			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
 		}
 		if teamRoute == "member_mac" {
 			return session, api.deliverToMemberMacAgent(ctx, c, m, source, dest)
 		}
-		if dest.TeamAgentID == "" && !IsLocalMode() && crewRelayTwin(dest.ID) && crewTeamMemberTab(ctx, dest.ID, dest.ChatKey) == "" {
+		if dest.TeamAgentID == "" && !IsLocalMode() && crewRelayTwin(dest.ID) {
 			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
 		}
 		// A Team member's agent on their Mac, in a Crew on the server (crew_team_mac_watch.go).
