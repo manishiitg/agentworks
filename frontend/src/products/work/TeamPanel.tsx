@@ -37,6 +37,8 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
   const agentsOpen = agentsChoice === 'open', activityOpen = activityChoice === 'open'
   const ordered = [...agents.filter(row => row.team_agent), ...agents.filter(row => !row.team_agent && !row.mine)]
   const visible = ordered
+  const hasTeamAgent = ordered.some(row => row.team_agent)
+  const offlineLine = (row: TeamPanelAgent) => !row.online && !row.mine && !row.team_agent ? hasTeamAgent ? 'Offline · new asks go to the Team agent' : 'Offline · no Team agent available' : ''
   const latest = [...posts].filter(post => post.kind === 'doing' || post.kind === 'decision').sort((a, b) => time(b.at) - time(a.at))
   const newest = latest[0]?.at || ''
   const newCount = latest.filter(post => time(post.at) > time(seen)).length
@@ -57,6 +59,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1"><span className="min-w-0 flex-1 truncate text-xs font-medium">{row.name}</span><span className={`shrink-0 text-[10px] ${row.activity === 'running' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{row.activity === 'running' ? 'Working' : row.activity === 'waiting' ? 'Waiting' : !row.online ? 'Offline' : ''}</span></span>
           <span title={agentLine(row)} className="block truncate text-[10px] text-muted-foreground">{agentLine(row)}</span>
+          {offlineLine(row) && <span title={offlineLine(row)} className="block truncate text-[10px] text-muted-foreground">{offlineLine(row)}</span>}
           {row.last_message && <span className="block truncate text-[11px] text-muted-foreground">{row.typing ? <span className="text-emerald-600 dark:text-emerald-400">typing… </span> : age(row.last_message_at) ? <span>{age(row.last_message_at)} · </span> : null}{row.last_message}</span>}
         </span>
       </button>)}

@@ -29,9 +29,9 @@ it('opens the exact observed teammate tab rather than Main or a different Crew w
 it('sends from the watched view through AgentBridge without querying the native session or opening Main',async()=>{
  f.tabs.watch={metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileConversationKey:'peer-native'}}
  f.team={target:{project:'crew'},view:{team:{on:true},agents:[{id:'peer',name:'Review',in_team:true}],reachable:[{agent_id:'peer',address:'workspace:work:crew/agent/peer'}]}}
- f.post.mockImplementation((_url:string,body:any)=>Promise.resolve({data:body.arguments.action==='send'?{inbox_id:'inbox',delivery:'pending'}:{messages:[],next_cursor:0}}))
+ f.post.mockImplementation((_url:string,body:any)=>Promise.resolve({data:body.arguments.action==='ask'?{inbox_id:'inbox',delivery:'pending'}:{messages:[],next_cursor:0}}))
  await render();await type('Please review this');await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
- expect(f.post).toHaveBeenCalledWith('/api/external/v1/call',{name:'messages',arguments:expect.objectContaining({action:'send',target:'workspace:work:crew/agent/peer',message:'Please review this'})},{skipSessionContext:true})
+ expect(f.post).toHaveBeenCalledWith('/api/external/v1/call',{name:'messages',arguments:expect.objectContaining({action:'ask',target:'workspace:work:crew/agent/peer',message:'Please review this'})},{skipSessionContext:true})
  expect(f.open).not.toHaveBeenCalled();expect(f.post.mock.calls[0][1]).not.toHaveProperty('session_id')
 })
 
