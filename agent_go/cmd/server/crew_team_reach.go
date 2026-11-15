@@ -105,6 +105,12 @@ func crewTeamReachRow(t crewTeam, viewer string, row crewTeamRegisteredAgent) bo
 
 // crewTeamReachableIn is one Team's reachable agents for the viewer.
 func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
+	return crewTeamReachableFrom(ctx, t, viewer, nil)
+}
+
+// crewTeamReachableFrom is crewTeamReachableIn over an already-read discovery (people), so a reader that has it (the
+// Team tab, the header's live view) applies the same rows without a second discovery. nil reads it here.
+func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson) []crewTeamReachableAgent {
 	out := []crewTeamReachableAgent{}
 	open := crewTeamReachOpen(t, viewer)
 	if !crewTeamAccountActive(viewer) || !open && !crewTeamOwnerReach(t, viewer) {
@@ -113,7 +119,10 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 	if !open {
 		return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...) // Team off: the owner's own online copy only
 	}
-	for _, p := range teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID)) {
+	if people == nil {
+		people = teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID))
+	}
+	for _, p := range people {
 		if p.UserID == viewer || !t.member(p.UserID) || !crewTeamAccountActive(p.UserID) {
 			continue
 		}

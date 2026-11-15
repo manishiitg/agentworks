@@ -393,6 +393,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		person(p.UserID, note, true)
 	}
 	uses, usesNote := crewTeamUses(ctx, t)
+	// Teammates' rows are exactly the reach rows (the panel, header and AgentBridge read the same answer).
+	reachIDs := map[string]bool{}
+	for _, r := range out.Reachable {
+		reachIDs[r.ID] = true
+	}
 	for _, p := range byPerson {
 		mine := p.UserID == viewer
 		onMac := crewTeamAgentOnMac(t, p.UserID)
@@ -403,6 +408,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 		}
 		for _, a := range p.Agents {
+			if !mine && !reachIDs[a.ID] {
+				continue
+			}
 			detail := []string{}
 			if !mine {
 				detail = append(detail, p.Name)
