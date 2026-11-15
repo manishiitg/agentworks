@@ -179,7 +179,7 @@ func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []cre
 	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, a) {
 		return nil
 	}
-	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: "Team agent", Place: "server", Online: true, Audience: crewTeamOnlineCopyAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
+	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, Audience: crewTeamOnlineCopyAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
 }
 
 // GET /api/crew-team-reach: the signed-in person's reachable Team agents (draft read endpoint for the panel and the
