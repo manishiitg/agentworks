@@ -7,7 +7,7 @@ export const INTERFACE_FONTS = [
 ] as const
 export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
 export const CODE_FONTS = [{ id: 'system-mono', label: 'System monospace', family: APPLE_MONO_FONT }, ...INTERFACE_FONTS.filter(font => font.id !== 'system')]
-export const APPEARANCE_CSS_MAX_BYTES = 64 * 1024
+export const APPEARANCE_CSS_MAX_BYTES = 128 * 1024
 export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar', 'working', 'waiting', 'done', 'error', 'loader'] as const
 export type ColourRole = typeof COLOUR_ROLES[number]
 export type AppearanceProfile = 'light' | 'dark'
@@ -35,7 +35,7 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
   const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader']
-  if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 64 KiB).')
+  if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 128 KiB).')
   if (v.loader != null) {
     const loader = v.loader
     if (typeof loader !== 'object' || Array.isArray(loader) || Object.keys(loader).some(key => !['style', 'duration_ms'].includes(key)) ||

@@ -1,7 +1,7 @@
 import valueParser from 'postcss-value-parser'
 import { parse } from 'postcss'
+import { APPEARANCE_CSS_MAX_BYTES as maxCSSBytes } from '../stores/appearanceTheme'
 
-const maxCSSBytes = 128 << 10
 const https = (url: string) => /^https:\/\//i.test(url) && !/[\u0000-\u0020\u007f\\]/.test(url) && (() => {
   try { return new URL(url).protocol === 'https:' } catch { return false }
 })()
