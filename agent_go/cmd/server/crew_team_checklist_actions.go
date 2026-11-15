@@ -16,7 +16,7 @@ import (
 
 func crewChecklistAction(action string) bool {
 	switch action {
-	case "setup_list", "setup_get", "setup_share", "setup_edit", "setup_checklist":
+	case "setup_list", "setup_get", "setup_share", "setup_edit", "setup_checklist", "setup_targets", "setup_apply":
 		return true
 	}
 	return false
@@ -44,12 +44,20 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 	if len(externalArg(args, "setup_id")) > 128 {
 		return nil, fmt.Errorf("Choose a setup from setup_list")
 	}
-	write := action == "setup_share" || action == "setup_edit" || action == "setup_checklist"
+	write := action == "setup_share" || action == "setup_edit" || action == "setup_checklist" || action == "setup_apply"
 	team, err := crewChecklistTeam(claims, project, write)
 	if err != nil {
 		return nil, err
 	}
 	switch action {
+	case "setup_targets":
+		targets, err := crewChecklistTargets(ctx, claims)
+		if err == nil {
+			log.Printf("[TEAM_SETUP] project=%q person=%q operation=targets outcome=done count=%d", project, claims.UserID, len(targets))
+		}
+		return map[string]any{"agents": targets}, err
+	case "setup_apply":
+		return api.applyCrewChecklist(ctx, claims, project, args)
 	case "setup_share", "setup_edit":
 		raw, err := json.Marshal(args["setup"])
 		if err != nil {
@@ -164,6 +172,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 			summary["instructions"] = text
 			summary["items"] = setup.Items
 			summary["keys"] = setup.Keys
+			summary["key_status"] = api.crewChecklistKeyStates(ctx, project, claims.UserID, setup.Keys)
 			summary["my_items"] = mine
 			summary["people"] = people
 			// Presence of a required key reference does not claim it is configured.
