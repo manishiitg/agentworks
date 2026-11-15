@@ -18,7 +18,7 @@ import (
 // current audience and exact transport admission; a failed binding is not offline.
 func crewTeamTerminalLiveRow(ctx context.Context, t crewTeam, viewer, id string) (crewTeamRegisteredAgent, error) {
 	a, ok := t.Agents[id]
-	allowed := ok && crewTeamReachRow(t, viewer, a)
+	allowed := ok && crewTeamAccountActive(viewer) && crewTeamReachRow(t, viewer, a)
 	if viewer == a.OwnerID {
 		allowed = ok && crewTeamReachOpen(t, viewer) && a.InTeam && crewTeamAccountActive(viewer)
 	}

@@ -56,6 +56,46 @@ func TestTerminalTeamCopyRefusesSymlinkEscape(t *testing.T) {
 	if _, err := crewTeamTerminalCopyPath(base, outside); err == nil {
 		t.Fatal("outside path expanded the accepted project")
 	}
+
+	// Live may open only one exact regular native journal, never a symlink
+	// into unrelated files or an ambiguous duplicate from another project.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	const nativeID = "11111111-2222-4333-8444-555555555555"
+	project := filepath.Join(home, ".claude", "projects", "one")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(project, nativeID+".jsonl")
+	if err := os.WriteFile(journal, []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	physical, err := filepath.EvalSymlinks(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := crewTeamTerminalJournal(nativeID); err != nil || got != physical {
+		t.Fatalf("matching journal refused: %s %v", got, err)
+	}
+	second := filepath.Join(home, ".claude", "projects", "two")
+	if err := os.Mkdir(second, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(journal, filepath.Join(second, nativeID+".jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crewTeamTerminalJournal(nativeID); err == nil {
+		t.Fatal("ambiguous native session selected a private journal")
+	}
+	if err := os.Remove(journal); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crewTeamTerminalJournal(nativeID); err == nil {
+		t.Fatal("symlink native journal was opened")
+	}
+	if _, err := crewTeamTerminalJournal("../../private"); err == nil {
+		t.Fatal("native ID became an incoming file path")
+	}
 }
 
 // Real OAuth and attachment HTTP, with only the remote Mac boundary replaced.
