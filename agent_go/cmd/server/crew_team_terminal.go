@@ -106,7 +106,8 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	}
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, action)
 	go pushCrewTeamRecordChanged(team)
-	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "outcome": action, "notice": "New sessions start Only me. Choose In team in AgentWorks to let teammates ask; Answers only is the default. Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
+	registered := team.Agents[id]
+	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "outcome": action, "in_team": registered.InTeam, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": "New agents start Only me; rejoining keeps this agent's existing In team and chat choices. Choose In team in AgentWorks to let teammates ask. Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
 }
 
 // Reasons are fixed codes; neither provider text nor a caller's post enters logs.
