@@ -6,7 +6,11 @@ import api from '../../services/api'
  */
 export async function openTeamOnlineReport(workspace: string, document: string, isCurrent = () => true): Promise<boolean> {
   if (!/^db\/reports\/managed\/[A-Za-z0-9][A-Za-z0-9_-]*\/index\.html$/.test(document)) return false
-  const { data } = await api.post<{ found: boolean; short_path?: string; connection?: string }>('/api/dashboards', { action: 'online_location', workspace, document_path: document })
+  const { data } = await api.post<{ found: boolean; short_path?: string; connection?: string }>('/api/dashboards', { action: 'online_location', workspace, document_path: document }).catch((cause: unknown) => {
+    const body = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data
+    const message = typeof body?.error === 'string' ? body.error : body?.error?.message
+    throw new Error(message || (cause instanceof Error ? cause.message : 'The Team dashboard could not be opened. Try again.'))
+  })
   if (!isCurrent()) return true
   if (!data.found) return false
   if (!data.short_path || !/^\/d\/[23456789abcdefghjkmnpqrstuvwxyz]{10}$/.test(data.short_path)) throw new Error('The Team dashboard link is unavailable. Try again.')
