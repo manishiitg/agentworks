@@ -54,8 +54,8 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"preview":             map[string]any{"type": "boolean", "description": "receive_online: inspect only, creating no Team home or item."},
 		"include_automations": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "receive_online: optionally choose a subset of preview.dependencies.automations; default empty."},
 		"replace":             map[string]any{"type": "boolean", "description": "way_add secret: replace the value already on the Team."},
-		"accept_into":         map[string]any{"type": "string", "description": "accept on this Mac: omit to preview New project and eligible existing projects; then use new or a local project_id from that preview. Existing-project acceptance requires confirm=true after showing the instructions notice. Agent choices default to none."},
-		"agents":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: agent tab keys from the preview to share with the team; omit for none."},
+		"accept_into":         map[string]any{"type": "string", "description": "accept on this Mac: omit to preview New project and eligible existing projects; then use new or a local project_id from that preview. Existing-project acceptance requires confirm=true after showing the instructions notice. Every agent is shared with the team unless you pass agents."},
+		"agents":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "accept into an existing project: the agent tab keys from the preview to share with the team (the rest stay private); omit to share every agent with the team."},
 		"project":             map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":                map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "offset": map[string]any{"type": "integer", "description": "files: where the page starts (next_offset from the previous reply)."}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
 		"folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
@@ -205,8 +205,8 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			} else {
 				input.Folder = externalArg(args, "folder")
 			}
-			for _, a := range crewTeamJoinStringList(args["agents"]) {
-				input.Agents = append(input.Agents, a)
+			if _, chosen := args["agents"]; chosen {
+				input.Agents = append([]string{}, crewTeamJoinStringList(args["agents"])...)
 			}
 			if choice == "" || choice != "new" && !input.Confirm {
 				method = http.MethodGet

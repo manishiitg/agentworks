@@ -97,6 +97,8 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([])
   const [instructionsNotice, setInstructionsNotice] = useState('')
   const chosen = projects.find(project => project.project_id === target)
+  // Every agent of the chosen project starts In team (owner, 15 Nov); the person unticks the ones to keep private.
+  const pick = (project: string) => { setTarget(project); setSelectedAgents(projects.find(item => item.project_id === project)?.agents.map(agent => agent.tab) || []) }
   // The network this Mac reaches the invite's server through: the one the invite was listed from, or the selected
   // workspace (a server this Mac already added), so nothing new is asked.
   const activeWorkspace = getRawActiveWorkspaceId()
@@ -142,15 +144,15 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
     </div>
     {folder && <div className="mt-1.5 space-y-1.5 text-[11px] text-muted-foreground">
       <label className="flex items-center gap-2"><input type="radio" name={`join-${radioGroup}`} checked={target === 'new'} onChange={() => { setTarget('new'); setSelectedAgents([]) }} disabled={busy} />New project</label>
-      <label className="flex items-center gap-2"><input type="radio" name={`join-${radioGroup}`} checked={target !== 'new'} disabled={busy || !projects.some(project => project.can_join)} onChange={() => { setTarget(projects.find(project => project.can_join)!.project_id); setSelectedAgents([]) }} />Use an existing project</label>
-      {projects.length > 0 && <select aria-label="Existing project" value={target === 'new' ? '' : target} disabled={busy} onChange={event => { setTarget(event.target.value); setSelectedAgents([]) }} className="w-full rounded border border-border bg-background px-2 py-1 text-foreground">
+      <label className="flex items-center gap-2"><input type="radio" name={`join-${radioGroup}`} checked={target !== 'new'} disabled={busy || !projects.some(project => project.can_join)} onChange={() => pick(projects.find(project => project.can_join)!.project_id)} />Use an existing project</label>
+      {projects.length > 0 && <select aria-label="Existing project" value={target === 'new' ? '' : target} disabled={busy} onChange={event => pick(event.target.value)} className="w-full rounded border border-border bg-background px-2 py-1 text-foreground">
         <option value="" disabled>Choose a project</option>
         {projects.map(project => <option key={project.project_id} value={project.project_id} disabled={!project.can_join}>{project.name}{project.reason ? ` — ${project.reason}` : ''}</option>)}
       </select>}
       {target === 'new' ? <p className="break-all">The shared folder goes to <span className="text-foreground">{folder}</span></p> : chosen && <>
         <p>{instructionsNotice}</p>
-        <p>Your other folders and unselected agents stay private.</p>
-        <fieldset disabled={busy} className="space-y-1"><legend>Agents to share with the Team (optional)</legend>
+        <p>Your other folders stay private. Untick an agent to keep it private too.</p>
+        <fieldset disabled={busy} className="space-y-1"><legend>Agents to share with the Team</legend>
           {chosen.agents.map(agent => <label key={agent.tab} className="flex items-center gap-2"><input type="checkbox" checked={selectedAgents.includes(agent.tab)} onChange={event => setSelectedAgents(current => event.target.checked ? [...current, agent.tab] : current.filter(tab => tab !== agent.tab))} />{agent.name}</label>)}
         </fieldset>
       </>}

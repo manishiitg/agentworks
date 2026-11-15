@@ -195,13 +195,15 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 			externalError(w, 409, "team_copy_exists", "This Team already has a project on this Mac. Open that project instead.")
 			return
 		}
+		// Every agent starts In team (owner, 15 Nov): an omitted list keeps them all; a sent list is the
+		// person's choice, so an agent left out of it stays private.
 		selected := map[string]bool{}
 		for _, key := range input.Agents {
 			selected[key] = true
 		}
 		choices := []crewTeamJoinAgent{}
 		for _, a := range target.Agents {
-			choices = append(choices, crewTeamJoinAgent{Tab: a.Tab, Name: a.Name, InTeam: selected[a.Tab]})
+			choices = append(choices, crewTeamJoinAgent{Tab: a.Tab, Name: a.Name, InTeam: input.Agents == nil || selected[a.Tab]})
 			delete(selected, a.Tab)
 		}
 		if len(selected) > 0 {
