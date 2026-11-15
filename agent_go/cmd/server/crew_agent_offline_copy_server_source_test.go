@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,4 +109,56 @@ func TestCrewOfflineServerSourcePrivateIntentAndDeltaCapture(t *testing.T) {
 	if err != nil || final.Revision != appended.Revision {
 		t.Fatal("refusal changed source", err)
 	}
+	// Cloud handback uses the same durable human receipt, not capture selection.
+	persist("owner")
+	firstReturn := crewOfflineReturnedAnswer{ID: "cloud-reply-1", At: time.Now().UTC(), Asker: "other", Question: "source question", Answer: "cloud reply"}
+	if err := appendCrewOfflineReturn("alpha", id, dir, binding, firstReturn); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "copy.json")); err != nil {
+		t.Fatal(err)
+	}
+	literal := crewOfflineAppHandbackInput(ctx, "owner", record, "owner's next request")
+	if literal == "owner's next request" || !strings.Contains(literal, "cloud reply") {
+		t.Fatal("cloud return not injected")
+	}
+	foreignCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"})
+	if got := crewOfflineAppHandbackInput(foreignCtx, "other", record, "unchanged"); got != "unchanged" {
+		t.Fatal("foreign turn read return")
+	}
+	scopedCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner", Scope: "run"})
+	if got := crewOfflineAppHandbackInput(scopedCtx, "owner", record, "unchanged"); got != "unchanged" {
+		t.Fatal("scoped turn read return")
+	}
+	block := crewOfflineAppReturnsText([]crewOfflineReturnedAnswer{firstReturn})
+	history = append(history, message(llmtypes.ChatMessageTypeAI, block))
+	persist("owner")
+	if _, err := crewOfflineCloudHandback(ctx, "owner", record); err != nil {
+		t.Fatal(err)
+	}
+	state, err := readCrewOfflineReturns(dir, binding)
+	if err != nil || len(state.Pending) != 1 {
+		t.Fatal("assistant echo acknowledged return", err)
+	}
+	secondReturn := crewOfflineReturnedAnswer{ID: "cloud-reply-2", At: time.Now().UTC(), Asker: "other", Answer: "later cloud reply"}
+	if err := appendCrewOfflineReturn("alpha", id, dir, binding, secondReturn); err != nil {
+		t.Fatal(err)
+	}
+	if got := crewOfflineAppHandbackInput(ctx, "owner", record, "next"); strings.Contains(got, "later cloud reply") {
+		t.Fatal("pending batch receipt changed under unaccepted input")
+	}
+	history = append(history, message(llmtypes.ChatMessageTypeHuman, block+"\nowner's next request"))
+	persist("owner")
+	if err := env.api.syncCrewOfflineServerTurn(ctx, "owner", record.SessionID, root); err != nil {
+		t.Fatal("cloud receipt worker", err)
+	}
+	state, err = readCrewOfflineReturns(dir, binding)
+	if err != nil || len(state.Pending) != 1 || state.Pending[0].ID != secondReturn.ID || len(state.Acknowledged) != 1 || state.Acknowledged[0] != firstReturn.ID {
+		t.Fatal("wrong return acknowledgment", err)
+	}
+	afterReceipt, err := readCrewOfflineHistory(dir, binding)
+	if err != nil || afterReceipt.Revision != appended.Revision {
+		t.Fatal("handback required upload selection", err)
+	}
+
 }
