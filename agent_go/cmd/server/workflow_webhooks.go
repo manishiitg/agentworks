@@ -974,6 +974,11 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 	if err != nil {
 		return internalTriggerDeliveryResult{}, err
 	}
+	if isFunctionTriggerKind(sched.Kind) {
+		if err := requireServerInteractive(); err != nil {
+			return internalTriggerDeliveryResult{}, err
+		}
+	}
 	if !sched.Caller.matchesAnyPresented(call.Caller) {
 		return internalTriggerDeliveryResult{}, ErrInternalCallerMismatch
 	}
