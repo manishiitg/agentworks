@@ -26,6 +26,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       {scene === 'deep-space' && <Suspense fallback={null}><DeepSpaceBackground key={scope} /></Suspense>}
       <AppSidebar />
       <div data-app-main className="relative min-h-0 min-w-0 flex-1">{children}</div>
+      {/* Empty theme hook: custom CSS paints ambient motion here, above the solid page surfaces. */}
+      <div data-app-ambient aria-hidden className="pointer-events-none fixed inset-0 z-[1] overflow-hidden" />
       <WorkspaceAccountMenu />
       <AppQuickSwitcher />
       <ToastHost />
