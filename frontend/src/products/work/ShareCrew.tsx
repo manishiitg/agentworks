@@ -292,13 +292,17 @@ function TerminalLiveDialog({ target, agent, close }: { target: TeamTarget; agen
     let timer: ReturnType<typeof setTimeout> | undefined
     setMessages([]); setError(''); setLoaded(false)
     const load = async () => {
+      if (document.visibilityState !== 'visible') {
+        if (active) timer = setTimeout(() => void load(), 5000)
+        return
+      }
       try {
         const data = await teamRequest<{ messages: Message[] }>(target, `/terminal/${encodeURIComponent(agent.id)}/live`)
         if (active) { setMessages(data.messages); setError(''); setLoaded(true) }
       } catch (e) {
         if (active) { setMessages([]); setError(teamFailure(e).message); setLoaded(true) }
       } finally {
-        if (active) timer = setTimeout(() => { if (document.visibilityState === 'visible') void load(); else timer = setTimeout(() => void load(), 5000) }, 5000)
+        if (active) timer = setTimeout(() => void load(), 5000)
       }
     }
     void load()
