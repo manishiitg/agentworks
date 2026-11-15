@@ -39,7 +39,6 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
  const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing}))
- rows.push(...team.view.agents.filter(row=>row.mine).map(row=>({id:row.id||row.key,name:row.name,person:'You',mine:true,online:row.online===true,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing})))
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) return
   if(row.mine) {

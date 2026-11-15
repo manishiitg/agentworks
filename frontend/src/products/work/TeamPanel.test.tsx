@@ -30,11 +30,14 @@ it('starts closed, remembers each person separately and opens the admitted agent
   await click('Agents')
   const rows = [...host.querySelectorAll('[aria-label="Team agents"] > button')]
   expect(rows.map(row => row.textContent)).toEqual([
-    expect.stringContaining('Team agent'), expect.stringContaining('Review'), expect.stringContaining('Checks'), expect.stringContaining('My work'), '+ 1 more of yours',
+    expect.stringContaining('Team agent'), expect.stringContaining('Review'), expect.stringContaining('Checks'),
   ])
   expect(host.textContent).toContain('typing… Checking the layout')
-  await act(async () => (rows[2] as HTMLButtonElement).click())
-  expect(ask).toHaveBeenCalledWith(agents[3]) // server-admitted row, not a constructed home identity
+  expect(disclosure('Agents').textContent).toContain('3 · 2 online')
+  expect(host.textContent).not.toContain('My work')
+  expect(host.textContent).not.toContain('more of yours')
+  await act(async () => (rows[1] as HTMLButtonElement).click())
+  expect(ask).toHaveBeenCalledWith(agents[2]) // server-admitted row, not a constructed home identity
   await click('Activity')
   expect(host.querySelector('[aria-label="Recent Team activity"]')?.textContent).toContain('Use the shared tool')
   await act(async () => [...host.querySelectorAll('button')].find(row => row.textContent === 'See all activity')!.click())
@@ -55,8 +58,7 @@ it('replaces a live line from the existing feed projection and never reveals hid
   expect(host.textContent).not.toContain('Checking the layout')
   expect(host.textContent).not.toContain('typing…')
   expect(host.textContent).toContain('now · The layout is ready')
-  await click('+ 1 more of yours')
-  expect(host.textContent).toContain('Other own work')
+  expect(host.textContent).not.toContain('Other own work')
 })
 
 // New posts change the unread summary, never the person's disclosure choice.
