@@ -18,19 +18,20 @@ import (
 )
 
 type namedAgentAttachment struct {
-	DeviceID                string    `json:"device_id,omitempty"` // app chat identity, not an access grant
-	LastStartupDiagnosticID string    `json:"last_startup_diagnostic_id,omitempty"`
-	Repository              string    `json:"repository,omitempty"`
-	Branch                  string    `json:"branch,omitempty"`
-	Activity                string    `json:"activity,omitempty"`
-	ActivityAt              time.Time `json:"activity_at,omitempty"`
-	DeliveryContract        int       `json:"delivery_contract,omitempty"`
-	DeliveryRoute           string    `json:"delivery_route,omitempty"`
-	ID                      string    `json:"attachment_id"`
-	Provider                string    `json:"provider"`
-	SessionID               string    `json:"native_session_id"`
-	ConnectionID            string    `json:"connection_id"`
-	ClientBuild             string    `json:"client_build,omitempty"` // the helper build last reported by this exact connection
+	RuntimeInfo             *agentRuntimeInfo `json:"runtime_info,omitempty"`
+	DeviceID                string            `json:"device_id,omitempty"` // app chat identity, not an access grant
+	LastStartupDiagnosticID string            `json:"last_startup_diagnostic_id,omitempty"`
+	Repository              string            `json:"repository,omitempty"`
+	Branch                  string            `json:"branch,omitempty"`
+	Activity                string            `json:"activity,omitempty"`
+	ActivityAt              time.Time         `json:"activity_at,omitempty"`
+	DeliveryContract        int               `json:"delivery_contract,omitempty"`
+	DeliveryRoute           string            `json:"delivery_route,omitempty"`
+	ID                      string            `json:"attachment_id"`
+	Provider                string            `json:"provider"`
+	SessionID               string            `json:"native_session_id"`
+	ConnectionID            string            `json:"connection_id"`
+	ClientBuild             string            `json:"client_build,omitempty"` // the helper build last reported by this exact connection
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.

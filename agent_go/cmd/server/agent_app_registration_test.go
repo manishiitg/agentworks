@@ -39,7 +39,7 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 		return w.Code, out
 	}
 	register := func(c *UserClaims, device, conversation string) (int, map[string]any) {
-		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes"})
+		return request(c, map[string]any{"action": "register", "agent_name": "notes-agent", "device_id": device, "conversation_id": conversation, "label": "Notes", "purpose": "Keep notes", "runtime_info": map[string]any{"cli": "Codex", "engine": "codex", "model_id": "example-model", "reasoning_effort": "high", "crew_name": "Internal project", "group_names": []string{"Planning"}}})
 	}
 	code, row := register(first, "device-one", "chat-one")
 	if code != 200 {
@@ -65,6 +65,9 @@ func TestAppAgentRegistrationNeedsOnlyCurrentLoginAndExactChat(t *testing.T) {
 	for _, r := range rows {
 		if r["agent_id"] == agentID {
 			found = true
+			if r["cli"] != "Codex" || r["model_id"] != "example-model" || r["crew_name"] != "Internal project" {
+				t.Fatalf("app-backend projection missing: %v", r)
+			}
 			if r["published"] != false || r["yours"] != true {
 				t.Fatalf("private registration projection: %v", r)
 			}

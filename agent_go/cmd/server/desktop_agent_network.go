@@ -28,7 +28,7 @@ func registerDesktopAppAgent(ctx context.Context, owner string, connection deskt
 	if device == "" || record.ConversationID == "" {
 		return out, fmt.Errorf("this app chat has no stable identity")
 	}
-	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description)}
+	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description), "runtime_info": record.runtimeInfo}
 	err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodPost, "/api/external/v1/agents/app", args, &out)
 	if err == nil && (out.ID == "" || out.Name != args["agent_name"] || out.Attachment == "") {
 		err = fmt.Errorf("the server did not register this app chat")
@@ -102,7 +102,7 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 	if err != nil {
 		return nil, err
 	}
-	records, err := desktopAppAgentRecords(ctx, owner)
+	records, err := api.desktopAppAgentRecords(ctx, owner)
 	if err != nil {
 		return nil, err
 	}

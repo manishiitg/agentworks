@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ type desktopAppIncoming struct {
 
 // These are actual owned local chats, not synthesized Main agents, remote
 // Team copies or isolated automation threads. No server registration creates one.
-func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
+func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
 	path := productConversationRegistryPath(owner)
 	mu := productConversationRegistryMutex(path)
 	mu.Lock()
@@ -60,6 +61,7 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 	if err != nil {
 		return nil, err
 	}
+	groups, _ := updateMenuGroups(ctx, nil)
 	out := map[string]ProductConversationRecord{}
 	for _, record := range document.Entries {
 		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) || !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
@@ -68,6 +70,7 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
 		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
 		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
+		record.runtimeInfo = api.runtimeInfoForRecord(ctx, owner, record, identity, groups)
 		out[record.ConversationID] = record
 	}
 	return out, nil
@@ -146,7 +149,7 @@ func (api *StreamingAPI) desktopAgentBridgeSession(ctx context.Context, connecti
 	defer stop()
 	recipients := map[string]desktopAppRecipient{}
 	refresh := func() error {
-		records, err := desktopAppAgentRecords(session, owner)
+		records, err := api.desktopAppAgentRecords(session, owner)
 		if err != nil {
 			return err
 		} // a failed read must never delete registrations
@@ -183,7 +186,7 @@ func (api *StreamingAPI) desktopAgentBridgeSession(ctx context.Context, connecti
 		for _, record := range records {
 			reused := false
 			for id, previous := range recipients {
-				if remoteIDs[id] && previous.Record.ConversationID == record.ConversationID && previous.Record.Title == record.Title && previous.Record.Description == record.Description {
+				if remoteIDs[id] && previous.Record.ConversationID == record.ConversationID && previous.Record.Title == record.Title && previous.Record.Description == record.Description && reflect.DeepEqual(previous.Record.runtimeInfo, record.runtimeInfo) {
 					previous.Record = record
 					next[id] = previous
 					reused = true
@@ -422,7 +425,7 @@ func (api *StreamingAPI) desktopAppMessageInput(owner string, record ProductConv
 }
 
 func desktopAppAgentRecipient(ctx context.Context, owner string, expected ProductConversationRecord) (ProductConversationRecord, error) {
-	records, err := desktopAppAgentRecords(ctx, owner)
+	records, err := api.desktopAppAgentRecords(ctx, owner)
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}

@@ -1,8 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"strings"
 )
 
 // Enrich only rows already admitted by the directory. No model, effort, group
@@ -64,4 +68,77 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 		annotate(row)
 	}
 	log.Printf("[AGENT_INFO] caller=%s action=done enriched=%d", caller, count)
+}
+
+// Runtime facts are public to callers who already see the agent. Project
+// organization is a separate, private projection, never a directory grant.
+type agentRuntimeInfo struct {
+	CLI             string   `json:"cli,omitempty"`
+	Engine          string   `json:"engine,omitempty"`
+	ModelID         string   `json:"model_id,omitempty"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	CrewID          string   `json:"crew_id,omitempty"`
+	CrewName        string   `json:"crew_name,omitempty"`
+	GroupNames      []string `json:"group_names,omitempty"`
+}
+
+func projectAgentRuntimeInfo(row map[string]interface{}, info *agentRuntimeInfo, internal bool) {
+	if info == nil {
+		return
+	}
+	row["cli"], row["engine"], row["model_id"], row["reasoning_effort"] = info.CLI, info.Engine, info.ModelID, info.ReasoningEffort
+	if internal {
+		row["crew_name"], row["group_names"] = info.CrewName, info.GroupNames
+	}
+}
+
+// This route is private app-backend registration, not the agent tool's register
+// arguments. Keep the projection bounded and exclude all runtime options,
+// account identifiers, file paths and credentials.
+func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(raw)
+	if err != nil || len(data) > 8192 {
+		return nil, fmt.Errorf("agent runtime information is too large")
+	}
+	var info agentRuntimeInfo
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&info); err != nil {
+		return nil, fmt.Errorf("agent runtime information is invalid")
+	}
+	for _, field := range []string{info.CLI, info.Engine, info.ModelID, info.ReasoningEffort, info.CrewID, info.CrewName} {
+		if len(field) > 256 || strings.ContainsAny(field, "\r\n\x00") {
+			return nil, fmt.Errorf("agent runtime information must contain short single-line values")
+		}
+	}
+	if len(info.GroupNames) > 32 {
+		return nil, fmt.Errorf("too many agent groups")
+	}
+	for _, name := range info.GroupNames {
+		if len(name) > 160 || strings.ContainsAny(name, "\r\n\x00") {
+			return nil, fmt.Errorf("agent group name is invalid")
+		}
+	}
+	return &info, nil
+}
+
+func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string, record ProductConversationRecord, identity ProductAgentIdentity, groups menuGroups) *agentRuntimeInfo {
+	if api.agentProfiles == nil && api.projectActions == nil {
+		return nil
+	}
+	profile, binding, manifest, _, err := api.crewMoveDispatcher().projectManifestAnyOwner(ctx, owner, record.ProfileID, record.ResourceID)
+	if err != nil {
+		return nil
+	}
+	info := &agentRuntimeInfo{CrewID: record.ResourceID, CrewName: manifest.displayTitle(), GroupNames: groups.agentGroupNames(record.ResourceID, record.ConversationKey)}
+	model, err := effectiveProfileChatModel(profile, binding, record, identity)
+	if err == nil {
+		info.CLI, info.Engine, info.ModelID, info.ReasoningEffort = providerAccountProductName(model.Provider), model.Engine, model.ModelID, model.ReasoningEffort
+	} else {
+		log.Printf("[AGENT_INFO] owner=%s session=%s action=skipped reason=model_unavailable", owner, record.SessionID)
+	}
+	return info
 }
