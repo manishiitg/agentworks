@@ -28,7 +28,7 @@ func TestCrewOfflineDeltaAcknowledgementAndBinding(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		return crewOfflineDelta{crewOfflineBinding: binding, BaseRevision: h.Revision, Offset: h.Offset, PreviousTailHash: h.TailHash, Delta: v}
+		return crewOfflineDelta{crewOfflineBinding: binding, BaseRevision: h.Revision, Offset: h.Offset, PreviousTailHash: h.TailHash, Delta: v, SourceSize: h.Offset + v.Size}
 	}
 	in := prepare("{\"text\":\"first\"}\n")
 	ack, err := commitCrewOfflineDelta("crew", "agent", dir, h, in)
@@ -65,6 +65,11 @@ func TestCrewOfflineDeltaAcknowledgementAndBinding(t *testing.T) {
 	malformed := prepare("{\"partial\":")
 	if _, err = commitCrewOfflineDelta("crew", "agent", dir, h, malformed); err == nil {
 		t.Fatal("partial JSONL acknowledged")
+	}
+	bad = in
+	bad.SourceSize = in.Offset
+	if _, err = commitCrewOfflineDelta("crew", "agent", dir, h, bad); err == nil {
+		t.Fatal("truncated source size accepted")
 	}
 	ack, err = commitCrewOfflineDelta("crew", "agent", dir, h, in)
 	if err != nil || ack.Revision != 2 {
@@ -130,7 +135,7 @@ func checkCrewOfflineCopyHTTP(t *testing.T, base, token, wrong string, a agentwo
 	if err != nil {
 		t.Fatal(err)
 	}
-	delta := crewOfflineDelta{crewOfflineBinding: binding, BaseRevision: status.Revision, Offset: status.Offset, PreviousTailHash: status.TailHash, Delta: v}
+	delta := crewOfflineDelta{crewOfflineBinding: binding, BaseRevision: status.Revision, Offset: status.Offset, PreviousTailHash: status.TailHash, Delta: v, SourceSize: status.Offset + v.Size}
 	manifest, _ := json.Marshal(delta)
 	route := fmt.Sprintf("/api/crew-teams/%s/agents/%s/offline-copy/", team.ProjectID, row.ID)
 	if code, _ = request(token, "POST", route+"plan", manifest); code != 200 {
