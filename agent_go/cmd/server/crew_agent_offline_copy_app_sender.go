@@ -66,12 +66,39 @@ func (api *StreamingAPI) queueCrewOfflineAppTurn(user, session, workspace string
 	}()
 }
 
-func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, session, workspace string) error {
+func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, session, workspace string) (retErr error) {
 	claims := &UserClaims{UserID: user, Username: user}
 	ctx = context.WithValue(ctx, UserContextKey, claims)
 	if !IsLocalMode() {
 		return api.syncCrewOfflineServerTurn(ctx, user, session, workspace)
 	}
+	stage := "source_registry"
+	defer func() {
+		if retErr != nil {
+			status := 0
+			var remote *crewRemoteHTTPError
+			if errors.As(retErr, &remote) {
+				status = remote.Status
+			}
+			reason := "operation_failed"
+			switch {
+			case errors.Is(retErr, context.DeadlineExceeded):
+				reason = "deadline_exceeded"
+			case errors.Is(retErr, context.Canceled):
+				reason = "canceled"
+			case os.IsNotExist(retErr):
+				reason = "not_found"
+			case os.IsPermission(retErr):
+				reason = "permission_denied"
+			case remote != nil:
+				reason = "remote_refused"
+			}
+			// No raw error text: remote bodies, transcript/parser errors and
+			// OS paths may hold private content. Stage/status are enough to
+			// locate the failing boundary without logging that content.
+			log.Printf("[AGENT_OFFLINE_COPY] session=%s event=source_sync_failed stage=%s status=%d reason=%s error_type=%T retry=next_finished_turn", session, stage, status, reason, retErr)
+		}
+	}()
 	records, err := defaultProductConversationRegistryStore().crewWorkspaceChats(ctx, user, workspace)
 	if err != nil {
 		return err
@@ -89,6 +116,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		return nil
 	}
 	project := crewResourceProjectID(record.ConversationKey)
+	stage = "source_pair"
 	pair, err := crewroot.ReadSync(project)
 	if err != nil {
 		return err
@@ -96,6 +124,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 	if pair == nil || pair.Side != "local" || pair.ConnectionID == "" || pair.PeerProjectID == "" {
 		return nil
 	}
+	stage = "source_connection"
 	connection, err := desktopConnectionFor(user, pair.ConnectionID)
 	if err != nil {
 		return err
@@ -111,6 +140,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		Agent  string `json:"agent"`
 	}
 	base := "/api/crew-teams/" + url.PathEscape(pair.PeerProjectID)
+	stage = "remote_status"
 	if err = crewTeamRemoteJSON(ctx, user, connection, http.MethodPost, base+"/offline-copy-status", map[string]any{"provider": binding.Provider, "session": binding.Session, "attachment": binding.Attachment, "source_tab": tab}, &status); err != nil {
 		return err
 	}
@@ -121,10 +151,12 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 	if status.Agent == "" {
 		return fmt.Errorf("source agent unavailable")
 	}
+	stage = "source_roots"
 	roots, found, err := crewStorageRoots(workspace)
 	if err != nil || !found || roots.Owner != user {
 		return fmt.Errorf("source Crew ownership changed")
 	}
+	stage = "saved_history"
 	raw, err := ReadChatHistoryConversation(user, session, workspace)
 	if err != nil {
 		return err
@@ -137,6 +169,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 	if json.Unmarshal(raw, &saved) != nil || saved.UserID != user || saved.Session != session {
 		return fmt.Errorf("source history owner changed")
 	}
+	stage = "portable_journal"
 	path, err := crewOfflineAppJournal(roots, record, saved.History)
 	if err != nil {
 		return err
@@ -151,6 +184,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		return err
 	}
 	sourceSize := info.Size()
+	stage = "cursor_prefix"
 	if status.Offset < 0 || status.Offset > sourceSize {
 		return fmt.Errorf("source cursor exceeds its journal")
 	}
@@ -174,20 +208,24 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 			return fmt.Errorf("one source message exceeds delta capacity")
 		}
 		data = data[:end]
+		stage = "delta_upload"
 		ack, e := sendCrewOfflineAppDelta(ctx, user, connection, route, binding, cursor, sourceSize, data)
 		if e != nil {
 			return e
 		}
+		stage = "delta_receipt"
 		wantHash, e := crewOfflineFileTailHash(file, cursor.Offset+int64(len(data)))
 		if e != nil || ack.Offset != cursor.Offset+int64(len(data)) || ack.Revision != cursor.Revision+1 || ack.TailHash != wantHash {
 			return fmt.Errorf("source acknowledgement changed")
 		}
 		cursor = ack
+		stage = "save_cursor"
 		if err = fsutil.WriteJSONAtomic(filepath.Join(filepath.Dir(path), "ack.json"), cursor, 0600); err != nil {
 			return err
 		}
 	}
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=synced revision=%d offset=%d", pair.PeerProjectID, status.Agent, session, cursor.Revision, cursor.Offset)
+	stage = "handback"
 	return syncCrewOfflineAppReturns(ctx, user, connection, route, record, saved.History)
 }
 
