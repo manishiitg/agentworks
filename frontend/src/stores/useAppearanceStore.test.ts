@@ -27,3 +27,27 @@ it('skips a saved theme that no longer validates instead of failing the whole lo
   const { current, saved, loaded, error } = useAppearanceStore.getState()
   expect([current.name, saved.map(item => item.name), loaded, error]).toEqual(['Fine', ['Good'], true, ''])
 })
+
+// The big document is not refetched on every refocus, only when stale or when a live change says so.
+it('reuses a fresh document on refocus and reloads when forced', async () => {
+  api.get.mockResolvedValue({ data: { current: theme('One'), saved: [] } })
+  await useAppearanceStore.getState().load('s')
+  await useAppearanceStore.getState().load('s')
+  expect(api.get).toHaveBeenCalledTimes(1)
+  await useAppearanceStore.getState().load('s', { force: true })
+  expect(api.get).toHaveBeenCalledTimes(2)
+  vi.useFakeTimers({ now: Date.now() + 61_000 })
+  try { await useAppearanceStore.getState().load('s') } finally { vi.useRealTimers() }
+  expect(api.get).toHaveBeenCalledTimes(3)
+})
+
+// Fonts and colour roles are the server's list (its guide), not a copy kept in the browser.
+it('accepts the fonts and colour roles the server offers', async () => {
+  const future = { ...theme('Future'), interface_font: 'future-sans', colors: { dark: { glow: '#112233' } } }
+  api.get.mockResolvedValue({ data: { current: theme('Now'), saved: [future], guide: { fonts: ['system', 'future-sans'], code_fonts: ['system-mono'], colour_roles: ['background', 'glow'] } } })
+  await useAppearanceStore.getState().load('s')
+  expect(useAppearanceStore.getState().saved.map(item => item.name)).toEqual(['Future'])
+  api.get.mockResolvedValue({ data: { current: theme('Now'), saved: [future], guide: { fonts: ['system'], code_fonts: ['system-mono'], colour_roles: ['background'] } } })
+  await useAppearanceStore.getState().load('s', { force: true })
+  expect(useAppearanceStore.getState().saved).toEqual([])
+})
