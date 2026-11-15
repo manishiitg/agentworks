@@ -7,7 +7,6 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { useTeamActivity, TeamActivityContent } from './TeamActivity'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openTeammateAgent } from './openTeammateAgent'
-import { AgentAskThread } from './TeamAgentAsk'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
@@ -56,8 +55,8 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  const homeAgent=team.view.reachable?.find(agent=>agent.kind==='team_agent')
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) return
-  // The Team agent answers over AgentBridge inside this panel: never switch the app's connection or open the online home.
-  if (row.team_agent && homeAgent?.agent_id===row.id) { onPanelView('ask'); return }
+  // The Team agent opens like any teammate's agent: its tab in this Crew, never the online home or another connection.
+  if (row.team_agent && homeAgent?.agent_id===row.id && homeAgent.watch_key) { openTeammateAgent(projectId,homeAgent.watch_key);return }
   if(row.mine) {
    const own=team.view!.agents.find(agent=>agent.mine&&(agent.id||agent.key)===row.id)
    const tab=own&&teamAgentChatTab(team,projectId,own.key)
@@ -78,5 +77,5 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel hasSetups={setups?.scope===scope&&setups.list.setups.length>0} setupsToDo={setups?.scope===scope?setups.list.to_do:undefined} setups={<>{setupError?<p role="alert">{setupError}</p>:<TeamSetups key={scope} target={target!} projectId={projectId} list={setups?.scope===scope?setups.list:undefined} refreshKey={setups?.version||0}/>}</>} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={<AgentAskThread target={target} address={homeAgent?.address} label={`Ask the ${homeAgent?.name||'Team agent'}`} sender={homeAgent?.name||'Team agent'} scope={`${scope}:${target?.connection}:${target?.project}:${homeAgent?.address}`} enabled={!!homeAgent}><p className="mt-1 text-xs text-muted-foreground">Ask through AgentBridge. Replies stay here.</p></AgentAskThread>}/>
+ return <TeamPanel hasSetups={setups?.scope===scope&&setups.list.setups.length>0} setupsToDo={setups?.scope===scope?setups.list.to_do:undefined} setups={<>{setupError?<p role="alert">{setupError}</p>:<TeamSetups key={scope} target={target!} projectId={projectId} list={setups?.scope===scope?setups.list:undefined} refreshKey={setups?.version||0}/>}</>} view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask}/>
 }

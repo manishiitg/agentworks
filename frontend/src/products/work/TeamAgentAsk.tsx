@@ -77,7 +77,10 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
  const watching=!onlineCopy&&tab?.metadata?.agentProfileTabCanWrite===false
  const team=useTeamTab(watching?tab?.metadata?.agentProfileProjectId:undefined)
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
- const recipient=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
+ const key=tab?.metadata?.agentProfileConversationKey
+ // The Team agent's tab (its chat in the Team's online home) is asked the same way as a teammate's agent.
+ const home=watching?team.view?.reachable?.find(row=>row.kind==='team_agent'&&!!row.watch_key&&(key===row.watch_key||!!key?.endsWith(`:team:${row.watch_key}`))):undefined
+ const recipient=home||team.view?.reachable?.find(row=>row.agent_id===agent?.id)
  const scope=`${captureChatIdentity()}:${team.target?.connection}:${team.target?.project}:${recipient?.address}`
  if(onlineCopy) {
   const project=tab?.metadata?.agentProfileProjectId
@@ -87,11 +90,11 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
    <p className="mt-1 text-xs text-muted-foreground">Ask through AgentBridge. Replies stay here.</p>
   </AgentAskThread>
  }
- if(!watching||(!agent&&team.view)) return null
+ if(!watching||(!agent&&!home&&team.view)) return null
  const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'your teammate')
- const askLabel=`Ask ${person}'s ${agent?.name||'agent'}`
+ const askLabel=home?`Ask the ${home.name||'Team agent'}`:`Ask ${person}'s ${agent?.name||'agent'}`
  const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error
- return <AgentAskThread target={team.target} address={recipient?.address} label={askLabel} scope={scope} enabled={admitted} sender={agent?.name}>
+ return <AgentAskThread target={team.target} address={recipient?.address} label={askLabel} scope={scope} enabled={admitted} sender={home?.name||agent?.name}>
  <details className="mt-2 text-xs text-muted-foreground">
    <summary className="w-fit cursor-pointer">More ways to ask</summary>
    <button type="button" disabled={!admitted} className="mt-1 rounded border border-border px-2 py-1 disabled:opacity-50" onClick={()=>{

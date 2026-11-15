@@ -13,9 +13,9 @@ export type TeamPanelAgent = AvatarFields & {
 export type TeamPanelShared = { key: string; name: string; canChange: boolean; chosen?: number }
 export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean }
 export type TeamPanelRoutine = { id: string; name: string; line?: string; enabled: boolean; last_run_at?: string; last_status?: string; next_run_at?: string; chat_id?: string }
-export type TeamPanelView = 'live' | 'agents' | 'shared' | 'items' | 'activity' | 'setups' | 'ask'
+export type TeamPanelView = 'live' | 'agents' | 'shared' | 'items' | 'activity' | 'setups'
 type Artifact = { id: string; title: string; kind: string; addedBy?: string }
-const titles: Record<TeamPanelView,string> = {live:'Team', agents:'All agents', shared:'Shared by you', items:'On the Team', activity:'All activity', ask:'Team agent',setups:'Team setups'}
+const titles: Record<TeamPanelView,string> = {live:'Team', agents:'All agents', shared:'Shared by you', items:'On the Team', activity:'All activity',setups:'Team setups'}
 const time = (at?:string) => at ? Date.parse(at) || 0 : 0
 function age(at?:string) {
  const elapsed = at ? Math.max(0,Date.now()-Date.parse(at)) : NaN
@@ -28,10 +28,10 @@ const status = (row:TeamPanelAgent) => row.typing ? 'typing…' : row.activity==
 const runtime = (row:TeamPanelAgent) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,setups,setupsToDo,hasSetups,error}: {
+export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,setups,setupsToDo,hasSetups,error}: {
  scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
- artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; setups?:ReactNode; setupsToDo?:number; hasSetups?:boolean; error?:string
+ artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; setups?:ReactNode; setupsToDo?:number; hasSetups?:boolean; error?:string
 }) {
  const [query,setQuery]=useState('')
  const [recentOpen,setRecentOpen]=useState(false)
@@ -60,7 +60,7 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
   </button>
  }
  const event=(item:TeamPanelEvent)=><li key={item.id} className="py-1 text-[11px] text-muted-foreground"><span className="font-medium text-foreground">{item.title}</span> {item.verb}{item.line&&<>: {item.line}</>} <span className="text-[10px]">· {age(item.at)}</span>{item.private&&<span> · Only you</span>}</li>
- const link=(destination:TeamPanelView,count?:number)=><button type="button" aria-label={titles[destination]} onClick={()=>onNavigate(destination)} className="flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded-full border border-border px-1.5 text-left text-[10px] hover:bg-background/40"><span>{{agents:'Agents',shared:'Shared',items:'On Team',activity:'Activity',live:'Team',setups:'Team setups',ask:'Ask'}[destination]}</span>{count!==undefined&&<span className="text-[10px] text-muted-foreground">{count}</span>}</button>
+ const link=(destination:TeamPanelView,count?:number)=><button type="button" aria-label={titles[destination]} onClick={()=>onNavigate(destination)} className="flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded-full border border-border px-1.5 text-left text-[10px] hover:bg-background/40"><span>{{agents:'Agents',shared:'Shared',items:'On Team',activity:'Activity',live:'Team',setups:'Team setups'}[destination]}</span>{count!==undefined&&<span className="text-[10px] text-muted-foreground">{count}</span>}</button>
  const ordered=[...busy,...rows.filter(row=>!working(row)&&row.online),...rows.filter(row=>!working(row)&&!row.online)]
  const results=ordered.filter(row=>[name(row),runtime(row),status(row)].join(' ').toLowerCase().includes(query.trim().toLowerCase()))
  return <section aria-label={view==='live'?'Team live panel':titles[view]} className={`min-w-0 ${view==='live'?'space-y-1 text-[11px]':'space-y-2 text-sm'}`}>
@@ -79,7 +79,6 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
   {view==='items'&&<div aria-label="Team artifacts and automations">{artifacts.map(row=><button key={row.id} type="button" onClick={()=>onArtifact?.(row.id)} className={button}><span className="min-w-0"><span className="block truncate text-xs">{row.title}</span><span className="block text-[10px] text-muted-foreground">{row.kind}{row.addedBy?` · Added by ${row.addedBy}`:''}</span></span></button>)}{routines.map(row=><div key={row.id} className="flex gap-2 px-1 py-1.5"><CalendarClock aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0"><span className="block truncate text-xs">{row.name}</span><span className="block text-[10px] text-muted-foreground">{row.line}{!row.enabled?' · off':''}</span></span></div>)}</div>}
   {view==='setups'&&setups}
   {view==='activity'&&(fullActivity||<ol>{events.map(event)}</ol>)}
-  {view==='ask'&&teamAgentAsk}
   {error&&<p role="alert" className="text-[11px] text-destructive">{error}</p>}
  </section>
 }

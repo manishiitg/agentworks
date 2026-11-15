@@ -192,6 +192,14 @@ func crewTeamWatchesSession(r *http.Request, doc productConversationRegistryDocu
 		}
 		project := crewResourceProjectID(record.ConversationKey)
 		t, err := readCrewTeam(project)
+		if err == nil && t.RosterSource != "" && t.OwnerID == "team-"+t.RosterSource {
+			// The Team agent's chat in the online home: the same admission as its teammate tab (crewTeamHomeAgentTab).
+			tab, ok := crewTeamHomeAgentTab(r.Context(), t.RosterSource, viewer)
+			if token := GetUserFromContext(r.Context()).AccessToken; token != nil && (!token.AllowsCrew(t.RosterSource) || !token.Allows("crews:read")) {
+				return false
+			}
+			return ok && tab.SessionID == session && tab.ConversationKey == record.ConversationKey
+		}
 		if err != nil || !t.On || !t.member(viewer) || !crewTeamAccountActive(viewer) || ownerOfCrewProjectID(project) != t.OwnerID {
 			return false
 		}

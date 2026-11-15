@@ -280,6 +280,11 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	}
 	timing.rows, step = time.Since(step), time.Now()
 	out = append(out, scheduleOwnChatRows(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, mine)...)
+	if slot.profile.ID == crewProfileID {
+		if row, ok := crewTeamHomeAgentTab(r.Context(), projectID, userID); ok {
+			out = append(out, row)
+		}
+	}
 	timing.schedules = time.Since(step)
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].Position, out[j].Position

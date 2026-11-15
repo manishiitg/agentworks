@@ -497,6 +497,22 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err != nil || !found || homeContact.Endpoints[1].UserID != "team-team" || homeContact.Endpoints[1].TeamAgentID == "" {
 		t.Fatalf("offline ask did not bind the normal home audience: %+v %v", homeContact, err)
 	}
+	// The Team agent opens like a teammate's agent (owner, 15 Nov): a current member gets its home chat as a read-only tab
+	// of the Team's Crew and may read that session; never a write tab or a route into the home Crew.
+	homeDoc := func() productConversationRegistryDocument {
+		doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("team-team"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doc
+	}
+	homeTab, ok := crewTeamHomeAgentTab(ctx, "team", "other")
+	if !ok || homeTab.CanWrite || homeTab.TabOwnerID != "team-team" || !strings.HasPrefix(homeTab.ConversationKey, mustReadCrewTeam(t, "team").OnlineHome+codeChatSideMarker) {
+		t.Fatalf("member did not get the Team agent as a teammate tab: %+v %v", homeTab, ok)
+	}
+	if !crewTeamWatchesSession(httptest.NewRequest("GET", "/", nil).WithContext(otherCtx), homeDoc(), "other", homeTab.SessionID) {
+		t.Fatal("member could not read the Team agent tab's chat")
+	}
 	// Even if the home publication is later shared more broadly, this Team
 	// inbox still requires the roster that admitted the original ask.
 	if err := defaultProjectOwners().SetAudience(crewProfileID, filepath.Base(homeContact.Endpoints[1].Path), false, nil); err != nil {
@@ -535,6 +551,12 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	if recheckAgentConversationContact(otherCtx, homeContact) == nil {
 		t.Fatal("a teammate's old inbox survived the Team turning off")
+	}
+	if _, ok := crewTeamHomeAgentTab(ctx, "team", "other"); ok {
+		t.Fatal("a teammate kept the Team agent tab of an Only me online copy")
+	}
+	if crewTeamWatchesSession(httptest.NewRequest("GET", "/", nil).WithContext(otherCtx), homeDoc(), "other", homeTab.SessionID) {
+		t.Fatal("a teammate still read the Team agent chat of an Only me online copy")
 	}
 
 }
