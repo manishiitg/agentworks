@@ -164,6 +164,8 @@ func (api *StreamingAPI) activityForRecord(record ProductConversationRecord) *ag
 			page, err := api.eventStore.ReadDurableChatPage(record.SessionID, storeevents.DurableEventPageOptions{Limit: 1})
 			if err == nil {
 				tail = page.Events
+			} else {
+				log.Printf("[AGENT_ACTIVITY] session=%s action=skipped reason=last_active_unavailable", record.SessionID)
 			}
 		}
 		for _, event := range tail {
