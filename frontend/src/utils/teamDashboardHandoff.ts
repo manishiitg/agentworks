@@ -10,7 +10,7 @@ export async function startTeamDashboardHandoff(projectId: string, prompt: strin
   const candidates = Object.values(store.chatTabs).filter(tab => {
     const m = tab.metadata
     return viewer && m?.agentProfileProjectId === projectId && m.agentProfileBuilder !== false
-      && !m.isViewOnly && m.agentProfileTabCanWrite !== false
+      && !m.isViewOnly && !m.isScheduledRun && !m.isBotRun && !m.isExecutionRun && m.agentProfileTabCanWrite !== false
       && (!m.agentProfileTabOwnerID || m.agentProfileTabOwnerID === viewer)
   }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
   const tab = candidates[0]
