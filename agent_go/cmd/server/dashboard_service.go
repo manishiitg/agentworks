@@ -323,6 +323,24 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		externalJSON(w, result)
 		return
 	}
+	// Mapped Team reads use the same resolution as the browser's online_location
+	// request. A caller cannot turn a missing mapping into a source-file read.
+	if args.Action != "begin_handoff" && (args.TeamProjectID != "" || args.SourceProjectID != "" || args.ItemKind != "") && args.Action != "online_location" {
+		if args.Action != "get" && args.Action != "link" {
+			externalError(w, 400, "invalid_arguments", "Use the online selector only to read or open its Team publication.")
+			return
+		}
+		resolved, err := api.teamOnlineMappedOpen(r.Context(), args.TeamProjectID, args.SourceProjectID, args.ItemKind, args.ID)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		if args.Revision != "" && args.Revision != resolved.Location.Revision {
+			externalError(w, 400, "invalid_arguments", "This selector reads the current Team publication, not an authoring preview.")
+			return
+		}
+		args.Workspace, args.ID, args.Document, args.Revision = resolved.Location.Workspace, resolved.Location.ItemID, "", resolved.Location.Revision
+	}
 	if args.Action == "online_location" {
 		var result teamOnlineOpenResult
 		var err error

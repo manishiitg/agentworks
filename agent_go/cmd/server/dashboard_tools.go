@@ -11,7 +11,8 @@ import (
 )
 
 // The app Builder and external MCP call the same authorized service. The app
-// tools are bound to their project and cannot retarget another workspace.
+// authoring tools stay bound to their project. Mapped Team reads use only the
+// admitted online selector and recheck the current Team/destination access.
 func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, userID, root string, caller *UserClaims) error {
 	var definitions []externalTool
 	dashboardToolDefinitions(func(name, description string, write, scoped bool, props map[string]any, required ...string) {

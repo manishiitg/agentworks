@@ -201,6 +201,7 @@ chat:
       - upload_dashboard_asset
       - list_dashboards
       - get_dashboard
+      - get_dashboard_online_location
       - create_dashboard
       - update_dashboard
       - validate_dashboard
@@ -355,6 +356,7 @@ chat:
       - upload_dashboard_asset
       - list_dashboards
       - get_dashboard
+      - get_dashboard_online_location
       - open_dashboard
       - create_dashboard
       - update_dashboard

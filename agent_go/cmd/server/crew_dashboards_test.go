@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -237,6 +238,7 @@ func TestTeamOnlineAutomationRefusesNonTeamSource(t *testing.T) {
 // runtime, never the source DB; losing membership defeats even a broad Share.
 func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("PUBLIC_URL", "https://example.com")
 	f := newExternalToolsFixture(t)
 	withProjectOwnerRegistry(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"outsider","username":"outsider","can_create":true,"products":["work"]}]}`)
@@ -381,6 +383,68 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 	if err != nil || !chosen.Found || chosen.Location.Workspace != home {
 		t.Fatalf("mapped row Open: %+v %v", chosen, err)
 	}
+	// Live regression after the list fix: a real MCP get/Open must consume the
+	// returned online selector, not look up the destination ID in the source.
+	readerClaims := &UserClaims{UserID: "reader", Username: "reader", AccessToken: &accesstokens.Token{ID: "mapped-read", Scopes: []string{"dashboards:read", "crews:read"}, CrewIDs: []string{team.ProjectID, "dashboard-team"}}}
+	mcpCtx, cancelMCP := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancelMCP()
+	mcpServer := serveExternalMCP(t, f.api, readerClaims)
+	mcpClient := dialExternalMCP(t, mcpCtx, mcpServer.URL+externalMCPPath)
+	initializeExternalMCP(t, mcpCtx, mcpClient)
+	selector := map[string]any{"team_project_id": team.ProjectID, "source_project_id": "mac-source", "item_kind": "artifact", "dashboard_id": "proposal"}
+	mappedCall := func(action string, change map[string]any) *mcp.CallToolResult {
+		t.Helper()
+		args := map[string]any{"action": action}
+		for k, v := range selector {
+			args[k] = v
+		}
+		for k, v := range change {
+			args[k] = v
+		}
+		return callRemoteTool(t, mcpCtx, mcpClient, "call_tool", map[string]any{"name": "dashboard", "arguments": args})
+	}
+	got := mappedCall("get", nil)
+	requireRemoteSuccess(t, got, "mapped publication get")
+	var read struct {
+		dashboards.Result
+		ResourceID string `json:"resource_id"`
+	}
+	if err := json.Unmarshal([]byte(marshalStructured(t, got)), &read); err != nil || read.Dashboard == nil || read.Dashboard.ID != proposalID || read.Snapshot == nil || !strings.Contains(read.Snapshot.Files["index.html"], "Proposal") || read.ResourceID == "" {
+		t.Fatalf("MCP read did not reach Team publication: %s %v", marshalStructured(t, got), err)
+	}
+	location := mappedCall("online_location", nil)
+	requireRemoteSuccess(t, location, "mapped online_location")
+	var mcpLocation teamOnlineOpenResult
+	if err := json.Unmarshal([]byte(marshalStructured(t, location)), &mcpLocation); err != nil || !mcpLocation.Found || mcpLocation.Location == nil || mcpLocation.Location.Workspace != home || mcpLocation.ResourceID == "" {
+		t.Fatalf("MCP location: %s %v", marshalStructured(t, location), err)
+	}
+	opened := callRemoteTool(t, mcpCtx, mcpClient, "open_dashboard", selector)
+	requireRemoteSuccess(t, opened, "mapped inline Open")
+	// An existing source page with no accepted mapping is not a fallback.
+	if bad := mappedCall("get", map[string]any{"dashboard_id": "overview"}); !bad.IsError {
+		t.Fatal("missing mapping fell back to source")
+	}
+	if bad := mappedCall("get", map[string]any{"workspace": "Crew/source-team"}); !bad.IsError {
+		t.Fatal("mixed project and online selectors accepted")
+	}
+	if bad := mappedCall("get", map[string]any{"revision": strings.Repeat("a", 64)}); !bad.IsError {
+		t.Fatal("online selector read a non-publication revision")
+	}
+	for _, scope := range []string{"mcp", "report-preview"} {
+		copy := *readerClaims
+		copy.Scope = scope
+		_, err := f.api.teamOnlineMappedOpen(context.WithValue(ctx, UserContextKey, &copy), team.ProjectID, "mac-source", "artifact", "proposal")
+		if (scope == "mcp") != (err == nil) {
+			t.Fatalf("mapped purpose boundary %s: %v", scope, err)
+		}
+	}
+	limited := *readerClaims
+	token := *readerClaims.AccessToken
+	token.CrewIDs = []string{team.ProjectID}
+	limited.AccessToken = &token
+	if _, err := f.api.teamOnlineMappedOpen(context.WithValue(ctx, UserContextKey, &limited), team.ProjectID, "mac-source", "artifact", "proposal"); err == nil {
+		t.Fatal("source-only token read destination outside its Crew consent")
+	}
 	// Failed handoffs need a useful error, not just a generic reason code.
 	var recorded bytes.Buffer
 	before := log.Writer()
@@ -422,6 +486,13 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 	}
 	team.People = nil
 	saveRoster()
+	if revoked := mappedCall("get", nil); !revoked.IsError {
+		t.Fatal("revoked member retained mapped MCP get")
+	}
+	if revoked := callRemoteTool(t, mcpCtx, mcpClient, "open_dashboard", selector); !revoked.IsError {
+		t.Fatal("revoked member retained mapped MCP Open")
+	}
+
 	if status, out := open("reader"); status != http.StatusOK || out.Found {
 		t.Fatalf("leaver retained source mapping: %d %+v", status, out)
 	}

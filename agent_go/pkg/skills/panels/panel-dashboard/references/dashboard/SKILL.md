@@ -52,3 +52,15 @@ do not repeatedly call add_to_team to request the same task again. For a live da
   where the chat supports it. Say “preview” and “this Crew”. Confirm acceptance
   from the tool and a real online update before saying “keeps updating online”;
   otherwise plainly say the update is not yet checked. Never invent success.
+
+### Reading an On the Team item
+
+A Team dashboard/artifact row with `online` is a mapped publication, not a file
+in this Crew. Copy its four `online` fields unchanged (`team_project_id`,
+`source_project_id`, `item_kind`, `dashboard_id`) to `dashboard action=get`,
+`link`, or `online_location`, without a workspace/crew/document selector. The
+server rechecks the Team and accepted mapping and reads the current online
+publication. Never retry a refused mapping against the Mac/source path.
+`online_location` returns its normal `short_path` and `resource_id`; use the
+existing `open_dashboard` with the same four online selector fields when an inline app is wanted; it rechecks the mapping on that call too. Ordinary unmapped dashboards still use their resource_id.
+This opens the ordinary Team runtime; it does not start work or grant access.
