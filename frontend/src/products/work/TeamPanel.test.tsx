@@ -148,3 +148,16 @@ it('keeps 35-row Team groups bounded inside the panel scroll body with headers o
  await act(async()=>last.click())
  expect(ask).toHaveBeenCalledWith(rows[34])
 })
+
+// Owner: empty Team groups disappear even when their saved disclosure is open.
+it('hides zero-item groups and shows them again when items arrive', async () => {
+ await act(async()=>root.render(<TeamPanel scope="empty" agents={[]} posts={[]} shared={[]} artifacts={[]} onAsk={ask} onActivity={activity}/>))
+ expect(host.querySelectorAll('button[aria-expanded]')).toHaveLength(0)
+ await render('empty')
+ expect(disclosure('Agents')).toBeDefined()
+ expect(disclosure('Activity')).toBeDefined()
+ await click('Agents')
+ await act(async()=>root.render(<TeamPanel scope="empty" agents={[]} posts={[]} onAsk={ask} onActivity={activity}/>))
+ expect(host.querySelector('[aria-label="Team agents"]')).toBeNull()
+ expect(host.querySelectorAll('button[aria-expanded]')).toHaveLength(0)
+})
