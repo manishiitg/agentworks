@@ -68,7 +68,7 @@ func crewChecklistTeam(claims *UserClaims, project string, write bool) (crewTeam
 		return crewTeam{}, fmt.Errorf("Use your own account to open Team setups")
 	}
 	team, err := readCrewTeam(project)
-	if err != nil || !crewTeamAccountActive(claims.UserID) || (!crewTeamReachOpen(team, claims.UserID) && !crewTeamOwnerReach(team, claims.UserID)) {
+	if err != nil || !crewTeamAccountActive(claims.UserID) || (!crewTeamReachOpen(team, claims.UserID) && !crewTeamOwnerReach(team, claims.UserID) && !(team.On && crewTeamOwnerReach(team, team.OwnerID) && crewTeamHomeOwnsSetup(team, claims.UserID))) {
 		return crewTeam{}, fmt.Errorf("Join this Team to open its setups")
 	}
 	return team, nil
@@ -121,7 +121,7 @@ func saveCrewChecklists(project string, data crewChecklistStore) error {
 // Current shared-file identity, never a second instruction body or an arbitrary
 // filesystem path. A removed folder or narrowed connection takes effect now.
 func crewChecklistInstructionVersion(claims *UserClaims, team crewTeam, rel string, state crewTeamFileState) (uint64, error) {
-	if rel == "" || path.Clean(rel) != rel || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "../") || strings.ContainsAny(rel, "\\\x00") || !strings.EqualFold(path.Ext(rel), ".md") || !team.Folder.holds(rel) || !crewTeamAllowed(rel, state.onPurpose()) {
+	if rel == "" || len(rel) > 1024 || path.Clean(rel) != rel || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "../") || strings.ContainsAny(rel, "\\\x00") || !strings.EqualFold(path.Ext(rel), ".md") || !team.Folder.holds(rel) || !crewTeamAllowed(rel, state.onPurpose()) {
 		return 0, fmt.Errorf("Choose a Markdown instruction file in this Team's shared files")
 	}
 	if claims.AccessToken != nil && claims.AccessToken.FileGuard != nil && !claims.AccessToken.FileGuard.Allows(rel, false) {
@@ -130,6 +130,9 @@ func crewChecklistInstructionVersion(claims *UserClaims, team crewTeam, rel stri
 	version, found := state.Versions[rel]
 	if !found || version.File == nil {
 		return 0, fmt.Errorf("Save the instructions in Team files first")
+	}
+	if version.File.Size > 64<<10 {
+		return 0, fmt.Errorf("Use an instruction document smaller than 64 KB")
 	}
 	return version.Revision, nil
 }
