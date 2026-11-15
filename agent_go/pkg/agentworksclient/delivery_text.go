@@ -124,11 +124,6 @@ func MessageBlock(m AgentLiveMessage, attachmentID string, transport string) str
 	if arrival := sanitizeAgentMessageToken(m.ArrivalText); arrival != "" {
 		fmt.Fprintf(&b, "\n%s", arrival)
 	}
-
-	if m.TeamInstructions != "" {
-		instruction, _ := sanitizeAgentMessageBody(m.TeamInstructions)
-		fmt.Fprintf(&b, "\n[Team instructions from this agent's person]\n%s\n[End Team instructions]", instruction)
-	}
 	b.WriteByte('\n')
 	messageID := sanitizeAgentMessageToken(m.MessageID)
 	inboxID := sanitizeAgentMessageToken(m.InboxID)

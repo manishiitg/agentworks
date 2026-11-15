@@ -188,21 +188,7 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 // shareSenderAllowed replaces the same-account sender rule: a sender from
 // another account is accepted only inside a conversation with a live grant.
 func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
-
 	src := c.Endpoints[from]
-	if c.Endpoints[0].TerminalTeam != "" || c.Endpoints[1].TerminalTeam != "" {
-		if c.Endpoints[1-from].UserID != recipientUserID {
-			return false
-		}
-		for i, peer := range c.Endpoints {
-			if peer.TerminalTeam != "" {
-				if _, _, _, err := terminalTeamMessagePeer(context.Background(), peer, c.Endpoints[1-i].UserID); err != nil {
-					return false
-				}
-			}
-		}
-		return src.Guest == ""
-	}
 	if src.ShareID == "" {
 		if sameAccountAgentSender(src, recipientUserID) {
 			return true

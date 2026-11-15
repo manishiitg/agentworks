@@ -160,7 +160,6 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			record.ChatKey, record.Name, record.Purpose, record.Place = a.ChatKey, a.Name, a.Purpose, a.Place
 			current.Agents[id] = record
 			a.ID, a.InTeam, a.Address = id, record.InTeam, crewTeamAgentAddress(t.ProjectID, id)
-			a.Kind = record.Kind
 			accepted = append(accepted, *a)
 		}
 		people[i].Agents = accepted
@@ -279,37 +278,6 @@ func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target trig
 		log.Printf("[CREW_TEAM] project=%s event=agent_target_failed agent_id=%q caller_id=%q reason=%q", target.CrewID, id, caller, err)
 		return target, err
 	}
-
-	team, teamErr := readCrewTeam(target.CrewID)
-	if teamErr != nil {
-		return target, teamErr
-	}
-	if row, ok := team.Agents[agent.ID]; ok && row.Kind == "terminal" && row.Terminal != nil {
-
-		target.TeamAgentID = agent.ID
-		if !row.InTeam || !crewTeamAgentsVisible(team, row.OwnerID) {
-			return target, terminalTeamRefusal(team.ProjectID, row.ID, "membership_or_visibility")
-		}
-		named, lookupErr := namedAgentByID(ctx, row.OwnerID, row.Terminal.NamedAgentID)
-		if lookupErr != nil {
-			return target, terminalTeamRefusal(team.ProjectID, row.ID, "agent_removed")
-		}
-		if !namedAgentOnline(named) {
-			return api.offlineTerminalTeamTarget(ctx, team, target, caller)
-		}
-		named, terminalErr := currentCrewTeamTerminal(ctx, team, row)
-		if terminalErr != nil {
-			return target, terminalErr
-		}
-
-		target.TeamAgentID = agent.ID
-		target.TerminalTeam = team.ProjectID
-		target.NamedAgentID = named.ID
-		target.CrewOwner = owner
-		target.Label = agent.Name
-		target.Chat = nil
-		return target, nil
-	}
 	key := crewTeamNativeChatKey(target.CrewID, owner, agent)
 	target.TeamAgentID = agent.ID
 	target.CrewOwner = owner
@@ -319,9 +287,6 @@ func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target trig
 }
 
 func crewTeamNativeChatKey(project, owner string, agent crewTeamAgent) string {
-	if agent.Kind == "terminal" {
-		return agent.ChatKey
-	}
 	if crewRelayTwin(project) && owner == ownerOfCrewProjectID(project) {
 		return macSharedAgentChatKey(project, agent.Tab)
 	}
@@ -350,11 +315,6 @@ func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) 
 // Re-resolve queued messages and replies by ID. The saved chat key cannot route
 // to another person after a move, and an old ID cannot bypass removal/Only me.
 func resolveTeamMessageEndpoint(ctx context.Context, endpoint agentMessageEndpoint, viewer string) (agentMessageEndpoint, string, error) {
-	if endpoint.TerminalTeam != "" {
-		_, _, _, err := terminalTeamMessagePeer(ctx, endpoint, viewer)
-		return endpoint, "terminal", err
-	}
-
 	a, owner, err := crewTeamAgentByID(ctx, endpoint.ID, viewer, endpoint.TeamAgentID)
 	if err != nil {
 		return endpoint, "", err
