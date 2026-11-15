@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { Bot, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
+import { AgentMessageIdentity } from './AgentMessageIdentity'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
 
@@ -24,7 +25,7 @@ export function agentInboxPreview(body: string) {
   return line.length > 160 ? `${line.slice(0, 160)}…` : line
 }
 
-export function AgentInboxMessage({ message, timestamp, artifact = null, queueStatus }: { queueStatus?: ReactNode; message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
+export function AgentInboxMessage({ message, timestamp, artifact = null, queueStatus, sessionID }: { sessionID?: string; queueStatus?: ReactNode; message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
   const [open, setOpen] = useState(false)
@@ -37,8 +38,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null, queueSt
         <button type="button" aria-expanded={open} aria-label={open ? 'Hide message' : 'Show message'}
           className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setOpen(value => !value)}>
-          <Bot aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-          <span className="shrink-0 font-medium text-foreground/85">{message.sender}</span>
+          <span className="shrink-0 font-medium text-foreground/85"><AgentMessageIdentity inboxID={message.inboxID} messageID={message.messageID} sessionID={sessionID} /></span>
           {!open && <span className="min-w-0 flex-1 truncate">{agentInboxPreview(body)}</span>}
         </button>
         {queueStatus}

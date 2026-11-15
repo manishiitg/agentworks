@@ -38,7 +38,7 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
     : ''
 
   const incomingAgentMessage = agentInboxMessage(event.metadata as Record<string, unknown> | undefined)
-  if (incomingAgentMessage) return <AgentInboxMessage message={incomingAgentMessage} timestamp={typeof event.timestamp === 'string' ? event.timestamp : ''} />
+  if (incomingAgentMessage) return <AgentInboxMessage sessionID={event.session_id} message={incomingAgentMessage} timestamp={typeof event.timestamp === 'string' ? event.timestamp : ''} />
 
   // Check if content is long enough to need expansion
   const shouldShowExpand = content.length > CHAR_LIMIT

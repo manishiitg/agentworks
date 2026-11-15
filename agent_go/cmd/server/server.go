@@ -2301,6 +2301,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc(strings.TrimPrefix(dashboardAppFramePath, "/api"), api.dashboardAppFrame).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	apiRouter.HandleFunc("/agent-directory", api.handleAgentDirectory).Methods("GET")
+	apiRouter.HandleFunc("/agent-message-identity", api.handleAgentMessageIdentity).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents/usage", api.handleBullpenAgentUsage).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/usage", api.handleBullpenUsage).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/agents/usage", api.handleAgentUsageReport).Methods("POST")

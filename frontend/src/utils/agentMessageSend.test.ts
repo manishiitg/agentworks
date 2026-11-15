@@ -6,7 +6,7 @@ describe('outgoing agent message receipts', () => {
   it('reads a wrapped messages send and only calls accepted delivery sent', () => {
     const args = JSON.stringify({ tool_name: 'messages', arguments: { action: 'send', inbox_id: 'inbox-example', message: 'Please review this.' } })
     const result = JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ accepted: true, delivery: 'stored', to_label: 'Reviewer' }) }] })
-    expect(parseAgentMessageSend('mcp__bridge__call_tool', args, result, 'ok')).toMatchObject({ message: 'Please review this.', targetLabel: 'Reviewer', state: 'Sent' })
+    expect(parseAgentMessageSend('mcp__bridge__call_tool', args, result, 'ok')).toMatchObject({ message: 'Please review this.', targetLabel: 'Reviewer', inboxID: 'inbox-example', state: 'Sent' })
     expect(parseAgentMessageSend('mcp__bridge__call_tool', args, '{}', 'ok')?.state).toBe('Delivery unconfirmed')
   })
   it('does not turn mailbox reads or unrelated wrapped tools into sends', () => {

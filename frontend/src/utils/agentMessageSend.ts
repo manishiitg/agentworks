@@ -5,6 +5,8 @@
 import { formatToolCallResult } from './toolCallFormatting'
 
 export interface AgentMessageSendView {
+  inboxID: string
+  messageID: string
   /** Who it was addressed to, as the agent wrote it, without the "agent:" prefix; '' for a reply to an inbox. */
   target: string
   /** The recipient's own name for itself when the server gave one (a Crew title); the row prefers it over the raw id. */
@@ -64,5 +66,5 @@ export function parseAgentMessageSend(name: string, args: string | undefined, re
   const accepted = answer?.accepted === true
   const receipt = str(answer?.state) || str(answer?.delivery)
   const state = failed ? 'Couldn’t send' : receipt === 'delivered' ? 'Received' : accepted ? 'Sent' : status === 'running' ? 'Sending…' : 'Delivery unconfirmed'
-  return { target, targetLabel, message, accepted, failed, state, error: failed ? (formatted?.text ?? '').trim() : '' }
+  return { inboxID: str(answer?.inbox_id) || str(answer?.conversation_id) || str(input.inbox_id), messageID: str(answer?.message_id), target, targetLabel, message, accepted, failed, state, error: failed ? (formatted?.text ?? '').trim() : '' }
 }
