@@ -3153,6 +3153,10 @@ func cleanChatHistoryForPersistence(history []llmtypes.MessageContent) []llmtype
 	for i, msg := range history {
 		cleaned[i] = msg
 		role := strings.ToLower(strings.TrimSpace(string(msg.Role)))
+		if msg.Role == llmtypes.ChatMessageTypeSystem {
+			cleaned[i].Parts = stripCrewOfflinePreludeParts(msg.Parts) // an offline copy's private history is per turn only
+			continue
+		}
 		if role != "human" && role != "user" {
 			continue
 		}

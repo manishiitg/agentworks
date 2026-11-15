@@ -302,7 +302,7 @@ func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerI
 		rule, mode = stored.WhenOthersAsk, "\n\n"+crewAskModeLine(stored.CanMakeChanges)
 	}
 	log.Printf("[WHEN_OTHERS_ASK] agent=%s asker=%s owner=%s custom=%t can_make_changes=%t", agentKey, logUsernameForUserID(askerID), logUsernameForUserID(owner), strings.TrimSpace(rule) != "", mode != "" && !strings.Contains(mode, "answer questions only"))
-	return whenOthersAskNote(askerName, ownerName, rule) + mode
+	return whenOthersAskNote(askerName, ownerName, rule) + mode + crewOfflineCopyPrelude(ctx, askerID, agentKey)
 }
 
 // crewTeamAgentUse is one app or secret (by name) the Crew's agents use; Personal marks the owner's own sign-in.
