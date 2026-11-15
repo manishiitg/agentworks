@@ -513,7 +513,7 @@ function CodeShellTerminal({ projectId, chatContextTabId, tab, active, tabStrip,
           <button type="button" className={toolbarButton} title="Close (Esc)" aria-label="Close search" onClick={closeSearch}><X className="h-3.5 w-3.5" /></button>
         </div>
       )}
-      <div ref={hostRef} className="min-h-0 flex-1 p-1.5" style={{ backgroundColor: themeBackground }} data-testid="code-shell" />
+      <div data-theme-surface="terminal" ref={hostRef} className="min-h-0 flex-1 p-1.5" style={{ backgroundColor: themeBackground }} data-testid="code-shell" />
     </div>
   )
 }

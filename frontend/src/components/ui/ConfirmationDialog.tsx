@@ -100,7 +100,7 @@ export default function ConfirmationDialog({
       className="fixed inset-0 bg-overlay/50 flex items-center justify-center z-[10000]"
       data-workspace-collapse-ignore={ignoreWorkspaceAutoCollapse ? 'true' : undefined}
     >
-      <div role="dialog" aria-modal="true" aria-label={title} className="bg-surface-panel rounded-md shadow-md border border-border max-w-md w-full mx-4">
+      <div data-theme-surface="dialog" role="dialog" aria-modal="true" aria-label={title} className="bg-surface-panel rounded-md shadow-md border border-border max-w-md w-full mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">

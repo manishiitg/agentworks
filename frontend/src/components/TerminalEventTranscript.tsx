@@ -444,9 +444,9 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   const attachments = messageAttachmentPaths(metadata)
   if (!collapsible) {
     return (
-      <div className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
+      <div data-theme-message-role="user" className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         {attachments.length > 0 && <UserAttachments paths={attachments} />}
-        {shown !== '' && <div data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
+        {shown !== '' && <div data-theme-message-body="" data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
@@ -463,9 +463,9 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   }
 
   return (
-    <article className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
+    <article data-theme-message-role="user" className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
       {attachments.length > 0 && <UserAttachments paths={attachments} />}
-      <div className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90">{shown}</div>
+      <div data-theme-message-body="" className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90">{shown}</div>
       <div className="mt-1 flex items-center gap-2">
         <button
           type="button"
@@ -662,7 +662,7 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
   const nativeBlock = Boolean((transcriptEventPayload(event).metadata as Record<string, unknown> | undefined)?.assistant_block_id)
   const full = useChatArtifactText(artifact, ASSISTANT_ARTIFACT_KEYS)
   return (
-    <article data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : nativeBlock ? '' : 'py-1'}>
+    <article data-theme-message-role="assistant" data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : nativeBlock ? '' : 'py-1'}>
       {framed && <AssistantTurnHeader event={event} timestamp={timestamp} label={label} icon={icon} />}
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode />
@@ -761,7 +761,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
 const InternalActivityEvent: React.FC<{ title: string; content: string; timestamp: string }> = ({ title, content, timestamp }) => {
   const [open, setOpen] = useState(false)
   return (
-    <div data-testid="terminal-clear-system-activity" className="my-3 border-y border-border/60 py-2">
+    <div data-theme-message-role="system" data-testid="terminal-clear-system-activity" className="my-3 border-y border-border/60 py-2">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
@@ -850,6 +850,7 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
 
   return (
     <div
+      data-theme-surface="tool" data-theme-tool-state={displayStatus}
       data-testid="terminal-clear-tool-call"
       className={row ? 'border-b border-border/60 last:border-b-0' : `rounded border ${
         displayStatus === 'error'
@@ -1444,6 +1445,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       : 'Its conversation will appear here when the first event arrives.')
     return (
       <div
+        data-theme-surface="empty"
         data-testid="terminal-clear-view-empty"
         className={`flex min-w-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8 ${surfaceClassName ?? 'bg-background dark:bg-[#0b0d0c]'}`}
       >
@@ -1482,6 +1484,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       ref={rootRef}
       data-chat-find-root={searchable ? '' : undefined}
       tabIndex={-1}
+      data-theme-surface="chat"
       data-testid="terminal-clear-view"
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-background dark:bg-[#0d100f]'}`}
       onClickCapture={scroll.preserveDisclosure}
@@ -1602,7 +1605,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
 // opt into the shared lifecycle indicator.
 const LiveAssistantTranscript: React.FC<{ nativeBlock?: boolean; text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode, nativeBlock }) => (
   text ? (
-    <article data-testid="terminal-clear-live-assistant-message" className={nativeBlock ? '' : 'py-1'}>
+    <article data-theme-message-role="assistant" data-testid="terminal-clear-live-assistant-message" className={nativeBlock ? '' : 'py-1'}>
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer chatElementStream={chatUIStreamMode === 'progressive' ? 'progressive' : 'pending'} content={text} framed={false} maxHeight="none" copyableCode />
       </div>

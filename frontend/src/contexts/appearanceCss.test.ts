@@ -8,6 +8,13 @@ it('drops external CSS resource declarations and keeps local styling', () => {
   const { sheet, removed } = safeAppearanceSheet(String.raw`
     [data-chat-composer-card] { border-radius: 20px; background: url(https://example.com/leak); --asset: u\72l(https://example.com/escaped); }
     [data-app-main] { background-image: url("data:image/svg+xml;base64,PHN2Zy8+"); }
+    [data-app-ambient]::before {
+      perspective: 700px; transform-style: preserve-3d; backface-visibility: hidden;
+      transform: translate3d(1px,2px,3px) rotate3d(1,1,0,10deg);
+      mask-image: linear-gradient(black, transparent); mix-blend-mode: screen;
+      filter: drop-shadow(0 0 2px cyan);
+    }
+    @keyframes frame-tilt { to { transform: rotate3d(1,1,0,14deg); opacity: .5; } }
     @font-face { font-family: untrusted; src: url(https://example.com/font.woff2); }
     @supports (display: grid) { .example { color: red; background-image: image-set("https://example.com/a" 1x); } }
   `)
@@ -17,4 +24,5 @@ it('drops external CSS resource declarations and keeps local styling', () => {
   expect(css).toContain('border-radius: 20px')
   expect(css).toContain('color: red')
   expect(css).toContain('data:image/svg+xml;base64,PHN2Zy8+')
+  for (const supported of ['perspective:', 'preserve-3d', 'backface-visibility:', 'translate3d(', 'rotate3d(', 'mask-image:', 'mix-blend-mode:', 'drop-shadow(', '@keyframes frame-tilt']) expect(css).toContain(supported)
 })

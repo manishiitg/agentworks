@@ -16,6 +16,7 @@ const TooltipContent = React.forwardRef<
   // Above dialogs and menus (z-[200]) so a tooltip inside one is not hidden behind it.
   <TooltipPrimitive.Portal>
   <TooltipPrimitive.Content
+    data-theme-surface="popover"
     ref={ref}
     sideOffset={sideOffset}
     className={cn(

@@ -10,6 +10,7 @@ export const PRODUCT_COMPOSER_CARD_CLASS = 'space-y-0.5 rounded-2xl border borde
 
 export function ChatComposerBand({ product = false, className, ...props }: HTMLAttributes<HTMLDivElement> & { product?: boolean }) {
   return <div
+    data-theme-surface="composer-band"
     data-product-chat-input={product || undefined}
     className={cn(product ? PRODUCT_COMPOSER_BAND_CLASS : 'space-y-1', className)}
     {...props}
@@ -39,6 +40,7 @@ export function ChatComposerCard({ product = false, className, ...props }: HTMLA
 export const ChatComposerTextarea = forwardRef<HTMLTextAreaElement, React.ComponentProps<'textarea'> & { product?: boolean }>(
   ({ product = false, className, ...props }, ref) => <Textarea
     ref={ref}
+    data-theme-control="composer-input"
     rows={1}
     // A message box, not a form field: no AutoFill bar (keys, cards, places) above the phone keyboard.
     autoComplete="off"
@@ -53,6 +55,7 @@ ChatComposerTextarea.displayName = 'ChatComposerTextarea'
 export const ChatComposerSendButton = forwardRef<HTMLButtonElement, ButtonProps & { product?: boolean }>(
   ({ product = false, className, children, ...props }, ref) => <Button
     ref={ref}
+    data-theme-action="send"
     size="icon"
     className={cn('h-7 w-7 p-0', product && 'bg-violet-600 text-white hover:bg-violet-500', className)}
     {...props}
@@ -61,7 +64,7 @@ export const ChatComposerSendButton = forwardRef<HTMLButtonElement, ButtonProps 
 ChatComposerSendButton.displayName = 'ChatComposerSendButton'
 
 export function ChatComposerControls({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex min-w-0 flex-wrap justify-between items-center gap-y-1 [&_button]:min-h-7 [&_button]:min-w-7 [&_button>svg]:!h-3 [&_button>svg]:!w-3', className)} {...props} />
+  return <div data-theme-composer-controls="" className={cn('flex min-w-0 flex-wrap justify-between items-center gap-y-1 [&_button]:min-h-7 [&_button]:min-w-7 [&_button>svg]:!h-3 [&_button>svg]:!w-3', className)} {...props} />
 }
 
 /** Keep the default 36px floor and avoid a layout write on single-line typing. */

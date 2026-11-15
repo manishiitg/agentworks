@@ -12,6 +12,7 @@ interface SyntaxHighlightedCodeProps {
 
 const SyntaxHighlightedCode: React.FC<SyntaxHighlightedCodeProps> = ({ code, language, isDark, showLineNumbers = false, wrapLongLines = false }) => (
   <SyntaxHighlighter
+    data-theme-surface="code"
     style={isDark ? (oneDark as { [key: string]: React.CSSProperties }) : (prism as { [key: string]: React.CSSProperties })}
     language={language}
     PreTag="div"

@@ -51,6 +51,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     expect(host.querySelector('[data-theme-tools-running="false"]')).toBeTruthy()
     expect(host.textContent).toContain('First reply')
     expect(host.textContent).toContain('Second reply')
+    expect(host.querySelector('[data-theme-message-role="assistant"]')).toBeTruthy()
     await act(async () => useChatDisplayStore.setState({ showThinking: true }))
     expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['2 steps', '3 steps'])
     expect(host.textContent).toContain('A supplied reasoning summary')
@@ -58,6 +59,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     await act(async () => useChatDisplayStore.setState({ showThinking: false }))
     await render([before, ...first, event('message', 'user_message', { content: 'Please check this' }), ...middle, ...last, after])
     expect(host.querySelectorAll('[data-testid="terminal-work-summary"]')).toHaveLength(2)
+    expect(host.querySelector('[data-theme-message-role="user"] [data-theme-message-body]')).toBeTruthy()
     await act(async () => useChatDisplayStore.setState({ showTools: true }))
     await render([before, ...first])
     const button = host.querySelector<HTMLButtonElement>('[data-testid="terminal-tool-call-group"] button')!
@@ -65,6 +67,7 @@ it('shows one 5 steps row across hidden thinking and preserves visible boundarie
     expect(button.getAttribute('aria-expanded')).toBe('true')
     await render()
     expect(host.querySelectorAll('[data-testid="terminal-tool-call-group"]')).toHaveLength(1)
+    expect(host.querySelector('[data-theme-surface="tool"][data-theme-tool-state="ok"]')).toBeTruthy()
     const grown = host.querySelector('[data-testid="terminal-tool-call-group"] button')!
     expect(grown.textContent).toBe('5 tool calls')
     expect(grown.getAttribute('aria-expanded')).toBe('true')

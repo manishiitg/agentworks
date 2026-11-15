@@ -2920,6 +2920,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           disabled={isUploadingFiles}
           onClick={openAttachmentPicker}
           className="h-7 w-7 p-0"
+          data-theme-action="attach"
           data-testid="chat-upload-button"
           aria-label="Attach files"
         >

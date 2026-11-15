@@ -188,4 +188,18 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 		t.Fatalf("no-op claimed changes: %s", noChange.Body.String())
 	}
 
+	// PLAT-746-1040: expressive CSS can exceed the former 20KB cap. Its JSON
+	// envelope must also fit when quotes/HTML characters are escaped by clients.
+	largeCSS := "/*" + strings.Repeat("\"<&雪", 8000) + "*/"
+	largeBody, _ := json.Marshal(map[string]any{"operation": "apply", "theme": map[string]any{"css": largeCSS}})
+	largeReply := invoke("owner", string(largeBody))
+	var largeDoc appearanceDocument
+	if len(largeBody) <= 100000 || largeReply.Code != 200 || json.Unmarshal(largeReply.Body.Bytes(), &largeDoc) != nil || largeDoc.Current.CSS != largeCSS {
+		t.Fatalf("valid escaped CSS refused: body=%d code=%d", len(largeBody), largeReply.Code)
+	}
+	tooLarge, _ := json.Marshal(map[string]any{"operation": "apply", "theme": map[string]any{"css": strings.Repeat("雪", appearanceCSSMaxBytes/3+1)}})
+	if got := invoke("owner", string(tooLarge)); got.Code != 400 {
+		t.Fatal("CSS UTF-8 byte cap was not enforced")
+	}
+
 }

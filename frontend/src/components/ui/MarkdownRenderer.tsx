@@ -979,7 +979,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     // Pre tag is handled by the code component above
     // This is a fallback for any pre tags that don't contain code
     const block = (
-      <pre className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs font-mono overflow-x-auto break-all min-w-0">
+      <pre data-theme-surface="code" className="bg-muted p-2 rounded text-xs font-mono overflow-x-auto break-all min-w-0">
         {children}
       </pre>
     )
@@ -1374,6 +1374,7 @@ export const ToolMarkdownRenderer: React.FC<{ content: string; maxHeight?: strin
 // every chat surface renders per message, so it is the one that multiplies.
 export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight?: string; disablePathLinking?: boolean; framed?: boolean; copyableCode?: boolean; chatElementStream?: ChatElementStream }> = React.memo(({ content, maxHeight = "384px", disablePathLinking, framed = true, copyableCode, chatElementStream }) => (
   <div
+    data-theme-message-body=""
     className={`${framed ? 'border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800' : ''} overflow-y-auto overflow-x-hidden min-w-0`}
     style={{ maxHeight }}
   >
