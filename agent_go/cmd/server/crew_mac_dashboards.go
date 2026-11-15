@@ -214,11 +214,16 @@ func crewMacDashboardsRoot(root string) string {
 
 // The Mac's side.
 
+var crewMacDashboardsAttempted sync.Map // local project -> last attempt, including failures
+
 var crewMacDashboardsSent sync.Map // local project -> time of the last send
 
 // crewMacDashboardsDue: something under db/reports, db/assets or the database changed since the last send, at most one
 // send every crewMacDashboardsEvery.
 func crewMacDashboardsDue(id string, sources ...string) bool {
+	if last, ok := crewMacDashboardsAttempted.Load(id); ok && time.Since(last.(time.Time)) < crewMacDashboardsEvery {
+		return false
+	}
 	last, _ := crewMacDashboardsSent.Load(id)
 	sent, _ := last.(time.Time)
 	if time.Since(sent) < crewMacDashboardsEvery {
@@ -256,6 +261,7 @@ func (api *StreamingAPI) sendCrewMacDashboards(ctx context.Context, owner string
 	if !crewMacDashboardsDue(local, reports, assets, database) {
 		return nil
 	}
+	crewMacDashboardsAttempted.Store(local, time.Now())
 	started := time.Now()
 	stage, err := os.MkdirTemp("", "agentworks-dashboards-")
 	if err != nil {
