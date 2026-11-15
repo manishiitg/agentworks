@@ -53,7 +53,7 @@ installed packages, Git internals and caches; do not promise a complete disk cop
 The owner can use `manage_crew_sync team` for the Mac's Team switch. With several
 networks, choose the requested connection before turning it on. Use its admitted
 `share`/`unshare` actions for an own agent, respecting fixed Main/last-shared-agent
-rules. Use `team_sync agent_rule` for what others may ask and what chat they see.
+rules. Use `team_sync agent_rule` for Shared with team, who it is shared with (whole Team or chosen people), what others may ask and what chat they see.
 There is no `team_all` action in this tool; do not invent one.
 
 Inspect `lent` for this Mac's selected apps/secret names unavailable to teammates.

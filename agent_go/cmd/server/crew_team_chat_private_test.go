@@ -156,7 +156,7 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, nil, &on); err != nil {
 		t.Fatal(err)
 	}
-	if saved, _ := readCrewTeam("team"); saved.agentRule("owner", macMainTab) != (crewTeamAgentRule{}) {
+	if saved, _ := readCrewTeam("team"); !saved.agentRule("owner", macMainTab).empty() {
 		t.Fatalf("on must store nothing: %+v", saved.Agents)
 	}
 	if w := get("other", macSession, "events"); w.Code != 200 || !strings.Contains(w.Body.String(), "owner-chat-text") {

@@ -427,7 +427,7 @@ func crewMacTeamWatchAllowed(r *http.Request, project string) bool {
 		return false
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, watch.conversation)
-	share := t.agentChatShare(r.Context(), person, tab)
+	share := t.agentChatShareFor(r.Context(), watch.viewer.UserID, person, tab)
 	return person == watch.person && tab == watch.tab && share == watch.share && share != crewChatShareAgent
 }
 

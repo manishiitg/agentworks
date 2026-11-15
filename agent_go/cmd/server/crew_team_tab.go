@@ -95,6 +95,9 @@ type crewTeamTabAgent struct {
 	ChatShareLabel   string                `json:"chat_share_label,omitempty"`
 	ChatShareOptions []crewChatShareOption `json:"chat_share_options,omitempty"`
 	ChatPrivateLine  string                `json:"chat_private_line,omitempty"`
+	// Who it is shared with, on the viewer's own agent only: whole_team or chosen, and the chosen current members.
+	Audience string                   `json:"audience,omitempty"`
+	People   []crewTeamAudiencePerson `json:"chosen_people,omitempty"`
 	// WatchKey is the key of its tab for someone else, where that differs from Key: the Crew owner's Mac Main.
 	WatchKey string `json:"watch_key,omitempty"`
 	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's Main (their own agent).
@@ -433,8 +436,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			changes := rule.CanMakeChanges
 			row.CanMakeChanges = &changes
 			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
-			row.ChatShare = t.agentChatShare(ctx, p.UserID, a.ChatKey)
+			row.ChatShare = t.agentChatShareFor(ctx, viewer, p.UserID, a.ChatKey)
 			if mine {
+				row.Audience, row.People = rule.audienceName(), t.audiencePeople(rule)
 				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
 				row.ChatShareLabel, row.ChatShareOptions = crewTeamChatShareLabel, crewChatShareOptions
 			} else {
