@@ -136,6 +136,9 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
 	if source.PublishedAgent != "" {
+		if err := queueCrewOfflineReply(ctx, c, m); err != nil {
+			return "", err
+		}
 		// The original asker receives a new message in their own chat. The
 		// admitted inbox authorizes this delivery only; the publisher acquires
 		// no ability to read that Crew or contact a different private endpoint.

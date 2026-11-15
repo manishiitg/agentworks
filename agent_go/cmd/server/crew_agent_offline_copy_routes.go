@@ -193,5 +193,5 @@ func crewOfflineCopyOAuthPath(method, path string) bool {
 	if err != nil || parsed.String() != id || !strings.HasPrefix(parts[5], crewTeamAgentIDPrefix) {
 		return false
 	}
-	return method == http.MethodPut && parts[7] == "chunks" || method == http.MethodPost && (parts[7] == "status" || parts[7] == "plan" || parts[7] == "commit")
+	return method == http.MethodPut && parts[7] == "chunks" || method == http.MethodPost && (parts[7] == "status" || parts[7] == "plan" || parts[7] == "commit" || parts[7] == "handback" || parts[7] == "handback-ack")
 }
