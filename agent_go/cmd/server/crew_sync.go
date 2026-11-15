@@ -19,7 +19,6 @@ import (
 )
 
 type crewSyncRequest struct {
-	Terminal              *chatTerminalStandby       `json:"terminal,omitempty"`
 	IncludeOnlineAgents   bool                       `json:"include_online_agents,omitempty"`
 	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
 	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
@@ -43,8 +42,6 @@ type crewSyncRequest struct {
 	Editing           string             `json:"editing,omitempty"`
 	Snapshot          *crewsync.Snapshot `json:"snapshot,omitempty"`
 	Agents            []macSharedAgent   `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	// Standby (standby_check, standby_store): the Mac's standby copy of one In team agent (crew_agent_standby.go).
-	Standby *crewStandbyRequest `json:"standby,omitempty"`
 }
 type crewServerCopy struct {
 	Name   string `json:"name"`
@@ -52,7 +49,7 @@ type crewServerCopy struct {
 }
 
 type crewSyncReply struct {
-	Terminal *chatTerminalStandby `json:"terminal,omitempty"`
+
 	// Where the caller's own agents in this Crew work when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string `json:"where,omitempty"`
 	// AccessView is which Access page this person gets: "team" (the Team tab alone: a teammate, or the website copy
@@ -96,9 +93,6 @@ type crewSyncReply struct {
 	AccessMacLocked string          `json:"access_mac_locked,omitempty"`
 	AccessPublish   *crewAccessText `json:"access_publish,omitempty"`
 	AccessLaptop    bool            `json:"access_laptop,omitempty"`
-	// Standby answers standby_check and standby_store (crew_agent_standby.go), handback_pull and handback_done
-	// (crew_agent_handback.go).
-	Standby *crewStandbyReply `json:"standby,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -309,20 +303,11 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
-	if input.Action == "terminal_marker" {
-		return api.receiveTerminalStandby(ctx, claims, id, input)
-	}
 	if input.Action == "publish_accounts" || input.Action == "publish_agent" || input.Action == "stage_agent" {
 		return api.receiveCrewAgentPublish(ctx, claims, id, input)
 	}
 	if input.Action == "server_account" {
 		return api.receiveCrewServerAccount(ctx, claims, id, input)
-	}
-	if input.Action == "standby_check" || input.Action == "standby_store" {
-		return api.receiveCrewStandby(ctx, claims, id, input)
-	}
-	if input.Action == "handback_pull" || input.Action == "handback_done" {
-		return api.receiveCrewHandback(ctx, claims, id, input)
 	}
 	if input.Action == "create" {
 		if input.PairID == "" || input.SourceID == "" || input.Name == "" {

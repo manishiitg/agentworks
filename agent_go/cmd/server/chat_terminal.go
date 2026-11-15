@@ -91,10 +91,6 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 	state, e = readChatTerminal(c.SessionID)
 	// Recovery must work even if an interrupted receipt cannot be decoded.
 	if op == "here" {
-		if e = clearTerminalStandby(state); e != nil {
-			fail(500, "save_failed", "Could not clear the standby handoff. Try again.")
-			return
-		}
 		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Receipt: uuid.NewString(), Revision: state.Revision}
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "Could not return the chat here. Try again.")
@@ -181,10 +177,6 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		state = chatTerminalState{Owner: user, Chat: c.ConversationKey, Session: c.SessionID, Native: b.SessionID, Receipt: uuid.NewString(), Out: true, JournalBytes: b.Files["session.jsonl"].Size, JournalSHA: b.Files["session.jsonl"].SHA256, Revision: state.Revision}
 		if e = saveChatTerminal(state); e != nil {
 			fail(500, "save_failed", "The chat could not be moved. Nothing was started.")
-			return
-		}
-		if e = api.syncTerminalStandby(r.Context(), c, state); e != nil {
-			fail(409, "standby_unavailable", "The paired server could not confirm this handoff. No terminal was started; choose Continue here instead to recover the chat.")
 			return
 		}
 		dropQueuedNativeWakes(c.SessionID, "continued_in_terminal")
