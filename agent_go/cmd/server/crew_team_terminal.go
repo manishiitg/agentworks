@@ -35,7 +35,7 @@ type crewTeamTerminalCopy struct {
 func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	named, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
-	if err != nil || named.Attachment == nil || named.Attachment.Provider != "claude" {
+	if err != nil || named.Attachment == nil || named.Attachment.Provider != "claude" || strings.TrimSpace(named.Attachment.SessionID) == "" {
 		externalError(w, 403, "team_terminal_refused", "Connect this Claude Code session to AgentWorks first.")
 		return
 	}
@@ -82,28 +82,21 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		return
 	}
 	id := ""
-	for key, a := range team.Agents {
-		if a.OwnerID == claims.UserID && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID && a.ChatKey == named.Attachment.SessionID {
-			id = key
-			break
-		}
-	}
 	if action == "leave" {
-		if id != "" {
-			delete(team.Agents, id)
+		for key, a := range team.Agents {
+			if a.OwnerID == claims.UserID && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
+				id = key
+				delete(team.Agents, key)
+				break
+			}
 		}
 	} else {
-		if team.Agents == nil {
-			team.Agents = map[string]crewTeamRegisteredAgent{}
+		record, joinErr := upsertCrewTeamTerminal(&team, claims.UserID, named, pair)
+		if joinErr != nil {
+			externalError(w, 409, "team_terminal_refused", joinErr.Error())
+			return
 		}
-		record := team.Agents[id]
-		if id == "" {
-			id = crewTeamAgentIDPrefix + uuid.NewString()
-			record = newCrewTeamTerminalAgent(id, claims.UserID, named)
-		}
-		record.Kind = "terminal"
-		record.Terminal = &crewTeamTerminal{NamedAgentID: named.ID, AttachmentID: named.Attachment.ID, Provider: named.Attachment.Provider, MacPair: pair}
-		team.Agents[id] = record
+		id = record.ID
 	}
 	copy.Folders = append([]string(nil), team.Folder.Folders...)
 	team.Revision++
@@ -200,7 +193,7 @@ func currentCrewTeamTerminal(ctx context.Context, t crewTeam, a crewTeamRegister
 
 // Same defaults as an app agent's explicit Only-me/Answers-only choices.
 func newCrewTeamTerminalAgent(id, owner string, named namedMessageAgent) crewTeamRegisteredAgent {
-	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: "Claude Code", Place: "mac", Kind: "terminal", Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
+	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Place: "mac", Kind: "terminal", Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
 }
 
 // Same Team operations as the screen/chat, with actor stamped from the exact
@@ -244,4 +237,38 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 	default:
 		externalError(w, 400, "team_terminal_refused", "Choose join, leave, doing, decision, decisions, agents, clashes, resolve or forks. Send tasks to the Team agent with the normal agent messaging tool.")
 	}
+}
+
+// A terminal agent has one Team identity across native session rotations.
+// Privacy choices belong to that stable identity, not to a provider journal.
+func upsertCrewTeamTerminal(team *crewTeam, person string, named namedMessageAgent, pair string) (crewTeamRegisteredAgent, error) {
+	if named.ID == "" || named.UserID != person || named.Attachment == nil || strings.TrimSpace(named.Attachment.SessionID) == "" || pair == "" {
+		return crewTeamRegisteredAgent{}, fmt.Errorf("Connect this exact session before joining the Team.")
+	}
+	var record crewTeamRegisteredAgent
+	for _, a := range team.Agents {
+		if a.OwnerID == person && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
+			if record.ID != "" {
+				return crewTeamRegisteredAgent{}, fmt.Errorf("This terminal agent has duplicate Team entries; refresh the Team before joining.")
+			}
+			record = a
+		}
+	}
+	if record.ID == "" {
+		record = newCrewTeamTerminalAgent(crewTeamAgentIDPrefix+uuid.NewString(), person, named)
+	}
+	for _, a := range team.Agents {
+		if a.ID != record.ID && a.OwnerID == person && (a.ChatKey == named.Attachment.SessionID || a.Tab == record.Tab) {
+			return crewTeamRegisteredAgent{}, fmt.Errorf("This session is already registered as another Team agent.")
+		}
+	}
+	record.ChatKey = named.Attachment.SessionID
+	record.Name = firstNonEmptyTrimmed(named.Label, named.Name)
+	record.Kind = "terminal"
+	record.Terminal = &crewTeamTerminal{NamedAgentID: named.ID, AttachmentID: named.Attachment.ID, Provider: named.Attachment.Provider, MacPair: pair}
+	if team.Agents == nil {
+		team.Agents = map[string]crewTeamRegisteredAgent{}
+	}
+	team.Agents[record.ID] = record
+	return record, nil
 }
