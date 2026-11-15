@@ -208,7 +208,9 @@ func SyncContentAllowed(key string, directory bool) bool {
 	return !publication.ExcludedFromSync(rel, directory)
 }
 
-// MacDashboardsFolder holds the read copy of a Mac Crew's dashboards on the server: never synced, never edited.
+// MacDashboardsFolder is a reserved retired-data directory, never synced or
+// browsable. Keep this privacy exclusion until the backed-up 1024 data cleanup
+// has removed old copies; no dashboard reader or sender uses it.
 const MacDashboardsFolder = "mac-dashboards"
 
 // TeamCopiesFolder holds each Team member's working copy of a Crew on the server, at team-copies/<member>/.
@@ -223,7 +225,7 @@ func TeamCopyHidden(entry, listing, user string) bool {
 		at = 3
 	}
 	if len(parts) > at && strings.EqualFold(parts[0], "Crew") && parts[at] == MacDashboardsFolder {
-		return true // the read copy of a Mac Crew's dashboards is nobody's to browse
+		return true // retired snapshot bytes are never exposed through Files
 	}
 	if len(parts) <= at || !strings.EqualFold(parts[0], "Crew") || parts[at] != TeamCopiesFolder {
 		return false

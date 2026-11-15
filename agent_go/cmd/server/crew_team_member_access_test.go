@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -352,72 +351,35 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 	}
 }
 
-// PLAT-856-509 (owner, 6 Nov): a teammate opens a Mac Crew's dashboard from the server's read copy, through the real
-// dashboard reader and workspace, while the Crew's own db/ on the server is left alone.
-func TestCrewMacDashboardsAreReadFromTheCopy(t *testing.T) {
+// PLAT-746-1024: an old read-copy folder and marker must not redirect
+// normal file reads away from the Crew's current authoritative content.
+func TestCrewDashboardIgnoresRetiredMacSnapshot(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]}]}`)
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Join(f.docs, externalCommandCrewRoot)
-	own := filepath.Join(root, "db", "reports")
-	if err := os.MkdirAll(own, 0o770); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(own, "index.html"), []byte("<html><title>Server page</title></html>"), 0o660); err != nil {
-		t.Fatal(err)
-	}
-	store := t.TempDir()
-	page := "<html><head><title>Mac page</title></head><body>from the Mac</body></html>"
-	version, err := chunks.Split(strings.NewReader(page), int64(len(page)), false, func(id string, data []byte) error { return putChunk(store, id, data) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = swapCrewMacDashboards(root, store, map[string]chunks.File{"db/reports/index.html": version}); err != nil {
-		t.Fatal(err)
-	}
+	f.write(t, externalCommandCrewRoot+"/db/reports/index.html", "<html>current authoritative page</html>")
+	f.write(t, externalCommandCrewRoot+"/mac-dashboards/db/reports/index.html", "<html>retired snapshot</html>")
 	manifest, err := crewSyncManifestPath("team")
-	if err == nil {
-		err = os.MkdirAll(filepath.Dir(manifest), 0o700)
-	}
-	if err == nil {
-		err = os.WriteFile(manifest+".dashboards-updated", []byte("{}"), 0o600)
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	claims := &UserClaims{UserID: "other", Username: "other"}
-	ctx := context.WithValue(t.Context(), UserContextKey, claims)
-	// A Crew that lives on the server reads its own db/, even with such a folder present.
-	for _, p := range []string{"/db/reports/index.html", "/db/db.sqlite"} {
-		if got := publishedReadPath(ctx, externalCommandCrewRoot+p); got != externalCommandCrewRoot+p {
-			t.Fatalf("a server Crew was redirected to %s", got)
-		}
+	if err = os.MkdirAll(filepath.Dir(manifest), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(manifest+".dashboards-updated", []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	if err = crewroot.WriteSync("team", crewroot.SyncBinding{PairID: "pair", Side: "server", Editing: "local", PeerProjectID: "mac"}); err != nil {
 		t.Fatal(err)
 	}
-	mapped := publishedReadPath(ctx, externalCommandCrewRoot+"/db/reports/index.html")
-	if mapped != externalCommandCrewRoot+"/"+crewroot.MacDashboardsFolder+"/db/reports/index.html" {
-		t.Fatalf("read goes to %s", mapped)
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	key := externalCommandCrewRoot + "/db/reports/index.html"
+	mapped := publishedReadPath(ctx, key)
+	if mapped != key {
+		t.Fatal("read redirected to the retired snapshot")
 	}
 	data, err := f.api.reportPreviewWorkspaceClient(ctx, claims, externalCommandCrewRoot).DownloadFile(ctx, mapped)
-	if err != nil || !strings.Contains(string(data), "from the Mac") {
-		t.Fatalf("the workspace read of the copy: %q %v", data, err)
-	}
-	if got := crewMacDashboardsRead(ctx, externalCommandCrewRoot+"/db/db.sqlite"); got != externalCommandCrewRoot+"/"+crewroot.MacDashboardsFolder+"/db/db.sqlite" {
-		t.Fatalf("database query goes to %s", got)
-	}
-	listing := httptest.NewRecorder()
-	f.api.handleDashboards(listing, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"`+externalCommandCrewRoot+`","action":"list"}`, claims, nil))
-	if listing.Code != 200 || !strings.Contains(listing.Body.String(), "Mac page") || strings.Contains(listing.Body.String(), "Server page") {
-		t.Fatalf("listing: %d %s", listing.Code, listing.Body.String())
-	}
-	tab := httptest.NewRecorder()
-	f.api.handleCrewTeamDashboardsTab(tab, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards-tab", "", claims, map[string]string{"project": "team"}))
-	if tab.Code != 200 || !strings.Contains(tab.Body.String(), "copy on the server") || !strings.Contains(tab.Body.String(), "work on the owner's Mac") {
-		t.Fatalf("tab: %d %s", tab.Code, tab.Body.String())
+	if err != nil || !strings.Contains(string(data), "current authoritative page") || strings.Contains(string(data), "retired snapshot") {
+		t.Fatalf("canonical workspace read: %q %v", data, err)
 	}
 }
 
