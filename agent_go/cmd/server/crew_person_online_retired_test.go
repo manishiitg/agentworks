@@ -9,6 +9,7 @@ import (
 // PLAT-746-1024: old clients must not create a new person-slot placement after
 // conversion. Only the canonical Put-online source/copy mechanism remains.
 func TestCrewPersonSlotPublishCreatorsAreRemoved(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newTriggerLinkEnv(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	claims := &UserClaims{UserID: "owner"}
