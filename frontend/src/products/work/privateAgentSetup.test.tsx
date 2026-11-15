@@ -92,9 +92,12 @@ it('coalesces slow Team notice storms and stops automatic reads while hidden', a
     await act(async () => root.render(<><Probe /><Probe /></>))
     expect(api.request).toHaveBeenCalledTimes(1)
     for (let i = 0; i < 100; i++) notices.reload()
+    // Cross the old 3-second timer while the first request is still pending.
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+    expect(api.request).toHaveBeenCalledTimes(1)
     await act(async () => { finish(reply) })
     expect(api.request).toHaveBeenCalledTimes(1)
-    await act(async () => { await vi.advanceTimersByTimeAsync(14999) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10999) })
     expect(api.request).toHaveBeenCalledTimes(1)
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
     expect(api.request).toHaveBeenCalledTimes(2)
