@@ -68,6 +68,7 @@ type claudeStreamEvent struct {
 		} `json:"delta"`
 	} `json:"event,omitempty"`
 
+	ToolUseResult   json.RawMessage            `json:"tool_use_result,omitempty"`
 	ParentToolUseID string                     `json:"parent_tool_use_id,omitempty"`
 	Type            string                     `json:"type"`
 	Subtype         string                     `json:"subtype,omitempty"`
@@ -165,6 +166,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 	if opts != nil && opts.StreamChan != nil {
 		defer close(opts.StreamChan)
 	}
+	var taskPlan llmtypes.ClaudeTaskPlan
 	emitChunk := func(chunk llmtypes.StreamChunk) {
 		if opts == nil || opts.StreamChan == nil {
 			return
@@ -832,6 +834,15 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 							ToolResult:   result,
 							ToolDuration: toolclock.Since(pending.startedAt),
 						})
+						if !block.IsError {
+							planResult := result
+							if len(ev.ToolUseResult) > 0 && string(ev.ToolUseResult) != "null" {
+								planResult = string(ev.ToolUseResult)
+							}
+							if plan, ok := taskPlan.Apply(pending.name, pending.args, planResult); ok {
+								emitChunk(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeCodingAgentPlan, CodingAgentPlan: plan})
+							}
+						}
 						if pending.name == "Agent" || pending.name == "Task" {
 							children := readClaudeNativeSubagents(sessionID, workingDir, llmtypes.CLIHomeEnvironment(opts)["HOME"])
 							if len(children) > 0 {

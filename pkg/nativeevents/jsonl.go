@@ -1,6 +1,7 @@
 package nativeevents
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/commandlabel"
@@ -18,7 +19,7 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 		b.Next.Rejected = true
 		return
 	}
-	if side, _ := row["isSidechain"].(bool); side {
+	if side, _ := row["isSidechain"].(bool); side || text(row, "parent_tool_use_id") != "" {
 		return
 	}
 	kind, id := text(row, "type"), text(row, "uuid")
@@ -41,6 +42,9 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 			b.Next.TurnID, b.Next.Origin, b.Next.TaskID = id, "human", ""
 			lineage = Lineage{TurnID: id, Origin: "human"}
 			r.TurnID, r.Origin, r.TaskID = id, "human", ""
+			b.Next.PlanTurn = id
+			b.Next.Plan = llmtypes.ClaudeTaskPlan{}
+			b.Next.PlanInputs = map[string]string{}
 			r.Kind, r.State = "turn", "started"
 			emit(b, r)
 		} else if origin == "task-notification" {
@@ -112,6 +116,20 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 			if failed, _ := block["is_error"].(bool); failed {
 				out.State = "failed"
 			}
+			if out.State == "finished" && r.TurnID != "" && r.TurnID == b.Next.PlanTurn {
+				result := contentText(block["content"])
+				if value := row["toolUseResult"]; value != nil {
+					if raw, err := json.Marshal(value); err == nil {
+						result = string(raw)
+					}
+				}
+				if plan, ok := b.Next.Plan.Apply(name, b.Next.PlanInputs[tool], result); ok {
+					progress := r
+					progress.ID, progress.Kind, progress.State, progress.Plan = id+":"+tool+":plan", "plan", "updated", plan
+					emit(b, progress)
+				}
+			}
+			delete(b.Next.PlanInputs, tool)
 			if name == "Agent" || name == "Task" {
 				// Keep the normal step and a separately identified helper fact.
 				emit(b, out)
@@ -172,6 +190,18 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 			case "tool_use":
 				out.Kind, out.State, out.ToolID, out.Name = "tool", "started", text(block, "id"), text(block, "name")
 				b.Next.Tools[out.ToolID] = out.Name
+				if r.TurnID == b.Next.PlanTurn {
+					switch out.Name {
+					case "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList":
+						raw, err := json.Marshal(block["input"])
+						if err == nil {
+							if b.Next.PlanInputs == nil {
+								b.Next.PlanInputs = map[string]string{}
+							}
+							b.Next.PlanInputs[out.ToolID] = string(raw)
+						}
+					}
+				}
 				if out.Name == "Agent" || out.Name == "Task" {
 					input := object(block["input"])
 					h := HelperTool{Type: commandlabel.Label(text(input, "subagent_type")), Description: commandlabel.Label(text(input, "description")), Mode: "foreground"}

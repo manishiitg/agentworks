@@ -261,3 +261,57 @@ func TestClaudeHelperMetadataStartsBeforeForegroundResult(t *testing.T) {
 		})
 	}
 }
+
+// Native joined terminal sessions use the same task reducer without persisting
+// task text or tool arguments in their observer checkpoint.
+func TestClaudeNativePlanAcrossIncrementalReads(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "native.jsonl")
+	first := `{"type":"user","uuid":"u","origin":{"kind":"human"}}
+{"type":"assistant","uuid":"a","parentUuid":"u","message":{"content":[{"type":"tool_use","id":"c","name":"TaskCreate","input":{"subject":"PRIVATE_PLAN"}}]}}
+`
+	if err := os.WriteFile(p, []byte(first), 0600); err != nil {
+		t.Fatal(err)
+	}
+	one, err := Read(context.Background(), "claude-code", "native", p, Cursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest := `{"type":"user","uuid":"r","parentUuid":"a","toolUseResult":{"task":{"id":"1","subject":"PRIVATE_PLAN"}},"message":{"content":[{"type":"tool_result","tool_use_id":"c","content":"Task #1 created successfully: PRIVATE_PLAN"}]}}
+{"type":"assistant","uuid":"b","parentUuid":"r","message":{"content":[{"type":"tool_use","id":"up","name":"TaskUpdate","input":{"taskId":"1","status":"completed"}}]}}
+{"type":"user","uuid":"s","parentUuid":"b","message":{"content":[{"type":"tool_result","tool_use_id":"up","content":"Updated task #1 status"}]}}
+`
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.WriteString(rest)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := Read(context.Background(), "claude-code", "native", p, one.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plans []*llmtypes.CodingAgentPlan
+	for _, r := range two.Records {
+		if r.Plan != nil {
+			if r.TurnID != "u" {
+				t.Fatal("wrong launching turn")
+			}
+			plans = append(plans, r.Plan)
+		}
+	}
+	if len(plans) != 2 || plans[0].Items[0].Status != "pending" || plans[1].Items[0].Status != "completed" {
+		t.Fatalf("plans=%+v", plans)
+	}
+	raw, _ := json.Marshal(one.Next)
+	raw2, _ := json.Marshal(two)
+	if strings.Contains(string(raw), "PRIVATE_PLAN") || strings.Contains(string(raw2), "PRIVATE_PLAN") {
+		t.Fatal("plan text leaked into checkpoint/activity")
+	}
+	// Reading a candidate batch must not mutate the caller's committed cursor.
+	if len(one.Next.Plan.Snapshot().Items) != 0 {
+		t.Fatal("uncommitted plan mutated committed cursor")
+	}
+}

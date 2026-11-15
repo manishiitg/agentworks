@@ -143,6 +143,7 @@ func readClaudeTranscriptEventsFromOpenFile(f *os.File, offset int64, turnStart 
 		var e struct {
 			Type            string                 `json:"type"`
 			Subtype         string                 `json:"subtype"`
+			ToolUseResult   json.RawMessage        `json:"toolUseResult"`
 			UUID            string                 `json:"uuid"`
 			Timestamp       string                 `json:"timestamp"`
 			Message         json.RawMessage        `json:"message"`
@@ -235,6 +236,7 @@ func readClaudeTranscriptEventsFromOpenFile(f *os.File, offset int64, turnStart 
 			var blocks []struct {
 				Type      string          `json:"type"`
 				ToolUseID string          `json:"tool_use_id"`
+				IsError   bool            `json:"is_error"`
 				Content   json.RawMessage `json:"content"`
 			}
 			if err := json.Unmarshal(um.Content, &blocks); err != nil {
@@ -253,10 +255,22 @@ func readClaudeTranscriptEventsFromOpenFile(f *os.File, offset int64, turnStart 
 						delete(pendingToolStarts, b.ToolUseID)
 					}
 				}
+				result := flattenToolResultContent(b.Content)
+				// Claude's TaskList display is prose; retain its actual structured
+				// task list from the journal for the retained tool-result consumer.
+				var taskList struct {
+					Tasks json.RawMessage `json:"tasks"`
+				}
+				if len(blocks) == 1 && json.Unmarshal(e.ToolUseResult, &taskList) == nil && len(taskList.Tasks) > 0 {
+					result = string(e.ToolUseResult)
+				}
+				if b.IsError {
+					result = "[ERROR] " + result
+				}
 				events = append(events, claudeTranscriptEvent{
 					IsToolEnd:    true,
 					ToolCallID:   b.ToolUseID,
-					ToolResult:   flattenToolResultContent(b.Content),
+					ToolResult:   result,
 					ToolDuration: duration,
 				})
 			}

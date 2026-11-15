@@ -34,6 +34,10 @@ type HelperTool struct {
 }
 
 type Cursor struct {
+	// Checklist content lives only in memory and in the admitted chat events.
+	PlanTurn      string                  `json:"-"`
+	Plan          llmtypes.ClaudeTaskPlan `json:"-"`
+	PlanInputs    map[string]string       `json:"-"`
 	HelperTools   map[string]HelperTool   `json:"helper_tools,omitempty"`
 	ShellCommands map[string]ShellCommand `json:"shell_commands,omitempty"`
 	Offset        int64                   `json:"offset"`
@@ -72,7 +76,7 @@ type Batch struct {
 func Capabilities(provider string) []string {
 	switch provider {
 	case "claude-code":
-		return []string{"reply", "turn", "helper", "background_command", "question", "tool", "compaction", "usage", "file"}
+		return []string{"reply", "turn", "helper", "background_command", "question", "tool", "compaction", "usage", "file", "plan"}
 	case "codex-cli":
 		return []string{"reply", "turn", "question", "tool", "compaction", "usage", "file", "error"}
 	case "muse-cli":
@@ -182,6 +186,11 @@ func Read(ctx context.Context, provider, sessionID, path string, cursor Cursor) 
 
 func cloneCursor(c Cursor) Cursor {
 	n := c
+	n.Plan.Replace(c.Plan.Snapshot())
+	n.PlanInputs = map[string]string{}
+	for k, v := range c.PlanInputs {
+		n.PlanInputs[k] = v
+	}
 	n.HelperTools = map[string]HelperTool{}
 	for k, v := range c.HelperTools {
 		n.HelperTools[k] = v

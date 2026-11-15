@@ -7,12 +7,14 @@ import "time"
 // Text is present only for assistant replies and provider-authored questions;
 // analytics consumers must not copy it into operational reports.
 type NativeRecord struct {
-	HelperType        string `json:"helper_type,omitempty"`
-	HelperDescription string `json:"helper_description,omitempty"`
-	CurrentStep       string `json:"current_step,omitempty"`
-	HelperMode        string `json:"helper_mode,omitempty"`
-	CommandLabel      string `json:"command_label,omitempty"`
-	BackgroundMode    string `json:"background_mode,omitempty"`
+	// Plan is transient chat projection data, never part of observer checkpoints.
+	Plan              *CodingAgentPlan `json:"-"`
+	HelperType        string           `json:"helper_type,omitempty"`
+	HelperDescription string           `json:"helper_description,omitempty"`
+	CurrentStep       string           `json:"current_step,omitempty"`
+	HelperMode        string           `json:"helper_mode,omitempty"`
+	CommandLabel      string           `json:"command_label,omitempty"`
+	BackgroundMode    string           `json:"background_mode,omitempty"`
 	// Background task facts are supplied by the owning runtime/host, never
 	// estimated from a parent turn's usage. Nil Tokens means unreported.
 	TokenSource string    `json:"token_source,omitempty"`
