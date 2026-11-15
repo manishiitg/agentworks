@@ -189,7 +189,13 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	}
 	// Admit the normal home binding, then preserve the published agent's normal
 	// Builder/Run settings rather than inventing a Team-specific delegation.
-	_, err = resolveCrewProjectBinding(ctx, publishedAsker(source), profile, dest.ID, "")
+	if dest.OfflineCopyTeam != "" {
+		// An offline copy is admitted by its SOURCE row's current audience, never by membership of the online home
+		// (a Team-off home's roster is the primary owner only); no Home/Main access is granted by asking a copy.
+		err = crewTeamAdmitEndpoint(ctx, publishedAsker(source), dest)
+	} else {
+		_, err = resolveCrewProjectBinding(ctx, publishedAsker(source), profile, dest.ID, "")
+	}
 	if err != nil {
 		return "", err
 	}
