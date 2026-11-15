@@ -34,7 +34,16 @@ func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer s
 		}
 		row := reachableAgentRuntime{Reach: reach, Info: &agentRuntimeInfo{CrewName: reach.TeamName}}
 		owner := registered.OwnerID
-		if registered.Place == "mac" {
+		if registered.Kind == "terminal" && registered.Terminal != nil {
+			if named, err := currentCrewTeamTerminal(ctx, team, registered); err == nil && named.Attachment != nil {
+				row.Info.CLI = providerAccountProductName(named.Attachment.Provider)
+				row.Info.LastActiveAt = named.Attachment.ActivityAt
+				row.Info.Activity = "Idle"
+				if named.Attachment.Activity == "busy" {
+					row.Info.Activity = "Working"
+				}
+			}
+		} else if registered.Place == "mac" {
 			for _, agent := range snapshot.Agents {
 				if agent.UserID != owner || agent.Attachment == nil || agent.Attachment.DeliveryRoute != appAgentDeliveryRoute {
 					continue
