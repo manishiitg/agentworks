@@ -1,3 +1,6 @@
+import { loadDashboardDirectory, dashboardDisplayName, type DashboardDirectoryEntry } from '../../services/dashboardDirectory'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useEffect, useState } from 'react'
 import { FileText, Film, LayoutDashboard, type LucideIcon } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
@@ -17,7 +20,21 @@ const openAccess = (projectId: string, section: 'mac') => window.dispatchEvent(n
  * list), and a Crew on a Mac says it needs to be online first; this only shows them. The same tab in the Mac app and on
  * the website. */
 export function CrewDashboardsTab({ projectId }: { projectId: string }) {
-  const { target, unbound } = useTeamTab(projectId)
+  const { target, unbound, error: reachError, retry: retryTeam } = useTeamTab(projectId)
+  const localMode = useCapabilitiesStore(s => Boolean(s.capabilities?.local_mode))
+  const host = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
+  const onThisMac = localMode && host === 'local'
+  const [localRows, setLocalRows] = useState<DashboardDirectoryEntry[]>()
+  const [localError, setLocalError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    const controller = new AbortController()
+    setLocalRows(undefined); setLocalError('')
+    if (onThisMac) void loadDashboardDirectory(controller.signal).then(result => {
+      if (!controller.signal.aborted) setLocalRows(result.dashboards.filter(row => row.product === 'crew' && row.project_id === projectId))
+    }).catch(() => { if (!controller.signal.aborted) setLocalError('Could not read the local artifacts. Reopen this pane to try again.') })
+    return () => controller.abort()
+  }, [projectId, onThisMac, host])
   // A Mac Crew that was never online has no server copy: its own Mac app's server answers.
   const where: TeamTarget | undefined = unbound ? { project: projectId } : target
   const [kind, setKind] = useState('all')
@@ -30,11 +47,23 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     load()
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
-  }, [where?.project, where?.connection, kind]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading artifacts…</p>
+  }, [where?.project, where?.connection, kind, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
+  const failure = reachError || error
+  useEffect(() => {
+    if (!failure) { setAttempt(0); return }
+    const timer = window.setTimeout(() => { retryTeam(); setAttempt(value => value + 1) }, Math.min(1000 * 2 ** Math.min(attempt, 5), 30000))
+    return () => window.clearTimeout(timer)
+  }, [failure, attempt, retryTeam])
+  const local = onThisMac ? <section aria-label="Artifacts on this Mac" className={teamCard}>
+    <h3 className="font-semibold">On this Mac</h3>
+    {localError ? <p role="alert" className="text-xs text-muted-foreground">{localError}</p> : !localRows ? <p role="status">Loading local artifacts…</p> : !localRows.length ? <p className="text-sm text-muted-foreground">No published artifacts on this Mac.</p> : localRows.filter(row => kind === 'all' || kind === (row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard')).map(row => <div key={row.dashboard_id} className="flex items-center gap-2 border-t border-border py-2 text-sm"><span className="min-w-0 flex-1 truncate">{dashboardDisplayName(row)}</span><Button size="sm" variant="outline" onClick={() => selectReportDocument(row.workspace, row.document_path, true)}>Open</Button></div>)}
+  </section> : null
+  const notice = failure ? <p role="status" className="text-xs text-muted-foreground">Couldn't reach the Team server, retrying</p> : null
+  if (!where || !tab) return <div className="space-y-3">{local}{notice || <p role="status" className="text-sm text-muted-foreground">Loading artifacts…</p>}</div>
   return <div className="space-y-3">
+  {local}{notice}
   <section aria-label="Artifacts" className={teamCard}>
-    <h3 className="font-semibold">Artifacts</h3>
+    <h3 className="font-semibold">{onThisMac ? 'Online with the Team' : 'Artifacts'}</h3>
     {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
     {tab.filters.length > 1 && <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
       {tab.filters.map(filter => <button key={filter.key} type="button" aria-pressed={tab.filter === filter.key} onClick={() => setKind(filter.key)}
