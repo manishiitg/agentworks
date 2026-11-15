@@ -842,6 +842,10 @@ func (receiver webhookReceiver) receive(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "API trigger not found", 404)
 		return
 	}
+	if err := requireServerInteractive(); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBodyBytes))
 	if err != nil {
 		var sizeErr *http.MaxBytesError

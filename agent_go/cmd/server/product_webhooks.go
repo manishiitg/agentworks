@@ -683,6 +683,10 @@ func (s *ProjectActionDispatcher) receiveProductWebhook(w http.ResponseWriter, r
 		http.Error(w, "trigger not found", http.StatusNotFound)
 		return
 	}
+	if err := requireServerInteractive(); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	body, err := readWebhookJSONBody(w, r)
 	if err != nil {
 		return
