@@ -102,6 +102,8 @@ export type TeamTabView = {
   // The agent menu's "How this works" card, worded by the server for the states that exist in this Crew; help_ask is the
   // draft its button opens in Main (absent when the viewer changes nothing here, then there is no button).
   help?: { title: string; text: string }[]; help_ask?: string
+  // The Team's always-online agent (crew_team_home_agent.go), first in the right panel's Agents list.
+  team_agent?: { name: string; line: string; address?: string; last_message?: string; last_message_at?: string }
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; localSetups?: Record<string, TeamTabSetup>; error: string }

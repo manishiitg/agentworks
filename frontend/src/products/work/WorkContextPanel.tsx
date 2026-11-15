@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { CalendarClock, ChevronRight, Eye, FolderSync, Globe, LayoutDashboard, Link2, Mail, RefreshCw, Route, TriangleAlert, Users, Webhook, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
@@ -22,7 +22,10 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
 import { CrewOnlineRow } from './CrewOnlineRow'
 import { useChatStore } from '../../stores/useChatStore'
-import { useTeamTab, type TeamTabAgent } from './teamApi'
+import { useTeamTab, type TeamTabState } from './teamApi'
+import { teamAgentChatTab } from './AgentSharingRow'
+import { activateTab } from '../../utils/activateTab'
+import { sidebarExpansionKey, useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -40,8 +43,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
-  // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
-  const teammates = (useTeamTab(projectId || undefined).view?.agents || []).filter(agent => !agent.mine && agent.in_team)
+  // The Team's agents and activity, from the same Team read every screen shares (teamApi watchTeamTab).
+  const team = useTeamTab(projectId || undefined)
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
@@ -182,7 +185,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // with its own document list (owner, 15 Nov).
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
-  const teamTree = (teamLines.length > 0 || teammates.length > 0) && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1"><TeammateAgents projectId={projectId} agents={teammates} />{treeLines(teamLines)}</div>
+  const activityLines = teamLines.filter(line => line.kind === 'team_live')
+  const otherTeamLines = teamLines.filter(line => line.kind !== 'team_live')
+  const teamTree = (teamLines.length > 0 || !!team.view) && <div role="list" aria-label="Team details" className="ml-3 border-l border-border pl-2 pb-1">
+    <TeamAgentsGroup projectId={projectId} scope={scope} team={team} />
+    {activityLines.length > 0 && <TeamPanelGroup scope={scope} id="activity" title="Activity" count={`${activityLines.length} new`} preview={activityLines[0].title}>
+      {treeLines(activityLines.slice(0, 2))}
+      <button type="button" onClick={() => openCrewAccess(projectId, '', 'team', 'activity')} className={`${lineButton} text-primary`}>See all activity</button>
+    </TeamPanelGroup>}
+    {treeLines(otherTeamLines)}
+  </div>
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? teamTree : null}</div>)}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
@@ -210,18 +222,80 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   </WorkspaceContextCard>
 }
 
-/** Teammates' shared agents under Team (owner, 15 Nov: here, not in the left menu, which keeps your own agents): each
- * with its person and where it answers, as the Team read words it. Clicking one starts an ask from your own Main, which
- * reaches it at the address the server gave. */
-function TeammateAgents({ projectId, agents }: { projectId: string; agents: TeamTabAgent[] }) {
-  return <>{agents.map(agent => <div key={agent.key} role="listitem">
-    <button type="button" title={`Ask ${agent.owner_name}'s ${agent.name}`} onClick={() => {
-      if (!fillAskFromMyAgentDraft(projectId, agent.owner_name, agent.name, agent.address)) useChatStore.getState().addToast('Open your Main chat in this Crew, then try again.', 'error')
-    }} className="flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${agent.activity === 'running' ? 'bg-blue-500' : agent.activity === 'waiting' ? 'bg-amber-500' : agent.status_label === 'Mac off' ? 'bg-muted-foreground/40' : 'bg-emerald-500'}`} />
-      <span className="min-w-0 flex-1"><span className="block break-words font-medium text-foreground">{agent.owner_name}&apos;s {agent.name}</span>
-        <span className="block break-words text-muted-foreground">{agent.place_label || agent.status_label || 'Online'}</span>
-      </span>
+/** One collapsible group under Team (owner, 15 Nov mock): closed by default, one line with a count and a short preview;
+ * each person's open or close is kept. */
+function TeamPanelGroup({ scope, id, title, count, preview, children }: { scope: string; id: string; title: string; count: string; preview?: string; children: ReactNode }) {
+  const key = sidebarExpansionKey(scope, 'team-panel', id)
+  const open = useSidebarExpansionStore(state => state.expanded[key] ?? false)
+  const toggle = useSidebarExpansionStore(state => state.toggle)
+  return <div role="listitem">
+    <button type="button" aria-expanded={open} onClick={() => toggle(key, false)} className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span className="font-medium text-foreground">{title}</span>
+      <span className="shrink-0 text-muted-foreground">{count}</span>
+      {!open && preview && <span className="min-w-0 flex-1 truncate text-muted-foreground">{preview}</span>}
+      <ChevronRight aria-hidden="true" className={`ml-auto h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
     </button>
-  </div>)}</>
+    {open && <div role="list" className="pb-1">{children}</div>}
+  </div>
+}
+
+const ageOf = (at?: string) => {
+  const seconds = at ? Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 1000)) : NaN
+  if (!Number.isFinite(seconds)) return ''
+  return seconds < 60 ? 'now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h` : `${Math.floor(seconds / 86400)}d`
+}
+
+type PanelAgent = { key: string; name: string; who: string; online: boolean; activity: string; line: string; mark: string; onClick: () => void }
+
+/** The Team's agents (owner, 15 Nov mock): the Team agent, teammates' In-team agents, then the person's own,
+ * collapsed. Every row and line is the server's (the Team read); an agent whose chat is not Live arrives with its
+ * Doing line only, never chat text. Clicking a teammate's agent starts an ask from the person's own Main; the server
+ * sends it to the Team agent while that agent's Mac is off. The left menu keeps the person's own agents. */
+function TeamAgentsGroup({ projectId, scope, team }: { projectId: string; scope: string; team: TeamTabState }) {
+  const [showMine, setShowMine] = useState(false)
+  const view = team.view
+  if (!view) return null
+  const ask = (owner: string, name: string, address?: string) => {
+    if (!fillAskFromMyAgentDraft(projectId, owner, name, address)) useChatStore.getState().addToast('Open your Main chat in this Crew, then try again.', 'error')
+  }
+  const online = new Map((view.live?.people || []).map(person => [person.user_id, person.online]))
+  const rows: PanelAgent[] = []
+  if (view.team_agent) {
+    const home = view.team_agent
+    rows.push({ key: 'team-agent', name: home.name, who: home.line, online: true, activity: '', mark: 'T', line: home.last_message ? `${ageOf(home.last_message_at)} · ${home.last_message}` : '', onClick: () => ask('the Team', 'Team', home.address) })
+  }
+  for (const agent of [...(view.live?.agents || []), ...(view.live?.idle || [])]) {
+    const listed = view.agents.find(item => item.id === agent.id)
+    const isOn = online.get(agent.owner_id) ?? false
+    const text = agent.last_message || agent.doing || ''
+    rows.push({ key: agent.id, name: agent.name, who: `${agent.person}${listed?.place === 'mac' ? ' · Mac' : ''}`, online: isOn, activity: agent.activity, mark: agent.person.slice(0, 1).toUpperCase(),
+      line: agent.activity === 'running' ? `typing… ${text}`.trim() : agent.activity === 'waiting' ? agent.waiting || 'Waiting' : text ? `${agent.last_message_at ? `${ageOf(agent.last_message_at)} · ` : ''}${text}` : '',
+      onClick: () => ask(agent.person, agent.name, listed?.address) })
+  }
+  const mine = view.agents.filter(agent => agent.mine)
+  const mineRows: PanelAgent[] = mine.map(agent => ({ key: agent.key, name: agent.name, who: 'You', online: true, activity: agent.activity || '', mark: 'Y', line: agent.activity === 'running' ? 'Working' : '',
+    onClick: () => { const tab = teamAgentChatTab(team, projectId, agent.key); if (tab) activateTab(tab.tabId) } }))
+  const total = rows.length + mineRows.length
+  if (!total) return null
+  const onlineCount = rows.filter(row => row.online).length + mineRows.length
+  const firstMine = mineRows.filter(row => row.activity === 'running').slice(0, 1)
+  const restMine = mineRows.filter(row => !firstMine.includes(row))
+  const row = (agent: PanelAgent) => <button key={agent.key} type="button" onClick={agent.onClick} className="flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <span aria-hidden="true" className="relative mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-muted text-[9px] font-semibold text-foreground">{agent.mark}
+      <span className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full border border-background ${agent.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate font-medium text-foreground">{agent.name}</span>
+        {agent.activity === 'running' && <span className="shrink-0 text-[10px] text-blue-600 dark:text-blue-400">Working</span>}
+        {!agent.online && <span className="shrink-0 text-[10px] text-muted-foreground">Offline</span>}</span>
+      <span className="block truncate text-muted-foreground">{agent.who}</span>
+      {agent.line && <span className="block truncate text-muted-foreground">{agent.line}</span>}
+    </span>
+  </button>
+  const preview = [...rows, ...mineRows].slice(0, 2).map(agent => agent.name).join(', ')
+  return <TeamPanelGroup scope={scope} id="agents" title="Agents" count={`${total} · ${onlineCount} online`} preview={preview ? `${preview}…` : undefined}>
+    {rows.map(row)}
+    {firstMine.map(row)}
+    {showMine ? restMine.map(row) : restMine.length > 0 && <button type="button" onClick={() => setShowMine(true)} className="w-full rounded-md px-1.5 py-1 text-left text-[11px] text-muted-foreground hover:bg-background/40">+ {restMine.length} more of yours</button>}
+  </TeamPanelGroup>
 }

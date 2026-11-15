@@ -166,6 +166,8 @@ type crewTeamTabReply struct {
 	// viewer's Main; empty for a viewer who changes nothing here, and then the page shows no button.
 	Help    []crewTeamHelpLine `json:"help"`
 	HelpAsk string             `json:"help_ask,omitempty"`
+	// TeamAgent is the Team's always-online agent, first in the right panel's Agents list (owner, 15 Nov mock).
+	TeamAgent *crewTeamHomeAgent `json:"team_agent,omitempty"`
 }
 
 type crewTeamHelpLine struct {
@@ -349,6 +351,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
 	out.Live = crewTeamLiveFor(ctx, t, byPerson, viewer)
+	out.TeamAgent = crewTeamHomeAgentFor(ctx, t, viewer)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p

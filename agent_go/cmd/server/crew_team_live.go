@@ -94,7 +94,9 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 			if row.LastMessage == "" {
 				row.LastMessageAt = ""
 			}
-			if row.Activity == "running" || row.Activity == "waiting" {
+			// An agent whose chat is not Live (answers only) shows its latest Doing post instead of chat text, also
+			// while idle (owner, 15 Nov mock); a Live agent's line is its last message.
+			if row.Activity == "running" || row.Activity == "waiting" || row.LastMessage == "" && !own {
 				row.Doing = post.Line
 			}
 			if row.Activity == "running" {
