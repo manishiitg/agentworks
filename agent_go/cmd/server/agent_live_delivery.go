@@ -244,6 +244,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	a := &s.Agents[index]
+	activityChanged := false
 	if claims.AccessToken == nil && (a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute) {
 		externalError(w, 403, "attachment_refused", "This login does not own an app attachment.")
 		return
@@ -326,7 +327,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				return
 			}
 		}
-		a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
+		// A slow label refresh must not revive a turn after a newer Stop hook.
+		if !at.Before(a.Attachment.ActivityAt) {
+			activityChanged = a.Attachment.Activity != activity
+			a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
+		}
 		if agentBridgeOnlyDeployment() {
 			a.Attachment.Repository, a.Attachment.Branch = "", ""
 		}
@@ -407,6 +412,10 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			externalCommunicationError(w, 400, "attachment_refused", err)
 			return
 		}
+	}
+	if activityChanged {
+		// The worker reads the saved state after this handler releases the mailbox lock.
+		go crewTeamTerminalActivityChanged(context.WithoutCancel(r.Context()), *a)
 	}
 	if d := startupDiagnostic; d != nil {
 		log.Printf("[AGENT-STARTUP] id=%s account=%s attachment=%s at=%s version=%s build=%s os=%s arch=%s cause=%s executable_sha256=%s", d.ID, a.UserID, a.Attachment.ID, d.At.Format(time.RFC3339Nano), d.Version, d.Build, d.OS, d.Arch, d.Cause, d.ExecutableSHA256)

@@ -1478,6 +1478,22 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if (in.Activity == "busy" || in.Activity == "idle" || in.Activity == "unknown") && in.Activity != s.Activity {
 			s.Activity, s.ActivityAt = in.Activity, time.Now().UTC()
 			changed = true
+			// Publish the hook transition now, not at the next housekeeping tick.
+			// Use the existing authenticated label channel, outside the bridge lock
+			// and the hook's short delivery budget. No text or new polling.
+			targets := []*localSession{s}
+			for _, other := range b.sessions {
+				if other != s && other.Also && other.Attachment.Provider == in.Provider && other.Attachment.SessionID == in.SessionID {
+					targets = append(targets, other)
+				}
+			}
+			b.workers.Add(1)
+			go func() {
+				defer b.workers.Done()
+				for _, target := range targets {
+					b.refreshChatLabel(serverCtx, target)
+				}
+			}()
 		}
 		if changed {
 			_ = b.save()
@@ -2545,7 +2561,9 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 			current.Attachment.Label = label
 			current.Attachment.DeliveryRoute = route
 			current.Attachment.Repository, current.Attachment.Branch = repository, branch
-			current.Attachment.Activity, current.Attachment.ActivityAt = activity, activityAt
+			if !activityAt.Before(current.Attachment.ActivityAt) {
+				current.Attachment.Activity, current.Attachment.ActivityAt = activity, activityAt
+			}
 			_ = b.save()
 			log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s route=%s status=updated", a.AgentName, a.ID, route)
 			break
