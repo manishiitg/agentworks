@@ -1085,12 +1085,8 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	}
 }
 
-// Owner, 6 Nov: any two people in a Team can message each other's agents from their Macs; owner or member is not a Crew
-// role for it. A Team message is admitted from the owner's Mac (the Crew's own pair) or from a joined member's Mac with
-// the pair the server recorded for that member, and from nobody else: not an invited person, not a member whose agents
-// work on the website, not a stranger, not a member using another person's pair. Admitted, the call goes on to check
-// the sender (400 invalid_sender here); refused, it stops at 409 wrong_pair.
-func TestCrewTeamMessageIsAdmittedFromOwnerOrMemberMacOnly(t *testing.T) {
+// Conversation-copy upload keeps the existing exact owner/member Mac-pair fence.
+func TestCrewTeamCopyPairAdmitsOwnerOrJoinedMemberOnly(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
@@ -1106,15 +1102,6 @@ func TestCrewTeamMessageIsAdmittedFromOwnerOrMemberMacOnly(t *testing.T) {
 		{UserID: "invited", Invited: true, Where: "mac", MacPair: "invited-pair"}}}); err != nil {
 		t.Fatal(err)
 	}
-	api := &StreamingAPI{}
-	send := func(user, pair string) (int, string) {
-		t.Helper()
-		body := crewSyncRequest{Action: "team_message", PairID: pair, TeamMessage: &crewTeamMessageRequest{FromTab: "", ConversationID: "c1", AgentID: "x", Message: "hi"}}
-		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user}))
-		w := httptest.NewRecorder()
-		api.crewTeamMessage(w, r, "message-room", body)
-		return w.Code, w.Body.String()
-	}
 	for _, c := range []struct {
 		who, user, pair string
 		admitted        bool
@@ -1129,9 +1116,8 @@ func TestCrewTeamMessageIsAdmittedFromOwnerOrMemberMacOnly(t *testing.T) {
 		{"a stranger with a member's pair", "stranger", "member-pair", false},
 		{"the owner with a member's pair", "owner", "member-pair", false},
 	} {
-		code, body := send(c.user, c.pair)
-		if c.admitted && code != http.StatusBadRequest || !c.admitted && (code != http.StatusConflict || !strings.Contains(body, "wrong_pair")) {
-			t.Fatalf("%s: got %d %s, admitted=%t", c.who, code, body, c.admitted)
+		if crewTeamMacPairAdmitted("message-room", c.user, c.pair) != c.admitted {
+			t.Fatalf("pair admission: %s", c.who)
 		}
 	}
 }

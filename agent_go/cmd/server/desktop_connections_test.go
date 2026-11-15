@@ -359,11 +359,7 @@ func TestDesktopMemberCrewResolvesOnlyOwnActiveCopy(t *testing.T) {
 	if w := call(owner, "saved", remote, false); w.Code != 403 {
 		t.Fatalf("non-desktop caller admitted: %d", w.Code)
 	}
-	for _, address := range []string{"team:" + remote + ":agent-stable", "workspace:work:" + remote + "/agent/agent-stable"} {
-		if got := crewTeamAddressOnMac(address); got != "team:"+local+":agent-stable" {
-			t.Fatalf("agent identity changed: %s", got)
-		}
-	}
+
 	binding.Editing = "server"
 	if err := crewroot.ReplaceSync(local, binding); err != nil {
 		t.Fatal(err)

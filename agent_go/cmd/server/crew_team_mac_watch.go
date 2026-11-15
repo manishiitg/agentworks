@@ -521,12 +521,9 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 		}
 		return callCrewMacPair(context.Background(), person, dest.ID, pair, call, timeout)
 	}
-	teamInbox := ""
-	if !standby {
-		teamInbox = c.ID // a Team message goes into the agent's real chat
-	}
+
 	read := func(after, wait int) (map[string]any, int) {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID, "team_inbox": teamInbox})
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID})
 		result := run(crewChatCall{Operation: "agent_read", Tab: agent.Tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
 		var out map[string]any
 		_ = json.Unmarshal(result.Body, &out)
@@ -536,7 +533,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	// The agent's person comes from the Team registry (crewMemberMacAgentFor), never from the message.
 	member := dest
 	member.UserID = person
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox, "own_agent_message": crewOwnAgentMessage(member, source)}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "own_agent_message": crewOwnAgentMessage(member, source)}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
 	ask := crewChatCall{Operation: "agent_ask", Tab: agent.Tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	_, status := read(0, 0)
@@ -561,9 +558,6 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
-	}
-	if teamInbox != "" {
-		return nil // async: the agent answers with a message if it wants to
 	}
 	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, Standby: standby, SenderID: source.UserID, Caller: sender})
 	return nil

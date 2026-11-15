@@ -59,8 +59,7 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		}
 	}
 	var args struct {
-		SenderID  string `json:"sender_id"`
-		TeamInbox string `json:"team_inbox"`
+		SenderID string `json:"sender_id"`
 	}
 	if json.Unmarshal(call.Args, &args) != nil || args.SenderID == "" {
 		return fail(403, "This agent is unavailable.")
@@ -74,7 +73,7 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		return fail(403, "This agent is no longer shared with you.")
 	}
 	if call.Operation != "agent_read" {
-		if reason := terminalStandbyCallRefusal(project, owner, call.Tab, args.SenderID, args.TeamInbox != ""); reason != "" {
+		if reason := terminalStandbyCallRefusal(project, owner, call.Tab, args.SenderID, byAgent); reason != "" {
 			return fail(409, reason)
 		}
 	}
