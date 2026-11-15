@@ -33,7 +33,7 @@ var crewOfflineAppJobs = struct {
 // A finished turn only queues work. No native I/O, remote request or failed
 // copy can delay or fail that turn. Overlapping turns coalesce, without polling.
 func (api *StreamingAPI) queueCrewOfflineAppTurn(user, session, workspace string) {
-	if !IsLocalMode() || user == "" || session == "" || workspace == "" {
+	if user == "" || session == "" || workspace == "" {
 		return
 	}
 	key := user + "\x00" + session
@@ -69,6 +69,9 @@ func (api *StreamingAPI) queueCrewOfflineAppTurn(user, session, workspace string
 func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, session, workspace string) error {
 	claims := &UserClaims{UserID: user, Username: user}
 	ctx = context.WithValue(ctx, UserContextKey, claims)
+	if !IsLocalMode() {
+		return api.syncCrewOfflineServerTurn(ctx, user, session, workspace)
+	}
 	records, err := defaultProductConversationRegistryStore().crewWorkspaceChats(ctx, user, workspace)
 	if err != nil {
 		return err
