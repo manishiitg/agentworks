@@ -71,9 +71,15 @@ type Boss={
   age:number
 }
 ;
+/** Agent work the app already marks on its own elements; the Deep Space scene uses the same marks. */
+const AGENT_ACTIVITY='[data-theme-agent-state="running"],[data-theme-turn-live="true"],[data-theme-tools-running="true"],[data-theme-team-working="true"]';
+type Layers={key:string,base:HTMLCanvasElement|null,gate:HTMLCanvasElement|null,gateSize:number};
+/** Between two 30fps ambient frames the loop sleeps this long instead of waking on every vsync. */
+const AMBIENT_SLEEP_MS=25,ACTIVITY_POLL_MS=600;
 /** Shipped canvas renderer only: themes cannot supply executable code.
  * Bounds: 650 particles, 360 bullets per side, 26 ships, DPR <= 1.5.
- * Ambient 30fps; pause/death/hidden stop RAF; listeners belong to this canvas.
+ * Ambient 30fps only while agents are working (otherwise one still frame); pause/death/hidden stop RAF; the static
+ * art (fog, orbital gate and its glow) is painted once into cached layers; listeners belong to this canvas.
  */
 export function createNeonOrbit(canvas:HTMLCanvasElement,onHUD:(state:OrbitHUD)=>void):OrbitController {
   const context=canvas.getContext('2d',{
@@ -82,7 +88,7 @@ export function createNeonOrbit(canvas:HTMLCanvasElement,onHUD:(state:OrbitHUD)=
   );
   if (!context) throw new Error('Canvas is unavailable on this device.');
   const ctx: CanvasRenderingContext2D=context;
-  let W=innerWidth,H=innerHeight,dpr=1,t=0,last=0,frame=0,acc=0,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,gentle=paused,playing=false,bossRush=false,intensity=.8,palette: keyof typeof colors='mint',score=0,wave=1,kills=0,spawnClock=0,shootClock=0,bossClock=0,bannerUntil=0,shake=0,dead=false,boss:Boss|null=null,novaWave:{
+  let W=innerWidth,H=innerHeight,dpr=1,t=0,last=0,frame=0,timer=0,poll=0,active=!!document.querySelector(AGENT_ACTIVITY),layers:Layers|null=null,acc=0,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,gentle=paused,playing=false,bossRush=false,intensity=.8,palette: keyof typeof colors='mint',score=0,wave=1,kills=0,spawnClock=0,shootClock=0,bossClock=0,bannerUntil=0,shake=0,dead=false,boss:Boss|null=null,novaWave:{
     x:number;
     y:number;
     r:number
@@ -517,22 +523,73 @@ export function createNeonOrbit(canvas:HTMLCanvasElement,onHUD:(state:OrbitHUD)=
     }
     ctx.restore();
   }
+  /** The fog and the orbital gate with its glow never change between frames: paint them once per size and palette. */
+  function staticLayers(c:{main:string,secondary:string,fog:string}):Layers{
+    const key=[palette,W,H,dpr,gentle,intensity].join(':');
+    if(layers&&layers.key===key)return layers;
+    const R=Math.min(W*.25,H*.39),gateSize=Math.ceil(2*(R+40));
+    const make=(w:number,h:number,scale:number)=>{
+      const layer=document.createElement('canvas');
+      layer.width=Math.max(1,Math.round(w*scale));
+      layer.height=Math.max(1,Math.round(h*scale));
+      const g=layer.getContext('2d');
+      if(!g)return null;
+      g.setTransform(scale,0,0,scale,0,0);
+      return {layer,g};
+    };
+    // Soft fog scales without visible loss, so it is kept at half resolution.
+    const base=make(W,H,dpr/2);
+    if(base){
+      const {g}=base;
+      g.fillStyle='#040b14';
+      g.fillRect(0,0,W,H);
+      const fog=g.createRadialGradient(W*.63,H*.4,0,W*.63,H*.4,W*.62);
+      fog.addColorStop(0,c.fog+'aa');
+      fog.addColorStop(.4,c.fog+'38');
+      fog.addColorStop(1,'#040b1400');
+      g.fillStyle=fog;
+      g.fillRect(0,0,W,H);
+      const fog2=g.createRadialGradient(W*.8,H*.82,0,W*.8,H*.82,W*.4);
+      fog2.addColorStop(0,palette==='solar'?'#65222c66':'#251a5e70');
+      fog2.addColorStop(1,'#0000');
+      g.fillStyle=fog2;
+      g.fillRect(0,0,W,H);
+    }
+    const gate=make(gateSize,gateSize,dpr);
+    if(gate){
+      const {g}=gate,mid=gateSize/2;
+      g.save();
+      const core=g.createRadialGradient(mid-R*.07,mid-R*.08,0,mid,mid,R*.29);
+      core.addColorStop(0,'#bce9ef38');
+      core.addColorStop(.6,c.fog+'c0');
+      core.addColorStop(1,'#030a15');
+      g.fillStyle=core;
+      g.beginPath();
+      g.arc(mid,mid,R*.29,0,Math.PI*2);
+      g.fill();
+      g.strokeStyle=c.main+'22';
+      g.stroke();
+      g.translate(mid,mid);
+      g.rotate(-.3);
+      for(let j=0;j<4;j++){
+        g.beginPath();
+        g.ellipse(0,0,R+j*9,R*.32+j*5,0,0,Math.PI*2);
+        g.strokeStyle=j===0?c.main+'50':c.secondary+'18';
+        g.lineWidth=j===0?1.3:.6;
+        g.shadowColor=c.main;
+        g.shadowBlur=j===0?(gentle?5:22*intensity):(gentle?5:0);
+        g.stroke();
+      }
+      g.restore();
+    }
+    layers={key,base:base?.layer??null,gate:gate?.layer??null,gateSize};
+    return layers;
+  }
   function draw(){
     const c=C();
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.fillStyle='#040b14';
-    ctx.fillRect(0,0,W,H);
-    const fog=ctx.createRadialGradient(W*.63,H*.4,0,W*.63,H*.4,W*.62);
-    fog.addColorStop(0,c.fog+'aa');
-    fog.addColorStop(.4,c.fog+'38');
-    fog.addColorStop(1,'#040b1400');
-    ctx.fillStyle=fog;
-    ctx.fillRect(0,0,W,H);
-    const fog2=ctx.createRadialGradient(W*.8,H*.82,0,W*.8,H*.82,W*.4);
-    fog2.addColorStop(0,palette==='solar'?'#65222c66':'#251a5e70');
-    fog2.addColorStop(1,'#0000');
-    ctx.fillStyle=fog2;
-    ctx.fillRect(0,0,W,H);
+    const L=staticLayers(c);
+    if(L.base)ctx.drawImage(L.base,0,0,W,H);
     for(const s of stars){
       ctx.globalAlpha=s.a*(.7+.3*Math.sin(t*.5+s.x))*intensity;
       ctx.fillStyle=s.z>1?c.main:'#b5ced8';
@@ -540,34 +597,13 @@ export function createNeonOrbit(canvas:HTMLCanvasElement,onHUD:(state:OrbitHUD)=
     }
     ctx.globalAlpha=1;
     // The orbital gate is a dimensional backdrop, not a video or an external image.
-const cx=W*.62,cy=H*.43,R=Math.min(W*.25,H*.39);
+    const cx=W*.62,cy=H*.43;
+    if(L.gate)ctx.drawImage(L.gate,cx-L.gateSize/2,cy-L.gateSize/2,L.gateSize,L.gateSize);
+    const R=Math.min(W*.25,H*.39);
     ctx.save();
-    const core=ctx.createRadialGradient(cx-R*.07,cy-R*.08,0,cx,cy,R*.29);
-    core.addColorStop(0,'#bce9ef38');
-    core.addColorStop(.6,c.fog+'c0');
-    core.addColorStop(1,'#030a15');
-    ctx.fillStyle=core;
-    ctx.beginPath();
-    ctx.arc(cx,cy,R*.29,0,Math.PI*2);
-    ctx.fill();
-    ctx.strokeStyle=c.main+'22';
-    ctx.stroke();
     ctx.translate(cx,cy);
     ctx.rotate(-.3);
-    for(let j=0;
-    j<4;
-    j++){
-      ctx.beginPath();
-      ctx.ellipse(0,0,R+j*9,R*.32+j*5,0,0,Math.PI*2);
-      ctx.strokeStyle=j===0?c.main+'50':c.secondary+'18';
-      ctx.lineWidth=j===0?1.3:.6;
-      glow(c.main,j===0?22:0);
-      ctx.stroke();
-    }
-    ctx.shadowBlur=0;
-    for(let i=0;
-    i<40;
-    i++){
+    for(let i=0;i<40;i++){
       let a=i*Math.PI/20+t*(gentle?.015:.065);
       ctx.fillStyle=i%4?c.main+'38':c.main+'a0';
       ctx.save();
@@ -578,13 +614,11 @@ const cx=W*.62,cy=H*.43,R=Math.min(W*.25,H*.39);
     }
     ctx.restore();
     // Perspective star grid.
-ctx.save();
+    ctx.save();
     ctx.strokeStyle=c.main+'12';
     ctx.lineWidth=.7;
     const horizon=H*.72;
-    for(let i=-10;
-    i<=10;
-    i++){
+    for(let i=-10;i<=10;i++){
       ctx.beginPath();
       ctx.moveTo(W*.6+i*17,horizon);
       ctx.lineTo(W*.6+i*W*.17,H);
@@ -710,10 +744,11 @@ ctx.save();
       ctx.restore();
     }
   }
+  /** With no agent working (and no game) the scene is one still frame: nothing keeps waking the page. */
   function loop(now:number){
     frame=0;
     if(document.hidden)return;
-    if(paused||dead){
+    if(paused||dead||(!playing&&!active)){
       draw();
       return;
     }
@@ -721,21 +756,41 @@ ctx.save();
     last=now;
     acc+=dt;
     const interval=playing&&!gentle?1/60:1/30;
-    if(acc>=interval){
+    if(acc>=interval-(interval>1/60?.002:0)){
       if(!paused&&!dead)update(Math.min(acc,.06));
       draw();
       acc=0;
+      if(interval>1/60){
+        // Skip the vsync wake-ups between 30fps frames.
+        timer=window.setTimeout(()=>{timer=0;if(!frame&&!document.hidden)frame=requestAnimationFrame(loop)},AMBIENT_SLEEP_MS);
+        return;
+      }
     }
     frame=requestAnimationFrame(loop);
   }
   function resumeLoop(){
     last=0;
-    if(!frame&&!document.hidden)frame=requestAnimationFrame(loop);
+    if(!frame&&!timer&&!document.hidden)frame=requestAnimationFrame(loop);
   }
+  function stopLoop(){
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+    frame=0;
+    timer=0;
+  }
+  // The app already marks running agents on its own elements; read that mark rather than assuming activity.
+  const watchActivity=()=>{
+    if(document.hidden)return;
+    const next=!!document.querySelector(AGENT_ACTIVITY);
+    if(next!==active){
+      active=next;
+      resumeLoop();
+    }
+  };
+  poll=window.setInterval(watchActivity,ACTIVITY_POLL_MS);
   const visibility=()=>{
     if(document.hidden){
-      cancelAnimationFrame(frame);
-      frame=0;
+      stopLoop();
       keys.clear();
     }
     else resumeLoop();
@@ -791,8 +846,9 @@ ctx.save();
   return {
      play:reset,ambient,nova,pause:()=>setPause(!paused),
      destroy:()=>{
-      cancelAnimationFrame(frame);
-      frame=0;
+      stopLoop();
+      clearInterval(poll);
+      layers=null;
       window.removeEventListener('resize',fit);
       document.removeEventListener('visibilitychange',visibility);
       canvas.removeEventListener('pointermove',move);
