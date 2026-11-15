@@ -17,6 +17,19 @@ func crewOfflineRequestSource(r *http.Request, t crewTeam, agent string, b crewO
 	if b.Provider != "agentworks" {
 		return crewOfflineSource(r.Context(), t, agent, b, name)
 	}
+	if err := crewOfflineAppOwner(r, t, agent, b); err != nil {
+		return err
+	}
+	a := t.Agents[agent]
+	wanted, err := crewOfflineAppWanted(t, a)
+	if err != nil || !wanted {
+		return fmt.Errorf("source app copy not requested")
+	}
+	return nil
+}
+
+// Ownership/pair proof is independent of whether online intent exists yet.
+func crewOfflineAppOwner(r *http.Request, t crewTeam, agent string, b crewOfflineBinding) error {
 	claims := GetUserFromContext(r.Context())
 	a, ok := t.Agents[agent]
 	// The normal desktop sign-in + current exact Mac pair can speak for its
@@ -28,10 +41,6 @@ func crewOfflineRequestSource(r *http.Request, t crewTeam, agent string, b crewO
 	sent := r.Header.Get(crewMacPairHeader)
 	if !paired || sent == "" || subtle.ConstantTimeCompare([]byte(pair), []byte(sent)) != 1 {
 		return fmt.Errorf("source app pair changed")
-	}
-	wanted, err := crewOfflineAppWanted(t, a)
-	if err != nil || !wanted {
-		return fmt.Errorf("source app copy not requested")
 	}
 	return nil
 }

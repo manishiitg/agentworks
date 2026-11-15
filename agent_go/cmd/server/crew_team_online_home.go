@@ -31,7 +31,10 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 	defer mu.Unlock()
 	team, err := readCrewTeam(project)
 	person := GetUserIDFromContext(ctx)
-	if err != nil || !team.On || (!team.member(person) && !crewTeamHomeOwnsSetup(team, person)) || !crewTeamAccountActive(person) || team.RosterSource != "" || ownerOfCrewProjectID(project) != team.OwnerID {
+	// Team On/startup keeps its existing admission. Only an explicit owner
+	// Put online may create a solo home; discovery and asks never pass this.
+	solo := len(reason) == 1 && reason[0] == "put_online" && crewTeamOwnerReach(team, person)
+	if err != nil || !team.On && !solo || (!team.member(person) && !crewTeamHomeOwnsSetup(team, person)) || !crewTeamAccountActive(person) || team.RosterSource != "" || ownerOfCrewProjectID(project) != team.OwnerID {
 		return "", fmt.Errorf("join this Team to put work online")
 	}
 	user := "team-" + project
@@ -39,7 +42,7 @@ func (api *StreamingAPI) ensureCrewTeamOnlineHome(ctx context.Context, project s
 	if team.OnlineHome != "" && team.OnlineHome != home {
 		return "", fmt.Errorf("this Team's online home is unavailable")
 	}
-	if err := ensureCrewTeamUser(user, team.Name, !team.On); err != nil {
+	if err := ensureCrewTeamUser(user, team.Name, false); err != nil {
 		return "", err
 	}
 	projects, err := defaultProjectOwners().All()
@@ -151,12 +154,16 @@ func syncCrewTeamHomeMembersLocked(source crewTeam) error {
 	if home.OwnerID != "team-"+source.ProjectID || home.RosterSource != source.ProjectID || ownerOfCrewProjectID(home.ProjectID) != home.OwnerID {
 		return fmt.Errorf("this Team's online home is unavailable")
 	}
-	home.On = source.On
+	// Online work keeps running for its owner when sharing stops. The home's
+	// ordinary derived roster becomes owner-only; the source Team stays Off.
+	home.On = true
 	home.People = []crewTeamPerson{{UserID: source.OwnerID}}
-	for _, person := range source.People {
-		home.People = append(home.People, crewTeamPerson{UserID: person.UserID, Invited: person.Invited})
+	if source.On {
+		for _, person := range source.People {
+			home.People = append(home.People, crewTeamPerson{UserID: person.UserID, Invited: person.Invited})
+		}
 	}
-	if err := ensureCrewTeamUser(home.OwnerID, source.Name, !source.On); err != nil {
+	if err := ensureCrewTeamUser(home.OwnerID, source.Name, false); err != nil {
 		return err
 	}
 	if err := writeCrewTeamRecord(home, nil, true); err != nil {
@@ -170,7 +177,7 @@ func syncCrewTeamHomeMembersLocked(source crewTeam) error {
 			log.Printf("[TEAM_WAY] team=%s event=vault_members_failed reason=%q", source.ProjectID, err)
 		}
 	}()
-	log.Printf("[TEAM_HOME] team=%s crew=%s event=members_synced source_count=%d home_count=%d on=%t", source.ProjectID, home.ProjectID, len(source.People)+1, len(home.People), home.On)
+	log.Printf("[TEAM_HOME] team=%s crew=%s event=members_synced source_count=%d home_count=%d source_on=%t owner_only=%t", source.ProjectID, home.ProjectID, len(source.People)+1, len(home.People), source.On, !source.On)
 	return nil
 }
 
