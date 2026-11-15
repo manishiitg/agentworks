@@ -17,12 +17,32 @@ it('drops external CSS resource declarations and keeps local styling', () => {
     @keyframes frame-tilt { to { transform: rotate3d(1,1,0,14deg); opacity: .5; } }
     @font-face { font-family: untrusted; src: url(https://example.com/font.woff2); }
     @supports (display: grid) { .example { color: red; background-image: image-set("https://example.com/a" 1x); } }
+    .relative { mask: url(/private); filter: url(//example.com/filter); --relative: url(art.svg#filter); }
   `)
   expect(removed).toBe(true)
   const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
   expect(css).not.toContain('example.com')
+  expect(css).not.toContain('/private')
+  expect(css).not.toContain('art.svg')
   expect(css).toContain('border-radius: 20px')
   expect(css).toContain('color: red')
   expect(css).toContain('data:image/svg+xml;base64,PHN2Zy8+')
   for (const supported of ['perspective:', 'preserve-3d', 'backface-visibility:', 'translate3d(', 'rotate3d(', 'mask-image:', 'mix-blend-mode:', 'drop-shadow(', '@keyframes frame-tilt']) expect(css).toContain(supported)
+})
+
+// PLAT-746-1040: embedded emblem SVG filters were misread as external CSS URLs,
+// dropping the whole background and showing a false resource warning.
+it('keeps embedded SVG fragment artwork and canonicalizes encoded CSS fragments', () => {
+  const { sheet, removed } = safeAppearanceSheet(`
+    [data-app-main] { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cg%20filter='url(%23tomoeGlow)'%20mask='url(#tomoeCut)'/%3E%3C/svg%3E"); }
+    .emblem { filter: url(#tomoeGlow); mask: url('%23tomoeCut'); --fragment: url(%23another); }
+  `)
+  expect(removed).toBe(false)
+  const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
+  expect(css).toContain('data:image/svg+xml,')
+  expect(css).toContain("filter='url(%23tomoeGlow)'")
+  expect(css).toContain("mask='url(#tomoeCut)'")
+  expect(css).toContain('filter: url(#tomoeGlow)')
+  expect(css).toMatch(/url\(['"]?#tomoeCut['"]?\)/)
+  expect(css).toMatch(/url\(['"]?#another['"]?\)/)
 })
