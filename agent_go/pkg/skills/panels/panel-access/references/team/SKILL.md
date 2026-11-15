@@ -6,7 +6,7 @@ has one Python workflow, not another owner list for each task.
 
 Team dashboards run from items explicitly added to the Team's online Crew. There is no periodic read-copy snapshot from a member's computer; publishing or updating an item never reseeds the Team's live data. Use the ordinary online-item list and receive-online action, not a Mac snapshot as source or export authority.
 
-Offline agent asks use the Team's existing online Main through ordinary published-agent messaging. They do not start a one-off file-based answer, resume the maker's chat, or provision an online home. If this Team has no online agent yet, explain that the computer is offline and an item must first be added to the Team; never create a substitute or use the maker's login. Read replies from the admitted inbox returned by the ask.
+Teammates' In-team agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and In team are checked on every use. Use `messages action=ask` for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox. Never provision a substitute or use the maker's login.
 
 The first-time Team setup chooses people and their level, the chosen shared folders, and agents (Main selected initially), then
 saves with Finish. If sharing requires a dashboard, explain that before saving
@@ -34,7 +34,7 @@ rather than copying action names or old workflow-team policy fields:
   returned preview and confirmation requirement.
 - `agents` lists what teammates share. `agent_rule` changes only your own
   agent's instructions for others, change permission and chat visibility.
-  Use the offered enums; the website calls chat visibility Live (empty) or Hidden (`agent`).
+  Use the offered enums: Answers only is the private default for terminal agents; Live shares the native conversation only when the person chooses it.
 - `clashes` shows both versions when the same lines changed. Read the Crew
   builder's clash procedure before `resolve`; save the requested version or
   merge, never silently discard either person's work. Team history is private
