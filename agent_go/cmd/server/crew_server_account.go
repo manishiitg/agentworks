@@ -30,11 +30,14 @@ const (
 )
 
 func crewServerAccountPath(project, person string) (string, error) {
-	dir, err := crewStandbyPersonDir(project, person)
+	manifest, err := crewSyncManifestPath(project)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "server-account.json"), nil
+	if strings.TrimSpace(person) == "" {
+		return "", fmt.Errorf("choose your own server account")
+	}
+	return filepath.Join(filepath.Dir(manifest), "server-accounts", project, sanitizeUserIDForPath(person)+".json"), nil
 }
 
 // readCrewServerAccounts is the person's saved choice per AI program in this Crew.

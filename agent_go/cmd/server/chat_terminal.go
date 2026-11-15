@@ -113,24 +113,10 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	roots, bound, e := crewStorageRoots(c.WorkspacePath)
-	// A member owns this chat, not the Crew owner's private runtime. Reuse
-	// the existing per-member transfer admission and private staging roots.
+	// A personal terminal cannot borrow another person's private runtime.
 	if e == nil && bound && roots.Owner != user && !IsLocalMode() {
-		team, err := readCrewTeam(project)
-		if err != nil {
-			e = err
-		} else {
-			pair, onMac := team.memberMac(user)
-			if !onMac {
-				e = fmt.Errorf("this member has no synced Mac folder")
-			} else {
-				var member bool
-				roots, _, member, e = api.crewMemberTransfer(r.Context(), claims, project, pair)
-				if e == nil && !member {
-					e = fmt.Errorf("this is not your own Team runtime")
-				}
-			}
-		}
+		fail(403, "not_your_runtime", "Continue in terminal from your own Crew on your computer.")
+		return
 	}
 	if e != nil || !bound {
 		fail(409, "folder_unavailable", "Open this chat's project folder first.")
