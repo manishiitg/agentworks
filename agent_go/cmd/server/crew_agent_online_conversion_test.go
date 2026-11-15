@@ -115,6 +115,14 @@ func TestCrewOnlineConversionOwnSourceNoPrivateFilesOrNativeFallback(t *testing.
 	if _, err = crewPublishedAgent("alpha", placement.Tab); err == nil || !strings.Contains(err.Error(), "Ask") {
 		t.Fatal("retired source can resume person-slot", err)
 	}
+	resolveBody, _ := json.Marshal(map[string]string{"conversation_key": record.ConversationKey})
+	resolveReq := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/work/conversation", bytes.NewReader(resolveBody)).WithContext(ctx)
+	resolveReq = mux.SetURLVars(resolveReq, map[string]string{"id": crewProfileID})
+	resolved := httptest.NewRecorder()
+	env.api.handleResolveAgentProfileConversation(resolved, resolveReq)
+	if resolved.Code != http.StatusUnprocessableEntity || !strings.Contains(resolved.Body.String(), "Ask") {
+		t.Fatalf("retired /conversation resolved native target: %d %s", resolved.Code, resolved.Body.String())
+	}
 	if data, err := os.ReadFile(filepath.Join(scoped.Files, "private.txt")); err != nil || string(data) != "not shared" {
 		t.Fatal("selected files lost", err)
 	}
