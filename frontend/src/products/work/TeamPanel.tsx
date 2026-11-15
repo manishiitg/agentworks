@@ -47,7 +47,14 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
   const [seen, setSeen] = useRemembered(scope, 'seen')
   const agentsOpen = agentsChoice === 'open', activityOpen = activityChoice === 'open'
   const ordered = [...agents.filter(row => row.team_agent), ...agents.filter(row => !row.team_agent && !row.mine)]
-  const visible = ordered
+  const [moreOpen, setMoreOpen] = useState(false)
+  // This secondary list is deliberately not remembered: each visit starts
+  // with the Team agent and current working agents only.
+  useEffect(() => { setMoreOpen(false) }, [scope, agentsOpen])
+  const working = (row: TeamPanelAgent) => row.activity === 'running' || row.activity === 'waiting'
+  const primary = ordered.filter(row => row.team_agent || working(row))
+  const rest = ordered.filter(row => !row.team_agent && !working(row)).sort((a, b) => Number(b.online) - Number(a.online))
+  const visible = moreOpen ? [...primary, ...rest] : primary
   const hasTeamAgent = ordered.some(row => row.team_agent)
   const offlineLine = (row: TeamPanelAgent) => !row.online && !row.mine && !row.team_agent ? hasTeamAgent ? 'Offline · new asks go to the Team agent' : 'Offline · no Team agent available' : ''
   const latest = [...posts].filter(post => post.kind === 'doing' || post.kind === 'decision').sort((a, b) => time(b.at) - time(a.at))
@@ -63,7 +70,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
     <ChevronRight aria-hidden="true" className={`ml-auto h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
   </button>
   return <div aria-label="Team agents and activity" className="space-y-0.5">
-    {summary('Agents', agentsOpen, `${ordered.length} · ${ordered.filter(row => row.online).length} online`, ordered.slice(0, 2).map(row => row.name).join(', '), () => setAgentsChoice(agentsOpen ? '' : 'open'))}
+    {summary('Agents', agentsOpen, `${ordered.length} · ${ordered.filter(working).length} working`, ordered.slice(0, 2).map(row => row.name).join(', '), () => setAgentsChoice(agentsOpen ? '' : 'open'))}
     {agentsOpen && <div role="group" aria-label="Team agents" className="space-y-0.5">
       {visible.map(row => <button key={row.id} type="button" onClick={() => onAsk(row)} className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium"><Avatar {...row} name={row.team_agent ? row.name : row.person} className="h-full w-full text-[10px]" /><span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
@@ -74,6 +81,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
           {row.last_message && <span className="block truncate text-[11px] text-muted-foreground">{row.typing ? <span className="text-emerald-600 dark:text-emerald-400">typing… </span> : age(row.last_message_at) ? <span>{age(row.last_message_at)} · </span> : null}{row.last_message}</span>}
         </span>
       </button>)}
+      {rest.length > 0 && <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)} className="w-full rounded px-1 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{moreOpen ? 'Show fewer agents' : `+ ${rest.length} more agents`}</button>}
       {!ordered.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No agents shared with the team yet.</p>}
     </div>}
     {summary('Shared by you', sharedOpen, `${shared.length}`, shared.slice(0, 2).map(row => row.name).join(', ') || 'None yet', () => setSharedChoice(sharedOpen ? '' : 'open'))}
