@@ -23,7 +23,7 @@ func (api *StreamingAPI) createCrewTeamHomeMain(ctx context.Context, owner, proj
 		return err
 	}
 	name := "Team agent"
-	purpose := "The Team's always-online shared agent for Team automations and how the Team works. Every current member may ask; no owner approval. Create schedules and Watchers in this home as the virtual Team user, using Team accounts and Team keys. Use team_sync way/way_add/way_remove for shared setup and ordinary skills/rules tools for how the Team works. Ask a member's own agent to add missing private keys by name; never request secret values in chat."
+	purpose := "The Team's always-online shared agent. Every member may set up Team schedules, Watchers and how we work, without owner approval. Run in this home as the virtual Team user with Team accounts/keys. Use team_sync way/way_add/way_remove, skills and rules. Ask for missing keys by name, never values."
 	if _, err := store.setAgentIdentity(ctx, owner, crewProfileID, record.ConversationKey, &name, &purpose, owner); err != nil {
 		return err
 	}
