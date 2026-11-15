@@ -34,6 +34,7 @@ var (
 // noteWorkspaceMutation records a workspace write or delete made by this
 // server. Only workflow.json files and folder removals affect the index.
 func noteWorkspaceMutation(filePath string, folder bool) {
+	invalidateHotDocuments(filePath, folder)
 	publishCrewPanelPathChanged(filePath)
 	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(filePath)), "/")
 	if liveFeedReportPath(clean) {
