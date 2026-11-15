@@ -37,7 +37,8 @@ it('loads the schedule list without waiting for config or building an unopened c
     expect(refresh).not.toHaveBeenCalled()
     expect(expandCronForMonth).not.toHaveBeenCalled()
     await act(async () => state.setActiveView('calendar'))
-    expect(expandCronForMonth).toHaveBeenCalledTimes(3)
+    // Two visible timers, three months each, only after opening Calendar.
+    expect(expandCronForMonth).toHaveBeenCalledTimes(6)
     // A project scope without a path must not accidentally request all projects.
     scoped = true
     await act(async () => root.render(<Probe />))
