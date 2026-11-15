@@ -1,8 +1,10 @@
+import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 
 /** Rows are admitted and their message lines filtered by the server, not by this view. */
-export type TeamPanelAgent = {
+export type TeamPanelAgent = AvatarFields & {
+ connection?: string
   id: string; name: string; person: string; mine: boolean; team_agent?: boolean
   cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
   online: boolean; place: string; activity?: string
@@ -55,7 +57,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
     {summary('Agents', agentsOpen, `${ordered.length} · ${ordered.filter(row => row.online).length} online`, ordered.slice(0, 2).map(row => row.name).join(', '), () => setAgentsChoice(agentsOpen ? '' : 'open'))}
     {agentsOpen && <div role="group" aria-label="Team agents" className="space-y-0.5">
       {visible.map(row => <button key={row.id} type="button" onClick={() => onAsk(row)} className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium">{(row.team_agent ? row.name : row.person).slice(0, 1).toUpperCase()}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
+        <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium"><Avatar {...row} name={row.team_agent ? row.name : row.person} className="h-full w-full text-[10px]" /><span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1"><span className="min-w-0 flex-1 truncate text-xs font-medium">{row.name}</span><span className={`shrink-0 text-[10px] ${row.activity === 'running' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{row.activity === 'running' ? 'Working' : row.activity === 'waiting' ? 'Waiting' : !row.online ? 'Offline' : ''}</span></span>
           <span title={agentLine(row)} className="block truncate text-[10px] text-muted-foreground">{agentLine(row)}</span>

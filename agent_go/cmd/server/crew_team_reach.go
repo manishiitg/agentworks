@@ -15,6 +15,7 @@ import (
 // 15 Nov: In team is an AgentBridge audience, the owner plus the Team's current members). The same rows feed bridge
 // discovery, message admission and the right panel's Agents list, so they cannot disagree.
 type crewTeamReachableAgent struct {
+	userAvatarFields
 	Team     string `json:"team_project_id"`
 	TeamName string `json:"team_name"`
 	ID       string `json:"agent_id"`
@@ -98,7 +99,7 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 				online = namedAgentOnline(named)
 				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
 			}
-			out = append(out, crewTeamReachableAgent{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
+			out = append(out, crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
 				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: address})
 		}
 	}

@@ -2548,6 +2548,9 @@ export interface AuthUser {
 
 /** One account as the admin page sees it (never the password hash). */
 export interface AdminUser {
+  avatar_url?: string
+  avatar_icon?: string
+  avatar_color?: string
   id: string
   username: string
   email?: string
