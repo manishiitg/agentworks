@@ -84,7 +84,7 @@ it('selects agent-saved themes and restores Default without deleting presets', a
   await act(async()=>warmButton.click())
   expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'apply',theme:warm,replace:true},{skipSessionContext:true})
   await click('Try Neon Orbit')
-  expect(useAppearanceStore.getState().current.css).toContain('--aw-background: neon-orbit')
+  expect(useAppearanceStore.getState().current.scene).toBe('neon-orbit')
   expect(useAppearanceStore.getState().saved.some(theme=>theme.name==='Warm')).toBe(true)
 })
 

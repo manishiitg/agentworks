@@ -67,6 +67,27 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 			t.Fatalf("invalid body accepted: %s %d", body, got.Code)
 		}
 	}
+	// Scene and materials are validated like the other fields: a still background may blur, a moving one may not.
+	still := invoke("owner", `{"operation":"apply","replace":true,"theme":{"name":"Frosted","scene":"none","materials":{"sidebar":{"opacity":0.8,"blur":12},"page":{"opacity":1}}}}`)
+	if json.Unmarshal(still.Body.Bytes(), &doc) != nil || still.Code != 200 || doc.Current.Scene != "none" || doc.Current.Materials["sidebar"].Blur == nil || *doc.Current.Materials["sidebar"].Blur != 12 {
+		t.Fatalf("scene/material theme refused: %d %s", still.Code, still.Body.String())
+	}
+	moving := invoke("owner", `{"operation":"apply","replace":true,"theme":{"name":"Orbit","scene":"deep-space","materials":{"sidebar":{"opacity":0.9}}}}`)
+	if json.Unmarshal(moving.Body.Bytes(), &doc) != nil || moving.Code != 200 || doc.Current.Scene != "deep-space" {
+		t.Fatalf("scene theme refused: %d %s", moving.Code, moving.Body.String())
+	}
+	for _, body := range []string{
+		`{"operation":"apply","theme":{"scene":"galaxy"}}`,
+		`{"operation":"apply","theme":{"materials":{"sidebar":{"opacity":1.5}}}}`,
+		`{"operation":"apply","theme":{"materials":{"hero":{"opacity":0.5}}}}`,
+		`{"operation":"apply","theme":{"scene":"none","materials":{"page":{"blur":4}}}}`,
+		`{"operation":"apply","theme":{"scene":"neon-orbit","materials":{"composer":{"blur":8}}}}`,
+		`{"operation":"apply","theme":{"materials":{"panel":{"blur":40}}}}`,
+	} {
+		if got := invoke("owner", body); got.Code != 400 {
+			t.Fatalf("invalid scene or material accepted: %s %d", body, got.Code)
+		}
+	}
 	if got := invoke("", `{"operation":"read"}`); got.Code != 401 {
 		t.Fatal("anonymous appearance allowed")
 	}

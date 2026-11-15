@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -25,6 +26,16 @@ type appearanceTheme struct {
 	CodeSize      int                          `json:"code_size"`
 	Colors        map[string]map[string]string `json:"colors"`
 	CSS           string                       `json:"css"`
+	// Scene is the shipped background (dark mode only); Materials set how see-through the app's surfaces are. Both
+	// reach the screen as the same --aw-* values custom CSS could set, so a theme saved before they existed still works.
+	Scene     string                        `json:"scene"`
+	Materials map[string]appearanceMaterial `json:"materials"`
+}
+
+// appearanceMaterial is one surface's see-through level (0 to 1) and, for panels over a still background, a blur in px.
+type appearanceMaterial struct {
+	Opacity *float64 `json:"opacity,omitempty"`
+	Blur    *int     `json:"blur,omitempty"`
 }
 type appearanceDocument struct {
 	Current appearanceTheme   `json:"current"`
@@ -39,10 +50,14 @@ type appearanceRequest struct {
 
 var appearanceMu sync.Mutex
 var appearanceHex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+var appearanceScenes = []string{"none", "neon-orbit", "deep-space"}
+
+// appearanceSurfaces are the app surfaces with a material; the page has an opacity only (it has no backdrop).
+var appearanceSurfaces = []string{"page", "panel", "popover", "sidebar", "composer"}
 var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar"}
 
 func defaultAppearanceTheme() appearanceTheme {
-	return appearanceTheme{Name: "Default", Mode: "dark", InterfaceFont: "system", CodeFont: "system-mono", InterfaceSize: 14, CodeSize: 12, Colors: map[string]map[string]string{}, CSS: ""}
+	return appearanceTheme{Name: "Default", Mode: "dark", InterfaceFont: "system", CodeFont: "system-mono", InterfaceSize: 14, CodeSize: 12, Colors: map[string]map[string]string{}, CSS: "", Scene: "none", Materials: map[string]appearanceMaterial{}}
 }
 func validAppearanceTheme(t appearanceTheme) error {
 	if len(strings.TrimSpace(t.Name)) == 0 || len(t.Name) > 60 {
@@ -60,6 +75,28 @@ func validAppearanceTheme(t appearanceTheme) error {
 	}
 	if len(t.CSS) > 20000 {
 		return errors.New("Custom CSS must be at most 20,000 bytes.")
+	}
+	if !slices.Contains(appearanceScenes, t.Scene) {
+		return errors.New("Choose a scene: none, neon-orbit or deep-space.")
+	}
+	for surface, material := range t.Materials {
+		if !slices.Contains(appearanceSurfaces, surface) {
+			return fmt.Errorf("Choose a surface from page, panel, popover, sidebar or composer: %s", surface)
+		}
+		if material.Opacity != nil && (*material.Opacity < 0 || *material.Opacity > 1) {
+			return fmt.Errorf("Opacity for %s must be between 0 and 1.", surface)
+		}
+		if material.Blur != nil && (*material.Blur < 0 || *material.Blur > 24) {
+			return fmt.Errorf("Blur for %s must be between 0 and 24 px.", surface)
+		}
+		if material.Blur != nil && *material.Blur > 0 {
+			if surface == "page" {
+				return errors.New("The page has an opacity only; blur belongs to panel, popover, sidebar or composer.")
+			}
+			if t.Scene != "none" {
+				return errors.New("Blur is only for a still background: over a moving scene it is recomputed on every frame. Use scene none, or leave blur at 0 and raise opacity.")
+			}
+		}
 	}
 	if t.Colors == nil {
 		return errors.New("Use a colours object, not null.")
@@ -108,6 +145,9 @@ func patchAppearanceTheme(current appearanceTheme, patch map[string]any) (appear
 	if decoder.Decode(&out) != nil {
 		return out, errors.New("Use the offered theme fields.")
 	}
+	if out.Scene == "" {
+		out.Scene = "none"
+	}
 	return out, validAppearanceTheme(out)
 }
 func appearanceGuide() map[string]any {
@@ -115,8 +155,13 @@ func appearanceGuide() map[string]any {
 		"fonts":        []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"code_fonts":   []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
 		"colour_roles": appearanceRoles,
+		"scenes":       appearanceScenes,
+		"material_surfaces": map[string]string{
+			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
+			"sidebar": "opacity 0-1, blur 0-24 px", "composer": "opacity 0-1, blur 0-24 px",
+		},
 		"hooks":        []string{"[data-app-main]", "[data-theme-surface]", "[data-theme-agent-state]", "[data-theme-agent-selected]", "[data-theme-team-working]", "[data-theme-team-waiting]", "[data-theme-tool-state]", "[data-theme-tools-running]", "[data-theme-turn-live]", "nav[aria-label=\"Workspace navigation\"]", "[data-chat-find-scope]", ".conversation-markdown", "[data-testid=\"transcript-user-bubble\"]", "[data-chat-composer-card]", "[data-product-settings]", "[role=\"menu\"]", "[role=\"dialog\"]"},
-		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Background-only material CSS: --aw-panel-opacity, --aw-popover-opacity, --aw-sidebar-opacity, --aw-composer-opacity (0 to 1; default 1) and matching --aw-<surface>-backdrop (none or blur). Never fade the whole element or its text. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
+		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Background: set scene (none, neon-orbit or deep-space; dark mode only; the others animate only while agents work). Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, only with scene none, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours, a scene or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over a moving scene, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
@@ -144,6 +189,15 @@ func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, requ
 	if err != nil || (exists && json.Unmarshal([]byte(raw), &doc) != nil) {
 		http.Error(w, "Could not read your appearance. Try again.", 503)
 		return
+	}
+	// A theme saved before scenes existed has no scene: it means none.
+	if doc.Current.Scene == "" {
+		doc.Current.Scene = "none"
+	}
+	for i := range doc.Saved {
+		if doc.Saved[i].Scene == "" {
+			doc.Saved[i].Scene = "none"
+		}
 	}
 	switch request.Operation {
 	case "apply", "save":
@@ -221,9 +275,9 @@ func (api *StreamingAPI) handleAppearance(w http.ResponseWriter, r *http.Request
 	api.appearance(w, r, request)
 }
 func appearanceToolDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("appearance", "Read and change your own app theme, fonts and custom CSS. Read first for current, saved and guide. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
+	add("appearance", "Read and change your own app theme: colours, fonts, background scene, surface see-through (materials) and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
 		"operation": map[string]any{"type": "string", "enum": []any{"read", "apply", "save", "delete", "reset"}},
-		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read. Colours are nested under colors.light/colors.dark. CSS max20k bytes. Unspecified fields stay as saved."},
+		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read. Colours are nested under colors.light/colors.dark; scene is none, neon-orbit or deep-space; materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (blur only with scene none). CSS max20k bytes. Unspecified fields stay as saved."},
 		"replace":   map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
 		"name":      externalString("Preset name for save/delete; up to60 characters."),
 	})

@@ -31,3 +31,14 @@ it('admits only shipped dark scenes and clears them for Light', () => {
   expect(backgroundScene('deep-space', 'light')).toBe('none')
   expect(backgroundScene('url(https://example.com/script)', 'dark')).toBe('none')
 })
+
+// The server's scene and materials reach the screen as the same --aw-* values custom CSS could set.
+it('turns the saved scene and surface materials into the --aw tokens', () => {
+  const theme = defaultAppearance()
+  expect(appearanceTokens(theme, 'dark')['--aw-background']).toBeUndefined()
+  theme.scene = 'deep-space'
+  theme.materials = { sidebar: { opacity: 0.85 }, panel: { opacity: 0.9, blur: 12 }, composer: { blur: 0 } }
+  const tokens = appearanceTokens(theme, 'dark')
+  expect([tokens['--aw-background'], tokens['--aw-sidebar-opacity'], tokens['--aw-panel-opacity'], tokens['--aw-panel-backdrop'], tokens['--aw-composer-backdrop']])
+    .toEqual(['deep-space', '0.85', '0.9', 'blur(12px)', 'none'])
+})

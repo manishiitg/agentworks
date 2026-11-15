@@ -37,6 +37,12 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
     for (const token of ROLE_TOKENS[role]) tokens[token] = hexToHsl(hex)
   }
   if (colors.accent) tokens['--primary-foreground'] = hexToHsl(actionForeground(colors.accent))
+  // The scene and materials are the same values custom CSS may set (--aw-*), so one path styles both.
+  if (theme.scene && theme.scene !== 'none') tokens['--aw-background'] = theme.scene
+  for (const [surface, material] of Object.entries(theme.materials ?? {})) {
+    if (typeof material.opacity === 'number') tokens[`--aw-${surface}-opacity`] = String(material.opacity)
+    if (typeof material.blur === 'number') tokens[`--aw-${surface}-backdrop`] = material.blur > 0 ? `blur(${material.blur}px)` : 'none'
+  }
   return tokens
 }
 
