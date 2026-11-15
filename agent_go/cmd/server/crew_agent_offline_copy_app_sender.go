@@ -52,7 +52,7 @@ func (api *StreamingAPI) queueCrewOfflineAppTurn(user, session, workspace string
 			err := api.syncCrewOfflineAppTurn(ctx, user, session, workspace)
 			cancel()
 			if err != nil {
-				log.Printf("[AGENT_OFFLINE_COPY] session=%s event=refused reason=app_sync_failed", session)
+				log.Printf("[AGENT_OFFLINE_COPY] session=%s event=refused reason=source_sync_failed", session)
 			}
 			crewOfflineAppJobs.Lock()
 			if !job.again {
