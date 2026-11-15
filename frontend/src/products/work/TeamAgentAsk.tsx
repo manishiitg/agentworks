@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { teamAgentFor, useTeamTab, type TeamTarget } from './teamApi'
 
 type Reply = { message_id:string; message:string; sender?:string }
@@ -71,11 +72,21 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
 /** Docked under the existing teammate history (or its private notice). */
 export function TeamAgentAsk({tabId}:{tabId:string}) {
  const tab=useChatStore(state=>state.chatTabs[tabId])
- const watching=tab?.metadata?.agentProfileTabCanWrite===false
+ const onlineCopy=tab?.metadata?.agentProfileChatLocation==='online_copy'
+ const viewer=useAuthStore(state=>state.user?.id)
+ const watching=!onlineCopy&&tab?.metadata?.agentProfileTabCanWrite===false
  const team=useTeamTab(watching?tab?.metadata?.agentProfileProjectId:undefined)
  const agent=watching?teamAgentFor(team.view?.agents,tab?.metadata?.agentProfileConversationKey):undefined
  const recipient=team.view?.reachable?.find(row=>row.agent_id===agent?.id)
  const scope=`${captureChatIdentity()}:${team.target?.connection}:${team.target?.project}:${recipient?.address}`
+ if(onlineCopy) {
+  const project=tab?.metadata?.agentProfileProjectId
+  const address=tab?.metadata?.agentProfileOnlineCopyAddress
+  const own=!!viewer&&tab?.metadata?.agentProfileTabOwnerID===viewer
+  return <AgentAskThread target={project?{project}:undefined} address={address} label={`Ask ${tab?.name||'this agent'}`} sender={tab?.name} scope={`${captureChatIdentity()}:${project}:${address}`} enabled={own&&!!project&&!!address}>
+   <p className="mt-1 text-xs text-muted-foreground">Ask through AgentBridge. Replies stay here.</p>
+  </AgentAskThread>
+ }
  if(!watching||(!agent&&team.view)) return null
  const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'your teammate')
  const askLabel=`Ask ${person}'s ${agent?.name||'agent'}`
