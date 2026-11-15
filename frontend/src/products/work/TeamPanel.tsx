@@ -63,6 +63,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
   // While reading Activity, newly arrived posts are read too. This stores only a
   // timestamp, never Team content. A closed group does not consume new posts.
   useEffect(() => { if (activityOpen && newest && time(newest) > time(seen)) setSeen(newest) }, [activityOpen, newest, seen, scope]) // eslint-disable-line react-hooks/exhaustive-deps
+  const groupClass = 'max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain space-y-0.5'
   const summaryClass = 'flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const summary = (name: string, open: boolean, count: string, peek: string, toggle: () => void) => <button type="button" aria-expanded={open} onClick={toggle} className={summaryClass}>
     <span className="font-medium">{name}</span><span className="shrink-0 text-[10px]">{count}</span>
@@ -71,7 +72,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
   </button>
   return <div aria-label="Team agents and activity" className="space-y-0.5">
     {summary('Agents', agentsOpen, `${ordered.length} · ${ordered.filter(working).length} working`, ordered.slice(0, 2).map(row => row.name).join(', '), () => setAgentsChoice(agentsOpen ? '' : 'open'))}
-    {agentsOpen && <div role="group" aria-label="Team agents" className="space-y-0.5">
+    {agentsOpen && <div role="group" aria-label="Team agents" className={groupClass}>
       {visible.map(row => <button key={row.id} type="button" onClick={() => onAsk(row)} className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium"><Avatar {...row} name={row.team_agent ? row.name : row.person} className="h-full w-full text-[10px]" /><span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
         <span className="min-w-0 flex-1">
@@ -85,7 +86,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
       {!ordered.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No agents shared with the team yet.</p>}
     </div>}
     {summary('Shared by you', sharedOpen, `${shared.length}`, shared.slice(0, 2).map(row => row.name).join(', ') || 'None yet', () => setSharedChoice(sharedOpen ? '' : 'open'))}
-    {sharedOpen && <div role="group" aria-label="Shared by you" className="space-y-0.5">
+    {sharedOpen && <div role="group" aria-label="Shared by you" className={groupClass}>
       {shared.map(row => <button key={row.key} type="button" title={sharedLine(row)} onClick={() => onShared?.(row)} className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span aria-hidden="true" className="relative inline-flex shrink-0"><Users className={`h-3 w-3 ${row.canChange ? 'text-primary' : 'text-muted-foreground'}`} />{row.canChange && <Pencil className="absolute -bottom-1 -right-1 h-2 w-2 text-primary" />}</span>
         <span className="min-w-0 flex-1 truncate text-xs">{row.name}</span>
@@ -94,7 +95,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
       {!shared.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">None of your agents is shared with the team.</p>}
     </div>}
     {summary('Artifacts', artifactsOpen, `· ${artifacts.length} on the Team`, '', () => setArtifactsChoice(artifactsOpen ? '' : 'open'))}
-    {artifactsOpen && <div role="group" aria-label="Team artifacts">
+    {artifactsOpen && <div role="group" aria-label="Team artifacts" className={groupClass}>
       {artifacts.map(row => <button key={row.id} type="button" onClick={() => onArtifact?.(row.id)} className="block w-full rounded px-1 py-1.5 text-left hover:bg-background/40 focus-visible:ring-2 focus-visible:ring-ring">
         <span className="block truncate text-xs font-medium">{row.title}</span>
         <span className="block truncate text-[10px] text-muted-foreground">{row.kind}{row.addedBy ? ` · Added by ${row.addedBy}` : ''}</span>
@@ -102,7 +103,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
       {!artifacts.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No artifacts on the Team yet.</p>}
     </div>}
     {summary('Activity', activityOpen, `${newCount} new`, latest[0] ? `${latest[0].agent}: ${latest[0].line}` : 'No recent posts', () => setActivityChoice(activityOpen ? '' : 'open'))}
-    {activityOpen && <div role="group" aria-label="Recent Team activity">
+    {activityOpen && <div role="group" aria-label="Recent Team activity" className={groupClass}>
       {latest.slice(0, 2).map(post => <div key={post.id} className="flex items-start gap-2 px-1 py-1.5 text-[11px]">
         <span aria-hidden="true" className={`mt-1.5 h-1.5 w-1.5 shrink-0 ${post.kind === 'decision' ? 'rotate-45 bg-blue-500' : 'rounded-full bg-emerald-500'}`} />
         <span className="min-w-0"><span className="block truncate font-medium">{post.person}&apos;s {post.agent}{post.kind === 'decision' ? ' decided' : ''}</span><span className="block break-words text-muted-foreground">{post.line}</span></span>

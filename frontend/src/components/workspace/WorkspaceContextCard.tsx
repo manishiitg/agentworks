@@ -13,9 +13,13 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
           {title && <h2 className="text-sm font-semibold text-foreground">{onBack ? <button type="button" aria-label="Back to workspace" title="Back to workspace" onClick={onBack} className="inline-flex min-h-8 items-center gap-2 rounded hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft aria-hidden="true" className="h-3.5 w-3.5"/>{title}</button> : title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
-        <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
+        <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">
+          {children}
+          {/* Team groups belong to the scrollable body, not a shrink-0 footer
+              that can grow past the panel and clip its final rows. */}
+          {footerContent && <div className="border-t border-border pt-3">{footerContent}</div>}
+        </div>
         <footer className="shrink-0 border-t border-border pt-3">
-        {footerContent && <div className="mb-2">{footerContent}</div>}
         <div className="flex items-center gap-3">
         <button
           type="button"
