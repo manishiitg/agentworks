@@ -1475,7 +1475,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			s.WorkspaceDir = in.WorkspaceDir
 			changed = true
 		}
-		if (in.Activity == "busy" || in.Activity == "idle" || in.Activity == "unknown") && in.Activity != s.Activity {
+		// Tool hooks keep an active turn fresh, at most once a minute. A lost
+		// Stop is bounded by the server's ten-minute working-state cutoff.
+		refreshBusy := in.Activity == "busy" && time.Since(s.ActivityAt) >= time.Minute
+		if (in.Activity == "busy" || in.Activity == "idle" || in.Activity == "unknown") && (in.Activity != s.Activity || refreshBusy) {
 			s.Activity, s.ActivityAt = in.Activity, time.Now().UTC()
 			changed = true
 			// Publish the hook transition now, not at the next housekeeping tick.
