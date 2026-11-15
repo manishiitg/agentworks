@@ -13,7 +13,7 @@ import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, typ
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
-  if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error')
+  if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open one of your agents in this Crew, then ask from there.', 'error')
 }
 
 /**
@@ -68,7 +68,8 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
   const [terminal, setTerminal] = useState<{ id: string; name: string }>()
   const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
-    {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents</p>}
+    {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
+      {page.agents_setup_ask && <button type="button" onClick={() => toMain(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
     {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
     {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
     {/* Actions run only on the hosting server; its reply decides visibility. */}
@@ -128,7 +129,8 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
     <div className="flex items-center gap-2.5">
       <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"><Bot className="h-3.5 w-3.5" /></span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{agent.name}</span>
+        <span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{agent.name}</span>
+          {ask?.setup_ask && <button type="button" onClick={() => toMain(projectId, ask.setup_ask || '')} className="shrink-0 text-[11px] text-primary hover:underline">✦ Ask AI to configure</button>}</span>
         {agent.line && <span title={agent.hint || undefined} className="block truncate text-xs text-muted-foreground">{agent.line}</span>}
       </span>
       {ask && <span title={ask.fixed || undefined} className="inline-flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
@@ -160,10 +162,16 @@ function ShareAgentCard({ agent, target, projectId }: { agent: CrewShareAgent; t
             <Saving on={pending === 'who'}>{null}</Saving>
           </span>
           {row.audience === 'chosen' && <><span />
-            <span role="group" aria-label="Chosen people" className="flex flex-wrap gap-1.5">
-              {members.length === 0 && <span className="text-xs text-muted-foreground">Nobody else is on the Team yet.</span>}
-              {members.map(person => <label key={person.user_id} className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${picked.includes(person.user_id) ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground'}`}>
-                <input type="checkbox" className="sr-only" checked={picked.includes(person.user_id)} disabled={busy || !ask.on} onChange={() => togglePerson(person.user_id)} />{person.name}</label>)}
+            <span role="group" aria-label="Chosen people" className="flex flex-wrap items-center gap-1.5">
+              {(row.chosen_people || []).map(person => <span key={person.user_id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs">{person.name}
+                <button type="button" aria-label={`Remove ${person.name}`} disabled={busy || !ask.on} onClick={() => togglePerson(person.user_id)} className="text-muted-foreground hover:text-foreground">✕</button></span>)}
+              {members.some(person => !picked.includes(person.user_id))
+                ? <select aria-label="Add person" value="" disabled={busy || !ask.on} onChange={event => { if (event.target.value) togglePerson(event.target.value) }}
+                    className="rounded-full border border-dashed border-border bg-transparent px-2 py-0.5 text-xs text-primary">
+                    <option value="">+ Add person</option>
+                    {members.filter(person => !picked.includes(person.user_id)).map(person => <option key={person.user_id} value={person.user_id}>{person.name}</option>)}
+                  </select>
+                : members.length === 0 && <span className="text-xs text-muted-foreground">Nobody else is on the Team yet.</span>}
             </span>
           </>}
         </>}

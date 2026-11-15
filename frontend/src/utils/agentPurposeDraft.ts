@@ -48,10 +48,21 @@ export function sendToTab(tabId: string, prompt: string): boolean {
 /** The viewer's own Main opens with the words in its chat box, not sent (the Share tree's Ask, written by the server).
  * False when their Main's tab is not open. */
 export function fillMainDraft(projectId: string, prompt: string): boolean {
-  const main = ownMainTab(projectId)
+  const main = ownMainTab(projectId) || ownWritableTabs(projectId)[0]
   if (!main) return false
   fillDraft(main.tabId, prompt)
   return true
+}
+
+/** The person's own writable agent tabs in this Crew, most recently used first (never a teammate's or watched tab). */
+function ownWritableTabs(projectId: string) {
+  const viewer = useAuthStore.getState().user?.id
+  if (!viewer) return []
+  return Object.values(useChatStore.getState().chatTabs).filter(tab => {
+    const meta = tab.metadata
+    return meta?.agentProfileProjectId === projectId && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && meta.agentProfileBuilder !== false
+      && (!meta.agentProfileTabOwnerID || meta.agentProfileTabOwnerID === viewer)
+  }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
 }
 
 /** Use the existing agent-mediated Ask until a dedicated recipient chat exists.
@@ -59,13 +70,7 @@ export function fillMainDraft(projectId: string, prompt: string): boolean {
  * accessed writable agent in this Crew. Never use a teammate's or watched tab.
  * Opening only drafts the exact recipient; sending remains the person's choice. */
 export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, address?: string): boolean {
-  const viewer = useAuthStore.getState().user?.id
-  if (!viewer) return false
-  const own = Object.values(useChatStore.getState().chatTabs).filter(tab => {
-    const meta = tab.metadata
-    return meta?.agentProfileProjectId === projectId && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && meta.agentProfileBuilder !== false
-      && (!meta.agentProfileTabOwnerID || meta.agentProfileTabOwnerID === viewer)
-  }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
+  const own = ownWritableTabs(projectId)
   const sender = own.find(tab => tab.metadata?.agentProfileIsMainChat) || own[0]
   if (!sender) return false
   const owner = ownerShortName(ownerName) || 'their'
