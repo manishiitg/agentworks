@@ -1,0 +1,45 @@
+// @vitest-environment happy-dom
+import React, {act} from 'react'
+import {createRoot} from 'react-dom/client'
+import {afterEach,expect,it,vi} from 'vitest'
+import {TeamSetups,type TeamSetupList} from './TeamSetups'
+import {teamRequest} from './teamApi'
+vi.mock('./teamApi',()=>({teamRequest:vi.fn()}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(()=>true)}))
+vi.mock('../../stores/useChatStore',()=>({useChatStore:{getState:()=>({addToast:vi.fn()})}}))
+Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
+const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+const list:TeamSetupList={to_do:1,setups:[{id:'setup',title:'Example setup',revision:3,instruction_revision:9,instructions_available:true,done:1,total:2,people:[{person_id:'other',name:'Colleague',done:2,total:2}]}]}
+const detail={...list.setups[0],instructions:'Use the shared instructions.',shared_by:'Colleague',items:[{id:'one',label:'Installed'},{id:'two',label:'Checked'}],my_items:{one:true},key_status:[{name:'EXAMPLE_KEY',state:'unavailable'}]}
+const flush=async()=>{await Promise.resolve();await Promise.resolve()}
+async function click(label:string){const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.includes(label));expect(button).toBeTruthy();await act(async()=>{button!.click();await flush()})}
+afterEach(async()=>{await act(async()=>root.render(null));vi.resetAllMocks()})
+it('uses batch counts, never lets a person tick progress, and applies only a server-listed connected own target with retry dedupe',async()=>{
+ const request=vi.mocked(teamRequest)
+ request.mockImplementation(async(_target,suffix,_method,body)=>{
+  if(suffix?.includes('?'))return detail
+  if((body as {action?:string})?.action==='setup_targets')return {agents:[{id:'own',name:'Own agent',online:true},{id:'off',name:'Offline agent',online:false}]}
+  throw new Error('Delivery uncertain; try again')
+ })
+ await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
+ expect(request).not.toHaveBeenCalled() // No per-row requests and no timer.
+ expect(host.textContent).toContain('you: 1 of 2');expect(host.textContent).toContain('Colleague: done')
+ await click('Example setup')
+ expect(host.querySelector('input[type="checkbox"]')).toBeNull()
+ expect(host.textContent).toContain('Unknown');expect(host.textContent).not.toContain('Missing')
+ expect(host.querySelector('select')?.textContent).not.toContain('Offline agent')
+ await click('Apply with my agent');await click('Apply with my agent')
+ const calls=request.mock.calls.filter(call=>(call[3] as {action?:string})?.action==='setup_apply')
+ expect(calls).toHaveLength(2)
+ expect(calls[0][3]).toEqual(calls[1][3])
+ expect(calls[0][3]).toMatchObject({target_agent_id:'own',setup_revision:3,instruction_revision:9})
+ expect(request.mock.calls.some(call=>(call[3] as {action?:string})?.action==='setup_checklist')).toBe(false)
+})
+it('ignores a late detail after leaving the setup',async()=>{
+ let resolve:(value:unknown)=>void=()=>{}
+ vi.mocked(teamRequest).mockImplementation(async(_target,suffix)=>suffix?.includes('?')?await new Promise(r=>{resolve=r}):{agents:[]})
+ await act(async()=>root.render(<TeamSetups target={{project:'crew'}} projectId="crew" list={list} refreshKey={1}/>))
+ await click('Example setup');await click('‹ Team setups')
+ await act(async()=>{resolve(detail);await flush()})
+ expect(host.textContent).not.toContain('Use the shared instructions.')
+})
