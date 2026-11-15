@@ -15,10 +15,12 @@ import (
 // it, and only the owner changes who can open an item or its public link.
 
 type crewDashboardsTabItem struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Path  string `json:"path"`
-	Kind  string `json:"kind"` // dashboard, artifact or motion
+	Workspace string                  `json:"workspace,omitempty"`
+	Online    *teamOnlineItemSelector `json:"online,omitempty"`
+	ID        string                  `json:"id"`
+	Title     string                  `json:"title"`
+	Path      string                  `json:"path"`
+	Kind      string                  `json:"kind"` // dashboard, artifact or motion
 	// Line is "Dashboard · updated 5 min ago", written here.
 	Line string `json:"line"`
 	// Who says who can open it: the Team always, and the people the owner shared the Crew with.
@@ -159,10 +161,13 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 			}
 		}
 		line := label
+		if row.Online != nil {
+			line += " · On the Team"
+		}
 		if when != "" {
 			line += " · " + when
 		}
-		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
+		item := crewDashboardsTabItem{Workspace: row.Workspace, Online: row.Online, ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
 		if !onMac && owner {
 			item.PublicLink = row.PublicLink
 		}

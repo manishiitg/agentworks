@@ -59,6 +59,13 @@ it('opens accepted Team reports on their saved server and never falls back on re
     expect(await openTeamOnlineReport('Crew/source', 'db/reports/managed/sales/index.html')).toBe(true)
     expect(open).toHaveBeenCalledWith('company', '/d/23456789ab')
     open.mockClear()
+    // Mapped rows resolve the chosen Team through its saved connection rather
+    // than loading source HTML or choosing an arbitrary Team for the source.
+    request.mockResolvedValue({ data: { found: true, short_path: '/d/23456789ab' } })
+    await openTeamOnlineReport('Crew/home', 'db/reports/managed/online-sales/index.html', () => true, undefined, { team_project_id: 'team', source_project_id: 'mac', item_kind: 'dashboard', dashboard_id: 'sales', connection: 'company' })
+    expect(request).toHaveBeenLastCalledWith('/api/connections/company/api/dashboards', expect.objectContaining({ team_project_id: 'team', source_project_id: 'mac', dashboard_id: 'sales' }))
+    expect(open).toHaveBeenCalledWith('company', '/d/23456789ab')
+    open.mockClear()
     request.mockClear()
     expect(await openTeamOnlineReport('Crew/source', `db/reports/managed/sales/${'a'.repeat(64)}/index.html`)).toBe(false)
     expect(request).not.toHaveBeenCalled() // authoring previews stay source-local
