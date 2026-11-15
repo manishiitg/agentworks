@@ -88,6 +88,36 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 			t.Fatalf("invalid scene or material accepted: %s %d", body, got.Code)
 		}
 	}
+	// PLAT-746-1040: all transports store the same validated decorative loader;
+	// arbitrary CSS/paths cannot enter its typed fields or status colours.
+	customLoader := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "theme": map[string]any{
+		"loader": map[string]any{"style": "dots", "duration_ms": 800},
+		"colors": map[string]any{"dark": map[string]any{"working": "#123456", "waiting": "#654321", "done": "#008800", "error": "#aa0000", "loader": "#abcdef"}},
+	}})
+	if customLoader.Code != 200 || !strings.Contains(customLoader.Body.String(), `"loader"`) {
+		t.Fatalf("common tool loader or summary: %d %s", customLoader.Code, customLoader.Body.String())
+	}
+	loaderRead := invoke("owner", `{"operation":"read"}`)
+	if json.Unmarshal(loaderRead.Body.Bytes(), &doc) != nil || doc.Current.Loader == nil || doc.Current.Loader.Style != "dots" || doc.Current.Loader.DurationMS == nil || *doc.Current.Loader.DurationMS != 800 || doc.Current.Colors["dark"]["error"] != "#aa0000" {
+		t.Fatalf("typed loader did not persist: %s", loaderRead.Body.String())
+	}
+	for _, body := range []string{
+		`{"operation":"apply","theme":{"loader":{"style":"url(https://example.com)"}}}`,
+		`{"operation":"apply","theme":{"loader":{"duration_ms":0}}}`,
+		`{"operation":"apply","theme":{"loader":{"duration_ms":4001}}}`,
+		`{"operation":"apply","theme":{"loader":{"duration_ms":800.5}}}`,
+		`{"operation":"apply","theme":{"loader":{"script":"example"}}}`,
+		`{"operation":"apply","theme":{"colors":{"light":{"working":"red"}}}}`,
+	} {
+		if got := invoke("owner", body); got.Code != 400 {
+			t.Fatalf("unvalidated loader: %s %d", body, got.Code)
+		}
+	}
+	clearedLoader := invoke("owner", `{"operation":"apply","theme":{"loader":null}}`)
+	doc.Current.Loader = nil
+	if clearedLoader.Code != 200 || json.Unmarshal(clearedLoader.Body.Bytes(), &doc) != nil || doc.Current.Loader != nil {
+		t.Fatal("loader did not clear")
+	}
 	if got := invoke("", `{"operation":"read"}`); got.Code != 401 {
 		t.Fatal("anonymous appearance allowed")
 	}

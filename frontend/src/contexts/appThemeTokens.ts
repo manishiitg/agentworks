@@ -10,6 +10,11 @@ const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
   border: ['--border', '--input'],
   accent: ['--primary', '--ring', '--info', '--chart-1'],
   sidebar: ['--appearance-sidebar'],
+  working: ['--info', '--working-accent'],
+  waiting: ['--warning'],
+  done: ['--success'],
+  error: ['--destructive'],
+  loader: ['--aw-loader-color'],
 }
 
 // The saved schema has no action-label colour: derive a legible one for both
@@ -32,10 +37,15 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
     '--app-code-size': `${theme.code_size}px`,
   }
   const colors = theme.colors[profile] ?? {}
-  for (const role of Object.keys(colors) as ColourRole[]) {
-    const hex = colors[role]!
+  for (const role of Object.keys(ROLE_TOKENS) as ColourRole[]) {
+    const hex = colors[role]
+    if (!hex) continue
     for (const token of ROLE_TOKENS[role]) tokens[token] = hexToHsl(hex)
   }
+  for (const [role, token] of [['working', '--info-foreground'], ['waiting', '--warning-foreground'], ['done', '--success-foreground'], ['error', '--destructive-foreground']] as const) {
+    if (colors[role]) tokens[token] = hexToHsl(actionForeground(colors[role]!))
+  }
+  if (theme.loader?.duration_ms) tokens['--aw-loader-duration'] = `${theme.loader.duration_ms}ms`
   if (colors.accent) tokens['--primary-foreground'] = hexToHsl(actionForeground(colors.accent))
   // The scene and materials are the same values custom CSS may set (--aw-*), so one path styles both.
   if (theme.scene && theme.scene !== 'none') tokens['--aw-background'] = theme.scene
@@ -49,6 +59,7 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
 /** The appearance provider owns these inline tokens, including their cleanup. */
 export function applyAppearanceTokens(root: HTMLElement, theme: AppearanceTheme, profile: AppearanceProfile): () => void {
   const tokens = appearanceTokens(theme, profile)
+  root.dataset.appearanceLoader = theme.loader?.style || 'ring'
   for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value)
-  return () => { for (const name of Object.keys(tokens)) root.style.removeProperty(name) }
+  return () => { delete root.dataset.appearanceLoader; for (const name of Object.keys(tokens)) root.style.removeProperty(name) }
 }

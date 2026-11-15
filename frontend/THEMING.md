@@ -142,3 +142,26 @@ This first slice does not remove existing scene renderers or convert personal
 saved looks yet. That conversion must precede removal; the preset factory/card
 is not needed to keep an already saved look working. Future tool fields are
 listed only when implemented, not from a design mock.
+
+## Shared decorative loading indicator and status colours
+
+`LoadingIndicator` is the shared glyph for core agent marks, working-turn lines,
+workspace/modal loading, composer uploads/queue and common controls. Its caller
+still owns real status, accessible text and lifetime. No new status parsing,
+subscriptions, polling or per-glyph timers. Other feature spinners are incremental
+migration work; do not claim a completed app-wide conversion.
+
+Personal `loader.style` selects ring/dots/pulse/orbit/bar; `duration_ms` is 400–4000
+(default 1000, lower is faster). Null clears customization. Root
+`data-appearance-loader` is projected/removed with the other personal tokens.
+`[data-theme-loader]` is stable; `data-loader-part` is internal artwork. CSS only
+transforms/fades the selected glyph; the existing `data-appearance-visible` gate
+and reduced-motion pause it. No compositor/frame-time claim without measurement.
+
+Colour roles working/waiting/done/error fan out to existing info/warning/success/
+destructive semantic controls, with contrasting labels; working also styles the
+turn text. The optional loader role overrides glyph colour only. Authored scopes
+reset loader tokens. Team activity rings/text reuse the same existing counts,
+not a new Team state or browser permission. Presence/avatar/typing colours are
+not automatically reclassified as work statuses. Explicit code palettes remain
+separate (owned by the code/terminal theme work).

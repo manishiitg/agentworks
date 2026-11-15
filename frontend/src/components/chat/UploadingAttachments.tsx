@@ -1,5 +1,6 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { useEffect, useState } from 'react'
-import { FileText, Loader2 } from 'lucide-react'
+import { FileText } from 'lucide-react'
 
 /** Immediate local preview only; a file becomes an attachment after the server accepts it. */
 export function UploadingAttachments({ files }: { files: File[] }) {
@@ -11,7 +12,7 @@ export function UploadingAttachments({ files }: { files: File[] }) {
   }, [files])
   return <div className="px-2 pt-2 pb-1" aria-busy="true">
     <div role="status" className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-      <Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin" />
+      <LoadingIndicator aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 truncate">{files.length === 1 ? `Uploading ${files[0].name}…` : `Uploading ${files.length} files…`}</span>
     </div>
     <div className="flex gap-2 overflow-x-auto">

@@ -1,9 +1,10 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { useGitDelivery } from './GitDeliveryControls'
 import { FileDiffView } from './FileDiffView'
 import { useFileGit, useFileGitStore } from './FileGitContext'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowDown, ArrowUp, Check, ExternalLink, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Loader2, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
+import { ArrowLeft, ArrowDown, ArrowUp, Check, ExternalLink, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
 import DiffRenderer from '../ui/DiffRenderer'
 import { gitActionError, type GitChangedFile, type GitCommit as GitCommitInfo, type GitRepo } from '../../services/workspaceGit'
 import { gitFullPath, type GitPanel } from '../../stores/useWorkspaceGitStore'
@@ -286,7 +287,7 @@ function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, err
             onClick={() => { void commit() }}
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-l-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {busy ? <LoadingIndicator className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
             {staged.length > 0 ? `Commit ${staged.length} staged` : unstaged.length > 0 ? `Commit all ${unstaged.length}` : 'Commit'}
           </button>
           <button
@@ -482,5 +483,5 @@ export function GitFilePanel({ workspacePath, panel, onClose, onAsk }: { workspa
 }
 
 function Loading() {
-  return <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading…</div>
+  return <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><LoadingIndicator className="h-4 w-4" />Loading…</div>
 }

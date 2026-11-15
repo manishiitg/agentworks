@@ -1,6 +1,7 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
 import React, { useEffect, useState } from 'react'
-import { CircleAlert, Clock, Loader2 } from 'lucide-react'
+import { CircleAlert, Clock } from 'lucide-react'
 import { useQueuedMessageControlsStore } from '../../stores/useQueuedMessageControlsStore'
 
 /** Only an explicit server receipt clears a stale queue snapshot. */
@@ -51,7 +52,7 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
   const position = message.queue_position && message.queue_position > 1 ? `${ordinal(message.queue_position)} in line` : ''
   const link = 'text-primary hover:underline disabled:opacity-40 disabled:no-underline'
   const parts: React.ReactNode[] = []
-  if (pending) parts.push(<span key="p" className="inline-flex items-center gap-1"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />{message.steering ? 'Steering…' : 'Updating…'}</span>)
+  if (pending) parts.push(<span key="p" className="inline-flex items-center gap-1"><LoadingIndicator aria-hidden="true" className="h-3 w-3" />{message.steering ? 'Steering…' : 'Updating…'}</span>)
   if (controls.editable && !message.delivery_error && !message.steering) parts.push(<button key="e" type="button" className={link} disabled={!controls.canEdit || disabled || message.attachment_pending}
     title={message.attachment_pending ? 'Attachments are still uploading' : controls.canEdit ? 'Move back to the box to edit · ↑' : 'Clear the box to edit this message'}
     onClick={() => controls.act(message, 'edit')}>Edit</button>)

@@ -1,3 +1,4 @@
+import { LoadingIndicator } from './ui/LoadingIndicator'
 import { groupBackgroundShells, endedBackgroundShell, type BackgroundShellGroup } from '../utils/backgroundShellGroups'
 import { NativeBackgroundTaskLine, backgroundTaskLine } from './events/NativeBackgroundTaskLine'
 import { groupTranscriptMessages, type CompactMessageGroup } from '../utils/compactMessageGroups'
@@ -164,7 +165,7 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
   return <div data-testid="transcript-activity-footer" className="flex min-h-7 min-w-0 items-center gap-2 px-3 py-0.5 text-xs text-muted-foreground">
     {working && <>
       {activity.label === 'running'
-        // The twinkling star is the motion here, so no separate spinner.
+        // WorkingStatus owns the one shared working indicator.
         ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} lastOutputAt={context?.lastOutputAt} phase={context?.turnPhase} />
         : <>
           <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
@@ -1018,12 +1019,6 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
   const tools = item.steps.reduce((sum, step) => sum + (step.kind === 'tools' ? step.toolCount : 0), 0)
   const duration = workingDuration(item.steps)
   const completed = pairToolCalls(item.events).every(tool => tool.status !== 'running')
-  const [dots, setDots] = React.useState(1)
-  React.useEffect(() => {
-    if (!live) return
-    const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
-    return () => window.clearInterval(timer)
-  }, [live])
   const summary = tools ? `${tools} ${tools === 1 ? 'step' : 'steps'}` : ''
   const label = live ? phase?.text || 'Working' : completed && duration ? `Worked for ${duration}` : 'Activity'
   return (
@@ -1034,7 +1029,7 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
         aria-expanded={expanded}
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>{label}{live && <span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span>}</span>
+        <span>{label}</span>{live && <LoadingIndicator className="h-3 w-3" />}
         {summary && <span>· {summary}</span>}
         {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
       </button>
