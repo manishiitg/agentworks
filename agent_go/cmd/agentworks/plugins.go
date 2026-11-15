@@ -1033,7 +1033,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeWake: nativeCodexWake(root, o), NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback, Ready: func(ctx context.Context) { go prepareNotifier(); connectLiveChats(ctx, o) }, Reconnect: savedChatReconnector(root, o, discoverLiveAgents)})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeWake: nativeCodexWake(root, o), NativeOffer: codexNativeOffer, NativeUserOffer: nativeReturnedUserOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback, Ready: func(ctx context.Context) { go prepareNotifier(); connectLiveChats(ctx, o) }, Reconnect: savedChatReconnector(root, o, discoverLiveAgents)})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
@@ -1442,4 +1442,31 @@ func reconnectOffline(ctx context.Context, root string, req agentworksclient.Loc
 	req.AttachmentID = ""
 	rejoinNetworks(ctx, root, req)
 	return ""
+}
+
+// Handback is literal USER content, never a fabricated mailbox/tool response.
+// Desktop's current untrusted toolOutput route is deliberately unsupported.
+func nativeReturnedUserOffer(ctx context.Context, remote string, a agentworksclient.AgentAttachment, text string) error {
+	if len(text) > 96<<10 {
+		return agentworksclient.ErrNativeOfferRejected
+	}
+	if a.Provider == "claude" && strings.HasPrefix(remote, "claude+session://") {
+		return claudeSessionUserOffer(ctx, remote, a, text)
+	}
+	if a.Provider != "codex" || agentworksclient.IsCodexDesktopRemote(remote) {
+		return agentworksclient.ErrNativeOfferRejected
+	}
+	if err := validateCodexRemote(remote); err != nil {
+		return errors.Join(agentworksclient.ErrNativeOfferRejected, err)
+	}
+	id, err := uuid.Parse(a.SessionID)
+	if err != nil || id.String() != a.SessionID {
+		return agentworksclient.ErrNativeOfferRejected
+	}
+	call, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	c := exec.CommandContext(call, "codex", "queue", "--remote", remote, "--thread", a.SessionID, "--message", text)
+	c.Stdout, c.Stderr = io.Discard, io.Discard
+	// Even exit zero is not a durable receipt. The helper waits for a USER journal record.
+	return c.Run()
 }

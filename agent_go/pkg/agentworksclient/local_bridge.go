@@ -151,7 +151,8 @@ type LocalBridgeReply struct {
 }
 
 type localSession struct {
-	NativeCopyCursor  NativeCopyCursor `json:"native_copy_cursor,omitempty"`
+	NativeHandback    *nativeHandbackPending `json:"native_handback,omitempty"`
+	NativeCopyCursor  NativeCopyCursor       `json:"native_copy_cursor,omitempty"`
 	nativeCopyRunning bool
 	nativeCopyAgain   bool
 	lastHeldRevision  string    // notice fingerprint only; never saved, no message bodies or IDs
@@ -230,13 +231,14 @@ type LocalBridgeOptions struct {
 	Reconnect         func(context.Context, []AgentAttachment)
 	HousekeepingEvery time.Duration // zero uses the normal 30-second maintenance interval
 
-	ChatContext func(context.Context, AgentAttachment, string) (string, string)
-	ChatLabel   func(AgentAttachment, string) string
-	UsageNow    func() time.Time
-	UsageRead   func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
-	HostAlive   func(provider, hostKey string) bool
-	NativeOffer func(context.Context, string, LocalBridgeReply) error
-	NativeRoute func(provider, session, hostKey, remote string) string
+	ChatContext     func(context.Context, AgentAttachment, string) (string, string)
+	ChatLabel       func(AgentAttachment, string) string
+	UsageNow        func() time.Time
+	UsageRead       func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
+	HostAlive       func(provider, hostKey string) bool
+	NativeOffer     func(context.Context, string, LocalBridgeReply) error
+	NativeUserOffer func(context.Context, string, AgentAttachment, string) error
+	NativeRoute     func(provider, session, hostKey, remote string) string
 	// Ping shows a person ping (another agent waiting for this agent's reply) as a desktop notification.
 	Ping func(AgentAttachment, string)
 	// RouteRetry is how long a chat whose native-route lookup failed waits before the bridge looks again
@@ -1574,6 +1576,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}
 		}
 		if in.Action == "crew_leave" {
+			s.NativeHandback = nil
 			s.NativeCopyCursor = NativeCopyCursor{} // explicit leave, never a silent rewrite reset
 			_ = b.save()
 		}
