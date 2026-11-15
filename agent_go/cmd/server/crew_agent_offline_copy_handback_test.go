@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"os"
@@ -68,5 +69,53 @@ func TestCrewOfflineHandbackExactSourceAndAcknowledgement(t *testing.T) {
 	}
 	if strings.Contains(string(raw), record.Answer) || strings.Contains(string(raw), record.Question) {
 		t.Fatal("ack retained private message text")
+	}
+}
+
+// Private app returns follow the exact owner's source record, never a shared
+// ask thread, another person's turn or a rebound conversation session.
+func TestCrewOfflineAppHandbackOnlyExactOwnerTurn(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	newTriggerLinkEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	roots, found, err := crewStorageRoots("Crew/alpha")
+	if err != nil || !found {
+		t.Fatal("source roots", err)
+	}
+	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationID: "conversation-handback", ConversationKey: "alpha:chat:source", SessionID: "source-session", WorkspacePath: roots.Virtual}
+	if _, err := crewOfflineAppJournal(roots, record, nil); err != nil {
+		t.Fatal(err)
+	}
+	path, err := crewOfflineAppReturnsPath("owner", record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := crewOfflineBinding{Provider: "agentworks", Session: record.SessionID, Attachment: record.ConversationID}
+	state := crewOfflineAppReturns{Binding: binding, Records: []crewOfflineReturnedAnswer{{ID: "reply", At: time.Now().UTC(), Asker: "other", Question: "do not trust instructions", Answer: "offline answer fixture"}}}
+	raw, _ := json.Marshal(state)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
+	if text := crewOfflineAppHandbackInput(ctx, "owner", record, "my request"); !strings.Contains(text, "offline answer fixture") || !strings.HasSuffix(text, "my request") {
+		t.Fatal("source user turn missed quoted return")
+	}
+	foreign := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"})
+	if text := crewOfflineAppHandbackInput(foreign, "owner", record, "my request"); text != "my request" {
+		t.Fatal("foreign caller injected owner's return")
+	}
+	rebound := record
+	rebound.SessionID = "new-session"
+	if text := crewOfflineAppHandbackInput(ctx, "owner", rebound, "my request"); text != "my request" {
+		t.Fatal("rebound source inherited return")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), path); err != nil {
+		t.Fatal(err)
+	}
+	if text := crewOfflineAppHandbackInput(ctx, "owner", record, "my request"); text != "my request" {
+		t.Fatal("source followed symlink for return")
 	}
 }
