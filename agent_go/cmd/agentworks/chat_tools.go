@@ -21,6 +21,7 @@ import (
 type chatResolver func(ctx context.Context, req mcp.CallToolRequest) (string, error)
 
 func addChatTools(s *server.MCPServer, o *options, root, provider, host string, resolve chatResolver) {
+	addTerminalTeamTools(s, root, provider, host, resolve)
 	share := func(action string) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			session, err := resolve(ctx, req)
