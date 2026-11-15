@@ -1,0 +1,61 @@
+package server
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+)
+
+func TestCrewOfflineAppJournalPreservesPrefixAndExcludesSystem(t *testing.T) {
+	private := t.TempDir()
+	roots := crewroot.Roots{Private: private, Virtual: "Crew/example"}
+	record := ProductConversationRecord{ConversationID: "conversation-fixture", ProfileID: crewProfileID, SessionID: "source-session", WorkspacePath: roots.Virtual, ConversationKey: "example:chat:source"}
+	message := func(role llmtypes.ChatMessageType, text string) llmtypes.MessageContent {
+		return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: text}}}
+	}
+	history := []llmtypes.MessageContent{message(llmtypes.ChatMessageTypeSystem, "PRIVATE ROOT INSTRUCTIONS"), message(llmtypes.ChatMessageTypeHuman, "first")}
+	path, err := crewOfflineAppJournal(roots, record, history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(first, []byte("PRIVATE ROOT")) {
+		t.Fatal("root instructions copied into journal")
+	}
+	history = append(history, message(llmtypes.ChatMessageTypeAI, "answer"))
+	if _, err = crewOfflineAppJournal(roots, record, history); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil || !bytes.HasPrefix(second, first) || bytes.Equal(second, first) {
+		t.Fatal("not an append-only portable journal", err)
+	}
+	history[1] = message(llmtypes.ChatMessageTypeHuman, "rewritten")
+	if _, err = crewOfflineAppJournal(roots, record, history); err == nil {
+		t.Fatal("rewritten prefix silently replaced")
+	}
+	unchanged, _ := os.ReadFile(path)
+	if !bytes.Equal(unchanged, second) {
+		t.Fatal("refusal changed source spool")
+	}
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "private")
+	if err = os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(outside, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = crewOfflineAppJournal(roots, record, history); err == nil {
+		t.Fatal("source journal followed a symlink")
+	}
+}
