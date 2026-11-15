@@ -52,6 +52,15 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 		api.putCrewAgentOnlineFromMac(w, r, in)
 		return
 	}
+	var serverSource ProductConversationRecord
+	if in.Provider == "" {
+		id, record, e := registerCrewPutOnlineServerSource(r.Context(), claims.UserID, mux.Vars(r)["project"], in.Agent)
+		if e != nil {
+			externalError(w, 403, "source_unavailable", e.Error())
+			return
+		}
+		in.Agent, serverSource = id, record
+	}
 	if in.Provider == "agentworks" {
 		if in.SourceTab != "" {
 			if err := registerCrewPutOnlineSource(r, mux.Vars(r)["project"], in); err != nil {
@@ -79,6 +88,9 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 		log.Printf("[AGENT_OFFLINE_COPY] project=%s actor=%s event=refused reason=%s", mux.Vars(r)["project"], claims.UserID, code)
 		externalError(w, status, code, err.Error())
 		return
+	}
+	if serverSource.SessionID != "" {
+		api.queueCrewOfflineAppTurn(claims.UserID, serverSource.SessionID, serverSource.WorkspacePath)
 	}
 	externalJSON(w, out)
 }
