@@ -233,7 +233,7 @@ func updateCrewTeamRegisteredAgent(project, person, id string, change func(*crew
 		return err
 	}
 	a, ok := t.Agents[id]
-	if !ok || a.OwnerID != person || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(person) {
+	if !ok || a.OwnerID != person || !crewTeamSourceRowAdmits(t, person, a) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(person) {
 		return errCrewTeamAgentNotYours
 	}
 	change(&a)
