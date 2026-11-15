@@ -328,3 +328,10 @@ chat first: workflow execution does not wait for a person to answer.
 CLI clients discover the same schemas through `agentworks tools spec` and
 `agentworks tools call NAME --input FILE`. Source guidance is not proof that the
 connected server has deployed a feature; inspect its returned capabilities.
+
+On a local Mac, “Your whole Mac” is the explicit home-folder read/write grant.
+It also permits process listing (`ps`, `top`) and signalling (`kill`) as the
+person; ask before stopping a program they are using. Without it, commands can
+start programs but cannot list or stop other programs. Ordinary folder grants
+do not add process access. Opening or scripting apps (`open`, `osascript`,
+Shortcuts) still requires Computer use.

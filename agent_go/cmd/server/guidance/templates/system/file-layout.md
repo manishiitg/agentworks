@@ -39,3 +39,10 @@ existing exclusions. Historical files are evidence, not authoring instructions
 or access grants. Never delete conversations, native journals, run folders or
 archives as unsolicited cleanup. Use the current product controls for an
 explicit requested removal and report exactly what remains.
+
+On a local Mac, “Your whole Mac” is the explicit home-folder read/write grant.
+It also permits process listing (`ps`, `top`) and signalling (`kill`) as the
+person; ask before stopping a program they are using. Without it, commands can
+start programs but cannot list or stop other programs. Ordinary folder grants
+do not add process access. Opening or scripting apps (`open`, `osascript`,
+Shortcuts) still requires Computer use.

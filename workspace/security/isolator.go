@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -606,6 +607,29 @@ var strictSystemDevices = []string{
 	"/dev/null", "/dev/zero", "/dev/urandom", "/dev/random", "/dev/tty",
 }
 
+// hasWholeMacGrant uses the existing attached-home read/write grant. A private
+// shell HOME, a child folder or a read-only home grant is not Your whole Mac.
+// Callers already authorize WritePaths; no model option or new setting is used.
+func (iso *Isolator) hasWholeMacGrant() bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	home = canonicalPath(home)
+	if home == string(filepath.Separator) {
+		return false
+	}
+	for _, entry := range iso.WritePaths {
+		if !filepath.IsAbs(entry) {
+			continue
+		}
+		if granted, ok := iso.sandboxAllowedPath(entry); ok && granted == home {
+			return true
+		}
+	}
+	return false
+}
+
 // generateStrictSandboxProfile builds a genuine deny-by-default macOS sandbox
 // profile (StrictAllowlist mode): only ReadPaths/WritePaths and the minimal
 // system paths above are visible. Everything else on the machine — the real
@@ -620,7 +644,14 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 	sb.WriteString("; Minimal process/IPC permissions so the shell can run at all\n")
 	sb.WriteString("(allow process-exec*)\n")
 	sb.WriteString("(allow process-fork)\n")
-	sb.WriteString("(allow signal (target self))\n")
+	wholeMac := iso.hasWholeMacGrant()
+	if wholeMac {
+		sb.WriteString("; Your whole Mac includes the person's process access\n")
+		sb.WriteString("(allow process-info*)\n(allow signal)\n")
+	} else {
+		sb.WriteString("(allow signal (target self))\n")
+	}
+	log.Printf("[MAC_PROCESS_ACCESS] whole_mac=%t action=profile process_info=%t signal_others=%t", wholeMac, wholeMac, wholeMac)
 	sb.WriteString("(allow sysctl-read)\n")
 	if iso.PrivateScratch {
 		// Local commands must not ask desktop or credential services to act
