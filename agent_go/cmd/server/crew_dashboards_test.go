@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	"github.com/manishiitg/coding-agent-loop/workspace/teamonline"
@@ -167,5 +168,28 @@ func TestTeamOnlineReceiveRequiresBoundSourceAdmissionNotServerSourceRoot(t *tes
 	out, err := api.receiveTeamOnlineDashboard(internalBotRequestContext(t.Context(), "owner"), source, triggerTarget{}, ref, true)
 	if err != nil || out.DestinationItemID != teamOnlineDashboardItemID(source.CrewID, ref.Kind, ref.ItemID) {
 		t.Fatalf("validated Mac source required a server source path: %+v %v", out, err)
+	}
+}
+
+// PLAT-746-1023: encoded JSON strings must not bypass the common secret scan;
+// credential paths are refused before staging or reading any source computer.
+func TestTeamOnlinePackageRejectsCredentialPathsAndDecodedSecretValues(t *testing.T) {
+	const value = "credential\nbytes"
+	contains := func(data []byte) bool { return strings.Contains(string(data), value) }
+	var decoded any
+	if err := json.Unmarshal([]byte(`{"instructions":"credential\nbytes","nested":[{"safe":"reference by name"}]}`), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !teamOnlineDecodedContainsSecret(decoded, contains) {
+		t.Fatal("escaped credential was admitted")
+	}
+	if teamOnlineDecodedContainsSecret(map[string]any{"instructions": "use SECRET_NAME"}, contains) {
+		t.Fatal("secret names must remain portable")
+	}
+	for _, name := range []string{"../private", ".env", "keys/token.json"} {
+		_, err := receiveTeamOnlinePackage("never-staged", teamOnlinePackageManifest{Files: map[string]chunks.File{name: {Hash: strings.Repeat("a", 64), Chunks: []chunks.Chunk{}}}}, func([]string) ([]byte, error) { t.Fatal("refused path reached source transport"); return nil, nil })
+		if err == nil {
+			t.Fatalf("credential/escape path %q admitted", name)
+		}
 	}
 }
