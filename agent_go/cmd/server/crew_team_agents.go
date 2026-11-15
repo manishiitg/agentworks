@@ -206,7 +206,17 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		}
 		slices.SortFunc(missing, func(a, b crewTeamRegisteredAgent) int { return strings.Compare(a.ID, b.ID) })
 		for _, a := range missing {
-			out[i].Agents = append(out[i].Agents, crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)})
+			row := crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)}
+			if a.Kind == "terminal" {
+				row.PlaceLabel = "Mac · offline"
+				row.StatusLabel = "Offline"
+				if named, err := currentCrewTeamTerminal(ctx, t, a); err == nil && namedAgentOnline(named) {
+					row.PlaceLabel = "Mac · online"
+					row.StatusLabel = "Online"
+					row.PlaceTone = "ok"
+				}
+			}
+			out[i].Agents = append(out[i].Agents, row)
 		}
 	}
 	now := time.Now()
