@@ -76,3 +76,24 @@
     --aw-composer-backdrop: none;
   }
 }
+
+/* Stable public material classes, independent of Tailwind plugin/config caches. */
+.bg-surface-page {
+  background-color: hsl(var(--background) / clamp(0, var(--aw-page-opacity, 1), 1));
+}
+.bg-surface-panel {
+  background-color: hsl(var(--card) / clamp(0, var(--aw-panel-opacity, 1), 1));
+  backdrop-filter: var(--aw-panel-backdrop, none);
+}
+.bg-surface-popover {
+  background-color: hsl(var(--popover) / clamp(0, var(--aw-popover-opacity, 1), 1));
+  backdrop-filter: var(--aw-popover-backdrop, none);
+}
+.bg-surface-sidebar {
+  background-color: hsl(var(--appearance-sidebar) / clamp(0, var(--aw-sidebar-opacity, 1), 1));
+  backdrop-filter: var(--aw-sidebar-backdrop, none);
+}
+.bg-surface-composer {
+  background-color: hsl(var(--card) / clamp(0, var(--aw-composer-opacity, 1), 1));
+  backdrop-filter: var(--aw-composer-backdrop, none);
+}
