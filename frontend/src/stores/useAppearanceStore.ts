@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { BackgroundScene } from '../components/appearance/backgroundScenes'
 import api from '../services/api'
 import { defaultAppearance, validateTheme, type AppearanceDocument, type AppearanceProfile, type AppearanceTheme } from './appearanceTheme'
 export { APPLE_MONO_FONT, codeFontFamily } from './appearanceTheme'
@@ -8,7 +9,7 @@ let requestVersion = 0
 
 type Operation = 'read' | 'apply' | 'save' | 'delete' | 'reset'
 type State = AppearanceDocument & {
-  backgroundScene: 'none' | 'neon-orbit'; profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; saving: boolean; error: string
+  backgroundScene: BackgroundScene; profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; saving: boolean; error: string
   setProfile: (profile: AppearanceProfile) => void
   setPreview: (theme: AppearanceTheme | null) => void
   load: (scope: string) => Promise<void>

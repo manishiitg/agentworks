@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Gamepad2, Pause, Play, X } from 'lucide-react'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { createNeonOrbit, type OrbitController, type OrbitHUD } from './neonOrbitEngine'
+import './sceneMaterials.css'
 import './neonOrbit.css'
 
 const initial: OrbitHUD = { score: 0, wave: 1, hp: 5, novas: 3, paused: false, playing: false, gameOver: false, announcement: '' }

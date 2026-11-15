@@ -4,6 +4,7 @@ import { applyAppearanceTokens } from './appThemeTokens'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { liveFeed } from '../services/liveFeed'
+import { backgroundScene as resolveBackgroundScene } from '../components/appearance/backgroundScenes'
 import { safeAppearanceSheet } from './appearanceCss'
 import { ThemeContext, type Theme } from './ThemeContext'
 
@@ -38,7 +39,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
       setCssWarning(removed)
       // Only shipped renderers may be selected. Theme CSS never supplies script.
-      const backgroundScene = getComputedStyle(document.documentElement).getPropertyValue('--aw-background').trim() === 'neon-orbit' ? 'neon-orbit' : 'none'
+      const backgroundScene = resolveBackgroundScene(getComputedStyle(document.documentElement).getPropertyValue('--aw-background'), profile)
       document.documentElement.dataset.appearanceScene = backgroundScene
       useAppearanceStore.setState({ backgroundScene })
       return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceScene }

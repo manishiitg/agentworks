@@ -1,12 +1,3 @@
-html.dark[data-appearance-scene="neon-orbit"]{--aw-page-opacity:0;--aw-sidebar-opacity:.78;--aw-sidebar-backdrop:blur(12px);--aw-composer-opacity:.85;--aw-composer-backdrop:blur(18px)}
-/* A built-in visual layer only. Project/Artifact documents are never restyled. */
-html[data-appearance-scene="neon-orbit"] #root{position:relative;z-index:1}
-html.dark[data-appearance-scene="neon-orbit"] [data-app-shell]{background:transparent}
-html.dark[data-appearance-scene="neon-orbit"] [data-app-main]{z-index:1}
-html.dark[data-appearance-scene="neon-orbit"] [data-app-main] :is(.bg-background,[data-chat-find-scope],[data-testid="terminal-clear-view"],[data-testid="terminal-clear-view-empty"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *,[role="dialog"],[role="dialog"] *)){background-color:transparent!important}
-html.dark[data-appearance-scene="neon-orbit"] [data-app-sidebar] aside{background:hsl(var(--appearance-sidebar) / clamp(0,var(--aw-sidebar-opacity,1),1));backdrop-filter:var(--aw-sidebar-backdrop,none)}
-html.dark[data-appearance-scene="neon-orbit"] nav[aria-label="Workspace navigation"]{background:transparent}
-html.dark[data-appearance-scene="neon-orbit"] [data-chat-composer-card]{background:hsl(var(--card) / clamp(0,var(--aw-composer-opacity,1),1))!important;backdrop-filter:var(--aw-composer-backdrop,none);box-shadow:0 8px 35px #0004}
 .aw-orbit{pointer-events:none;font:12px system-ui,sans-serif;color:#defff0}
 .aw-orbit canvas{position:fixed;inset:0;z-index:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
 .aw-orbit-controls{position:fixed;bottom:140px;right:18px;display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #91ffd94d;border-radius:24px;background:#071722e8;box-shadow:0 4px 20px #0005;pointer-events:auto;z-index:60}

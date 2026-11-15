@@ -11,6 +11,7 @@ import { TooltipProvider } from '../ui/tooltip'
 
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 const AppearanceBackground = lazy(() => import('../appearance/AppearanceBackground'))
+const DeepSpaceBackground = lazy(() => import('../appearance/DeepSpaceBackground'))
 
 /** Authenticated layout: a stable left menu beside the active page's header/content. */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -22,6 +23,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return <TooltipProvider><ProductNavigationContext.Provider value={false}><CompactProductNavigationContext.Provider value={true}>
     <TeamInviteProvider><div ref={viewport} data-app-shell className="flex h-dvh min-h-0 overflow-hidden bg-surface-page">
       {scene === 'neon-orbit' && <Suspense fallback={null}><AppearanceBackground key={scope} /></Suspense>}
+      {scene === 'deep-space' && <Suspense fallback={null}><DeepSpaceBackground key={scope} /></Suspense>}
       <AppSidebar />
       <div data-app-main className="relative min-h-0 min-w-0 flex-1">{children}</div>
       <WorkspaceAccountMenu />
