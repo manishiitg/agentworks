@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { fillAskFromMyAgentDraft, fillOwnAgentDraft } from './agentPurposeDraft'
 import { startTeamDashboardHandoff } from './teamDashboardHandoff'
-const f=vi.hoisted(()=>({tabs:{} as Record<string,unknown>,configs:{} as Record<string,{inputText:string}>,set:vi.fn(),activate:vi.fn(),queue:vi.fn()}))
+const f=vi.hoisted(()=>({tabs:{} as Record<string,unknown>,configs:{} as Record<string,{inputText:string;autoRun?:boolean}>,set:vi.fn(),activate:vi.fn(),queue:vi.fn()}))
 vi.mock('../stores/useChatStore',()=>({useChatStore:{getState:()=>({chatTabs:f.tabs,getTabConfig:(id:string)=>f.configs[id],setTabConfig:f.set})}}))
 vi.mock('../stores/useAuthStore',()=>({useAuthStore:{getState:()=>({user:{id:'owner'}})}}))
 vi.mock('./workspacePaneChat',()=>({CHAT_FOCUS_COMPOSER_EVENT:'chat-focus-composer',sendWorkspacePaneMessageToChat:f.queue}))
@@ -16,9 +16,9 @@ it('drafts the exact recipient in the most recent own writable agent when Main i
  f.configs.recent={inputText:'Keep my unsent question'}
  expect(fillAskFromMyAgentDraft('crew','Colleague','Review','workspace:work:crew/agent/selected')).toBe(true)
  expect(f.activate).toHaveBeenCalledWith('recent')
- expect(f.set).toHaveBeenCalledWith('recent',{inputText:expect.stringContaining('workspace:work:crew/agent/selected')})
+ expect(f.set).toHaveBeenCalledWith('recent',{inputText:expect.stringContaining('workspace:work:crew/agent/selected'),autoRun:false})
  expect(f.set.mock.calls[0][1].inputText).toContain('Keep my unsent question')
- expect(f.set.mock.calls[0][1]).not.toHaveProperty('autoRun')
+ expect(f.set.mock.calls[0][1].autoRun).toBe(false)
 })
 it('does not draft in a foreign, watched, setup or scheduled chat when no own writable tab exists',()=>{
  f.tabs={peer:tab('peer','crew',{agentProfileTabOwnerID:'peer'}),setup:tab('setup','crew',{agentProfileBuilder:true}),scheduled:tab('scheduled','crew',{isScheduledRun:true}),watch:tab('watch','crew',{agentProfileTabCanWrite:false})}
@@ -49,11 +49,16 @@ it('starts the own source agent for Add to Team without overwriting a human draf
 it('drafts personal appearance in an own work agent and never a teammate or run tab',()=>{
  vi.stubGlobal('window',{setTimeout:vi.fn()})
  f.tabs={own:tab('own','crew',{agentProfileId:'work'}),peer:{...tab('peer','other',{agentProfileId:'work',agentProfileTabOwnerID:'peer'}),lastAccessedAt:99},watch:{...tab('watch','other',{agentProfileId:'work',isViewOnly:true}),lastAccessedAt:100},run:{...tab('run','other',{agentProfileId:'work',isExecutionRun:true}),lastAccessedAt:101},other:tab('other','other',{agentProfileId:'another-product'})}
- f.configs.own={inputText:'Keep this unsent message'}
+ f.configs.own={inputText:'Keep this unsent message',autoRun:true}
  expect(fillOwnAgentDraft('Customize my appearance: ')).toBe(true)
  expect(f.activate).toHaveBeenCalledWith('own')
- expect(f.set).toHaveBeenCalledWith('own',{inputText:'Customize my appearance: \n\nKeep this unsent message'})
- expect(f.set.mock.calls[0][1]).not.toHaveProperty('autoRun')
+ expect(f.set).toHaveBeenCalledWith('own',{inputText:'Customize my appearance: \n\nKeep this unsent message',autoRun:false})
+ expect(f.set.mock.calls[0][1].autoRun).toBe(false)
+ // Returning to an already filled starter must also clear a stale auto-send.
+ f.set.mockClear()
+ f.configs.own={inputText:'Customize my appearance: \nMy existing style request',autoRun:true}
+ expect(fillOwnAgentDraft('Customize my appearance: ')).toBe(true)
+ expect(f.set).toHaveBeenCalledWith('own',{inputText:'Customize my appearance: \nMy existing style request',autoRun:false})
  f.set.mockClear();f.activate.mockClear();delete f.tabs.own
  expect(fillOwnAgentDraft('Customize my appearance: ')).toBe(false)
  expect(f.set).not.toHaveBeenCalled();expect(f.activate).not.toHaveBeenCalled()
