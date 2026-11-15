@@ -26,7 +26,7 @@ type crewTeamDashboard struct {
 
 // crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the
 // Dashboards tab: one read, one set of rows. The public link is the owner's, on a Crew that can have one.
-func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool) {
+func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool, bool) {
 	links := map[string]dashboardPublicRecord{}
 	if canShare {
 		links = dashboardPublicRecords(root)
@@ -48,15 +48,15 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 			_ = json.Unmarshal(raw, &failure)
 			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d code=%q reason=%q", t.ProjectID, status, failure.Error.Code, failure.Error.Message)
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
-			return nil, false
+			return nil, false, false
 		}
 		if err := r.Context().Err(); err != nil {
-			return nil, false
+			return nil, false, false
 		}
 		if err := json.Unmarshal(raw, &page); err != nil {
 			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d reason=%q", t.ProjectID, status, err)
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
-			return nil, false
+			return nil, false, false
 		}
 
 		for _, d := range page.Dashboards {
@@ -79,7 +79,8 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 		}
 		offset += len(page.Dashboards)
 	}
-	return api.crewTeamDashboardOnlineRows(w, r, t, root, rows)
+	combined, unavailable := api.crewTeamDashboardOnlineRows(r, t, root, rows)
+	return combined, unavailable, true
 }
 
 // handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the

@@ -102,11 +102,12 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
           className={`rounded-full border px-2.5 py-0.5 text-xs ${kind === filter.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{filter.label} {rows.filter(row => filter.key === 'all' || row.kind === filter.key).length}</button>)}
       </div>
       {failure && <p role="status" className="text-xs text-muted-foreground">Couldn't reach the Team server, retrying</p>}
+      {tab?.online_unavailable && <p role="status" className="text-xs text-muted-foreground">Couldn’t load the online items. The other items are shown below.</p>}
       {localError && <p role="alert" className="text-xs text-muted-foreground">{localError}</p>}
       {!failure && !localError && !complete && <p role="status" className="text-xs text-muted-foreground">Loading artifacts…</p>}
       {handoffMessage && <p role="status" className="text-sm">{handoffMessage}</p>}
       {chosen?.hint && <p className="text-xs text-muted-foreground">{chosen.hint}</p>}
-      {complete && !rows.length && <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm">
+      {complete && !tab?.online_unavailable && !rows.length && <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm">
         <p>{tab?.empty?.title || 'No artifacts yet'}</p>
         <p className="text-muted-foreground">{tab?.empty?.line}</p>
         {tab?.empty?.ask && <Button size="sm" onClick={() => { if (!fillMainDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask the Crew</Button>}

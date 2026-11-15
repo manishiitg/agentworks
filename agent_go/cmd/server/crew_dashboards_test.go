@@ -352,6 +352,30 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 			}
 		}
 	}
+	// A deleted destination must not hide the source or other accepted items.
+	mappings = append(mappings, teamOnlineItemMapping{SourceProjectID: "mac-source", Kind: "dashboard", ItemID: "deleted", DestinationProjectID: "dashboard-team", DestinationItemID: teamOnlineDashboardItemID("mac-source", "dashboard", "deleted"), Revision: published.Dashboard.Published})
+	if err := saveTeamOnlineMappings(ctx, triggerTarget{CrewID: "dashboard-team"}, mappings); err != nil {
+		t.Fatal(err)
+	}
+	if tab := readTab(false); len(tab.Items) != 3 || tab.OnlineUnavailable {
+		t.Fatalf("stale item blanked list: %+v", tab)
+	}
+	mappingPath, err := teamOnlineMappingsPath(triggerTarget{CrewID: "dashboard-team"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(mappingPath, []byte("{broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, mcp := range []bool{false, true} {
+		tab := readTab(mcp)
+		if !tab.OnlineUnavailable || len(tab.Items) != 1 || tab.Items[0].Title != "Overview" {
+			t.Fatalf("mapping failure hid source or claimed complete list: %+v", tab)
+		}
+	}
+	if err := saveTeamOnlineMappings(ctx, triggerTarget{CrewID: "dashboard-team"}, mappings); err != nil {
+		t.Fatal(err)
+	}
 	// A mapped-row click selects this Team explicitly and reuses normal Open.
 	chosen, err := f.api.teamOnlineMappedOpen(ctx, team.ProjectID, "mac-source", "artifact", "proposal")
 	if err != nil || !chosen.Found || chosen.Location.Workspace != home {
