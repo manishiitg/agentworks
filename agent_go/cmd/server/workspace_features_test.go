@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
@@ -62,8 +63,59 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if err != nil || directory.byID(solo.OwnerID) == nil || directory.byID(solo.OwnerID).Disabled {
 		t.Fatal("solo virtual user is not active", err)
 	}
-	team = source
+	// Exercise the actual explicit action: a current paired maker may request
+	// their private copy, but a saved teammate or stale Mac pair cannot.
+	const sourceAgent = "team-agent-11111111-2222-4333-8444-555555555555"
+	source.Agents = map[string]crewTeamRegisteredAgent{sourceAgent: {ID: sourceAgent, OwnerID: fixtureUserA, Tab: "source", ChatKey: fixtureCrewID + ":chat:source", InTeam: true, Place: "mac"}}
+	if err := writeCrewTeamAgentFixture(source); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync(fixtureCrewID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "source-pair", PeerProjectID: "local-source"}); err != nil {
+		t.Fatal(err)
+	}
+	binding := crewOfflineBinding{Provider: "agentworks", Session: "source-session", Attachment: "source-conversation"}
+	put := func(person, pair string) *httptest.ResponseRecorder {
+		t.Helper()
+		raw, _ := json.Marshal(crewPutOnlineRequest{Agent: sourceAgent, Audience: "only_me", crewOfflineBinding: binding})
+		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+fixtureCrewID+"/put-online", bytes.NewReader(raw)).WithContext(f.Ctx(person))
+		req.Header.Set(crewMacPairHeader, pair)
+		req = mux.SetURLVars(req, map[string]string{"project": fixtureCrewID})
+		rec := httptest.NewRecorder()
+		f.API.handleCrewPutOnline(rec, req)
+		return rec
+	}
+	for _, denied := range []struct{ person, pair string }{{fixtureUserB, "source-pair"}, {fixtureUserA, "stale-pair"}} {
+		if rec := put(denied.person, denied.pair); rec.Code != 403 {
+			t.Fatalf("foreign/stale source admitted: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	if rec := put(fixtureUserA, "source-pair"); rec.Code != 200 {
+		t.Fatalf("explicit solo action: %d %s", rec.Code, rec.Body.String())
+	}
+	copyDir, err := crewOfflineDirectory(fixtureCrewID, sourceAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refRaw, err := os.ReadFile(filepath.Join(copyDir, "copy.json"))
+	var ref struct {
+		PutOnline bool               `json:"put_online"`
+		Home      string             `json:"home"`
+		Binding   crewOfflineBinding `json:"binding"`
+	}
+	if err != nil || json.Unmarshal(refRaw, &ref) != nil || !ref.PutOnline || ref.Home != soloID || ref.Binding != binding {
+		t.Fatalf("private intent lost binding/home: %s %v", refRaw, err)
+	}
+	team, err = readCrewTeam(fixtureCrewID)
+	if err != nil || team.On {
+		t.Fatal("Put online enabled Team", err)
+	}
 	team.On = true
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if rec := put(fixtureUserA, "source-pair"); rec.Code != 400 || !strings.Contains(rec.Body.String(), "last_shared_agent") {
+		t.Fatalf("Put online bypassed last-shared rule: %d %s", rec.Code, rec.Body.String())
+	}
 	body, _ := json.Marshal(team)
 	enable := httptest.NewRequest(http.MethodPut, "/api/crew-teams/"+fixtureCrewID, bytes.NewReader(body)).WithContext(f.Ctx(fixtureUserA))
 	enable = mux.SetURLVars(enable, map[string]string{"project": fixtureCrewID})
