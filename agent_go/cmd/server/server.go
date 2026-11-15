@@ -5602,7 +5602,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		var turnFolderGrants []workflowtypes.WorkflowFolderGrant
 		var turnFolderNotice string
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-			turnFolderGrants, turnFolderNotice, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx))
+			turnFolderGrants, turnFolderNotice, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx), req.SelectedFolder)
 			if err != nil {
 				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolve_failed session=%s reason=grant_store_unavailable", sessionID)
 				sendError("Could not load your attached folders. Please retry this turn.", true)

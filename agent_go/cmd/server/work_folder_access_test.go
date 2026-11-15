@@ -340,11 +340,11 @@ func TestWorkFolderTurnRejectsReadFailure(t *testing.T) {
 	claims := &UserClaims{UserID: "u-alice", Username: "alice"}
 	request, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err := workFolderGrantsForTurn(request, claims); err == nil {
+	if _, _, err := workFolderGrantsForTurn(request, claims, ""); err == nil {
 		t.Fatal("canceled authority read became an empty grant set")
 	}
 	turn := context.WithoutCancel(request)
-	grants, _, err := workFolderGrantsForTurn(turn, claims)
+	grants, _, err := workFolderGrantsForTurn(turn, claims, "")
 	if err != nil || len(grants) != 1 || grants[0].Alias != "site" {
 		t.Fatalf("detached turn lost stored grants: count=%d err=%v", len(grants), err)
 	}
