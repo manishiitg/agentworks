@@ -29,7 +29,10 @@ func crewOfflineAppReturnsPath(user string, record ProductConversationRecord) (s
 	if err != nil || !found || roots.Owner != user {
 		return "", fmt.Errorf("source owner changed")
 	}
-	dir := roots.Private
+	return crewOfflineAppReturnsPathIn(roots.Private, record)
+}
+
+func crewOfflineAppReturnsPathIn(dir string, record ProductConversationRecord) (string, error) {
 	for _, part := range []string{"offline-source-journals", record.ConversationID, crewTransferDigest(record.SessionID)[:16]} {
 		dir = filepath.Join(dir, part)
 		st, err := os.Lstat(dir)
@@ -75,10 +78,16 @@ func readCrewOfflineAppReturns(path string, b crewOfflineBinding) (crewOfflineAp
 // This changes USER content, never system/project instructions or native files.
 func crewOfflineAppHandbackInput(ctx context.Context, user string, record ProductConversationRecord, message string) string {
 	claims := GetUserFromContext(ctx)
-	if !IsLocalMode() || claims == nil || claims.UserID != user || claims.AccessToken != nil {
+	if claims == nil || claims.UserID != user || claims.AccessToken != nil || claims.Scope != "" {
 		return message
 	}
-	path, err := crewOfflineAppReturnsPath(user, record)
+	var path string
+	var err error
+	if IsLocalMode() {
+		path, err = crewOfflineAppReturnsPath(user, record)
+	} else {
+		path, err = crewOfflineCloudHandback(ctx, user, record)
+	}
 	if err != nil {
 		return message
 	}

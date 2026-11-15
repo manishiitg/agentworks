@@ -84,14 +84,10 @@ func registerCrewPutOnlineServerSource(ctx context.Context, person, project, key
 	return row.ID, source, nil
 }
 
-func crewOfflineServerSource(ctx context.Context, user string, record ProductConversationRecord, t crewTeam) (crewTeamRegisteredAgent, error) {
+func crewOfflineServerOwner(ctx context.Context, user string, record ProductConversationRecord, t crewTeam) (crewTeamRegisteredAgent, error) {
 	a, ok := t.registeredAgent(user, record.ConversationKey)
 	if !ok || a.Terminal != nil || a.Place == "mac" || a.OwnerID != user || t.RosterSource != "" || crewOfflineSourceOwner(t, user, a) != nil || !crewTeamAccountActive(user) || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return a, fmt.Errorf("server source unavailable")
-	}
-	wanted, err := crewOfflineAppWanted(t, a, crewOfflineBinding{Provider: "agentworks", Session: record.SessionID, Attachment: record.ConversationID})
-	if err != nil || !wanted {
-		return a, fmt.Errorf("server source not requested")
 	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(user))
 	if err != nil {
@@ -100,6 +96,18 @@ func crewOfflineServerSource(ctx context.Context, user string, record ProductCon
 	current, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, record.ConversationKey)]
 	if !ok || current.SessionID != record.SessionID || current.ConversationID != record.ConversationID || current.WorkspacePath != record.WorkspacePath || current.ProfileID != record.ProfileID {
 		return a, fmt.Errorf("server source binding changed")
+	}
+	return a, nil
+}
+
+func crewOfflineServerSource(ctx context.Context, user string, record ProductConversationRecord, t crewTeam) (crewTeamRegisteredAgent, error) {
+	a, err := crewOfflineServerOwner(ctx, user, record, t)
+	if err != nil {
+		return a, err
+	}
+	wanted, err := crewOfflineAppWanted(t, a, crewOfflineBinding{Provider: "agentworks", Session: record.SessionID, Attachment: record.ConversationID})
+	if err != nil || !wanted {
+		return a, fmt.Errorf("server source not requested")
 	}
 	return a, nil
 }
@@ -127,6 +135,13 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	t, err := readCrewTeam(project)
 	if err != nil || t.RosterSource != "" {
 		return nil
+	}
+	// Return receipts use exact ownership even if sync selection is now off.
+	// This never provisions a home or captures an otherwise private source.
+	if _, e := crewOfflineServerOwner(ctx, user, record, t); e == nil {
+		if _, e := crewOfflineCloudHandback(ctx, user, record); e != nil {
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s session=%s event=handback_skipped reason=cloud_source_unavailable", project, session)
+		}
 	}
 	a, err := crewOfflineServerSource(ctx, user, record, t)
 	if err != nil {
