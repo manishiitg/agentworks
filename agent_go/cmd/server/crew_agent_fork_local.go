@@ -196,6 +196,9 @@ func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project strin
 	if err != nil {
 		return nil, err
 	}
+	if destination.ResourceID != project {
+		return nil, fmt.Errorf("keep this copy in the same Crew")
+	}
 	roots, found, err := crewStorageRoots(destination.WorkspacePath)
 	if err != nil {
 		return nil, err
