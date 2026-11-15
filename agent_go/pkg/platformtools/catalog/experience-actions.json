@@ -1036,6 +1036,14 @@
   },
   {
     "family": "messages",
+    "name": "ask",
+    "member": "messages__ask",
+    "description": "Ask an agent; offline In-team asks use the existing Team agent.",
+    "source": "messages",
+    "source_action": "ask"
+  },
+  {
+    "family": "messages",
     "name": "read",
     "member": "messages__read",
     "description": "Use the current messages read operation.",

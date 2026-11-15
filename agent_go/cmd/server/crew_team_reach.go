@@ -104,6 +104,13 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 	if t.OnlineHome != "" {
 		owner, key := "team-"+t.ProjectID, crewOwnerMainChatKey(t.OnlineHome)
 		if home, err := readCrewTeam(t.OnlineHome); err == nil {
+			// Use the ordinary registry projection, also before anybody opens the
+			// new home's tab. Provisioning creates Main, not its Team registry row.
+			teamAgentsByPersonWithMain(ctx, home, viewer, key)
+			home, err = readCrewTeam(t.OnlineHome)
+			if err != nil {
+				return out
+			}
 			if a, ok := home.registeredAgent(owner, key); ok && a.InTeam {
 				out = append(out, crewTeamReachableAgent{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: "Team agent", Place: "server", Online: true, Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)})
 			}
