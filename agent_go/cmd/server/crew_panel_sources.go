@@ -358,7 +358,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return section, err
 		}},
-		{id: "webhooks", title: "Triggers", allowed: owner && api.projectActions != nil, read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "webhooks", title: "Triggers", allowed: !IsLocalMode() && owner && api.projectActions != nil, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data struct {
 				Triggers []struct {
 					ID, Name string
