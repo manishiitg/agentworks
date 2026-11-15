@@ -250,6 +250,9 @@ func TestOpenPlanAtTurnEnd(t *testing.T) {
 		want   int
 	}{
 		{"open_plan_normal_end", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("completed", "running", "pending")}, {"unified_completion", nil}}, 2},
+		// A real turn saves unified_completion and then conversation_end (the 02:05 log: every check said ended=false).
+		{"open_plan_with_trailing_conversation_end", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("pending")}, {"unified_completion", nil}, {"conversation_end", nil}}, 1},
+		{"cancelled_after_completion", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("pending")}, {"unified_completion", nil}, {"context_cancelled", nil}}, 0},
 		{"all_done", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("completed")}, {"unified_completion", nil}}, 0},
 		{"turn_failed", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("pending")}, {"conversation_error", nil}}, 0},
 		{"plan_from_earlier_turn", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("pending")}, {"unified_completion", nil}, {"user_message", nil}, {"unified_completion", nil}}, 0},
