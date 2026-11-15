@@ -507,6 +507,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 						continue
 					}
 					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": names.endpointName(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					if instructions := crewTeamMessageInstructions(ctx, c, m); instructions != "" {
+						item["team_instructions"] = instructions
+					}
 					for k, v := range messageArrivalFields(m) {
 						item[k] = v
 					}

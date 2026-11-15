@@ -314,6 +314,13 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	if messages, _ := incoming["messages"].([]any); len(messages) != 1 {
 		t.Fatalf("Team mail not readable by the exact attached receiver: %v", incoming)
 	}
+	if messages, _ := incoming["messages"].([]any); len(messages) == 1 {
+		message, _ := messages[0].(map[string]any)
+		instructions, _ := message["team_instructions"].(string)
+		if !strings.Contains(instructions, "answer questions only") || message["message"] != "Team fixture question" {
+			t.Fatal("Team instructions missing or mixed into sender content")
+		}
+	}
 	answer := mail(owner, map[string]any{"action": "send", "inbox_id": inbox, "message": "Team fixture answer", "submission_id": "team-answer"})
 	if answer["inbox_id"] != inbox {
 		t.Fatal("reply left the original inbox")
