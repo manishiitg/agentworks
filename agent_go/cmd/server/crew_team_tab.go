@@ -290,6 +290,21 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 		reply.changeOnMac()
 	}
 	reply.Help, reply.HelpAsk = crewTeamHelp(reply)
+	own, member, offline, people := 0, 0, 0, []string{}
+	for _, a := range reply.Agents {
+		if a.Mine {
+			own++
+			continue
+		}
+		member++
+		if a.StatusLabel == "Mac off" {
+			offline++
+		}
+		if !slices.Contains(people, a.OwnerID) {
+			people = append(people, a.OwnerID)
+		}
+	}
+	logTeamAgentsRead("tab", t.ProjectID, claims.UserID, own, member, offline, people)
 	// Keep routine fast replies quiet; rollout timing proof is recorded in PLAT-746-901.
 	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
 		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
