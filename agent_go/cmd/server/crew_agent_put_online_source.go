@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -131,7 +132,12 @@ func (api *StreamingAPI) putCrewAgentOnlineFromMac(w http.ResponseWriter, r *htt
 	var out crewPutOnlineResult
 	route := "/api/crew-teams/" + url.PathEscape(pair.PeerProjectID) + "/put-online"
 	if err := crewTeamRemoteJSON(r.Context(), claims.UserID, connection, http.MethodPost, route, remote, &out); err != nil {
-		externalError(w, 409, "online_unavailable", err.Error())
+		var refusal *crewRemoteHTTPError
+		if errors.As(err, &refusal) {
+			externalError(w, refusal.Status, refusal.Code, refusal.Message)
+		} else {
+			externalError(w, 409, "online_unavailable", err.Error())
+		}
 		return
 	}
 	// Explicit Put online also works for an idle saved agent; it need not wait
