@@ -1,13 +1,15 @@
 # Appearance
 
-Change the signed-in person's own app look with the `appearance` tool (`settings action=appearance` in chat and over MCP). It changes only their interface, never a project, an agent run or another person's screen.
+Change how the app looks for the signed-in person with the `appearance` tool (`settings action=appearance` in chat and over MCP). It changes only their interface, never a project, an agent run or another person's screen.
+
+**Agentic first.** Appearance shows only Default Light, Default Dark and saved personal themes with apply/delete. “Ask an agent to change the look” opens an existing own agent chat with a starter draft; it never sends automatically. Do not build an editor, add product presets or edit application source for a personal look. Read the live offered guide first; do not invent fields or promise an unsupported customization.
 
 **How to work.** Read first: you get `current`, the saved themes and the `guide` (fonts, code fonts, colour roles, scenes, surfaces, CSS hooks). Then:
 - `apply` previews a change and keeps it as the current look. It merges into the current theme; send `replace: true` with a full theme to start from Default, so colours you leave out are cleared.
 - `save` stores it under a name (up to 60 characters, 20 themes) and applies it. `delete` removes a saved name. `reset` returns to Default and keeps the saved themes.
-- Say what you changed in plain words, and offer `reset` if they do not like it. You cannot see their screen: do not claim it looks right, ask them to look.
+- Say what you changed in plain words, and offer `reset` if they do not like it. Before claiming visual success, inspect a screenshot of the actual app on the correct computer/account using an authorized route. If that is unavailable, say the preference was saved but the look is unverified, and ask the person to look.
 
-**What you can set.** Light or dark mode; interface and code fonts and sizes; eight colour roles as `#RRGGBB` (the `accent` colour is the action colour); a background `scene` (`none`, `neon-orbit`, `deep-space`; dark mode only); `materials` per surface (`page`, `panel`, `popover`, `sidebar`, `composer`) with `opacity` 0 to 1 and, for everything but the page, `blur` 0 to 24 px; and short custom CSS. Prefer these fields to CSS.
+**Current offered fields.** Light or dark mode; interface and code fonts and sizes; eight colour roles as `#RRGGBB` (the `accent` colour is the action colour); `materials` per surface (`page`, `panel`, `popover`, `sidebar`, `composer`) with `opacity` 0 to 1 and, for everything but the page, `blur` 0 to 24 px; and short custom CSS. Prefer these fields to CSS. Existing saved scene looks still run while they are converted to personal CSS; for a new custom background use `scene: "none"`, not another shipped scene. Do not claim that icons, loader variants, chat/layout, code/ANSI, auto-switch or image-asset operations exist until the live guide offers them.
 
 **Make it readable.**
 - Text must stand out from its background: keep a strong difference in lightness between `foreground` and `background`, and between `muted_foreground` and `card`. Avoid mid-grey on mid-grey and saturated colours on each other.
@@ -15,7 +17,7 @@ Change the signed-in person's own app look with the `appearance` tool (`settings
 - Lowering a surface's opacity only fades its background; text stays solid. Do not lower it so far that text sits on a busy image.
 
 **Keep it fast.**
-- Prefer a still background (`none`). Scenes move: `neon-orbit` and `deep-space` animate only while an agent is working and stay still otherwise.
+- Prefer a still custom background. Keep motion cheap and separate from agent execution.
 - Do not blur over a moving scene: the server refuses a blur with a scene. Raise `opacity` for a frosted look instead.
 - Keep custom CSS short (the limit is 20,000 bytes; a few rules is plenty) and never hide, cover or shrink controls, warnings or the message box.
 - No external resources: `@import`, external `url()` and `image-set()` are removed. Animate only inside `@media (prefers-reduced-motion: no-preference)`.
@@ -31,7 +33,7 @@ Example, a rounder message box and a quiet glow on the working agent:
 }
 ```
 
-**A background animation people can see.** The page and panels are solid, so anything painted on `[data-app-main]` sits underneath them and is hidden. Put the animation on `[data-app-ambient]`: it covers the window, is always visible and never blocks clicks. Keep it faint (colours at 6-15% opacity, never a solid fill) so text stays readable, and animate `transform` or `opacity` of a pseudo-element rather than `background-position` (that repaints the whole window every frame):
+**A background animation people can see.** Opaque nested surfaces can hide a background on `[data-app-main]`. Explicit translucent materials activate transparent wrappers in Light and Dark; keep enough tint for readable text. Shared materials set background-color only, so a custom gradient is not erased. Put the animation on `[data-app-ambient]`: it covers the window, is always visible and never blocks clicks. Keep it faint (colours at 6-15% opacity, never a solid fill) so text stays readable, and animate `transform` or `opacity` of a pseudo-element rather than `background-position` (that repaints the whole window every frame):
 
 ```css
 @media (prefers-reduced-motion: no-preference) {
@@ -40,12 +42,14 @@ Example, a rounder message box and a quiet glow on the working agent:
     background: radial-gradient(600px 400px at 20% 20%, hsl(var(--primary) / .12), transparent 70%),
                 radial-gradient(700px 450px at 80% 80%, hsl(var(--accent) / .12), transparent 70%);
     animation: drift 24s ease-in-out infinite alternate;
+    animation-play-state: paused;
   }
+  html[data-appearance-visible="true"] [data-app-ambient]::before { animation-play-state: running; }
   @keyframes drift { to { transform: translate3d(6%, 4%, 0) scale(1.08); } }
 }
 ```
 
 Other things that decide whether a change shows:
-- A running `@keyframes` always beats a static rule, so animating `box-shadow` or a colour on a hook works. A plain static `background` or `border-color` on `[data-chat-composer-card]` loses to the built-in light-theme rule; add `!important` to it.
+- Use shared semantic fields and stable hooks. The old Light-only opaque composer fill has been removed; do not add blanket important rules. Prefer small transform/opacity motion, not full-window background-position, shadows or filters.
 - Make glows strong enough to see: shadow and glow colours at 25% opacity or more, not 5-10%.
 - After saving, look at a screenshot of the real window. If the animation is not there, it is almost always hidden under a solid surface or too faint.
