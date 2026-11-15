@@ -1085,6 +1085,9 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	// Another person's thread with a shared agent runs on the agent's own program and model (its tab's choice), so it
 	// can start from the owner's conversation with it.
 	ask, _ := ctx.Value(crewMacSharedAskKey{}).(*crewMacSharedAsk)
+	if ask == nil && profile.ID == crewProfileID {
+		input.Message = crewOfflineAppHandbackInput(ctx, userID, conversation, input.Message)
+	}
 	identityKey := conversation.ConversationKey
 	if ask != nil && ask.Owner.ConversationKey != "" {
 		identityKey = ask.Owner.ConversationKey

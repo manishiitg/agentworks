@@ -184,7 +184,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		}
 	}
 	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=synced revision=%d offset=%d", pair.PeerProjectID, status.Agent, session, cursor.Revision, cursor.Offset)
-	return nil
+	return syncCrewOfflineAppReturns(ctx, user, connection, route, record, saved.History)
 }
 
 func crewOfflineFileTailHash(file *os.File, offset int64) (string, error) {
