@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import AppearanceSettings from './AppearanceSettings'
 import AppearanceControl from './AppearanceControl'
+import DeepSpaceBackground from '../appearance/DeepSpaceBackground'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
@@ -80,4 +81,30 @@ it('selects agent-saved themes and restores Default without deleting presets', a
   await click('Try Neon Orbit')
   expect(useAppearanceStore.getState().current.css).toContain('--aw-background: neon-orbit')
   expect(useAppearanceStore.getState().saved.some(theme=>theme.name==='Warm')).toBe(true)
+})
+
+// Hidden pages must freeze the decorative scene; leaving it must remove its listener.
+it('pauses the passive space scene on document hiding and releases its visibility subscription', async () => {
+  const original = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+  const add = vi.spyOn(document, 'addEventListener')
+  const remove = vi.spyOn(document, 'removeEventListener')
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+  host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+  try {
+    await act(async () => root.render(<DeepSpaceBackground />))
+    const scene = document.querySelector('.aw-deep-space')!
+    expect(scene.getAttribute('data-visible')).toBe('true')
+    expect(scene.querySelector('canvas,button,input,[tabindex]')).toBeNull()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(scene.getAttribute('data-visible')).toBe('false')
+    const subscription = add.mock.calls.find(([type]) => type === 'visibilitychange')!
+    await act(async () => root.render(null))
+    expect(remove).toHaveBeenCalledWith('visibilitychange', subscription[1])
+    expect(document.querySelector('.aw-deep-space')).toBeNull()
+  } finally {
+    if (original) Object.defineProperty(document, 'visibilityState', original)
+    else Reflect.deleteProperty(document, 'visibilityState')
+    add.mockRestore(); remove.mockRestore()
+  }
 })
