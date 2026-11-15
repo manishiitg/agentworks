@@ -38,7 +38,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     try {
       const { data } = await api.post<{ project_id: string; prompt?: string; message?: string }>('/api/dashboards', { action: 'add_to_team', workspace, dashboard_id: id })
       assertChatIdentityCurrent(identity)
-      if (data.prompt) startTeamDashboardHandoff(data.project_id, data.prompt)
+      if (data.prompt) await startTeamDashboardHandoff(data.project_id, data.prompt)
       if (data.message) setHandoffMessage(data.message)
       window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     } catch (e) {
