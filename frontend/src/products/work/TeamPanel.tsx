@@ -31,14 +31,17 @@ const time = (at: string) => Date.parse(at) || 0
 
 /** The same compact Team content in the web and Mac right panel. The scope includes
  * the signed-in person and server, so another account never inherits disclosures. */
-export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shared = [], onShared }: {
+export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shared = [], onShared, artifacts = [], onArtifact }: {
   scope: string; agents: TeamPanelAgent[]; posts: TeamPanelPost[]
   onAsk: (agent: TeamPanelAgent) => void; onActivity: () => void; error?: string
   shared?: TeamPanelShared[]; onShared?: (row: TeamPanelShared) => void
+  artifacts?: { id: string; title: string; kind: string; addedBy?: string }[]; onArtifact?: (id: string) => void
 }) {
   const [agentsChoice, setAgentsChoice] = useRemembered(scope, 'agents')
   const [activityChoice, setActivityChoice] = useRemembered(scope, 'activity')
   const [sharedChoice, setSharedChoice] = useRemembered(scope, 'shared')
+  const [artifactsChoice, setArtifactsChoice] = useRemembered(scope, 'artifacts')
+  const artifactsOpen = artifactsChoice === 'open'
   const sharedOpen = sharedChoice === 'open'
   const sharedLine = (row: TeamPanelShared) => `Shared with team · ${row.canChange ? 'can make changes' : 'answers only'} · ${row.chosen === undefined ? 'whole team' : `${row.chosen} chosen ${row.chosen === 1 ? 'person' : 'people'}`}`
   const [seen, setSeen] = useRemembered(scope, 'seen')
@@ -81,6 +84,14 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
         <span className="shrink-0 text-[10px] text-muted-foreground">{row.chosen === undefined ? 'Whole team' : `${row.chosen} chosen`}</span>
       </button>)}
       {!shared.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">None of your agents is shared with the team.</p>}
+    </div>}
+    {summary('Artifacts', artifactsOpen, `· ${artifacts.length} on the Team`, '', () => setArtifactsChoice(artifactsOpen ? '' : 'open'))}
+    {artifactsOpen && <div role="group" aria-label="Team artifacts">
+      {artifacts.map(row => <button key={row.id} type="button" onClick={() => onArtifact?.(row.id)} className="block w-full rounded px-1 py-1.5 text-left hover:bg-background/40 focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="block truncate text-xs font-medium">{row.title}</span>
+        <span className="block truncate text-[10px] text-muted-foreground">{row.kind}{row.addedBy ? ` · Added by ${row.addedBy}` : ''}</span>
+      </button>)}
+      {!artifacts.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No artifacts on the Team yet.</p>}
     </div>}
     {summary('Activity', activityOpen, `${newCount} new`, latest[0] ? `${latest[0].agent}: ${latest[0].line}` : 'No recent posts', () => setActivityChoice(activityOpen ? '' : 'open'))}
     {activityOpen && <div role="group" aria-label="Recent Team activity">
