@@ -25,9 +25,11 @@ For **Add to Team**, prepare and publish the item's `online.json` dependency fil
 ## Add a dashboard to the Team
 
 The person's Add to Team request is approval to arrange the move, not to reveal
-technical details or ask them to pick tables. Use `dashboard action=add_to_team`
-for the published item. A static Artifact copies directly; report its returned
-plain message, with no agent discussion. For a live dashboard:
+technical details or ask them to pick tables. The button uses `dashboard action=add_to_team`
+for the published item; the same action is available from chat. A static Artifact
+copies directly; report its returned plain message, with no agent discussion.
+When a live dashboard returns a source-agent task, carry out that task below:
+do not repeatedly call add_to_team to request the same task again. For a live dashboard:
 - Inspect its current queries, assets, functions and feeding routines; prepare
   its `online.json` dependencies from actual use, never guess IDs or rows.
 - Discover the Team agent's exact `agent:` address through AgentBridge. Use
