@@ -73,7 +73,7 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if err := crewroot.WriteSync(fixtureCrewID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "source-pair", PeerProjectID: "local-source"}); err != nil {
 		t.Fatal(err)
 	}
-	binding := crewOfflineBinding{Provider: "agentworks", Session: "source-session", Attachment: "source-conversation"}
+	binding := crewOfflineBinding{Provider: "agentworks", Session: "source-session", Attachment: "conversation-source"}
 	put := func(person, pair string) *httptest.ResponseRecorder {
 		t.Helper()
 		raw, _ := json.Marshal(crewPutOnlineRequest{Agent: sourceAgent, Audience: "only_me", crewOfflineBinding: binding})
