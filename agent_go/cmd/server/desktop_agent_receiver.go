@@ -52,6 +52,29 @@ type desktopAppIncoming struct {
 
 // These are actual owned local chats, not synthesized Main agents, remote
 // Team copies or isolated automation threads. No server registration creates one.
+func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
+	path := productConversationRegistryPath(owner)
+	mu := productConversationRegistryMutex(path)
+	mu.Lock()
+	document, err := defaultProductConversationRegistryStore().loadDocument(ctx, path)
+	mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]ProductConversationRecord{}
+	for _, record := range document.Entries {
+		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) || !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
+			continue
+		}
+		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
+		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
+		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
+
+		out[record.ConversationID] = record
+	}
+	return out, nil
+}
+
 func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
 	path := productConversationRegistryPath(owner)
 	mu := productConversationRegistryMutex(path)
