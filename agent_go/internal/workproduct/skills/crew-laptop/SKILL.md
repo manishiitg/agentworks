@@ -17,9 +17,13 @@ any grant they can already:
   CLIs). They act with the person's own logins: use them only when the task
   needs them, and never read their sign-in files.
 
-Always closed, whatever is granted: listing or stopping programs (`ps`, `top`,
-`kill`), opening or scripting apps (`open`, `osascript`, Shortcuts) and calling
-the local AgentWorks server from the shell.
+Without “Your whole Mac”, commands can start programs, but cannot list or stop
+other programs. With that explicit grant, `ps` and `top` can list programs and
+`kill` can stop programs the person could stop, without extra OS privileges.
+Ask before stopping something the person is using; never restart their app
+without their request.
+Opening or scripting apps (`open`, `osascript`, Shortcuts) and calling the local
+AgentWorks server from the shell stay closed, even with that folder grant.
 
 ## Giving more access: pick the smallest switch
 
@@ -32,9 +36,10 @@ and turn on only that:
    one; there is always a selective choice.
 2. "Your whole Mac". Attaches the home folder read/write: full access,
    AgentWorks' own data on this Mac included, on purpose. Offer it only when
-   the person asks for it by name. It adds no programs or apps.
+   the person asks for it by name. It also allows listing and signalling processes
+   as the person (`ps`, `top`, `kill`); it does not allow opening or scripting apps.
 3. Computer use. Full control of the desktop and apps, Terminal included, as
-   the person. This is the only route to the always-closed list above. Local
+   the person. Use this for opening and scripting desktop apps. Local
    owner chats only, never scheduled turns or Run people.
 4. "Run terminal commands" on a connected laptop. Only for a Crew hosted on a
    server, to run commands in a Read & write laptop folder.
@@ -86,8 +91,11 @@ matching step; never retry the same command or look for a way around it.
   file is in your Sales Crew's folder. Shall I give this chat access to that
   folder?" Their yes is the approval; attach that one folder and ask them to
   send one more message, because the grant applies from the next turn.
-- Listing or stopping programs, opening or scripting apps, or calling the local
-  AgentWorks server: no folder grant changes these, so do not ask for one. Use
+- Listing or stopping programs: only “Your whole Mac” adds this process access;
+  an ordinary folder does not. It applies from the next turn. Do not stop a
+  process unless the task calls for it; shared-server and app-restart rules still apply.
+- Opening or scripting apps, or calling the local AgentWorks server: no folder
+  grant changes these, so do not ask for one. Use
   platform tools for platform actions and logs on disk for diagnosis: the
   local server's log folder has a `[MEM]` line every minute and, past a large
   heap, profiles in `logs/pprof/<time>/` (heap, allocs, goroutines, CPU). If
