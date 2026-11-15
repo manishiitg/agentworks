@@ -151,8 +151,15 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 			log.Printf("[CREW_RELAY] refused owner=%s device=%s project=%s reason=%q", sock.owner, sock.device, crew.Project, err.Error())
 			// The online copy is not this account's (the Mac signed in again as someone else, or it was removed):
 			// tell the Mac, which starts a new online copy for this account. The old one is never touched.
-			if err.Error() == "not the owner" && sock.send != nil {
-				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: "not_owner"})
+			if sock.send != nil {
+				// Any other refusal (settings unreadable, member not on their Mac) is told too: the Mac stops
+				// treating the Crew as served and offers it again on its next ping, so a repaired Crew is
+				// reached without a reconnect.
+				state := "unavailable"
+				if err.Error() == "not the owner" {
+					state = "not_owner"
+				}
+				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: state})
 			}
 			continue
 		}

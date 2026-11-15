@@ -118,6 +118,20 @@ type desktopRelayCrew struct {
 	connection string
 }
 
+// desktopRelayLeftOut remembers why a paired Crew is not offered, so the reason is logged once per change, not on
+// every 15s offer check.
+var desktopRelayLeftOut sync.Map // local Crew id -> reason
+
+// desktopRelayRetryUnavailable is how long a Crew the server could not admit waits before it is offered again.
+const desktopRelayRetryUnavailable = 2 * time.Minute
+
+func logDesktopRelayLeftOut(local, peer, reason string) {
+	if previous, ok := desktopRelayLeftOut.Swap(local, reason); ok && previous == reason {
+		return
+	}
+	log.Printf("[CREW_RELAY] desktop left out project=%s peer=%s reason=%q", local, peer, reason)
+}
+
 // desktopRelayCrews lists the Crews this Mac offers, optionally for one connection.
 func desktopRelayCrews(connection string) []desktopRelayCrew {
 	state, err := workflowCLIStateRoot()
@@ -132,10 +146,24 @@ func desktopRelayCrews(connection string) []desktopRelayCrew {
 			continue
 		}
 		b, e := crewroot.ReadSync(id)
-		// A Crew being moved online is no longer offered by this Mac.
-		if e != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction == "server" || b.ConnectionID == "" {
+		if e != nil || b == nil || b.Side != "local" {
 			continue
 		}
+		// A Crew being moved online is no longer offered by this Mac.
+		reason := ""
+		switch {
+		case b.Editing != "local":
+			reason = "editing on " + firstNonEmptyTrimmed(b.Editing, "unknown")
+		case b.PendingAction == "server":
+			reason = "being moved online"
+		case b.ConnectionID == "":
+			reason = "no connection"
+		}
+		if reason != "" {
+			logDesktopRelayLeftOut(id, b.PeerProjectID, reason)
+			continue
+		}
+		desktopRelayLeftOut.Delete(id)
 		if connection != "" && b.ConnectionID != connection {
 			continue
 		}
@@ -366,6 +394,18 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		case "refused":
 			if local != "" && msg.State == "not_owner" {
 				api.repairDesktopCrewTwin(session, local, pair, connectionID)
+			}
+			if msg.State == "unavailable" {
+				// The server could not admit it (for example its settings are unreadable there). Forget it as
+				// offered after a pause, so a ping offers it again: a repaired Crew is reached without a
+				// reconnect, and a still-broken one is retried every few minutes, not on every ping.
+				project := msg.Project
+				time.AfterFunc(desktopRelayRetryUnavailable, func() {
+					pairsMu.Lock()
+					delete(pairs, project)
+					pairsMu.Unlock()
+				})
+				log.Printf("[CREW_RELAY] desktop refused project=%s local=%s reason=unavailable retry_in=%s", project, local, desktopRelayRetryUnavailable)
 			}
 			if msg.State == "other_mac" {
 				// Forget it as offered: the next ping offers it again, so this computer takes over once the other is gone.
