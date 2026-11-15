@@ -158,7 +158,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		return child, cfg.Token, a
 	}
 	owner, token, attached := attach(parent, "terminal", "native-owner")
-	_, memberToken, invited := attach(member, "member-terminal", "native-member")
+	sender, memberToken, invited := attach(member, "member-terminal", "native-member")
 	team := crewTeam{ProjectID: "alpha", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Invited: true}}}
 	if err = writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
@@ -286,6 +286,48 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	}
 	if res := liveRead(); res.Code != 403 || calls != before+1 {
 		t.Fatal("revoked membership reached the native journal", res.Code)
+	}
+
+	// Normal bridge mail, without a separate Team route or a public share.
+	saved.People[0].Invited = false
+	if e = writeCrewTeamAgentFixture(saved); e != nil {
+		t.Fatal(e)
+	}
+	mail := func(client *agentworksclient.Client, args map[string]any) map[string]any {
+		t.Helper()
+		raw, err := client.Call(t.Context(), "messages", args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]any
+		if err = json.Unmarshal(raw, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	receipt := mail(sender, map[string]any{"action": "send", "target": "agent:owner/terminal", "message": "Team fixture question", "submission_id": "team-question"})
+	inbox, _ := receipt["inbox_id"].(string)
+	if inbox == "" {
+		t.Fatalf("normal bridge returned no inbox: %v", receipt)
+	}
+	incoming := mail(owner, map[string]any{"action": "read", "inbox_id": inbox})
+	if messages, _ := incoming["messages"].([]any); len(messages) != 1 {
+		t.Fatalf("Team mail not readable by the exact attached receiver: %v", incoming)
+	}
+	answer := mail(owner, map[string]any{"action": "send", "inbox_id": inbox, "message": "Team fixture answer", "submission_id": "team-answer"})
+	if answer["inbox_id"] != inbox {
+		t.Fatal("reply left the original inbox")
+	}
+	incoming = mail(sender, map[string]any{"action": "read", "inbox_id": inbox})
+	if messages, _ := incoming["messages"].([]any); len(messages) != 1 {
+		t.Fatalf("Team reply did not return to the original sender: %v", incoming)
+	}
+	saved.People[0].Invited = true
+	if e = writeCrewTeamAgentFixture(saved); e != nil {
+		t.Fatal(e)
+	}
+	if _, err := sender.Call(t.Context(), "messages", map[string]any{"action": "send", "inbox_id": inbox, "message": "Refused after leaving", "submission_id": "team-revoked"}); err == nil {
+		t.Fatal("removed Team member could reply in the old inbox")
 	}
 
 	// A disconnected stream is valid offline, but rebinding the same named
