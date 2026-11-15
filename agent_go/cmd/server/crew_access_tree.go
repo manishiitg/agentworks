@@ -136,7 +136,8 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		}
 	}
 	for _, person := range f.People {
-		if person.You || person.UserID == f.Viewer {
+		// The derived home's execution owner is not a teammate.
+		if person.You || person.UserID == f.Viewer || f.Team != nil && f.Team.RosterSource != "" && person.UserID == f.Team.OwnerID {
 			continue
 		}
 		name := person.Name

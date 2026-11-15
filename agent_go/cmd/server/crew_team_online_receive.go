@@ -495,9 +495,19 @@ func (api *StreamingAPI) teamOnlineAcceptedLocation(ctx context.Context, team, s
 // The How we work card lists these mappings, not a second schedule copy.
 func (api *StreamingAPI) handleCrewTeamOnlineItems(w http.ResponseWriter, r *http.Request) {
 	project := mux.Vars(r)["project"]
+	requested := project
+	// Adapt the execution home to its source Team; that Team's normal consent
+	// and current membership checks still run before any mappings are read.
+	if home, err := readCrewTeam(project); err == nil && home.RosterSource != "" && home.OwnerID == "team-"+home.RosterSource {
+		project = home.RosterSource
+	}
 	team, err := teamOnlineHome(r.Context(), project)
 	if err != nil {
 		externalError(w, 403, "team_member_required", err.Error())
+		return
+	}
+	if requested != project && team.OnlineHome != requested {
+		externalError(w, 403, "team_home_unavailable", "This Team's online home is unavailable.")
 		return
 	}
 	if team.OnlineHome == "" {
