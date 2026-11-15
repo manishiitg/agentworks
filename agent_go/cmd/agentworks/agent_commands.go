@@ -204,9 +204,24 @@ func agentsCommand(o *options) *cobra.Command {
 		}
 		roster, _ := json.Marshal(map[string]interface{}{"agents": []any{status.Agent}})
 		fmt.Fprint(o.stdout, agentRoster(roster, agentworksclient.LocalBridgeReply{}))
-		for _, field := range []string{"current_task", "current_step", "last_messages", "replies"} {
-			if value, ok := status.Agent[field]; ok {
-				fmt.Fprintf(o.stdout, "%s: %v\n", field, value)
+		for _, field := range []struct{ key, label string }{{"current_task", "Current task"}, {"current_step", "Current step"}, {"last_messages", "Last message"}, {"replies", "Reply to you"}} {
+			clean := func(value string) string {
+				return strings.Map(func(r rune) rune {
+					if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+						return ' '
+					}
+					return r
+				}, value)
+			}
+			switch value := status.Agent[field.key].(type) {
+			case string:
+				fmt.Fprintf(o.stdout, "%s: %s\n", field.label, clean(value))
+			case []interface{}:
+				for _, line := range value {
+					if text, ok := line.(string); ok {
+						fmt.Fprintf(o.stdout, "%s: %s\n", field.label, clean(text))
+					}
+				}
 			}
 		}
 		fmt.Fprintln(o.stdout, status.Notice)

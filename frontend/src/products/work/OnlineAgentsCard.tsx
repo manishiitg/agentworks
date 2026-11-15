@@ -65,7 +65,7 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
           {agent.status?.current_task && <p>Current task: {agent.status.current_task}</p>}
           {agent.status?.current_step && <p>Current step: {agent.status.current_step}</p>}
           {agent.status?.last_messages?.map((line, index) => <p key={index}>{line}</p>)}
-          {!agent.status?.current_task && !agent.status?.last_messages?.length && <p className="text-muted-foreground">No task or message preview available.</p>}
+          {!agent.status?.current_task && !agent.status?.current_step && !agent.status?.last_messages?.length && <p className="text-muted-foreground">No task or message preview available.</p>}
         </div>}
         {agent.automations ? agent.automations.length ? <ul className="ml-6 space-y-1.5 text-xs">
           {agent.automations.map((automation, index) => <li key={`${automation.kind}:${automation.name}:${index}`}>
