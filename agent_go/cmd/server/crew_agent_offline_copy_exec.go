@@ -63,12 +63,6 @@ func crewOfflineCopyHomeKey(home, key string) bool {
 	return crewOfflineCopySourceAgent(home, key) != "" || strings.HasPrefix(key, home+codeChatSideMarker+sharedThreadChatPrefix+crewOfflineCopyTabPrefix)
 }
 
-// crewOfflineCopyAdmits is the source-row audience for every copy path (resolver, binder, endpoint and thread reads).
-// It is the canonical nonrecursive source gate; it never projects reach.
-func crewOfflineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAgent) bool {
-	return viewer != "" && crewTeamAccountActive(viewer) && crewTeamSourceRowAdmits(t, viewer, a)
-}
-
 func crewOfflineRowBinding(t crewTeam, a crewTeamRegisteredAgent) (crewOfflineBinding, bool) {
 	if a.Kind != "terminal" {
 		return crewOfflineAppBinding(t, a)
@@ -155,7 +149,7 @@ func crewTeamOfflineCopyTarget(ctx context.Context, t crewTeam, row crewTeamReac
 	if !ok || row.Kind != "agent" {
 		return row, false, nil
 	}
-	if !crewOfflineCopyAdmits(t, viewer, a) {
+	if !crewTeamSourceRowAdmits(t, viewer, a) {
 		return row, false, admissionRefused("This agent is not shared with you now.")
 	}
 	ref, ready, err := crewOfflineCopyReady(t, a)
@@ -200,7 +194,7 @@ func crewTeamBindOfflineCopyAsk(ctx context.Context, viewer string, original tri
 // viewer now, and the endpoint still names the bound copy in the current home as its virtual owner.
 func crewOfflineCopyEndpointAdmits(t crewTeam, viewer string, e agentMessageEndpoint) error {
 	a, ok := t.Agents[e.TeamAgentID]
-	if !ok || !crewOfflineCopyAdmits(t, viewer, a) {
+	if !ok || !crewTeamSourceRowAdmits(t, viewer, a) {
 		return admissionRefused("This agent is not shared with you now.")
 	}
 	ref, bound, err := crewOfflineCopyBound(t, a)
@@ -233,7 +227,7 @@ func crewOfflineCopySharedChat(viewer, home, key string) (*codeChat, bool) {
 		return nil, false
 	}
 	a, ok := source.Agents[agent]
-	if !ok || !crewOfflineCopyAdmits(source, viewer, a) {
+	if !ok || !crewTeamSourceRowAdmits(source, viewer, a) {
 		return nil, false
 	}
 	ref, bound, err := crewOfflineCopyBound(source, a)
