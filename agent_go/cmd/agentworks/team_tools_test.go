@@ -73,7 +73,11 @@ func TestTeamJoinMCPExactSession(t *testing.T) {
 	if _, err = client.Initialize(ctx, init); err != nil {
 		t.Fatal(err)
 	}
-	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "team_sync", Arguments: map[string]any{"action": "join", "project": "example", "session": "forged", "path": "/outside", "attachment_id": "forged"}}}
+	listed, err := client.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil || len(listed.Tools) != 1 || listed.Tools[0].Name != "agentworks" {
+		t.Fatalf("Team action bypassed the combined plugin tool: %v %v", listed, err)
+	}
+	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "agentworks", Arguments: map[string]any{"action": "team_sync", "team_action": "join", "project": "example", "session": "forged", "path": "/outside", "attachment_id": "forged"}}}
 	result, err := client.CallTool(ctx, request)
 	if err != nil || result == nil || result.IsError {
 		t.Fatalf("join MCP refused: %v %v", result, err)
