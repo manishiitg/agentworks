@@ -48,6 +48,11 @@ func crewOfflineCopySourceAgent(home, key string) string {
 	return crewTeamAgentIDPrefix + tab
 }
 
+// crewOfflineCopyHomeKey: the key is an offline copy base or one of its askers' threads in this home.
+func crewOfflineCopyHomeKey(home, key string) bool {
+	return crewOfflineCopySourceAgent(home, key) != "" || strings.HasPrefix(key, home+codeChatSideMarker+sharedThreadChatPrefix+crewOfflineCopyTabPrefix)
+}
+
 // crewOfflineCopyAdmits is the source-row audience for every copy path (resolver, binder, endpoint and thread reads).
 // It is the canonical nonrecursive source gate; it never projects reach.
 func crewOfflineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAgent) bool {
