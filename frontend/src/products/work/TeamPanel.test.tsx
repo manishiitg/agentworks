@@ -30,10 +30,10 @@ it('starts closed, remembers each person separately and opens the admitted agent
   await click('Agents')
   const rows = [...host.querySelectorAll('[aria-label="Team agents"] > button')]
   expect(rows.map(row => row.textContent)).toEqual([
-    expect.stringContaining('Team agent'), expect.stringContaining('Review'), expect.stringContaining('Checks'),
+    expect.stringContaining('Team agent'), expect.stringContaining('Review'), expect.stringContaining('+ 1 more agents'),
   ])
   expect(host.textContent).toContain('typing… Checking the layout')
-  expect(disclosure('Agents').textContent).toContain('3 · 2 online')
+  expect(disclosure('Agents').textContent).toContain('3 · 1 working')
   expect(host.textContent).not.toContain('My work')
   expect(host.textContent).not.toContain('more of yours')
   await act(async () => (rows[1] as HTMLButtonElement).click())
@@ -80,7 +80,7 @@ it('keeps both groups closed when new activity arrives', async () => {
 })
 
 it('explains offline asks only when the server supplied an admitted Team agent',async()=>{
- await render();await click('Agents')
+ await render();await click('Agents');await click('+ 1 more agents')
  expect(host.textContent).toContain('Offline · new asks go to the Team agent')
  await render('server:owner:crew',agents.filter(row=>!row.team_agent))
  expect(host.textContent).not.toContain('new asks go to the Team agent')
@@ -99,4 +99,27 @@ it('lists online artifacts from every member in the Team group and opens that co
   expect(row.textContent).toContain('Added by Colleague')
   await act(async () => row.click())
   expect(open).toHaveBeenCalledWith('team-copy')
+})
+
+// Working rows stay visible without reopening the idle list on feed updates.
+it('pins the Team agent and working rows, folds idle rows online first, and resets the fold', async () => {
+ const rows: TeamPanelAgent[] = [...agents,
+  {id:'idle',name:'Online idle',person:'Colleague',mine:false,online:true,place:'mac'},
+  {id:'waiting',name:'Needs input',person:'Colleague',mine:false,online:true,place:'mac',activity:'waiting',last_message:'Ready for the next step'},
+ ]
+ await render('server:owner:crew',rows);await click('Agents')
+ expect(disclosure('Agents').textContent).toContain('5 · 2 working')
+ expect(host.textContent).toContain('Ready for the next step')
+ expect(host.textContent).not.toContain('Online idle')
+ expect(host.textContent).not.toContain('Checks finished')
+ await click('+ 2 more agents')
+ const names = [...host.querySelectorAll('[aria-label="Team agents"] > button:not([aria-expanded])')].map(row=>row.textContent)
+ expect(names).toEqual([expect.stringContaining('Team agent'),expect.stringContaining('Review'),expect.stringContaining('Needs input'),expect.stringContaining('Online idle'),expect.stringContaining('Checks')])
+ expect(host.textContent).not.toContain('My work')
+ await click('Agents');await click('Agents')
+ expect(disclosure('+ 2 more agents').getAttribute('aria-expanded')).toBe('false')
+ await render('server:owner:crew', rows.map(row=>row.id==='idle'?{...row,activity:'running',last_message:'Now working'}:row))
+ expect(host.textContent).toContain('Now working')
+ expect(host.textContent).not.toContain('Checks finished')
+ expect(disclosure('+ 1 more agents').getAttribute('aria-expanded')).toBe('false')
 })
