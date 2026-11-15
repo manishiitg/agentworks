@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { expect, it } from 'vitest'
 import { actionForeground, appearanceTokens, applyAppearanceTokens } from './appThemeTokens'
-import { backgroundScene } from '../components/appearance/backgroundScenes'
 import { defaultAppearance, validateTheme } from '../stores/appearanceTheme'
 import { changedLineRanges, themeViolations } from '../../scripts/check-theme-contract.mjs'
 
@@ -26,22 +25,14 @@ it('audits added style literals including variants without treating comments or 
   expect([...changed.get('frontend/src/Example.tsx')!]).toEqual([2,3])
 })
 
-it('admits only shipped dark scenes and clears them for Light', () => {
-  expect(backgroundScene(' deep-space ', 'dark')).toBe('deep-space')
-  expect(backgroundScene('neon-orbit', 'dark')).toBe('neon-orbit')
-  expect(backgroundScene('deep-space', 'light')).toBe('none')
-  expect(backgroundScene('url(https://example.com/script)', 'dark')).toBe('none')
-})
-
-// The server's scene and materials reach the screen as the same --aw-* values custom CSS could set.
-it('turns the saved scene and surface materials into the --aw tokens', () => {
+// Shared material tokens remain independent of personal artwork.
+it('projects surface materials and refuses a removed scene field', () => {
   const theme = defaultAppearance()
-  expect(appearanceTokens(theme, 'dark')['--aw-background']).toBeUndefined()
-  theme.scene = 'deep-space'
+  expect(() => validateTheme({ ...theme, scene: 'deep-space' })).toThrow()
   theme.materials = { sidebar: { opacity: 0.85 }, panel: { opacity: 0.9, blur: 12 }, composer: { blur: 0 } }
   const tokens = appearanceTokens(theme, 'dark')
-  expect([tokens['--aw-background'], tokens['--aw-sidebar-opacity'], tokens['--aw-panel-opacity'], tokens['--aw-panel-backdrop'], tokens['--aw-composer-backdrop']])
-    .toEqual(['deep-space', '0.85', '0.9', 'blur(12px)', 'none'])
+  expect([tokens['--aw-sidebar-opacity'], tokens['--aw-panel-opacity'], tokens['--aw-panel-backdrop'], tokens['--aw-composer-backdrop']])
+    .toEqual(['0.85', '0.9', 'blur(12px)', 'none'])
 })
 
 // PLAT-746-1040: a personal loader must be cleared on account/theme changes;

@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import AppearanceSettings from './AppearanceSettings'
 import AppearanceControl from './AppearanceControl'
-import DeepSpaceBackground from '../appearance/DeepSpaceBackground'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
@@ -83,33 +82,7 @@ it('applies either default and saved themes through the same picker and deletes 
   expect(useAppearanceStore.getState().current).toEqual(warm)
 })
 
-// Hidden pages must freeze the decorative scene; leaving it must remove its listener.
-it('pauses the passive space scene on document hiding and releases its visibility subscription', async () => {
-  const original = Object.getOwnPropertyDescriptor(document, 'visibilityState')
-  const add = vi.spyOn(document, 'addEventListener')
-  const remove = vi.spyOn(document, 'removeEventListener')
-  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
-  host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
-  try {
-    await act(async () => root.render(<DeepSpaceBackground />))
-    const scene = document.querySelector('.aw-deep-space')!
-    expect(scene.getAttribute('data-visible')).toBe('true')
-    expect(scene.querySelector('canvas,button,input,[tabindex]')).toBeNull()
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
-    expect(scene.getAttribute('data-visible')).toBe('false')
-    const subscription = add.mock.calls.find(([type]) => type === 'visibilitychange')!
-    await act(async () => root.render(null))
-    expect(remove).toHaveBeenCalledWith('visibilitychange', subscription[1])
-    expect(document.querySelector('.aw-deep-space')).toBeNull()
-  } finally {
-    if (original) Object.defineProperty(document, 'visibilityState', original)
-    else Reflect.deleteProperty(document, 'visibilityState')
-    add.mockRestore(); remove.mockRestore()
-  }
-})
-
-// Real failure: scene:none + a custom background stayed behind opaque Light wrappers;
+// Real failure: a custom background stayed behind opaque Light wrappers;
 // changing only scene/material fields also did not rerun the scene projection.
 it('adopts animated CSS and projects translucent surfaces without a shipped scene in Light', async () => {
   const css = '@keyframes theme-drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } } @media (prefers-reduced-motion: no-preference) { [data-app-main] { animation: theme-drift 6s linear infinite alternate; } }'
@@ -118,7 +91,7 @@ it('adopts animated CSS and projects translucent surfaces without a shipped scen
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
   expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('@keyframes theme-drift')))).toBe(true)
-  expect(document.documentElement.dataset.appearanceScene).toBe('none')
+  expect(document.documentElement.hasAttribute('data-appearance-scene')).toBe(false)
   expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(true)
   expect(document.documentElement.style.getPropertyValue('--aw-panel-opacity')).toBe('0.6')
   doc.current.materials = { panel: { opacity: 1 } }
@@ -139,7 +112,7 @@ it('projects document visibility for personal CSS and clears it on unmount', asy
     await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
     expect(document.documentElement.dataset.appearanceVisible).toBe('true')
     expect(document.documentElement.dataset.appearance).toBe('light')
-    expect(document.documentElement.dataset.appearanceScene).toBe('none')
+    expect(document.documentElement.hasAttribute('data-appearance-scene')).toBe(false)
     expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('custom-transit')))).toBe(true)
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
     await act(async () => document.dispatchEvent(new Event('visibilitychange')))

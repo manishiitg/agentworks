@@ -7,6 +7,7 @@ import { safeAppearanceSheet } from './appearanceCss'
 it('drops external CSS resource declarations and keeps local styling', () => {
   const { sheet, removed } = safeAppearanceSheet(String.raw`
     [data-chat-composer-card] { border-radius: 20px; background: url(https://example.com/leak); --asset: u\72l(https://example.com/escaped); }
+    [data-app-main] { background-image: url("data:image/svg+xml;base64,PHN2Zy8+"); }
     @font-face { font-family: untrusted; src: url(https://example.com/font.woff2); }
     @supports (display: grid) { .example { color: red; background-image: image-set("https://example.com/a" 1x); } }
   `)
@@ -15,4 +16,5 @@ it('drops external CSS resource declarations and keeps local styling', () => {
   expect(css).not.toContain('example.com')
   expect(css).toContain('border-radius: 20px')
   expect(css).toContain('color: red')
+  expect(css).toContain('data:image/svg+xml;base64,PHN2Zy8+')
 })
