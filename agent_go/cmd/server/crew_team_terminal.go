@@ -136,6 +136,12 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		crewTeamTerminalRefused(w, 503, project, named, "record_unavailable", "The Team is unavailable.")
 		return
 	}
+	// Ordinary Team writes create this private directory before their atomic
+	// write. A new Off registry must use the same fence, not mkdir's 0755.
+	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
+		crewTeamTerminalRefused(w, 503, project, named, "record_unavailable", "The Crew's private agent registry is unavailable.")
+		return
+	}
 	mu := crewTeamRecordMutex(dir)
 	mu.Lock()
 	defer mu.Unlock()
