@@ -74,6 +74,7 @@ function openTeammateAgent(key: string) {
 /** Team › Agents: one card per own agent (Ask), the Crew's actions, teammates' agents, then "Who can use these". */
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
+  const [terminal, setTerminal] = useState<{ id: string; name: string }>()
   const shared = page.shared_with_you || []
   return <div className="space-y-2.5">
     {page.agents.length > 0 && <p className="px-1 text-xs font-medium text-muted-foreground">Your agents</p>}
@@ -92,12 +93,14 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
         </>
         const row = 'flex w-full items-center gap-3 rounded-xl border border-border px-3.5 py-2.5 text-left text-sm'
         // A teammate's agent opens like it does from the agents menu (owner, 12 Nov); an action stays a plain line.
+        if (item.terminal_agent_id) return <button key={item.terminal_agent_id} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => setTerminal({ id: item.terminal_agent_id!, name: item.name })} className={`${row} hover:bg-muted/50`}>{body}</button>
         return item.key
           ? <button key={person.name + item.name + item.line} type="button" title={`Open ${person.name}'s ${item.name}`} onClick={() => openTeammateAgent(item.key!)} className={`${row} hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{body}</button>
           : <div key={person.name + item.name + item.line} className={row}>{body}</div>
       }))}
     </>}
     <p className="px-1 text-xs text-muted-foreground">{page.who_can_use} · <button type="button" onClick={onPeople} className="text-primary hover:underline">change</button></p>
+    {terminal && <TerminalLiveDialog target={target} agent={terminal} close={() => setTerminal(undefined)} />}
     {wizard && <ActionWizard name={wizard} projectId={projectId} onClose={() => setWizard('')} />}
   </div>
 }
@@ -275,4 +278,36 @@ function ActionWizard({ name, projectId, onClose }: { name: string; projectId: s
       </div>
     </div>
   </ModalPortal>
+}
+
+
+/** Native text is fetched only by the server's opt-in Live route, never the preview feed. */
+function TerminalLiveDialog({ target, agent, close }: { target: TeamTarget; agent: { id: string; name: string }; close: () => void }) {
+  type Message = { Role: string; Parts: { Text: string }[] }
+  const [messages, setMessages] = useState<Message[]>([])
+  const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    setMessages([]); setError(''); setLoaded(false)
+    const load = async () => {
+      try {
+        const data = await teamRequest<{ messages: Message[] }>(target, `/terminal/${encodeURIComponent(agent.id)}/live`)
+        if (active) { setMessages(data.messages); setError(''); setLoaded(true) }
+      } catch (e) {
+        if (active) { setMessages([]); setError(teamFailure(e).message); setLoaded(true) }
+      } finally {
+        if (active) timer = setTimeout(() => { if (document.visibilityState === 'visible') void load(); else timer = setTimeout(() => void load(), 5000) }, 5000)
+      }
+    }
+    void load()
+    return () => { active = false; clearTimeout(timer) }
+  }, [target.project, target.connection, agent.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  return <ModalPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={close}>
+    <section role="dialog" aria-modal="true" aria-label={agent.name} className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-background p-4 text-sm shadow-xl" onClick={event => event.stopPropagation()}>
+      <header className="mb-3 flex items-center justify-between"><h2 className="font-semibold">{agent.name} · Live conversation</h2><button type="button" aria-label="Close" onClick={close}><X className="h-4 w-4" /></button></header>
+      {error ? <p role="alert" className="text-muted-foreground">{error}</p> : !loaded ? <p role="status">Loading…</p> : messages.length === 0 ? <p className="text-muted-foreground">No messages yet.</p> : <div className="space-y-4">{messages.map((message, index) => <article key={index}><p className="mb-1 text-xs text-muted-foreground">{message.Role === 'user' ? 'Person' : 'Agent'}</p><p className="whitespace-pre-wrap break-words">{message.Parts.map(part => part.Text).join('\n\n')}</p></article>)}</div>}
+    </section>
+  </div></ModalPortal>
 }
