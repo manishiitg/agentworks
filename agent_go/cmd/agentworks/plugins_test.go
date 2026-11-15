@@ -338,3 +338,25 @@ func TestAgentRosterDisplaysMixedDirectoryIdentities(t *testing.T) {
 		t.Fatal("obsolete messaging restriction", got)
 	}
 }
+
+// The CLI must filter the server state, not infer work from connection or
+// delivery status. Waiting, Offline and missing state are not Idle.
+func TestAgentRosterActivityFiltersUseServerState(t *testing.T) {
+	raw := json.RawMessage(`{"agents":[{"id":"working","activity":"Working","online":false},{"id":"idle","activity":"Idle","online":true},{"id":"waiting","activity":"Waiting for you"},{"id":"off","activity":"Offline"},{"id":"unknown"}]}`)
+	for _, tc := range []struct {
+		working, idle bool
+		id            string
+	}{{true, false, "working"}, {false, true, "idle"}} {
+		var result struct {
+			Agents []struct {
+				ID string `json:"id"`
+			}
+		}
+		if err := json.Unmarshal(filterAgentRosterActivity(raw, tc.working, tc.idle), &result); err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Agents) != 1 || result.Agents[0].ID != tc.id {
+			t.Fatalf("wrong activity filter: %+v", result)
+		}
+	}
+}

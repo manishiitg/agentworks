@@ -142,6 +142,7 @@ func pluginAgents(ctx context.Context, root string, o *options, req agentworkscl
 
 func agentsCommand(o *options) *cobra.Command {
 	var query string
+	var working, idle bool
 	cmd := &cobra.Command{Use: "agents", Aliases: []string{"agent"}, Args: cobra.NoArgs, Short: "Show agents visible through your authorized connections", RunE: func(cmd *cobra.Command, _ []string) error {
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -151,6 +152,9 @@ func agentsCommand(o *options) *cobra.Command {
 		if o.serverURL == "" && o.configPath == "" && o.getenv("AGENTWORKS_CONFIG") == "" {
 			dirs, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories", Query: query})
 			if len(dirs.Directories) > 0 {
+				for i := range dirs.Directories {
+					dirs.Directories[i].Agents = filterAgentRosterActivity(dirs.Directories[i].Agents, working, idle)
+				}
 				if o.jsonOutput {
 					return o.output(map[string]any{"directories": dirs.Directories, "local": local.AgentStates})
 				}
@@ -169,6 +173,7 @@ func agentsCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		raw = filterAgentRosterActivity(raw, working, idle)
 		if o.jsonOutput {
 			return o.output(map[string]any{"agents": json.RawMessage(raw), "local": local.AgentStates})
 		}
@@ -176,6 +181,9 @@ func agentsCommand(o *options) *cobra.Command {
 		return err
 	}}
 	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name or purpose")
+	cmd.Flags().BoolVar(&working, "working", false, "Show only agents the server reports as working")
+	cmd.Flags().BoolVar(&idle, "idle", false, "Show only agents the server reports as idle")
+	cmd.MarkFlagsMutuallyExclusive("working", "idle")
 	return cmd
 }
 
@@ -184,22 +192,24 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name      string   `json:"name"`
-			AgentName string   `json:"agent_name"`
-			Address   string   `json:"id"`
-			Target    string   `json:"target"`
-			Label     string   `json:"label"`
-			ID        string   `json:"agent_id"`
-			Provider  string   `json:"provider"`
-			CLI       string   `json:"cli"`
-			ModelID   string   `json:"model_id"`
-			Effort    string   `json:"reasoning_effort"`
-			Groups    []string `json:"group_names"`
-			Crew      string   `json:"crew_name"`
-			Purpose   string   `json:"purpose"`
-			Online    bool     `json:"online"`
-			Presence  string   `json:"presence"`
-			Published bool     `json:"published"`
+			Name            string   `json:"name"`
+			AgentName       string   `json:"agent_name"`
+			Address         string   `json:"id"`
+			Target          string   `json:"target"`
+			Label           string   `json:"label"`
+			ID              string   `json:"agent_id"`
+			Provider        string   `json:"provider"`
+			CLI             string   `json:"cli"`
+			Activity        string   `json:"activity"`
+			LastActiveLabel string   `json:"last_active_label"`
+			ModelID         string   `json:"model_id"`
+			Effort          string   `json:"reasoning_effort"`
+			Groups          []string `json:"group_names"`
+			Crew            string   `json:"crew_name"`
+			Purpose         string   `json:"purpose"`
+			Online          bool     `json:"online"`
+			Presence        string   `json:"presence"`
+			Published       bool     `json:"published"`
 		} `json:"agents"`
 		Hint   string `json:"hint"`
 		Hosted []struct {
@@ -277,8 +287,11 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.Published {
 			shared = " | discoverable on the network"
 		}
-		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(firstAgentRosterValue(a.CLI, a.Provider)), presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Address), clean(firstAgentRosterValue(a.CLI, a.Provider)), clean(a.Activity)+" | "+presence, route, detail, clean(a.Purpose), shared)
 		var info []string
+		if a.LastActiveLabel != "" {
+			info = append(info, clean(a.LastActiveLabel))
+		}
 		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Group", strings.Join(a.Groups, ", ")}, {"Crew", a.Crew}} {
 			if field.value != "" {
 				info = append(info, field.label+": "+clean(field.value))
@@ -1498,4 +1511,36 @@ func firstAgentRosterValue(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// Filters consume only the server's state, never a local heuristic about
+// message delivery. Waiting and offline agents are not counted as idle.
+func filterAgentRosterActivity(raw json.RawMessage, working, idle bool) json.RawMessage {
+	if !working && !idle {
+		return raw
+	}
+	var directory map[string]json.RawMessage
+	if json.Unmarshal(raw, &directory) != nil {
+		return raw
+	}
+	var rows []map[string]json.RawMessage
+	if json.Unmarshal(directory["agents"], &rows) != nil {
+		return raw
+	}
+	kept := make([]map[string]json.RawMessage, 0, len(rows))
+	for _, row := range rows {
+		var activity string
+		_ = json.Unmarshal(row["activity"], &activity)
+		if working && activity == "Working" || idle && activity == "Idle" {
+			kept = append(kept, row)
+		}
+	}
+	directory["agents"], _ = json.Marshal(kept)
+	// Hosted hints are not agent rows and carry no server activity state.
+	delete(directory, "chats_inside_agentworks")
+	encoded, err := json.Marshal(directory)
+	if err != nil {
+		return raw
+	}
+	return encoded
 }
