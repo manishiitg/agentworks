@@ -979,7 +979,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     // Pre tag is handled by the code component above
     // This is a fallback for any pre tags that don't contain code
     const block = (
-      <pre data-theme-surface="code" className="bg-muted p-2 rounded text-xs font-mono overflow-x-auto break-all min-w-0">
+      <pre className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs font-mono overflow-x-auto break-all min-w-0">
         {children}
       </pre>
     )
