@@ -13,6 +13,7 @@ import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import { PageCard, PageTabs } from './AutomationKit'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { runOnlineAutomationAsk } from './runOnlineAutomation'
+import { useAddRoutineToTeam } from '../../products/work/TeamWay'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
 const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
@@ -130,6 +131,8 @@ export function AutomationHubPanel({
 
   const ask = onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))
   // Run online (owner, 13 Nov): on a Crew on this Mac, each schedule, webhook and watcher can move to its agent's online agent.
+  // Add to Team (PLAT-746-1026): a schedule or Watcher of a Crew with a Team runs on the Team's online home.
+  const routineTeam = useAddRoutineToTeam(entityType === 'product' && productTriggerScope?.profileId === 'work' && canManage !== false ? productTriggerScope.projectId : undefined)
   const runOnline = crewPage && localMode && canManage !== false ? (name: string) => { void ask(runOnlineAutomationAsk(name)) } : undefined
   const schedulesView = <WorkflowScheduleRunsPanel
     embedded
@@ -143,9 +146,11 @@ export function AutomationHubPanel({
     refreshToken={schedulesRefreshToken}
     onStatus={setSchedulesStatus}
     onRunOnline={runOnline}
+    team={routineTeam}
     onClose={() => {}}
   />
-  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} onRunOnline={runOnline} canManage={canManage} embedded={crewPage} />
+  const teamLine = routineTeam?.line ? <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{routineTeam.line}</p> : null
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} onRunOnline={runOnline} canManage={canManage} embedded={crewPage} team={routineTeam} />
   const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
     embedded
     pageRows={crewPage}
@@ -202,7 +207,7 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {section === 'schedules' && inCard(schedulesView)}
+        {section === 'schedules' && inCard(<>{teamLine}{schedulesView}</>)}
         {section === 'triggers' && entityType === 'workflow' && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           onAsk={onAskAI}
@@ -212,7 +217,7 @@ export function AutomationHubPanel({
           onCounts={setTriggersCounts}
         />}
         {section === 'email' && inCard(inboxView(crewPage ? '' : 'h-full overflow-y-auto p-4'))}
-        {section === 'conditions' && inCard(watchersView)}
+        {section === 'conditions' && inCard(<>{teamLine}{watchersView}</>)}
 
         {section === 'triggers' && inCard(productWebhooksView(crewPage ? '' : 'h-full overflow-auto'))}
         {section === 'functions' && entityType === 'workflow' && <WorkflowFunctionsView

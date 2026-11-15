@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
+import { CalendarClock, Eye, KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
-import { changeTeamWay, teamFailure, teamWay, useTeamTab, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
+import { schedulerApi } from '../../api/scheduler'
+import { conditionTriggersApi } from '../../api/conditionTriggers'
+import { addAutomationToTeam, changeTeamWay, teamFailure, teamOnlineItems, teamRoutineChanged, teamWay, useTeamTab, type TeamOnlineItem, type TeamOnlineView, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
 
 const teamCard = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
 
@@ -21,20 +23,45 @@ export function useTeamWay(target?: TeamTarget, enabled = true) {
   return state?.key === key ? state : undefined
 }
 
+/** The routines running for this Team on its online home, refreshed whenever the Team changes. */
+export function useTeamRoutines(target?: TeamTarget, enabled = true) {
+  const [state, setState] = useState<{ key: string; view?: TeamOnlineView }>()
+  const key = target ? `${target.connection || ''}:${target.project}` : ''
+  useEffect(() => {
+    if (!target || !enabled) return
+    let active = true
+    const load = () => { void teamOnlineItems(target).then(view => { if (active) setState({ key, view }) }).catch(() => { if (active) setState({ key }) }) }
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [key, enabled]) // eslint-disable-line react-hooks/exhaustive-deps
+  return state?.key === key ? state.view : undefined
+}
+
 /** The Team's own tools: shown only to a person who is In team, in a Crew that has a Team. */
 export function TeamWayCard({ target, projectId }: { target: TeamTarget; projectId: string }) {
   const way = useTeamWay(target)
+  const routines = useTeamRoutines(target)
   const [pending, setPending] = useState('')
   const [line, setLine] = useState('')
   if (!way?.view) return null
+  const routineItems = routines?.items ?? []
   const remove = async (item: TeamWayItem) => {
     setPending(`${item.kind}:${item.id}`); setLine('')
     try { setLine((await changeTeamWay(target, { op: 'remove', kind: item.kind, id: item.id || item.name })).notice || '') }
     catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
   }
+  const removeRoutine = async (item: TeamOnlineItem) => {
+    setPending(`routine:${item.destination_item_id}`); setLine('')
+    try {
+      if (item.kind === 'watcher') await conditionTriggersApi.manage(routines!.home_project_id, 'delete', item.destination_item_id, undefined, undefined, 'agentworks')
+      else await schedulerApi.deleteJob(item.destination_item_id)
+      teamRoutineChanged(); setLine('Removed from the Team.')
+    } catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
+  }
   return <section aria-label="How we work" className={teamCard}>
     <h3 className="font-semibold">How we work</h3>
-    {way.view.items.length === 0 && !way.view.rules && way.view.skills.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Add an app or a key from your Vault with Add to Team.</p>}
+    {way.view.items.length === 0 && routineItems.length === 0 && !way.view.rules && way.view.skills.length === 0 && <p className="text-xs text-muted-foreground">Nothing yet. Add an app or a key from your Vault with Add to Team.</p>}
     <ul className="divide-y divide-border">
       {way.view.items.map(item => {
         const signIn = item.kind === 'needs_sign_in'
@@ -53,6 +80,16 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
         </li>
       })}
     </ul>
+    {routineItems.length > 0 && <ul className="divide-y divide-border border-t border-border">
+      {routineItems.map(item => <li key={item.destination_item_id} className={`flex flex-wrap items-center gap-2 py-2 ${pending === `routine:${item.destination_item_id}` ? 'opacity-60' : ''}`}>
+        {item.kind === 'watcher' ? <Eye className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{item.name}</span>
+          <span className="block text-xs text-muted-foreground">{[item.when_runs, item.added_by_name && `Added by ${item.added_by_name}`].filter(Boolean).join(' · ')}</span>
+        </span>
+        <button type="button" aria-label={`Remove ${item.name} from the Team`} disabled={Boolean(pending)} onClick={() => { void removeRoutine(item) }} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted disabled:opacity-50">Remove</button>
+      </li>)}
+    </ul>}
     {(way.view.rules || way.view.skills.length > 0) && <>
       <ul className="divide-y divide-border border-t border-border">
         {way.view.rules && <li className="flex items-center gap-2 py-2"><ScrollText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Team rules</span></li>}
@@ -92,3 +129,21 @@ export function AddToTeamControl({ team, kind, id, provider, signIn }: { team: A
       : <button type="button" disabled={Boolean(team.pending)} onClick={() => { void team.add(kind, id) }} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted disabled:opacity-50">Add to Team</button>}
   </span>
 }
+
+/** Add to Team on a schedule or Watcher of this Crew's Team; a routine already on the Team shows a quiet "On the Team".
+ * Not shown without a Team, or to someone who is not In team. The server decides what moves and what to tell the person. */
+export function useAddRoutineToTeam(projectId?: string) {
+  const { view, target } = useTeamTab(projectId)
+  const inTeam = Boolean(view?.team.on && view.people.some(person => person.you && person.note !== 'invited'))
+  const routines = useTeamRoutines(target, inTeam)
+  const [pending, setPending] = useState('')
+  const [line, setLine] = useState('')
+  if (!inTeam || !target) return undefined
+  const add = async (id: string) => {
+    setPending(id); setLine('')
+    try { const result = await addAutomationToTeam(target, id); setLine([`${result.name || 'It'} now runs for the Team.`, ...(result.notes ?? [])].join(' ')) }
+    catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
+  }
+  return { line, onTeam: (id: string) => (routines?.items ?? []).some(item => item.item_id === id), pending, add }
+}
+export type RoutineTeam = NonNullable<ReturnType<typeof useAddRoutineToTeam>>
