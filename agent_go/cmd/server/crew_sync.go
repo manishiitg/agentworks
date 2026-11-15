@@ -37,14 +37,12 @@ type crewSyncRequest struct {
 	SourceID    string                    `json:"source_id,omitempty"`
 	// PreviousProjectID (create): the online copy this Mac Crew had before Mac online was turned off; its Team moves to
 	// the new copy, so people and the shared folder survive off and on (owner, 5 Nov).
-	PreviousProjectID string `json:"previous_project_id,omitempty"`
-	// TeamMessage (team_message): a Mac agent's message to a Team member's agent (crew_team_message.go).
-	TeamMessage *crewTeamMessageRequest `json:"team_message,omitempty"`
-	Name        string                  `json:"name,omitempty"`
-	MacName     string                  `json:"mac_name,omitempty"`
-	Editing     string                  `json:"editing,omitempty"`
-	Snapshot    *crewsync.Snapshot      `json:"snapshot,omitempty"`
-	Agents      []macSharedAgent        `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	PreviousProjectID string             `json:"previous_project_id,omitempty"`
+	Name              string             `json:"name,omitempty"`
+	MacName           string             `json:"mac_name,omitempty"`
+	Editing           string             `json:"editing,omitempty"`
+	Snapshot          *crewsync.Snapshot `json:"snapshot,omitempty"`
+	Agents            []macSharedAgent   `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
 	// Standby (standby_check, standby_store): the Mac's standby copy of one In team agent (crew_agent_standby.go).
 	Standby *crewStandbyRequest `json:"standby,omitempty"`
 }
@@ -89,9 +87,6 @@ type crewSyncReply struct {
 	AccessSummary string `json:"access_summary,omitempty"`
 	// AccessTree is the side panel's tree under the Access row (crew_access_tree.go).
 	AccessTree []crewAccessLine `json:"access_tree,omitempty"`
-	// InboxID: team_message's conversation, for the Mac agent's later reads.
-	InboxID      string         `json:"inbox_id,omitempty"`
-	TeamMessages map[string]any `json:"team_messages,omitempty"`
 	// The Access page's shape (crew_access_page.go): whether this app holds the Mac's controls ("mac"), its tabs,
 	// the Mac-only rows as text elsewhere, and its Who can use it and laptop access sections.
 	AccessHere string             `json:"access_here,omitempty"`
@@ -221,10 +216,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		api.shareMacCrewAgents(w, r, mux.Vars(r)["project"], input)
 		return
 	}
-	if input.Action == "team_message" {
-		api.crewTeamMessage(w, r, mux.Vars(r)["project"], input)
-		return
-	}
+
 	// A joined Team member reads this Crew's Access line too (owner, 5 Nov: a member saw "Only you"); the place and
 	// pairing stay the owner's. For them it is an online Crew.
 	if r.Method == http.MethodGet && !IsLocalMode() {

@@ -49,7 +49,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	}
 	macSource := crewAgentForkRunsOnMac(team, claims.UserID)
 	upload := op == "plan" || op == "commit" || op == "chunks" && r.Method == http.MethodPut
-	if (upload || id == "" && macSource) && !crewTeamMessagePairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
+	if (upload || id == "" && macSource) && !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
 		fail(403, "Use your own paired computer for this Crew.")
 		return
 	}

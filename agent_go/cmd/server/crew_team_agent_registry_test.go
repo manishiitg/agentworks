@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -419,8 +420,8 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 	}
 	crewMacTeamTabsCache.Store("team\x00other", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{}})
 	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00other") })
-	rows := teamMemberAgentRows(t.Context(), "owner", []map[string]interface{}{{"id": "team", "name": "Example"}})
-	if len(rows) != 1 || rows[0]["id"] != crewTeamAgentAddress("team", shared) {
+	rows := crewTeamReachableIn(t.Context(), team, "owner")
+	if len(rows) != 1 || rows[0].Address != crewTeamAgentAddress("team", shared) {
 		t.Fatalf("registered target missing or private row exposed: %+v", rows)
 	}
 	agent, owner, err := crewTeamAgentByID(t.Context(), "team", "owner", shared)
@@ -430,7 +431,8 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 	if err := removeCrewAgentListing("team", "other", "team:chat:helper"); err != nil {
 		t.Fatal(err)
 	}
-	rows = teamMemberAgentRows(t.Context(), "owner", []map[string]interface{}{{"id": "team", "name": "Example"}})
+	team, _ = readCrewTeam("team")
+	rows = crewTeamReachableIn(t.Context(), team, "owner")
 	if len(rows) != 0 {
 		t.Fatal("deleted registry identity remained listed")
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -408,16 +407,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 		if index < 0 {
 			agentMessageMu.Unlock()
-			if crewTeamMailboxLocalMiss(s, inboxID, caller) {
-				if file != nil {
-					return nil, fmt.Errorf("Send text in this Team conversation; files cannot be forwarded from this Mac")
-				}
-				reply, err := api.callTeamMessageFromMac(ctx, userID, caller, caller.Stamp.ID, crewTeamMessageRequest{AgentID: inboxID, Message: message, SubmissionID: submissionID})
-				if err != nil {
-					return nil, err
-				}
-				return map[string]any{"sent": true, "inbox_id": reply.InboxID}, nil
-			}
+
 			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
 		}
 		c := &s.Conversations[index]
@@ -691,13 +681,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			return nil, err
 		}
 		if !found {
-			if crewTeamMailboxLocalMiss(s, inboxID, caller) {
-				reply, err := api.callTeamMessageFromMac(ctx, userID, caller, caller.Stamp.ID, crewTeamMessageRequest{Operation: "read", AgentID: inboxID, After: after, Limit: limit})
-				if err != nil {
-					return nil, err
-				}
-				return reply.TeamMessages, nil
-			}
+
 			return nil, expiredConversationForCaller(s, inboxID, userID, caller)
 		}
 		items := []map[string]interface{}{}
@@ -1426,33 +1410,6 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			id, _ := args["inbox_id"].(string)
 			var target triggerTarget
-			// A Team member's agent, listed on this Mac from the Crew's online copy (crew_team_message.go); the Team
-			// tab's address for it (crewTeamAgentAddress) means the same agent here.
-			teamTarget, _ := args["target"].(string)
-			// A reply to a Team message: its inbox is on the server (crewTeamMessageText).
-			if strings.HasPrefix(id, "team:") && IsLocalMode() {
-				teamTarget, id = id, ""
-			}
-			if id == "" && IsLocalMode() {
-				if mapped := crewTeamAddressOnMac(teamTarget); mapped != "" {
-					teamTarget = mapped
-				}
-			}
-			if id == "" && IsLocalMode() && caller.Stamp.Type == triggerCallerCrew && crewTeamShortMessageName(teamTarget) {
-				if b, e := crewroot.ReadSync(caller.Stamp.ID); e == nil && b != nil && b.Side == "local" && b.Mode == "relay" && b.PeerProjectID != "" {
-					teamTarget = "team:" + caller.Stamp.ID + ":" + teamTarget
-				}
-			}
-			if id == "" && IsLocalMode() && strings.HasPrefix(strings.TrimSpace(teamTarget), "team:") {
-				message, _ := args["message"].(string)
-				submission, _ := args["submission_id"].(string)
-				out, err := api.sendTeamMessageFromMac(ctx, userID, caller, teamTarget, message, submission)
-				if err != nil {
-					return "", err
-				}
-				encoded, err := json.Marshal(out)
-				return string(encoded), err
-			}
 			networkAddress := stringToolArg(args, "target")
 			if strings.HasPrefix(id, "network:") {
 				networkAddress = id
