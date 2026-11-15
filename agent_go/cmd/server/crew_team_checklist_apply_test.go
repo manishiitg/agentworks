@@ -113,9 +113,13 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 		t.Fatal("stale instructions dispatched", w.Body.String())
 	}
 	args["instruction_revision"] = receipt.Revision
-	narrow := crewWriter("other") // Crew editing does not implicitly grant messaging.
+	narrow := crewWriter("other")
+	narrow.AccessToken.ProjectKind = "work" // Existing project-only grants cannot send arbitrary agent mail.
+	if _, gateErr := crewChecklistTeam(narrow, "team", true); gateErr != nil {
+		t.Fatal("project writer must reach the Team before the messaging refusal", gateErr)
+	}
 	if _, err = f.api.crewChecklistAction(ctx, narrow, "team", "setup_apply", args, crewChecklistActor{}); err == nil {
-		t.Fatal("Apply upgraded a connection without messaging access")
+		t.Fatal("Apply upgraded a project-only connection to agent messaging")
 	}
 	guarded := *member
 	guarded.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read", "crews:write", "messages:send"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"other-folder"}}}
