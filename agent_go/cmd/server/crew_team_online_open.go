@@ -19,6 +19,7 @@ type teamOnlineOpenResult struct {
 	Location   *teamOnlineDashboardLocation `json:"location,omitempty"`
 	Connection string                       `json:"connection,omitempty"`
 	ShortPath  string                       `json:"short_path,omitempty"`
+	ResourceID string                       `json:"resource_id,omitempty"`
 	Notice     string                       `json:"notice,omitempty"`
 }
 
@@ -141,7 +142,7 @@ func (api *StreamingAPI) teamOnlineOpen(ctx context.Context, workspace, source, 
 func (api *StreamingAPI) teamOnlineMappedOpen(ctx context.Context, team, source, kind, item string) (teamOnlineOpenResult, error) {
 	out := teamOnlineOpenResult{}
 	claims := GetUserFromContext(ctx)
-	if IsLocalMode() || claims == nil || claims.Scope != "" || !dashboardScopeAllowed(claims, "get") {
+	if IsLocalMode() || claims == nil || (claims.Scope != "" && (claims.Scope != "mcp" || claims.AccessToken == nil)) || !dashboardScopeAllowed(claims, "get") {
 		return out, fmt.Errorf("sign in with dashboard access to open this item")
 	}
 	if (kind != "dashboard" && kind != "artifact") || !teamOnlineIdentifier.MatchString(team) || !teamOnlineIdentifier.MatchString(source) || !teamOnlineIdentifier.MatchString(item) {
@@ -172,5 +173,6 @@ func (api *StreamingAPI) teamOnlineMappedOpen(ctx context.Context, team, source,
 		return out, fmt.Errorf("the Team dashboard link is unavailable; try again")
 	}
 	log.Printf("[TEAM_ONLINE] event=open person=%s team=%s source_project=%s destination=%s item_id=%s", claims.UserID, team, source, location.ProjectID, location.ItemID)
-	return teamOnlineOpenResult{Found: true, Location: &location, ShortPath: shortPath}, nil
+	resourceID, _ := row["resource_id"].(string)
+	return teamOnlineOpenResult{Found: true, Location: &location, ShortPath: shortPath, ResourceID: resourceID}, nil
 }

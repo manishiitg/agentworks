@@ -1,4 +1,5 @@
 [
+  {"family":"dashboard","name":"online_location","member":"get_dashboard_online_location","description":"Resolve a Team row online selector to its current admitted publication and resource_id; no source fallback."},
   {
     "family": "dashboard",
     "name": "begin_handoff",
