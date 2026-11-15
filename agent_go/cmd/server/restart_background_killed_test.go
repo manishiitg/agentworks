@@ -212,3 +212,66 @@ func TestRestartReopensGoalPausedByTheCancelOnly(t *testing.T) {
 		})
 	}
 }
+
+// A background wake goes to a chat whose newest event is a normal turn end; that end must not drop it
+// (the 22:22 restart lost a wake this way and the chat sat idle). A Stop or a waiting person message still does.
+func TestRestartBackgroundWakeSurvivesTheTurnEndItFollows(t *testing.T) {
+	for _, scenario := range []string{"normal_end", "stopped_by_person"} {
+		t.Run(scenario, func(t *testing.T) {
+			const sid = "restart-bg-prune"
+			api, _ := restartBGAPI(t)
+			now := time.Now()
+			restartBGChat(t, api, context.Background(), sid, "", now.Add(-10*time.Minute), now.Add(-5*time.Minute))
+			if scenario == "stopped_by_person" {
+				api.stoppedSessions = map[string]bool{sid: true}
+			}
+			wake := queuedConversationTurn{ID: "restart-bg:q-" + sid, UserID: restartBGUser, SessionID: sid, Request: QueryRequest{TriggeredBy: "restart_continue"}}
+			kept, _ := api.pruneRestartContinues([]queuedConversationTurn{wake})
+			if want := map[bool]int{true: 1}[scenario == "normal_end"]; len(kept) != want {
+				t.Fatalf("kept=%d, want %d", len(kept), want)
+			}
+		})
+	}
+}
+
+// A normal turn that ends with plan steps still open gets one continuation per distinct open plan; a plan that is
+// finished, a turn that failed or was stopped, and a plan from an earlier turn get none.
+func TestOpenPlanAtTurnEnd(t *testing.T) {
+	plan := func(statuses ...string) *unifiedevents.AgentEvent {
+		items := []map[string]string{}
+		for i, status := range statuses {
+			items = append(items, map[string]string{"id": fmt.Sprint(i), "text": "step " + fmt.Sprint(i), "status": status})
+		}
+		return unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{Data: map[string]interface{}{"plan_id": "p", "items": items}})
+	}
+	for _, tc := range []struct {
+		name   string
+		events [][2]interface{} // type, data
+		want   int
+	}{
+		{"open_plan_normal_end", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("completed", "running", "pending")}, {"unified_completion", nil}}, 2},
+		{"all_done", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("completed")}, {"unified_completion", nil}}, 0},
+		{"turn_failed", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("pending")}, {"conversation_error", nil}}, 0},
+		{"plan_from_earlier_turn", [][2]interface{}{{"user_message", nil}, {"coding_agent_plan", plan("pending")}, {"unified_completion", nil}, {"user_message", nil}, {"unified_completion", nil}}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const sid = "open-plan-chat"
+			api, _ := restartBGAPI(t)
+			if err := api.eventStore.SetSessionPersistenceClass(sid, storeevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			at := time.Now().Add(-time.Minute)
+			for i, e := range tc.events {
+				var data *unifiedevents.AgentEvent
+				if d, ok := e[1].(*unifiedevents.AgentEvent); ok {
+					data = d
+				}
+				api.eventStore.AddEvent(sid, storeevents.Event{ID: fmt.Sprintf("%s-%d", sid, i), Type: e[0].(string), Timestamp: at.Add(time.Duration(i) * time.Second), SessionID: sid, ExecutionKind: "main_agent", ExecutionID: "main:" + sid, Data: data})
+			}
+			open, ended := api.latestTurnOpenPlan(sid)
+			if len(open) != tc.want || (tc.want > 0 && !ended) {
+				t.Fatalf("open=%d ended=%v, want %d", len(open), ended, tc.want)
+			}
+		})
+	}
+}

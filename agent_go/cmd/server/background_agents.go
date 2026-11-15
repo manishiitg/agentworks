@@ -1450,6 +1450,8 @@ func (api *StreamingAPI) schedulePendingStartNotificationRetry(sessionID string)
 func (api *StreamingAPI) drainPendingAutoNotificationsAfterTurn(sessionID string) {
 	// Background work that finished during the turn runs after any queued
 	// results; if those start a turn, its end calls this again.
+	// Deferred first, so it runs last: only when nothing else has already started a turn.
+	defer api.continueOpenPlan(sessionID)
 	defer api.runQueuedNativeWakes(sessionID)
 	// A turn ended: waiting results start over from the shortest check.
 	api.pendingMu.Lock()
