@@ -225,12 +225,23 @@ func TestCrewCLIPrivateModeDirectoriesAndResume(t *testing.T) {
 	}
 }
 
+// Also PLAT-746-1024: copies and Team Main run as the same user, so only the per-turn grant separates them. A turn
+// is granted its own session runtime only, never a sibling session's runtime (its native transcript) nor the state
+// root holding team-folders (offline copy history and preludes).
 func TestCrewRunLandlockPolicyDoesNotGrantLinkedTargetWrite(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	teamDir, err := crewTeamDir("support")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, reader := range []bool{false, true} {
 		session := "crew-policy-" + crewCLIMode(reader)
 		project := codingAgentWorkspaceWorkingDir("Crew/support")
-		runtime := filepath.Join(t.TempDir(), "runtime")
+		runtimes := t.TempDir()
+		runtime := filepath.Join(runtimes, "runtime")
+		sibling := filepath.Join(runtimes, "sibling-session", ".claude", "projects", "chat.jsonl")
+		prelude := filepath.Join(teamDir, "offline-copies", "11111111-2222-4333-8444-555555555555", "prelude.json")
 		common.SetSessionFolderGuard(session, []string{"Crew/support"}, []string{"Crew/support", "other-grant"})
 		common.SetSessionCrewReader(session, reader)
 		defer common.ClearSessionShellConfig(session)
@@ -247,6 +258,15 @@ func TestCrewRunLandlockPolicyDoesNotGrantLinkedTargetWrite(t *testing.T) {
 		}
 		if !slices.Contains(base.WorkspaceWritePaths, project) {
 			t.Fatal("policy resolution mutated caller-owned base")
+		}
+		for _, grants := range [][]string{policy.WorkspaceReadPaths, policy.WorkspaceWritePaths, policy.HostReadPaths, policy.HostWritePaths} {
+			for _, grant := range grants {
+				for _, private := range []string{sibling, prelude} {
+					if rel, err := filepath.Rel(filepath.Clean(grant), private); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+						t.Fatalf("turn grant %q reaches another session's private file %q", grant, private)
+					}
+				}
+			}
 		}
 	}
 }
