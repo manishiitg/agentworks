@@ -87,6 +87,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
         {options.folders.offline && <p className="text-xs text-muted-foreground">{options.folders.offline}</p>}
       </div>}
       {step === 4 && <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">Terminal agents already joined to this Crew are shared when the Team turns on, unless you chose Only me. Their saved choices stay the same.</p>
         {options.agents.map(agent => <Option key={agent.key} kind="check" on={agent.main || agents.includes(agent.key)} disabled={agent.main} title={agent.name}
           line={agent.main ? 'The default agent. Always on.' : 'Add so the Team can ask it too.'}
           onClick={() => setAgents(current => current.includes(agent.key) ? current.filter(key => key !== agent.key) : [...current, agent.key])}

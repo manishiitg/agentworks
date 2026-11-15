@@ -35,7 +35,7 @@ export function OwnTerminalAgents({ projectId, connection = getRawActiveWorkspac
     void read()
     return () => { active = false; refresh.current = () => {} }
   }, [key, projectId, connection])
-  useLiveRefetch(() => refresh.current(), { kinds: ['sessions', 'crew_panel'], project: projectId, scopeKey: key, fallbackMs: 60_000, safetyMs: 0, minIntervalMs: 5_000, refreshOnFocus: true })
+  useLiveRefetch(() => refresh.current(), { kinds: ['sessions', 'crew_panel'], project: projectId, scopeKey: key, fallbackMs: 60_000, safetyMs: 0, minIntervalMs: 15_000, refreshOnFocus: true })
   const current = state?.key === key ? state : undefined
   const agent = current?.agents.find(item => item.id === selected)
   if (!current?.agents.length) return null

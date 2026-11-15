@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -51,26 +54,39 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 		if online {
 			presence = "online"
 		}
-		// A missing stream alone doesn't prove a process closed. Ask the exact local
-		// helper for metadata only; no native text is read by listing the menu.
-		if !online {
+
+		out = append(out, crewOwnTerminalAgent{ID: a.ID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Provider: provider, ProviderName: providerName, Address: "agent:" + named.Name, Online: online, Presence: presence})
+	}
+	// One short deadline for every row together, not N sequential Mac waits.
+	// A missing stream alone does not prove a process closed; timeouts stay Offline.
+	statusCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	var checks sync.WaitGroup
+	for i := range out {
+		if out[i].Online {
+			continue
+		}
+		a := t.Agents[out[i].ID]
+		checks.Add(1)
+		go func(i int, a crewTeamRegisteredAgent) {
+			defer checks.Done()
 			payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.Terminal.NamedAgentID})
-			result := api.readCrewTerminalMac(r.Context(), t.ProjectID, a, crewChatCall{Operation: "native_terminal_status", Args: payload})
+			result := api.readCrewTerminalMac(statusCtx, t.ProjectID, a, crewChatCall{Operation: "native_terminal_status", Args: payload})
 			var state struct {
 				Online bool `json:"online"`
 				Closed bool `json:"terminal_closed"`
 			}
 			if result.Status == 200 && json.Unmarshal(result.Body, &state) == nil {
-				online = state.Online
-				if online {
-					presence = "online"
+				out[i].Online = state.Online
+				if state.Online {
+					out[i].Presence = "online"
 				} else if state.Closed {
-					presence = "Terminal closed"
+					out[i].Presence = "Terminal closed"
 				}
 			}
-		}
-		out = append(out, crewOwnTerminalAgent{ID: a.ID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Provider: provider, ProviderName: providerName, Address: "agent:" + named.Name, Online: online, Presence: presence})
+		}(i, a)
 	}
+	checks.Wait()
 	// Re-read after metadata I/O; leaving or revoking membership cannot leave rows.
 	current, err := terminalCrewAdmission(t.ProjectID, claims.UserID)
 	if err != nil {

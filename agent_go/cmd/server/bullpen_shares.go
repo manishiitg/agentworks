@@ -394,6 +394,11 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 // sharedAgentItems lists the agents other people shared with this person, each
 // labelled with the owner's server username.
 func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[string]interface{} {
+	joined, membershipErr := terminalCrewMemberships()
+	if membershipErr != nil {
+		return []map[string]interface{}{}
+	}
+
 	items := []map[string]interface{}{}
 	for _, sh := range s.Shares {
 		if !s.shareAllows(sh, userID) {
@@ -406,7 +411,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) {
 				continue
 			}
-			if _, _, joined, e := terminalCrewForNamed(a.ID); e != nil || joined {
+			if _, exists := joined[a.ID]; exists {
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
