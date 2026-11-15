@@ -276,7 +276,7 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 	documents := gin.New()
 	documents.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/documents/") {
 			documents.ServeHTTP(w, r)
 			return
 		}
