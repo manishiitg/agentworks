@@ -276,6 +276,21 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 				continue
 			}
 		}
+		if reason == "turn_not_open" {
+			if message, handled := api.planRestartResume(sessionID, record, kept, time.Now()); handled {
+				if message != "" {
+					now := time.Now().UTC()
+					record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
+					record.Request.Query = message
+					record.FollowUps++
+					backgroundFollowUps.restore(sessionID, record.FollowUps)
+					kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
+					document.Chats[sessionID] = record
+					log.Printf("[AGENT_CONTINUE] session=%s action=queued reason=plan_open source=restart", sessionID)
+				}
+				continue
+			}
+		}
 		if reason != "" {
 			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s", sessionID, record.QueryID, reason)
 			continue
@@ -461,22 +476,7 @@ func (api *StreamingAPI) planRestartGoalResume(ctx context.Context, sessionID st
 	if err != nil || goal == nil || goal.Provider != "codex-cli" || goal.Goal == nil || goal.Goal.Status != "active" {
 		return false, false
 	}
-	reason := ""
-	switch {
-	case api.isSessionMarkedStopped(sessionID):
-		reason = "stopped_by_person"
-	case waitingPersonTurn(kept, sessionID):
-		reason = "person_message_queued"
-	case len(recentRestartContinues(record.RestartContinues, now)) >= restartContinueLimit:
-		reason = "restart_loop_limit"
-	case record.FollowUps >= backgroundFollowUpChainLimit:
-		reason = "chain_limit"
-	}
-	for _, turn := range kept {
-		if turn.SessionID == sessionID && turn.Request.TriggeredBy == "restart_continue" {
-			reason = "continue_already_queued"
-		}
-	}
+	reason := restartIdleResumeSkip(api, sessionID, record, kept, now)
 	if reason != "" {
 		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s goal_active=true", sessionID, record.QueryID, reason)
 		return false, true
@@ -501,4 +501,47 @@ func (api *StreamingAPI) reopenGoalPausedByRestart(ctx context.Context, sessionI
 		return
 	}
 	log.Printf("[AGENT_GOAL] session=%s native=%s action=reopened status=active reason=restart_interrupted", sessionID, goal.NativeSessionID)
+}
+
+// restartIdleResumeSkip says why a chat that was between turns at restart does not get its one continuation.
+func restartIdleResumeSkip(api *StreamingAPI, sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) string {
+	for _, turn := range kept {
+		if turn.SessionID == sessionID && turn.Request.TriggeredBy == "restart_continue" {
+			return "continue_already_queued"
+		}
+	}
+	switch {
+	case api.isSessionMarkedStopped(sessionID):
+		return "stopped_by_person"
+	case waitingPersonTurn(kept, sessionID):
+		return "person_message_queued"
+	case len(recentRestartContinues(record.RestartContinues, now)) >= restartContinueLimit:
+		return "restart_loop_limit"
+	case record.FollowUps >= backgroundFollowUpChainLimit:
+		return "chain_limit"
+	}
+	return ""
+}
+
+// planRestartResume is planRestartGoalResume for a chat whose last turn ended normally with plan steps still
+// open (the chat was idle before the restart, so no turn end will ever run the open-plan check). Only recent chats.
+func (api *StreamingAPI) planRestartResume(sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) (message string, handled bool) {
+	if record.QueryID == "" || api.eventStore == nil {
+		return "", false
+	}
+	open, ended := api.latestTurnOpenPlan(sessionID)
+	if !ended || len(open) == 0 {
+		return "", false
+	}
+	reason := restartIdleResumeSkip(api, sessionID, record, kept, now)
+	if last := api.chatLastActivity(sessionID); reason == "" && (last.IsZero() || now.Sub(last) > restartBackgroundRecent) {
+		reason = "too_old"
+	}
+	if reason != "" {
+		log.Printf("[AGENT_CONTINUE] session=%s action=skip reason=%s plan_open=true source=restart", sessionID, reason)
+		return "", true
+	}
+	list := openPlanList(open)
+	rememberOpenPlanContinued(sessionID, list)
+	return fmt.Sprintf(planOpenContinueMessage, list), true
 }

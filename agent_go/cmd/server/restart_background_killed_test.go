@@ -275,3 +275,57 @@ func TestOpenPlanAtTurnEnd(t *testing.T) {
 		})
 	}
 }
+
+// A chat that was already idle at restart with plan steps still open (its turn end ran before this build, so the
+// turn-end check never sees it) gets one continuation at startup; a finished plan, a Stop and an old chat get none.
+func TestRestartContinuesIdleChatWithOpenPlan(t *testing.T) {
+	for _, scenario := range []string{"open_plan", "plan_done", "stopped_by_person", "idle_for_a_day"} {
+		t.Run(scenario, func(t *testing.T) {
+			const sid = "restart-plan-chat"
+			backgroundFollowUps.personWrote(sid)
+			defer backgroundFollowUps.personWrote(sid)
+			openPlanContinued.mu.Lock()
+			delete(openPlanContinued.seen, sid)
+			openPlanContinued.mu.Unlock()
+			api, ctx := restartBGAPI(t)
+			if err := api.eventStore.SetSessionPersistenceClass(sid, storeevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			if err := api.saveRestartContinueRequest(ctx, restartBGUser, sid, "q-"+sid, QueryRequest{Query: "task", AgentMode: "multi-agent", Provider: "codex-cli", ModelID: "example-model"}); err != nil {
+				t.Fatal(err)
+			}
+			age := 5 * time.Minute
+			if scenario == "idle_for_a_day" {
+				age = 30 * time.Hour
+			}
+			status := map[bool]string{true: "completed"}[scenario == "plan_done"]
+			if status == "" {
+				status = "pending"
+			}
+			start := time.Now().Add(-age - 5*time.Minute)
+			plan := unifiedevents.NewAgentEvent(&unifiedevents.GenericEventData{Data: map[string]interface{}{"plan_id": "p", "items": []map[string]string{{"id": "1", "text": "finish the report", "status": status}}}})
+			for i, e := range []struct {
+				typ  string
+				data *unifiedevents.AgentEvent
+			}{{"user_message", unifiedevents.NewAgentEvent(&unifiedevents.UserMessageEvent{Content: "task"})}, {"coding_agent_plan", plan}, {"unified_completion", nil}} {
+				api.eventStore.AddEvent(sid, storeevents.Event{ID: fmt.Sprintf("%s-%d", sid, i), Type: e.typ, Timestamp: start.Add(time.Duration(i) * time.Minute), SessionID: sid, ExecutionKind: "main_agent", ExecutionID: "main:" + sid, Data: e.data})
+			}
+			if scenario == "stopped_by_person" {
+				api.stoppedSessions = map[string]bool{sid: true}
+			}
+			got, err := api.prepareRestartContinues(ctx, restartBGUser, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			queued := 0
+			for _, turn := range got {
+				if turn.SessionID == sid && strings.Contains(turn.Request.Query, "finish the report") {
+					queued++
+				}
+			}
+			if want := map[bool]int{true: 1}[scenario == "open_plan"]; queued != want {
+				t.Fatalf("continuations=%d, want %d", queued, want)
+			}
+		})
+	}
+}
