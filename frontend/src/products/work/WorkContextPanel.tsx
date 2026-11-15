@@ -130,7 +130,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Crew lives (its state icon); the server words both.
   const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
-    : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.id === 'mcp:team' ? <span className="flex min-w-0 items-center gap-1"><span className="min-w-0 truncate">{accessTree.find(line => line.kind === 'team')?.title || item.label}</span><span className="shrink-0 text-[10px] text-muted-foreground">· {[...(teamState.view?.reachable||[]),...(teamState.view?.agents||[]).filter(row=>row.mine)].filter(row=>row.activity==='running'||row.activity==='waiting').length} working</span></span> : item.label}</Row>
+    : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.id === 'mcp:team' ? <span className="flex min-w-0 items-center gap-1"><span className="min-w-0 truncate">{accessTree.find(line => line.kind === 'team')?.title || item.label}</span><span className="shrink-0 text-[10px] text-muted-foreground">· {(teamState.view?.reachable||[]).filter(row=>row.kind!=='team_agent'&&(row.activity==='running'||row.activity==='waiting')).length} working</span></span> : item.label}</Row>
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, team_live: Users, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert }
