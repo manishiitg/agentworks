@@ -181,7 +181,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           >
             {displayName}
           </span></AgentHoverCard>
-          <AgentSetupMark setup={agent?.info?.setup} />
+          <AgentSetupMark setup={agent?.info?.setup} canChange={agent?.info?.canChange} chosen={agent?.info?.sharedChosen} />
           {/* Another person's agent shows no mark (owner, 6 Nov): their name is the strip's group label. */}
           {ownerName && !yourTab && <span className="sr-only">Only {ownerName} types here</span>}
         </>
