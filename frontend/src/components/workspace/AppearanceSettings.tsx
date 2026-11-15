@@ -23,7 +23,7 @@ export default function AppearanceSettings() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' }))
     const link = document.createElement('a'); link.href = url; link.download = 'agentworks-theme.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <div className="max-w-4xl space-y-7">
+  return <div className="max-w-4xl space-y-7"><fieldset disabled={store.saving} aria-label="Appearance controls" className="contents">
     <p className="text-sm text-muted-foreground">Make AgentWorks yours. Fonts, colours and styling apply across the app, not just chat. Your appearance belongs to your sign-in on this connection; it never changes a Crew or an Artifact’s authored design.</p>
     {store.error && <div role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{store.error} <button type="button" className="underline" onClick={() => void store.load(store.scope)}>Retry load</button></div>}
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
@@ -37,7 +37,8 @@ export default function AppearanceSettings() {
       <Button variant="ghost" size="sm" disabled={store.saving} onClick={() => void store.change('reset')}><RotateCcw className="h-3.5 w-3.5" />Reset</Button>
       <input ref={file} type="file" accept=".json,application/json" className="hidden" aria-label="Import theme file" onChange={async event => {
         const selected = event.target.files?.[0]; if (!selected) return
-        try { if (selected.size > 100000) throw new Error('Choose a theme file below 100 KB.');store.setPreview(validateTheme(JSON.parse(await selected.text())));setImportError('') } catch (error) {setImportError(error instanceof Error ? error.message : 'Could not import theme.')}
+        const scope = store.scope
+        try { if (selected.size > 100000) throw new Error('Choose a theme file below 100 KB.');const imported = validateTheme(JSON.parse(await selected.text()));if (useAppearanceStore.getState().scope !== scope) return;store.setPreview(imported);setImportError('') } catch (error) {setImportError(error instanceof Error ? error.message : 'Could not import theme.')}
         event.target.value = ''
       }} />
     </div>
@@ -74,5 +75,5 @@ export default function AppearanceSettings() {
       {store.preview && <Button variant="ghost" onClick={() => store.setPreview(null)}>Discard preview</Button>}
     </div>
     {store.saved.length > 0 && <section className="space-y-2" aria-label="Saved themes"><h3 className="text-sm font-medium">Saved themes</h3>{store.saved.map(item => <div key={item.name} className="flex items-center gap-3 rounded-md border border-border px-3 py-2"><span className="flex-1 text-sm">{item.name}</span><Button variant="ghost" size="sm" disabled={store.saving} onClick={() => void store.change('apply',item)}>Apply</Button><Button variant="ghost" size="sm" disabled={store.saving} onClick={() => void store.change('delete',undefined,item.name)}>Remove</Button></div>)}</section>}
-  </div>
+  </fieldset></div>
 }
