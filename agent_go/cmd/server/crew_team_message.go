@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -286,25 +287,30 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 		if IsLocalMode() {
 			b, err := crewroot.ReadSync(id)
 			if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" || b.PeerProjectID == "" {
+				logTeamMemberRows(id, "skipped", "not_paired", 0)
 				continue
 			}
 			c, err := desktopConnectionFor(owner, b.ConnectionID)
 			if err != nil {
+				logTeamMemberRows(id, "skipped", "no_saved_connection", 0)
 				continue
 			}
 			read, done := context.WithTimeout(ctx, 6*time.Second)
 			err = crewTeamRemoteJSON(read, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/agents", nil, &team)
 			done()
 			if err != nil {
+				logTeamMemberRows(id, "skipped", "server_read_failed", 0)
 				continue
 			}
 		} else {
 			t, err := readCrewTeam(id)
 			if err != nil || !crewTeamAgentsVisible(t, owner) {
+				logTeamMemberRows(id, "skipped", "not_visible", 0)
 				continue
 			}
 			team.People = teamAgentsByPerson(ctx, t, owner)
 		}
+		before := len(rows)
 
 		for _, p := range team.People {
 			for _, agent := range p.Agents {
@@ -330,6 +336,7 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 					"reach":    "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
 			}
 		}
+		logTeamMemberRows(id, "listed", "", len(rows)-before)
 	}
 	return rows
 }
@@ -347,4 +354,15 @@ func crewTeamTargetFailureMessage(err error) string {
 	default:
 		return "Could not open that Team agent. Try again; if it still fails, ask the Crew owner to check the server log."
 	}
+}
+
+var teamMemberRowsLogged sync.Map
+
+// logTeamMemberRows logs, once per change, what a Crew's Team agent list offered on this computer (IDs and counts).
+func logTeamMemberRows(crew, outcome, reason string, count int) {
+	line := fmt.Sprintf("outcome=%s reason=%s team_agents=%d", outcome, reason, count)
+	if previous, ok := teamMemberRowsLogged.Swap(crew, line); ok && previous == line {
+		return
+	}
+	log.Printf("[TEAM_AGENT_REACH] crew=%s event=list %s", crew, line)
 }
