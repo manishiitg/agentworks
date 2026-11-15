@@ -1,4 +1,5 @@
 import { codeFontFamily, hexToHsl, interfaceFontFamily, type AppearanceProfile, type AppearanceTheme, type ColourRole } from '../stores/appearanceTheme'
+import { appearanceControlCSS } from './appearanceControls'
 
 /** Every custom role fans out here, not through component-specific CSS patches. */
 const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
@@ -15,6 +16,7 @@ const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
   done: ['--success'],
   error: ['--destructive'],
   loader: [], // A complete CSS colour, not an HSL triplet (the glyph inherits the caller when absent).
+  icon: [], panel_border: [], card_border: [], composer_border: [], input_border: [], selected_agent_border: [], running_agent_border: [], // Shared control sheet, not global palette substitutions.
 }
 
 // The saved schema has no action-label colour: derive a legible one for both
@@ -56,10 +58,21 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
   return tokens
 }
 
-/** The appearance provider owns these inline tokens, including their cleanup. */
+/** The provider owns these inline tokens and optional control sheet, including cleanup. */
 export function applyAppearanceTokens(root: HTMLElement, theme: AppearanceTheme, profile: AppearanceProfile): () => void {
   const tokens = appearanceTokens(theme, profile)
   root.dataset.appearanceLoader = theme.loader?.style || 'ring'
   for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value)
-  return () => { delete root.dataset.appearanceLoader; for (const name of Object.keys(tokens)) root.style.removeProperty(name) }
+  const css = appearanceControlCSS(theme, profile)
+  const sheet = css ? new CSSStyleSheet() : null
+  const doc = root.ownerDocument
+  if (sheet) {
+    sheet.replaceSync(css)
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
+  }
+  return () => {
+    delete root.dataset.appearanceLoader
+    for (const name of Object.keys(tokens)) root.style.removeProperty(name)
+    if (sheet) doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter(item => item !== sheet)
+  }
 }

@@ -34,6 +34,8 @@ type appearanceTheme struct {
 	// Materials change backgrounds only, never the opacity of text or controls.
 	Materials map[string]appearanceMaterial `json:"materials,omitempty"`
 	Loader    *appearanceLoader             `json:"loader,omitempty"`
+	Icons     *appearanceIcons              `json:"icons,omitempty"`
+	Borders   map[string]appearanceBorder   `json:"borders,omitempty"`
 }
 
 // appearanceLoader selects a shared decorative glyph, never the state or lifetime of work.
@@ -71,7 +73,7 @@ var appearanceLoaderStyles = []string{"ring", "dots", "pulse", "orbit", "bar"}
 
 // appearanceSurfaces are the app surfaces with a material; the page has an opacity only (it has no backdrop).
 var appearanceSurfaces = []string{"page", "panel", "popover", "sidebar", "composer"}
-var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar", "working", "waiting", "done", "error", "loader"}
+var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar", "working", "waiting", "done", "error", "loader", "icon", "panel_border", "card_border", "composer_border", "input_border", "selected_agent_border", "running_agent_border"}
 
 func defaultAppearanceTheme() appearanceTheme {
 	return appearanceTheme{Name: "Default", Mode: "dark", InterfaceFont: "system", CodeFont: "system-mono", InterfaceSize: 14, CodeSize: 12, Colors: map[string]map[string]string{}, CSS: ""}
@@ -100,6 +102,9 @@ func validAppearanceTheme(t appearanceTheme) error {
 	}
 	if len(t.CSS) > appearanceCSSMaxBytes {
 		return errors.New("Custom CSS must be at most 131,072 bytes (128 KiB).")
+	}
+	if err := validAppearanceControls(t); err != nil {
+		return err
 	}
 	for surface, material := range t.Materials {
 		if !slices.Contains(appearanceSurfaces, surface) {
@@ -174,6 +179,8 @@ func appearanceGuide() map[string]any {
 		"colour_roles":  appearanceRoles,
 		"operations":    appearanceOperations,
 		"loader":        map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to the caller's text or working colour"},
+		"icons":         map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
+		"borders":       map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
 		"status_colors": "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
@@ -511,7 +518,7 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. duplicate/rename use new_name; export returns a theme object for JSON, import stores that theme object without applying. Apply a saved theme by name. Mutation replies summarize changed fields; read returns the full guide/document. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
 		"operation": map[string]any{"type": "string", "enum": operations},
 		"css_file":  map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the CSS file."), "path": externalString("Relative admitted UTF-8 CSS file path; at most 128 KiB. For apply/save instead of theme.css."), "agent_id": externalString("Publication agent context when required by read_crew_file.")}},
-		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read. Colours are nested under colors.light/colors.dark; materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},
+		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. icons controls the existing outline glyph stroke/scale, not another library; borders styles core shared surfaces and existing selected/running agent rows. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},
 		"replace":   map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
 		"name":      externalString("Saved theme name for apply/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to60 characters."),
 		"new_name":  externalString("New saved name for rename/duplicate; up to60 characters. Never overwrites a different saved theme."),
