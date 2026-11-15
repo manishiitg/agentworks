@@ -3,6 +3,7 @@ import { useAppViewport } from '../../hooks/useAppViewport'
 import { useNotifyFocus } from '../../hooks/useNotifyFocus'
 import { AppQuickSwitcher } from './AppQuickSwitcher'
 import { AppSidebar } from './AppSidebar'
+import { TeamInviteProvider } from './TeamInviteRow'
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
 import { ProductNavigationContext, CompactProductNavigationContext } from './productNavigationContexts'
 import ToastHost from '../ui/ToastHost'
@@ -14,12 +15,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   useAppViewport(viewport)
   useNotifyFocus()
   return <TooltipProvider><ProductNavigationContext.Provider value={false}><CompactProductNavigationContext.Provider value={true}>
-    <div ref={viewport} data-app-shell className="flex h-dvh min-h-0 overflow-hidden bg-background">
+    <TeamInviteProvider><div ref={viewport} data-app-shell className="flex h-dvh min-h-0 overflow-hidden bg-background">
       <AppSidebar />
       <div data-app-main className="relative min-h-0 min-w-0 flex-1">{children}</div>
       <WorkspaceAccountMenu />
       <AppQuickSwitcher />
       <ToastHost />
-    </div>
+    </div></TeamInviteProvider>
   </CompactProductNavigationContext.Provider></ProductNavigationContext.Provider></TooltipProvider>
 }
