@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -21,14 +20,10 @@ import (
 const hotDocumentLimit = 4 << 20
 const hotDocumentsBudget = 16 << 20
 
-type hotDocumentStamp struct {
-	file    os.FileInfo
-	missing bool
-}
+type hotDocumentStamp struct{ file os.FileInfo }
 type hotDocumentEntry struct {
 	stamp   hotDocumentStamp
 	content string
-	exists  bool
 }
 
 var hotDocuments = struct {
@@ -78,16 +73,10 @@ func localHotDocument(file string) (string, hotDocumentStamp, bool) {
 
 func statHotDocument(physical string) (hotDocumentStamp, bool) {
 	info, err := os.Stat(physical)
-	if err == nil {
-		return hotDocumentStamp{file: info}, info.Mode().IsRegular() && info.Size() <= hotDocumentLimit
-	}
-	if !os.IsNotExist(err) {
+	if err != nil {
 		return hotDocumentStamp{}, false
 	}
-	// A missing file is reusable only while the actual parent is unchanged;
-	// creation/deletion changes its stamp. Missing parents are never cached.
-	info, err = os.Stat(filepath.Dir(physical))
-	return hotDocumentStamp{file: info, missing: true}, err == nil && info.IsDir()
+	return hotDocumentStamp{file: info}, info.Mode().IsRegular() && info.Size() <= hotDocumentLimit
 }
 
 // Linux and macOS expose ctime; atime is deliberately excluded because a
@@ -118,7 +107,7 @@ func hotChangeTime(info os.FileInfo) ([2]int64, bool) {
 func sameHotStamp(a, b hotDocumentStamp) bool {
 	ac, aok := hotChangeTime(a.file)
 	bc, bok := hotChangeTime(b.file)
-	return aok && bok && ac == bc && a.missing == b.missing && os.SameFile(a.file, b.file) &&
+	return aok && bok && ac == bc && os.SameFile(a.file, b.file) &&
 		a.file.Size() == b.file.Size() && a.file.ModTime().Equal(b.file.ModTime()) && a.file.Mode() == b.file.Mode()
 }
 
@@ -148,13 +137,13 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 		hotDocuments.hits++
 		hotDocumentLogLocked()
 		hotDocuments.Unlock()
-		return cached.content, cached.exists, nil
+		return cached.content, true, nil
 	}
 	hotDocuments.misses++
 	hotDocumentLogLocked()
 	hotDocuments.Unlock()
 	content, exists, err := load()
-	if err != nil || len(content) > hotDocumentLimit || exists == before.missing {
+	if err != nil || len(content) > hotDocumentLimit || !exists {
 		return content, exists, err
 	}
 	// A successful HTTP read must agree with the local file before we associate
@@ -187,7 +176,7 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 		hotDocuments.entries = map[string]hotDocumentEntry{}
 		hotDocuments.bytes = 0
 	}
-	hotDocuments.entries[key] = hotDocumentEntry{after, content, exists}
+	hotDocuments.entries[key] = hotDocumentEntry{after, content}
 	hotDocuments.bytes += len(content)
 	return content, exists, nil
 }
@@ -195,7 +184,7 @@ func readFileFromWorkspaceHotDocument(ctx context.Context, file string, load fun
 // Invalidate before and after store writes. The generation refuses a racing
 // miss's fill, including same-size writes with deliberately preserved mtimes.
 func invalidateHotDocuments(file string, folder bool) {
-	file = strings.TrimPrefix(filepath.ToSlash(file), "/")
+	file = strings.TrimPrefix(file, "/")
 	if !folder && !hotDocumentPath(file) {
 		return
 	}

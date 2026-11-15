@@ -82,12 +82,12 @@ func TestHotWorkspaceBytesReuseWithoutStalePermissions(t *testing.T) {
 			t.Fatalf("deleted file: exists=%t err=%v", exists, e)
 		}
 	}
-	if gets.Load() != 4 {
-		t.Fatalf("negative read was not reusable: GETs=%d", gets.Load())
+	if gets.Load() != 5 {
+		t.Fatalf("missing files must bypass the byte cache: GETs=%d", gets.Load())
 	}
 	f.write(t, file, bravo)
 	if userAllowedWorkflowID(claims, "alpha") {
-		t.Fatal("creation beneath a cached missing parent did not revoke access")
+		t.Fatal("creation did not revoke access")
 	}
 	invalidateHotDocuments(file, false)
 	var loads int
