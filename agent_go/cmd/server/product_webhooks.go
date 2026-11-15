@@ -874,6 +874,9 @@ func (s *ProjectActionDispatcher) dispatchInternalProductTrigger(ctx context.Con
 		return internalTriggerDeliveryResult{}, err
 	}
 	if trigger.WorkspaceFunction {
+		if err := requireServerInteractive(); err != nil {
+			return internalTriggerDeliveryResult{}, err
+		}
 		admission, _ := ctx.Value(declaredFunctionDispatchKey{}).(*crewFunctionCall)
 		if admission == nil || admission.ID != call.DeliveryID || admission.TriggerID != trigger.ID || admission.TargetID != manifest.ID || admission.UserID != call.UserID {
 			return internalTriggerDeliveryResult{}, ErrInternalTriggerNotBound
