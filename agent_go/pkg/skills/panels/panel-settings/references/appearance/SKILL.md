@@ -105,6 +105,7 @@ old feature-specific element was migrated. Do not invent stopped/blocked states.
 
 - Keep foreground/background and muted text/card clearly different in lightness.
   Glass still needs enough tint for reading. Never fade the entire panel/text.
+- Glass reveals in-app artwork, not the macOS desktop; native window vibrancy is separate.
 - A static gradient or embedded SVG can be rich without a repaint loop. Any
   translucent material clears inner app wrappers in both modes. Shared materials
   set background-colour only; they do not erase your background-image.
