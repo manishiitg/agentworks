@@ -507,3 +507,37 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 
 }
+
+// PLAT-746-1024: removing the one-off answer must not provision a Team home
+// or fall through to the maker's native chat when their Mac is offline.
+func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"helper": true}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-owner-pair"}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := defaultProjectOwners().All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := agentMessageEndpoint{UserID: "other", Kind: triggerCallerCrew, ID: "asker"}
+	target := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "team", TeamAgentID: "helper", ChatKey: "team:chat:helper"}
+	_, changed, err := f.api.routePublishedAgentMessage(t.Context(), agentConversation{}, agentMessage{}, source, target, "owner_mac")
+	if err == nil || changed {
+		t.Fatalf("offline ask fell through or routed without a home: changed=%t error=%v", changed, err)
+	}
+	current, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := defaultProjectOwners().All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.OnlineHome != "" || len(after) != len(before) {
+		t.Fatal("offline ask provisioned a Team home")
+	}
+}

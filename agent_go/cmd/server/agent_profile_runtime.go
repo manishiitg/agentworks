@@ -877,19 +877,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// Shared Crew rules stay last, after imported root guidance.
 		projectInstructions = strings.TrimSpace(rootGuidance.Section + "\n\n" + projectInstructions)
 	}
-	if profile.ID == crewProfileID && turnSharedAsk(ctx, req) == nil {
-		project := crewResourceProjectID(req.AgentProfileConversationKey)
-		if project != "" {
-			digest, digestErr := api.crewSharedAnswerDigestForTurn(ctx, project, userID, req.AgentProfileConversationKey, sessionID)
-			if digestErr != nil {
-				return nil, digestErr
-			}
-			if digest != "" {
-				req.Query += digest
-				log.Printf("[CREW_SHARED_ANSWER] project=%s session=%s event=digest_user_content", project, sessionID)
-			}
-		}
-	}
 	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered + publishedAgentContext, AgentRolePrompt: agentRole, PublishedAgentContext: publishedAgentContext, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions, ProjectInstructionSourcesKey: rootInstructionKey,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }

@@ -102,7 +102,8 @@ func (api *StreamingAPI) routePublishedAgentMessage(ctx context.Context, c agent
 		offline = true
 		home := team.OnlineHome
 		if home == "" {
-			return c, false, nil
+			log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_refused reason=no_online_home", dest.ID, dest.TeamAgentID)
+			return c, false, fmt.Errorf("This agent's computer is offline and this Team has no online agent yet. Add an item to the Team first, or ask again when the computer is online.")
 		} // only an explicit hand-off creates it
 		key := crewOwnerMainChatKey(home)
 		root := crewProjectRootByID(home)

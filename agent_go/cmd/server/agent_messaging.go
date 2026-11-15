@@ -1163,7 +1163,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	source := c.Endpoints[m.From]
 	// Old native-chat addresses must not bypass the Team's registry route
 	// and start the maker's chat. Askers refresh the one current directory ID.
-	if !replyInbox && !IsLocalMode() && dest.Kind == triggerCallerCrew && dest.TeamAgentID == "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
+	if !replyInbox && !IsLocalMode() && dest.Kind == triggerCallerCrew && dest.TeamAgentID == "" && source.UserID != dest.UserID {
 		if team, e := readCrewTeam(dest.ID); e == nil && crewTeamAgentsVisible(team, source.UserID) {
 			if _, registered := team.registeredAgent(dest.UserID, dest.ChatKey); registered {
 				return "", fmt.Errorf("this Team address is out of date; run messages action=list_agents and use the current agent id")
@@ -1194,7 +1194,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	if err := api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return dest.Session, err
 	}
-	if !replyInbox && !IsLocalMode() && publishedAsker(source) != dest.UserID && m.Kind != "shared_answer" {
+	if !replyInbox && !IsLocalMode() && publishedAsker(source) != dest.UserID {
 		routed, changed, err := api.routePublishedAgentMessage(ctx, c, m, source, dest, teamRoute)
 		if err != nil {
 			return "", err
@@ -1203,10 +1203,11 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 			return api.deliverPublishedAgentMessage(ctx, routed, m)
 		}
 	}
-	// A teammate asks from shared context, never by starting/forking the
-	// maker's CLI. Own-agent messages keep the normal real-turn path.
-	if !replyInbox && !IsLocalMode() && dest.TeamAgentID != "" && source.UserID != dest.UserID && m.Kind != "shared_answer" {
-		return "", api.answerCrewSharedMessage(ctx, c, m, source, dest)
+	// Cross-person server asks must have become a normal published-agent
+	// thread above. Never fall through into the maker's native session.
+	if !replyInbox && !IsLocalMode() && dest.TeamAgentID != "" && source.UserID != dest.UserID && teamRoute != "owner_mac" && teamRoute != "member_mac" {
+		log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_refused reason=not_published", dest.ID, dest.TeamAgentID)
+		return "", fmt.Errorf("This agent is not available to ask. Choose a published agent from messages action=list_agents.")
 	}
 	// The admission just verified this stored sender. Preserve its person
 	// before the receiving turn switches to the Crew owner's namespace.
