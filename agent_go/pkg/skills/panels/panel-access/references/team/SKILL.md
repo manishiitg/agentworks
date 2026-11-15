@@ -73,3 +73,38 @@ folder syncs to that Mac, through the server the invite was listed from (a serve
 website there is one action, "Join", and the team works on the server. Decline is in both. The server says whether
 the Crew can be added to a Mac (`can_add_to_mac`: the Team shares a folder); when it cannot, the Mac app says so and
 offers only Decline.
+
+## Receiving an Add to Team hand-off
+
+When another member's local agent asks the Team agent to take something online,
+use the normal agent-message conversation. Work out the dependencies together;
+do not show the person a table picker, options window or checkbox. Keep the
+technical preview between the agents and give the person a plain result, or a
+question only when a required connection or decision is genuinely missing.
+
+- Read the source agent's current `receive_online` preview: the published item,
+  its declared data, functions, assets and the schedules or Watchers that feed
+  it. Check what the Team Crew can actually run with its normal tools, accounts
+  and selected secret names. Ask the source agent to prepare missing dependencies
+  and preview again; do not guess IDs or say an unavailable dependency will work.
+- Agree which feeding routines must move so the page can keep updating online.
+  The source agent chooses their IDs from the preview's dependencies. Buttons
+  must use the Team agent or an admitted online target, never a Mac-only chat.
+  Personal sign-ins are not copied or lent to the Team agent. If Team keys are
+  needed, discuss names only and use the existing Team Vault procedure; never
+  put values, login files or credentials in messages or item packages.
+- The **original member's source agent** calls `receive_online` preview and
+  apply from that member's own authorized connection, with the current
+  `item_revision`, stable `submission_id` and agreed `include_automations`.
+  The Team agent must not impersonate that member or call as the source owner.
+  Messages are coordination, not permission or a substitute for server checks.
+  Do not copy files with shell commands or edit the server's mapping records.
+- The backend creates the normal Team home on the first apply, not on an ask or
+  preview. First acceptance copies the used data once; updating replaces code,
+  never the live Team data. The backend moves selected schedules, pauses their
+  source copy and confirms the online copy; do not stop source routines yourself.
+- Read the apply result before reporting back. A preview, agreement or sent
+  message is not acceptance. On refusal, return its plain reason and the next
+  preparation step. After acceptance, report what is on the Team and whether
+  the selected routines moved. Claim it keeps updating only after the normal
+  online run is confirmed; keep any untested run clearly untested.
