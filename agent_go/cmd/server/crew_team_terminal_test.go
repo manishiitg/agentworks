@@ -139,6 +139,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
 			mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
 			mux.HandleFunc("/api/external/v1/agents/sharing", env.api.handleAgentSharing)
+			copyRouter := gorillamux.NewRouter()
+			copyRouter.HandleFunc("/api/crew-teams/{project}/agents/{agent}/offline-copy/{op}", env.api.handleCrewOfflineCopy)
+			mux.Handle("/api/crew-teams/", copyRouter)
 			srv := httptest.NewServer(AuthMiddleware(mux))
 			defer srv.Close()
 			t.Setenv("PUBLIC_URL", srv.URL)
@@ -183,7 +186,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				}
 				return child, cfg.Token, a
 			}
-			owner, token, attached := attach(parent, "terminal", "native-owner")
+			owner, token, attached := attach(parent, "terminal", "11111111-2222-4333-8444-555555555555")
 			sender, memberToken, invited := attach(member, "member-terminal", "native-member")
 			team := crewTeam{ProjectID: "alpha", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Invited: true}}}
 			if err = writeCrewTeamAgentFixture(team); err != nil {
@@ -291,6 +294,8 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if row.ID == "" || !row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 				t.Fatal("join did not preserve exact native identity and private defaults")
 			}
+
+			checkCrewOfflineCopyHTTP(t, srv.URL, token, wrongConnection, attached, saved, row)
 
 			// PLAT-746-1030: real attachment label requests drive the shared
 			// activity projection, never a private native journal or browser guess.
