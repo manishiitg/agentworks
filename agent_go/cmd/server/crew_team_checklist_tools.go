@@ -20,10 +20,10 @@ func crewChecklistProperties(props map[string]any, mcp bool) map[string]any {
 	props["instruction_revision"] = map[string]any{"type": "integer", "minimum": 1, "description": "Current instruction_revision from setup_get."}
 	props["setup"] = map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 		"title":       map[string]any{"type": "string", "maxLength": 160},
-		"instruction": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"path": externalString("Existing Markdown path in the Team's shared files."), "revision": map[string]any{"type": "integer", "minimum": 1}}, "required": []string{"path", "revision"}},
-		"items":       map[string]any{"type": "array", "minItems": 1, "maxItems": 32, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"id": externalString("On edit, keep the current item ID; omit for a new item."), "label": map[string]any{"type": "string", "maxLength": 240}}, "required": []string{"label"}}},
+		"instruction": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"path": externalString("Existing Markdown path in the Team's shared files."), "revision": map[string]any{"type": "integer", "minimum": 1}}, "required": []any{"path", "revision"}},
+		"items":       map[string]any{"type": "array", "minItems": 1, "maxItems": 32, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"id": externalString("On edit, keep the current item ID; omit for a new item."), "label": map[string]any{"type": "string", "maxLength": 240}}, "required": []any{"label"}}},
 		"keys":        map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"name": externalString("Required key NAME only; no value."), "provider": externalString("Personal sign-in provider, if needed.")}}},
-	}, "required": []string{"title", "instruction", "items"}}
+	}, "required": []any{"title", "instruction", "items"}}
 	props["done"] = map[string]any{"type": "object", "maxProperties": 32, "additionalProperties": map[string]any{"type": "boolean"}, "description": "Current checklist item IDs to mark done or not done; never a person ID."}
 	if mcp {
 		props["agent_name"] = externalString("setup_checklist only: your own connected agent name, from your current AgentWorks connection.")
