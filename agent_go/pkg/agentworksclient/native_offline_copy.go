@@ -128,6 +128,11 @@ func (b *localBridge) queueNativeCopy(ctx context.Context, s *localSession) {
 		defer b.workers.Done()
 		call, cancel := context.WithTimeout(ctx, 20*time.Second)
 		next, err := client.SyncNativeCopy(call, a, old)
+		if err == nil && next.Project != "" && next.Agent != "" {
+			if handbackErr := b.processNativeHandback(call, s, a, client, next); handbackErr != nil {
+				log.Printf("[AGENT_OFFLINE_COPY] agent=%s attachment=%s event=handback_pending", a.AgentID, a.ID)
+			}
+		}
 		cancel()
 		b.mu.Lock()
 		defer b.mu.Unlock()
