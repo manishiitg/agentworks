@@ -13,7 +13,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 
 export type TeamSharedPath = { id: string; path: string; file?: boolean }
 export type TeamFolder = { id?: string; folders?: TeamSharedPath[]; paths?: TeamSharedPath[] }
-export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
+export type Team = { folder_note?: string; change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; online_home?: string; roster_source?: string; people: { user_id: string; invited?: boolean }[]; folder: TeamFolder; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
 export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[]; groups: { title: string; line: string; key?: boolean; names: string[] }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
@@ -410,7 +410,7 @@ export async function changeTeamWay(target: TeamTarget, change: { op: 'add' | 'r
 
 /** Team routines (receive-online, kind automation): a schedule or Watcher of the Team's Crew that runs on the Team's
  * online home. The server decides what moves and what to tell the person; the screen lists and sends the choice. */
-export type TeamOnlineItem = { kind?: 'schedule' | 'watcher'; item_id?: string; destination_item_id: string; name: string; when_runs?: string; added_by_name?: string; revision?: string }
+export type TeamOnlineItem = { kind: string; source_project_id: string; item_id: string; destination_item_id: string; name: string; when_runs?: string; added_by_name?: string; updated_by_name?: string; revision?: string }
 export type TeamOnlineView = { home_project_id: string; items: TeamOnlineItem[] }
 export type TeamReceiveResult = { name?: string; notes?: string[] }
 export const teamOnlineItems = (target: TeamTarget) => teamRequest<TeamOnlineView>(target, '/online-items')

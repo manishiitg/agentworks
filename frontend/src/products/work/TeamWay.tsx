@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, Eye, KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
+import { CalendarClock, KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { schedulerApi } from '../../api/scheduler'
@@ -54,7 +54,10 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
   const removeRoutine = async (item: TeamOnlineItem) => {
     setPending(`routine:${item.destination_item_id}`); setLine('')
     try {
-      if (item.kind === 'watcher') await conditionTriggersApi.manage(routines!.home_project_id, 'delete', item.destination_item_id, undefined, undefined, 'agentworks')
+      // A Watcher is a schedule with a condition: it goes through the Watcher's own delete, any other schedule through the schedule delete.
+      const home = routines!.home_project_id
+      const watchers = await conditionTriggersApi.list(home, 'agentworks').catch(() => ({ triggers: [] }))
+      if (watchers.triggers.some(trigger => trigger.id === item.destination_item_id)) await conditionTriggersApi.manage(home, 'delete', item.destination_item_id, undefined, undefined, 'agentworks')
       else await schedulerApi.deleteJob(item.destination_item_id)
       teamRoutineChanged(); setLine('Removed from the Team.')
     } catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
@@ -82,7 +85,7 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
     </ul>
     {routineItems.length > 0 && <ul className="divide-y divide-border border-t border-border">
       {routineItems.map(item => <li key={item.destination_item_id} className={`flex flex-wrap items-center gap-2 py-2 ${pending === `routine:${item.destination_item_id}` ? 'opacity-60' : ''}`}>
-        {item.kind === 'watcher' ? <Eye className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="block truncate">{item.name}</span>
           <span className="block text-xs text-muted-foreground">{[item.when_runs, item.added_by_name && `Added by ${item.added_by_name}`].filter(Boolean).join(' · ')}</span>
@@ -134,7 +137,8 @@ export function AddToTeamControl({ team, kind, id, provider, signIn }: { team: A
  * Not shown without a Team, or to someone who is not In team. The server decides what moves and what to tell the person. */
 export function useAddRoutineToTeam(projectId?: string) {
   const { view, target } = useTeamTab(projectId)
-  const inTeam = Boolean(view?.team.on && view.people.some(person => person.you && person.note !== 'invited'))
+  // The Team's own Crew only (the online home has a roster_source); the home is made by the first Add.
+  const inTeam = Boolean(view?.team.on && !view.team.roster_source && view.people.some(person => person.you && person.note !== 'invited'))
   const routines = useTeamRoutines(target, inTeam)
   const [pending, setPending] = useState('')
   const [line, setLine] = useState('')
@@ -144,6 +148,6 @@ export function useAddRoutineToTeam(projectId?: string) {
     try { const result = await addAutomationToTeam(target, id); setLine([`${result.name || 'It'} now runs for the Team.`, ...(result.notes ?? [])].join(' ')) }
     catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
   }
-  return { line, onTeam: (id: string) => (routines?.items ?? []).some(item => item.item_id === id), pending, add }
+  return { line, onTeam: (id: string) => (routines?.items ?? []).some(item => item.kind === 'automation' && item.source_project_id === target.project && item.item_id === id), pending, add }
 }
 export type RoutineTeam = NonNullable<ReturnType<typeof useAddRoutineToTeam>>
