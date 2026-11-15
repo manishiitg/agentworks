@@ -66,6 +66,7 @@ type LocalBridgeRequest struct {
 	Target        string `json:"target,omitempty"`
 	InboxID       string `json:"inbox_id,omitempty"`
 	Cursor        int    `json:"after,omitempty"`
+	WaitSeconds   int    `json:"wait_seconds,omitempty"`
 	OlderThan     string `json:"older_than,omitempty"`
 	FromAgent     string `json:"from_agent,omitempty"`
 	DeliveredOnly bool   `json:"delivered_only,omitempty"`
@@ -1519,8 +1520,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 	switch in.Action {
 	case "team_sync":
-		if s.Attachment.Provider != "claude" {
-			return LocalBridgeReply{Error: "Team join is available for Claude Code first."}
+		if s.Attachment.Provider != "claude" && s.Attachment.Provider != "codex" {
+			return LocalBridgeReply{Error: "Team join requires this attached Claude Code or Codex session."}
 		}
 		// The helper has just checked the current process, lease and offline state.
 		// Never forward caller identity, arbitrary tools, file paths or credentials.
@@ -2116,6 +2117,10 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		}
 	case "read":
 		args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
+		if in.WaitSeconds < 0 || in.WaitSeconds > 25 {
+			return LocalBridgeReply{Error: "wait_seconds must be 0 to 25"}
+		}
+		args["wait_seconds"] = in.WaitSeconds
 		if in.InboxID != "" {
 			args["inbox_id"] = in.InboxID
 		}

@@ -36,8 +36,8 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	claims := GetUserFromContext(r.Context())
 	project, action := externalArg(args, "project"), externalArg(args, "team_action")
 	named, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
-	if err != nil || named.Attachment == nil || named.Attachment.Provider != "claude" || strings.TrimSpace(named.Attachment.SessionID) == "" {
-		crewTeamTerminalRefused(w, 403, project, named, "attachment_unavailable", "Connect this Claude Code session to AgentWorks first.")
+	if err != nil || named.Attachment == nil || (named.Attachment.Provider != "claude" && named.Attachment.Provider != "codex") || strings.TrimSpace(named.Attachment.SessionID) == "" {
+		crewTeamTerminalRefused(w, 403, project, named, "attachment_unavailable", "Connect this Claude Code or Codex session to AgentWorks first.")
 		return
 	}
 	team, err := readCrewTeam(project)
@@ -137,7 +137,7 @@ func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project st
 		Agent      string `json:"agent"`
 		Folder     string `json:"folder"`
 	}
-	if json.Unmarshal(call.Args, &in) != nil || in.Provider != "claude" || in.Session == "" || in.Attachment == "" || in.Agent == "" {
+	if json.Unmarshal(call.Args, &in) != nil || (in.Provider != "claude" && in.Provider != "codex") || in.Session == "" || in.Attachment == "" || in.Agent == "" {
 		return fail()
 	}
 	bridge, err := agentworksclient.DefaultLocalBridgeRoot()

@@ -73,16 +73,21 @@ func (api *StreamingAPI) desktopTeamTerminalLive(ctx context.Context, project st
 		return proof
 	}
 	var in struct {
-		Session string `json:"session"`
+		Session  string `json:"session"`
+		Provider string `json:"provider"`
 	}
 	if json.Unmarshal(call.Args, &in) != nil {
 		return crewChatResult{ID: call.ID, Status: 403}
 	}
-	path, err := crewTeamTerminalJournal(in.Session)
+	path, err := crewTeamTerminalJournal(in.Provider, in.Session)
 	if err != nil {
 		return crewChatResult{ID: call.ID, Status: 409, Body: json.RawMessage(`{"error":"This session's local conversation is unavailable."}`)}
 	}
-	messages, stamp, err := readNewClaudeTranscriptMessages(path, time.Time{})
+	provider := "claude-code"
+	if in.Provider == "codex" {
+		provider = "codex-cli"
+	}
+	messages, stamp, err := readRecentNativeTranscript(path, provider, time.Time{})
 	if err != nil {
 		return crewChatResult{ID: call.ID, Status: 409, Body: json.RawMessage(`{"error":"The local conversation could not be read."}`)}
 	}
@@ -97,7 +102,7 @@ func (api *StreamingAPI) desktopTeamTerminalLive(ctx context.Context, project st
 
 // Exact native UUID only, with no caller path. Ambiguous or symlink-escaped
 // journals are refused rather than selecting another session's private file.
-func crewTeamTerminalJournal(session string) (string, error) {
+func crewTeamTerminalJournal(provider, session string) (string, error) {
 	if _, err := uuid.Parse(session); err != nil {
 		return "", err
 	}
@@ -106,7 +111,17 @@ func crewTeamTerminalJournal(session string) (string, error) {
 		return "", err
 	}
 	base := filepath.Join(home, ".claude", "projects")
-	matches, err := filepath.Glob(filepath.Join(base, "*", session+".jsonl"))
+	pattern := filepath.Join(base, "*", session+".jsonl")
+	if provider == "codex" {
+		base, err = codexSessionsRoot()
+		if err != nil {
+			return "", err
+		}
+		pattern = filepath.Join(base, "*", "*", "*", "rollout-*-"+session+".jsonl")
+	} else if provider != "claude" {
+		return "", fmt.Errorf("unsupported terminal provider")
+	}
+	matches, err := filepath.Glob(pattern)
 	if err != nil || len(matches) != 1 {
 		return "", fmt.Errorf("exact session journal unavailable")
 	}
@@ -116,9 +131,9 @@ func crewTeamTerminalJournal(session string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Lstat(filepath.Join(parent, session+".jsonl"))
+	info, err := os.Lstat(filepath.Join(parent, filepath.Base(matches[0])))
 	if err != nil || !info.Mode().IsRegular() {
 		return "", fmt.Errorf("unsafe session journal")
 	}
-	return filepath.Join(parent, session+".jsonl"), nil
+	return filepath.Join(parent, filepath.Base(matches[0])), nil
 }
