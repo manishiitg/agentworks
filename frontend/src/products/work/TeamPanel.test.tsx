@@ -2,7 +2,7 @@
 import React, {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {afterEach,expect,it,vi} from 'vitest'
-import {TeamPanel,type TeamPanelAgent,type TeamPanelEvent,type TeamPanelView} from './TeamPanel'
+import {TeamPanel,type TeamPanelAgent,type TeamPanelEvent,type TeamPanelView,type TeamPanelRoutine} from './TeamPanel'
 import {WorkspaceContextCard} from '../../components/workspace/WorkspaceContextCard'
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
@@ -19,8 +19,8 @@ const events:TeamPanelEvent[]=Array.from({length:6},(_,i)=>({id:`event-${i}`,kin
 const shared=[{key:'own',name:'My shared helper',canChange:false}]
 const artifacts=[{id:'team-copy',title:'Team proposal',kind:'artifact',addedBy:'Colleague'}]
 const routines=[{id:'routine',name:'Morning summary',line:'Every morning',enabled:true,last_run_at:'2026-11-15T09:00:00Z',chat_id:'main'}]
-async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='server:person:crew') {
- await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routines} onArtifact={artifact}/></WorkspaceContextCard>))
+async function render(view:TeamPanelView='live',rows=agents,feed=events,scope='server:person:crew',routineRows:TeamPanelRoutine[]=routines) {
+ await act(async()=>root.render(<WorkspaceContextCard><TeamPanel scope={scope} agents={rows} events={feed} view={view} onNavigate={navigate} onAsk={ask} shared={shared} artifacts={artifacts} routines={routineRows} onArtifact={artifact}/></WorkspaceContextCard>))
 }
 const click=async(text:string)=>{const button=[...host.querySelectorAll('button')].find(row=>row.textContent?.trim()===text||row.getAttribute('aria-label')?.includes(text)||row.textContent?.trim().startsWith(text));expect(button).toBeTruthy();await act(async()=>button!.click())}
 afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
@@ -29,14 +29,16 @@ it('shows admitted working people only, pins the Team agent, and replaces live l
  await render()
  const panel=host.querySelector('[aria-label="Team live panel"]')!
  expect(panel.querySelector('button')?.textContent).toContain('Team agent')
- expect(panel.querySelector('button')?.title).toContain('Last ran Morning summary')
- expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(2)
+ expect(panel.querySelector('button')?.title).toContain('ran Morning summary')
+ expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(3)
  expect(panel.textContent).toContain('typing…')
  expect(panel.textContent).toContain('waiting for Colleague')
  expect(panel.textContent).toContain('Shared doing line')
  expect(panel.textContent).not.toContain('Idle person')
  expect(panel.textContent).not.toContain('Away person')
- expect(panel.textContent).not.toContain('My private work')
+ expect(panel.textContent).toContain('My private work')
+ expect(panel.textContent).toContain('you')
+ expect(panel.textContent).not.toContain('always online')
  await click('Review');expect(ask).toHaveBeenCalledWith(agents[1])
  await render('live',agents.map(row=>row.id==='peer'?{...row,typing:false,last_message:'Layout ready'}:row))
  expect(panel.textContent).not.toContain('Checking the layout')
@@ -49,7 +51,7 @@ it('collapses recent events by default, shows three single-line events and opens
  expect(recent.querySelector('button')?.getAttribute('aria-expanded')).toBe('false')
  expect(recent.querySelectorAll('li')).toHaveLength(0)
  expect(recent.textContent).toContain('3 new')
- await render('live',agents,[...events])
+ await render('live',agents,[...events,{id:'private',kind:'decision',private:true,at:'2026-11-15T13:00:00Z',title:'Only me',verb:'decided',line:'PRIVATE SENTINEL'},{id:'question',kind:'question',at:'2026-11-15T13:01:00Z',title:'Agent',verb:'asked',line:'QUESTION SENTINEL'}])
  expect(recent.querySelectorAll('li')).toHaveLength(0) // Updates never auto-expand.
  await click('Just happened')
  expect(recent.querySelectorAll('li')).toHaveLength(3)
@@ -85,7 +87,7 @@ it('opens items and full activity as separate right-panel views, never inline di
  await click('Team proposal');expect(artifact).toHaveBeenCalledWith('team-copy')
  await render('live');await click('Shared by you');expect(navigate).toHaveBeenLastCalledWith('shared')
  await render('shared');expect(host.textContent).toContain('My shared helper');expect(host.textContent).toContain('Answers only')
- await render('live');await click('All activity');expect(navigate).toHaveBeenLastCalledWith('activity')
+ await render('live');await click('Activity');expect(navigate).toHaveBeenLastCalledWith('activity')
  await render('activity');expect(host.querySelectorAll('li')).toHaveLength(6)
 })
 
@@ -111,8 +113,26 @@ it('hides empty links and restores them only when admitted items arrive',async()
  expect(host.querySelector('nav')).toBeNull()
  await render('live',agents,events,'empty')
  expect(host.textContent).toContain('All agents')
- expect(host.textContent).toContain('All activity')
+ expect(host.textContent).toContain('Activity')
  await act(async()=>root.render(empty()))
  expect(host.querySelector('nav')).toBeNull()
  expect(host.querySelector('[aria-label="Working now"]')).toBeNull()
+})
+
+// Owner-approved compact mock: use real scheduler metadata, not an online slogan.
+it('shows Team work before its next routine, then last work, then an ask invitation',async()=>{
+ const home=agents.filter(row=>row.team_agent)
+ const upcoming=[...routines,{id:'next',name:'Next summary',enabled:true,next_run_at:'2099-11-15T09:00:00Z',chat_id:'main'},{id:'off',name:'Disabled routine',enabled:false,next_run_at:'2099-11-15T08:00:00Z'}]
+ await render('live',home,events,'home',upcoming)
+ expect(host.textContent).toContain('next: Next summary')
+ expect(host.textContent).not.toContain('Disabled routine')
+ await render('live',home.map(row=>({...row,activity:'running',last_message:'Updating the Team'})),events,'home',upcoming)
+ expect(host.textContent).toContain('running — Updating the Team')
+ expect(host.textContent).not.toContain('next:')
+ await render('live',home,events,'home')
+ expect(host.textContent).toContain('ran Morning summary')
+ await render('live',home,events,'home',[])
+ expect(host.textContent).toContain('Ask the Team agent')
+ expect(host.querySelector('[aria-label="Team details"]')?.classList.contains('flex')).toBe(true)
+ expect(host.textContent).not.toContain('always online')
 })
