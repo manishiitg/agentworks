@@ -234,7 +234,10 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 		t.Fatal("primary owner read another maker's private handback", code)
 	}
 	registered.People = nil
-	if err := writeCrewTeamAgentFixture(registered); err != nil {
+	// Keep the stale source row deliberately: admission must still revoke the
+	// removed maker. This synthetic home has no provisioned roster to sync.
+	teamRaw, _ = json.Marshal(registered)
+	if err := os.WriteFile(filepath.Join(teamDir, "team.json"), teamRaw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if code, _ := request(otherToken, "member-pair", "POST", memberRoute+"handback", memberRead); code != 403 {
