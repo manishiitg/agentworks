@@ -2,6 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	agentevents "github.com/manishiitg/mcpagent/events"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +20,7 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	newExternalCrewCommandFixture(t)
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"live": true, "hidden": true, "private": false, "unknown": true}})}
-	preview := crewTeamMessagePreview{LastMessage: "Visible update", LastMessageAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	preview := crewTeamMessagePreview{Typing: true, LastMessage: "Visible update", LastMessageAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	person := crewTeamAgentsPerson{UserID: "other", Name: "Colleague"}
 	for id, agent := range team.Agents {
 		switch agent.Tab {
@@ -31,13 +35,56 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
+
+	posts := crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}}
+	for id, registered := range team.Agents {
+		if registered.Tab == "hidden" {
+			posts.Doing[id] = crewTeamActivityPost{AgentID: id, OwnerID: "other", Kind: "doing", Line: "Reviewing the shared result", At: time.Now().UTC()}
+		}
+	}
+	dir, err := crewTeamDir(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "activity.json"), posts, 0600); err != nil {
+		t.Fatal(err)
+	}
 	live := crewTeamLiveFor(t.Context(), team, []crewTeamAgentsPerson{person}, "owner")
 	seen := false
 	for _, row := range live.Agents {
 		if row.Tab == "live" {
-			seen = row.LastMessage == preview.LastMessage && row.LastMessageAt == preview.LastMessageAt
-		} else if row.LastMessage != "" || row.LastMessageAt != "" {
+			seen = row.LastMessage == preview.LastMessage && row.LastMessageAt == preview.LastMessageAt && row.Typing
+		} else if row.Tab == "hidden" {
+			if row.LastMessage != "Reviewing the shared result" || row.Typing {
+				t.Fatal("answers-only did not show Doing without private text/typing")
+			}
+		} else if row.LastMessage != "" || row.LastMessageAt != "" || row.Typing {
 			t.Fatal("private/hidden/unknown chat metadata leaked")
+		}
+	}
+
+	reader := crewTeamAgentMessagePreviews(t.Context(), team, posts)
+	for _, agent := range person.Agents {
+		forged := agent
+		forged.ChatKey = "forged"
+		if got := reader("other", forged); got.LastMessage != "" || got.Typing {
+			t.Fatal("chat-key mismatch exposed a preview")
+		}
+	}
+	leaver := team
+	leaver.People = nil
+	for _, agent := range person.Agents {
+		if got := crewTeamAgentMessagePreviews(t.Context(), leaver, posts)("other", agent); got.LastMessage != "" || got.Typing {
+			t.Fatal("removed member retained live text")
+		}
+	}
+	off := team
+	off.On = false
+	if got := crewTeamLiveFor(t.Context(), off, []crewTeamAgentsPerson{person}, "owner"); len(got.Agents) > 0 {
+		for _, row := range got.Agents {
+			if row.LastMessage != "" || row.Typing {
+				t.Fatal("Team-off retained preview")
+			}
 		}
 	}
 	if !seen {
@@ -87,4 +134,25 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 		t.Fatal("changed or old content reused a saved preview or invented a clock")
 	}
 
+}
+
+// The one-line monitor must use visible assistant content, not a terminal frame,
+// tool payload, reasoning stream or child agent. Split deltas redact as one text.
+func TestCrewTeamStreamingPreviewExcludesNonChatContent(t *testing.T) {
+	now := time.Now().UTC()
+	chunk := func(text, source string, delta, tool bool, level int) storeEvents.Event {
+		return storeEvents.Event{Type: "streaming_chunk", Timestamp: now, Data: &agentevents.AgentEvent{HierarchyLevel: level, Data: &agentevents.StreamingChunkEvent{Content: text, Source: source, IsDelta: delta, IsToolCall: tool}}}
+	}
+	rows := []storeEvents.Event{chunk("Checking the page API_", "content", true, false, 0), chunk("KEY=fixture-secret-value", "content", true, false, 0)}
+	for _, row := range []storeEvents.Event{chunk("terminal private", "terminal", false, false, 0), chunk("tool private", "content", false, true, 0), chunk("thinking private", "reasoning", false, false, 0), chunk("child private", "content", false, false, 1)} {
+		rows = append(rows, row)
+	}
+	got := crewTeamStreamingPreview(rows)
+	if !got.Typing || !strings.HasPrefix(got.LastMessage, "Checking the page") || strings.Contains(got.LastMessage, "fixture-secret-value") || strings.Contains(got.LastMessage, "private") {
+		t.Fatalf("unsafe or missing visible preview: %+v", got)
+	}
+	rows = append(rows, storeEvents.Event{Type: "tool_call_start", Data: &agentevents.AgentEvent{}})
+	if crewTeamStreamingPreview(rows).Typing {
+		t.Fatal("tool execution falsely says typing")
+	}
 }

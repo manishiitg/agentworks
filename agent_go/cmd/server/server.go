@@ -2155,6 +2155,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	})
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
+		api.noteCrewTeamPreviewEvent(sessionID, event)
 		// Runtime ownership starts observation. Opening a terminal is never
 		// required for committed replies or native helper activity to arrive.
 		api.observeNativeCodingRuntime(sessionID, event)

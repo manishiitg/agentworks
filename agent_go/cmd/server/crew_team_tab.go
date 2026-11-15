@@ -40,7 +40,9 @@ type crewTeamTabPresence struct {
 }
 
 type crewTeamTabAgent struct {
-	ID string `json:"id,omitempty"`
+	crewTeamMessagePreview
+	Online bool   `json:"online"`
+	ID     string `json:"id,omitempty"`
 	// Key is the agent's chat key: In team / Only me sends it (agent-visibility).
 	Key  string `json:"key"`
 	Name string `json:"name"`
@@ -134,12 +136,13 @@ type crewTeamTabSync struct {
 }
 
 type crewTeamTabReply struct {
-	Team   crewTeam            `json:"team"`
-	Intro  string              `json:"intro"`
-	People []crewTeamTabPerson `json:"people"`
-	Live   crewTeamLiveView    `json:"live"`
-	Agents []crewTeamTabAgent  `json:"agents"`
-	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
+	Reachable []crewTeamPanelReach `json:"reachable"`
+	Team      crewTeam             `json:"team"`
+	Intro     string               `json:"intro"`
+	People    []crewTeamTabPerson  `json:"people"`
+	Live      crewTeamLiveView     `json:"live"`
+	Agents    []crewTeamTabAgent   `json:"agents"`
+	Sync      *crewTeamTabSync     `json:"sync,omitempty"`
 	// The Team's settings are the server's record, changed from the website, the Mac app, chat or MCP; the owner's Mac
 	// applies it when it syncs (crew_team_apply.go). CanSwitch: the Team on/off switch, the Crew's main owner only
 	// (owner, 5 Nov).
@@ -349,6 +352,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
 	out.Live = crewTeamLiveFor(ctx, t, byPerson, viewer)
+	out.Reachable = crewTeamPanelReachFor(ctx, t, viewer, byPerson)
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p
@@ -463,6 +467,34 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out.Sync = crewTeamTabSyncFor(t, viewer)
 	out.CanAddFolder = view.CanManage
 	out.CanRemoveFolder = view.CanManage && viewer == t.OwnerID && len(t.Folder.Folders) > 1
+
+	// Reuse the Monitor's current-rule projection; own rows are not in its
+	// teammate list, so resolve those once here without exposing any native chat.
+	ownPreview := crewTeamAgentMessagePreviews(ctx, t, crewTeamActivityPostsFor(t, viewer))
+	for i := range out.Agents {
+		row := &out.Agents[i]
+		p, found := seen[row.OwnerID]
+		if !found {
+			continue
+		}
+		row.Online = row.Place == "server" || p.MacOn
+		if row.Mine {
+			for _, agent := range p.Agents {
+				if agent.ID == row.ID {
+					row.crewTeamMessagePreview = ownPreview(p.UserID, agent)
+					break
+				}
+			}
+		} else {
+			for _, rows := range [][]crewTeamLiveAgent{out.Live.Agents, out.Live.Idle} {
+				for _, live := range rows {
+					if live.ID == row.ID {
+						row.crewTeamMessagePreview = live.crewTeamMessagePreview
+					}
+				}
+			}
+		}
+	}
 	return out
 }
 

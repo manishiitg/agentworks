@@ -56,13 +56,14 @@ type crewTeamLiveView struct {
 func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	project := t.ProjectID
 	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
-	doing := crewTeamActivityPostsFor(t, viewer).Doing
+	posts := crewTeamActivityPostsFor(t, viewer)
+	doing := posts.Doing
+	preview := crewTeamAgentMessagePreviews(ctx, t, posts)
 	for _, person := range people {
 		own := person.You || person.UserID == viewer
 		if !own {
 			out.People = append(out.People, crewTeamLivePerson{UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
 		}
-		var previews map[string]crewTeamMessagePreview
 		for _, agent := range person.Agents {
 			post := doing[agent.ID]
 			if agent.ID == "" {
@@ -80,20 +81,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 				row.ID = row.ChatKey
 			}
 			row.Label = row.Person + " · " + row.Name
-			if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.InTeam && registered.Rule.ChatShare == crewChatShareLive {
-				if agent.Place == "mac" {
-					row.crewTeamMessagePreview = agent.lastMessage
-				} else {
-					if previews == nil {
-						previews = crewTeamMessagePreviews(ctx, person.UserID, t.ProjectID)
-					}
-					row.crewTeamMessagePreview = previews[agent.ChatKey]
-				}
-			}
-			row.LastMessage = crewTeamMessageLine(row.LastMessage)
-			if row.LastMessage == "" {
-				row.LastMessageAt = ""
-			}
+			row.crewTeamMessagePreview = preview(person.UserID, agent)
 			if row.Activity == "running" || row.Activity == "waiting" {
 				row.Doing = post.Line
 			}
