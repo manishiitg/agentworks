@@ -165,7 +165,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		return
 	}
 	go func() {
-		repairCrewTeamHomeMembers()
+		api.repairCrewTeamHomeMembers(ctx)
 		busyChecked := map[string]time.Time{}
 		copyChecked := map[string]time.Time{}
 		woken := true

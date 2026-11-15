@@ -1,6 +1,6 @@
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState } from 'react'
-import { ChevronRight, Pencil, Users } from 'lucide-react'
+import { ChevronRight, Cloud, Pencil, Users } from 'lucide-react'
 
 /** Rows are admitted and their message lines filtered by the server, not by this view. */
 export type TeamPanelAgent = AvatarFields & {
@@ -26,7 +26,7 @@ function age(at?: string) {
   const elapsed = at ? Math.max(0, Date.now() - Date.parse(at)) : NaN
   return !Number.isFinite(elapsed) ? '' : elapsed < 60_000 ? 'now' : elapsed < 3_600_000 ? `${Math.floor(elapsed / 60_000)}m` : elapsed < 86_400_000 ? `${Math.floor(elapsed / 3_600_000)}h` : `${Math.floor(elapsed / 86_400_000)}d`
 }
-const agentLine = (row: TeamPanelAgent) => [row.team_agent ? 'Online always · answers when others are away' : `${row.mine ? 'You' : row.person} · ${row.place === 'mac' ? 'Mac' : 'Server'}`, row.cli || row.engine, row.model_id, row.reasoning_effort].filter(Boolean).join(' · ')
+const agentLine = (row: TeamPanelAgent) => [row.team_agent ? 'Always online · set up Team automations and how the team works' : `${row.mine ? 'You' : row.person} · ${row.place === 'mac' ? 'Mac' : 'Server'}`, row.cli || row.engine, row.model_id, row.reasoning_effort].filter(Boolean).join(' · ')
 const time = (at: string) => Date.parse(at) || 0
 
 /** The same compact Team content in the web and Mac right panel. The scope includes
@@ -74,7 +74,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error, shar
     {summary('Agents', agentsOpen, `${ordered.length} · ${ordered.filter(working).length} working`, ordered.slice(0, 2).map(row => row.name).join(', '), () => setAgentsChoice(agentsOpen ? '' : 'open'))}
     {agentsOpen && <div role="group" aria-label="Team agents" className={groupClass}>
       {visible.map(row => <button key={row.id} type="button" onClick={() => onAsk(row)} className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium"><Avatar {...row} name={row.team_agent ? row.name : row.person} className="h-full w-full text-[10px]" /><span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
+        <span aria-hidden="true" className="relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium">{row.team_agent ? <Cloud aria-label="Always online" className="h-4 w-4 text-primary"/> : <Avatar {...row} name={row.person} className="h-full w-full text-[10px]" />}<span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background ${row.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1"><span className="min-w-0 flex-1 truncate text-xs font-medium">{row.name}</span><span className={`shrink-0 text-[10px] ${row.activity === 'running' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{row.activity === 'running' ? 'Working' : row.activity === 'waiting' ? 'Waiting' : !row.online ? 'Offline' : ''}</span></span>
           <span title={agentLine(row)} className="block truncate text-[10px] text-muted-foreground">{agentLine(row)}</span>

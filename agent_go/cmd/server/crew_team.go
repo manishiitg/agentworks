@@ -658,6 +658,16 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
+	// Team On, not an ask or preview, creates the shared home for every member.
+	if input.On && input.RosterSource == "" && !IsLocalMode() {
+		home, err := api.ensureCrewTeamOnlineHome(r.Context(), project, "team_on")
+		if err != nil {
+			externalError(w, 409, "team_home_failed", "The Team is on, but its online agent could not be set up. Try turning the Team on again.")
+			log.Printf("[TEAM_HOME] team=%s event=create_failed reason=team_on error=%q", project, err)
+			return
+		}
+		input.OnlineHome = home
+	}
 	if e = applyCrewTeamPathRenames(r.Context(), project, claims.UserID, pathChanges); e != nil {
 		externalError(w, 409, "folder_rename_failed", e.Error())
 		return

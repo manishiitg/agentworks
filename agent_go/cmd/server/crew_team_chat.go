@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -77,6 +78,20 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		manifest, e := readCrewProjectManifests(ctx, crewProfileID, root)
 		if e != nil {
 			return "", e
+		}
+		// Only the Team home's own virtual runtime may operate its source
+		// Team setup. It reads/copies Team-owned keys, never the asker's Vault.
+		if action == "way" || action == "way_add" || action == "way_remove" {
+			if source, ok := teamHomeSource(root); ok && crewTeamHomeOwnsSetup(source, caller.UserID) {
+				if sharedSender != "" && (!source.member(sharedSender) || !crewTeamAccountActive(sharedSender)) {
+					return "", fmt.Errorf("Join this Team to configure its shared agent")
+				}
+				if requested := externalArg(args, "project"); requested != "" && requested != manifest.ID && requested != source.ProjectID {
+					return "", fmt.Errorf("Use this Team's setup only")
+				}
+				log.Printf("[TEAM_HOME] team=%s event=setup action=%s person=%s", source.ProjectID, action, firstNonEmptyTrimmed(sharedSender, caller.UserID))
+				return api.crewTeamWayChat(ctx, caller, source.ProjectID, action, args)
+			}
 		}
 		project := externalArg(args, "project")
 		if project == "" {

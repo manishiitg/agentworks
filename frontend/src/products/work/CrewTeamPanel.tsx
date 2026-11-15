@@ -4,7 +4,7 @@ import { TeamPanel, type TeamPanelAgent, type TeamPanelPost, type TeamPanelShare
 import { crewDashboardsTab, teamRequest, type CrewDashboardsTab, type TeamOnlineView, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { openTeammateAgent } from './openTeammateAgent'
+import { openTeammateAgent, openTeamAgentHome } from './openTeammateAgent'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
@@ -60,6 +60,10 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
  const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({...row,connection:target?.connection,id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) return
+	if (row.team_agent && team.view?.team.online_home && team.view.reachable?.some(agent=>agent.kind==='team_agent'&&agent.agent_id===row.id)) {
+	 void openTeamAgentHome(team.view.team.online_home,target?.connection,server)
+	 return
+	}
   if(row.mine) {
    const own=team.view!.agents.find(agent=>agent.mine&&(agent.id||agent.key)===row.id)
    const tab=own&&teamAgentChatTab(team,projectId,own.key)

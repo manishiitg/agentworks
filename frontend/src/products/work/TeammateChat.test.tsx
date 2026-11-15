@@ -8,15 +8,16 @@ const root=createRoot(host)
 const render=async()=>act(async()=>root.render(<TeamAgentAsk tabId="watch"/>))
 const textbox=()=>host.querySelector('textarea')!
 const type=async(value:string)=>act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textbox(),value);textbox().dispatchEvent(new Event('input',{bubbles:true}))})
-import { openTeammateAgent } from './openTeammateAgent'
+import { openTeammateAgent, openTeamAgentHome } from './openTeammateAgent'
 import { TeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { useChatShareLines } from './ChatEmptyState'
-const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),ask:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
+const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),navigate:vi.fn(),ask:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:f.tabs}),{getState:()=>({chatTabs:f.tabs})})}))
 vi.mock('../../components/chat/AgentCard',()=>({useCrewAgentsStore:{getState:()=>({projectId:'crew',closed:[]})}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:any)=>select({user:{id:'viewer'}})}))
 vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:(...args:unknown[])=>{f.ask(...args);return true}}))
+vi.mock('../../utils/appNavigation',()=>({openAppProduct:(...args:unknown[])=>f.navigate(...args)}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:(id:string)=>f.open(id)}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>f.identity,isChatIdentityCurrent:(value:number)=>value===f.identity}))
 vi.mock('../../services/api',()=>({default:{post:(...args:unknown[])=>f.post(...args)},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
@@ -64,4 +65,10 @@ it('identifies the observed person and Mac above the transcript with one direct 
  await act(async()=>{host.querySelector('details')!.open=true;[...host.querySelectorAll('button')].find(button=>button.textContent==='Ask from my agent')!.click()})
  expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review')
  expect(host.querySelectorAll('textarea')).toHaveLength(1)
+})
+
+it('opens the admitted Team Main in its own home instead of a viewer Main draft',()=>{
+ openTeamAgentHome('team-home')
+ expect(f.navigate).toHaveBeenCalledWith({surface:'work',id:'team-home',agent:'main'})
+ expect(f.ask).not.toHaveBeenCalled()
 })
