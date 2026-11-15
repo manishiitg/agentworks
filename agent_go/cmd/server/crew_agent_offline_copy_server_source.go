@@ -22,7 +22,7 @@ func registerCrewPutOnlineServerSource(ctx context.Context, person, project, key
 		return "", source, errCrewTeamAgentNotYours
 	}
 	t, err := readCrewTeamOrNew(project, person)
-	if _, id, e := crewOfflineOwnAgent(ctx, project, person, key); e == nil {
+	if _, id, e := crewTeamOwnAgent(ctx, project, person, key); e == nil {
 		key = id
 	}
 	owned := false
