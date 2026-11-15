@@ -62,6 +62,7 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
 import { teamSideChats } from './teamApi'
+import { TeamAgentAsk } from './TeamAgentAsk'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
@@ -786,6 +787,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     let cancelled = false
     let busy = false
     let refreshRequested = false
+    let pendingTeamAgent: {projectId:string;key:string;owner?:string} | undefined
     const sync = async () => {
       if (busy) { refreshRequested = true; return }
       if (openingRef.current || document.visibilityState === 'hidden') return
@@ -887,6 +889,14 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           }
         }
 
+        if (pendingTeamAgent) {
+          const detail = pendingTeamAgent
+          pendingTeamAgent = undefined
+          const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata.agentProfileTabCanWrite === false && (!detail.owner || item.metadata.agentProfileTabOwnerID === detail.owner) && (item.metadata.agentProfileConversationKey === detail.key || item.metadata.agentProfileConversationKey?.endsWith(`:team:${detail.key}`)))
+          if (tab) openAgentTab(tab.tabId)
+          else useChatStore.getState().addToast('This agent’s chat is not available. Refresh the Team and try again.', 'error')
+        }
+
       } catch {
         // The list is a convenience; the next pass tries again.
       } finally {
@@ -894,6 +904,13 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         if (refreshRequested && !cancelled) { refreshRequested = false; void sync() }
       }
     }
+    const onTeamAgent = (event: Event) => {
+      const detail = (event as CustomEvent<{projectId:string;key:string;owner?:string}>).detail
+      if (detail?.projectId !== projectId) return
+      pendingTeamAgent = detail
+      void sync()
+    }
+    window.addEventListener('agentworks:open-team-agent', onTeamAgent)
     syncRef.current = sync
     void sync()
     const timer = window.setInterval(() => { void sync() }, 15000)
@@ -914,6 +931,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      window.removeEventListener('agentworks:open-team-agent', onTeamAgent)
       window.removeEventListener('focus', onFocus)
       window.removeEventListener('popstate', onHistory)
     }
@@ -1678,6 +1696,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}
                         />}
                         </div>
+                        <TeamAgentAsk key={tabId} tabId={tabId} />
                       </div>
                   ) : (
                     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">

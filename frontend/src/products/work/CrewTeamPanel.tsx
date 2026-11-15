@@ -3,7 +3,7 @@ import { TeamPanel, type TeamPanelAgent, type TeamPanelPost } from './TeamPanel'
 import { teamRequest, type TeamTabState } from './teamApi'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
+import { openTeammateAgent } from './openTeammateAgent'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
@@ -48,7 +48,8 @@ export function CrewTeamPanel({ scope, projectId, team }: {scope:string; project
    if(tab) {openAgentTab(tab.tabId);return}
   } else {
    const admitted=team.view!.reachable?.find(agent=>agent.agent_id===row.id)
-   if(admitted?.address && fillAskFromMyAgentDraft(projectId,row.person,row.name,admitted.address)) return
+   const agent=team.view!.agents.find(agent=>!agent.mine&&agent.id===admitted?.agent_id)
+   if(agent) {openTeammateAgent(projectId,agent.watch_key||agent.key,agent.owner_id);return}
   }
   useChatStore.getState().addToast('Open your own agent in this Crew, then try again.','error')
  }
