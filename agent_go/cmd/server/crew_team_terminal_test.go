@@ -587,7 +587,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if e != nil || !found || !ref.PutOnline || ref.Binding.Session != attached.SessionID || ref.Binding.Attachment != attached.ID {
 				t.Fatal("native online intent used model-supplied source fields", e)
 			}
-			replacement, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: provider, SessionID: "private-replacement-session"})
+			replacement, e := owner.AttachAgent(t.Context(), agentworksclient.AgentAttachmentOptions{AgentName: "terminal", Provider: provider, SessionID: "22222222-3333-4444-8555-666666666666"})
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -607,6 +607,23 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			attached = replacement // the Mac now proves the explicitly rejoined lease
 			if status, out := request(token, attached); status != 200 || out["agent_id"] != id || out["in_team"] != true || out["chat_share"] != crewChatShareLive {
 				t.Fatalf("explicit rejoin lost stable identity/choices: %d %v", status, out)
+			}
+			// Explicitly enabling a new source must not bind an old runtime or
+			// keep the old cursor. Preserve its private metadata before reset.
+			if status, online := request(token, attached, "put_online"); status != 200 || online["agent_id"] != id {
+				t.Fatalf("new bound source intent: %d %v", status, online)
+			}
+			freshRef, found, e := readCrewOfflineCopyRef(copyDir)
+			if e != nil || !found || freshRef.Binding.Session != attached.SessionID || freshRef.Session != "" || freshRef.ChatKey != "" || freshRef.Revision != 0 {
+				t.Fatal("new source inherited an old copy runtime", e)
+			}
+			freshCursor, e := readCrewOfflineHistory(copyDir, freshRef.Binding)
+			if e != nil || freshCursor.Offset != 0 || freshCursor.Revision != 0 {
+				t.Fatal("new source inherited old cursor", e)
+			}
+			backups, e := filepath.Glob(filepath.Join(copyDir, "before-source-change-*", "history.json"))
+			if e != nil || len(backups) != 1 {
+				t.Fatal("source metadata was not backed up before reset", e)
 			}
 			if status, out := request(token, attached, "leave"); status != 200 {
 				t.Fatalf("leave failed: %d %v", status, out)
