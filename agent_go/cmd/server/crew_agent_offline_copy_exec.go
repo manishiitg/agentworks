@@ -254,6 +254,11 @@ func (api *StreamingAPI) refreshCrewOfflineCopy(sourceProject, agent string) {
 	}
 	a, ok := t.Agents[agent]
 	b, bound := crewOfflineRowBinding(a)
+	if ok && !bound && a.Kind != "terminal" {
+		// App (agentworks journal) sources build through the portable history path, not a native fork.
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=skipped reason=app_source", sourceProject, agent)
+		return
+	}
 	if !ok || !bound {
 		fail("source_unbound")
 		return
