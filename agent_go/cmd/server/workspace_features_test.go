@@ -116,6 +116,10 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if rec := put(fixtureUserA, "source-pair"); rec.Code != 400 || !strings.Contains(rec.Body.String(), "last_shared_agent") {
 		t.Fatalf("Put online bypassed last-shared rule: %d %s", rec.Code, rec.Body.String())
 	}
+	// Resume the original server-owned lifecycle case after the paired-app checks.
+	if err := crewroot.WriteSync(fixtureCrewID, crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "server", PairID: "source-pair", PeerProjectID: "local-source"}); err != nil {
+		t.Fatal(err)
+	}
 	body, _ := json.Marshal(team)
 	enable := httptest.NewRequest(http.MethodPut, "/api/crew-teams/"+fixtureCrewID, bytes.NewReader(body)).WithContext(f.Ctx(fixtureUserA))
 	enable = mux.SetURLVars(enable, map[string]string{"project": fixtureCrewID})
