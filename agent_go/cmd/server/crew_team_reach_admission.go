@@ -282,7 +282,7 @@ func crewTeamSharedChat(ctx context.Context, viewer, project, key string) (*code
 type crewTeamReachRefusal struct{ reason string }
 
 func (e crewTeamReachRefusal) Error() string {
-	return "This agent is not In team for you now, or its attached session changed. Refresh the agent list."
+	return "This agent is not shared with you now, or its attached session changed. Refresh the agent list."
 }
 func crewTeamReachReason(err error) string {
 	var refused crewTeamReachRefusal

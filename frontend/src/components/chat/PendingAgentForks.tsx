@@ -40,7 +40,7 @@ export function PendingAgentForks({ state }: { state: TeamTabState }) {
         <h2 id="pending-forks-title" className="font-semibold">Agent copies shared with you</h2>
         {offers.map(offer => <div key={offer.id} className="space-y-2">
           <p className="text-sm">{state.view?.people.find(person => person.user_id === offer.sender_id)?.name || 'A teammate'} shared a copy of {offer.agent.name} with you.</p>
-          <p className="text-xs text-muted-foreground">The whole conversation is included. Your new agent starts Only me, using your own login. Their agent stays unchanged.</p>
+          <p className="text-xs text-muted-foreground">The whole conversation is included. Your new agent starts Not shared, using your own login. Their agent stays unchanged.</p>
           <div className="flex justify-end gap-2"><button type="button" className="rounded-md px-3 py-2 text-sm hover:bg-muted" disabled={!!busy} onClick={() => { void act(offer, 'cancel') }}>Decline</button><button type="button" className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50" disabled={!!busy} onClick={() => { void act(offer, 'accept') }}>{busy === offer.id ? 'Please wait…' : 'Accept copy'}</button></div>
         </div>)}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

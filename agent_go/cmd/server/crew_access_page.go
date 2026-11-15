@@ -41,7 +41,7 @@ func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAc
 	team := "No Team yet. Add people under Team."
 	if teamOn {
 		kept = "The server keeps messages between agents, the folder you share with your Team, and Team chats answered while this Mac is off."
-		team = "Only agents you put In team. Through your Mac while it is on; from the server's copy of the shared folder when it is off."
+		team = "Only agents you share with the team. Through your Mac while it is on; from the server's copy of the shared folder when it is off."
 	}
 	return &crewAccessMacCard{Online: online, Status: status, Line: line, Kept: kept, Reach: []crewAccessReach{
 		{Who: "You, from your other agents", How: "Always, on your network. Nothing to turn on."},
@@ -124,7 +124,7 @@ func crewAccessPage(out *crewSyncReply) {
 				line = "Last seen " + crewAccessAgo(seen) + ". " + line
 			}
 			if teamOn {
-				line += " Meanwhile In team agents answer from the server."
+				line += " Meanwhile shared agents answer from the server."
 			}
 			out.AccessMac = crewAccessMacCardFor(false, "Offline · "+mac, line, teamOn)
 		}

@@ -110,7 +110,7 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 	}
 	private := !registered || !agent.InTeam
 	if actor.InTeam && private {
-		return empty, fmt.Errorf("The agent is no longer In team. Try again from its own chat")
+		return empty, fmt.Errorf("The agent is no longer shared with the team. Try again from its own chat")
 	}
 	key := agent.ID
 	if key == "" {

@@ -63,7 +63,7 @@ export function TeamPanel({ scope, agents, posts, onAsk, onActivity, error }: {
           {row.last_message && <span className="block truncate text-[11px] text-muted-foreground">{row.typing ? <span className="text-emerald-600 dark:text-emerald-400">typing… </span> : age(row.last_message_at) ? <span>{age(row.last_message_at)} · </span> : null}{row.last_message}</span>}
         </span>
       </button>)}
-      {!ordered.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No agents In team yet.</p>}
+      {!ordered.length && <p className="px-1 py-1 text-[11px] text-muted-foreground">No agents shared with the team yet.</p>}
     </div>}
     {summary('Activity', activityOpen, `${newCount} new`, latest[0] ? `${latest[0].agent}: ${latest[0].line}` : 'No recent posts', () => setActivityChoice(activityOpen ? '' : 'open'))}
     {activityOpen && <div role="group" aria-label="Recent Team activity">
