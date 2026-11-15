@@ -64,6 +64,7 @@ type crewDashboardsTabKind struct {
 }
 
 type crewDashboardsTab struct {
+	OnlineUnavailable bool `json:"online_unavailable,omitempty"`
 	// Workspace is the Crew's folder, which the card opens a row's file in.
 	Workspace string `json:"workspace"`
 	Intro     string `json:"intro"`
@@ -136,7 +137,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	root := crewProjectRootByID(t.ProjectID)
 	owner := t.OwnerID == claims.UserID
 	onMac := dashboardPublicMacCrewBlocked(t.ProjectID)
-	rows, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
+	rows, onlineUnavailable, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
 	if !ok {
 		return crewDashboardsTab{}, false
 	}
@@ -145,7 +146,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{OnlineUnavailable: onlineUnavailable, Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	counts := map[string]int{}
 	for _, row := range rows {
@@ -189,7 +190,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	case onMac:
 		tab.Note = crewDashboardsMacOwnerNote
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && !onlineUnavailable {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}

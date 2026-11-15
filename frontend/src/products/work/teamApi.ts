@@ -288,6 +288,7 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
 /** The Dashboards tab (crew_dashboards_tab.go): everything the Crew publishes, each with who can open it and, on a
  * server Crew, its public link. Every line is the server's; the card shows them. */
 export type CrewDashboardsTab = {
+  online_unavailable?: boolean
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
   items: { workspace?: string; online?: { team_project_id: string; source_project_id: string; item_kind: string; dashboard_id: string }; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink }[]
