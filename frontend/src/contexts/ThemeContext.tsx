@@ -20,10 +20,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const store = useAppearanceStore.getState()
     store.resetScope(scope)
     if (!actor) return
-    const load = () => { void useAppearanceStore.getState().load(scope) }
-    load()
-    const unsubscribe = liveFeed.subscribe(['appearance'], null, load)
-    const focus = () => { if (document.visibilityState === 'visible') load() }
+    const load = (force: boolean) => () => { void useAppearanceStore.getState().load(scope, { force }) }
+    load(true)()
+    const unsubscribe = liveFeed.subscribe(['appearance'], null, load(true))
+    // Coming back to the window reloads only a document that has gone stale.
+    const focus = () => { if (document.visibilityState === 'visible') load(false)() }
     document.addEventListener('visibilitychange', focus)
     return () => { unsubscribe(); document.removeEventListener('visibilitychange', focus) }
   }, [actor, server])

@@ -4,7 +4,13 @@ import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 
 /** One account entry. Mode and saved looks stay together, with no nested theme menu. */
 export default function AppearanceControl({ compact = false }: { compact?: boolean } = {}) {
-  const { profile, setProfile, current, saved, saving, error, change } = useAppearanceStore()
+  const profile = useAppearanceStore(state => state.profile)
+  const setProfile = useAppearanceStore(state => state.setProfile)
+  const current = useAppearanceStore(state => state.current)
+  const saved = useAppearanceStore(state => state.saved)
+  const saving = useAppearanceStore(state => state.saving)
+  const error = useAppearanceStore(state => state.error)
+  const change = useAppearanceStore(state => state.change)
   const choice = 'flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <details className="group/appearance mt-1 border-t border-border px-3 py-2">
     <summary role="menuitem" className="flex min-h-8 cursor-pointer list-none items-center gap-2 rounded-md text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
