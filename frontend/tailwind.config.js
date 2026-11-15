@@ -12,6 +12,8 @@ export default {
   ],
   theme: {
   	extend: {
+      // App text scales without changing rem units inside authored documents.
+      fontSize: Object.fromEntries(Object.entries({ xs: [12,16], sm: [14,20], base: [16,24], lg: [18,28], xl: [20,28], '2xl': [24,32], '3xl': [30,36], '4xl': [36,40], '5xl': [48,48], '6xl': [60,60] }).map(([name, [size, line]]) => [name, [`calc(var(--app-font-size, 14px) * ${size / 14})`, { lineHeight: `calc(var(--app-font-size, 14px) * ${line / 14})` }]])),
       fontFamily: {
         sans: ['var(--app-font, system-ui)', 'sans-serif'],
         mono: ['var(--app-code-font, monospace)', 'monospace'],

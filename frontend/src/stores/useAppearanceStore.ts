@@ -38,7 +38,7 @@ export const useAppearanceStore = create<State>((set, get) => ({
     if (theme) set({ preview: theme, profile: theme.mode })
     set({ saving: true, error: '' })
     try {
-      const { data } = await api.put<AppearanceDocument>('/api/appearance', { operation, ...(theme ? { theme } : {}), ...(name ? { name } : {}) }, { skipSessionContext: true })
+      const { data } = await api.put<AppearanceDocument>('/api/appearance', { operation, ...(theme ? { theme, replace: true } : {}), ...(name ? { name } : {}) }, { skipSessionContext: true })
       if (get().scope !== scope || requestVersion !== version) return false
       const current = validateTheme(data.current)
       set({ current, saved: data.saved.map(validateTheme), profile: current.mode, preview: null, loaded: true, saving: false })

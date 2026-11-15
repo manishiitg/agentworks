@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useLayoutEffect, useState } from 'react'
 import { useAppearanceStore } from '../stores/useAppearanceStore'
 import { codeFontFamily, hexToHsl, interfaceFontFamily } from '../stores/appearanceTheme'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -14,7 +14,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const actor = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const [cssWarning, setCssWarning] = useState(false)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const scope = JSON.stringify([server, actor])
     const store = useAppearanceStore.getState()
     store.resetScope(scope)
@@ -26,14 +26,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     document.addEventListener('visibilitychange', focus)
     return () => { unsubscribe(); document.removeEventListener('visibilitychange', focus) }
   }, [actor, server])
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement
     root.classList.remove('light', 'dark'); root.classList.add(profile)
     root.dataset.appearance = profile; root.dataset.theme = profile; root.style.colorScheme = profile
     root.style.setProperty('--app-font', interfaceFontFamily(current.interface_font))
     root.style.setProperty('--chat-font', interfaceFontFamily(current.interface_font))
     root.style.setProperty('--app-font-size', `${current.interface_size}px`)
-    root.style.setProperty('--app-type-scale', String(current.interface_size / 14))
     root.style.setProperty('--app-code-font', codeFontFamily(current.code_font))
     root.style.setProperty('--app-code-size', `${current.code_size}px`)
     const names: string[] = []
@@ -46,7 +45,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     return () => { for (const name of names) root.style.removeProperty(name) }
   }, [current, profile])
-  useEffect(() => {
+  useLayoutEffect(() => {
     try {
       const { sheet, removed } = safeAppearanceSheet(current.css)
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]

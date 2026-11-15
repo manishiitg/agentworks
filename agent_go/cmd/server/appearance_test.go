@@ -54,7 +54,11 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if json.Unmarshal(other.Body.Bytes(), &foreign) != nil || len(foreign.Saved) != 0 || foreign.Current.InterfaceFont != "system" {
 		t.Fatalf("other person saw theme: %s", other.Body.String())
 	}
-	for _, body := range []string{`{"operation":"apply","user":"owner"}`, `{"operation":"apply","theme":{"unknown":true}}`, `{"operation":"apply","theme":{"colors":{"light":{"background":"url(https://example.com)"}}}}`, `{"operation":"apply","theme":{"code_font":"system"}}`} {
+	cleared := invoke("owner", `{"operation":"apply","replace":true,"theme":{"name":"Clean","colors":{"light":{}}}}`)
+	if json.Unmarshal(cleared.Body.Bytes(), &doc) != nil || len(doc.Current.Colors["light"]) != 0 {
+		t.Fatalf("cleared colour returned: %s", cleared.Body.String())
+	}
+	for _, body := range []string{`{"operation":"apply","theme":{"colors":null}}`, `{"operation":"apply","theme":{"colors":{"light":null}}}`, `{"operation":"apply","user":"owner"}`, `{"operation":"apply","theme":{"unknown":true}}`, `{"operation":"apply","theme":{"colors":{"light":{"background":"url(https://example.com)"}}}}`, `{"operation":"apply","theme":{"code_font":"system"}}`} {
 		if got := invoke("other", body); got.Code != 400 {
 			t.Fatalf("invalid body accepted: %s %d", body, got.Code)
 		}
