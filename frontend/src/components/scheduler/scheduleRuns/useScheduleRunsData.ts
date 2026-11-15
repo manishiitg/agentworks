@@ -168,7 +168,10 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     setError(null)
     try {
       const started = performance.now()
-      const pendingJobs = schedulerApi.listJobs({ entity_type: entityType, workspace_path: scopePath ?? undefined, limit: WORKFLOW_SCHEDULE_PANEL_LIMIT })
+      // Crew work includes saved workflow timers as well as agent-message timers.
+      // Read the existing authorized mixed list only for the global overview.
+      const globalCrew = entityType === 'product' && !scopePath
+      const pendingJobs = schedulerApi.listJobs({ entity_type: globalCrew ? undefined : entityType, workspace_path: scopePath ?? undefined, limit: WORKFLOW_SCHEDULE_PANEL_LIMIT })
       // Config is optional UI metadata; do not hold usable job rows behind it.
       void schedulerApi.getConfig().then(config => {
         if (current()) setSchedulerConfig(config)
@@ -180,7 +183,9 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       const elapsed = Math.round(performance.now() - started)
       if (elapsed >= 400) console.info('[SCHEDULES_LOAD]', { stage: 'jobs', elapsed_ms: elapsed, count: resp.jobs.length })
       const scheduleJobs = timeScheduledJobs(productProfileId && entityType === 'product'
-        ? resp.jobs.filter(job => job.id.startsWith(`product-project:${productProfileId}:`))
+        ? resp.jobs.filter(job => job.entity_type === 'product'
+          ? job.id.startsWith(`product-project:${productProfileId}:`)
+          : globalCrew && job.entity_type === 'workflow' && Boolean(job.crew_workspace_path))
         : resp.jobs)
       setJobsScope(dataScope)
       setJobs(scheduleJobs)
