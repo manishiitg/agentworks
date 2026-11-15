@@ -76,3 +76,18 @@ It runs before remote tsc/build. String/template AST scanning ignores comments.
 Explicit authored renderers, code palettes and background artwork are exempt.
 This is a style audit, not a security gate or a claim all legacy feature pages have
 been migrated. Existing feature-specific raw colours remain incremental work.
+
+## Deep Space (no game)
+
+`:root.dark { --aw-background: deep-space; }` selects the shipped passive starfield,
+nebula and five-planet system. It is lazy-mounted only for the authenticated app,
+with no game controls, input handlers, canvas/RAF loop, timers or network requests.
+Its bounded CSS animations are paused by default and resume only while a mounted
+`agent-state=running`, `turn-live=true`, `tools-running=true` or
+`team-working=true` hook exists. CSS `:has()` consumes those existing hooks; no
+observer or status copy is added. Hidden documents pause, reduced-motion disables
+all scene animation, and unmount removes the visibility listener. Missing hooks
+mean no animation, not a claim that every agent is idle. Historical tool cards do
+not activate it. Idle phases freeze rather than restart on each tool call.
+Light/Default clear the scene; the prior Neon Orbit preset remains separate.
+There is no measured CPU/GPU/frame-time claim from choosing CSS over canvas.

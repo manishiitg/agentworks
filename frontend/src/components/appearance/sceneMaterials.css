@@ -1,0 +1,9 @@
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]){--aw-page-opacity:0;--aw-sidebar-opacity:.78;--aw-sidebar-backdrop:blur(12px);--aw-composer-opacity:.85;--aw-composer-backdrop:blur(18px)}
+/* A built-in visual layer only. Project/Artifact documents are never restyled. */
+html:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) #root{position:relative;z-index:1}
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) [data-app-shell]{background:transparent}
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) [data-app-main]{z-index:1}
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) [data-app-main] :is(.bg-background,[data-chat-find-scope],[data-testid="terminal-clear-view"],[data-testid="terminal-clear-view-empty"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *,[role="dialog"],[role="dialog"] *)){background-color:transparent!important}
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) [data-app-sidebar] aside{background:hsl(var(--appearance-sidebar) / clamp(0,var(--aw-sidebar-opacity,1),1));backdrop-filter:var(--aw-sidebar-backdrop,none)}
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) nav[aria-label="Workspace navigation"]{background:transparent}
+html.dark:is([data-appearance-scene="neon-orbit"],[data-appearance-scene="deep-space"]) [data-chat-composer-card]{background:hsl(var(--card) / clamp(0,var(--aw-composer-opacity,1),1))!important;backdrop-filter:var(--aw-composer-backdrop,none);box-shadow:0 8px 35px #0004}

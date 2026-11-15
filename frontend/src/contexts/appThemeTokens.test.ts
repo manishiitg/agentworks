@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { actionForeground, appearanceTokens } from './appThemeTokens'
+import { backgroundScene } from '../components/appearance/backgroundScenes'
 import { defaultAppearance } from '../stores/appearanceTheme'
 import { changedLineRanges, themeViolations } from '../../scripts/check-theme-contract.mjs'
 
@@ -22,4 +23,11 @@ it('audits added style literals including variants without treating comments or 
   expect(themeViolations(source, 'src/components/appearance/Scene.tsx')).toEqual([])
   const changed = changedLineRanges('+++ b/frontend/src/Example.tsx\n@@ -2,1 +2,2 @@\n-old\n+one\n+two')
   expect([...changed.get('frontend/src/Example.tsx')!]).toEqual([2,3])
+})
+
+it('admits only shipped dark scenes and clears them for Light', () => {
+  expect(backgroundScene(' deep-space ', 'dark')).toBe('deep-space')
+  expect(backgroundScene('neon-orbit', 'dark')).toBe('neon-orbit')
+  expect(backgroundScene('deep-space', 'light')).toBe('none')
+  expect(backgroundScene('url(https://example.com/script)', 'dark')).toBe('none')
 })
