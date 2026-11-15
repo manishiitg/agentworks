@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -97,6 +98,35 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	}
 	if code, raw = request(ownerToken, "current-pair", "POST", route+"commit", manifest); code != 200 {
 		t.Fatalf("commit %d %s", code, raw)
+	}
+	// Returned text is readable/acknowledgeable only by this exact maker pair,
+	// never by the teammate who asked or a stale source installation.
+	returnDir, err := crewOfflineDirectory("alpha", agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	returned := crewOfflineReturnedAnswer{ID: "returned-message", At: time.Now().UTC(), Asker: "other", Question: "teammate question", Answer: "private return fixture"}
+	if err := appendCrewOfflineReturn("alpha", agent, returnDir, binding, returned); err != nil {
+		t.Fatal(err)
+	}
+	readBody, _ := json.Marshal(binding)
+	for _, denied := range []struct{ token, pair string }{{otherToken, "current-pair"}, {ownerToken, "old-pair"}} {
+		if code, _ := request(denied.token, denied.pair, "POST", route+"handback", readBody); code != 403 {
+			t.Fatalf("foreign/stale source read return: %d", code)
+		}
+	}
+	if code, raw := request(ownerToken, "current-pair", "POST", route+"handback", readBody); code != 200 || !bytes.Contains(raw, []byte(returned.Answer)) {
+		t.Fatalf("own return unavailable: %d %s", code, raw)
+	}
+	ackBody, _ := json.Marshal(map[string]any{"provider": binding.Provider, "session": binding.Session, "attachment": binding.Attachment, "ids": []string{returned.ID}})
+	if code, raw := request(otherToken, "current-pair", "POST", route+"handback-ack", ackBody); code != 403 {
+		t.Fatalf("teammate acknowledged return: %d %s", code, raw)
+	}
+	if code, raw := request(ownerToken, "current-pair", "POST", route+"handback-ack", ackBody); code != 200 {
+		t.Fatalf("own acknowledgement failed: %d %s", code, raw)
+	}
+	if code, raw := request(ownerToken, "current-pair", "POST", route+"handback", readBody); code != 200 || bytes.Contains(raw, []byte(returned.Answer)) {
+		t.Fatalf("ack retained return text: %d %s", code, raw)
 	}
 	row.InTeam = false
 	team.Agents[agent] = row
