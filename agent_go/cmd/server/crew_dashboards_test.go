@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -418,12 +419,22 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 	if status, out = call("reader"); status == 200 || out.Prompt != "" {
 		t.Fatalf("other member arranged owner's handoff: %d %+v", status, out)
 	}
+	for _, scoped := range []*UserClaims{
+		{UserID: "owner", Scope: "report-preview"},
+		{UserID: "owner", AccessToken: &accesstokens.Token{AllCrews: true, Scopes: []string{"crews:run", "dashboards:read"}}},
+	} {
+		if _, err := f.api.addDashboardToTeam(context.WithValue(t.Context(), UserContextKey, scoped), root, "orders"); err == nil {
+			t.Fatal("Run or preview claim began an owner handoff")
+		}
+	}
 	// Exercise the actual consolidated MCP catalog too, not merely the native
 	// schema. A screen action must also reach this same guarded handler in chat.
 	mcpContext, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	writer := crewWriter("owner")
 	writer.AccessToken.Scopes = append(writer.AccessToken.Scopes, "dashboards:read")
+	// A validated purpose-scoped Builder keeps its crews:write consent.
+	writer.Scope = "mcp"
 	srv := serveExternalMCP(t, f.api, writer)
 	cli := dialExternalMCP(t, mcpContext, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, mcpContext, cli)

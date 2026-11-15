@@ -259,6 +259,8 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		FPS             int               `json:"fps"`
 		Workspace       string            `json:"workspace"`
 		SourceProjectID string            `json:"source_project_id"`
+		TeamProjectID   string            `json:"team_project_id"`
+		ItemKind        string            `json:"item_kind"`
 		Action          string            `json:"action"`
 		FileName        string            `json:"file_name"`
 		ContentBase64   string            `json:"content_base64"`
@@ -295,6 +297,21 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "scope", dashboardFailure(403, "dashboard access and project authoring consent required"), nil)
 		}
 		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and exports additionally require runs:execute")
+		return
+	}
+	if args.Action == "begin_handoff" {
+		var result teamDashboardBegin
+		var err error
+		if args.SourceProjectID != "" {
+			result, err = api.beginTeamDashboardHandoff(r.Context(), teamOnlineRequest{TeamProjectID: args.TeamProjectID, SourceProjectID: args.SourceProjectID, Kind: args.ItemKind, ItemID: args.ID, Revision: args.Revision, SubmissionID: args.Submission, Preview: true})
+		} else {
+			result, err = api.beginDashboardFromSource(r.Context(), args.Workspace, args.ID, args.Revision, args.Submission)
+		}
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, result)
 		return
 	}
 	if args.Action == "add_to_team" {
