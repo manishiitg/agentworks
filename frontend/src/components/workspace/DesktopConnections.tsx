@@ -20,7 +20,7 @@ import { connectedLocations, hasDesktopConnections, useConnectedWorkPolling, use
 import type { DesktopConnection } from '../../services/desktopConnections'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
-import { useTeamInviteRows } from './TeamInviteRow'
+import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { AgentCliIcon, SidebarCrewAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarAgentRowClass } from './sidebarAgentLayout'
@@ -64,9 +64,8 @@ function useWorkHistory(projects: SidebarProject[]) {
 export function DesktopConnections({ children, top, projects = [] }: { children?: ReactNode; top?: ReactNode; projects?: SidebarProject[] }) {
   const crews = projects.filter(project => project.kind === 'crew')
   // Team invites sit above the network tabs and every project list (owner, 10 Nov), once for all networks.
-  const invites = useTeamInviteRows()
   return <>
-    {invites.length > 0 && <div aria-label="Team invites" className="shrink-0 space-y-1 px-2 pb-2">{invites}</div>}
+    <TeamInvites />
     <SidebarAgentVisibilityProvider key={connectedWorkHistoryScope()}><ProjectMenu projects={crews} top={top}>{children}</ProjectMenu></SidebarAgentVisibilityProvider>
   </>
 }

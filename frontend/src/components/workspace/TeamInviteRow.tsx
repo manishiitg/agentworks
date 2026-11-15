@@ -1,13 +1,49 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { desktopRequest } from '../../services/desktopConnections'
 import { answerTeamInvite, useTeamInvites, type TeamInvite } from '../../products/work/teamApi'
 import { openSidebarProject } from './SidebarServerGroup'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId } from '../../stores/useWorkspaceConnectionStore'
+import { useTeamInviteNotice } from './teamInviteNotice'
 
-/** Team invites, shown above the Crews (owner, 5 Nov: "we only have crews"); once accepted, the Crew is in the list. */
-export function useTeamInviteRows() {
-  return useTeamInvites().map(invite => <TeamInviteRow key={`${invite.connection || ''}:${invite.project_id}`} invite={invite} />)
+const inviteKey = (invite: TeamInvite) => `${invite.connection || ''}:${invite.project_id}`
+
+/** Team invites, shown above the Crews (owner, 5 Nov: "we only have crews"); once accepted, the Crew is in the list.
+ * A new invite also opens as a popup over the app (owner, 15 Nov), so it is seen with the menu closed. */
+export function TeamInvites() {
+  const invites = useTeamInvites()
+  const count = invites.length
+  useEffect(() => {
+    useTeamInviteNotice.setState({ count })
+    return () => useTeamInviteNotice.setState({ count: 0 })
+  }, [count])
+  if (!invites.length) return null
+  return <>
+    <div aria-label="Team invites" className="shrink-0 space-y-1 px-2 pb-2">{invites.map(invite => <TeamInviteRow key={inviteKey(invite)} invite={invite} />)}</div>
+    <TeamInvitePopup invites={invites} />
+  </>
+}
+
+/** One invite at a time, the same card as the menu. Minimize keeps the waiting invites in the left menu only. */
+function TeamInvitePopup({ invites }: { invites: TeamInvite[] }) {
+  const minimized = useTeamInviteNotice(state => state.minimized)
+  const waiting = invites.filter(invite => !minimized[inviteKey(invite)])
+  if (!waiting.length) return null
+  const invite = waiting[0]
+  const minimize = () => useTeamInviteNotice.setState(state => ({ minimized: { ...state.minimized, ...Object.fromEntries(waiting.map(entry => [inviteKey(entry), true as const])) } }))
+  return createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4">
+    <section role="dialog" aria-modal="true" aria-labelledby="team-invite-title" onKeyDown={event => { if (event.key === 'Escape') minimize() }} className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-xl">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 id="team-invite-title" className="font-semibold">Join the {invite.name} team?</h2>
+          {waiting.length > 1 && <p className="text-xs text-muted-foreground">Invite 1 of {waiting.length}</p>}
+        </div>
+        <button type="button" autoFocus onClick={minimize} title="Keep it in the left menu" className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Minimize</button>
+      </div>
+      <TeamInviteRow key={inviteKey(invite)} invite={invite} />
+    </section>
+  </div>, document.body)
 }
 
 /** A Team invite (owner, 10 Nov): accepted in the Mac app it is always added to this Mac (its shared folder syncs

@@ -2,11 +2,13 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
-import { TeamInviteRow } from './TeamInviteRow'
+import { TeamInviteRow, TeamInvites } from './TeamInviteRow'
+import { useTeamInviteNotice } from './teamInviteNotice'
 import { desktopRequest } from '../../services/desktopConnections'
 
 vi.mock('../../services/desktopConnections', () => ({ desktopRequest: vi.fn() }))
-vi.mock('../../products/work/teamApi', () => ({ answerTeamInvite: vi.fn(), useTeamInvites: () => [] }))
+let listed: { project_id: string; name: string; owner_name: string }[] = []
+vi.mock('../../products/work/teamApi', () => ({ answerTeamInvite: vi.fn(), useTeamInvites: () => listed }))
 vi.mock('./SidebarServerGroup', () => ({ openSidebarProject: vi.fn() }))
 vi.mock('../../stores/useConnectedWorkStore', () => ({ hasDesktopConnections: () => true }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getRawActiveWorkspaceId: () => 'local' }))
@@ -41,4 +43,26 @@ it('sends the existing project and only selected agents, while retaining new-pro
     await act(async () => button('OK').click())
     expect(desktopRequest).toHaveBeenLastCalledWith('/saved/crew-teams/invited/join', 'POST', { folder: '/example/new-team' })
   } finally { await act(async () => root.unmount()); host.remove() }
+})
+
+// Owner, 15 Nov: an invite pops up over the app; Minimize keeps it in the menu (with a count for the closed menu)
+// and it does not pop up again, while a new invite does.
+it('pops up waiting invites one at a time, and only a new invite after Minimize', async () => {
+  const host = document.createElement('div'), root = createRoot(host)
+  document.body.append(host)
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="dialog"]')
+  const invite = (id: string) => ({ project_id: id, name: `Team ${id}`, owner_name: 'Teammate' })
+  try {
+    listed = [invite('a'), invite('b')]
+    await act(async () => root.render(<TeamInvites />))
+    expect(dialog()?.textContent).toContain('Invite 1 of 2')
+    expect(useTeamInviteNotice.getState().count).toBe(2)
+    await act(async () => [...dialog()!.querySelectorAll('button')].find(b => b.textContent === 'Minimize')!.click())
+    expect(dialog()).toBeNull()
+    expect(host.querySelectorAll('[aria-label^="Team invite:"]').length).toBe(2)
+    listed = [invite('a'), invite('b'), invite('c')]
+    await act(async () => root.render(<TeamInvites key="poll" />))
+    expect(dialog()?.textContent).toContain('Team c')
+    expect(dialog()?.textContent).not.toContain('Invite 1 of')
+  } finally { await act(async () => root.unmount()); host.remove(); listed = []; useTeamInviteNotice.setState({ count: 0, minimized: {} }) }
 })

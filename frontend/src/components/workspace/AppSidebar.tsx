@@ -12,6 +12,7 @@ import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { useAppStore } from '../../stores/useAppStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { useTeamInviteNotice } from './teamInviteNotice'
 
 // Warm navigation code alongside the shell; mounting still follows authentication.
 const sidebarModule = import('./WorkspaceChatsSidebar')
@@ -129,15 +130,19 @@ export function AppSidebar() {
     try { window.localStorage.setItem(widthKey, String(value)) } catch { /* Optional preference. */ }
   }
   const leadingTarget = useProductNavigationToolbarStore(state => state.leadingTarget)
+  // Minimized Team invites wait in the menu: with it closed, a count on its button says so (owner, 15 Nov).
+  const invites = useTeamInviteNotice(state => state.count)
+  const toggleLabel = open ? 'Close sidebar' : invites ? `Open sidebar (${invites} Team ${invites === 1 ? 'invite' : 'invites'})` : 'Open sidebar'
   const toggle = <button type="button" data-navigation-toggle
-    aria-label={open ? 'Close sidebar' : 'Open sidebar'} aria-expanded={open}
-    title={open ? 'Close sidebar' : 'Open sidebar'}
+    aria-label={toggleLabel} aria-expanded={open}
+    title={toggleLabel}
     onClick={() => {
       if (isMobile) setMobileOpen(value => !value)
       else { restoredNavigation.current = true; setPeek(false); setNavigationMode(open ? 'auto-hide' : 'fixed') }
     }}
-    className="inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+    className="relative inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
+    {!open && invites > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 text-primary-foreground">{invites}</span>}
   </button>
   // With the menu closed on a computer, its button sits in the top bar so one click also opens it.
   const leading = <div className="flex shrink-0 items-center gap-1">{toggle}</div>
