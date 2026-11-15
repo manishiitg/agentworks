@@ -52,20 +52,22 @@ type agentMessageEndpoint struct {
 	PublishedAsker string `json:"published_asker,omitempty"`
 	ReplyInbox     string `json:"reply_inbox,omitempty"`
 	TeamAgentID    string `json:"team_agent_id,omitempty"`
-	ConditionJob   string `json:"condition_job,omitempty"`
-	NamedAgentID   string `json:"named_agent_id,omitempty"`
-	UserID         string `json:"user_id"`
-	Kind           string `json:"kind"`
-	ID             string `json:"id"`
-	Profile        string `json:"profile,omitempty"`
-	Path           string `json:"path,omitempty"`
-	Label          string `json:"label"`
-	Session        string `json:"session,omitempty"`
-	ChatKey        string `json:"chat_key,omitempty"`
-	External       bool   `json:"external,omitempty"`
-	Mode           string `json:"mode,omitempty"`
-	Guest          string `json:"guest,omitempty"`
-	FunctionCallID string `json:"function_call_id,omitempty"`
+	// OfflineCopyTeam is the source Team of an offline copy endpoint (TeamAgentID is its source agent).
+	OfflineCopyTeam string `json:"offline_copy_team,omitempty"`
+	ConditionJob    string `json:"condition_job,omitempty"`
+	NamedAgentID    string `json:"named_agent_id,omitempty"`
+	UserID          string `json:"user_id"`
+	Kind            string `json:"kind"`
+	ID              string `json:"id"`
+	Profile         string `json:"profile,omitempty"`
+	Path            string `json:"path,omitempty"`
+	Label           string `json:"label"`
+	Session         string `json:"session,omitempty"`
+	ChatKey         string `json:"chat_key,omitempty"`
+	External        bool   `json:"external,omitempty"`
+	Mode            string `json:"mode,omitempty"`
+	Guest           string `json:"guest,omitempty"`
+	FunctionCallID  string `json:"function_call_id,omitempty"`
 	// OwnerAuthority is set at send time, from the validated connection, only for the person's own unrestricted external
 	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
 	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
@@ -269,7 +271,7 @@ func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint 
 		}
 		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: userID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
 	}
-	e := agentMessageEndpoint{TeamAgentID: t.TeamAgentID, UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
+	e := agentMessageEndpoint{TeamAgentID: t.TeamAgentID, OfflineCopyTeam: t.OfflineCopyTeam, UserID: userID, Kind: t.Kind, ID: t.stampID(), Profile: normalizeInternalProfileID(t.CrewProfile), Path: crewFunctionRoot(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID}), t), Label: t.Label}
 	if t.Kind == triggerCallerCrew {
 		e.UserID = t.ownerOr(userID)
 	}

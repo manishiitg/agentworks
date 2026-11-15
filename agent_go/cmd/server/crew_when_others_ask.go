@@ -53,6 +53,9 @@ func crewTeamAgentRuleFor(ctx context.Context, project, person, key string) crew
 	if err != nil {
 		return crewTeamAgentRule{}
 	}
+	if rule, ok := crewOfflineCopyRule(t, strings.TrimSpace(key)); ok {
+		return rule // an offline copy follows its source agent's current rule
+	}
 	return t.agentRule(person, crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key)))
 }
 

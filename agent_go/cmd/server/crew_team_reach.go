@@ -32,6 +32,11 @@ type crewTeamReachableAgent struct {
 	// Audience is set on the Team agent row only: only_me (its owner and their own agents), chosen or whole_team.
 	Audience string `json:"audience,omitempty"`
 	Address  string `json:"address"`
+	// Availability is public only after source admission. Execution bindings
+	// are server-only capabilities; discovery never exposes copy identities.
+	OfflineCopyReady    bool   `json:"offline_copy_ready,omitempty"`
+	OfflineCopyID       string `json:"-"`
+	OfflineCopyRevision uint64 `json:"-"`
 }
 
 // crewTeamReachableAgents is the one answer to "which agents can this person reach in their Teams": for every Team
@@ -140,8 +145,15 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				online = namedAgentOnline(named)
 				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
 			}
-			out = append(out, crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
-				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: address})
+			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
+				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: address}
+			if !online {
+				// The resolver rechecks source membership/rules without calling
+				// reach recursively. Do not project history or copy routing IDs.
+				_, ready, err := crewTeamOfflineCopyTarget(ctx, t, row, viewer)
+				row.OfflineCopyReady = err == nil && ready
+			}
+			out = append(out, row)
 		}
 	}
 	return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...)
