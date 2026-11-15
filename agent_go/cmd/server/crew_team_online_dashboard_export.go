@@ -98,6 +98,12 @@ func (api *StreamingAPI) exportTeamOnlineDashboard(ctx context.Context, source t
 		if closeErr != nil {
 			return item, closeErr
 		}
+		// Only the exporter knows the authoritative source workspace. Make its
+		// qualified references relative before transport; a Mac receiver has no
+		// server-local source path and must not consult a stale mirror for one.
+		for file, content := range item.Snapshot.Files {
+			item.Snapshot.Files[file] = rewriteTeamOnlineAssetToken(content, source.Path+"/"+asset, asset)
+		}
 	}
 	if includeData && len(item.Dependencies.Dataset.Tables) > 0 {
 		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows("db/db.sqlite", false) {

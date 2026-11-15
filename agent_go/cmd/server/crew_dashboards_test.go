@@ -113,6 +113,14 @@ func TestTeamOnlineAssetRewriteMatchesWholePathTokens(t *testing.T) {
 	if got != want {
 		t.Fatalf("asset rewrite changed nonmatching paths: %s", got)
 	}
+	// The authenticated Mac exporter makes source-qualified paths relative;
+	// the receiving server can then namespace them without any source root.
+	qualified := `<img src="Crew/source/db/assets/x.png?v=1"> Crew/source/db/assets/x.png.bak`
+	relative := rewriteTeamOnlineAssetToken(qualified, "Crew/source/db/assets/x.png", "db/assets/x.png")
+	got = rewriteTeamOnlineAssetToken(relative, "db/assets/x.png", "db/assets/item/x.png")
+	if got != `<img src="db/assets/item/x.png?v=1"> Crew/source/db/assets/x.png.bak` {
+		t.Fatalf("Mac asset reference kept its unavailable source workspace: %s", got)
+	}
 }
 
 // PLAT-746-1023: a validated Mac source needs no server-local source root,
