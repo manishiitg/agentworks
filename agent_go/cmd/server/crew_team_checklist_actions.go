@@ -117,6 +117,14 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		}
 		list := []map[string]any{}
 		todo := 0
+		// Resolve admitted count-only identities once per batch, never per setup.
+		members := map[string]string{}
+		candidates := append([]crewTeamPerson{{UserID: team.OwnerID}}, team.People...)
+		for _, member := range candidates {
+			if !member.Invited && team.member(member.UserID) && crewTeamAccountActive(member.UserID) {
+				members[member.UserID] = shareOwnerLabel(member.UserID)
+			}
+		}
 		for _, setup := range sortedCrewChecklists(data) {
 			if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(setup.Instruction.Path, false) {
 				continue
@@ -130,6 +138,12 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 				todo++
 			}
 			summary := map[string]any{"id": setup.ID, "title": setup.Title, "revision": setup.Revision, "instruction_revision": current, "done": done, "total": len(setup.Items), "instructions_available": current != 0}
+			people := []map[string]any{}
+			for person, name := range members {
+				people = append(people, map[string]any{"person_id": person, "name": name, "done": crewChecklistDone(setup, setup.Progress[person], current), "total": len(setup.Items)})
+			}
+			sort.Slice(people, func(i, j int) bool { return people[i]["person_id"].(string) < people[j]["person_id"].(string) })
+			summary["people"] = people
 			if action == "setup_list" {
 				list = append(list, summary)
 				continue
@@ -151,21 +165,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 					mine[key] = value
 				}
 			}
-			people := []map[string]any{}
-			members := map[string]bool{team.OwnerID: true}
-			for _, member := range team.People {
-				if !member.Invited {
-					members[member.UserID] = true
-				}
-			}
-			for person := range members {
-				progress := setup.Progress[person]
-				if !team.member(person) || !crewTeamAccountActive(person) {
-					continue
-				}
-				people = append(people, map[string]any{"person_id": person, "name": shareOwnerLabel(person), "done": crewChecklistDone(setup, progress, current), "total": len(setup.Items)})
-			}
-			sort.Slice(people, func(i, j int) bool { return people[i]["person_id"].(string) < people[j]["person_id"].(string) })
+
 			summary["shared_by"] = shareOwnerLabel(setup.SharedBy)
 			summary["updated_at"] = setup.UpdatedAt
 			summary["instruction"] = crewChecklistInstruction{Path: setup.Instruction.Path, Revision: current}
@@ -174,7 +174,6 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 			summary["keys"] = setup.Keys
 			summary["key_status"] = api.crewChecklistKeyStates(ctx, project, claims.UserID, setup.Keys)
 			summary["my_items"] = mine
-			summary["people"] = people
 			// Presence of a required key reference does not claim it is configured.
 			// Agents inspect way/Vault through their existing admitted tools.
 			log.Printf("[TEAM_SETUP] project=%q setup=%q person=%q operation=get outcome=done", project, setup.ID, claims.UserID)

@@ -77,6 +77,23 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	if err = json.Unmarshal(rec.Body.Bytes(), &saved); err != nil || saved.ID == "" {
 		t.Fatal(rec.Body.String(), err)
 	}
+	// The list's counts replace per-row detail fetches; no other person's
+	// checklist flags or inactive/invited member identities may leak.
+	listed := request(owner, map[string]any{"action": "setup_list"})
+	var roster struct {
+		Setups []struct {
+			People []map[string]any `json:"people"`
+		} `json:"setups"`
+	}
+	if listed.Code != 200 || json.Unmarshal(listed.Body.Bytes(), &roster) != nil || len(roster.Setups) != 1 || len(roster.Setups[0].People) != 2 {
+		t.Fatalf("admitted count-only list: %d %s", listed.Code, listed.Body.String())
+	}
+	for _, person := range roster.Setups[0].People {
+		if len(person) != 4 || (person["person_id"] != "owner" && person["person_id"] != "other") {
+			t.Fatalf("list exposed more than current-member counts: %#v", person)
+		}
+	}
+
 	data, err := readCrewChecklists("team")
 	if err != nil {
 		t.Fatal(err)
