@@ -196,6 +196,16 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(registered); err != nil {
 		t.Fatal(err)
 	}
+	// OnlineHome is server-owned and ordinary Team writes intentionally keep
+	// the previous pointer. Seed this built-copy fixture as server state.
+	teamDir, err := crewTeamDir("alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamRaw, _ := json.Marshal(registered)
+	if err := os.WriteFile(filepath.Join(teamDir, "team.json"), teamRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
 	memberDir, err := crewOfflineDirectory("alpha", memberID)
 	if err != nil {
 		t.Fatal(err)
