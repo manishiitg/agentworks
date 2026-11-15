@@ -186,4 +186,52 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	if err != nil || still.ID != fresh.ID || still.InTeam {
 		t.Fatal("repeated intent changed source identity/privacy", err)
 	}
+	// Team Off is not removal: a saved maker keeps their own built copy,
+	// while exact pair proof and removal revocation still apply.
+	const memberID = "team-agent-66666666-2222-4333-8444-555555555555"
+	memberBinding := crewOfflineBinding{Provider: "agentworks", Session: "member-session", Attachment: "conversation-member"}
+	registered.OnlineHome = "private-home"
+	registered.People = []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}
+	registered.Agents[memberID] = crewTeamRegisteredAgent{ID: memberID, OwnerID: "other", Tab: "member-source", ChatKey: "alpha:chat:mac-other-member-source", Place: "mac", InTeam: false}
+	if err := writeCrewTeamAgentFixture(registered); err != nil {
+		t.Fatal(err)
+	}
+	memberDir, err := crewOfflineDirectory("alpha", memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberRef, _ := json.Marshal(map[string]any{"home": registered.OnlineHome, "session": "runtime-copy", "chat_key": crewOfflineCopyChatKey(registered.OnlineHome, memberID), "binding": memberBinding})
+	if err := os.WriteFile(filepath.Join(memberDir, "copy.json"), memberRef, 0600); err != nil {
+		t.Fatal(err)
+	}
+	memberStatus, _ := json.Marshal(map[string]any{"provider": memberBinding.Provider, "session": memberBinding.Session, "attachment": memberBinding.Attachment, "source_tab": "member-source"})
+	code, raw = request(otherToken, "member-pair", "POST", statusRoute, memberStatus)
+	if code != 200 || json.Unmarshal(raw, &status) != nil || !status.Wanted || status.Agent != memberID {
+		t.Fatalf("saved Team-off maker lost own sync: %d %s", code, raw)
+	}
+	if code, _ := request(otherToken, "stale-member-pair", "POST", statusRoute, memberStatus); code != 403 {
+		t.Fatal("Team-off copy accepted stale member pair", code)
+	}
+	memberRoute := "/api/crew-teams/alpha/agents/" + memberID + "/offline-copy/"
+	memberRead, _ := json.Marshal(memberBinding)
+	if err := appendCrewOfflineReturn("alpha", memberID, memberDir, memberBinding, crewOfflineReturnedAnswer{ID: "member-reply", At: time.Now().UTC(), Asker: "owner", Answer: "saved maker answer"}); err != nil {
+		t.Fatal(err)
+	}
+	if code, raw := request(otherToken, "member-pair", "POST", memberRoute+"handback", memberRead); code != 200 || !bytes.Contains(raw, []byte("saved maker answer")) {
+		t.Fatalf("saved maker lost own handback: %d %s", code, raw)
+	}
+	if code, _ := request(ownerToken, "current-pair", "POST", memberRoute+"handback", memberRead); code != 403 {
+		t.Fatal("primary owner read another maker's private handback", code)
+	}
+	registered.People = nil
+	if err := writeCrewTeamAgentFixture(registered); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := request(otherToken, "member-pair", "POST", memberRoute+"handback", memberRead); code != 403 {
+		t.Fatal("removed maker kept handback", code)
+	}
+	if code, _ := request(otherToken, "member-pair", "POST", statusRoute, memberStatus); code != 403 {
+		t.Fatal("removed maker kept sync", code)
+	}
+
 }

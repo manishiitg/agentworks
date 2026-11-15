@@ -105,6 +105,25 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if err != nil || json.Unmarshal(refRaw, &ref) != nil || !ref.PutOnline || ref.Home != soloID || ref.Binding != binding {
 		t.Fatalf("private intent lost binding/home: %s %v", refRaw, err)
 	}
+	// A saved non-primary maker can put their existing row online with Team
+	// Off, but acquires no general home/Main membership through that action.
+	memberID := "team-agent-66666666-2222-4333-8444-555555555555"
+	source, err = readCrewTeam(fixtureCrewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.Agents[memberID] = crewTeamRegisteredAgent{ID: memberID, OwnerID: fixtureUserB, Tab: "member-source", ChatKey: fixtureCrewID + ":chat:member-source", InTeam: false}
+	if err := writeCrewTeamAgentFixture(source); err != nil {
+		t.Fatal(err)
+	}
+	memberHome, err := f.API.ensureCrewTeamOnlineHome(f.Ctx(fixtureUserB), fixtureCrewID, "put_online", memberID)
+	if err != nil || memberHome != soloID {
+		t.Fatal("saved maker's owned home setup denied", err)
+	}
+	solo, err = readCrewTeam(soloID)
+	if err != nil || solo.member(fixtureUserB) || crewSharedWith(crewProjectRootByID(soloID), fixtureUserB) {
+		t.Fatal("owned copy setup granted general home access", err)
+	}
 	team, err = readCrewTeam(fixtureCrewID)
 	if err != nil || team.On {
 		t.Fatal("Put online enabled Team", err)
