@@ -9,7 +9,9 @@ export async function startTeamDashboardHandoff(projectId: string, prompt: strin
   const store = useChatStore.getState()
   const candidates = Object.values(store.chatTabs).filter(tab => {
     const m = tab.metadata
-    return viewer && m?.agentProfileProjectId === projectId && m.agentProfileBuilder !== false
+    // agentProfileBuilder marks the setup editor, not the person's role.
+    // Ordinary own Crew agent tabs deliberately carry false (WorkSurface).
+    return viewer && m?.agentProfileProjectId === projectId && m.agentProfileBuilder !== true
       && !m.isViewOnly && !m.isScheduledRun && !m.isBotRun && !m.isExecutionRun && m.agentProfileTabCanWrite !== false
       && (!m.agentProfileTabOwnerID || m.agentProfileTabOwnerID === viewer)
   }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
