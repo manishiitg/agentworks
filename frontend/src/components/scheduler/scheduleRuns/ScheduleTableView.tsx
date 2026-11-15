@@ -6,6 +6,7 @@ import { formatDuration, formatExactDateTime, formatLastRunLabel, getLocalizedJo
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
+import type { RoutineTeam } from '../../../products/work/TeamWay'
 
 type ScheduleTableViewProps = {
   entityType?: 'workflow' | 'product'
@@ -16,10 +17,11 @@ type ScheduleTableViewProps = {
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'toggleRunHistory' | 'openScheduledRun'
   >
   onRunOnline?: (name: string) => void
+  team?: RoutineTeam
 }
 
 /** Global schedules show timing first; instructions and run diagnostics are opt-in. */
-export function ScheduleTableView({ panel, entityType = 'workflow', onRunOnline }: ScheduleTableViewProps) {
+export function ScheduleTableView({ panel, entityType = 'workflow', onRunOnline, team }: ScheduleTableViewProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   useEffect(() => {
     if (panel.focusedScheduleId) {
@@ -97,7 +99,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow', onRunOnline 
                   <div className="flex items-center justify-between gap-4">
                     <p className="text-xs text-muted-foreground">{job.run_count} runs · Last result: {job.last_status || 'Not run yet'}{job.starts ? ` · ${job.starts}` : ''}</p>
                     {!panel.isReadOnlyUser && <div className="flex items-center gap-1">
-                      <ScheduleRowActions {...panel} onRunOnline={onRunOnline} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
+                      <ScheduleRowActions {...panel} onRunOnline={onRunOnline} team={team} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
                     </div>}
                   </div>
                   {isWebhook && <WebhookEndpoint id={job.id} name={job.name} />}

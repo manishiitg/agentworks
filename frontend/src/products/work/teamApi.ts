@@ -407,3 +407,16 @@ export async function changeTeamWay(target: TeamTarget, change: { op: 'add' | 'r
   changed()
   return view
 }
+
+/** Team routines (receive-online, kind automation): a schedule or Watcher of the Team's Crew that runs on the Team's
+ * online home. The server decides what moves and what to tell the person; the screen lists and sends the choice. */
+export type TeamOnlineItem = { kind?: 'schedule' | 'watcher'; item_id?: string; destination_item_id: string; name: string; when_runs?: string; added_by_name?: string; revision?: string }
+export type TeamOnlineView = { home_project_id: string; items: TeamOnlineItem[] }
+export type TeamReceiveResult = { name?: string; notes?: string[] }
+export const teamOnlineItems = (target: TeamTarget) => teamRequest<TeamOnlineView>(target, '/online-items')
+export async function addAutomationToTeam(target: TeamTarget, itemID: string): Promise<TeamReceiveResult> {
+  const result = await teamRequest<TeamReceiveResult>(target, '/receive-online', 'POST', { source_project_id: target.project, kind: 'automation', item_id: itemID, submission_id: `auto-${itemID}-${Date.now()}`, preview: false })
+  changed()
+  return result
+}
+export const teamRoutineChanged = changed

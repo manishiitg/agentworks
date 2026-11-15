@@ -1,9 +1,10 @@
 import React from 'react'
-import { Cloud, MoreHorizontal, Pause, Play, Square, Trash2 } from 'lucide-react'
+import { Cloud, MoreHorizontal, Users, Pause, Play, Square, Trash2 } from 'lucide-react'
 import { RUN_ONLINE_AUTOMATION_HINT } from '../../automation/runOnlineAutomation'
 import type { ScheduledJob } from '../../../services/api-types'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { isScheduleWaitingStatus } from './helpers'
+import type { RoutineTeam } from '../../../products/work/TeamWay'
 
 type ScheduleRowActionsProps = Pick<
   ScheduleRunsPanelState,
@@ -16,6 +17,8 @@ type ScheduleRowActionsProps = Pick<
   menuButtonClassName: string
   /** Run online (a Crew on this Mac): moves this schedule to its agent's online agent. */
   onRunOnline?: (name: string) => void
+  /** Add to Team (a Crew with a Team, for a person who is In team). */
+  team?: RoutineTeam
 }
 
 // The Stop / Run now / Resume action plus the "More schedule actions" menu
@@ -34,6 +37,7 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
   handleDelete,
   menuButtonClassName,
   onRunOnline,
+  team,
 }) => (
   <>
     {!isReadOnlyUser && (
@@ -111,6 +115,17 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
               <Cloud className="h-3.5 w-3.5" /> Run online
             </button>
           )}
+          {!isReadOnlyUser && team && (team.onTeam(job.id)
+            ? <span className="flex w-full items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground"><Users className="h-3.5 w-3.5" /> On the Team</span>
+            : <button
+              type="button"
+              role="menuitem"
+              disabled={Boolean(team.pending)}
+              onClick={() => { setOpenActionMenuJobId(null); void team.add(job.id) }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <Users className="h-3.5 w-3.5" /> Add to Team
+            </button>)}
           {!isReadOnlyUser && (
             <button
               type="button"
