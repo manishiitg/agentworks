@@ -88,3 +88,11 @@ claude plugin update agentworks@agentworks
 Plugin updates do not update the AgentWorks CLI or server, attach chats, or approve hook trust.
 
 On a direct person request, the agent may run `agentworks attach [NAME]` for its own detected chat without installing a plugin. It may also run own detach; Codex limits this to leases originally created through own CLI attach. Person-created Codex leases retain the person detach command. No session overrides, other-chat selection or trust changes are permitted. `agentworks agent` aliases `agents`; purpose may describe responsibilities in up to 512 characters. Routing hints do not isolate same-user credentials.
+
+### Join a Crew
+
+Connect this exact native chat to AgentWorks, then ask it to “join my Crew” and give the Crew ID. Use `/agentworks:crew <Crew ID>` or `/agentworks:crew leave <Crew ID>`. The existing plugin MCP `agentworks` tool uses `action=join|leave` and `project=<Crew ID>`; no session or path overrides. You must own the Crew or be a current member of its active Team. The join returns the Crew instructions and its local folder or accepted Team copy. Work there; keep the Mac app running for shared file sync. If there is no accepted local copy, join still works but the files stay on the server: ask its agents, or add the Crew to this Mac in AgentWorks. No server path is returned.
+
+With Team on, a new session starts **Shared with team**, **Answers only**, with no permission to make changes for others. Switch to **Only me** to hide it or explicitly choose **Live** to share the native conversation. With Team off, only you and your own agents can reach it; turning Team on later needs no rejoin. Rejoin preserves choices. One native agent belongs to one Crew: leave before joining another. A saved Discovery publication is suspended while joined, not deleted; leaving restores it unchanged.
+
+Team doing/decision posts use `action=team_sync`, `team_action=doing|decision`. Normal AgentBridge handles discovery, asks, replies and server-owned instructions. Offline ASKs go to the Team agent if available; direct sends wait. Answer questions/work in the original inbox, not final chat text. Joining does not grant general Crew tools or copy Team keys or logins to the Mac. Leave removes only the listing, not files or the attachment.

@@ -523,6 +523,11 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "read", "inbox_id": publicInbox}); err == nil {
 				t.Fatal("old Discovery inbox retained access while Crew joined")
 			}
+			registry, _ := crewTeamDir("beta")
+			info, err := os.Lstat(registry)
+			if err != nil || agentworksclient.CheckPrivateAccess(registry, info) != nil {
+				t.Fatal("new Off registry was not created private; later Team saves would refuse it", err)
+			}
 			betaID, _ := out["agent_id"].(string)
 			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
 				t.Fatal("off-Team join lost the future sharing defaults")
