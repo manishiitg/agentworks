@@ -158,7 +158,7 @@ func crewOfflineCopyPrelude(ctx context.Context, asker, key string) string {
 		return ""
 	}
 	a, ok := source.Agents[agent]
-	if !ok || a.Kind == "terminal" || !crewOfflineCopyAdmits(source, asker, a) {
+	if !ok || a.Kind == "terminal" || !crewTeamSourceRowAdmits(source, asker, a) {
 		return ""
 	}
 	ref, ready, err := crewOfflineCopyReady(source, a)
