@@ -32,6 +32,7 @@ import { reportDocumentLabel } from './reportDocumentLabels'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { DashboardLayoutActions } from './DashboardLayoutControls'
 import { ShareDashboardButton } from './ShareDashboardButton'
+import { openTeamOnlineReport } from './teamOnlineReport'
 
 function debugReportView(event: string, detail?: Record<string, unknown>) {
   if (!import.meta.env.DEV) return
@@ -278,6 +279,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     debugReportView('report loading', { workspacePath, refreshNonce })
     let cancelled = false
     setLoading(true)
+    setReport(null)
     setError(null)
     const load = async () => {
       // Direct links and restored dashboards do not mount the context card or
@@ -290,6 +292,10 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
         if (cancelled) return null
         if (documents.documents.length && !documents.documents.some(document => document.path === path)) path = documents.defaultPath
       }
+      // Resolve the accepted Team mapping before loading any source HTML or
+      // binding a report data API. Failure is surfaced, never a Mac fallback.
+      if (await openTeamOnlineReport(workspacePath, path, () => !cancelled)) return null
+      if (cancelled) return null
       const next = await loadReportDocument(workspacePath, path, dashboardConversation)
       if (cancelled) return null
       setCatalog(documents ? { ...documents, workspacePath, activePath: path } : null)

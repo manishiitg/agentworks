@@ -259,6 +259,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		Duration        float64           `json:"duration_s"`
 		FPS             int               `json:"fps"`
 		Workspace       string            `json:"workspace"`
+		SourceProjectID string            `json:"source_project_id"`
 		Action          string            `json:"action"`
 		FileName        string            `json:"file_name"`
 		ContentBase64   string            `json:"content_base64"`
@@ -295,6 +296,15 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "scope", dashboardFailure(403, "dashboard access and project authoring consent required"), nil)
 		}
 		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and exports additionally require runs:execute")
+		return
+	}
+	if args.Action == "online_location" {
+		result, err := api.teamOnlineOpen(r.Context(), args.Workspace, args.SourceProjectID, args.Document)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, result)
 		return
 	}
 	if args.Action == "catalog" {

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gorilla/mux"
+
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -218,5 +220,83 @@ func TestTeamOnlineAutomationRefusesNonTeamSource(t *testing.T) {
 	in.SourceProjectID = "other-owned-crew"
 	if err := in.validate(); err != nil {
 		t.Fatalf("owned dashboard source refused: %v", err)
+	}
+}
+
+// PLAT-746-1023: a Mac-source selector resolves only the accepted Team
+// publication. Its short link opens the home workspace for the normal report
+// runtime, never the source DB; losing membership defeats even a broad Share.
+func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f := newExternalToolsFixture(t)
+	withProjectOwnerRegistry(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"outsider","username":"outsider","can_create":true,"products":["work"]}]}`)
+	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner", "Crew/source-team": "owner"}, nil)
+	home := registerTestCrew(t, "dashboard-team", "owner", true, "dashboard-team")
+	registerTestCrew(t, "source-team", "owner", false, "source-team")
+	f.write(t, home+"/.agentworks/settings/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
+	team := crewTeam{RegistryVersion: 1, ProjectID: "source-team", OwnerID: "owner", Name: "Example", On: true, OnlineHome: "dashboard-team", People: []crewTeamPerson{{UserID: "reader"}}}
+	// Seed an already accepted home record; lifecycle provisioning is covered
+	// separately. No virtual identity or private source root is needed here.
+	teamDir, err := crewTeamDir(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(teamDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	saveRoster := func() {
+		t.Helper()
+		raw, err := json.Marshal(team)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(teamDir, "team.json"), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	saveRoster()
+	item := teamOnlineDashboardItemID("mac-source", "dashboard", "sales")
+	ctx := internalBotRequestContext(t.Context(), "reader")
+	created, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: home, Action: "create", ID: item, Title: "Sales", Files: map[string]string{"index.html": "<html><title>Sales</title><body>Team data</body></html>"}, IncludeDraft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: home, Action: "publish", ID: item, ExpectedRevision: created.Dashboard.Revision, IncludeDraft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := saveTeamOnlineMappings(ctx, triggerTarget{CrewID: "dashboard-team"}, []teamOnlineItemMapping{{SourceProjectID: "mac-source", Kind: "dashboard", ItemID: "sales", DestinationProjectID: "dashboard-team", DestinationItemID: item, Revision: published.Dashboard.Published}}); err != nil {
+		t.Fatal(err)
+	}
+	open := func(user string) (int, teamOnlineOpenResult) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/dashboards", strings.NewReader(`{"action":"online_location","source_project_id":"mac-source","document_path":"db/reports/managed/sales/index.html"}`)).WithContext(internalBotRequestContext(t.Context(), user))
+		rec := httptest.NewRecorder()
+		f.api.handleDashboards(rec, req)
+		var out teamOnlineOpenResult
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	status, out := open("reader")
+	if status != http.StatusOK || !out.Found || out.Location == nil || out.Location.Workspace != home || out.Location.ItemID != item || !strings.HasPrefix(out.ShortPath, "/d/") {
+		t.Fatalf("accepted source Open = %d %+v", status, out)
+	}
+	// The real short-link handler binds every report operation to the Team home.
+	req := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx), map[string]string{"code": strings.TrimPrefix(out.ShortPath, "/d/")})
+	rec := httptest.NewRecorder()
+	f.api.handleDashboardByCode(rec, req)
+	var resolved map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &resolved)
+	if rec.Code != http.StatusOK || resolved["root"] != home || resolved["document_path"] != "db/reports/managed/"+item+"/index.html" {
+		t.Fatalf("destination runtime = %d %s", rec.Code, rec.Body.String())
+	}
+	team.People = nil
+	saveRoster()
+	if status, out := open("reader"); status != http.StatusOK || out.Found {
+		t.Fatalf("leaver retained source mapping: %d %+v", status, out)
+	}
+	if status, out := open("outsider"); status != http.StatusOK || out.Found {
+		t.Fatalf("outsider discovered source mapping: %d %+v", status, out)
 	}
 }
