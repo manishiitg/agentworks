@@ -29,7 +29,8 @@ it('shows admitted working people only, pins the Team agent, and replaces live l
  await render()
  const panel=host.querySelector('[aria-label="Team live panel"]')!
  expect(panel.querySelector('button')?.textContent).toContain('Team agent')
- expect(panel.textContent).toContain('last ran Morning summary')
+ expect(panel.querySelector('button')?.title).toContain('Last ran Morning summary')
+ expect(panel.querySelector('[aria-label="Working now"]')?.querySelectorAll('button')).toHaveLength(2)
  expect(panel.textContent).toContain('typing…')
  expect(panel.textContent).toContain('waiting for Colleague')
  expect(panel.textContent).toContain('Shared doing line')
@@ -42,11 +43,23 @@ it('shows admitted working people only, pins the Team agent, and replaces live l
  expect(panel.textContent).toContain('Layout ready')
 })
 
-it('uses the last four server events and excludes private posts and question contents from Just happened',async()=>{
+it('collapses recent events by default, shows three single-line events and opens their full activity',async()=>{
  await render('live',agents,[...events,{id:'private',kind:'decision',private:true,at:'2026-11-15T13:00:00Z',title:'Only me',verb:'decided',line:'PRIVATE SENTINEL'},{id:'question',kind:'question',at:'2026-11-15T13:01:00Z',title:'Agent',verb:'asked',line:'QUESTION SENTINEL'}])
  const recent=host.querySelector('[aria-label="Just happened"]')!
- expect(recent.querySelectorAll('li')).toHaveLength(4)
- expect([...recent.querySelectorAll('li')].map(row=>row.textContent)).toEqual([5,4,3,2].map(i=>expect.stringContaining(`Event ${i}`)))
+ expect(recent.querySelector('button')?.getAttribute('aria-expanded')).toBe('false')
+ expect(recent.querySelectorAll('li')).toHaveLength(0)
+ expect(recent.textContent).toContain('3 new')
+ await render('live',agents,[...events])
+ expect(recent.querySelectorAll('li')).toHaveLength(0) // Updates never auto-expand.
+ await click('Just happened')
+ expect(recent.querySelectorAll('li')).toHaveLength(3)
+ expect([...recent.querySelectorAll('li')].map(row=>row.textContent)).toEqual([5,4,3].map(i=>expect.stringContaining(`Event ${i}`)))
+ const row=recent.querySelector('li button') as HTMLButtonElement
+ expect(row.title).toContain('Event 5')
+ expect(row.querySelector('.truncate')).toBeTruthy()
+ await act(async()=>row.click());expect(navigate).toHaveBeenLastCalledWith('activity')
+ await click('Just happened');expect(recent.querySelectorAll('li')).toHaveLength(0)
+ await render('live',agents,events,'other-person');expect(recent.querySelector('button')?.getAttribute('aria-expanded')).toBe('false')
  expect(host.textContent).not.toContain('SENTINEL')
 })
 
