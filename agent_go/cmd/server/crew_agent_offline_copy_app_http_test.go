@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -154,5 +155,35 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	}
 	if code, _ = request(otherToken, "current-pair", "POST", route+"commit", manifest); code != 403 {
 		t.Fatal("Team-off source admitted teammate upload", code)
+	}
+	// Explicit source registration is paired-owner only, and saves a new row
+	// privately before any subsequent audience choice can be applied.
+	intro := crewPutOnlineRequest{SourceTab: "fresh-source", SourceName: "Fresh source", crewOfflineBinding: binding}
+	introduce := func(person, pair string) error {
+		req := httptest.NewRequest("POST", "/api/crew-teams/alpha/put-online", nil).WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: person}))
+		req.Header.Set(crewMacPairHeader, pair)
+		return registerCrewPutOnlineSource(req, "alpha", intro)
+	}
+	if err := introduce("other", "current-pair"); err == nil {
+		t.Fatal("teammate registered another person's app source")
+	}
+	if err := introduce("owner", "old-pair"); err == nil {
+		t.Fatal("stale pair registered a source")
+	}
+	if err := introduce("owner", "current-pair"); err != nil {
+		t.Fatal(err)
+	}
+	registered, err := readCrewTeam("alpha")
+	fresh, found := registered.registeredAgent("owner", intro.SourceTab)
+	if err != nil || !found || fresh.InTeam || registered.On || registered.OnlineHome != "" {
+		t.Fatal("registration enabled Team/shared a new source/provisioned home", err)
+	}
+	if err := introduce("owner", "current-pair"); err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := readCrewTeam("alpha")
+	still, _ := repeated.registeredAgent("owner", intro.SourceTab)
+	if err != nil || still.ID != fresh.ID || still.InTeam {
+		t.Fatal("repeated intent changed source identity/privacy", err)
 	}
 }
