@@ -413,10 +413,35 @@ export async function changeTeamWay(target: TeamTarget, change: { op: 'add' | 'r
 export type TeamOnlineItem = { kind: string; source_project_id: string; item_id: string; destination_item_id: string; name: string; when_runs?: string; added_by_name?: string; updated_by_name?: string; revision?: string }
 export type TeamOnlineView = { home_project_id: string; items: TeamOnlineItem[] }
 export type TeamReceiveResult = { name?: string; notes?: string[] }
-export const teamOnlineItems = (target: TeamTarget) => teamRequest<TeamOnlineView>(target, '/online-items')
+/** Only the routines (schedules and Watchers): the same list also holds dashboards and artifacts for publishing. */
+export async function teamOnlineItems(target: TeamTarget): Promise<TeamOnlineView> {
+  const view = await teamRequest<TeamOnlineView>(target, '/online-items')
+  return { ...view, items: (view.items ?? []).filter(item => item.kind === 'automation') }
+}
+/** One server request for the Team's server: local on the website, through the saved connection in the Mac app. */
+async function serverRequest<T>(target: TeamTarget, route: string, method = 'GET', body?: unknown): Promise<T> {
+  if (!target.connection) return (await api.request<T>({ url: route, method, data: body, skipSessionContext: true })).data
+  const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}${route}`, {
+    method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || 'The Team is unavailable. Check your Team access.') }
+  return (response.status === 204 ? undefined : await response.json()) as T
+}
+/** Adds a schedule or Watcher of the Team's Crew to the Team: preview first, then apply with the revision it returned. */
 export async function addAutomationToTeam(target: TeamTarget, itemID: string): Promise<TeamReceiveResult> {
-  const result = await teamRequest<TeamReceiveResult>(target, '/receive-online', 'POST', { source_project_id: target.project, kind: 'automation', item_id: itemID, submission_id: `auto-${itemID}-${Date.now()}`, preview: false })
+  const request = { source_project_id: target.project, kind: 'automation', item_id: itemID, submission_id: `auto-${itemID}-${Date.now()}` }
+  const preview = await teamRequest<TeamReceiveResult & { revision?: string }>(target, '/receive-online', 'POST', { ...request, preview: true })
+  const result = await teamRequest<TeamReceiveResult>(target, '/receive-online', 'POST', { ...request, item_revision: preview.revision, preview: false })
   changed()
   return result
 }
-export const teamRoutineChanged = changed
+/** Removes one routine from the Team's online home with the normal delete: a Watcher through the Watcher's own delete,
+ * any other schedule through the schedule delete. The home is on the Team's server, so a remote Team goes through the
+ * saved connection. */
+export async function removeTeamRoutine(target: TeamTarget, home: string, id: string): Promise<void> {
+  const watchers = await serverRequest<{ triggers?: { id: string }[] }>(target, `/api/condition-triggers?project_id=${encodeURIComponent(home)}&profile_id=agentworks`).catch(() => ({ triggers: [] }))
+  if ((watchers.triggers ?? []).some(trigger => trigger.id === id)) await serverRequest(target, '/api/condition-triggers', 'POST', { project_id: home, profile_id: 'agentworks', action: 'delete', id })
+  else await serverRequest(target, `/api/scheduler/jobs/${encodeURIComponent(id)}`, 'DELETE')
+  changed()
+}

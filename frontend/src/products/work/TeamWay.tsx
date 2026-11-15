@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react'
 import { CalendarClock, KeyRound, Plug, ScrollText, Sparkles } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
-import { schedulerApi } from '../../api/scheduler'
-import { conditionTriggersApi } from '../../api/conditionTriggers'
-import { addAutomationToTeam, changeTeamWay, teamFailure, teamOnlineItems, teamRoutineChanged, teamWay, useTeamTab, type TeamOnlineItem, type TeamOnlineView, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
+import { addAutomationToTeam, changeTeamWay, teamFailure, removeTeamRoutine, teamOnlineItems, teamWay, useTeamTab, type TeamOnlineItem, type TeamOnlineView, type TeamTarget, type TeamWayItem, type TeamWayView } from './teamApi'
 
 const teamCard = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
 
@@ -54,12 +52,8 @@ export function TeamWayCard({ target, projectId }: { target: TeamTarget; project
   const removeRoutine = async (item: TeamOnlineItem) => {
     setPending(`routine:${item.destination_item_id}`); setLine('')
     try {
-      // A Watcher is a schedule with a condition: it goes through the Watcher's own delete, any other schedule through the schedule delete.
-      const home = routines!.home_project_id
-      const watchers = await conditionTriggersApi.list(home, 'agentworks').catch(() => ({ triggers: [] }))
-      if (watchers.triggers.some(trigger => trigger.id === item.destination_item_id)) await conditionTriggersApi.manage(home, 'delete', item.destination_item_id, undefined, undefined, 'agentworks')
-      else await schedulerApi.deleteJob(item.destination_item_id)
-      teamRoutineChanged(); setLine('Removed from the Team.')
+      await removeTeamRoutine(target, routines!.home_project_id, item.destination_item_id)
+      setLine('Removed from the Team.')
     } catch (e) { setLine(teamFailure(e).message) } finally { setPending('') }
   }
   return <section aria-label="How we work" className={teamCard}>
