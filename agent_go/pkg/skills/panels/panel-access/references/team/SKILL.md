@@ -39,7 +39,7 @@ rather than copying action names or old workflow-team policy fields:
   instructions for others, change permission and chat visibility. People not
   chosen cannot find, ask, message or watch it; removing someone takes effect
   on their next request.
-  Use the offered enums: Answers only is the private default for terminal agents; Live shares the native conversation only when the person chooses it.
+  Use the offered enums: New terminal joins are Shared with team, with Answers only and no permission to make changes; rejoin keeps existing choices, and the person may choose Only me. Live shares the native conversation only when the person chooses it.
 - `clashes` shows both versions when the same lines changed. Read the Crew
   builder's clash procedure before `resolve`; save the requested version or
   merge, never silently discard either person's work. Team history is private
