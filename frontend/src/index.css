@@ -359,29 +359,8 @@
   }
 }
 
-/* ===== TOOLTIP STYLING - HIGH CONTRAST ===== */
-
-/* Light mode tooltips - High contrast for visibility */
-.bg-popover {
-  background-color: hsl(0 0% 15%) !important;      /* Dark background for light mode */
-  color: hsl(0 0% 95%) !important;                  /* Light text for contrast */
-  border: 1px solid hsl(0 0% 25%) !important;       /* Dark border */
-}
-
-.text-popover-foreground {
-  color: hsl(0 0% 95%) !important;                  /* Light text for contrast */
-}
-
-/* Dark mode tooltips - Keep existing contrast */
-.dark .bg-popover {
-  background-color: hsl(0 0% 15%) !important;       /* Dark background */
-  color: hsl(0 0% 95%) !important;                  /* Light text */
-  border: 1px solid hsl(0 0% 25%) !important;       /* Dark border */
-}
-
-.dark .text-popover-foreground {
-  color: hsl(0 0% 95%) !important;                  /* Light text */
-}
+/* Menus, tooltips and dialogs use the shared appearance tokens. Do not override
+   bg-popover globally: forcing dark here also makes light-mode menus dark. */
 
 /* ===== AGENT MODE BUTTONS - VS CODE THEME ===== */
 
