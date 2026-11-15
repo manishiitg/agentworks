@@ -1157,7 +1157,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		}
 	}
 	var teamRoute string
-	if dest.TeamAgentID != "" && dest.NamedAgentID == "" {
+	if dest.TeamAgentID != "" && dest.NamedAgentID == "" && !replyInbox {
 		var err error
 		viewer := source.UserID
 		if replyInbox {
