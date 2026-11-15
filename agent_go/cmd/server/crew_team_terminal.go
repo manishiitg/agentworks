@@ -293,3 +293,18 @@ func crewTeamTerminalCopyPath(files, copyRoot string) (string, error) {
 	}
 	return root, nil
 }
+
+// posts has already been filtered for this viewer by crewTeamActivityPostsFor.
+// The Team preview is never a native transcript or a mailbox answer excerpt.
+func crewTeamTerminalPostPreview(a crewTeamRegisteredAgent, posts crewTeamActivityPosts) crewTeamMessagePreview {
+	latest := posts.Doing[a.ID]
+	for _, post := range posts.Decisions {
+		if post.AgentID == a.ID && post.OwnerID == a.OwnerID && post.At.After(latest.At) {
+			latest = post
+		}
+	}
+	if latest.AgentID != a.ID || latest.OwnerID != a.OwnerID || latest.Line == "" {
+		return crewTeamMessagePreview{}
+	}
+	return crewTeamMessagePreview{LastMessage: crewTeamMessageLine(latest.Line), LastMessageAt: latest.At.UTC().Format(time.RFC3339Nano)}
+}
