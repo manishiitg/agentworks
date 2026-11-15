@@ -410,7 +410,7 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 	}
 	// A kept kind counts too: a Code trigger is never internal.
 	if (!trigger.IsInternal() || trigger.WorkspaceFunction) && (index < 0 || trigger.Enabled) {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("webhook_enable"); err != nil {
 			return productWebhookResponse{}, false, err
 		}
 	}
@@ -683,7 +683,7 @@ func (s *ProjectActionDispatcher) receiveProductWebhook(w http.ResponseWriter, r
 		http.Error(w, "trigger not found", http.StatusNotFound)
 		return
 	}
-	if err := requireServerInteractive(); err != nil {
+	if err := requireServerInteractive("webhook_receive"); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -874,7 +874,7 @@ func (s *ProjectActionDispatcher) dispatchInternalProductTrigger(ctx context.Con
 		return internalTriggerDeliveryResult{}, err
 	}
 	if trigger.WorkspaceFunction {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("function_call"); err != nil {
 			return internalTriggerDeliveryResult{}, err
 		}
 		admission, _ := ctx.Value(declaredFunctionDispatchKey{}).(*crewFunctionCall)

@@ -945,7 +945,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		sched := &manifest.Schedules[idx]
 		if req.Enabled != nil && *req.Enabled && sched.ScheduleType == "webhook" && (isFunctionTriggerKind(sched.Kind) || !sched.IsInternalTrigger()) {
-			if err := requireServerInteractive(); err != nil {
+			if err := requireServerInteractive("webhook_enable"); err != nil {
 				http.Error(w, err.Error(), http.StatusForbidden)
 				return
 			}

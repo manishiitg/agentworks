@@ -494,7 +494,7 @@ type workspaceCreation struct {
 
 func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
 	if len(spec.Functions) > 0 {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("crew_create_with_functions"); err != nil {
 			return "", err
 		}
 	}
@@ -675,7 +675,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	var functions []crewFunction
 	if update.Functions != nil {
 		if len(update.Functions.Upsert) > 0 {
-			if err := requireServerInteractive(); err != nil {
+			if err := requireServerInteractive("function_define"); err != nil {
 				return err
 			}
 		}

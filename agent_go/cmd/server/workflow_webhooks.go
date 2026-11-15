@@ -572,7 +572,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	}
 	internal := isInternalTriggerKind(effectiveKind) || function
 	if (function || !internal) && (index < 0 || req.Enabled) {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("webhook_enable"); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
@@ -842,7 +842,7 @@ func (receiver webhookReceiver) receive(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "API trigger not found", 404)
 		return
 	}
-	if err := requireServerInteractive(); err != nil {
+	if err := requireServerInteractive("webhook_receive"); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -975,7 +975,7 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 		return internalTriggerDeliveryResult{}, err
 	}
 	if isFunctionTriggerKind(sched.Kind) {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("function_call"); err != nil {
 			return internalTriggerDeliveryResult{}, err
 		}
 	}
