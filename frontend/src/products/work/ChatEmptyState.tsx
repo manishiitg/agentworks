@@ -1,10 +1,13 @@
+import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { teamAgentFor, teamAgentForTab, useTeamTab } from './teamApi'
 
 /** The server's lines for a teammate's chat: private replaces it; "" for the viewer's own tabs. */
 export function useChatShareLines(tabId?: string | null) {
   const tab = useChatStore(state => (tabId ? state.chatTabs[tabId] : undefined))
-  const watching = tab?.metadata?.agentProfileTabCanWrite === false
+  const viewer = useAuthStore(state => state.user?.id)
+  // Own schedule/run history is non-writable too; it is not a teammate chat.
+  const watching = tab?.metadata?.agentProfileTabCanWrite === false && (!viewer || tab.metadata.agentProfileTabOwnerID !== viewer)
   const team = useTeamTab(watching ? tab?.metadata?.agentProfileProjectId : undefined)
   const agent = watching ? teamAgentFor(team.view?.agents, tab?.metadata?.agentProfileConversationKey) : undefined
   return { private: !watching ? '' : team.error ? 'Could not check access to this chat. Refresh the Team and try again.' : !team.view ? 'Checking access to this chat…' : !team.view.team.on || !agent?.in_team ? 'This agent’s chat is not available to you now.' : agent.chat_private_line || '' }

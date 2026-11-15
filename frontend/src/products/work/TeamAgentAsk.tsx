@@ -48,7 +48,7 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
   void read(); const timer=window.setInterval(()=>{if(!document.hidden)void read()},5000)
   return()=>{active=false;window.clearInterval(timer)}
  },[scope,inbox,watching,team.view?.team.on]) // eslint-disable-line react-hooks/exhaustive-deps
- if(!watching) return null
+ if(!watching||(!agent&&team.view)) return null
  const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error
  return <section aria-label="Ask this agent" className="shrink-0 border-t border-border px-4 py-3 text-sm">
   {admitted&&threadScope===scope&&replies.map(row=><p key={row.message_id} className="mb-2 whitespace-pre-wrap break-words"><b>{row.sender||agent?.name}: </b>{row.message}</p>)}
