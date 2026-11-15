@@ -1,6 +1,12 @@
 [
   {
     "family": "dashboard",
+    "name": "add_to_team",
+    "member": "add_dashboard_to_team",
+    "description": "Add an owned published item to its Team: directly copy a static Artifact, or return the source agent task for AgentBridge agreement and preview/apply."
+  },
+  {
+    "family": "dashboard",
     "name": "catalog",
     "member": "get_dashboard_catalog",
     "description": "Read the React authoring contract, components and starter source."

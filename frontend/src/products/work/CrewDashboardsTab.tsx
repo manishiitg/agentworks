@@ -29,6 +29,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   const onThisMac = localMode && host === 'local'
   const [adding, setAdding] = useState('')
   const [handoffMessage, setHandoffMessage] = useState('')
+  useEffect(() => { setHandoffMessage(''); setAdding('') }, [projectId, host])
   const canAdd = Boolean(view?.team.on && view.team.can_manage && !view.team.roster_source)
   async function addToTeam(workspace: string, id: string) {
     if (adding) return
