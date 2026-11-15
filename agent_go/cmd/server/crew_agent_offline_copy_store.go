@@ -81,6 +81,9 @@ func crewOfflineDirectory(project, agent string) (string, error) {
 }
 
 func (b crewOfflineBinding) valid() bool {
+	if b.Provider == "agentworks" {
+		return productConversationKeyPattern.MatchString(b.Session) && strings.HasPrefix(b.Attachment, "conversation-") && productConversationKeyPattern.MatchString(b.Attachment)
+	}
 	id, err := uuid.Parse(b.Session)
 	return err == nil && id.String() == b.Session && (b.Provider == "claude" || b.Provider == "codex") && b.Attachment != ""
 }
