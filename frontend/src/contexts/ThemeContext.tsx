@@ -24,9 +24,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     load(true)()
     const unsubscribe = liveFeed.subscribe(['appearance'], null, load(true))
     // Coming back to the window reloads only a document that has gone stale.
-    const focus = () => { if (document.visibilityState === 'visible') load(false)() }
+    const focus = () => {
+      const visible = document.visibilityState === 'visible'
+      document.documentElement.dataset.appearanceVisible = String(visible)
+      if (visible) load(false)()
+    }
+    document.documentElement.dataset.appearanceVisible = String(document.visibilityState === 'visible')
     document.addEventListener('visibilitychange', focus)
-    return () => { unsubscribe(); document.removeEventListener('visibilitychange', focus) }
+    return () => { unsubscribe(); document.removeEventListener('visibilitychange', focus); delete document.documentElement.dataset.appearanceVisible }
   }, [actor, server])
   useLayoutEffect(() => {
     const root = document.documentElement

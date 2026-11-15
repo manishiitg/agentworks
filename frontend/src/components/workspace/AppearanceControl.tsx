@@ -1,6 +1,7 @@
 import { Check, ChevronRight, Palette } from 'lucide-react'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
+import { starshipTheme } from '../appearance/starshipTheme'
 
 /** One account entry. Mode and saved looks stay together, with no nested theme menu. */
 export default function AppearanceControl({ compact = false }: { compact?: boolean } = {}) {
@@ -24,6 +25,7 @@ export default function AppearanceControl({ compact = false }: { compact?: boole
       <div role="group" aria-label="Themes" className="max-h-44 overflow-y-auto">
         <button type="button" role="menuitemradio" aria-checked={current.name === 'Default'} disabled={saving} title="Restore the default look; keep your saved themes" onClick={() => void change('reset')} className={choice}><Check aria-hidden="true" className={`h-3 w-3 ${current.name === 'Default' ? '' : 'invisible'}`} />Default</button>
         {saved.map(theme => <button key={theme.name} type="button" role="menuitemradio" aria-checked={current.name === theme.name} disabled={saving} onClick={() => void change('apply', theme)} className={choice}><Check className={`h-3 w-3 ${current.name === theme.name ? '' : 'invisible'}`} aria-hidden="true"/><span className="min-w-0 truncate">{theme.name}</span></button>)}
+        {!saved.some(theme => theme.name === 'Starship') && <button type="button" role="menuitemradio" aria-checked={current.name === 'Starship'} disabled={saving} onClick={() => void change('save', starshipTheme())} className={choice}><Check aria-hidden="true" className="invisible h-3 w-3" />Starship</button>}
       </div>
       <button type="button" role="menuitem" data-product-navigation-action onClick={() => openWorkspaceSettings('connections', 'appearance')} className={`${choice} border-t border-border pt-2`}><Palette className="h-3.5 w-3.5" aria-hidden="true" /><span className="flex-1">Customize with an agent</span><ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></button>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}

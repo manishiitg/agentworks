@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import AppearanceSettings from './AppearanceSettings'
 import AppearanceControl from './AppearanceControl'
 import DeepSpaceBackground from '../appearance/DeepSpaceBackground'
+import { starshipTheme } from '../appearance/starshipTheme'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
@@ -86,6 +87,10 @@ it('selects agent-saved themes and restores Default without deleting presets', a
   await click('Try Neon Orbit')
   expect(useAppearanceStore.getState().current.scene).toBe('neon-orbit')
   expect(useAppearanceStore.getState().saved.some(theme=>theme.name==='Warm')).toBe(true)
+  await click('Try Starship')
+  expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance', { operation: 'save', theme: starshipTheme(), replace: true }, { skipSessionContext: true })
+  expect(useAppearanceStore.getState().current.mode).toBe('light')
+  expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(true)
 })
 
 // Hidden pages must freeze the decorative scene; leaving it must remove its listener.
@@ -130,4 +135,29 @@ it('adopts animated CSS and projects translucent surfaces without a shipped scen
   await act(async () => { fixture.wake?.(); await Promise.resolve() })
   expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(false)
   expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('@keyframes theme-drift')))).toBe(true)
+})
+
+// A copied preset must remain passive, stop while hidden, and leave no stale
+// visibility flag after account teardown. This pins the real Starship motion gate.
+it('adopts Starship as a light personal preset and clears its visibility gate on unmount', async () => {
+  const original = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+  fixture.get.mockResolvedValue({ data: { current: starshipTheme(), saved: [] } })
+  host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+  try {
+    await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
+    expect(document.documentElement.dataset.appearanceVisible).toBe('true')
+    expect(document.documentElement.dataset.appearance).toBe('light')
+    expect(document.documentElement.dataset.appearanceScene).toBe('none')
+    expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('aw-starship-transit')))).toBe(true)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+    expect(document.documentElement.dataset.appearanceVisible).toBe('false')
+    await act(async () => root.render(null))
+    expect(document.documentElement.hasAttribute('data-appearance-visible')).toBe(false)
+    expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('aw-starship-transit')))).toBe(false)
+  } finally {
+    if (original) Object.defineProperty(document, 'visibilityState', original)
+    else Reflect.deleteProperty(document, 'visibilityState')
+  }
 })
