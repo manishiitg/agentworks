@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -24,6 +25,11 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
 	vault := newOwnerVaultFake(t)
+	history, historyErr := chathistory.NewFilesystemStore(t.TempDir())
+	if historyErr != nil {
+		t.Fatal(historyErr)
+	}
+	f.api.chatStore = history
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Folder: crewTeamFolder{ID: "files", Folders: []string{"team"}}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
