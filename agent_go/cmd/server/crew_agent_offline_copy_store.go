@@ -39,14 +39,16 @@ type crewOfflineDelta struct {
 	Offset           int64       `json:"offset"`
 	PreviousTailHash string      `json:"previous_tail_hash"`
 	Delta            chunkedFile `json:"delta"`
+	SourceSize       int64       `json:"source_size"`
 }
 
 type crewOfflineHistory struct {
 	crewOfflineBinding
 	crewOfflineCursor
 	// Tail stays private. It never appears in the status/ack response.
-	Tail    []byte        `json:"private_tail,omitempty"`
-	Batches []chunkedFile `json:"batches"`
+	Tail       []byte        `json:"private_tail,omitempty"`
+	SourceSize int64         `json:"source_size"`
+	Batches    []chunkedFile `json:"batches"`
 }
 
 func crewOfflineEmptyHash() string {
@@ -107,7 +109,7 @@ func readCrewOfflineHistory(dir string, b crewOfflineBinding) (crewOfflineHistor
 }
 
 func validateCrewOfflineDelta(h crewOfflineHistory, in crewOfflineDelta) error {
-	if in.crewOfflineBinding != h.crewOfflineBinding || !in.Delta.Valid() || in.Delta.Exec || in.Delta.Size <= 0 || in.Delta.Size > crewOfflineDeltaLimit {
+	if in.crewOfflineBinding != h.crewOfflineBinding || !in.Delta.Valid() || in.Delta.Exec || in.Delta.Size <= 0 || in.Delta.Size > crewOfflineDeltaLimit || in.SourceSize < h.SourceSize || in.SourceSize < in.Offset || in.Delta.Size > in.SourceSize-in.Offset {
 		return fmt.Errorf("invalid history delta")
 	}
 	if in.BaseRevision != h.Revision || in.Offset != h.Offset || in.PreviousTailHash != h.TailHash {
@@ -153,6 +155,7 @@ func commitCrewOfflineDelta(project, agent, dir string, h crewOfflineHistory, in
 	sum = sha256.Sum256(tail)
 	h.Tail = tail
 	h.Batches = append(h.Batches, in.Delta)
+	h.SourceSize = in.SourceSize
 	h.Revision++
 	h.Offset += in.Delta.Size
 	h.TailHash = hex.EncodeToString(sum[:])
