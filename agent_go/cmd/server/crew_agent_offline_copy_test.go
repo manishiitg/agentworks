@@ -176,3 +176,23 @@ func checkCrewOfflineCopyHTTP(t *testing.T, base, token, wrong string, a agentwo
 		t.Fatal("revoked sharing exposed cursor", code)
 	}
 }
+
+func TestCrewOfflineCopyOAuthTargetIsExact(t *testing.T) {
+	route := "/api/crew-teams/crew/agents/team-agent-11111111-2222-4333-8444-555555555555/offline-copy/"
+	for _, op := range []string{"status", "plan", "commit"} {
+		if !cliOAuthAllowedPath("POST", route+op) {
+			t.Fatal("exact ingest target refused")
+		}
+	}
+	if !cliOAuthAllowedPath("PUT", route+"chunks") {
+		t.Fatal("chunk ingest refused")
+	}
+	for _, path := range []string{route + "download", route + "commit/extra", route + "../file", "/api/crew-teams/crew/file", strings.Replace(route, "team-agent-", "foreign-agent-", 1) + "commit"} {
+		if cliOAuthAllowedPath("POST", path) {
+			t.Fatal("child scope widened beyond exact ingest target", path)
+		}
+	}
+	if cliOAuthAllowedPath("GET", route+"status") || cliOAuthAllowedPath("POST", route+"chunks") {
+		t.Fatal("wrong method widened child scope")
+	}
+}

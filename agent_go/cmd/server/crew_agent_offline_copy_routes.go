@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -177,4 +178,19 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 	default:
 		fail(400, "invalid_operation")
 	}
+}
+
+// The CLI child credential gets only this exact ingest surface, not general
+// Crew API access. No prefix grant, transcript GET or arbitrary method.
+func crewOfflineCopyOAuthPath(method, path string) bool {
+	parts := strings.Split(path, "/")
+	if len(parts) != 8 || parts[0] != "" || parts[1] != "api" || parts[2] != "crew-teams" || !teamOnlineIdentifier.MatchString(parts[3]) || parts[4] != "agents" || parts[6] != "offline-copy" {
+		return false
+	}
+	id := strings.TrimPrefix(parts[5], crewTeamAgentIDPrefix)
+	parsed, err := uuid.Parse(id)
+	if err != nil || parsed.String() != id || !strings.HasPrefix(parts[5], crewTeamAgentIDPrefix) {
+		return false
+	}
+	return method == http.MethodPut && parts[7] == "chunks" || method == http.MethodPost && (parts[7] == "status" || parts[7] == "plan" || parts[7] == "commit")
 }
