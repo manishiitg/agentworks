@@ -219,3 +219,72 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	}
 
 }
+
+// PLAT-746-1040: large CSS must not depend on one model-generated JSON string.
+// Exercise real Crew file reads and both tool adapters, with private test state.
+func TestAppearanceLargeCSSFileUsesAdmittedCrewAcrossToolPaths(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	server := serveExternalMCP(t, f.api, crewWriter("owner"))
+	client := dialExternalMCP(t, t.Context(), server.URL+externalMCPPath)
+	initializeExternalMCP(t, t.Context(), client)
+	panels := &recordingRegistrar{}
+	if err := f.api.registerWorkspacePanelChatTools(panels, nil, "owner", "css-test", externalCommandCrewRoot, "work"); err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []int{40 << 10, appearanceCSSMaxBytes} {
+		css := "/*" + strings.Repeat("x", size-4) + "*/"
+		f.write(t, externalCommandCrewRoot+"/theme.css", css)
+		for _, operation := range []string{"save", "apply"} {
+			args := map[string]any{"action": "appearance", "operation": operation, "name": "Fixture", "css_file": map[string]any{"crew_id": "team", "path": "theme.css"}}
+			reply := f.call(t, "owner", "settings", args)
+			if reply.Code != 200 {
+				t.Fatalf("MCP file %d %s: %d %s", size, operation, reply.Code, reply.Body.String())
+			}
+			requireRemoteSuccess(t, callRemoteTool(t, t.Context(), client, "call_tool", map[string]any{"name": "settings", "arguments": args}), "large CSS file over MCP")
+			delete(args, "action")
+			if _, err := panels.tools["appearance"].exec(ctx, args); err != nil {
+				t.Fatalf("panel file %d %s: %v", size, operation, err)
+			}
+			exported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export", "name": "Fixture"})
+			var pack struct {
+				Theme appearanceTheme `json:"theme"`
+			}
+			if exported.Code != 200 || json.Unmarshal(exported.Body.Bytes(), &pack) != nil || pack.Theme.CSS != css {
+				t.Fatal("file content did not roundtrip exactly")
+			}
+			// Inline structured JSON also works at both sizes; no inferred13KB cap.
+			inline := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": operation, "theme": map[string]any{"name": "Fixture", "css": css}})
+			if inline.Code != 200 {
+				t.Fatalf("inline %d: %d", size, inline.Code)
+			}
+		}
+	}
+	for _, path := range []string{"../../config/users.json", "/etc/passwd", "https://example.com/theme.css"} {
+		reply := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "css_file": map[string]any{"crew_id": "team", "path": path}})
+		if reply.Code < 400 {
+			t.Fatal("CSS file escaped Crew admission")
+		}
+	}
+	// The fixture starts shared. Make it private before testing cross-person refusal.
+	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+		t.Fatal(err)
+	}
+	if denied := f.call(t, "other", "settings", map[string]any{"action": "appearance", "operation": "apply", "css_file": map[string]any{"crew_id": "team", "path": "theme.css"}}); denied.Code < 400 {
+		t.Fatal("foreign private Crew CSS accepted")
+	}
+	f.write(t, externalCommandCrewRoot+"/oversize.css", strings.Repeat("x", appearanceCSSMaxBytes+1))
+	for _, args := range []map[string]any{
+		{"operation": "apply", "css_file": map[string]any{"crew_id": "team", "path": "oversize.css"}},
+		{"operation": "apply", "css_file": map[string]any{"crew_id": "team", "path": "theme.css"}, "theme": map[string]any{"css": "ambiguous"}},
+		{"operation": "read", "css_file": map[string]any{"crew_id": "team", "path": "theme.css"}},
+		{"operation": "apply", "css_file": map[string]any{"crew_id": "private-missing", "path": "theme.css"}},
+	} {
+		args["action"] = "appearance"
+		if reply := f.call(t, "owner", "settings", args); reply.Code < 400 {
+			t.Fatal("invalid CSS file source accepted")
+		}
+	}
+}

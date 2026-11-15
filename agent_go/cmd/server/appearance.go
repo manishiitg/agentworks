@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -46,12 +49,18 @@ type appearanceDocument struct {
 	Current appearanceTheme   `json:"current"`
 	Saved   []appearanceTheme `json:"saved"`
 }
+type appearanceCSSFile struct {
+	CrewID  string `json:"crew_id"`
+	Path    string `json:"path"`
+	AgentID string `json:"agent_id,omitempty"`
+}
 type appearanceRequest struct {
-	Operation string         `json:"operation"`
-	Theme     map[string]any `json:"theme,omitempty"`
-	Name      string         `json:"name,omitempty"`
-	NewName   string         `json:"new_name,omitempty"`
-	Replace   bool           `json:"replace,omitempty"`
+	CSSFile   *appearanceCSSFile `json:"css_file,omitempty"`
+	Operation string             `json:"operation"`
+	Theme     map[string]any     `json:"theme,omitempty"`
+	Name      string             `json:"name,omitempty"`
+	NewName   string             `json:"new_name,omitempty"`
+	Replace   bool               `json:"replace,omitempty"`
 }
 
 var appearanceMu sync.Mutex
@@ -171,15 +180,76 @@ func appearanceGuide() map[string]any {
 		"hooks":         appearanceHookSelectors(),
 		"hook_guide":    appearanceHookGuide,
 		"css_max_bytes": appearanceCSSMaxBytes,
-		"instructions":  "Personal app appearance only, never project files or provider settings. Read first: tools return current in full plus saved name/mode labels; export a saved name for its full body. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; apply with name and no theme selects your saved theme. duplicate uses name (omit for current) and new_name; rename uses name and new_name. export returns the selected theme object (name, or current); write that object as JSON, and import it in theme with replace semantics. import and duplicate save without applying. Tool mutations return a short summary and changed field names; read again for current and saved labels; export a saved name for its body. delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Loader: optional loader.style (ring/dots/pulse/orbit/bar), loader.duration_ms (400-4000; lower is faster); loader:null clears customization. colors.light/dark.loader changes shared loading/working glyphs, while working/waiting/done/error set semantic status roles. This slice covers core agent marks, turn working, workspace/modal loading and common controls, not every legacy feature spinner. Glyph motion pauses when hidden and with reduced motion; status labels remain. These fields never decide execution state. Prefer colour/font fields; CSS styles the app after normal styles. HTTPS images are allowed in url(), image-set() and other image declarations. HTTPS fonts are allowed in @font-face src and @import of HTTPS font stylesheets (plain URL or URL with a media query). Imported sheets supply font faces only, not interface rules. Embedded data images and local fragments are allowed. Scripts, relative/protocol-relative/javascript URLs and escaped resources are refused. Never hide, cover or disable controls. External hosts receive resource requests; ask before including private data in URLs. Network/CORS failures skip fonts without replacing the rest of the theme. Use stable hooks, not generated classes. Only Default Light and Default Dark are built in. Other looks are personal saved colours/materials/CSS, not shipped renderers or executable games. Background: use the stable ambient/main hooks and small static or transform/opacity CSS decorations. Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over moving artwork, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
+		"instructions":  "Personal app appearance only, never project files or provider settings. Read first: tools return current in full plus saved name/mode labels; export a saved name for its full body. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; apply with name and no theme selects your saved theme. duplicate uses name (omit for current) and new_name; rename uses name and new_name. export returns the selected theme object (name, or current); write that object as JSON, and import it in theme with replace semantics. import and duplicate save without applying. Tool mutations return a short summary and changed field names; read again for current and saved labels; export a saved name for its body. delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Loader: optional loader.style (ring/dots/pulse/orbit/bar), loader.duration_ms (400-4000; lower is faster); loader:null clears customization. colors.light/dark.loader changes shared loading/working glyphs, while working/waiting/done/error set semantic status roles. This slice covers core agent marks, turn working, workspace/modal loading and common controls, not every legacy feature spinner. Glyph motion pauses when hidden and with reduced motion; status labels remain. These fields never decide execution state. Prefer colour/font fields; CSS styles the app after normal styles. For large CSS, write a UTF-8 file in your workspace and pass css_file={crew_id,path} on apply/save instead of embedding theme.css in one generated tool argument. Existing file-read admission applies; no host paths or URLs. HTTPS images are allowed in url(), image-set() and other image declarations. HTTPS fonts are allowed in @font-face src and @import of HTTPS font stylesheets (plain URL or URL with a media query). Imported sheets supply font faces only, not interface rules. Embedded data images and local fragments are allowed. Scripts, relative/protocol-relative/javascript URLs and escaped resources are refused. Never hide, cover or disable controls. External hosts receive resource requests; ask before including private data in URLs. Network/CORS failures skip fonts without replacing the rest of the theme. Use stable hooks, not generated classes. Only Default Light and Default Dark are built in. Other looks are personal saved colours/materials/CSS, not shipped renderers or executable games. Background: use the stable ambient/main hooks and small static or transform/opacity CSS decorations. Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over moving artwork, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
+	if request.CSSFile != nil {
+		http.Error(w, "Use the appearance tool to read a Crew CSS file.", 400)
+		return
+	}
 	api.appearanceResponse(w, r, request, false)
 }
 
 func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
-	api.appearanceResponse(w, r, request, true)
+	result := httptest.NewRecorder()
+	cssBytes := int64(0)
+	source := "inline"
+	if css, ok := request.Theme["css"].(string); ok {
+		cssBytes = int64(len(css))
+	}
+	defer func() {
+		outcome := "accepted"
+		if result.Code >= 400 {
+			outcome = "refused"
+		}
+		operation := request.Operation
+		if !slices.Contains(appearanceOperations, operation) {
+			operation = "unknown"
+		}
+		log.Printf("[APPEARANCE_CSS] operation=%s source=%s bytes=%d outcome=%s status=%d", operation, source, cssBytes, outcome, result.Code)
+		for key, values := range result.Header() {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+		w.WriteHeader(result.Code)
+		_, _ = w.Write(result.Body.Bytes())
+	}()
+	if request.CSSFile != nil {
+		source = "file"
+		ref := request.CSSFile
+		_, inline := request.Theme["css"]
+		if (request.Operation != "apply" && request.Operation != "save") || inline || ref.CrewID == "" || ref.Path == "" {
+			http.Error(result, "Use css_file for apply/save instead of theme.css, with an admitted Crew ID and relative path.", 400)
+			return
+		}
+		fileReply := httptest.NewRecorder()
+		// Reuse the actual read_crew_file admission: caller, Crew, publication,
+		// private paths and symlinks stay fenced; no host paths or URLs are accepted.
+		api.externalCrewCall(fileReply, r, "read_crew_file", map[string]any{"crew_id": ref.CrewID, "path": ref.Path, "agent_id": ref.AgentID})
+		var file struct {
+			Content   *string `json:"content"`
+			Size      int64   `json:"size"`
+			Truncated bool    `json:"truncated"`
+		}
+		if fileReply.Code >= 400 || json.Unmarshal(fileReply.Body.Bytes(), &file) != nil {
+			http.Error(result, "Read the CSS from a file in a Crew you can access.", 400)
+			return
+		}
+		cssBytes = file.Size
+		if file.Content == nil || file.Truncated || file.Size > appearanceCSSMaxBytes || int64(len(*file.Content)) != file.Size || !utf8.ValidString(*file.Content) {
+			http.Error(result, "Use a complete UTF-8 CSS file of at most 131,072 bytes (128 KiB).", 400)
+			return
+		}
+		theme := make(map[string]any, len(request.Theme)+1)
+		for key, value := range request.Theme {
+			theme[key] = value
+		}
+		theme["css"] = *file.Content
+		request.Theme = theme
+	}
+	api.appearanceResponse(result, r, request, true)
 }
 
 // HTTP and all tool transports share the same claims-owned read/validation/write.
@@ -384,6 +454,7 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 	}
 	add("appearance", "Change how the app looks: read and change your own personal theme, colours, fonts, materials and custom CSS. Read first for current, saved and guide; for how to choose well (contrast, speed, CSS hooks) read_skill panel-settings, references/appearance. apply previews persistently, save saves a named preset and applies it, delete removes a saved name, reset restores Default. duplicate/rename use new_name; export returns a theme object for JSON, import stores that theme object without applying. Apply a saved theme by name. Mutation replies summarize changed fields; read returns the full guide/document. No project/account selector; changes only the signed-in person's interface, never agent execution or project files.", true, false, map[string]any{
 		"operation": map[string]any{"type": "string", "enum": operations},
+		"css_file":  map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the CSS file."), "path": externalString("Relative admitted UTF-8 CSS file path; at most 128 KiB. For apply/save instead of theme.css."), "agent_id": externalString("Publication agent context when required by read_crew_file.")}},
 		"theme":     map[string]any{"type": "object", "description": "Partial current theme fields returned by read. Colours are nested under colors.light/colors.dark; materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). Personal CSS supplies decoration; no shipped scenes. CSS max128 KiB (131,072 UTF-8 bytes). Unspecified fields stay as saved."},
 		"replace":   map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
 		"name":      externalString("Saved theme name for apply/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to60 characters."),
