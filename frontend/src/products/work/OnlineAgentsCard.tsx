@@ -32,11 +32,18 @@ export function OnlineAgentsCard({ projectId, placements, connection, serverProj
       if (!response.ok) throw new Error('Online agents unavailable')
       return response.json() as Promise<OnlineAgentStatus>
     }
-    const load = () => void read().then(data => { if (active) { setRemote(data.online_agents || []); setError('') } })
-      .catch(() => { if (active) setError('Could not load the online agents and their automations. Try again shortly.') })
+    let reading = false, lastRead = 0
+    const load = () => {
+      if (document.hidden || reading || Date.now() - lastRead < 15000) return
+      reading = true; lastRead = Date.now()
+      void read().then(data => { if (active) { setRemote(data.online_agents || []); setError('') } })
+        .catch(() => { if (active) setError('Could not load the online agents and their automations. Try again shortly.') })
+        .finally(() => { reading = false })
+    }
     load()
     const timer = window.setInterval(load, 15000)
-    return () => { active = false; window.clearInterval(timer); abort.abort() }
+    document.addEventListener('visibilitychange', load)
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', load); abort.abort() }
   }, [connection, serverProject, projectId])
   const current = remote
   const known = Object.values(placements || {}).filter(agent => agent.location === 'server').sort((a, b) => a.name.localeCompare(b.name))

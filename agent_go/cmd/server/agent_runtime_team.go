@@ -5,9 +5,10 @@ import (
 )
 
 type reachableAgentRuntime struct {
-	Reach crewTeamReachableAgent
-	Info  *agentRuntimeInfo
-	Doing string
+	Reach  crewTeamReachableAgent
+	Info   *agentRuntimeInfo
+	Record *ProductConversationRecord
+	Owner  string
 }
 
 // Permission comes only from the canonical reach set. Registry/model/preferences
@@ -57,26 +58,19 @@ func (api *StreamingAPI) reachableAgentRuntimeInfo(ctx context.Context, viewer s
 		} else {
 			doc, loaded := docs[owner]
 			if !loaded {
-				doc, _ = defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
+				source, _ := api.agentDirectorySource(ctx, owner)
+				doc = source.Document
 				docs[owner] = doc
-				// Explicit owner-authorized server projection of organization
-				// names to this reachable audience; never passed to the model
-				// as an owner credential or used for message admission.
-				ownerCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: owner})
-				groups[owner], _ = updateMenuGroups(ownerCtx, nil)
+				groups[owner] = source.Groups
 			}
 			key := productConversationRegistryEntryKey(crewProfileID, registered.ChatKey)
 			if record, found := doc.Entries[key]; found {
 				row.Info = api.runtimeInfoForRecord(ctx, owner, record, doc.Agents[key], groups[owner])
-				if reach.ChatShare == crewChatShareLive {
-					row.Info.OwnerStatus = api.ownerStatusForRecord(ctx, owner, record)
-				}
+				row.Record = &record
+				row.Owner = owner
 			}
 		}
-		posts := crewTeamActivityPostsFor(team, viewer)
-		if post, ok := posts.Doing[reach.ID]; ok {
-			row.Doing = crewTeamMessageLine(post.Line)
-		}
+
 		out[reach.Address] = row
 	}
 	return out

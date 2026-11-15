@@ -62,8 +62,17 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 		return nil, err
 	}
 	out := map[string]ProductConversationRecord{}
+	ownedRoots := map[string]bool{}
 	for _, record := range document.Entries {
-		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) || !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
+		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) {
+			continue
+		}
+		owned, checked := ownedRoots[record.WorkspacePath]
+		if !checked {
+			owned = crewProjectOwnedByCallerStrict(owner, record.WorkspacePath)
+			ownedRoots[record.WorkspacePath] = owned
+		}
+		if !owned {
 			continue
 		}
 		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
@@ -75,20 +84,25 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 	return out, nil
 }
 
-func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
-	path := productConversationRegistryPath(owner)
-	mu := productConversationRegistryMutex(path)
-	mu.Lock()
-	document, err := defaultProductConversationRegistryStore().loadDocument(ctx, path)
-	mu.Unlock()
+func (api *StreamingAPI) loadDesktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
+	source, err := api.agentDirectorySource(ctx, owner)
 	if err != nil {
 		return nil, err
 	}
-	groups, _ := updateMenuGroups(ctx, nil)
+	document, groups := source.Document, source.Groups
 	out := map[string]ProductConversationRecord{}
-	previews := map[string]map[string]crewTeamMessagePreview{}
+	previews := map[string]agentOwnerStatusSnapshot{}
+	ownedRoots := map[string]bool{}
 	for _, record := range document.Entries {
-		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) || !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
+		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) {
+			continue
+		}
+		owned, checked := ownedRoots[record.WorkspacePath]
+		if !checked {
+			owned = crewProjectOwnedByCallerStrict(owner, record.WorkspacePath)
+			ownedRoots[record.WorkspacePath] = owned
+		}
+		if !owned {
 			continue
 		}
 		identity := document.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)]
@@ -96,7 +110,7 @@ func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner strin
 		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
 		record.runtimeInfo = api.runtimeInfoForRecord(ctx, owner, record, identity, groups)
 		if _, loaded := previews[record.ResourceID]; !loaded {
-			previews[record.ResourceID] = crewTeamMessagePreviews(ctx, owner, record.ResourceID)
+			previews[record.ResourceID] = agentOwnerStatusSources(ctx, owner, record.ResourceID)
 		}
 		record.runtimeInfo.OwnerStatus = api.ownerStatusForRecord(ctx, owner, record, previews[record.ResourceID])
 		out[record.ConversationID] = record
@@ -462,4 +476,15 @@ func desktopAppAgentRecipient(ctx context.Context, owner string, expected Produc
 		return ProductConversationRecord{}, fmt.Errorf("receiving app chat was removed or replaced")
 	}
 	return record, nil
+}
+
+// Cached only for outgoing registration metadata. Exact delivery admission
+// continues to call the uncached standalone desktopAppAgentRecords reader.
+func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner string) (map[string]ProductConversationRecord, error) {
+	return agentInfoCached(ctx, agentInfoCacheKey{api, owner, "registrations", ""}, func() (map[string]ProductConversationRecord, error) {
+		started := time.Now()
+		rows, err := api.loadDesktopAppAgentRecords(ctx, owner)
+		log.Printf("[AGENT_ACTIVITY] caller=%s action=batch source=registrations rows=%d failed=%t elapsed_ms=%d", owner, len(rows), err != nil, time.Since(started).Milliseconds())
+		return rows, err
+	})
 }

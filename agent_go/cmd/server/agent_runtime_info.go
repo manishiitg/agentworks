@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"log"
 	"strings"
 	"time"
@@ -15,23 +14,25 @@ import (
 // or Crew name is accepted from a tool argument. Unknown remote records stay
 // unknown; the connection's remote directory is responsible for its projection.
 func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller string, rows []map[string]interface{}) {
+	started := time.Now()
 	// Metadata is optional: an unavailable model catalog must not hide the
 	// already-authorized directory or prevent people messaging an agent.
 	if api.agentProfiles == nil && api.projectActions == nil {
 		log.Printf("[AGENT_INFO] caller=%s action=skipped reason=model_catalog_unavailable", caller)
 	}
-	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(caller))
+	source, err := api.agentDirectorySource(ctx, caller)
 	if err != nil {
 		log.Printf("[AGENT_INFO] caller=%s action=skipped reason=registry_unavailable", caller)
 		return
 	}
+	doc := source.Document
 	byAddress := map[string]ProductConversationRecord{}
 	for _, record := range doc.Entries {
 		if record.ConversationID != "" {
 			byAddress[desktopAppAgentName(desktopMachineID(), record.ConversationID)] = record
 		}
 	}
-	groups, _ := updateMenuGroups(ctx, nil)
+	groups := source.Groups
 	reachable := api.reachableAgentRuntimeInfo(ctx, caller)
 	count := 0
 	var annotate func(map[string]interface{})
@@ -80,7 +81,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 	for _, row := range rows {
 		annotate(row)
 	}
-	log.Printf("[AGENT_INFO] caller=%s action=done enriched=%d", caller, count)
+	log.Printf("[AGENT_ACTIVITY] caller=%s action=batch source=directory rows=%d enriched=%d elapsed_ms=%d", caller, len(rows), count, time.Since(started).Milliseconds())
 }
 
 // Runtime facts are public to callers who already see the agent. Project
@@ -169,12 +170,12 @@ func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string,
 	if api.agentProfiles == nil && api.projectActions == nil {
 		return info
 	}
-	profile, binding, manifest, _, err := api.crewMoveDispatcher().projectManifestAnyOwner(ctx, owner, record.ProfileID, record.ResourceID)
+	project, err := api.agentRuntimeProject(ctx, owner, record)
 	if err != nil {
 		return info
 	}
-	info.CrewID, info.CrewName, info.GroupNames = record.ResourceID, manifest.displayTitle(), groups.agentGroupNames(record.ResourceID, record.ConversationKey)
-	model, err := effectiveProfileChatModel(profile, binding, record, identity)
+	info.CrewID, info.CrewName, info.GroupNames = record.ResourceID, project.Manifest.displayTitle(), groups.agentGroupNames(record.ResourceID, record.ConversationKey)
+	model, err := effectiveProfileChatModel(project.Profile, project.Binding, record, identity)
 	if err == nil {
 		info.CLI, info.Engine, info.ModelID, info.ReasoningEffort = providerAccountProductName(model.Provider), model.Engine, model.ModelID, model.ReasoningEffort
 	} else {
@@ -194,23 +195,8 @@ func (api *StreamingAPI) activityForRecord(record ProductConversationRecord) *ag
 		info.Activity = "Waiting for you"
 	}
 	if api.eventStore != nil {
-		// Read only one tail entry. Never hydrate an entire cold chat merely
-		// to show a directory timestamp.
-		last := api.eventStore.LastIndex(record.SessionID)
-		tail := api.eventStore.GetForwardEventPage(record.SessionID, last-1, 1).Events
-		if len(tail) == 0 {
-			page, err := api.eventStore.ReadDurableChatPage(record.SessionID, storeevents.DurableEventPageOptions{Limit: 1})
-			if err == nil {
-				tail = page.Events
-			} else {
-				log.Printf("[AGENT_ACTIVITY] session=%s action=skipped reason=last_active_unavailable", record.SessionID)
-			}
-		}
-		for _, event := range tail {
-			info.LastActiveAt = event.Timestamp
-		}
+		info.LastActiveAt = api.eventStore.RetainedActivityTime(record.SessionID)
 	}
-	log.Printf("[AGENT_ACTIVITY] session=%s action=read state=%s last_active_known=%t", record.SessionID, strings.ReplaceAll(info.Activity, " ", "_"), !info.LastActiveAt.IsZero())
 	return info
 }
 

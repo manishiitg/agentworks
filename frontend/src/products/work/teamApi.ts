@@ -120,19 +120,17 @@ export type TeamTabView = {
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; localSetups?: Record<string, TeamTabSetup>; error: string }
 
 // One read of the Team tab per Crew for the whole page (the Team tab, the left menu, tabs, watching lines): every
-// screen shares it. A live notice (crew_panel) reads it again at once: the server sends one when a Team agent starts or
-// stops and when the Team changes, and relays it to Macs (crew_team_push.go). A slow 60 s read covers a missed notice
-// (owner, 11 Nov: the 15 s read made a Mac fetch one Team's tab about every 8 s).
+// screen shares it. Live notices coalesce into a visible refresh at most every 15 s: the server sends one when a Team agent starts or
+// stops and when the Team changes, and relays it to Macs (crew_team_push.go). The existing 60 s fallback covers missed notices.
 type TabEntry = { state: TeamTabState; listeners: Set<(state: TeamTabState) => void>; load: () => Promise<void>; stop: () => void }
 const tabCache = new Map<string, TabEntry>()
 
 function watchTeamTab(project: string, key: string, workspace: string, listener: (state: TeamTabState) => void) {
   let entry = tabCache.get(key)
   if (!entry) {
-    // A turn sends many crew_panel notices: one read at a time (a notice during a read reads once more after it), and an
-    // unchanged reply is not published, so the tab strip, left menu and agent cards only re-render on a real change.
+    // A turn sends many crew_panel notices. Never recursively re-read after a slow
+    // request: live notices wait for the shared refresh window instead.
     let reading = false
-    let again = false
     let last = ''
     const created: TabEntry = { state: { error: '' }, listeners: new Set(), load: async () => {}, stop: () => {} }
     const publish = (state: TeamTabState) => {
@@ -143,7 +141,8 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
       created.listeners.forEach(notify => notify(state))
     }
     created.load = async () => {
-      if (reading) { again = true; return }
+      if (reading || document.hidden) return
+      lastRead = Date.now()
       reading = true
       try {
         const target = await teamTarget(project, workspace)
@@ -159,22 +158,22 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
         }
       } catch (e) { publish({ ...created.state, error: teamError(e) }) }
       reading = false
-      if (again) { again = false; void created.load() }
     }
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let lastRead = 0
     const reload = () => {
-      if (refreshTimer) return
-      const delay = Math.max(0, lastRead + 3000 - Date.now())
-      refreshTimer = setTimeout(() => { refreshTimer = undefined; lastRead = Date.now(); void created.load() }, delay)
+      if (refreshTimer || document.hidden) return
+      const delay = Math.max(0, lastRead + 15000 - Date.now())
+      refreshTimer = setTimeout(() => { refreshTimer = undefined; void created.load() }, delay)
     }
     const timer = window.setInterval(() => { if (!document.hidden) reload() }, 60000)
+    document.addEventListener('visibilitychange', reload)
     window.addEventListener('agentworks:team-updated', reload)
     const unlive = liveFeed.subscribe(['crew_panel', 'sessions'], null, reload, project)
-    created.stop = () => { clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
+    created.stop = () => { document.removeEventListener('visibilitychange', reload); clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
     tabCache.set(key, created)
     entry = created
-    lastRead = Date.now(); void created.load()
+    void created.load()
   }
   const watched = entry
   watched.listeners.add(listener)
