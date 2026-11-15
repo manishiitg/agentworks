@@ -1,10 +1,8 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"strings"
 )
 
 // Upload/handback authority is ownership of this current source row, not the
@@ -22,31 +20,6 @@ func crewOfflineSourceOwner(t crewTeam, person string, a crewTeamRegisteredAgent
 		return fmt.Errorf("this source maker is no longer saved on the Team")
 	}
 	return nil
-}
-
-func crewOfflineOwnAgent(ctx context.Context, project, person, key string) (crewTeam, string, error) {
-	t, err := readCrewTeam(project)
-	if err != nil {
-		return t, "", errCrewTeamAgentNotYours
-	}
-	key = strings.TrimSpace(key)
-	if a, ok := t.registeredAgent(person, key); ok && crewOfflineSourceOwner(t, person, a) == nil {
-		return t, a.ID, nil
-	}
-	id := ""
-	for _, a := range t.Agents {
-		if key == "" || !strings.EqualFold(strings.TrimSpace(a.Name), key) || crewOfflineSourceOwner(t, person, a) != nil {
-			continue
-		}
-		if id != "" {
-			return t, "", errCrewTeamAgentNotYours
-		}
-		id = a.ID
-	}
-	if id == "" {
-		return t, "", errCrewTeamAgentNotYours
-	}
-	return t, id, nil
 }
 
 // Read the SAME saved pair only after owned-row admission. Generic Team/Mac

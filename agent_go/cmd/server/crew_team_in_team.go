@@ -158,7 +158,7 @@ func crewTeamOwnRows(ctx context.Context, t crewTeam, person string) []crewTeamA
 // Chat tools may use a unique name; screens send the ID supplied by the server.
 func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTeam, string, error) {
 	t, err := readCrewTeam(project)
-	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
+	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
 		return t, "", errCrewTeamAgentNotYours
 	}
 	key = strings.TrimSpace(key)
@@ -168,12 +168,18 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 	rows := crewTeamOwnRows(ctx, t, person)
 	main := crewTeamMainAgent(t, person, key)
 	for _, row := range rows {
+		if !crewTeamSourceRowAdmits(t, person, t.Agents[row.ID]) {
+			continue
+		}
 		if row.ID == key || row.ChatKey == key || row.Tab == key || main && row.Tab == macMainTab {
 			return t, row.ID, nil
 		}
 	}
 	var named []crewTeamAgent
 	for _, row := range rows {
+		if !crewTeamSourceRowAdmits(t, person, t.Agents[row.ID]) {
+			continue
+		}
 		if strings.EqualFold(strings.TrimSpace(row.Name), key) {
 			named = append(named, row)
 		}
@@ -199,14 +205,14 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	}
 	defer unlock()
 	t, err := readCrewTeam(project)
-	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
+	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
 		return errCrewTeamAgentNotYours
 	}
 	_, stored, err := crewTeamOwnAgent(ctx, project, person, key)
 	if err != nil {
 		return err
 	}
-	if !inTeam && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
+	if !inTeam && t.On && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
 		return errCrewTeamLastShared
 	}
 	if err = updateCrewTeamRegisteredAgent(project, person, stored, func(a *crewTeamRegisteredAgent) { a.InTeam = inTeam }); err != nil {

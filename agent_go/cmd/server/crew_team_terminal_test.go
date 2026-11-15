@@ -700,6 +700,33 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if !found {
 				t.Fatalf("turning Team on required a terminal rejoin: %+v", reachable)
 			}
+			// An explicit private online choice while Off is not the ordinary
+			// join default: it must remain private when Team is turned On later.
+			beta.On = false
+			if e = writeCrewTeamAgentFixture(beta); e != nil {
+				t.Fatal(e)
+			}
+			crewProject = "beta"
+			if status, online := request(token, attached, "put_online"); status != 200 || online["audience"] != "only_me" {
+				t.Fatalf("Off private online choice: %d %v", status, online)
+			}
+			beta, e = readCrewTeam("beta")
+			if e != nil || beta.On || beta.Agents[betaID].InTeam {
+				t.Fatal("explicit Only me did not save private row", e)
+			}
+			beta.On = true
+			if e = writeCrewTeamAgentFixture(beta); e != nil {
+				t.Fatal(e)
+			}
+			beta, e = readCrewTeam("beta")
+			if e != nil || beta.Agents[betaID].InTeam {
+				t.Fatal("Team On silently shared the explicit private choice", e)
+			}
+			for _, candidate := range crewTeamReachableIn(ctx, beta, "other") {
+				if candidate.ID == betaID {
+					t.Fatal("coworker reached explicitly private source after Team On")
+				}
+			}
 			crewProject = "beta"
 			if status, out := request(token, attached, "leave"); status != 200 {
 				t.Fatalf("leave server Crew failed: %d %v", status, out)

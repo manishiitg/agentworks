@@ -69,7 +69,7 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 			}
 			in.Agent = in.SourceTab
 		}
-		t, id, e := crewOfflineOwnAgent(r.Context(), mux.Vars(r)["project"], claims.UserID, in.Agent)
+		t, id, e := crewTeamOwnAgent(r.Context(), mux.Vars(r)["project"], claims.UserID, in.Agent)
 		if e != nil || crewOfflineAppOwner(r, t, id, in.crewOfflineBinding) != nil {
 			externalError(w, 403, "source_unavailable", "This source app or its pair changed.")
 			return
@@ -100,7 +100,7 @@ func (api *StreamingAPI) handleCrewPutOnline(w http.ResponseWriter, r *http.Requ
 // it must not forward a model-selected source as another person's authority.
 func (api *StreamingAPI) putCrewAgentOnline(ctx context.Context, person, project string, in crewPutOnlineRequest) (crewPutOnlineResult, error) {
 	var out crewPutOnlineResult
-	team, id, err := crewOfflineOwnAgent(ctx, project, person, in.Agent)
+	team, id, err := crewTeamOwnAgent(ctx, project, person, in.Agent)
 	if err != nil {
 		return out, err
 	}
@@ -121,22 +121,24 @@ func (api *StreamingAPI) putCrewAgentOnline(ctx context.Context, person, project
 	if !team.On && audience != "only_me" {
 		return out, fmt.Errorf("Turn on Team before choosing teammates; Only me works without it.")
 	}
-	// The normal setter owns the last-shared rule, including this new action.
-	if team.On {
-		if audience == "only_me" {
-			if a.InTeam {
-				if err = setCrewTeamAgentChoice(ctx, project, person, id, false); err != nil {
-					return out, err
-				}
-			}
-		} else {
-			if _, err = setCrewTeamAgentAudience(ctx, project, person, id, audience, in.People, true); err != nil {
+	// An explicit private choice survives a later Team-On. The normal setter
+	// keeps the last-shared guard only while anything is actually shared.
+	if audience == "only_me" {
+		outcome := "already_private"
+		if a.InTeam {
+			if err = setCrewTeamAgentChoice(ctx, project, person, id, false); err != nil {
 				return out, err
 			}
-			if !a.InTeam {
-				if err = setCrewTeamAgentChoice(ctx, project, person, id, true); err != nil {
-					return out, err
-				}
+			outcome = "saved_private"
+		}
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s actor=%s event=audience_saved outcome=%s reason=explicit_only_me", project, id, person, outcome)
+	} else if team.On {
+		if _, err = setCrewTeamAgentAudience(ctx, project, person, id, audience, in.People, true); err != nil {
+			return out, err
+		}
+		if !a.InTeam {
+			if err = setCrewTeamAgentChoice(ctx, project, person, id, true); err != nil {
+				return out, err
 			}
 		}
 	}
