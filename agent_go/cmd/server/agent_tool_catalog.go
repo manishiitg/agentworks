@@ -80,7 +80,7 @@ func agentSourceMutates(source, operation string, original bool) bool {
 	case externalCrewCommandsTool:
 		return operation != "list"
 	case externalCrewTeamSyncTool:
-		return operation != "clashes" && operation != "agents" && operation != "invites" && operation != "way"
+		return operation != "clashes" && operation != "agents" && operation != "invites" && operation != "way" && operation != "setup_list" && operation != "setup_get"
 	case "manage_crew_chats":
 		return operation != "list" && operation != "read" && operation != "tools" && operation != "project_context" && operation != "native_list"
 	}
@@ -158,7 +158,7 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 	case "manage_condition_triggers":
 		return externalWatchersAllowed(claims)
 	case externalCrewTeamSyncTool:
-		if action.SourceAction == "clashes" || action.SourceAction == "invites" || action.SourceAction == "way" {
+		if action.SourceAction == "clashes" || action.SourceAction == "invites" || action.SourceAction == "way" || action.SourceAction == "setup_list" || action.SourceAction == "setup_get" {
 			return claims.AccessToken.Allows("crews:read")
 		}
 		return claims.AccessToken.Allows("crews:write")

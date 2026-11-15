@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"path/filepath"
 	"sort"
+	"unicode/utf8"
 )
 
 func crewChecklistAction(action string) bool {
@@ -29,7 +31,19 @@ type crewChecklistInput struct {
 
 // The HTTP/native/MCP adapters all reach this service after resolving the
 // caller. The agent actor is a separate trusted argument, never an input field.
-func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserClaims, project, action string, args map[string]any, actor crewChecklistActor) (any, error) {
+func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserClaims, project, action string, args map[string]any, actor crewChecklistActor) (out any, err error) {
+	defer func() {
+		if err != nil {
+			person := ""
+			if claims != nil {
+				person = claims.UserID
+			}
+			checklistOutcome(project, "", person, action, err)
+		}
+	}()
+	if len(externalArg(args, "setup_id")) > 128 {
+		return nil, fmt.Errorf("Choose a setup from setup_list")
+	}
 	write := action == "setup_share" || action == "setup_edit" || action == "setup_checklist"
 	team, err := crewChecklistTeam(claims, project, write)
 	if err != nil {
@@ -42,7 +56,9 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 			return nil, err
 		}
 		var input crewChecklistInput
-		if err = json.Unmarshal(raw, &input); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err = decoder.Decode(&input); err != nil {
 			return nil, fmt.Errorf("Give the setup title, shared instruction file and checklist")
 		}
 		id := externalArg(args, "setup_id")
@@ -52,7 +68,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		if action == "setup_edit" && id == "" {
 			return nil, fmt.Errorf("Choose a setup to edit")
 		}
-		revision, err := crewChecklistUint(args, "revision")
+		revision, err := crewChecklistUint(args, "setup_revision")
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +79,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 		publishCrewPanelChanged(project)
 		return map[string]any{"setup_id": value.ID, "revision": value.Revision}, nil
 	case "setup_checklist":
-		revision, err := crewChecklistUint(args, "revision")
+		revision, err := crewChecklistUint(args, "setup_revision")
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +144,14 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 				}
 			}
 			people := []map[string]any{}
-			for person, progress := range setup.Progress {
+			members := map[string]bool{team.OwnerID: true}
+			for _, member := range team.People {
+				if !member.Invited {
+					members[member.UserID] = true
+				}
+			}
+			for person := range members {
+				progress := setup.Progress[person]
 				if !team.member(person) || !crewTeamAccountActive(person) {
 					continue
 				}
@@ -188,6 +211,9 @@ func crewChecklistReadInstructions(project, rel string, state crewTeamFileState)
 	}
 	if len(raw) > 64<<10 {
 		return "", fmt.Errorf("Use an instruction document smaller than 64 KB")
+	}
+	if !utf8.Valid(raw) || bytes.IndexByte(raw, 0) >= 0 {
+		return "", fmt.Errorf("Use UTF-8 Markdown instructions")
 	}
 	sum := sha256.Sum256(raw)
 	if hex.EncodeToString(sum[:]) != state.Versions[rel].File.Hash {
