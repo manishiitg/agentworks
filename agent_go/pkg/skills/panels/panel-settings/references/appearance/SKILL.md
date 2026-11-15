@@ -39,7 +39,7 @@ The app's own visibility/activity projections are presentation, not authority. T
 | `colors.light`, `colors.dark` | Six-digit hex values for `background`, `foreground`, `card`, `muted`, `muted_foreground`, `border`, `accent`, `sidebar`, `working`, `waiting`, `done`, `error`, `loader`. Omitted roles keep defaults. `accent` drives actions; contrasting action labels are derived automatically. |
 | `materials` | `page`, `panel`, `popover`, `sidebar`, `composer`: background `opacity`0–1, default1. Non-page `blur`0–24px, default0. Text/icons stay opaque. Unset materials are optional, not a null DTO. |
 | `loader` | `style`: `ring`, `dots`, `pulse`, `orbit`, `bar`; `duration_ms`:400–4000, default1000 (lower is faster). Null clears it. Optional loader colour overrides the inner glyph; absent colour inherits readable control labels/working tone. |
-| `css` | Up to the server's UTF-8 byte limit (normally65536 /64KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
+| `css` | Up to the server's UTF-8 byte limit (131072 /128KiB), not a character limit. Ordinary CSS, embedded data images/SVG, gradients, keyframes, masks, blends, decorative filters, pseudo-elements and CSS3D are expressive options. |
 
 Shared loader coverage includes core agent/turn/page/modal/composer/common
 controls; legacy feature-specific glyphs are incremental work. Avatars belong to
@@ -117,10 +117,19 @@ old feature-specific element was migrated. Do not invent stopped/blocked states.
 - NO blur over moving art. Set all non-page material blur to0 when adding motion;
   the server checks numeric ranges, not whether arbitrary CSS animates. Filters
   on small still decoration are allowed, not an excuse for full-window GPU work.
-- No external fetches or scripts: browser CSSOM strips `@import`, external URL,
-  `image-set`, `src()` and escaped-resource declarations. Embedded data images
-  and local fragments remain allowed. Save/import preserve CSS; filtering happens
-  on application, not as a false server/network probe. Never hide controls.
+- HTTPS images are allowed in `url()`, `image-set()` and other image properties;
+  HTTPS fonts are allowed in `@font-face { src: url(https://…); }` and `@import
+  url("https://fonts.googleapis.com/css2?family=…");` (optionally with a media
+  query). Imported stylesheets supply font faces only, not app selectors. The
+  browser fetches them without credentials or a referrer, then sanitizes them.
+  Up to eight imports / three nested levels /128KiB total imported CSS; failed
+  network/CORS loads leave the local theme intact. External hosts see resource
+  requests: never include private data in URLs. Download/embed is an alternative.
+  Embedded data images and local fragments remain allowed. No scripts, relative,
+  protocol-relative or `javascript:` URLs, escaped resources, or CSS that hides,
+  covers or disables controls. Keep image-set URLs explicit (not string-valued
+  var substitutions). Save/import preserve CSS; filtering happens on application,
+  not as a false server/network probe.
 - Explicit authored Artifact/report designs keep their own default palette; avoid
   targeting their force-light/report islands. An iframe is a separate document.
 - No assumption that CSS/compositor work is free: screenshot and, for expensive

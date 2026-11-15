@@ -4,7 +4,7 @@ import { applyAppearanceTokens } from './appThemeTokens'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { liveFeed } from '../services/liveFeed'
-import { safeAppearanceSheet } from './appearanceCss'
+import { loadAppearanceFonts, safeAppearanceSheet } from './appearanceCss'
 import { ThemeContext, type Theme } from './ThemeContext'
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -40,20 +40,32 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [current, profile])
   useLayoutEffect(() => {
     try {
-      const { sheet, removed } = safeAppearanceSheet(current.css)
+      const { sheet, removed, imports } = safeAppearanceSheet(current.css)
+      const controller = new AbortController()
+      let fontSheet: CSSStyleSheet | undefined
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
       setCssWarning(removed)
+      if (imports.length) void loadAppearanceFonts(imports, controller.signal).then(result => {
+        if (controller.signal.aborted) return
+        fontSheet = result.sheet
+        const sheets = document.adoptedStyleSheets
+        const index = sheets.indexOf(sheet)
+        if (index < 0) return
+        // Imports precede the person's own overrides.
+        document.adoptedStyleSheets = [...sheets.slice(0, index), fontSheet, ...sheets.slice(index)]
+        setCssWarning(removed || result.removed)
+      }).catch(() => { if (!controller.signal.aborted) setCssWarning(true) })
       // A custom CSS background also needs the page's inner opaque wrappers cleared.
       // Existing translucent materials opt in too: custom themes need no hidden page flag.
       const hasBackdrop = Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
       if (hasBackdrop) document.documentElement.dataset.appearanceBackdrop = ''
       else delete document.documentElement.dataset.appearanceBackdrop
-      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceBackdrop }
+      return () => { controller.abort(); document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet && item !== fontSheet); delete document.documentElement.dataset.appearanceBackdrop }
     } catch { setCssWarning(true); delete document.documentElement.dataset.appearanceBackdrop }
-  }, [current, profile])
+  }, [current, profile, actor, server])
   const theme: Theme = profile
   return <ThemeContext.Provider value={{ theme, toggleTheme: () => setTheme(theme === 'light' ? 'dark' : 'light'), setTheme }}>
     {children}
-    {cssWarning && <div role="status" className="fixed bottom-2 right-2 z-[9999] max-w-sm rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow">Some custom CSS was skipped. External resources are not allowed.</div>}
+    {cssWarning && <div role="status" className="fixed bottom-2 right-2 z-[9999] max-w-sm rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow">Some custom CSS or fonts could not be applied. Use HTTPS resources and keep controls visible.</div>}
   </ThemeContext.Provider>
 }
