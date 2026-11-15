@@ -62,7 +62,7 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	if json.Unmarshal(cleared.Body.Bytes(), &doc) != nil || len(doc.Current.Colors["light"]) != 0 {
 		t.Fatalf("cleared colour returned: %s", cleared.Body.String())
 	}
-	for _, body := range []string{`{"operation":"apply","theme":{"colors":null}}`, `{"operation":"apply","theme":{"colors":{"light":null}}}`, `{"operation":"apply","user":"owner"}`, `{"operation":"apply","theme":{"unknown":true}}`, `{"operation":"apply","theme":{"colors":{"light":{"background":"url(https://example.com)"}}}}`, `{"operation":"apply","theme":{"code_font":"system"}}`} {
+	for _, body := range []string{`{"operation":"apply","theme":{"colors":null}}`, `{"operation":"apply","theme":{"colors":{"light":null}}}`, `{"operation":"apply","theme":{"code":null}}`, `{"operation":"apply","theme":{"code":{"light":null}}}`, `{"operation":"apply","user":"owner"}`, `{"operation":"apply","theme":{"unknown":true}}`, `{"operation":"apply","theme":{"colors":{"light":{"background":"url(https://example.com)"}}}}`, `{"operation":"apply","theme":{"code_font":"system"}}`, `{"operation":"apply","theme":{"mode":"sepia"}}`, `{"operation":"apply","theme":{"mode":"schedule","light_at":"09:00","dark_at":"09:00"}}`, `{"operation":"apply","theme":{"light_at":"9am"}}`, `{"operation":"apply","theme":{"code":{"light":{"keyword":"red"}}}}`, `{"operation":"apply","theme":{"code":{"dark":{"glow":"#112233"}}}}`} {
 		if got := invoke("other", body); got.Code != 400 {
 			t.Fatalf("invalid body accepted: %s %d", body, got.Code)
 		}
@@ -119,6 +119,23 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	doc.Current.Loader = nil
 	if clearedLoader.Code != 200 || json.Unmarshal(clearedLoader.Body.Bytes(), &doc) != nil || doc.Current.Loader != nil {
 		t.Fatal("loader did not clear")
+	}
+	// Code colours and light/dark switching are validated like the other fields: one theme holds both variants.
+	// HTTP keeps the full document; the short summary and changed fields are the tool projection.
+	coded := invoke("owner", `{"operation":"apply","replace":true,"theme":{"name":"Code","mode":"schedule","light_at":"07:00","dark_at":"19:00","colors":{"light":{"background":"#ffffff"},"dark":{"background":"#000000"}},"code":{"light":{"background":"#ffffff","foreground":"#111111","keyword":"#0000ff","terminal_background":"#ffffff","ansi_red":"#ff0000"},"dark":{"background":"#000000","foreground":"#eeeeee","keyword":"#88aaff","terminal_background":"#000000","ansi_red":"#ff5555"}}}}`)
+	var codedDoc struct {
+		Current appearanceTheme `json:"current"`
+		Guide   map[string]any  `json:"guide"`
+	}
+	if json.Unmarshal(coded.Body.Bytes(), &codedDoc) != nil || coded.Code != 200 || codedDoc.Current.Mode != "schedule" || codedDoc.Current.Code["light"]["keyword"] != "#0000ff" || codedDoc.Current.Code["dark"]["ansi_red"] != "#ff5555" {
+		t.Fatalf("code/switch theme refused: %d %s", coded.Code, coded.Body.String())
+	}
+	if codedDoc.Guide["code_roles"] == nil || codedDoc.Guide["modes"] == nil || codedDoc.Guide["operations"] == nil {
+		t.Fatalf("guide missing code/mode/operations: %s", coded.Body.String())
+	}
+	system := invoke("owner", `{"operation":"apply","theme":{"mode":"system"}}`)
+	if system.Code != 200 {
+		t.Fatalf("system mode refused: %d %s", system.Code, system.Body.String())
 	}
 	if got := invoke("", `{"operation":"read"}`); got.Code != 401 {
 		t.Fatal("anonymous appearance allowed")

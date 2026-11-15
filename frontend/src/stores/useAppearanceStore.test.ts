@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { defaultAppearance, type AppearanceDocument } from './appearanceTheme'
+import { defaultAppearance, resolveAppearanceProfile, type AppearanceDocument } from './appearanceTheme'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
 vi.mock('../services/api', () => ({ default: api }))
@@ -50,4 +50,21 @@ it('accepts the fonts and colour roles the server offers', async () => {
   api.get.mockResolvedValue({ data: { current: theme('Now'), saved: [future], guide: { fonts: ['system'], code_fonts: ['system-mono'], colour_roles: ['background'] } } })
   await useAppearanceStore.getState().load('s', { force: true })
   expect(useAppearanceStore.getState().saved).toEqual([])
+})
+
+// One theme holds both variants: system follows the device, schedule uses local times.
+it('resolves system and schedule policies to an effective light/dark profile', () => {
+  const base = defaultAppearance()
+  expect(resolveAppearanceProfile({ ...base, mode: 'light' }, true)).toBe('light')
+  expect(resolveAppearanceProfile({ ...base, mode: 'dark' }, false)).toBe('dark')
+  expect(resolveAppearanceProfile({ ...base, mode: 'system' }, true)).toBe('dark')
+  expect(resolveAppearanceProfile({ ...base, mode: 'system' }, false)).toBe('light')
+  const day = { ...base, mode: 'schedule' as const, light_at: '07:00', dark_at: '19:00' }
+  const noon = new Date(2026, 5, 1, 12, 0)
+  const night = new Date(2026, 5, 1, 22, 0)
+  expect(resolveAppearanceProfile(day, true, noon)).toBe('light')
+  expect(resolveAppearanceProfile(day, false, night)).toBe('dark')
+  const overnight = { ...base, mode: 'schedule' as const, light_at: '19:00', dark_at: '07:00' }
+  expect(resolveAppearanceProfile(overnight, false, night)).toBe('light')
+  expect(resolveAppearanceProfile(overnight, true, noon)).toBe('dark')
 })

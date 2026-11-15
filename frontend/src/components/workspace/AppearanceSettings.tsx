@@ -1,4 +1,5 @@
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
+import { defaultThemeLabel } from '../../stores/appearanceTheme'
 import { AppearanceAgentButton } from './AppearanceAgentButton'
 import { AppearanceThemePicker } from './AppearanceThemePicker'
 
@@ -9,7 +10,7 @@ export default function AppearanceSettings() {
     <p className="text-sm text-muted-foreground">Choose a look, or ask an agent to make it yours. This changes only your appearance.</p>
     <AppearanceThemePicker />
     <AppearanceAgentButton className="w-full border border-border" />
-    <p className="text-xs text-muted-foreground">Current look: <span className="text-foreground">{current.name === 'Default' ? `Default ${current.mode === 'light' ? 'Light' : 'Dark'}` : current.name}</span></p>
+    <p className="text-xs text-muted-foreground">Current look: <span className="text-foreground">{defaultThemeLabel(current)}</span></p>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </div>
 }

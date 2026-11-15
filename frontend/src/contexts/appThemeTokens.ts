@@ -1,4 +1,4 @@
-import { codeFontFamily, hexToHsl, interfaceFontFamily, type AppearanceProfile, type AppearanceTheme, type ColourRole } from '../stores/appearanceTheme'
+import { codeFontFamily, hexToHsl, interfaceFontFamily, type AppearanceProfile, type AppearanceTheme, type CodeRole, type ColourRole } from '../stores/appearanceTheme'
 
 /** Every custom role fans out here, not through component-specific CSS patches. */
 const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
@@ -15,6 +15,37 @@ const ROLE_TOKENS: Record<ColourRole, readonly string[]> = {
   done: ['--success'],
   error: ['--destructive'],
   loader: [], // A complete CSS colour, not an HSL triplet (the glyph inherits the caller when absent).
+}
+
+/** Code and terminal roles fan out to --code-*, --terminal-* and --ansi-* tokens consumed by code blocks and xterm. */
+const CODE_TOKENS: Record<CodeRole, readonly string[]> = {
+  background: ['--code-background', '--appearance-code-background'],
+  foreground: ['--code-foreground', '--appearance-code'],
+  keyword: ['--code-keyword'],
+  string: ['--code-string'],
+  number: ['--code-number'],
+  comment: ['--code-comment'],
+  function: ['--code-function'],
+  operator: ['--code-operator'],
+  terminal_background: ['--terminal-background'],
+  terminal_foreground: ['--terminal-foreground'],
+  terminal_cursor: ['--terminal-cursor'],
+  ansi_black: ['--ansi-black', '--terminal-ansi-black'],
+  ansi_red: ['--ansi-red', '--terminal-ansi-red'],
+  ansi_green: ['--ansi-green', '--terminal-ansi-green'],
+  ansi_yellow: ['--ansi-yellow', '--terminal-ansi-yellow'],
+  ansi_blue: ['--ansi-blue', '--terminal-ansi-blue'],
+  ansi_magenta: ['--ansi-magenta', '--terminal-ansi-magenta'],
+  ansi_cyan: ['--ansi-cyan', '--terminal-ansi-cyan'],
+  ansi_white: ['--ansi-white', '--terminal-ansi-white'],
+  ansi_bright_black: ['--ansi-bright-black', '--terminal-ansi-bright-black'],
+  ansi_bright_red: ['--ansi-bright-red', '--terminal-ansi-bright-red'],
+  ansi_bright_green: ['--ansi-bright-green', '--terminal-ansi-bright-green'],
+  ansi_bright_yellow: ['--ansi-bright-yellow', '--terminal-ansi-bright-yellow'],
+  ansi_bright_blue: ['--ansi-bright-blue', '--terminal-ansi-bright-blue'],
+  ansi_bright_magenta: ['--ansi-bright-magenta', '--terminal-ansi-bright-magenta'],
+  ansi_bright_cyan: ['--ansi-bright-cyan', '--terminal-ansi-bright-cyan'],
+  ansi_bright_white: ['--ansi-bright-white', '--terminal-ansi-bright-white'],
 }
 
 // The saved schema has no action-label colour: derive a legible one for both
@@ -49,6 +80,12 @@ export function appearanceTokens(theme: AppearanceTheme, profile: AppearanceProf
   if (theme.loader?.duration_ms) tokens['--aw-loader-duration'] = `${theme.loader.duration_ms}ms`
   if (colors.accent) tokens['--primary-foreground'] = hexToHsl(actionForeground(colors.accent))
   // Material fields and custom CSS use the same background-only tokens.
+  const code = theme.code?.[profile] ?? {}
+  for (const role of Object.keys(code) as CodeRole[]) {
+    const hex = code[role]!
+    if (!hex) continue
+    for (const token of CODE_TOKENS[role] ?? []) tokens[token] = hexToHsl(hex)
+  }
   for (const [surface, material] of Object.entries(theme.materials ?? {})) {
     if (typeof material.opacity === 'number') tokens[`--aw-${surface}-opacity`] = String(material.opacity)
     if (typeof material.blur === 'number') tokens[`--aw-${surface}-backdrop`] = material.blur > 0 ? `blur(${material.blur}px)` : 'none'

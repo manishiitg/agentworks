@@ -62,6 +62,17 @@
     --appearance-code: hsl(var(--foreground));
     --appearance-code-background: hsl(var(--muted));
     --appearance-selection: hsl(var(--primary) / .2);
+    --code-background: var(--appearance-code-background);
+    --code-foreground: var(--appearance-code);
+    --code-keyword: hsl(var(--primary));
+    --code-string: hsl(var(--success));
+    --code-number: hsl(var(--warning));
+    --code-comment: hsl(var(--muted-foreground));
+    --code-function: hsl(var(--info));
+    --code-operator: hsl(var(--foreground));
+    --terminal-background: hsl(var(--card));
+    --terminal-foreground: hsl(var(--foreground));
+    --terminal-cursor: hsl(var(--primary));
   }
   /* Material affects backgrounds only. Never set opacity on a whole panel. */
   :root, .force-light, [data-report-theme] {

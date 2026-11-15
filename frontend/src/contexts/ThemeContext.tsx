@@ -27,10 +27,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const visible = document.visibilityState === 'visible'
       document.documentElement.dataset.appearanceVisible = String(visible)
       if (visible) load(false)()
+      useAppearanceStore.getState().refreshProfile()
     }
     document.documentElement.dataset.appearanceVisible = String(document.visibilityState === 'visible')
     document.addEventListener('visibilitychange', focus)
-    return () => { unsubscribe(); document.removeEventListener('visibilitychange', focus); delete document.documentElement.dataset.appearanceVisible }
+    // System follows the OS; schedule re-evaluates on a minute check plus visibility/resume. No faster timer.
+    const media = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
+    const onSystem = () => useAppearanceStore.getState().refreshProfile()
+    media?.addEventListener('change', onSystem)
+    const minute = window.setInterval(() => {
+      const theme = useAppearanceStore.getState().preview ?? useAppearanceStore.getState().current
+      if (theme.mode === 'schedule') useAppearanceStore.getState().refreshProfile()
+    }, 60_000)
+    return () => { unsubscribe(); document.removeEventListener('visibilitychange', focus); delete document.documentElement.dataset.appearanceVisible; media?.removeEventListener('change', onSystem); window.clearInterval(minute) }
   }, [actor, server])
   useLayoutEffect(() => {
     const root = document.documentElement

@@ -59,3 +59,19 @@ it('projects and clears personal loader and status roles without leaking the pre
   }
   expect(validateTheme({ ...theme, loader: null }).loader).toBeNull()
 })
+
+// Code colours ride existing tokens: syntax roles style code blocks, terminal roles style xterm.
+it('turns saved code colours into code and terminal tokens per light/dark', () => {
+  const theme = defaultAppearance()
+  theme.code = {
+    dark: { background: '#000000', foreground: '#eeeeee', keyword: '#88aaff', terminal_background: '#000000', terminal_cursor: '#ffffff', ansi_red: '#ff5555' },
+    light: { background: '#ffffff', keyword: '#0000ff', ansi_red: '#ff0000' },
+  }
+  const dark = appearanceTokens(theme, 'dark')
+  for (const key of ['--code-background', '--code-keyword', '--terminal-background', '--terminal-cursor', '--ansi-red']) expect(dark[key]).toMatch(/%$/)
+  expect(dark['--terminal-background']).toBe(dark['--code-background'])
+  const light = appearanceTokens(theme, 'light')
+  expect(light['--code-background']).toMatch(/%$/)
+  expect(light['--terminal-background']).toBeUndefined()
+  expect(light['--terminal-cursor']).toBeUndefined()
+})

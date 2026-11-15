@@ -593,6 +593,35 @@ export const LIGHT_XTERM_THEME: ITheme = {
 
 export const RAW_XTERM_THEMES: Record<Theme, ITheme> = { dark: DARK_XTERM_THEME, light: LIGHT_XTERM_THEME }
 
+/** Code theme colours ride the existing xterm theme path: terminal chrome plus the 16 ANSI slots per light/dark. */
+export function codeXtermTheme(theme: { code?: Partial<Record<Theme, Partial<Record<string, string>>>> }, profile: Theme): ITheme {
+  const base = RAW_XTERM_THEMES[profile]
+  const code = theme.code?.[profile] ?? {}
+  const pick = (name: string): string | undefined => {
+    const value = code[name]
+    return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : undefined
+  }
+  const ansi = (name: string): string | undefined => pick(name) ?? pick(name.replace(/^ansi_/, ''))
+  const next: ITheme = { ...base }
+  const background = pick('terminal_background') ?? pick('background')
+  const foreground = pick('terminal_foreground') ?? pick('foreground')
+  const cursor = pick('terminal_cursor')
+  if (background) next.background = background
+  if (foreground) next.foreground = foreground
+  if (cursor) next.cursor = cursor
+  const slots: Array<[string, keyof ITheme]> = [
+    ['ansi_black', 'black'], ['ansi_red', 'red'], ['ansi_green', 'green'], ['ansi_yellow', 'yellow'],
+    ['ansi_blue', 'blue'], ['ansi_magenta', 'magenta'], ['ansi_cyan', 'cyan'], ['ansi_white', 'white'],
+    ['ansi_bright_black', 'brightBlack'], ['ansi_bright_red', 'brightRed'], ['ansi_bright_green', 'brightGreen'], ['ansi_bright_yellow', 'brightYellow'],
+    ['ansi_bright_blue', 'brightBlue'], ['ansi_bright_magenta', 'brightMagenta'], ['ansi_bright_cyan', 'brightCyan'], ['ansi_bright_white', 'brightWhite'],
+  ]
+  for (const [role, key] of slots) {
+    const value = ansi(role)
+    if (value) (next as Record<string, string>)[key as string] = value
+  }
+  return next
+}
+
 function rawXtermFont() {
   const state = useAppearanceStore.getState()
   const theme = state.preview ?? state.current
@@ -3225,7 +3254,8 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
   const lastSizeHintSentRef = useRef<{ cols: number; rows: number } | null>(null)
   const terminalTheme = TERMINAL_THEMES[terminalColorScheme]
   const appearance = useAppearanceStore(state => state.profile)
-  const rawXtermTheme = RAW_XTERM_THEMES[appearance]
+  const appearanceCode = useAppearanceStore(state => (state.preview ?? state.current).code)
+  const rawXtermTheme = useMemo(() => codeXtermTheme({ code: appearanceCode }, appearance), [appearanceCode, appearance])
 
   // PLAT-106 repair 3: the session-change reset below is a useEffect, so it runs
   // AFTER the first render for the new session — that render still paints the
