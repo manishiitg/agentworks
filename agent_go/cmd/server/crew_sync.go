@@ -19,10 +19,9 @@ import (
 )
 
 type crewSyncRequest struct {
-	IncludeOnlineAgents   bool                       `json:"include_online_agents,omitempty"`
-	MacMainConversationID string                     `json:"mac_main_conversation_id,omitempty"`
-	PublishAgent          *crewAgentPublishSelection `json:"publish_agent,omitempty"`
-	Provider              string                     `json:"provider,omitempty"`
+	IncludeOnlineAgents   bool   `json:"include_online_agents,omitempty"`
+	MacMainConversationID string `json:"mac_main_conversation_id,omitempty"`
+	Provider              string `json:"provider,omitempty"`
 	// AccountID is, for server_account, the account the person chose for their agents on this server.
 	AccountID   string                    `json:"account_id,omitempty"`
 	Native      []*sessiontransfer.Bundle `json:"native,omitempty"`
@@ -301,9 +300,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
-	if input.Action == "publish_accounts" || input.Action == "publish_agent" || input.Action == "stage_agent" {
-		return api.receiveCrewAgentPublish(ctx, claims, id, input)
-	}
 	if input.Action == "server_account" {
 		return api.receiveCrewServerAccount(ctx, claims, id, input)
 	}
@@ -356,6 +352,7 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		}
 		return out, nil
 	}
+	log.Printf("[AGENT_OFFLINE_COPY] project=%s actor=%s event=refused reason=unsupported_online_action", id, claims.UserID)
 	return crewSyncReply{}, fmt.Errorf("unknown sync action")
 }
 

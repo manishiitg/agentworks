@@ -140,3 +140,10 @@ again through Team > Agents. Old selected working files are kept aside and are
 not mounted in the online home; share any needed files through the normal Team
 file sharing. Conversion is a backed-up server data action, never an automatic
 side effect of opening an agent.
+
+Use `manage_crew_sync action=put_online` for an app agent, with its own agent
+name (omit it for this exact calling chat), `audience=only_me|chosen|whole_team`
+and current Team person IDs in `chosen_people` when chosen. The old `run_online`
+action and person-slot publish/stage transport are removed. Put online does not
+fork another person-slot tab, transfer automations, mount selected private files
+or choose the source maker's login. Preparation is not proof of readiness.
