@@ -47,6 +47,7 @@ func (api *StreamingAPI) handleAgentMessageIdentity(w http.ResponseWriter, r *ht
 			externalError(w, 404, "identity_unavailable", "Agent identity is unavailable.")
 			return
 		}
+		out["avatar_connection"] = connectionID
 		w.Header().Set("Cache-Control", "no-store")
 		externalJSON(w, out)
 		return
@@ -133,7 +134,8 @@ func (api *StreamingAPI) handleAgentMessageIdentity(w http.ResponseWriter, r *ht
 		if address == "" {
 			address = firstNonEmptyTrimmed(peer.ChatKey, peer.ID)
 		}
-		externalJSON(w, map[string]interface{}{"label": label, "address": address})
+		avatar := agentMessageAvatarFor(peer)
+		externalJSON(w, map[string]interface{}{"label": label, "address": address, "avatar_url": avatar.AvatarURL, "avatar_icon": avatar.AvatarIcon, "avatar_color": avatar.AvatarColor})
 		return
 	}
 	log.Printf("[AGENT_MESSAGE_IDENTITY] caller=%s action=skipped reason=not_participant", claims.UserID)
