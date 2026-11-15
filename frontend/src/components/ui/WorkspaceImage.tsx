@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react'
+import { LoadingIndicator } from './LoadingIndicator'
 import { useEffect, useState, type ReactNode } from 'react'
 import { getApiBaseUrl, getAuthToken } from '../../services/api'
 
@@ -23,7 +23,7 @@ export function WorkspaceImage({ path, alt, className, renderImage }: { path: st
     return () => { controller.abort(); if (objectURL) URL.revokeObjectURL(objectURL) }
   }, [path])
   return src ? (renderImage ? renderImage(src) : <img src={src} alt={alt} className={className} />) : <span role="status" aria-label={error || 'Loading image'} className={`inline-flex min-h-16 min-w-20 items-center justify-center gap-1.5 rounded bg-muted px-2 text-xs text-muted-foreground ${className ?? ''}`}>
-    {!error && <Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin" />}
+    {!error && <LoadingIndicator aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
     {error || 'Loading image…'}
   </span>
 }

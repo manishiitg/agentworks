@@ -1,5 +1,6 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
+import { ChevronDown, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -147,7 +148,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
         {/* No dot for an idle chat (owner, 2 Nov): only Working, Needs you, Completed and Failed show; red means Failed only. */}
         {!isBlank && status !== 'ready' && (status === 'busy'
-          ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
+          ? <LoadingIndicator className="h-3 w-3" aria-label={dot.label} role="img" />
           : status === 'waiting'
             // Waiting for the person (a question or an approval): a ring keeps pulsing so a stuck chat stands out.
             ? <span className="relative grid h-3 w-3 place-items-center" title={dot.label} aria-label={dot.label} role="img">

@@ -30,6 +30,13 @@ type appearanceTheme struct {
 	// reach the screen as the same --aw-* values custom CSS could set, so a theme saved before they existed still works.
 	Scene     string                        `json:"scene"`
 	Materials map[string]appearanceMaterial `json:"materials"`
+	Loader    *appearanceLoader             `json:"loader,omitempty"`
+}
+
+// appearanceLoader selects a shared decorative glyph, never the state or lifetime of work.
+type appearanceLoader struct {
+	Style      string `json:"style,omitempty"`
+	DurationMS *int   `json:"duration_ms,omitempty"`
 }
 
 // appearanceMaterial is one surface's see-through level (0 to 1) and, for panels over a still background, a blur in px.
@@ -51,11 +58,12 @@ type appearanceRequest struct {
 
 var appearanceMu sync.Mutex
 var appearanceHex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+var appearanceLoaderStyles = []string{"ring", "dots", "pulse", "orbit", "bar"}
 var appearanceScenes = []string{"none", "neon-orbit", "deep-space"}
 
 // appearanceSurfaces are the app surfaces with a material; the page has an opacity only (it has no backdrop).
 var appearanceSurfaces = []string{"page", "panel", "popover", "sidebar", "composer"}
-var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar"}
+var appearanceRoles = []string{"background", "foreground", "card", "muted", "muted_foreground", "border", "accent", "sidebar", "working", "waiting", "done", "error", "loader"}
 
 func defaultAppearanceTheme() appearanceTheme {
 	return appearanceTheme{Name: "Default", Mode: "dark", InterfaceFont: "system", CodeFont: "system-mono", InterfaceSize: 14, CodeSize: 12, Colors: map[string]map[string]string{}, CSS: "", Scene: "none", Materials: map[string]appearanceMaterial{}}
@@ -73,6 +81,14 @@ func validAppearanceTheme(t appearanceTheme) error {
 	}
 	if t.InterfaceSize < 12 || t.InterfaceSize > 20 || t.CodeSize < 10 || t.CodeSize > 20 {
 		return errors.New("Interface size must be 12–20; code size 10–20.")
+	}
+	if t.Loader != nil {
+		if t.Loader.Style != "" && !slices.Contains(appearanceLoaderStyles, t.Loader.Style) {
+			return errors.New("Choose a loading indicator: ring, dots, pulse, orbit or bar.")
+		}
+		if t.Loader.DurationMS != nil && (*t.Loader.DurationMS < 400 || *t.Loader.DurationMS > 4000) {
+			return errors.New("Loading indicator duration must be 400–4000 milliseconds.")
+		}
 	}
 	if len(t.CSS) > 20000 {
 		return errors.New("Custom CSS must be at most 20,000 bytes.")
@@ -153,17 +169,19 @@ func patchAppearanceTheme(current appearanceTheme, patch map[string]any) (appear
 }
 func appearanceGuide() map[string]any {
 	return map[string]any{
-		"fonts":        []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
-		"code_fonts":   []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
-		"colour_roles": appearanceRoles,
-		"operations":   appearanceOperations,
-		"scenes":       appearanceScenes,
+		"fonts":         []string{"system", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
+		"code_fonts":    []string{"system-mono", "jetbrains-mono", "fira-code", "ibm-plex-mono", "source-code-pro"},
+		"colour_roles":  appearanceRoles,
+		"operations":    appearanceOperations,
+		"scenes":        appearanceScenes,
+		"loader":        map[string]any{"styles": appearanceLoaderStyles, "duration_ms": "400-4000; default 1000; lower is faster", "color": "colors.light.loader / colors.dark.loader; defaults to working"},
+		"status_colors": "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
 		"material_surfaces": map[string]string{
 			"page": "opacity 0-1", "panel": "opacity 0-1, blur 0-24 px", "popover": "opacity 0-1, blur 0-24 px",
 			"sidebar": "opacity 0-1, blur 0-24 px", "composer": "opacity 0-1, blur 0-24 px",
 		},
-		"hooks":        []string{"[data-app-main]", "[data-app-ambient]", "html[data-appearance-visible]", "[data-theme-surface]", "[data-theme-agent-state]", "[data-theme-agent-selected]", "[data-theme-team-working]", "[data-theme-team-waiting]", "[data-theme-tool-state]", "[data-theme-tools-running]", "[data-theme-turn-live]", "nav[aria-label=\"Workspace navigation\"]", "[data-chat-find-scope]", ".conversation-markdown", "[data-testid=\"transcript-user-bubble\"]", "[data-chat-composer-card]", "[data-product-settings]", "[role=\"menu\"]", "[role=\"dialog\"]"},
-		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; apply with name and no theme selects your saved theme. duplicate uses name (omit for current) and new_name; rename uses name and new_name. export returns the selected theme object (name, or current); write that object as JSON, and import it in theme with replace semantics. import and duplicate save without applying. Tool mutations return a short summary and changed field names; read again for the full document. delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Background: set scene (none, neon-orbit or deep-space; dark mode only; the others animate only while agents work). Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, only with scene none, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours, a scene or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over a moving scene, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
+		"hooks":        []string{"[data-theme-loader]", "[data-app-main]", "[data-app-ambient]", "html[data-appearance-visible]", "[data-theme-surface]", "[data-theme-agent-state]", "[data-theme-agent-selected]", "[data-theme-team-working]", "[data-theme-team-waiting]", "[data-theme-tool-state]", "[data-theme-tools-running]", "[data-theme-turn-live]", "nav[aria-label=\"Workspace navigation\"]", "[data-chat-find-scope]", ".conversation-markdown", "[data-testid=\"transcript-user-bubble\"]", "[data-chat-composer-card]", "[data-product-settings]", "[role=\"menu\"]", "[role=\"dialog\"]"},
+		"instructions": "Personal app appearance only, never project files or provider settings. Read first. apply merges theme fields into current; replace=true starts from Default so empty colour maps clear previous overrides (the UI sends full themes this way); save saves/updates a named preset and applies it; apply with name and no theme selects your saved theme. duplicate uses name (omit for current) and new_name; rename uses name and new_name. export returns the selected theme object (name, or current); write that object as JSON, and import it in theme with replace semantics. import and duplicate save without applying. Tool mutations return a short summary and changed field names; read again for the full document. delete removes a saved name; reset restores Default and keeps presets. Colours are #RRGGBB under colors.light or colors.dark; accent is the action colour. Loader: optional loader.style (ring/dots/pulse/orbit/bar), loader.duration_ms (400-4000; lower is faster); loader:null clears customization. colors.light/dark.loader changes shared loading/working glyphs, while working/waiting/done/error set semantic status roles. This slice covers core agent marks, turn working, workspace/modal loading and common controls, not every legacy feature spinner. Glyph motion pauses when hidden and with reduced motion; status labels remain. These fields never decide execution state. Prefer colour/font fields; CSS styles the app after normal styles. No external resources: @import, external url(), image-set() or escaped resource values are removed in the browser. Embedded data images are allowed. Use stable hooks, not generated classes. Background: set scene (none, neon-orbit or deep-space; dark mode only; the others animate only while agents work). Materials: materials.<surface>.opacity (0 to 1; default 1) and materials.<surface>.blur (0 to 24 px, only with scene none, never on the page) make a surface see-through; they change the background only, so text stays solid. Read the appearance guide (read_skill panel-settings, references/appearance) before choosing colours, a scene or CSS: keep text readable against its background and the action label readable on the accent, prefer a still background, no blur over a moving scene, keep custom CSS short, never hide or cover controls. Agent state hooks reuse running/waiting/failed/done/quiet menu marks; quiet is not proof of idle or stopped, failed/done clear when opened. Team working/waiting hooks are booleans from its existing admitted summary; tool-state on web-search cards is historical running/ok/error, not a global live tool indicator. Do not invent blocked/stopped state. Animate only under prefers-reduced-motion: no-preference; never hide warnings or controls. Explicit Artifact/report designs keep their own theme. Never claim visual proof from a saved document; inspect the app or ask the person.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {

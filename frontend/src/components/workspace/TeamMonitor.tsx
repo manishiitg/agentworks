@@ -154,7 +154,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const networks = [...new Set(faces.map(face => face.network).filter(Boolean))]
   const multi = networks.length > 1
   const title = shown.map(face => `${face.name}${multi ? ` (${face.network})` : ''} · ${face.working ? `${face.working} working` : face.waiting ? 'waiting' : face.line || 'online'}`).join('\n')
-  const avatar = (face: Face, size: string) => <span className={`relative grid shrink-0 place-items-center rounded-full font-semibold ${size} ${tone(face.key)} ${face.working ? 'ring-2 ring-blue-500' : face.waiting ? 'ring-2 ring-amber-500' : ''} ${face.online || face.working || face.waiting ? '' : 'opacity-40'}`}>
+  const avatar = (face: Face, size: string) => <span className={`relative grid shrink-0 place-items-center rounded-full font-semibold ${size} ${tone(face.key)} ${face.working ? 'ring-2 ring-info' : face.waiting ? 'ring-2 ring-warning' : ''} ${face.online || face.working || face.waiting ? '' : 'opacity-40'}`}>
     <Avatar {...face} name={face.name} className="h-full w-full text-inherit" />
     {face.online && <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-background bg-emerald-500" />}
   </span>
@@ -169,7 +169,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span>{row.last_message && row.last_message_at && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{lastMessageTime(row.last_message_at)}</span>}</span>
-        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{row.typing && <span className="text-emerald-600 dark:text-emerald-400">typing… </span>}{row.activity === 'waiting' ? <>{row.waiting || 'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.activity === 'idle' ? row.last_message || row.doing || 'Idle' : row.last_message || row.doing || 'Working'}</span>
+        <span className={`block truncate text-xs ${row.activity === 'waiting' ? 'text-warning' : 'text-muted-foreground'}`}>{row.typing && <span className="text-emerald-600 dark:text-emerald-400">typing… </span>}{row.activity === 'waiting' ? <>{row.waiting || 'Waiting'}{(row.last_message || row.doing) && <> · {row.last_message || row.doing}</>}</> : row.activity === 'idle' ? row.last_message || row.doing || 'Idle' : row.last_message || row.doing || 'Working'}</span>
       </span>
     </button>
   }
@@ -187,8 +187,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
     <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`${parts.join(', ')}. Open to see what is running and who is working.`} title={[mineLabel && `You · ${mineLabel}`, title].filter(Boolean).join('\n')}
       className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-border px-1.5 text-xs text-muted-foreground hover:bg-muted md:pr-2.5">
       {mineActive && <span className="flex items-center gap-1.5 pl-1">
-        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${mine.needsInput ? 'bg-amber-500' : 'bg-blue-500'}`} />
-        <span className={`hidden whitespace-nowrap font-medium md:inline ${mine.needsInput ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>{mineLabel}</span>
+        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${mine.needsInput ? 'bg-warning' : 'bg-info'}`} />
+        <span className={`hidden whitespace-nowrap font-medium md:inline ${mine.needsInput ? 'text-warning' : 'text-info'}`}>{mineLabel}</span>
       </span>}
       {mineActive && team && <span aria-hidden="true" className="hidden h-3.5 w-px bg-border md:block" />}
       {team && <>
@@ -196,7 +196,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
           {shown.slice(0, 4).map((face, index) => <span key={face.key} className={index >= 2 ? 'hidden md:block' : ''}>{avatar(face, 'h-5 w-5 text-[9px] border-2 border-background')}</span>)}
         </span>
         {shown.length > 2 && <span className="text-[10px] md:hidden">+{shown.length - 2}</span>}
-        <span className="hidden whitespace-nowrap md:inline">Team · <span className={working ? 'font-medium text-blue-600 dark:text-blue-400' : ''}>{label}</span></span>
+        <span className="hidden whitespace-nowrap md:inline">Team · <span className={working ? 'font-medium text-info' : ''}>{label}</span></span>
       </>}
     </button>
     {open && createPortal(<div ref={panelRef} role="menu" aria-label="Running work and Team" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">

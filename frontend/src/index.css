@@ -3,6 +3,7 @@
 @import './themes/vscode-dark.css';
 @import './assets/chat-fonts/fonts.css';
 @import './themes/app-tokens.css';
+@import './themes/loading-indicator.css';
 
 @tailwind base;
 @tailwind components;

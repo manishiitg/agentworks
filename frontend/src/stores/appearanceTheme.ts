@@ -7,7 +7,7 @@ export const INTERFACE_FONTS = [
 ] as const
 export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
 export const CODE_FONTS = [{ id: 'system-mono', label: 'System monospace', family: APPLE_MONO_FONT }, ...INTERFACE_FONTS.filter(font => font.id !== 'system')]
-export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar'] as const
+export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar', 'working', 'waiting', 'done', 'error', 'loader'] as const
 export type ColourRole = typeof COLOUR_ROLES[number]
 export type AppearanceProfile = 'light' | 'dark'
 export interface AppearanceTheme {
@@ -22,6 +22,7 @@ export interface AppearanceTheme {
   /** The shipped background (dark mode only) and how see-through each surface is; see the server's guide. */
   scene?: string
   materials?: Record<string, { opacity?: number; blur?: number }>
+  loader?: { style?: 'ring' | 'dots' | 'pulse' | 'orbit' | 'bar'; duration_ms?: number } | null
 }
 /** What the server offers (appearance.go's guide): fonts, code fonts and colour roles are checked against this list, not a copy. */
 export interface AppearanceGuide { fonts?: string[]; code_fonts?: string[]; colour_roles?: string[]; scenes?: string[]; material_surfaces?: Record<string, string> }
@@ -33,8 +34,14 @@ export const codeFontFamily = (id: string) => CODE_FONTS.find(font => font.id ==
 export function validateTheme(value: unknown, guide: AppearanceGuide = {}): AppearanceTheme {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
-  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'scene', 'materials']
+  const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'scene', 'materials', 'loader']
   if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > 20000 || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and at most 20 KB of CSS.')
+  if (v.loader != null) {
+    const loader = v.loader
+    if (typeof loader !== 'object' || Array.isArray(loader) || Object.keys(loader).some(key => !['style', 'duration_ms'].includes(key)) ||
+      (loader.style !== undefined && !['ring', 'dots', 'pulse', 'orbit', 'bar'].includes(loader.style)) ||
+      (loader.duration_ms !== undefined && (!Number.isInteger(loader.duration_ms) || loader.duration_ms < 400 || loader.duration_ms > 4000))) throw new Error('Choose an offered loading indicator and duration from 400 to 4000 ms.')
+  }
   const roles: readonly string[] = guide.colour_roles ?? COLOUR_ROLES
   if (v.scene !== undefined && (typeof v.scene !== 'string' || (guide.scenes && !guide.scenes.includes(v.scene)))) throw new Error('Choose one of the offered backgrounds.')
   if (v.materials !== undefined) {

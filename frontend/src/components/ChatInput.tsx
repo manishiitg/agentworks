@@ -1,3 +1,4 @@
+import { LoadingIndicator } from './ui/LoadingIndicator'
 import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
 import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
@@ -23,7 +24,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { ArrowUp, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Square } from 'lucide-react'
+import { ArrowUp, Wand2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
@@ -2923,7 +2924,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           aria-label="Attach files"
         >
           {isUploadingFiles ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <LoadingIndicator className="w-3.5 h-3.5" />
           ) : (
             <Paperclip className="w-3.5 h-3.5" />
           )}
@@ -2940,7 +2941,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerBand product={isProductSurface}>
       <TerminalResumeNotice tabId={activeTabId} />
       {forkFeedback && <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
-        {forkFeedback.pending ? <><Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin" /><span>Forking this chat… The new tab will open when ready.</span></> : <>
+        {forkFeedback.pending ? <><LoadingIndicator aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /><span>Forking this chat… The new tab will open when ready.</span></> : <>
           <span className="min-w-0 flex-1 break-words">{forkFeedback.error}</span>
           <button type="button" className="shrink-0 rounded px-1 font-medium text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { if (activeTabId) void forkChatTab(activeTabId) }}>Retry</button>
           <button type="button" aria-label="Dismiss fork error" className="shrink-0 rounded p-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { if (activeTabId) dismissChatForkFeedback(activeTabId) }}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>

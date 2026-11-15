@@ -1,4 +1,5 @@
-import { Loader2, Users } from 'lucide-react'
+import { LoadingIndicator } from '../ui/LoadingIndicator'
+import { Users } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 
 export type SharedPerson = { name: string; state: 'working' | 'waiting' | 'online' | 'offline'; line?: string }
@@ -23,7 +24,7 @@ export function SharedPeopleIcon({ sharedLine, people }: { sharedLine?: string; 
             <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${person.state === 'offline' ? 'bg-muted-foreground/50' : 'bg-emerald-500'}`} />
             <span className="min-w-0 flex-1 truncate">{person.name}</span>
             {(person.state === 'working' || person.state === 'waiting') && <span className="shrink-0 text-muted-foreground">{person.state}</span>}
-            {person.state === 'working' && <Loader2 aria-hidden="true" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />}
+            {person.state === 'working' && <LoadingIndicator aria-hidden="true" className="h-3 w-3 shrink-0" />}
           </div>
           {person.line && <p className="truncate pl-3.5 text-[11px] text-muted-foreground">{person.line}</p>}
         </div>)}

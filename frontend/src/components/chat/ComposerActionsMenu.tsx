@@ -1,6 +1,7 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Loader2, Paperclip, Plus, Terminal, Wand2 } from 'lucide-react'
+import { Paperclip, Plus, Terminal, Wand2 } from 'lucide-react'
 import { ChatSendOptions, ComposerSendKeys, type ChatSendOptionsProps } from './ChatSendModeButton'
 
 /** Presentation only: every action keeps its existing handler and admission. */
@@ -21,7 +22,7 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
   return <Menu.Root modal={false} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" aria-label="Add files and actions" title="Add files and actions" aria-describedby={runningCount ? activityId : undefined}
       className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted">
-      {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+      {uploading ? <LoadingIndicator className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
       {runningCount > 0 && <span data-testid="chat-background-activity" className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 ring-2 ring-background" aria-hidden="true" />}
       {runningCount > 0 && <span id={activityId} className="sr-only">{runningCount} background tasks running</span>}
     </Menu.Trigger>
@@ -66,6 +67,6 @@ export function ComposerAttachButton({ uploading, onAttach }: Pick<ComposerActio
   const label = uploading ? 'Uploading files…' : 'Attach files'
   return <button type="button" disabled={uploading} onClick={onAttach} data-testid="chat-upload-button" aria-label={label} title={label}
     className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
-    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />}
+    {uploading ? <LoadingIndicator className="h-3.5 w-3.5" aria-hidden="true" /> : <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />}
   </button>
 }

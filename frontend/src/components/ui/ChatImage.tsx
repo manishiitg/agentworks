@@ -1,5 +1,6 @@
+import { LoadingIndicator } from './LoadingIndicator'
 import { useEffect, useRef, useState } from 'react'
-import { Download, Loader2, X } from 'lucide-react'
+import { Download, X } from 'lucide-react'
 import { WorkspaceImage } from './WorkspaceImage'
 import ModalPortal from './ModalPortal'
 
@@ -10,7 +11,7 @@ function ImagePreview({ src, alt, className }: { src: string; alt: string; class
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => { if (open) dialog.current?.showModal() }, [open])
   return <span className="inline-flex min-w-0 max-w-full flex-col align-middle">
-    {!loaded && !failed && <span role="status" className="inline-flex items-center gap-2 p-3 text-xs text-muted-foreground"><Loader2 aria-hidden className="h-4 w-4 animate-spin" />Loading image…</span>}
+    {!loaded && !failed && <span role="status" className="inline-flex items-center gap-2 p-3 text-xs text-muted-foreground"><LoadingIndicator aria-hidden className="h-4 w-4" />Loading image…</span>}
     {failed ? <span role="status" className="inline-block p-3 text-xs text-muted-foreground">Image could not be loaded</span> :
       <button type="button" disabled={!loaded} className="inline-block max-w-full cursor-zoom-in align-middle" aria-label={`Enlarge image${alt ? `: ${alt}` : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(true) }}>
         <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} className={`${className ?? 'max-h-80 max-w-full rounded-lg object-contain'} ${!loaded ? 'opacity-0' : ''}`} />

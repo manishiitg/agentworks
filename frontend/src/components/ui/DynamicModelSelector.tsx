@@ -1,5 +1,6 @@
+import { LoadingIndicator } from './LoadingIndicator'
 import { useEffect, useMemo, useState } from 'react'
-import { Search, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { DynamicModelEntry, DynamicModelsResponse } from '../../services/llm-config-api'
 import { useLLMStore } from '../../stores'
@@ -160,7 +161,7 @@ export function DynamicModelSelector({
   if (loading) {
     return (
       <div className={cn('flex items-center justify-center py-8 text-muted-foreground', className)}>
-        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        <LoadingIndicator className="h-4 w-4 mr-2" />
         <span className="text-sm">Loading models from CLI...</span>
       </div>
     )
@@ -187,7 +188,7 @@ export function DynamicModelSelector({
             onClick={handleLoadFullCatalog}
             className="text-xs font-semibold text-primary hover:underline flex items-center gap-1.5 disabled:opacity-50"
           >
-            {loadingFull && <Loader2 className="h-3 w-3 animate-spin" />}
+            {loadingFull && <LoadingIndicator className="h-3 w-3" />}
             {groupFilter ? `Search full ${groupFilter} catalog` : 'Search full model catalog'}
           </button>
         </div>
