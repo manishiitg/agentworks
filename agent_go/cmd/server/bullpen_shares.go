@@ -189,6 +189,9 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 // another account is accepted only inside a conversation with a live grant.
 func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
 	src := c.Endpoints[from]
+	if c.Endpoints[1-from].UserID == recipientUserID && crewTeamNamedConversationAudience(context.Background(), c) {
+		return true
+	}
 	if src.ShareID == "" {
 		if sameAccountAgentSender(src, recipientUserID) {
 			return true
@@ -279,7 +282,7 @@ func (s *agentMessageStore) suppressFrom(ownerID, personID string) {
 // endpointDisplayLabel shows another account's agent as owner/name, using the
 // server's own username for the owner and never anything the sender wrote.
 func endpointDisplayLabel(e agentMessageEndpoint, viewerUserID string) string {
-	if e.ShareID != "" && e.UserID != viewerUserID {
+	if (e.ShareID != "" || e.NamedAgentID != "") && e.UserID != viewerUserID {
 		return shareOwnerLabel(e.UserID) + "/" + e.Label
 	}
 	return e.Label
@@ -288,7 +291,7 @@ func endpointDisplayLabel(e agentMessageEndpoint, viewerUserID string) string {
 // crossPersonOwner is the owner's server username when the endpoint belongs to
 // another person's shared agent, and empty for same-account senders.
 func crossPersonOwner(e agentMessageEndpoint, viewerUserID string) string {
-	if e.ShareID != "" && e.UserID != viewerUserID {
+	if (e.ShareID != "" || e.NamedAgentID != "") && e.UserID != viewerUserID {
 		return shareOwnerLabel(e.UserID)
 	}
 	return ""
@@ -353,6 +356,10 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 	for _, a := range s.Agents {
 		if a.UserID != owner.ID || a.Name != name {
 			continue
+		}
+
+		if _, row, ok, _ := crewTeamNamedAgentAudience(ctx, subjectID, a.ID); ok && row.OwnerID == a.UserID {
+			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: a.UserID}, nil
 		}
 		var best *agentShare
 		for i := range s.Shares {

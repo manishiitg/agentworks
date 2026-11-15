@@ -31,11 +31,12 @@ type AgentAttachment struct {
 }
 
 type AgentLiveMessage struct {
-	AgentID      string `json:"agent_id,omitempty"`
-	AttachmentID string `json:"attachment_id"`
-	MessageID    string `json:"message_id"`
-	InboxID      string `json:"inbox_id"`
-	Sender       string `json:"sender"`
+	TeamInstructions string `json:"team_instructions,omitempty"` // Fresh server-owned context, never sender text.
+	AgentID          string `json:"agent_id,omitempty"`
+	AttachmentID     string `json:"attachment_id"`
+	MessageID        string `json:"message_id"`
+	InboxID          string `json:"inbox_id"`
+	Sender           string `json:"sender"`
 	// FromPerson is the owner's server username for a cross-person shared
 	// message (861-103); Untrusted marks it untrusted. Both are absent for
 	// same-account senders.

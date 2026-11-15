@@ -56,7 +56,8 @@ type crewTeamLiveView struct {
 func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	project := t.ProjectID
 	out := crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}, People: []crewTeamLivePerson{}}
-	doing := crewTeamActivityPostsFor(t, viewer).Doing
+	posts := crewTeamActivityPostsFor(t, viewer)
+	doing := posts.Doing
 	for _, person := range people {
 		own := person.You || person.UserID == viewer
 		if !own {
@@ -80,7 +81,9 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 				row.ID = row.ChatKey
 			}
 			row.Label = row.Person + " · " + row.Name
-			if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.InTeam && registered.Rule.ChatShare == crewChatShareLive {
+			if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.Kind == "terminal" && registered.InTeam {
+				row.crewTeamMessagePreview = crewTeamAgentPostPreview(posts, registered.ID)
+			} else if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.InTeam && registered.Rule.ChatShare == crewChatShareLive {
 				if agent.Place == "mac" {
 					row.crewTeamMessagePreview = agent.lastMessage
 				} else {

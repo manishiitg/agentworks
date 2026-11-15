@@ -191,6 +191,31 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 		hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	}
 	items = append(items, s.sharedAgentItems(userID, now)...)
+	for _, a := range s.Agents {
+		if a.UserID == userID {
+			continue
+		}
+		_, row, ok, _ := crewTeamNamedAgentAudience(ctx, userID, a.ID)
+		if !ok || row.OwnerID != a.UserID {
+			continue
+		}
+		address := crewTeamNamedAgentAddress(ctx, a.UserID, a.ID, userID)
+		exists := false
+		for _, item := range items {
+			if item["target"] == address {
+				exists = true
+				break
+			}
+		}
+		if exists {
+			continue
+		}
+		owner := shareOwnerLabel(a.UserID)
+		item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": address, "owner": owner, "shared": true, "scope": "team", "label": agentLabel(a), "purpose": a.Purpose, "agent_id": a.ID}
+		addAgentPresence(item, a)
+		items = append(items, item)
+	}
+
 	items = append(items, macSharedAgentDirectoryItems(userID)...)
 	projectAgentLabels(items)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
@@ -494,8 +519,10 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue
 				}
-				if e = api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], false); e != nil {
-					continue
+				if !crewTeamNamedInboxAllowed(ctx, claims, c, side, false) {
+					if e = api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], false); e != nil {
+						continue
+					}
 				}
 				for _, m := range c.Messages {
 					if m.From == side || m.AgentSequence <= after || !m.InboxRemovedAt.IsZero() {
@@ -506,6 +533,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 						continue
 					}
 					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": names.endpointName(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					if instruction := crewTeamNamedInstructions(ctx, c, side); instruction != "" {
+						item["team_instructions"] = instruction
+					}
 					for k, v := range messageArrivalFields(m) {
 						item[k] = v
 					}

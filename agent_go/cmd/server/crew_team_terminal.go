@@ -33,6 +33,14 @@ type crewTeamTerminalCopy struct {
 // Only called through the signed-in exact attachment endpoint, never a browser
 // supplied session, owner, device or local filesystem path.
 func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http.Request, args map[string]any) {
+
+	result := &terminalTeamResponse{ResponseWriter: w, status: 200}
+	w = result
+	defer func() {
+		if result.status >= 400 {
+			log.Printf("[TEAM_TERMINAL_AGENT] outcome=refused reason=http_%d", result.status)
+		}
+	}()
 	claims := GetUserFromContext(r.Context())
 	named, _, err := currentAgentAttachment(r.Context(), claims, externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
 	if err != nil || named.Attachment == nil || named.Attachment.Provider != "claude" || strings.TrimSpace(named.Attachment.SessionID) == "" {
@@ -105,6 +113,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		return
 	}
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, action)
+	invalidateCrewTeamNamedAudience(named.ID)
 	go pushCrewTeamRecordChanged(team)
 	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "outcome": action, "notice": "New sessions start Only me. Choose In team in AgentWorks to let teammates ask; Answers only is the default. Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
 }
@@ -181,14 +190,34 @@ func (api *StreamingAPI) desktopTeamTerminalCopy(ctx context.Context, project st
 
 // Validate on each use; saved leases never authorize a replacement session.
 func currentCrewTeamTerminal(ctx context.Context, t crewTeam, a crewTeamRegisteredAgent) (namedMessageAgent, error) {
-	if a.Kind != "terminal" || a.Terminal == nil || !t.member(a.OwnerID) || !crewTeamAgentsVisible(t, a.OwnerID) {
+	if !a.InTeam || !crewTeamAgentsVisible(t, a.OwnerID) {
 		return namedMessageAgent{}, fmt.Errorf("Team agent unavailable or access removed")
+	}
+	return crewTeamTerminalLease(ctx, t, a)
+}
+
+// Presence of your own Only-me agent does not grant a Team audience.
+func crewTeamTerminalLease(ctx context.Context, t crewTeam, a crewTeamRegisteredAgent) (namedMessageAgent, error) {
+	if a.Kind != "terminal" || a.Terminal == nil {
+		return namedMessageAgent{}, fmt.Errorf("terminal route unavailable")
 	}
 	named, err := namedAgentByID(ctx, a.OwnerID, a.Terminal.NamedAgentID)
 	if err != nil || named.Attachment == nil || named.Attachment.ID != a.Terminal.AttachmentID || named.Attachment.SessionID != a.ChatKey || named.Attachment.Provider != a.Terminal.Provider {
-		return namedMessageAgent{}, fmt.Errorf("Team agent unavailable or access removed")
+		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
 	}
-	return named, nil
+	claims, err := agentMessageConnectionClaims(ctx, named.Attachment.ConnectionID)
+	if err != nil || claims == nil || claims.UserID != a.OwnerID {
+		return namedMessageAgent{}, fmt.Errorf("terminal connection unavailable")
+	}
+	current, _, err := currentAgentAttachment(ctx, claims, named.Name, named.Attachment.ID)
+	if err != nil || current.ID != named.ID {
+		return namedMessageAgent{}, fmt.Errorf("terminal attachment changed")
+	}
+	pair, ok := crewMacPairFor(a.OwnerID, t.ProjectID)
+	if !ok || pair != a.Terminal.MacPair {
+		return namedMessageAgent{}, fmt.Errorf("terminal Mac pair changed")
+	}
+	return current, nil
 }
 
 // Same defaults as an app agent's explicit Only-me/Answers-only choices.
@@ -271,4 +300,14 @@ func upsertCrewTeamTerminal(team *crewTeam, person string, named namedMessageAge
 	}
 	team.Agents[record.ID] = record
 	return record, nil
+}
+
+type terminalTeamResponse struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *terminalTeamResponse) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
 }

@@ -124,7 +124,12 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			if peerErr != nil {
 				return peerErr
 			}
-			if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, peer, view == claims); err != nil {
+			if err := func() error {
+				if crewTeamNamedInboxAllowed(ctx, claims, c, m.From, true) {
+					return nil
+				}
+				return api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, peer, view == claims)
+			}(); err != nil {
 				return err
 			}
 		}

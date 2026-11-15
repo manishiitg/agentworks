@@ -36,7 +36,12 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
-				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims); err != nil {
+				if err := func() error {
+					if crewTeamNamedInboxAllowed(ctx, peerClaims, conversation, side, send && peerClaims == claims) {
+						return nil
+					}
+					return api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims)
+				}(); err != nil {
 					if send {
 						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
 					}
@@ -102,6 +107,12 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 			return nil
 		}
 		return denied
+	}
+
+	if peer.NamedAgentID != "" && peer.UserID != claims.UserID {
+		if team, row, ok, _ := crewTeamNamedAgentAudience(ctx, claims.UserID, peer.NamedAgentID); ok && row.OwnerID == peer.UserID && crewTeamNamedMessagingAllowed(claims, team.ProjectID, send) {
+			return nil
+		}
 	}
 	if peer.External {
 		if peer.UserID != claims.UserID && peer.ShareID != "" {

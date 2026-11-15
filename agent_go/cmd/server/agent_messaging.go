@@ -262,7 +262,7 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
 	if t.NamedAgentID != "" {
-		if t.ShareID != "" {
+		if t.ShareOwnerUserID != "" {
 			return agentMessageEndpoint{UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID, ShareID: t.ShareID, ShareVersion: t.ShareVersion}
 		}
 		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: userID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID}
@@ -637,6 +637,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if err != nil {
 		return nil, err
 	}
+	logCrewTeamNamedMessage(ctx, *c, side, m.ID, "answered")
 	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
 	}
@@ -708,6 +709,9 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 				continue
 			}
 			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+			if instruction := crewTeamNamedInstructions(ctx, c, side); instruction != "" {
+				item["team_instructions"] = instruction
+			}
 			for k, v := range messageArrivalFields(m) {
 				item[k] = v
 			}

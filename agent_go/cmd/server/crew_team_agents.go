@@ -207,13 +207,17 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		slices.SortFunc(missing, func(a, b crewTeamRegisteredAgent) int { return strings.Compare(a.ID, b.ID) })
 		for _, a := range missing {
 			row := crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)}
-			if a.Kind == "terminal" {
+			if a.Kind == "terminal" && a.Terminal != nil {
+				row.Address = crewTeamNamedAgentAddress(ctx, a.OwnerID, a.Terminal.NamedAgentID, caller)
 				row.PlaceLabel = "Mac · offline"
 				row.StatusLabel = "Offline"
-				if named, err := currentCrewTeamTerminal(ctx, t, a); err == nil && namedAgentOnline(named) {
+				if named, err := crewTeamTerminalLease(ctx, t, a); err == nil && namedAgentOnline(named) {
 					row.PlaceLabel = "Mac · online"
 					row.StatusLabel = "Online"
 					row.PlaceTone = "ok"
+					if named.Attachment != nil && named.Attachment.Activity == "busy" && !named.Attachment.ActivityAt.IsZero() && time.Since(named.Attachment.ActivityAt) < 10*time.Minute {
+						row.Activity = "running"
+					}
 				}
 			}
 			out[i].Agents = append(out[i].Agents, row)
