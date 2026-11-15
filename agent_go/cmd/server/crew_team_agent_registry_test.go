@@ -436,6 +436,18 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 	if rows := crewTeamReachableIn(t.Context(), team, "owner"); len(rows) != 0 || crewTeamReachRow(team, "owner", team.Agents[shared]) {
 		t.Fatalf("agent reachable by a teammate who is not chosen: %+v", rows)
 	}
+	// Source-row admission for offline copies: the agent's own person reaches it under any audience, Team off
+	// included (only_me); a teammate does not.
+	off := team
+	off.On = false
+	if a := off.Agents[shared]; crewTeamRowAudience(off, a) != "only_me" || !crewTeamSourceRowAdmits(off, "other", a) || crewTeamSourceRowAdmits(off, "owner", a) || !crewTeamSourceRowAdmits(team, "other", a) {
+		t.Fatal("source-row admission must admit only the agent's own person while only_me or not chosen")
+	}
+	removed := off
+	removed.People = nil
+	if a := removed.Agents[shared]; a.OwnerID != removed.OwnerID && crewTeamSourceRowAdmits(removed, a.OwnerID, a) {
+		t.Fatal("a maker removed from the Team must lose their own row's copy")
+	}
 	if _, err := setCrewTeamAgentAudience(t.Context(), "team", "other", shared, "", []string{"owner", "not-a-member"}, true); !errors.Is(err, errCrewTeamAudiencePerson) {
 		t.Fatalf("chosen list accepted a non-member: %v", err)
 	}

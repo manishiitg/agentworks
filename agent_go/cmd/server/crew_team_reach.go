@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -82,9 +83,10 @@ func crewTeamOwnerReach(t crewTeam, viewer string) bool {
 	return viewer != "" && viewer == t.OwnerID && t.RosterSource == "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
 }
 
-// crewTeamOnlineCopyAudience is who the Team's online copy (its Team agent) answers: only_me while the Team is off or
-// the row is not In team, otherwise the row's whole_team or chosen choice.
-func crewTeamOnlineCopyAudience(t crewTeam, a crewTeamRegisteredAgent) string {
+// crewTeamRowAudience is who a registered agent row answers besides its own person (owner, 15 Nov: "only me, chosen
+// people or the whole team"): only_me while the Team is off or the row is not In team, otherwise the row's
+// whole_team or chosen choice. Only me is In team off, not a third stored value; Put online "for me" saves in_team=false.
+func crewTeamRowAudience(t crewTeam, a crewTeamRegisteredAgent) string {
 	if !t.On || !a.InTeam {
 		return "only_me"
 	}
@@ -97,7 +99,20 @@ func crewTeamOnlineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAge
 	if crewTeamOwnerReach(t, viewer) {
 		return true
 	}
-	return crewTeamReachOpen(t, viewer) && crewTeamOnlineCopyAudience(t, a) != "only_me" && a.Rule.chosen(viewer)
+	return crewTeamReachOpen(t, viewer) && crewTeamRowAudience(t, a) != "only_me" && a.Rule.chosen(viewer)
+}
+
+// crewTeamSourceRowAdmits is the one admission for a person's own source agent and its offline copy (nonrecursive):
+// the row's own person whatever the Team or audience (Team off and only_me included) while they are the primary owner
+// or a saved person on the Team; anyone else exactly as crewTeamReachRow. viewer is always the server-derived caller, never a request field. Access comes from this row
+// only, never from another home's Main.
+func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
+	// Team off keeps people saved; removing the maker from the Team ends their own row's copy.
+	saved := viewer == t.OwnerID || slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == viewer && !p.Invited })
+	if viewer != "" && viewer == row.OwnerID && t.RosterSource == "" && saved && crewTeamAccountActive(viewer) {
+		return true
+	}
+	return crewTeamReachRow(t, viewer, row)
 }
 
 // crewTeamReachRow is the one per-row admission check (nonrecursive): the Team is open to the viewer, and the row is
@@ -146,7 +161,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
 			}
 			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
-				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: address}
+				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address}
 			if !online {
 				// The resolver rechecks source membership/rules without calling
 				// reach recursively. Do not project history or copy routing IDs.
@@ -179,7 +194,7 @@ func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []cre
 	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, a) {
 		return nil
 	}
-	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, Audience: crewTeamOnlineCopyAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
+	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: firstNonEmptyTrimmed(a.Name, "Team agent"), Place: "server", Online: true, Audience: crewTeamRowAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
 }
 
 // GET /api/crew-team-reach: the signed-in person's reachable Team agents (draft read endpoint for the panel and the
