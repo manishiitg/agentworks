@@ -92,11 +92,11 @@ it('adopts animated CSS and projects translucent surfaces without a shipped scen
   await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
   expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('@keyframes theme-drift')))).toBe(true)
   expect(document.documentElement.hasAttribute('data-appearance-scene')).toBe(false)
-  expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(true)
+  expect(document.documentElement.hasAttribute('data-appearance-backdrop')).toBe(true)
   expect(document.documentElement.style.getPropertyValue('--aw-panel-opacity')).toBe('0.6')
   doc.current.materials = { panel: { opacity: 1 } }
   await act(async () => { fixture.wake?.(); await Promise.resolve() })
-  expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(false)
+  expect(document.documentElement.hasAttribute('data-appearance-backdrop')).toBe(false)
   expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('@keyframes theme-drift')))).toBe(true)
 })
 
