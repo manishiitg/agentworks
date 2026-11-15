@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"testing"
 	"time"
 )
@@ -139,5 +142,68 @@ func TestRefusedQueuedCompactionRetainsCooldownWhileTurnRuns(t *testing.T) {
 	}
 	if attempts != 1 {
 		t.Fatalf("running turn caused %d compaction attempts", attempts)
+	}
+}
+
+// PLAT-872-120: the owner's Muse compaction start and native receipt had
+// different IDs, leaving both a spinning start and a successful summary.
+func TestCompactionRunSettlesNativeRows(t *testing.T) {
+	for _, manual := range []bool{false, true} {
+		for _, outcome := range []string{"success", "failed", "aborted"} {
+			t.Run(fmt.Sprintf("manual=%t/%s", manual, outcome), func(t *testing.T) {
+				store := storeevents.NewEventStore(100)
+				defer store.Stop()
+				store.EnableTurnPhase()
+				store.SetEventPreparer(tagRunCompactionEvent)
+				session := "compaction-row-" + agentevents.GenerateEventID()
+				run := newIdleCompactRun()
+				run.manual = manual
+				if !idleCompacts.start(session, run, 10, time.Now()) {
+					t.Fatal("compaction not admitted")
+				}
+				defer idleCompacts.end(session, run)
+				run.begin(func() {})
+				since := time.Now().Add(-time.Second)
+				trigger := "idle"
+				if manual {
+					trigger = "manual"
+				}
+				emit := func(id, phase string) {
+					now := time.Now()
+					data := &agentevents.ContextCompactionEvent{BaseEventData: agentevents.BaseEventData{Timestamp: now}, Provider: "muse-cli", Phase: phase, CompactionID: id}
+					if phase == "end" {
+						data.Outcome = "success"
+					}
+					event := storeevents.Event{ID: id, Type: string(agentevents.ContextCompaction), Timestamp: now, SessionID: session, Data: agentevents.NewAgentEvent(data)}
+					if err := store.AddEventChecked(session, event); err != nil {
+						t.Fatal(err)
+					}
+				}
+				store.BeginIdleCompaction(session, manual)
+				emit("synthetic-start", "start")
+				if outcome == "success" {
+					emit("different-native-receipt", "end")
+				}
+				store.EndIdleCompaction(session)
+				(&StreamingAPI{eventStore: store}).recordIdleCompactionInChat(session, "muse-cli", trigger, 463289, 104401, since, outcome)
+				var last *agentevents.ContextCompactionEvent
+				for _, event := range store.GetAllEventsRaw(session) {
+					if event.Type != string(agentevents.ContextCompaction) {
+						continue
+					}
+					data := event.Data.Data.(*agentevents.ContextCompactionEvent)
+					if data.CompactionID != run.compactionID || data.Trigger != trigger {
+						t.Fatal("native ID/trigger split the compaction into different rows")
+					}
+					last = data
+				}
+				if last == nil || last.Phase != "end" || last.Outcome != outcome {
+					t.Fatalf("compaction start was not settled: %+v", last)
+				}
+				if store.TurnInProgress(session) {
+					t.Fatal("compaction left a running turn")
+				}
+			})
+		}
 	}
 }

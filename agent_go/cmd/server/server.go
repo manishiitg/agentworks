@@ -2151,7 +2151,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	eventStore.SetEventPreparer(func(sessionID string, event *events.Event) {
 		api.prepareNativeGoalEvent(sessionID, event)
 		prepareUserMessageAttachments(event)
-		tagManualCompactionEvent(sessionID, event)
+		tagRunCompactionEvent(sessionID, event)
 	})
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
