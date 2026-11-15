@@ -1,20 +1,26 @@
 /* Shipped artwork, not theme-supplied scripts. All motion is paused by default. */
 .aw-deep-space{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#050a17;isolation:isolate;--aw-space-motion:paused}
-.aw-space-nebula{position:absolute;inset:-8%;background:radial-gradient(ellipse at 79% 25%,#774eaa26,transparent 45%),radial-gradient(ellipse at 42% 83%,#185c6926,transparent 48%);animation:aw-space-breathe 12s ease-in-out infinite alternate;animation-play-state:var(--aw-space-motion)}
+.aw-space-nebula{position:absolute;inset:-8%;background:radial-gradient(ellipse at 79% 25%,#9560dc65,transparent 48%),radial-gradient(ellipse at 42% 83%,#227e925c,transparent 54%);animation:aw-space-breathe 12s ease-in-out infinite alternate;animation-play-state:var(--aw-space-motion)}
 .aw-space-stars{position:absolute;inset:0;width:100%;height:100%;fill:#dce8ff;animation:aw-space-starlight 7s ease-in-out infinite alternate;animation-play-state:var(--aw-space-motion)}
-.aw-space-system{position:absolute;left:82%;top:27%;width:0;height:0;transform:rotate(-18deg);opacity:.7}
-.aw-space-sun{position:absolute;width:62px;height:62px;left:-31px;top:-31px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ffe8bc,#c78e56 55%,#7e4929);box-shadow:0 0 35px #eeb16a30,0 0 100px #d3905220}
-.aw-space-track{position:absolute;left:0;top:0;translate:-50% -50%;border:1px solid #c1cdeb12;border-radius:50%}
+.aw-space-system{position:absolute;left:72%;top:23%;width:0;height:0;transform:rotate(-18deg);opacity:.95}
+.aw-space-sun{position:absolute;width:96px;height:96px;left:-48px;top:-48px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ffe8bc,#c78e56 55%,#7e4929);box-shadow:0 0 45px #eeb16a65,0 0 150px #d3905245}
+.aw-space-track{position:absolute;left:0;top:0;translate:-50% -50%;border:1px solid #c1cdeb26;border-radius:50%}
 .aw-space-revolution{position:absolute;inset:0;rotate:var(--aw-orbit-phase);animation:aw-space-revolve var(--aw-orbit-period) linear infinite;animation-play-state:var(--aw-space-motion)}
 .aw-space-planet{position:absolute;left:50%;top:0;translate:-50% -50%;width:var(--aw-planet-size);height:var(--aw-planet-size);border-radius:50%;background:radial-gradient(circle at 35% 75%,var(--aw-planet-colour),#101a2b 90%);box-shadow:inset -3px -2px 7px #0005,0 0 12px #9cb5ff12}
-.aw-space-ringed:after{content:'';position:absolute;inset:30% -40%;border:3px solid #c4b5d14d;border-radius:50%;transform:rotate(-28deg)}
-.aw-space-reading-shade{position:absolute;inset:0;background:linear-gradient(90deg,#050a17c7 0%,#050a175c 53%,#050a1726 100%)}
+.aw-space-ringed:after{content:'';position:absolute;inset:30% -40%;border:3px solid #d4c2e780;border-radius:50%;transform:rotate(-28deg)}
+.aw-space-reading-shade{position:absolute;inset:0;background:linear-gradient(90deg,#050a1780 0%,#050a1738 48%,#050a1710 100%)}
 @keyframes aw-space-revolve{to{rotate:calc(var(--aw-orbit-phase) + 360deg)}}
-@keyframes aw-space-breathe{to{opacity:.55;transform:translate3d(1%,1%,0)}}
-@keyframes aw-space-starlight{to{opacity:.45}}
+@keyframes aw-space-breathe{to{opacity:.8;transform:translate3d(1%,1%,0)}}
+@keyframes aw-space-starlight{to{opacity:.7}}
 /* No inferred history status: only the existing live/menu/Team projections. */
 @media(prefers-reduced-motion:no-preference){
   html:has([data-theme-agent-state="running"],[data-theme-turn-live="true"],[data-theme-tools-running="true"],[data-theme-team-working="true"]) .aw-deep-space[data-visible="true"]{--aw-space-motion:running}
 }
 @media(prefers-reduced-motion:reduce){.aw-deep-space *{animation:none!important}}
-@media(max-width:640px){.aw-space-system{left:100%;top:23%;scale:.7}.aw-space-reading-shade{background:#050a1770}}
+@media(max-width:640px){.aw-space-system{left:100%;top:23%;scale:.7}.aw-space-reading-shade{background:#050a1740}}
+
+/* A foreground landmark remains recognizable even behind the workspace card. */
+.aw-space-giant{position:absolute;left:83%;top:77%;width:clamp(220px,28vw,400px);aspect-ratio:1;translate:-50% -50%;transform:rotate(-24deg)}
+.aw-space-giant-body{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:radial-gradient(circle at 29% 24%,#9bcad92e,transparent 63%),linear-gradient(165deg,#7d9db0,#4c718a 24%,#354a6c 27%,#7d9caf 36%,#647293 42%,#43546f 49%,#7e93a6 53%,#344862 68%,#172a44);box-shadow:inset -45px -25px 75px #020915c9,inset 3px 3px 12px #c5f4ff80,0 0 65px #7aaeff1f}
+.aw-space-giant:after{content:'';position:absolute;inset:36% -42%;border:clamp(12px,2vw,28px) solid #acb8da66;border-left-color:#d7cce694;border-bottom-color:#55668a9c;border-radius:50%;box-shadow:0 0 0 3px #b6bbdf2e,0 0 0 9px #a5b3ce14;transform:rotate(-8deg)}
+@media(max-width:640px){.aw-space-giant{left:95%;top:79%;width:240px;opacity:.65}}

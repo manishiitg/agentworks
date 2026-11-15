@@ -4,16 +4,16 @@ import './sceneMaterials.css'
 import './deepSpace.css'
 
 // Fixed artwork: bounded DOM, no canvas loop, randomness, network or input capture.
-const stars = Array.from({ length: 80 }, (_, i) => ({
+const stars = Array.from({ length: 128 }, (_, i) => ({
   x: (i * 431 + 73) % 1600, y: (i * 307 + 97) % 1000,
-  radius: i % 9 === 0 ? 1.6 : .65, opacity: .2 + (i % 5) * .12,
+  radius: i % 9 === 0 ? 2.2 : 1, opacity: .4 + (i % 5) * .13,
 }))
 const planets = [
-  { orbit: 170, size: 7, period: 55, phase: 35, colour: '#a9b5cc' },
-  { orbit: 280, size: 14, period: 90, phase: 150, colour: '#dcb38d' },
-  { orbit: 420, size: 23, period: 140, phase: 260, colour: '#6aaaca' },
-  { orbit: 590, size: 37, period: 210, phase: 205, colour: '#ba9bcb', ring: true },
-  { orbit: 800, size: 18, period: 300, phase: 65, colour: '#81bfb8' },
+  { orbit: 170, size: 11, period: 55, phase: 35, colour: '#a9b5cc' },
+  { orbit: 280, size: 22, period: 90, phase: 150, colour: '#dcb38d' },
+  { orbit: 420, size: 36, period: 140, phase: 260, colour: '#6aaaca' },
+  { orbit: 590, size: 54, period: 210, phase: 205, colour: '#ba9bcb', ring: true },
+  { orbit: 800, size: 27, period: 300, phase: 65, colour: '#81bfb8' },
 ]
 
 /** Passive decoration; existing mounted activity hooks alone resume its CSS clock. */
@@ -38,6 +38,7 @@ export default function DeepSpaceBackground() {
         <div className="aw-space-revolution"><div className={`aw-space-planet${planet.ring ? ' aw-space-ringed' : ''}`} /></div>
       </div>)}
     </div>
+    <div className="aw-space-giant"><div className="aw-space-giant-body" /></div>
     <div className="aw-space-reading-shade" />
   </div>, document.body)
 }

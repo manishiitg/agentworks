@@ -70,7 +70,12 @@ it('selects agent-saved themes and restores Default without deleting presets', a
   fixture.put.mockImplementation(async (_:string,body:{operation:string;theme?:typeof warm})=>{doc.current=body.operation==='reset'?defaultAppearance():body.theme!;return {data:structuredClone(doc)}})
   host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
   await act(async()=>root.render(<ThemeProvider><AppearanceControl compact/><AppearanceSettings/></ThemeProvider>))
-  await click('Appearance & more themes…')
+  const appearance = host.querySelector('summary')!
+  expect(appearance.textContent).toContain('Warm')
+  expect(appearance.parentElement?.hasAttribute('open')).toBe(false)
+  await act(async () => (appearance as HTMLElement).click())
+  expect(appearance.parentElement?.hasAttribute('open')).toBe(true)
+  await click('Customize with an agent')
   expect(fixture.open).toHaveBeenCalledWith('connections','appearance')
   await click('Default')
   expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'reset'},{skipSessionContext:true})
