@@ -66,3 +66,23 @@ it('identifies the observed person and Mac above the transcript with one direct 
  expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review')
  expect(host.querySelectorAll('textarea')).toHaveLength(1)
 })
+
+// Offline readiness is server-admitted metadata, never a second client routing decision.
+it('explains copy-first offline asks but sends only the admitted original address',async()=>{
+ f.tabs.watch={metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileConversationKey:'peer-native'}}
+ const peer={agent_id:'peer',online:false,offline_copy_ready:true,address:'agent:colleague/review'}
+ const home={agent_id:'home',kind:'team_agent',online:true,address:'agent:team/main'}
+ f.team={target:{project:'crew'},view:{team:{on:true},agents:[{id:'peer',name:'Review',in_team:true}],reachable:[peer,home]}}
+ f.post.mockImplementation((_url:string,body:any)=>Promise.resolve({data:body.arguments.action==='ask'?{inbox_id:'copy-ask',delivery:'pending'}:{messages:[],next_cursor:0}}))
+ await render();expect(host.textContent).toContain('Its copy answers')
+ expect(host.textContent).not.toContain('new ask goes to the Team agent')
+ await type('Please review');await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
+ expect(f.post.mock.calls[0][1].arguments).toMatchObject({action:'ask',target:peer.address,message:'Please review'})
+ expect(f.post.mock.calls[0][1].arguments).not.toHaveProperty('offline_copy_id')
+ peer.offline_copy_ready=false
+ await render();expect(host.textContent).toContain('new ask goes to the Team agent')
+ f.team.view.reachable=[peer]
+ await render();expect(host.textContent).toContain('no Team agent is available')
+ peer.online=true
+ await render();expect(host.textContent).not.toContain('This agent is offline')
+})

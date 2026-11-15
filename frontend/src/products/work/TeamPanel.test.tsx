@@ -158,3 +158,14 @@ it('keeps only teammate identities and marks, with complete wrapping chip labels
  expect(host.textContent).toContain('No teammates working now')
  expect(host.textContent).not.toContain('My private work')
 })
+
+it('uses admitted readiness for offline copy wording without changing the ask identity',async()=>{
+ const peer={...agents[4],offline_copy_ready:true}
+ await render('agents',[peer,agents[5]])
+ expect(host.textContent).toContain('Its copy answers')
+ await click('Offline agent');expect(ask).toHaveBeenLastCalledWith(peer)
+ await render('agents',[{...peer,offline_copy_ready:false},agents[5]])
+ expect(host.textContent).toContain('New asks go to the Team agent')
+ await render('agents',[{...peer,offline_copy_ready:false}])
+ expect(host.textContent).toContain('No Team agent available')
+})
