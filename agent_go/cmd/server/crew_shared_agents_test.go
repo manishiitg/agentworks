@@ -513,6 +513,29 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if recheckAgentConversationContact(otherCtx, homeContact) == nil {
 		t.Fatal("public sharing revived a removed Team asker's reply grant")
 	}
+	// Put online for me (owner, 15 Nov): with the Team off the online copy is Only me. Its owner (and so the owner's
+	// own agents, which carry the owner's ID) still reach it; a listed teammate does not.
+	team.On, team.People = false, []crewTeamPerson{{UserID: "other"}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	homeRow := func(viewer string) (crewTeamReachableAgent, bool) {
+		for _, row := range crewTeamReachableIn(ctx, team, viewer) {
+			if row.Kind == "team_agent" {
+				return row, true
+			}
+		}
+		return crewTeamReachableAgent{}, false
+	}
+	if row, ok := homeRow("owner"); !ok || row.Audience != "only_me" {
+		t.Fatalf("Team off hid the owner's own online copy: %+v %v", row, ok)
+	}
+	if _, ok := homeRow("other"); ok {
+		t.Fatal("a teammate reached an Only me online copy while the Team is off")
+	}
+	if recheckAgentConversationContact(otherCtx, homeContact) == nil {
+		t.Fatal("a teammate's old inbox survived the Team turning off")
+	}
 
 }
 

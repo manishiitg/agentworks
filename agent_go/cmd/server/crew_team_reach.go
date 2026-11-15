@@ -29,7 +29,9 @@ type crewTeamReachableAgent struct {
 	// ChatShare is the agent's own "what teammates see" choice (agent = answers only, live = its chat); the panel's
 	// live line is gated on it server-side.
 	ChatShare string `json:"chat_share,omitempty"`
-	Address   string `json:"address"`
+	// Audience is set on the Team agent row only: only_me (its owner and their own agents), chosen or whole_team.
+	Audience string `json:"audience,omitempty"`
+	Address  string `json:"address"`
 }
 
 // crewTeamReachableAgents is the one answer to "which agents can this person reach in their Teams": for every Team
@@ -54,7 +56,7 @@ func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReach
 			continue
 		}
 		t, err := readCrewTeam(entry.Name())
-		if err != nil || !crewTeamReachOpen(t, viewer) {
+		if err != nil || !crewTeamReachOpen(t, viewer) && !(t.OnlineHome != "" && crewTeamOwnerReach(t, viewer)) {
 			continue
 		}
 		out = append(out, crewTeamReachableIn(ctx, t, viewer)...)
@@ -65,6 +67,32 @@ func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReach
 // crewTeamReachOpen: the Team is on, its owner current and active, and the viewer is in it (owner or joined member).
 func crewTeamReachOpen(t crewTeam, viewer string) bool {
 	return t.On && t.RosterSource == "" && t.member(viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
+}
+
+// crewTeamOwnerReach: the viewer is the current, active owner of this real Team record (not a roster copy). The
+// owner always reaches their own online copy (owner, 15 Nov: "Put online for me"), whether or not the Team is on.
+// The viewer is always the server-derived caller (publishedAsker of the sending endpoint): the person's own agents
+// carry that person's ID, while another person's agent, or a guest asking through a published agent, does not.
+func crewTeamOwnerReach(t crewTeam, viewer string) bool {
+	return viewer != "" && viewer == t.OwnerID && t.RosterSource == "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
+}
+
+// crewTeamOnlineCopyAudience is who the Team's online copy (its Team agent) answers: only_me while the Team is off or
+// the row is not In team, otherwise the row's whole_team or chosen choice.
+func crewTeamOnlineCopyAudience(t crewTeam, a crewTeamRegisteredAgent) string {
+	if !t.On || !a.InTeam {
+		return "only_me"
+	}
+	return a.Rule.audienceName()
+}
+
+// crewTeamOnlineCopyAdmits: the owner always; anyone else only while the Team is open to them and the row's audience
+// includes them. This is the one audience check for the online copy; resolvers and routing call reach, never a copy.
+func crewTeamOnlineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAgent) bool {
+	if crewTeamOwnerReach(t, viewer) {
+		return true
+	}
+	return crewTeamReachOpen(t, viewer) && crewTeamOnlineCopyAudience(t, a) != "only_me" && a.Rule.chosen(viewer)
 }
 
 // crewTeamReachRow is the one per-row admission check (nonrecursive): the Team is open to the viewer, and the row is
@@ -78,8 +106,12 @@ func crewTeamReachRow(t crewTeam, viewer string, row crewTeamRegisteredAgent) bo
 // crewTeamReachableIn is one Team's reachable agents for the viewer.
 func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
 	out := []crewTeamReachableAgent{}
-	if !crewTeamReachOpen(t, viewer) || !crewTeamAccountActive(viewer) {
+	open := crewTeamReachOpen(t, viewer)
+	if !crewTeamAccountActive(viewer) || !open && !crewTeamOwnerReach(t, viewer) {
 		return out // every caller gets the gate, not only crewTeamReachableAgents
+	}
+	if !open {
+		return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...) // Team off: the owner's own online copy only
 	}
 	for _, p := range teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID)) {
 		if p.UserID == viewer || !t.member(p.UserID) || !crewTeamAccountActive(p.UserID) {
@@ -103,22 +135,30 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: address})
 		}
 	}
-	if t.OnlineHome != "" {
-		owner, key := "team-"+t.ProjectID, crewOwnerMainChatKey(t.OnlineHome)
-		if home, err := readCrewTeam(t.OnlineHome); err == nil {
-			// Use the ordinary registry projection, also before anybody opens the
-			// new home's tab. Provisioning creates Main, not its Team registry row.
-			teamAgentsByPersonWithMain(ctx, home, viewer, key)
-			home, err = readCrewTeam(t.OnlineHome)
-			if err != nil {
-				return out
-			}
-			if a, ok := home.registeredAgent(owner, key); ok && a.InTeam {
-				out = append(out, crewTeamReachableAgent{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: "Team agent", Place: "server", Online: true, Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)})
-			}
-		}
+	return append(out, crewTeamOnlineCopyRow(ctx, t, viewer)...)
+}
+
+// crewTeamOnlineCopyRow is the Team agent (the online home's Main) when this viewer is in its audience.
+func crewTeamOnlineCopyRow(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
+	if t.OnlineHome == "" {
+		return nil
 	}
-	return out
+	owner, key := "team-"+t.ProjectID, crewOwnerMainChatKey(t.OnlineHome)
+	home, err := readCrewTeam(t.OnlineHome)
+	if err != nil {
+		return nil
+	}
+	// Use the ordinary registry projection, also before anybody opens the
+	// new home's tab. Provisioning creates Main, not its Team registry row.
+	teamAgentsByPersonWithMain(ctx, home, viewer, key)
+	if home, err = readCrewTeam(t.OnlineHome); err != nil {
+		return nil
+	}
+	a, ok := home.registeredAgent(owner, key)
+	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, a) {
+		return nil
+	}
+	return []crewTeamReachableAgent{{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: "Team agent", Place: "server", Online: true, Audience: crewTeamOnlineCopyAudience(t, a), Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)}}
 }
 
 // GET /api/crew-team-reach: the signed-in person's reachable Team agents (draft read endpoint for the panel and the

@@ -14,17 +14,17 @@ type crewTeamHomeAgent struct {
 }
 
 func crewTeamHomeAgentFor(ctx context.Context, t crewTeam, viewer string) *crewTeamHomeAgent {
-	if !t.On || t.OnlineHome == "" || t.RosterSource != "" || !t.member(viewer) || !crewTeamAccountActive(viewer) {
+	// Decoration only: callers pass rows already admitted by crewTeamOnlineCopyAdmits (owner always, even Team off).
+	if t.OnlineHome == "" || t.RosterSource != "" || !crewTeamAccountActive(viewer) {
 		return nil
 	}
-
 	home, err := readCrewTeam(t.OnlineHome)
-	if err != nil || !home.On || home.RosterSource != t.ProjectID || !home.member(viewer) || !crewTeamAccountActive(home.OwnerID) {
+	if err != nil || home.RosterSource != t.ProjectID || !crewTeamAccountActive(home.OwnerID) {
 		return nil
 	}
 	key := crewOwnerMainChatKey(t.OnlineHome)
 	registered, ok := home.registeredAgent(home.OwnerID, key)
-	if !ok || !registered.InTeam {
+	if !ok || !crewTeamOnlineCopyAdmits(t, viewer, registered) {
 		return nil
 	}
 	out := &crewTeamHomeAgent{Name: firstNonEmptyTrimmed(registered.Name, "Team agent"), Line: "Online always · answers when others are away", Address: crewTeamAgentAddress(t.OnlineHome, registered.ID)}
@@ -49,7 +49,7 @@ type crewTeamPanelReach struct {
 
 func crewTeamPanelReachFor(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson) []crewTeamPanelReach {
 	out := []crewTeamPanelReach{}
-	if !crewTeamReachOpen(t, viewer) {
+	if !crewTeamReachOpen(t, viewer) && !crewTeamOwnerReach(t, viewer) {
 		return out
 	}
 	preview := crewTeamAgentMessagePreviews(ctx, t, crewTeamActivityPostsFor(t, viewer))
