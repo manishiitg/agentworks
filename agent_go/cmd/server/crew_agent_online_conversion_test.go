@@ -20,7 +20,19 @@ import (
 // The exact owned tab becomes a private source; old working files stay inert.
 func TestCrewOnlineConversionOwnSourceNoPrivateFilesOrNativeFallback(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	env := newTriggerLinkEnv(t)
+	layout := legacyIdentityLayout()
+	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+	f := newMultiUserFixture(t, layout)
+	profile := f.Crew
+	profile.Version++
+	profile.Runtime.Workspace.ProjectsRoot = "Crew"
+	if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
+	registerTestCrew(t, "alpha", "owner", true, "alpha")
+	env := struct{ api *StreamingAPI }{f.API}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
 	root := crewProjectRootByID("alpha")
