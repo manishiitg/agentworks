@@ -2,7 +2,6 @@ import valueParser from 'postcss-value-parser'
 import { parse } from 'postcss'
 
 const maxCSSBytes = 128 << 10
-const urls = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^()\s"']*))\s*\)/gi
 const https = (url: string) => /^https:\/\//i.test(url) && !/[\u0000-\u0020\u007f\\]/.test(url) && (() => {
   try { return new URL(url).protocol === 'https:' } catch { return false }
 })()
@@ -21,20 +20,23 @@ function safeResources(value: string): string | null {
     if (name === 'url' || name === 'src') {
       const target = valueParser.stringify(node.nodes).trim().replace(/^(?:"(.*)"|'(.*)')$/, '$1$2')
       if (!resource(target)) unsafe = true
+      const token = node.nodes.find(item => item.type !== 'space' && item.type !== 'comment')
+      if (token && (token.type === 'word' || token.type === 'string')) token.value = token.value.replace(/^%23/i, '#')
       return false // An embedded SVG is an opaque URL, not more CSS.
     }
     if (name === 'image-set' || name === '-webkit-image-set' || name === 'image') {
       for (const item of node.nodes) {
-        if (item.type === 'string' && !resource(item.value)) unsafe = true
+        if (item.type === 'string') {
+          if (!resource(item.value)) unsafe = true
+          item.value = item.value.replace(/^%23/i, '#')
+        }
         if (item.type === 'function' && item.value.toLowerCase() === 'var') unsafe = true
       }
     }
     if (name === 'expression') unsafe = true
   })
   if (unsafe) return null
-  return value.replace(urls, (match, double: string, single: string, bare: string) => {
-    return /^%23/i.test(double ?? single ?? bare) ? match.replace(/%23/i, '#') : match
-  })
+  return parsed.toString()
 }
 
 type FontImport = { url: string; media: string }
