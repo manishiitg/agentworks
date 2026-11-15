@@ -179,7 +179,7 @@ func checkCrewOfflineCopyHTTP(t *testing.T, base, token, wrong string, a agentwo
 
 func TestCrewOfflineCopyOAuthTargetIsExact(t *testing.T) {
 	route := "/api/crew-teams/crew/agents/team-agent-11111111-2222-4333-8444-555555555555/offline-copy/"
-	for _, op := range []string{"status", "plan", "commit"} {
+	for _, op := range []string{"status", "plan", "commit", "handback", "handback-ack"} {
 		if !cliOAuthAllowedPath("POST", route+op) {
 			t.Fatal("exact ingest target refused")
 		}
@@ -192,7 +192,7 @@ func TestCrewOfflineCopyOAuthTargetIsExact(t *testing.T) {
 			t.Fatal("child scope widened beyond exact ingest target", path)
 		}
 	}
-	if cliOAuthAllowedPath("GET", route+"status") || cliOAuthAllowedPath("POST", route+"chunks") {
+	if cliOAuthAllowedPath("GET", route+"status") || cliOAuthAllowedPath("GET", route+"handback") || cliOAuthAllowedPath("PUT", route+"handback-ack") || cliOAuthAllowedPath("POST", route+"chunks") {
 		t.Fatal("wrong method widened child scope")
 	}
 }
