@@ -196,6 +196,27 @@ func (api *StreamingAPI) putCrewAgentOnline(ctx context.Context, person, project
 	} else if !os.IsNotExist(err) {
 		return out, err
 	}
+	reset, err := resetCrewOfflineHistoryForIntent(copyDir, binding)
+	if err != nil {
+		return out, err
+	}
+	var previous struct {
+		Home    string             `json:"home"`
+		Binding crewOfflineBinding `json:"binding"`
+	}
+	if len(raw) > 0 && json.Unmarshal(raw, &previous) != nil {
+		return out, fmt.Errorf("the previous copy reference is invalid")
+	}
+	if reset || previous.Home != home || previous.Binding != binding {
+		// A previous runtime must NEVER become bound to a new source merely
+		// because the owner requested it. Only a completed fresh build binds it.
+		delete(ref, "session")
+		delete(ref, "chat_key")
+		delete(ref, "revision")
+	}
+	if reset {
+		log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s actor=%s event=source_reset reason=explicit_source_changed backup=true", project, id, person)
+	}
 	ref["put_online"] = json.RawMessage("true")
 	ref["home"], _ = json.Marshal(home)
 	ref["binding"], _ = json.Marshal(binding)
