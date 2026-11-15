@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Blocks, Cpu, Globe, KeyRound, Plug, Sparkles, Users, Terminal, Info, RotateCcw, DollarSign, Server } from 'lucide-react'
+import { Blocks, Cpu, Globe, KeyRound, Plug, Sparkles, Users, Terminal, Info, RotateCcw, DollarSign, Server, Palette } from 'lucide-react'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } from './integrations/AccountConnectionPanels'
 import { AccountSlackOverview } from './integrations/AccountSlackOverview'
@@ -8,6 +8,7 @@ import { BrowserConnectionsPanel } from './BrowserConnectionsDialog'
 import { useCanManageVault } from './integrations/OpenVaultButton'
 import { APP_VERSION } from '../version'
 import { openLocalSetup } from '../utils/homeNavigation'
+import AppearanceSettings from './workspace/AppearanceSettings'
 import { Button } from './ui/Button'
 import { useCanReviewCode } from '../hooks/useCanReviewCode'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -30,6 +31,7 @@ const categories = [
   { id: 'servers', label: 'Connected servers', icon: Server },
   { id: 'costs', label: 'Costs', icon: DollarSign },
   { id: 'connect', label: 'Connect AI tools', icon: Terminal },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'about', label: 'About', icon: Info },
 ] as const
 type Category = typeof categories[number]['id']
@@ -76,6 +78,7 @@ function ConnectionsToolsContent() {
             {current.id === 'secrets' && <AccountVaultSecrets />}
             {current.id === 'users' && user?.is_admin && <UsersContent />}
             {current.id === 'connect' && user && <ConnectContent />}
+            {current.id === 'appearance' && <AppearanceSettings />}
             {current.id === 'about' && <div className="space-y-4"><div><h3 className="text-sm font-medium">AgentWorks</h3><p className="text-sm text-muted-foreground">Version {APP_VERSION}</p></div>{window.electronAPI?.getDesktopConnection?.() === 'local' && <Button variant="outline" size="sm" onClick={openLocalSetup}><RotateCcw className="h-4 w-4" />Run setup again</Button>}</div>}
           </Suspense>
         </div>

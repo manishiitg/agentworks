@@ -80,3 +80,32 @@ it('opens AI accounts in the same settings content area', async () => {
   expect(host.textContent).toContain('Compact AI account list')
   expect(host.textContent).not.toContain('AI models & accounts')
 })
+
+// PLAT-746: a saved font changes chat typography, not navigation or the coding runtime.
+it('changes the chat font from Settings and restores it after reopening', async () => {
+  const { useAppearanceStore, readChatFont } = await import('../stores/useAppearanceStore')
+  const { ThemeProvider } = await import('../contexts/ThemeContext.tsx')
+  useAppearanceStore.getState().setChatFont('system')
+  const render = () => root.render(<ThemeProvider><ConnectionsToolsPage /></ThemeProvider>)
+  const openAppearance = () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Appearance')!.click()
+  await act(async () => render())
+  await act(async () => openAppearance())
+  const select = host.querySelector<HTMLSelectElement>('#chat-font')!
+  expect(select.options).toHaveLength(5)
+  for (const id of ['jetbrains-mono', 'fira-code', 'ibm-plex-mono', 'source-code-pro']) {
+    await act(async () => { select.value = id; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(readChatFont()).toBe(id)
+    const family = document.documentElement.style.getPropertyValue('--chat-font')
+    expect(family).toBe(host.querySelector<HTMLElement>('[aria-label="Chat font preview"]')!.style.fontFamily)
+    expect(host.querySelector<HTMLElement>('nav')!.style.fontFamily).toBe('')
+  }
+  await act(async () => root.render(null))
+  await act(async () => render())
+  await act(async () => openAppearance())
+  expect(host.querySelector<HTMLSelectElement>('#chat-font')!.value).toBe(readChatFont())
+  await act(async () => useAppearanceStore.getState().setChatFont('system'))
+  expect(document.documentElement.style.getPropertyValue('--chat-font')).toContain('system-ui')
+  localStorage.setItem('agentworks-chat-font', 'unrecognized-font')
+  expect(readChatFont()).toBe('system')
+  localStorage.removeItem('agentworks-chat-font')
+})
