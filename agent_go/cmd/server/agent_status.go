@@ -19,13 +19,28 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 	}
 	rows, _ := directory["agents"].([]map[string]interface{})
 	var matches []map[string]interface{}
-	for _, row := range rows {
-		for _, field := range []string{"id", "target", "agent_name", "name", "label"} {
-			value, _ := row[field].(string)
-			if value != "" && strings.EqualFold(value, target) {
-				matches = append(matches, row)
-				break
+	// Exact routing identity wins over labels. Duplicate projections of the
+	// same identity are one agent, not an ambiguous name.
+	for _, fields := range [][]string{{"id", "target"}, {"agent_name", "name", "label"}} {
+		seen := map[string]bool{}
+		for _, row := range rows {
+			for _, field := range fields {
+				value, _ := row[field].(string)
+				if value != "" && strings.EqualFold(value, target) {
+					id, _ := row["id"].(string)
+					if id == "" {
+						id, _ = row["target"].(string)
+					}
+					if id == "" || !seen[id] {
+						matches = append(matches, row)
+						seen[id] = true
+					}
+					break
+				}
 			}
+		}
+		if len(matches) > 0 {
+			break
 		}
 	}
 	if len(matches) != 1 {

@@ -56,7 +56,10 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 			if admitted, ok := reachable[id]; ok {
 				row["online"] = admitted.Reach.Online
 				projectAgentRuntimeInfo(row, admitted.Info, true)
-				activity := "Idle"
+				activity := admitted.Info.Activity
+				if activity == "" {
+					activity = "Idle"
+				}
 				switch admitted.Reach.Activity {
 				case "running":
 					activity = "Working"
@@ -159,7 +162,10 @@ func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
 func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string, record ProductConversationRecord, identity ProductAgentIdentity, groups menuGroups) *agentRuntimeInfo {
 	info := api.activityForRecord(record)
 	info.TeamProject = record.ResourceID
-	info.TeamTab = crewStandbyTabForKeyOf(record.ResourceID, owner, record.ConversationKey)
+	info.TeamTab = crewAgentPublishTab(record.ConversationKey)
+	if record.ConversationKey == crewOwnerDefaultChatKey(record.ResourceID, owner) || record.ConversationKey == crewOwnerMainChatKey(record.ResourceID) {
+		info.TeamTab = macMainTab
+	}
 	if api.agentProfiles == nil && api.projectActions == nil {
 		return info
 	}
