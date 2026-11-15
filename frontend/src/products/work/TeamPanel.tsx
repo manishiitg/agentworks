@@ -28,10 +28,10 @@ const status = (row:TeamPanelAgent) => row.typing ? 'typing…' : row.activity==
 const runtime = (row:TeamPanelAgent) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,setups,setupsToDo,error}: {
+export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shared=[],onShared,artifacts=[],onArtifact,routines=[],fullActivity,teamAgentAsk,setups,setupsToDo,hasSetups,error}: {
  scope:string; agents:TeamPanelAgent[]; events:TeamPanelEvent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
- artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; setups?:ReactNode; setupsToDo?:number; error?:string
+ artifacts?:Artifact[]; onArtifact?:(id:string)=>void; routines?:TeamPanelRoutine[]; fullActivity?:ReactNode; teamAgentAsk?:ReactNode; setups?:ReactNode; setupsToDo?:number; hasSetups?:boolean; error?:string
 }) {
  const [query,setQuery]=useState('')
  const [recentOpen,setRecentOpen]=useState(false)
@@ -67,7 +67,7 @@ export function TeamPanel({scope,agents,events,onAsk,onNavigate,view='live',shar
   {view!=='live'&&<header className="sticky top-0 z-10 space-y-2 bg-surface-panel pb-2"><button type="button" onClick={()=>onNavigate('live')} className="flex items-center gap-1 text-xs text-primary"><ArrowLeft aria-hidden="true" className="h-3 w-3"/>Team</button><h2 className="text-sm font-semibold">{titles[view]}</h2></header>}
   {view==='live'&&<>
    {busy.length>0?<section aria-label="Working now">{busy.map(compactAgent)}</section>:<p className="px-1 py-0.5 text-[11px] text-muted-foreground">No teammates working now</p>}
-   <button type="button" onClick={()=>onNavigate('setups')} className="flex h-6 w-full items-center justify-between px-1 text-left text-[11px] hover:bg-background/40"><span>Team setups</span><span className="text-muted-foreground">{setupsToDo===undefined?'…':`${setupsToDo} to do`}</span></button>
+   {hasSetups&&<button type="button" onClick={()=>onNavigate('setups')} className="flex h-6 w-full items-center justify-between px-1 text-left text-[11px] hover:bg-background/40"><span>Team setups</span><span className="text-muted-foreground">{setupsToDo===undefined?'…':`${setupsToDo} to do`}</span></button>}
    {recent.length>0&&<section aria-label="Just happened"><button type="button" aria-expanded={recentOpen} onClick={()=>setRecentOpen(open=>!open)} className="flex h-6 w-full items-center gap-1 px-1 text-[10px] text-muted-foreground"><ChevronRight aria-hidden="true" className={`h-3 w-3 ${recentOpen?'rotate-90':''}`}/><span>Just happened</span><span className="ml-auto">{recent.length} new</span></button>{recentOpen&&<ol>{recent.map(item=>{
     const text=`${item.title} ${item.verb}${item.line?`: ${item.line}`:''}`
     return <li key={item.id}><button type="button" title={text} onClick={()=>onNavigate('activity')} className="flex h-6 w-full min-w-0 items-center gap-1 px-1 text-left text-[11px] text-muted-foreground hover:bg-background/40"><span className="min-w-0 flex-1 truncate">{text}</span><span className="shrink-0 text-[10px]">· {age(item.at)}</span></button></li>
