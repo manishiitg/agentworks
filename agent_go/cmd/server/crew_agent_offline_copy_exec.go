@@ -59,7 +59,7 @@ func crewOfflineCopyHomeKey(home, key string) bool {
 // crewOfflineCopyAdmits is the source-row audience for every copy path (resolver, binder, endpoint and thread reads).
 // It is the canonical nonrecursive source gate; it never projects reach.
 func crewOfflineCopyAdmits(t crewTeam, viewer string, a crewTeamRegisteredAgent) bool {
-	return viewer != "" && crewTeamAccountActive(viewer) && crewTeamReachRow(t, viewer, a)
+	return viewer != "" && crewTeamAccountActive(viewer) && crewTeamSourceRowAdmits(t, viewer, a)
 }
 
 func crewOfflineRowBinding(a crewTeamRegisteredAgent) (crewOfflineBinding, bool) {
