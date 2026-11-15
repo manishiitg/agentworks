@@ -1,12 +1,12 @@
 import { useChatContextView } from './useChatContextView'
-import { chatLimitsPeak, chatLimitsText, openChatContextMenuEvent } from './ChatContextItems'
+import { chatLimitsPercent, chatLimitsText, openChatContextMenuEvent } from './ChatContextItems'
 import { ContextMeter } from '../../components/chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
 
 /**
  * The compact usage chip beside the model controls in the chat box's bottom row, shown when the person turned on
  * "Show in chat box": context used of its window with a mini bar, and the account's plan use
- * ("288K ▓▓░ · 20%", the fullest plan window; the full numbers and reset times are the hover text). Everything comes from /api/chat-context, which only answers the chat's own tab
+ * ("288K ▓▓░ · 5h 20% · 7d 42%"; the full numbers and reset times are the hover text). Everything comes from /api/chat-context, which only answers the chat's own tab
  * owner. It reads again when a turn ends. A click opens the chat's model menu. When the row is narrow the
  * plan use goes first, then the bar, then the numbers truncate (container queries on the parent).
  */
@@ -17,7 +17,7 @@ export default function ChatStatusBar({ sessionId, busy, inline = false }: { ses
   const used = view.used_tokens ?? 0
   const windowTokens = view.window_tokens ?? 0
   const meter = used > 0 && windowTokens > 0
-  const limits = chatLimitsPeak(view.limits)
+  const limits = chatLimitsPercent(view.limits)
   if (!(used > 0) && !limits) return null
   const full = [used > 0 ? `${formatTokens(used)}${windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} context used` : '', chatLimitsText(view.limits)].filter(Boolean).join(' · ')
 
@@ -26,7 +26,7 @@ export default function ChatStatusBar({ sessionId, busy, inline = false }: { ses
       <span className="min-w-0 truncate">{formatTokens(used)}</span>
       {meter && <ContextMeter decorative className="w-8 shrink-0 [@container(max-width:110px)]:hidden" used={used} windowTokens={windowTokens} />}
     </>}
-    {limits && <span className={`min-w-0 truncate ${used > 0 ? '[@container(max-width:190px)]:hidden' : ''}`}>{used > 0 && <span aria-hidden="true">· </span>}{limits}</span>}
+    {limits && <span className="min-w-0 truncate">{used > 0 && <span aria-hidden="true">· </span>}{limits}</span>}
   </>
   if (inline) return <span data-testid="chat-status-chip" title={full} className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">{content}</span>
 

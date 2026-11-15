@@ -1,3 +1,4 @@
+import { takeSubscriptionLimitsRequest } from '../../utils/subscriptionLimitsNavigation'
 import { codingProviderName } from '../../utils/codingProviderName'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
@@ -152,11 +153,13 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? new URLSearchParams(window.location.search).get('provider'))
-  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'limits'>(() => takeServersPageRequest() ? 'servers' : 'provider')
+  const [view, setView] = useState<'servers' | 'provider' | 'costs' | 'limits'>(() => takeSubscriptionLimitsRequest() ? 'limits' : takeServersPageRequest() ? 'servers' : 'provider')
   useEffect(() => {
     const show = () => { takeServersPageRequest(); setView('servers') }
+    const limits = () => { takeSubscriptionLimitsRequest(); setView('limits') }
+    window.addEventListener('show-subscription-limits', limits)
     window.addEventListener('show-servers-page', show)
-    return () => window.removeEventListener('show-servers-page', show)
+    return () => { window.removeEventListener('show-servers-page', show); window.removeEventListener('show-subscription-limits', limits) }
   }, [])
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)

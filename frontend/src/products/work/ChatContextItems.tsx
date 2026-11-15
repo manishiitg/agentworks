@@ -1,3 +1,4 @@
+import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { useChatContextView } from './useChatContextView'
 import { useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
@@ -42,13 +43,13 @@ export function chatLimitsPercent(limits: ChatContextView['limits']): string {
 }
 
 /** One plan window: "5h  12%  ▓░░░  resets 3:00 PM". */
-function PlanWindowRow({ label, percent, resets }: { label: string; percent: number; resets: string }) {
+export function PlanWindowRow({ label, percent, resets }: { label: string; percent: number; resets: string }) {
   const value = Math.round(percent)
-  return <div className="flex items-center gap-2 px-2.5 pb-1 text-[11px] tabular-nums text-muted-foreground" title={`Your account's plan use, as the provider reports it: ${label} ${value}%${resets ? `, resets ${resets}` : ''}`}>
+  return <div className="flex flex-wrap items-center gap-2 px-2.5 pb-1 text-[11px] tabular-nums text-muted-foreground" title={`Your account's plan use, as the provider reports it: ${label} ${value}%${resets ? `, resets ${resets}` : ''}`}>
     <span className="w-10 shrink-0 text-foreground">{label}</span>
-    <span className="w-8 shrink-0 text-right">{value}%</span>
+    <span className="shrink-0 text-right">{value}% used · {Math.max(0, 100 - value)}% left</span>
     <span className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true"><span className={`block h-full rounded-full ${value >= 90 ? 'bg-diff-del' : 'bg-primary/70'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></span>
-    {resets && <span className="min-w-0 truncate">resets {resets}</span>}
+    <span className="min-w-0">{resets ? `Resets ${resets}` : 'Reset time not reported'}</span>
   </div>
 }
 
@@ -129,6 +130,7 @@ export default function ChatContextItems({ sessionId, modelLabel, showDisplay = 
     {modelLabel && <div className="truncate px-2.5 pb-1 text-[11px] text-muted-foreground">{modelLabel}</div>}
     {/* Every plan window the provider reported, each with its own reset time; a window it did not report is not shown. */}
     {(view.limits ?? []).map(limit => <PlanWindowRow key={limit.label} label={limit.label} percent={limit.used_percent} resets={resetDate(limit.resets_at)} />)}
+    <Menu.Item className={menuRowClass} onSelect={openSubscriptionLimits}>All subscription limits</Menu.Item>
     {used > 0 && <div className="px-2.5 pb-1.5 pt-0.5">
       <div className="text-xs text-muted-foreground">{formatTokens(used)}{windowTokens > 0 ? ` of ${formatTokens(windowTokens)}` : ''} used</div>
       {windowTokens > 0 && <ContextMeter className="mt-1" used={used} windowTokens={windowTokens} />}
