@@ -114,6 +114,11 @@ func writeCrewAgentPlacement(project string, entry crewAgentPlacement) error {
 }
 
 func crewPublishedAgent(project, tab string) (*crewAgentPlacement, error) {
+	if address, err := crewRetiredOnlineSource(project, crewAgentPublishKey(project, tab)); err != nil {
+		return nil, err
+	} else if address != "" {
+		return nil, fmt.Errorf("this agent now runs in its online home; open its Ask conversation")
+	}
 	rows, err := readCrewAgentPlacements(project)
 	if err != nil {
 		return nil, err
