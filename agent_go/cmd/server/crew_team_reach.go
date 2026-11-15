@@ -78,9 +78,10 @@ func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReach
 	return out
 }
 
-// crewTeamReachOpen: the Team is on, its owner current and active, and the viewer is in it (owner or joined member).
+// crewTeamReachOpen: the Team is on, its owner current and active, and the viewer is in it (owner or joined member)
+// with an active account: a disabled teammate's tokens and agents reach nothing, on every reach and offline-copy path.
 func crewTeamReachOpen(t crewTeam, viewer string) bool {
-	return t.On && t.RosterSource == "" && t.member(viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
+	return t.On && t.RosterSource == "" && t.member(viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID) && crewTeamAccountActive(viewer)
 }
 
 // crewTeamOwnerReach: the viewer is the current, active owner of this real Team record (not a roster copy). The
