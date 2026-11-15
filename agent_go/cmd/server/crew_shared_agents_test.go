@@ -524,7 +524,7 @@ func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
-	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-owner-pair"}); err != nil {
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-owner-pair", PeerProjectID: "owner-local-team"}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := defaultProjectOwners().All()

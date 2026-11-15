@@ -6,7 +6,7 @@ has one Python workflow, not another owner list for each task.
 
 Team dashboards run from items explicitly added to the Team's online Crew. There is no periodic read-copy snapshot from a member's computer; publishing or updating an item never reseeds the Team's live data. Use the ordinary online-item list and receive-online action, not a Mac snapshot as source or export authority.
 
-Teammates' In-team agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and In team are checked on every use. Use `messages action=ask` for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox. Never provision a substitute or use the maker's login.
+Teammates' In-team agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and In team are checked on every use. Use MCP `messages action=ask` (in Crew chat, `messages action=send` with `ask=true`) for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox. Never provision a substitute or use the maker's login.
 
 The first-time Team setup chooses people and their level, the chosen shared folders, and agents (Main selected initially), then
 saves with Finish. If sharing requires a dashboard, explain that before saving

@@ -1624,8 +1624,7 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 // in an existing conversation needs no new link.
 func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
 	if target.TeamAgentID != "" {
-		_, _, err := crewTeamAgentByID(ctx, target.CrewID, userID, target.TeamAgentID)
-		return err
+		return crewTeamAdmitEndpoint(ctx, userID, targetMessageEndpoint(userID, target))
 	}
 	if caller.Stamp.Type != triggerCallerCrew || strings.TrimSpace(caller.Path) == "" || caller.ConditionJob != "" || caller.NamedAgentID != "" {
 		return nil
