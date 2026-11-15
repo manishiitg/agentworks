@@ -3551,8 +3551,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       {/* Chat and task actions share the popup. While the agent works Enter steers and Cmd/Ctrl+Enter queues next. */}
                       {/* Compact chat box: the mic and the send arrow share one corner slot, like ChatGPT. Empty box: the
                           mic; once there is something to send: the arrow (Steer while a turn runs). Without a mic
-                          the arrow keeps its place while empty, so typing never moves the row. */}
-                      {micInSendSlot ? <span data-send-slot className="contents">{micEl}</span> : <span data-send-slot className={compactComposerActions && !hasValidQuery ? 'invisible' : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
+                          the arrow keeps its place while idle. While working with no mic, remove that empty
+                          slot so Stop is the rightmost control. Typing brings back Send for steering. */}
+                      {micInSendSlot ? <span data-send-slot className="contents">{micEl}</span> : <span data-send-slot className={compactComposerActions && !hasValidQuery ? (showStopButton && foregroundTurnActive && !micEl ? 'hidden' : 'invisible') : 'contents'} aria-hidden={compactComposerActions && !hasValidQuery ? true : undefined}><Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
                         <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>}>
                       <ChatSendModeButton
