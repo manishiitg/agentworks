@@ -140,12 +140,13 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
 
   const shown = faces.filter(face => face.online || face.working || face.waiting || face.idle)
   const mineActive = mine.working > 0 || mine.needsInput > 0
+  const working = faces.filter(face => face.working).length
+  const waiting = rows.filter(row => row.activity === 'waiting').length
   const own = <GlobalActivityMonitor representedSessionIds={representedSessionIds} slot={open && mineActive ? slot : null} onSummary={setMine} onClose={close} />
   if (!shown.length && !mineActive) return <div ref={rootRef} className="relative"
     data-theme-team-working={working > 0 ? "true" : "false"}
     data-theme-team-waiting={waiting > 0 ? "true" : "false"}>{own}</div>
   const mineLabel = mine.needsInput ? `${mine.needsInput} need${mine.needsInput === 1 ? 's' : ''} you` : mine.working ? `${mine.working} running` : ''
-  const working = faces.filter(face => face.working).length
   const online = faces.filter(face => face.online).length
   const label = working ? `${working} working` : `${online} online`
   // With more than one network every person and Crew names its network (owner, 12 Nov: "for more than one network we
@@ -162,7 +163,6 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const waitingRows = listed.filter(row => row.activity === 'waiting')
   // Idle rows show only while one person is picked: clicking a face shows all their agents including idle ones.
   const idleRows = only ? listed.filter(row => row.activity === 'idle') : []
-  const waiting = rows.filter(row => row.activity === 'waiting').length
   const rowView = (row: Row) => {
     const face = faces.find(item => item.key === row.personKey)
     return <button key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
