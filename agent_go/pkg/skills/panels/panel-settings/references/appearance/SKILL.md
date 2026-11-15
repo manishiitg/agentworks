@@ -7,7 +7,8 @@ are built in. A named look is the person's data, not a product preset.
 
 ## The working loop
 
-1. **Read** current/saved themes and the live guide. `guide.hook_guide` explains
+1. **Read** current in full, saved name/mode labels and the live guide. Use
+   `export name=` for one saved theme's full body, not routine bulk reads. `guide.hook_guide` explains
    each selector; `guide.css_max_bytes` is authoritative. Preserve unrelated
    choices and any unsent work. Never supply a different person or host path.
 2. **Design** a coherent look, not just one accent: surfaces, typography, readable
@@ -50,7 +51,8 @@ There is no scene enum, hidden stock renderer or executable theme JavaScript.
 
 ## Operations
 
-- `read`: full current/saved content and guide.
+- `read`: full current, saved name/mode labels and guide. The HTTP picker still
+  receives full saved themes; tool reads avoid filling context with unused CSS.
 - `apply`: patch current fields; with `name` and no theme, select your saved theme.
 - `save`: save/update a named theme AND apply it.
 - `duplicate`: optional `name` (omit for current) and `new_name`; store without applying.
