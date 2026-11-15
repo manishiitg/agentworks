@@ -71,6 +71,13 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 			t.Fatal("chat-key mismatch exposed a preview")
 		}
 	}
+	leaver := team
+	leaver.People = nil
+	for _, agent := range person.Agents {
+		if got := crewTeamAgentMessagePreviews(t.Context(), leaver, posts)("other", agent); got.LastMessage != "" || got.Typing {
+			t.Fatal("removed member retained live text")
+		}
+	}
 	off := team
 	off.On = false
 	if got := crewTeamLiveFor(t.Context(), off, []crewTeamAgentsPerson{person}, "owner"); len(got.Agents) > 0 {

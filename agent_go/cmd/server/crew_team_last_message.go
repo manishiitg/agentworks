@@ -10,7 +10,9 @@ import (
 	"time"
 
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -242,5 +244,32 @@ func crewTeamAgentMessagePreviews(ctx context.Context, team crewTeam, posts crew
 			return crewTeamMessagePreview{}
 		}
 		return preview
+	}
+}
+
+// Existing tab-wide monitor feed only: a notice has IDs, never excerpts. The
+// admitted /tab read applies the current audience and ChatShare every time.
+func (api *StreamingAPI) noteCrewTeamPreviewEvent(session string, event storeEvents.Event) {
+	if event.Data == nil || event.Data.HierarchyLevel != 0 {
+		return
+	}
+	switch event.Type {
+	case "streaming_chunk":
+		chunk, ok := event.Data.Data.(*agentevents.StreamingChunkEvent)
+		if !ok || chunk.IsToolCall || (chunk.Source != "" && chunk.Source != "content" && chunk.Source != "transcript") {
+			return
+		}
+	case "llm_generation_end", "tool_call_start", "streaming_end":
+	default:
+		return
+	}
+	api.activeSessionsMux.RLock()
+	workspace := ""
+	if active := api.activeSessions[session]; active != nil {
+		workspace = active.WorkspacePath
+	}
+	api.activeSessionsMux.RUnlock()
+	if project := crewPanelProjectForPath(workspace); project != "" {
+		livefeed.Default.PublishProject(livefeed.Sessions, project)
 	}
 }
