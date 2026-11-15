@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
 
 // Guest is stamped from the originating runtime, never supplied by message text.
@@ -81,59 +80,19 @@ func publishedAgentAuthorizationPeer(ctx context.Context, peer agentMessageEndpo
 // Ordinary publications use this same sender-thread path. Offline Team routing
 // only chooses the destination; it adds no exception to message admission.
 func (api *StreamingAPI) routePublishedAgentMessage(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint, route string) (agentConversation, bool, error) {
-	offline := false
-	if dest.TeamAgentID != "" && (route == "owner_mac" || route == "member_mac") {
-		team, err := readCrewTeam(dest.ID)
-		if err != nil {
-			return c, false, err
-		}
-		pair := ""
-		if route == "owner_mac" {
-			b, err := crewroot.ReadSync(dest.ID)
-			if err != nil {
-				return c, false, err
-			}
-			if b != nil {
-				pair = b.PairID
-			}
-		} else {
-			for _, p := range team.People {
-				if p.UserID == dest.UserID {
-					pair = p.MacPair
-				}
-			}
-		}
-		on, _ := crewMacSocketOnline(dest.UserID, dest.ID, pair)
-		if on || crewPublishedTarget(dest.ID, macSharedAgentTab(dest.ID, dest.ChatKey)) {
-			return c, false, nil
-		}
-		offline = true
-		home := team.OnlineHome
-		if home == "" {
-			log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_refused reason=no_online_home", dest.ID, dest.TeamAgentID)
-			return c, false, fmt.Errorf("This agent's computer is offline and this Team has no online agent yet. Add an item to the Team first, or ask again when the computer is online.")
-		} // only an explicit hand-off creates it
-		key := crewOwnerMainChatKey(home)
-		root := crewProjectRootByID(home)
-		chat, ok := sharedCrewAgentChat(ctx, publishedAsker(source), root, key)
-		if !ok {
-			return c, false, fmt.Errorf("The Team agent isn't ready. Choose its agent and account in the Team Crew settings.")
-		}
-		main, err := crewTeamSendingAgent(ctx, home, chat.OwnerID, key)
-		if err != nil || main.ID == "" {
-			return c, false, fmt.Errorf("The Team agent isn't shared with this Team.")
-		}
-		dest = agentMessageEndpoint{TeamAgentID: main.ID, Kind: triggerCallerCrew, ID: home, Profile: crewProfileID, UserID: chat.OwnerID, Path: root, ChatKey: key, Label: chat.Name}
-	} else {
-		if crewRelayTwin(dest.ID) || !ordinaryProjectChatKey(dest.ID, dest.ChatKey) {
-			return c, false, nil
-		}
-		chat, ok := sharedCrewAgentChat(ctx, publishedAsker(source), dest.Path, dest.ChatKey)
-		if !ok || chat.OwnerID != dest.UserID {
-			return c, false, nil
-		}
-		dest.Label = chat.Name
+	// Offline ASK routing happened at submission through crewTeamRouteAsk.
+	// A direct message never chooses a different receiver while queued.
+	if dest.External || dest.Kind != triggerCallerCrew || route == "owner_mac" || route == "member_mac" {
+		return c, false, nil
 	}
+	if dest.TeamAgentID == "" && (crewRelayTwin(dest.ID) || !ordinaryProjectChatKey(dest.ID, dest.ChatKey)) {
+		return c, false, nil
+	}
+	chat, ok := sharedCrewAgentChat(ctx, publishedAsker(source), dest.Path, dest.ChatKey)
+	if !ok || chat.OwnerID != dest.UserID {
+		return c, false, nil
+	}
+	dest.Label = chat.Name
 	dest.PublishedAgent = dest.ChatKey
 	dest.PublishedAsker = publishedAsker(source)
 	dest.ReplyInbox = c.ID
@@ -167,9 +126,7 @@ func (api *StreamingAPI) routePublishedAgentMessage(ctx context.Context, c agent
 		}
 	}
 	agentMessageMu.Unlock()
-	if err == nil && offline {
-		log.Printf("[TEAM_ONLINE] event=offline_ask home=%s asker=%s thread=%s", dest.ID, publishedAsker(source), dest.ChatKey)
-	}
+
 	return c, err == nil, err
 }
 

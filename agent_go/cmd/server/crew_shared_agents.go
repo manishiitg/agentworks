@@ -147,6 +147,13 @@ func sharedCrewAgentChat(ctx context.Context, user, root, chatID string) (*codeC
 	if userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
 		return nil, false
 	}
+	if identity, ok := projectIdentityOf(root); ok && identity.Product == crewProfileID {
+		if record, known := defaultProjectOwners().Lookup(identity.Product, identity.Folder); known {
+			if chat, admitted := crewTeamSharedChat(ctx, user, record.ProjectID, chatID); admitted {
+				return chat, true
+			}
+		}
+	}
 	if !crewSharedWith(root, user) && !crewProjectOwnedByCaller(user, root) {
 		return nil, false
 	}

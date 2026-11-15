@@ -1402,7 +1402,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. Replies are optional; final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. After sending, continue with your own task unless it is finished. Replies are optional; final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"ask": map[string]interface{}{"type": "boolean", "description": "A question: an offline In-team target redirects to the Team agent. Ordinary direct send waits."}, "target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx)
 			if err != nil {
@@ -1444,6 +1444,12 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			if id == "" {
 				target, err = api.resolveAgentChatTarget(ctx, target, stringToolArg(args, "chat_id"))
+				if err != nil {
+					return "", err
+				}
+			}
+			if ask, _ := args["ask"].(bool); ask && id == "" {
+				target, err = crewTeamAskTarget(ctx, userID, target)
 				if err != nil {
 					return "", err
 				}

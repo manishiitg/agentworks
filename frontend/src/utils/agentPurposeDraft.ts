@@ -69,7 +69,7 @@ export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, ag
   const sender = own.find(tab => tab.metadata?.agentProfileIsMainChat) || own[0]
   if (!sender) return false
   const owner = ownerShortName(ownerName) || 'their'
-  fillDraft(sender.tabId, `Ask ${owner}'s ${agentName} agent${address ? ` (message it at ${address})` : ''}: `)
+  fillDraft(sender.tabId, `Ask ${owner}'s ${agentName} agent${address ? ` (use messages action=ask, target=${address}; not a direct send)` : ''}: `)
   return true
 }
 
