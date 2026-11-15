@@ -127,27 +127,25 @@ func crewSyncClaimsGate(claims *UserClaims, id string) *crewSyncFailure {
 	return nil
 }
 
+// Sync needs the registry's storage identity, not a model/runtime binding.
+// Resolve it once per request, with fresh admission and one identity manifest
+// read. Never discover every Crew or expand functions/webhooks/timers here.
 func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, id string) (crewroot.Roots, error) {
-	return api.crewSyncRootsWithWorkspace(ctx, claims, id, api.resolveExternalWorkspace)
-}
-
-func (api *StreamingAPI) crewSyncRootsWithWorkspace(ctx context.Context, claims *UserClaims, id string, workspace func(context.Context, *UserClaims, string) (crewProjectBinding, productProjectManifest, bool)) (crewroot.Roots, error) {
 	if failure := crewSyncClaimsGate(claims, id); failure != nil {
 		return crewroot.Roots{}, failure
 	}
-	binding, _, ok := workspace(ctx, claims, id)
-	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
-		if ok && binding.OwnerID != "" {
-			return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: fmt.Sprintf("only this project's main owner can move it between computers; ask %s to open it on their Mac", shareOwnerLabel(binding.OwnerID))}
-		}
-		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this project's main owner can move it between computers; ask its owner to open it on their Mac"}
-	}
-	roots, found, err := crewStorageRoots(binding.Binding.WorkspacePath)
+	id = workspaceTokenProjectID(id)
+	root := crewProjectRootByID(id)
+	roots, found, err := crewStorageRoots(root)
 	if err != nil {
 		return roots, err
 	}
-	if !found {
-		return roots, fmt.Errorf("this Crew's folder is unavailable")
+	if !found || roots.ID != id || roots.Owner != claims.UserID {
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this project's main owner can move it between computers; ask its owner to open it on their Mac"}
+	}
+	manifest, err := readCrewProjectMetadata(ctx, crewProfileID, roots.Virtual)
+	if err != nil || manifest.ID != roots.ID {
+		return crewroot.Roots{}, fmt.Errorf("this Crew's settings are unavailable")
 	}
 	return roots, nil
 }
