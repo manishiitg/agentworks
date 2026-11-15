@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"log"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"time"
@@ -26,7 +29,9 @@ type teamOnlineItemMapping struct {
 	Revision             string `json:"revision"`
 	SubmissionID         string `json:"submission_id"`
 	AddedBy              string `json:"added_by"`
+	AddedByName          string `json:"added_by_name"`
 	UpdatedBy            string `json:"updated_by"`
+	UpdatedByName        string `json:"updated_by_name"`
 	AddedAt              string `json:"added_at"`
 	UpdatedAt            string `json:"updated_at"`
 	Name                 string `json:"name"`
@@ -58,6 +63,9 @@ func (in teamOnlineRequest) validate() error {
 	if !teamOnlineIdentifier.MatchString(in.TeamProjectID) || !teamOnlineIdentifier.MatchString(in.SourceProjectID) || !teamOnlineIdentifier.MatchString(in.ItemID) || !teamOnlineIdentifier.MatchString(in.SubmissionID) {
 		return fmt.Errorf("choose the Team, source item and a submission ID")
 	}
+	if in.Kind == "automation" && in.SourceProjectID != in.TeamProjectID {
+		return fmt.Errorf("Add to Team moves only this Team Crew’s own schedules and Watchers")
+	}
 	if in.Kind != "automation" && in.Kind != "dashboard" && in.Kind != "artifact" {
 		return fmt.Errorf("choose an automation, dashboard or artifact")
 	}
@@ -77,21 +85,40 @@ func teamOnlineHome(ctx context.Context, project string) (crewTeam, error) {
 	}
 	return team, nil
 }
+
+// Server-only Team state, outside the Crew's model-writable file roots.
+func teamOnlineMappingsPath(destination triggerTarget) (string, error) {
+	dir, err := crewTeamDir(destination.CrewID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "team-online.json"), nil
+}
 func readTeamOnlineMappings(ctx context.Context, destination triggerTarget) ([]teamOnlineItemMapping, error) {
-	raw, found, err := readFileFromWorkspace(ctx, path.Join(destination.Path, "team-online.json"))
-	if err != nil || !found {
+	filename, err := teamOnlineMappingsPath(destination)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(filename)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	var mappings []teamOnlineItemMapping
-	err = json.Unmarshal([]byte(raw), &mappings)
+	err = json.Unmarshal(raw, &mappings)
 	return mappings, err
 }
 func saveTeamOnlineMappings(ctx context.Context, destination triggerTarget, mappings []teamOnlineItemMapping) error {
-	raw, err := json.MarshalIndent(mappings, "", "  ")
+	filename, err := teamOnlineMappingsPath(destination)
 	if err != nil {
 		return err
 	}
-	return writeFileToWorkspace(ctx, path.Join(destination.Path, "team-online.json"), string(raw)+"\n")
+	if err = os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+		return err
+	}
+	return fsutil.WriteJSONAtomic(filename, mappings, 0600)
 }
 
 // Shared by source Open and DB-action routing: one accepted mapping, with
@@ -133,24 +160,33 @@ func acceptTeamOnlineMapping(ctx context.Context, destination triggerTarget, m t
 	})
 	m.SourceOwner = GetUserIDFromContext(ctx)
 	m.UpdatedBy = GetUserIDFromContext(ctx)
+	m.UpdatedByName = teamOnlinePersonName(m.UpdatedBy)
 	m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if i >= 0 {
 		m.AddedBy = mappings[i].AddedBy
+		m.AddedByName = mappings[i].AddedByName
 		m.AddedAt = mappings[i].AddedAt
 		mappings[i] = m
 	} else {
 		m.AddedBy = m.UpdatedBy
+		m.AddedByName = m.UpdatedByName
 		m.AddedAt = m.UpdatedAt
 		mappings = append(mappings, m)
 	}
 	if err = saveTeamOnlineMappings(ctx, destination, mappings); err != nil {
 		return m, err
 	}
+	log.Printf("[TEAM_ONLINE_ITEM] step=mapped source_project=%s destination=%s kind=%s item_id=%s item_revision=%s", m.SourceProjectID, m.DestinationProjectID, m.Kind, m.ItemID, m.Revision)
 	log.Printf("[TEAM_ONLINE] event=mapped person=%s source_project=%s destination=%s kind=%s item_id=%s destination_item_id=%s revision=%s", m.UpdatedBy, m.SourceProjectID, m.DestinationProjectID, m.Kind, m.ItemID, m.DestinationItemID, m.Revision)
 	return m, nil
 }
 
-func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineRequest) (teamOnlineResult, error) {
+func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineRequest) (final teamOnlineResult, failure error) {
+	defer func() {
+		if failure != nil && in.validate() == nil {
+			log.Printf("[TEAM_ONLINE_ITEM] step=failed team=%s source_project=%s kind=%s item_id=%s item_revision=%s reason=handoff_refused", in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID, in.Revision)
+		}
+	}()
 	result := teamOnlineResult{TeamProjectID: in.TeamProjectID, ItemID: in.ItemID, Revision: in.Revision, SubmissionID: in.SubmissionID, Preview: in.Preview, Notes: []string{}, Dependencies: teamOnlineDependencies{Tables: []teamonline.Table{}, Automations: []teamonline.Automation{}}}
 	if IsLocalMode() {
 		return result, fmt.Errorf("send this hand-off to the Team's server")
@@ -162,6 +198,7 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 	if err := in.validate(); err != nil {
 		return result, err
 	}
+	log.Printf("[TEAM_ONLINE_ITEM] step=received team=%s source_project=%s kind=%s item_id=%s item_revision=%s", in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID, in.Revision)
 	team, err := teamOnlineHome(ctx, in.TeamProjectID)
 	if err != nil {
 		return result, err
@@ -318,12 +355,19 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		return result, err
 	}
 	result.Notes = append(result.Notes, notes...)
+	if len(automations) > 0 {
+		log.Printf("[TEAM_ONLINE] event=automation_move step=installed_paused source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
+	}
 	if in.Kind != "automation" {
 		applied, err := api.receiveTeamOnlineDashboard(ctx, source, destination, dashboardRef, false)
 		if err != nil {
 			return result, err
 		}
 		mapping := teamOnlineItemMapping{SourceProjectID: source.CrewID, Kind: in.Kind, ItemID: in.ItemID, DestinationProjectID: destination.CrewID, DestinationItemID: applied.DestinationItemID, Revision: in.Revision, SubmissionID: in.SubmissionID, Name: itemName}
+		log.Printf("[TEAM_ONLINE_ITEM] step=code_installed team=%s destination=%s kind=%s item_id=%s item_revision=%s", in.TeamProjectID, destination.CrewID, in.Kind, in.ItemID, in.Revision)
+		if dashboardRef.Seed && len(applied.Tables) > 0 {
+			log.Printf("[TEAM_ONLINE_ITEM] step=data_seeded team=%s destination=%s item_id=%s item_revision=%s", in.TeamProjectID, destination.CrewID, in.ItemID, in.Revision)
+		}
 		mapping, err = acceptTeamOnlineMapping(ctx, destination, mapping)
 		if err != nil {
 			return result, err
@@ -337,13 +381,31 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		result.Location = &location
 	}
 	if len(automations) > 0 {
-		if err = stop(); err != nil {
+		if err = stop("stop"); err != nil {
 			return result, fmt.Errorf("the Team copy is paused because the source routine could not be stopped: %w", err)
 		}
+		log.Printf("[TEAM_ONLINE] event=automation_move step=source_stopped source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
 		automations, notes, err = api.installTeamOnlineAutomations(ctx, source, destination, p, true)
+		if err == nil {
+			err = confirmTeamOnlineSchedulesEnabled(ctx, destination, p)
+		}
+		if err == nil {
+			err = stop("complete")
+		}
 		if err != nil {
+			_, _, _ = api.installTeamOnlineAutomations(ctx, source, destination, p, false)
+			// The source is still online in this hand-off. Restore its exact
+			// exported enable bits if destination enable fails.
+			restoreErr := stop("restart")
+			if restoreErr != nil {
+				log.Printf("[TEAM_ONLINE] event=automation_move step=failed source_project=%s item_id=%s reason=source_restart_failed", source.CrewID, in.ItemID)
+				return result, fmt.Errorf("the Team routine could not start and its source could not be restarted; turn it on in the source app")
+			}
+			log.Printf("[TEAM_ONLINE] event=automation_move step=source_restarted source_project=%s item_id=%s", source.CrewID, in.ItemID)
 			return result, err
 		}
+		log.Printf("[TEAM_ONLINE] event=automation_move step=enabled source_project=%s item_id=%s destination=%s", source.CrewID, in.ItemID, destination.CrewID)
+		log.Printf("[TEAM_ONLINE_ITEM] step=schedule_moved team=%s source_project=%s destination=%s item_id=%s item_revision=%s", in.TeamProjectID, source.CrewID, destination.CrewID, in.ItemID, in.Revision)
 		result.Notes = append(result.Notes, notes...)
 		for _, mapping := range automations {
 			mapping.SubmissionID = in.SubmissionID
@@ -399,6 +461,9 @@ func (api *StreamingAPI) teamOnlineChat(ctx context.Context, claims *UserClaims,
 	if connection != nil {
 		var out teamOnlineResult
 		if err = crewTeamRemoteJSON(ctx, claims.UserID, *connection, http.MethodPost, "/api/crew-teams/"+teamProject+"/receive-online", in, &out); err != nil {
+			if !in.Preview {
+				api.restartLocalTeamOnlineSource(ctx, claims, in)
+			}
 			return "", err
 		}
 		data, err := json.Marshal(out)
@@ -449,4 +514,35 @@ func (api *StreamingAPI) handleCrewTeamOnlineItems(w http.ResponseWriter, r *htt
 		return
 	}
 	externalJSON(w, map[string]any{"home_project_id": team.OnlineHome, "items": items})
+}
+
+// The Mac that initiated the hand-off can compensate locally even if its relay
+// disconnects while the server is enabling the routine. Use only its retained,
+// source-validated export, never a request-supplied path or schedule body.
+func (api *StreamingAPI) restartLocalTeamOnlineSource(ctx context.Context, claims *UserClaims, in teamOnlineRequest) {
+	teamOnlineExports.Range(func(key, value any) bool {
+		p := value.(*teamOnlinePackage)
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.owner != claims.UserID || !p.sourceStopped || p.request.TeamProjectID != in.TeamProjectID || p.request.SubmissionID != in.SubmissionID || p.request.ItemID != in.ItemID || p.request.Revision != in.Revision {
+			return true
+		}
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if err := stopTeamOnlineSource(cleanup, p.sourceLocal, p, true); err != nil {
+			log.Printf("[TEAM_ONLINE] event=automation_move step=failed source_project=%s item_id=%s reason=local_restart_failed", p.sourceLocal.CrewID, in.ItemID)
+			return true
+		}
+		p.sourceStopped = false
+		log.Printf("[TEAM_ONLINE] event=automation_move step=source_restarted source_project=%s item_id=%s", p.sourceLocal.CrewID, in.ItemID)
+		return true
+	})
+}
+
+func teamOnlinePersonName(id string) string {
+	name := shareOwnerLabel(id)
+	if name == "" || name == id {
+		return "Teammate"
+	}
+	return name
 }

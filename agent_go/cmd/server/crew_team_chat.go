@@ -131,7 +131,9 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			if sharedSender != "" || readOnly {
 				return "", fmt.Errorf("Add to Team from your own source chat")
 			}
-			if externalArg(args, "source_project_id") == "" {
+			if externalArg(args, "kind") == "automation" {
+				args["source_project_id"] = project
+			} else if externalArg(args, "source_project_id") == "" {
 				args["source_project_id"] = manifest.ID
 			}
 			return api.teamOnlineChat(ctx, caller, connection, project, args)

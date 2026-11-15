@@ -48,6 +48,7 @@ func (api *StreamingAPI) prepareTeamOnlineExport(ctx context.Context, source tri
 		}
 	}()
 	p.owner = source.CrewOwner
+	p.sourceLocal = source
 	p.request = in
 	p.manifest.SourceProjectID = source.CrewID
 	ids := slices.Clone(in.IncludeAutomations)
@@ -109,7 +110,9 @@ func (api *StreamingAPI) desktopTeamOnlineExport(ctx context.Context, claims *Us
 	if err := in.validate(); err != nil {
 		return fail(err)
 	}
-	if in.SourceProjectID != project {
+	_, binding, _, bindErr := api.desktopCrewChatBinding(ctx, project)
+	canonicalAutomation := bindErr == nil && in.Kind == "automation" && in.SourceProjectID == in.TeamProjectID && binding.PeerProjectID == in.TeamProjectID
+	if in.SourceProjectID != project && !canonicalAutomation {
 		return fail(fmt.Errorf("choose an item in this Mac's own paired Crew"))
 	}
 	source, err := resolveTriggerTarget(ctx, claims, "workspace:work:"+project)
@@ -117,10 +120,14 @@ func (api *StreamingAPI) desktopTeamOnlineExport(ctx context.Context, claims *Us
 		return fail(fmt.Errorf("the source Crew is unavailable"))
 	}
 	if call.Action == "prepare" {
-		p, err := api.prepareTeamOnlineExport(ctx, source, in, command.IncludeData)
+		localInput := in
+		localInput.SourceProjectID = project
+		p, err := api.prepareTeamOnlineExport(ctx, source, localInput, command.IncludeData)
 		if err != nil {
 			return fail(err)
 		}
+		p.request = in
+		p.manifest.SourceProjectID = in.SourceProjectID
 		retainTeamOnlineExport(p)
 		return reply(200, p.manifest)
 	}
@@ -170,12 +177,22 @@ func (api *StreamingAPI) desktopTeamOnlineExport(ctx context.Context, claims *Us
 			}
 		}
 		return reply(200, map[string]string{"frames": base64.StdEncoding.EncodeToString(frames.Bytes())})
-	case "stop":
-		if err := stopTeamOnlineSource(ctx, source, p); err != nil {
+	case "stop", "restart":
+		if err := stopTeamOnlineSource(ctx, source, p, call.Action == "restart"); err != nil {
 			return fail(err)
 		}
+		p.sourceStopped = call.Action == "stop"
 		return reply(200, map[string]bool{"stopped": true})
+	case "complete":
+		p.sourceStopped = false
+		return reply(200, map[string]bool{"completed": true})
 	case "close":
+		if p.sourceStopped {
+			if err := stopTeamOnlineSource(ctx, source, p, true); err != nil {
+				return fail(err)
+			}
+			p.sourceStopped = false
+		}
 		teamOnlineExports.Delete(command.Token)
 		p.close()
 		return reply(200, map[string]bool{"closed": true})
@@ -186,7 +203,7 @@ func (api *StreamingAPI) desktopTeamOnlineExport(ctx context.Context, claims *Us
 
 // The transport closure pins the exact caller's current pair for the entire
 // hand-off; it never queues, reads a mirror or tries another person's computer.
-func (api *StreamingAPI) fetchTeamOnlineSource(ctx context.Context, in teamOnlineRequest, includeData bool) (triggerTarget, *teamOnlinePackage, func() error, func(), error) {
+func (api *StreamingAPI) fetchTeamOnlineSource(ctx context.Context, in teamOnlineRequest, includeData bool) (triggerTarget, *teamOnlinePackage, func(string) error, func(), error) {
 	person := GetUserIDFromContext(ctx)
 	claims := GetUserFromContext(ctx)
 	pairProject := in.SourceProjectID
@@ -204,7 +221,12 @@ func (api *StreamingAPI) fetchTeamOnlineSource(ctx context.Context, in teamOnlin
 		if err != nil {
 			return source, nil, nil, nil, err
 		}
-		return source, p, func() error { return stopTeamOnlineSource(ctx, source, p) }, p.close, nil
+		return source, p, func(action string) error {
+			if action == "complete" {
+				return nil
+			}
+			return stopTeamOnlineSource(ctx, source, p, action == "restart")
+		}, p.close, nil
 	}
 	if crewMacSocketFor(person, pairProject, pair) == nil {
 		return triggerTarget{}, nil, nil, nil, fmt.Errorf("The source computer is offline. Open the app there and try again.")
@@ -249,5 +271,8 @@ func (api *StreamingAPI) fetchTeamOnlineSource(ctx context.Context, in teamOnlin
 	p.owner = person
 	p.request = in
 	source := triggerTarget{Kind: triggerCallerCrew, CrewID: manifest.SourceProjectID, CrewOwner: person, CrewProfile: crewProfileID}
-	return source, p, func() error { var ignored any; return call("stop", manifest.Token, nil, &ignored) }, func() { p.close(); closeRemote() }, nil
+	return source, p, func(action string) error {
+		var ignored any
+		return call(action, manifest.Token, nil, &ignored)
+	}, func() { p.close(); closeRemote() }, nil
 }
