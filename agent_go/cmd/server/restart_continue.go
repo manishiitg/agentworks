@@ -296,6 +296,7 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			}
 		}
 		if reason == "" {
+			api.reopenGoalPausedByRestart(ctx, sessionID)
 			now := time.Now().UTC()
 			record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
 			// Refresh the synthetic prompt even for records saved by an older build.
@@ -474,4 +475,23 @@ func (api *StreamingAPI) planRestartGoalResume(ctx context.Context, sessionID st
 		return false, true
 	}
 	return true, true
+}
+
+// Shutting down cancels the running turn, and Codex pauses its goal on any cancel (reason turn_canceled), so a goal
+// the person never paused is saved as paused. This runs only for a turn the restart interrupted (a person's Stop ends
+// the turn another way and is never queued); the continuation then resumes the goal. A pause the person chose has
+// another reason and stays paused.
+func (api *StreamingAPI) reopenGoalPausedByRestart(ctx context.Context, sessionID string) {
+	goal, err := api.latestNativeGoal(ctx, sessionID)
+	if err != nil || goal == nil || goal.Provider != "codex-cli" || goal.Goal == nil || goal.Goal.Status != "paused" || goal.Reason != "turn_canceled" {
+		return
+	}
+	reopened := *goal
+	active := *goal.Goal
+	active.Status = "active"
+	reopened.Goal = &active
+	if err := api.projectNativeGoal(sessionID, reopened, "restart_interrupted"); err != nil {
+		return
+	}
+	log.Printf("[AGENT_GOAL] session=%s native=%s action=reopened status=active reason=restart_interrupted", sessionID, goal.NativeSessionID)
 }
