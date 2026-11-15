@@ -69,7 +69,9 @@ export type TeamTabPerson = { activity?: 'running' | 'waiting'; user_id: string;
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
+export type TeamTabAgent = { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
+  /** Who may ask your own agent (Team Module Manager contract): the whole Team or the chosen people; absent on others' agents. */
+  audience?: 'whole_team' | 'chosen'; chosen_people?: { user_id: string; name: string }[]; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports where the agent runs; Mac agents have no standby copy. Their placement
   // stands, worded by the server; place_tone only picks the chip's colour. not_shared_line: the muted line of the
   // viewer's own agent that is not shared.
