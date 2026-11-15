@@ -172,6 +172,14 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		if m.Call == nil {
 			return nil
 		}
+		if m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "team_terminal_live" {
+			// Central reach may refresh Mac tab metadata; that is not a native
+			// journal read and must not affect the privacy-before-I/O counter.
+			sock.mu.Lock()
+			sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{"tabs":[]}`)}
+			sock.mu.Unlock()
+			return nil
+		}
 		calls++
 		var identity map[string]string
 		if (m.Call.Operation != "team_terminal_copy" && m.Call.Operation != "team_terminal_live") || json.Unmarshal(m.Call.Args, &identity) != nil || identity["session"] != attached.SessionID || identity["attachment"] != attached.ID || identity["agent"] != attached.AgentID || identity["provider"] != "claude" || identity["path"] != "" {
