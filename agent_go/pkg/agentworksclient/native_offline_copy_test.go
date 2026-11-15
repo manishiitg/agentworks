@@ -38,24 +38,24 @@ func TestNativeJournalDeltaResumesOnlyExactCompleteRecords(t *testing.T) {
 			if err := os.WriteFile(path, []byte(first+second[:8]), 0600); err != nil {
 				t.Fatal(err)
 			}
-			got, hash, err := ReadNativeJournalDelta(a, 0, "")
+			got, hash, _, err := ReadNativeJournalDelta(a, 0, "")
 			if err != nil || string(got) != first {
 				t.Fatalf("partial record advanced cursor: %q %v", got, err)
 			}
 			if err = os.WriteFile(path, []byte(first+second), 0600); err != nil {
 				t.Fatal(err)
 			}
-			got, _, err = ReadNativeJournalDelta(a, int64(len(first)), hash)
+			got, _, _, err = ReadNativeJournalDelta(a, int64(len(first)), hash)
 			if err != nil || string(got) != second {
 				t.Fatalf("resume: %q %v", got, err)
 			}
-			if _, _, err = ReadNativeJournalDelta(a, 1, hash); err == nil {
+			if _, _, _, err = ReadNativeJournalDelta(a, 1, hash); err == nil {
 				t.Fatal("mid-record cursor accepted")
 			}
 			if err = os.WriteFile(path, []byte(strings.Replace(first, "user", "evil", 1)+second), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err = ReadNativeJournalDelta(a, int64(len(first)), hash); err == nil {
+			if _, _, _, err = ReadNativeJournalDelta(a, int64(len(first)), hash); err == nil {
 				t.Fatal("rewritten prefix accepted")
 			}
 			outside := filepath.Join(t.TempDir(), "private")
@@ -68,7 +68,7 @@ func TestNativeJournalDeltaResumesOnlyExactCompleteRecords(t *testing.T) {
 			if err = os.Symlink(outside, path); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err = ReadNativeJournalDelta(a, 0, ""); err == nil {
+			if _, _, _, err = ReadNativeJournalDelta(a, 0, ""); err == nil {
 				t.Fatal("symlink journal accepted")
 			}
 		})
@@ -91,7 +91,7 @@ func TestNativeOfflineCopyLostReceiptDoesNotReuploadHistory(t *testing.T) {
 	if err := os.WriteFile(path, []byte(first), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cur := nativeCopyCursor{Project: "project", Agent: "agent"}
+	cur := NativeCopyCursor{Project: "project", Agent: "agent"}
 	commits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/external/v1/agents/attachment" {
@@ -101,7 +101,7 @@ func TestNativeOfflineCopyLostReceiptDoesNotReuploadHistory(t *testing.T) {
 				t.Error("identity changed")
 			}
 			_ = json.NewEncoder(w).Encode(struct {
-				nativeCopyCursor
+				NativeCopyCursor
 				Shared bool `json:"shared"`
 			}{cur, true})
 			return
@@ -148,14 +148,14 @@ func TestNativeOfflineCopyLostReceiptDoesNotReuploadHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := nativeCopyCursor{}
-	if _, err = client.syncNativeCopy(context.Background(), a, old); err == nil {
+	old := NativeCopyCursor{}
+	if _, err = client.SyncNativeCopy(context.Background(), a, old); err == nil {
 		t.Fatal("unacknowledged commit reported success")
 	}
 	if err = os.WriteFile(path, []byte(first+second), 0600); err != nil {
 		t.Fatal(err)
 	}
-	next, err := client.syncNativeCopy(context.Background(), a, old)
+	next, err := client.SyncNativeCopy(context.Background(), a, old)
 	if err != nil || next.Offset != int64(len(first+second)) || commits != 2 {
 		t.Fatalf("resume failed: %+v %v commits=%d", next, err, commits)
 	}

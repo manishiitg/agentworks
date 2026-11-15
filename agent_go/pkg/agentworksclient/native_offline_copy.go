@@ -16,7 +16,7 @@ import (
 
 var errNativeCopyNotShared = errors.New("native copy is not shared")
 
-type nativeCopyCursor struct {
+type NativeCopyCursor struct {
 	Project  string `json:"project"`
 	Agent    string `json:"agent"`
 	Revision uint64 `json:"revision"`
@@ -26,13 +26,13 @@ type nativeCopyCursor struct {
 
 // One turn-end job, one bounded delta; only the server's committed receipt
 // advances the durable cursor. A lost receipt resumes from server status.
-func (c *Client) syncNativeCopy(ctx context.Context, a AgentAttachment, old nativeCopyCursor) (nativeCopyCursor, error) {
-	raw, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "offline_copy_status", "agent_name": a.AgentName, "attachment_id": a.ID}, true)
+func (c *Client) SyncNativeCopy(ctx context.Context, a AgentAttachment, old NativeCopyCursor) (NativeCopyCursor, error) {
+	raw, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "offline_copy_status", "agent_name": a.AgentName, "attachment_id": a.ID, "provider": a.Provider, "session": a.SessionID}, true)
 	if err != nil {
 		return old, err
 	}
 	var status struct {
-		nativeCopyCursor
+		NativeCopyCursor
 		Shared bool `json:"shared"`
 	}
 	if err = json.Unmarshal(raw, &status); err != nil {
@@ -41,14 +41,14 @@ func (c *Client) syncNativeCopy(ctx context.Context, a AgentAttachment, old nati
 	if !status.Shared {
 		return old, errNativeCopyNotShared
 	}
-	cur := status.nativeCopyCursor
+	cur := status.NativeCopyCursor
 	if cur.Project == "" || cur.Agent == "" || cur.Offset < 0 {
 		return old, fmt.Errorf("invalid copy status")
 	}
 	if old.Project != "" && (old.Project != cur.Project || old.Agent != cur.Agent || old.Offset > cur.Offset || old.Revision > cur.Revision) {
 		return old, fmt.Errorf("copy cursor changed")
 	}
-	delta, tail, err := ReadNativeJournalDelta(a, cur.Offset, cur.TailHash)
+	delta, tail, sourceSize, err := ReadNativeJournalDelta(a, cur.Offset, cur.TailHash)
 	if err != nil {
 		return old, err
 	}
@@ -61,7 +61,7 @@ func (c *Client) syncNativeCopy(ctx context.Context, a AgentAttachment, old nati
 		return old, err
 	}
 	base := "/api/crew-teams/" + url.PathEscape(cur.Project) + "/agents/" + url.PathEscape(cur.Agent) + "/offline-copy/"
-	body := map[string]any{"provider": a.Provider, "session": a.SessionID, "attachment": a.ID, "base_revision": cur.Revision, "offset": cur.Offset, "previous_tail_hash": cur.TailHash, "delta": file}
+	body := map[string]any{"provider": a.Provider, "session": a.SessionID, "attachment": a.ID, "base_revision": cur.Revision, "offset": cur.Offset, "previous_tail_hash": cur.TailHash, "delta": file, "source_size": sourceSize}
 	raw, err = c.request(ctx, http.MethodPost, base+"plan", body, true)
 	if err != nil {
 		return old, err
@@ -103,7 +103,7 @@ func (c *Client) syncNativeCopy(ctx context.Context, a AgentAttachment, old nati
 	if err != nil {
 		return old, err
 	}
-	var ack nativeCopyCursor
+	var ack NativeCopyCursor
 	if err = json.Unmarshal(raw, &ack); err != nil {
 		return old, err
 	}
@@ -127,7 +127,7 @@ func (b *localBridge) queueNativeCopy(ctx context.Context, s *localSession) {
 	go func() {
 		defer b.workers.Done()
 		call, cancel := context.WithTimeout(ctx, 20*time.Second)
-		next, err := client.syncNativeCopy(call, a, old)
+		next, err := client.SyncNativeCopy(call, a, old)
 		cancel()
 		b.mu.Lock()
 		defer b.mu.Unlock()
