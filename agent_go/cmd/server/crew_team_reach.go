@@ -68,7 +68,7 @@ func crewTeamReachOpen(t crewTeam, viewer string) bool {
 
 // crewTeamReachRow is the one per-row admission check (nonrecursive): the Team is open to the viewer, and the row is
 // someone else's, In team, owned by a current active member. Discovery and every send use it. A terminal row's
-// transport liveness (dev features' currentCrewTeamTerminal) decides online or offline only, never admission.
+// transport check is applied separately: a changed binding refuses, while a valid disconnected stream is offline.
 func crewTeamReachRow(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
 	return crewTeamReachOpen(t, viewer) && row.InTeam && row.OwnerID != "" && row.OwnerID != viewer && t.member(row.OwnerID) && crewTeamAccountActive(row.OwnerID)
 }
@@ -88,8 +88,17 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 			if a.ID == "" || !ok || registered.OwnerID != p.UserID || !crewTeamReachRow(t, viewer, registered) {
 				continue
 			}
+			online, address := a.Place != "mac" || p.MacOn || a.PlaceServer, crewTeamAgentAddress(t.ProjectID, a.ID)
+			if registered.Kind == "terminal" {
+				named, err := currentCrewTeamTerminal(ctx, t, registered)
+				if err != nil {
+					continue
+				} // rebound is refused, never ordinary offline
+				online = namedAgentOnline(named)
+				address = "agent:" + shareOwnerLabel(registered.OwnerID) + "/" + named.Name
+			}
 			out = append(out, crewTeamReachableAgent{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
-				Online: a.Place != "mac" || p.MacOn || a.PlaceServer, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: crewTeamAgentAddress(t.ProjectID, a.ID)})
+				Online: online, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Address: address})
 		}
 	}
 	if t.OnlineHome != "" {

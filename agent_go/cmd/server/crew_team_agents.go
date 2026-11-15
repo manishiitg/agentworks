@@ -208,9 +208,17 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		for _, a := range missing {
 			row := crewTeamAgent{ID: a.ID, Tab: a.Tab, ChatKey: a.ChatKey, Name: a.Name, Purpose: a.Purpose, Place: a.Place, InTeam: a.InTeam, Address: crewTeamAgentAddress(t.ProjectID, a.ID)}
 			if a.Kind == "terminal" {
+				named, bindingErr := currentCrewTeamTerminal(ctx, t, a)
+				if bindingErr != nil && caller != a.OwnerID {
+					continue
+				}
+				row.Address = ""
+				if bindingErr == nil {
+					row.Address = "agent:" + shareOwnerLabel(a.OwnerID) + "/" + named.Name
+				}
 				row.PlaceLabel = "Mac · offline"
 				row.StatusLabel = "Offline"
-				if named, err := currentCrewTeamTerminal(ctx, t, a); err == nil && namedAgentOnline(named) {
+				if bindingErr == nil && namedAgentOnline(named) {
 					row.PlaceLabel = "Mac · online"
 					row.StatusLabel = "Online"
 					row.PlaceTone = "ok"
