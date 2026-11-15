@@ -75,6 +75,10 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 		}
 	}
 	for _, person := range people {
+		// A home has a real account for execution, not another teammate.
+		if t.RosterSource != "" && person.UserID == t.OwnerID {
+			continue
+		}
 		own := person.You || person.UserID == viewer
 		if !own {
 			out.People = append(out.People, crewTeamLivePerson{userAvatarFields: avatarFieldsFor(person.UserID, project), UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})

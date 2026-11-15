@@ -151,11 +151,45 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 		found := false
 		for _, row := range crewTeamReachableIn(f.Ctx(viewer), saved, viewer) {
 			if row.Kind == "team_agent" && row.Online {
+				if row.Name != "Team agent" {
+					t.Fatalf("Team agent projected as %q", row.Name)
+				}
 				found = true
 			}
 		}
 		if !found {
 			t.Fatalf("member %s has no Team agent", viewer)
+		}
+	}
+	// PLAT-746-1025: the online home must not appear as a second Crew or its execution account as a person.
+	people := teamAgentsByPerson(f.Ctx(fixtureUserA), home, fixtureUserA)
+	live := crewTeamLiveFor(f.Ctx(fixtureUserA), home, people, fixtureUserA)
+	for _, person := range live.People {
+		if person.UserID == home.OwnerID {
+			t.Fatal("virtual execution owner appeared as a teammate")
+		}
+	}
+	for _, person := range crewTeamPeopleFor(home, people, fixtureUserA, crewPersonShortName) {
+		if person.Name == crewTeamPersonLabels(home)[home.OwnerID] {
+			t.Fatal("virtual execution owner appeared in presence")
+		}
+	}
+	for _, detail := range []string{"", "navigation"} {
+		out := httptest.NewRecorder()
+		f.API.listExternalWorkspaces(out, httptest.NewRequest("POST", "/api/workspaces", nil).WithContext(f.Ctx(fixtureUserA)), nil, detail == "navigation")
+		if out.Code != 200 || strings.Contains(out.Body.String(), homeID) || !strings.Contains(out.Body.String(), fixtureCrewID) {
+			t.Fatalf("home leaked into Crew list (%s): %d %s", detail, out.Code, out.Body.String())
+		}
+	}
+	// The saved name, including a rename, must survive registry/reach projection (f97a70da42).
+	key := crewOwnerMainChatKey(homeID)
+	name := "Operations helper"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(f.Ctx(home.OwnerID), home.OwnerID, crewProfileID, key, &name, nil, home.OwnerID); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range crewTeamReachableIn(f.Ctx(fixtureUserA), saved, fixtureUserA) {
+		if row.Kind == "team_agent" && row.Name != name {
+			t.Fatalf("Team rename lost: %+v", row)
 		}
 	}
 	if rows := crewTeamReachableIn(f.Ctx("not-a-member"), saved, "not-a-member"); len(rows) != 0 {
