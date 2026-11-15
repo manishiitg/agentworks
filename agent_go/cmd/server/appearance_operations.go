@@ -34,23 +34,16 @@ func saveAppearanceTheme(doc *appearanceDocument, theme appearanceTheme) (bool, 
 	return true, nil
 }
 
-// Compare the two current values only, without copying every saved CSS document.
-// Field names (never CSS or values) keep mutation replies short and content-free.
+// Compare just the current theme, not every saved CSS document. Derive the
+// names from the canonical struct so newly implemented theme fields are included.
 func appearanceChangedFields(before, after appearanceTheme) []string {
-	fields := []struct {
-		name string
-		a, b any
-	}{
-		{"name", before.Name, after.Name}, {"mode", before.Mode, after.Mode},
-		{"interface_font", before.InterfaceFont, after.InterfaceFont}, {"code_font", before.CodeFont, after.CodeFont},
-		{"interface_size", before.InterfaceSize, after.InterfaceSize}, {"code_size", before.CodeSize, after.CodeSize},
-		{"colors", before.Colors, after.Colors}, {"css", before.CSS, after.CSS},
-		{"scene", before.Scene, after.Scene}, {"materials", before.Materials, after.Materials},
-	}
+	a, b := reflect.ValueOf(before), reflect.ValueOf(after)
+	fields := a.Type()
 	changed := []string{}
-	for _, field := range fields {
-		if !reflect.DeepEqual(field.a, field.b) {
-			changed = append(changed, field.name)
+	for i := 0; i < fields.NumField(); i++ {
+		name := strings.Split(fields.Field(i).Tag.Get("json"), ",")[0]
+		if name != "" && name != "-" && !reflect.DeepEqual(a.Field(i).Interface(), b.Field(i).Interface()) {
+			changed = append(changed, name)
 		}
 	}
 	return changed
