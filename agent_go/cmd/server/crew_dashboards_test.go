@@ -438,6 +438,7 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 	}
 	// Exercise the actual consolidated MCP catalog too, not merely the native
 	// schema. A screen action must also reach this same guarded handler in chat.
+	// This fixture exposes workspace handlers, not a profile-binding service.
 	mcpContext, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	writer := crewWriter("owner")
@@ -445,7 +446,7 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 	srv := serveExternalMCP(t, f.api, writer)
 	cli := dialExternalMCP(t, mcpContext, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, mcpContext, cli)
-	result := callRemoteTool(t, mcpContext, cli, "call_tool", map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "add_to_team", "crew_id": team.ProjectID, "dashboard_id": "orders"}})
+	result := callRemoteTool(t, mcpContext, cli, "call_tool", map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "add_to_team", "workspace": root, "dashboard_id": "orders"}})
 	requireRemoteSuccess(t, result, "dashboard")
 	if !strings.Contains(marshalStructured(t, result), "AgentBridge") {
 		t.Fatal("MCP omitted the source-agent task")
