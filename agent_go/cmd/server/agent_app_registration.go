@@ -109,6 +109,13 @@ func (api *StreamingAPI) handleAppAgentRegistration(w http.ResponseWriter, r *ht
 			resolved, err := api.externalMessageTargetForOperation(r.Context(), claims, args, externalArg(args, "action") == "send")
 			publicOnly, _ := args["public_only"].(bool)
 			if err != nil || !appAgentPeerAllowed(r.Context(), claims.UserID, targetMessageEndpoint(claims.UserID, resolved)) || (publicOnly && !appAgentPublished(r.Context(), resolved.NamedAgentID)) {
+				reason := "not_allowed"
+				if err != nil {
+					reason = "unresolved"
+				} else if publicOnly {
+					reason = "visitor_turn"
+				}
+				log.Printf("[AGENT-APP] send refused caller=%s team_agent=%s named_agent=%s reason=%s", claims.UserID, resolved.TeamAgentID, resolved.NamedAgentID, reason)
 				externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
 				return
 			}
@@ -210,8 +217,14 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 }
 
 // Own named agents need no publication. Other accounts use the existing public
-// AgentBridge grant, not a private Crew/Team or old person-specific share.
+// AgentBridge grant or a current Team row (PLAT-746-1034), never a private Crew
+// or old person-specific share.
 func appAgentPeerAllowed(ctx context.Context, user string, peer agentMessageEndpoint) bool {
+	// A Team row is its own grant: the same current In-team admission as every other bridge path, never a
+	// published share (a teammate's app chat agent has no named agent at all).
+	if peer.TeamAgentID != "" {
+		return crewTeamAdmitEndpoint(ctx, user, peer) == nil
+	}
 	if peer.NamedAgentID == "" {
 		return false
 	}
