@@ -141,7 +141,9 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const shown = faces.filter(face => face.online || face.working || face.waiting || face.idle)
   const mineActive = mine.working > 0 || mine.needsInput > 0
   const own = <GlobalActivityMonitor representedSessionIds={representedSessionIds} slot={open && mineActive ? slot : null} onSummary={setMine} onClose={close} />
-  if (!shown.length && !mineActive) return <div ref={rootRef} className="relative">{own}</div>
+  if (!shown.length && !mineActive) return <div ref={rootRef} className="relative"
+    data-theme-team-working={working > 0 ? "true" : "false"}
+    data-theme-team-waiting={waiting > 0 ? "true" : "false"}>{own}</div>
   const mineLabel = mine.needsInput ? `${mine.needsInput} need${mine.needsInput === 1 ? 's' : ''} you` : mine.working ? `${mine.working} running` : ''
   const working = faces.filter(face => face.working).length
   const online = faces.filter(face => face.online).length
@@ -178,7 +180,9 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   </button>
   const team = shown.length > 0
   const parts = [mineLabel, team ? `Team · ${label}` : ''].filter(Boolean)
-  return <div ref={rootRef} className="relative">
+  return <div ref={rootRef} className="relative"
+    data-theme-team-working={working > 0 ? "true" : "false"}
+    data-theme-team-waiting={waiting > 0 ? "true" : "false"}>
     {own}
     <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`${parts.join(', ')}. Open to see what is running and who is working.`} title={[mineLabel && `You · ${mineLabel}`, title].filter(Boolean).join('\n')}
       className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-border px-1.5 text-xs text-muted-foreground hover:bg-muted md:pr-2.5">

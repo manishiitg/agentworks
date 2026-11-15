@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils'
 
 /** Shared composer presentation. Crew and Code use the default variant. */
 export const PRODUCT_COMPOSER_BAND_CLASS = 'border-t border-border bg-background py-1.5 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]'
-export const PRODUCT_COMPOSER_CARD_CLASS = 'space-y-0.5 rounded-2xl border border-border bg-card px-1.5 py-0.5 shadow-sm transition-colors duration-150 focus-within:border-ring'
+export const PRODUCT_COMPOSER_CARD_CLASS = 'space-y-0.5 rounded-2xl border border-border bg-surface-composer px-1.5 py-0.5 shadow-sm transition-colors duration-150 focus-within:border-ring'
 
 export function ChatComposerBand({ product = false, className, ...props }: HTMLAttributes<HTMLDivElement> & { product?: boolean }) {
   return <div
@@ -27,10 +27,11 @@ export function ChatComposerArea({ product = false, className, ...props }: HTMLA
 
 export function ChatComposerCard({ product = false, className, ...props }: HTMLAttributes<HTMLDivElement> & { product?: boolean }) {
   return <div
+    data-theme-surface="composer"
     data-chat-composer-card
     className={cn(product
       ? PRODUCT_COMPOSER_CARD_CLASS
-      : 'space-y-1 rounded-xl border border-border bg-card p-1.5 shadow-sm transition focus-within:border-ring dark:border-slate-700/80 dark:bg-[#101513] dark:focus-within:border-slate-500', className)}
+      : 'space-y-1 rounded-xl border border-border bg-surface-composer p-1.5 shadow-sm transition focus-within:border-ring', className)}
     {...props}
   />
 }

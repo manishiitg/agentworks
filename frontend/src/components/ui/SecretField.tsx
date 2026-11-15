@@ -39,7 +39,7 @@ export function SecretField({
   return (
     <div>
       <Label htmlFor={inputID} className="mb-2 block">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label} {required && <span className="text-destructive">*</span>}
       </Label>
       <div className="relative" title={disabled ? disabledTitle : undefined}>
         <Input

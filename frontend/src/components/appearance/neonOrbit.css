@@ -1,11 +1,12 @@
+html.dark[data-appearance-scene="neon-orbit"]{--aw-page-opacity:0;--aw-sidebar-opacity:.78;--aw-sidebar-backdrop:blur(12px);--aw-composer-opacity:.85;--aw-composer-backdrop:blur(18px)}
 /* A built-in visual layer only. Project/Artifact documents are never restyled. */
 html[data-appearance-scene="neon-orbit"] #root{position:relative;z-index:1}
 html.dark[data-appearance-scene="neon-orbit"] [data-app-shell]{background:transparent}
 html.dark[data-appearance-scene="neon-orbit"] [data-app-main]{z-index:1}
 html.dark[data-appearance-scene="neon-orbit"] [data-app-main] :is(.bg-background,[data-chat-find-scope],[data-testid="terminal-clear-view"],[data-testid="terminal-clear-view-empty"]):not(:where(.force-light,.force-light *,[data-report-theme],[data-report-theme] *,[role="dialog"],[role="dialog"] *)){background-color:transparent!important}
-html.dark[data-appearance-scene="neon-orbit"] [data-app-sidebar] aside{background:hsl(var(--background)/.78);backdrop-filter:blur(12px)}
+html.dark[data-appearance-scene="neon-orbit"] [data-app-sidebar] aside{background:hsl(var(--appearance-sidebar) / clamp(0,var(--aw-sidebar-opacity,1),1));backdrop-filter:var(--aw-sidebar-backdrop,none)}
 html.dark[data-appearance-scene="neon-orbit"] nav[aria-label="Workspace navigation"]{background:transparent}
-html.dark[data-appearance-scene="neon-orbit"] [data-chat-composer-card]{background:hsl(var(--card)/.85)!important;backdrop-filter:blur(18px);box-shadow:0 8px 35px #0004}
+html.dark[data-appearance-scene="neon-orbit"] [data-chat-composer-card]{background:hsl(var(--card) / clamp(0,var(--aw-composer-opacity,1),1))!important;backdrop-filter:var(--aw-composer-backdrop,none);box-shadow:0 8px 35px #0004}
 .aw-orbit{pointer-events:none;font:12px system-ui,sans-serif;color:#defff0}
 .aw-orbit canvas{position:fixed;inset:0;z-index:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
 .aw-orbit-controls{position:fixed;bottom:140px;right:18px;display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #91ffd94d;border-radius:24px;background:#071722e8;box-shadow:0 4px 20px #0005;pointer-events:auto;z-index:60}
@@ -20,3 +21,17 @@ html.dark[data-appearance-scene="neon-orbit"] [data-chat-composer-card]{backgrou
 .aw-orbit-over{position:absolute;z-index:2;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#020c1877;backdrop-filter:blur(5px)}
 .aw-orbit-over h2{font-size:38px;font-weight:300;margin:0}.aw-orbit-over p{font:13px ui-monospace,monospace}.aw-orbit-over button{padding:12px 24px}
 @media(max-width:640px){.aw-orbit-controls{right:10px;bottom:160px}.aw-orbit-controls span{display:none}.aw-orbit-help{left:16px;bottom:60px;max-width:90%}.aw-orbit-hud{left:16px;gap:18px}.aw-orbit-hud b{font-size:17px}}
+
+/* Presentation-only reactions to the same state marks the app already shows. */
+html.dark[data-appearance-scene="neon-orbit"] [data-theme-agent-state="waiting"] {
+  box-shadow: inset 2px 0 hsl(var(--warning));
+}
+@keyframes aw-orbit-agent-glow {
+  to { box-shadow: inset 2px 0 hsl(var(--primary)), 0 0 10px hsl(var(--primary) / .14); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html.dark[data-appearance-scene="neon-orbit"] [data-theme-agent-state="running"],
+  html.dark[data-appearance-scene="neon-orbit"] [data-theme-team-working="true"] {
+    animation: aw-orbit-agent-glow 2s ease-in-out infinite alternate;
+  }
+}

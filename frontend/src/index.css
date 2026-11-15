@@ -2,6 +2,7 @@
 @import './themes/vscode-light.css';
 @import './themes/vscode-dark.css';
 @import './assets/chat-fonts/fonts.css';
+@import './themes/app-tokens.css';
 
 @tailwind base;
 @tailwind components;
@@ -20,52 +21,6 @@
 /* Available themes: .light, .dark, .theme-vscode-light, .theme-vscode-dark, .theme-custom */
 
 @layer base {
-  /* ===== DEFAULT THEME (VS Code Light) ===== */
-  :root,
-  .force-light {
-    --runloop-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-
-    /* VS Code Light Theme Colors */
-    --background: 0 0% 100%;               /* #ffffff - VS Code light background */
-    --foreground: 0 0% 20%;                /* #333333 - VS Code light foreground */
-    --card: 0 0% 98%;                      /* #fafafa - VS Code light panel background */
-    --card-foreground: 0 0% 20%;           /* #333333 - VS Code light foreground */
-    
-    /* Surface Colors - VS Code light hierarchy */
-    --popover: 0 0% 98%;                   /* #fafafa - VS Code light panel */
-    --popover-foreground: 0 0% 20%;        /* #333333 - VS Code light foreground */
-    --primary: 200 100% 40%;               /* #007acc - VS Code blue */
-    --primary-foreground: 0 0% 100%;       /* White text on blue */
-    --secondary: 0 0% 96%;                 /* #f5f5f5 - VS Code light secondary */
-    --secondary-foreground: 0 0% 20%;      /* #333333 - VS Code light foreground */
-    
-    /* Accent Colors - VS Code light palette */
-    --muted: 0 0% 96%;                     /* #f5f5f5 - VS Code light muted */
-    --muted-foreground: 0 0% 45%;          /* #737373 - VS Code light muted text */
-    --accent: 200 100% 40%;                /* #007acc - VS Code blue */
-    --accent-foreground: 0 0% 100%;        /* White text on accent */
-    
-    /* Status Colors - VS Code light colors */
-    --destructive: 0 70% 60%;              /* #f44747 - VS Code red */
-    --destructive-foreground: 0 0% 100%;   /* White text on red */
-    --success: 180 60% 50%;                /* #4ec9b0 - VS Code green */
-    --warning: 20 60% 60%;                 /* #ce9178 - VS Code orange */
-    --info: 200 100% 40%;                  /* #007acc - VS Code blue */
-    
-    /* Border & Input - VS Code light borders */
-    --border: 0 0% 85%;                    /* #d9d9d9 - VS Code light border */
-    --input: 0 0% 96%;                     /* #f5f5f5 - VS Code light input */
-    --ring: 200 100% 40%;                  /* #007acc - VS Code focus ring */
-    
-    /* Chart Colors - VS Code light inspired */
-    --chart-1: 200 100% 40%;              /* VS Code blue */
-    --chart-2: 180 60% 50%;               /* VS Code green */
-    --chart-3: 20 60% 60%;                /* VS Code orange */
-    --chart-4: 280 60% 60%;               /* Purple */
-    --chart-5: 0 70% 60%;                 /* VS Code red */
-    --radius: 0.5rem;
-  }
-  
   /* ===== DARK THEME ===== */
   .force-light { color-scheme: light; }
 
@@ -122,79 +77,6 @@
   }
   :root, .dark {
     --working-accent: var(--working-accent-orange);
-  }
-
-  .dark {
-    color-scheme: dark;
-    /* Deep dark app palette */
-    --background: 220 13% 6%;             /* #0d0f12 - app background */
-    --foreground: 220 16% 91%;            /* #e4e7ec - primary text */
-    --card: 220 12% 9%;                   /* #14171b - panel background */
-    --card-foreground: 220 16% 91%;       /* #e4e7ec - panel text */
-    
-    /* Surface Colors */
-    --popover: 220 12% 8%;                /* #121418 - elevated surface */
-    --popover-foreground: 220 16% 91%;    /* #e4e7ec - popover text */
-    --primary: 200 100% 40%;              /* #007acc - VS Code blue */
-    --primary-foreground: 0 0% 100%;      /* White text on blue */
-    --secondary: 220 10% 13%;             /* #1d2025 - secondary surface */
-    --secondary-foreground: 220 16% 91%;  /* #e4e7ec - secondary text */
-    
-    /* Accent Colors */
-    --muted: 220 10% 13%;                 /* #1d2025 - muted surface */
-    --muted-foreground: 220 9% 66%;       /* #a2a7b0 - muted text */
-    --accent: 200 100% 40%;               /* #007acc - VS Code blue */
-    --accent-foreground: 0 0% 100%;       /* White text on accent */
-    
-    /* Status Colors - VS Code colors */
-    --destructive: 0 70% 60%;             /* #f44747 - VS Code red */
-    --destructive-foreground: 0 0% 100%;  /* White text on red */
-    --success: 180 60% 50%;               /* #4ec9b0 - VS Code green */
-    --warning: 20 60% 60%;                /* #ce9178 - VS Code orange */
-    --info: 200 100% 40%;                 /* #007acc - VS Code blue */
-    
-    /* Border & Input */
-    --border: 220 9% 18%;                 /* #2a2d33 - subtle border */
-    --input: 220 10% 12%;                 /* #1b1e23 - input surface */
-    --ring: 200 100% 40%;                 /* #007acc - VS Code focus ring */
-    
-    /* Chart Colors - VS Code inspired */
-    --chart-1: 200 100% 40%;              /* VS Code blue */
-    --chart-2: 180 60% 50%;               /* VS Code green */
-    --chart-3: 20 60% 60%;                /* VS Code orange */
-    --chart-4: 280 60% 60%;               /* Purple */
-    --chart-5: 0 70% 60%;                 /* VS Code red */
-  }
-
-  /* ===== CUSTOM THEME (Example) ===== */
-  .theme-custom {
-    --background: 220 100% 95%;           /* Light blue background */
-    --foreground: 220 100% 20%;           /* Dark blue foreground */
-    --card: 220 100% 98%;                 /* Very light blue card */
-    --card-foreground: 220 100% 20%;      /* Dark blue card text */
-    --popover: 220 100% 98%;              /* Very light blue popover */
-    --popover-foreground: 220 100% 20%;   /* Dark blue popover text */
-    --primary: 220 100% 50%;              /* Medium blue primary */
-    --primary-foreground: 0 0% 100%;      /* White primary text */
-    --secondary: 220 100% 90%;            /* Light blue secondary */
-    --secondary-foreground: 220 100% 20%; /* Dark blue secondary text */
-    --muted: 220 100% 90%;                /* Light blue muted */
-    --muted-foreground: 220 100% 40%;     /* Medium blue muted text */
-    --accent: 220 100% 50%;               /* Medium blue accent */
-    --accent-foreground: 0 0% 100%;       /* White accent text */
-    --destructive: 0 70% 60%;             /* Red destructive */
-    --destructive-foreground: 0 0% 100%;  /* White destructive text */
-    --success: 120 60% 50%;               /* Green success */
-    --warning: 40 60% 60%;                /* Orange warning */
-    --info: 220 100% 50%;                 /* Blue info */
-    --border: 220 100% 80%;               /* Light blue border */
-    --input: 220 100% 90%;                /* Light blue input */
-    --ring: 220 100% 50%;                 /* Medium blue ring */
-    --chart-1: 220 100% 50%;              /* Blue chart */
-    --chart-2: 120 60% 50%;               /* Green chart */
-    --chart-3: 40 60% 60%;                /* Orange chart */
-    --chart-4: 280 60% 60%;               /* Purple chart */
-    --chart-5: 0 70% 60%;                 /* Red chart */
   }
 
   /* ===== REPORT THEMES =====
@@ -1903,45 +1785,7 @@
 }
 /* App-wide colors inherit into navigation and portaled dialogs. Explicit
    report/force-light themes still define their own tokens on their boundary. */
-/* Neutral surfaces separate content from chrome without tinting the whole app.
-   Blue is reserved for links/actions/focus; status colors keep their meanings. */
-html.light[data-appearance="light"] {
-  --background: 0 0% 98.824%;
-  --foreground: 0 0% 15%;
-  --card: 0 0% 100%;
-  --card-foreground: var(--foreground);
-  --popover: var(--card);
-  --popover-foreground: var(--foreground);
-  --muted: 0 0% 96%;
-  --muted-foreground: 0 0% 40%;
-  --border: 0 0% 89%;
-  --input: 0 0% 96%;
-  --primary: 221 83% 53%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: var(--muted);
-  --secondary-foreground: var(--foreground);
-  --accent: 0 0% 94%;
-  --accent-foreground: var(--foreground);
-  --ring: var(--primary);
-  --success: 124 35% 32%;
-  --warning: 45 60% 32%;
-  --destructive: 7.723 42.986% 49.312%;
-  --destructive-foreground: 0 0% 100%;
-  --info: var(--primary);
-  --diff-add: var(--success);
-  --diff-del: var(--destructive);
-  --chart-1: var(--primary);
-  --chart-2: var(--success);
-  --chart-3: var(--warning);
-  --chart-4: 288.667 40.909% 46%;
-  --chart-5: var(--destructive);
-  --appearance-bold: #171717;
-  --appearance-link: #2563eb;
-  --appearance-code: #262626;
-  --appearance-code-background: #f0f0f0;
-  --appearance-selection: #dbeafe;
-}
-/* Chat font is personal appearance; menus and code keep their existing typography. */
+/* Chat scale is layered over the same app-wide typography tokens. */
 html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
   font-family: var(--app-font, system-ui);
   font-size: calc(var(--app-font-size, 14px) * var(--chat-scale, 1));
