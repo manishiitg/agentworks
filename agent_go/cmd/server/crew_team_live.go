@@ -61,6 +61,19 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 	posts := crewTeamActivityPostsFor(t, viewer)
 	doing := posts.Doing
 	preview := crewTeamAgentMessagePreviews(ctx, t, posts)
+	// Teammates' agents come only from the one reach answer (the right panel, bridge discovery and admission use the
+	// same rows), so the header can never count an agent the panel or AgentBridge would refuse.
+	reach := map[string]bool{}
+	reachable, terminals := 0, 0
+	for _, row := range crewTeamReachableFrom(ctx, t, viewer, people) {
+		reachable++
+		if row.Kind == "agent" {
+			reach[row.ID] = true
+			if a, ok := t.Agents[row.ID]; ok && a.Kind == "terminal" {
+				terminals++
+			}
+		}
+	}
 	for _, person := range people {
 		own := person.You || person.UserID == viewer
 		if !own {
@@ -75,7 +88,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 				if !post.Private || (agent.Activity != "running" && agent.Activity != "waiting") {
 					continue
 				}
-			} else if !agent.InTeam {
+			} else if !agent.InTeam || !reach[agent.ID] {
 				continue
 			}
 			row := crewTeamLiveAgent{userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
@@ -104,7 +117,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 	} else if len(out.Agents) > 1 {
 		out.Summary = fmt.Sprintf("%d working", len(out.Agents))
 	}
-	crewTeamLiveLog(project, viewer, out)
+	crewTeamLiveLog(project, viewer, out, reachable, terminals)
 	return out
 }
 
@@ -112,7 +125,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 // instead of one log per navigation request. No names or message/task text.
 var crewTeamLiveLogMinutes sync.Map
 
-func crewTeamLiveLog(project, viewer string, live crewTeamLiveView) {
+func crewTeamLiveLog(project, viewer string, live crewTeamLiveView, reachable, terminals int) {
 	value, _ := crewTeamLiveLogMinutes.LoadOrStore(project+"/"+viewer, &atomic.Int64{})
 	minute := time.Now().Unix() / 60
 	previous := value.(*atomic.Int64).Load()
@@ -133,7 +146,7 @@ func crewTeamLiveLog(project, viewer string, live crewTeamLiveView) {
 			}
 		}
 	}
-	log.Printf("[CREW_TEAM_LIVE] project=%s viewer=%s working=%d waiting=%d idle=%d previews=%d", project, viewer, len(live.Agents)-waiting, waiting, len(live.Idle), previews)
+	log.Printf("[CREW_TEAM_LIVE] project=%s viewer=%s reachable=%d terminals=%d working=%d waiting=%d idle=%d previews=%d", project, viewer, reachable, terminals, len(live.Agents)-waiting, waiting, len(live.Idle), previews)
 }
 
 // Only metadata from admitted Team-to-Team conversations affects the live line.

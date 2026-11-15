@@ -59,7 +59,7 @@ func crewTeamPanelReachFor(ctx context.Context, t crewTeam, viewer string, peopl
 			byID[agent.ID] = agent
 		}
 	}
-	for _, row := range crewTeamReachableIn(ctx, t, viewer) {
+	for _, row := range crewTeamReachableFrom(ctx, t, viewer, people) {
 		projected := crewTeamPanelReach{crewTeamReachableAgent: row}
 		if row.Kind == "team_agent" {
 			if home := crewTeamHomeAgentFor(ctx, t, viewer); home != nil {
