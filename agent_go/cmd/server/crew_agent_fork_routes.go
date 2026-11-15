@@ -17,7 +17,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	claims := GetUserFromContext(r.Context())
 	project, id, op := mux.Vars(r)["project"], mux.Vars(r)["fork"], mux.Vars(r)["op"]
 	fail := func(status int, reason string) {
-		log.Printf("[AGENT_FORK] project=%q fork=%q operation=%q event=refused status=%d", project, id, op, status)
+		log.Printf("[AGENT_FORK] project=%q fork=%q operation=%q event=refused status=%d reason=%q", project, id, op, status, reason)
 		externalError(w, status, "agent_fork_unavailable", reason)
 	}
 	if !crewTeamClaims(claims, project, r.Method != http.MethodGet) {
@@ -176,6 +176,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		if op == "download" {
+			log.Printf("[AGENT_FORK] project=%s fork=%s actor=%s event=downloaded", project, id, claims.UserID)
 			externalJSON(w, payload)
 			return
 		}

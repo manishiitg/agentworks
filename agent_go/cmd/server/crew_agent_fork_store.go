@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -133,7 +134,15 @@ func cancelCrewAgentFork(team crewTeam, offer crewAgentFork, person string, now 
 	if err := offer.admit(team, person, false, now); err != nil {
 		return err
 	}
-	return removeCrewAgentFork(offer)
+	if err := removeCrewAgentFork(offer); err != nil {
+		return err
+	}
+	event := "declined"
+	if person == offer.Sender {
+		event = "cancelled"
+	}
+	log.Printf("[AGENT_FORK] project=%s fork=%s actor=%s event=%s", offer.Project, offer.ID, person, event)
+	return nil
 }
 
 // Used by every pending-fork surface. Expiry cleanup also runs on the
@@ -206,6 +215,7 @@ func expireCrewAgentForks(ctx context.Context, project string, now time.Time) er
 			if err = removeCrewAgentFork(offer); err != nil {
 				return err
 			}
+			log.Printf("[AGENT_FORK] project=%s fork=%s event=expired reason=seven_days", project, offer.ID)
 		}
 	}
 	return nil
