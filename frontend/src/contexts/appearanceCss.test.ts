@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { expect, it } from 'vitest'
-import { safeAppearanceSheet } from './appearanceCss'
+import { afterEach, expect, it, vi } from 'vitest'
+import { loadAppearanceFonts, safeAppearanceSheet } from './appearanceCss'
 
-// Custom CSS may style the interface, but cannot use selectors to send visible
-// data to an external server. Check parsed declarations, including escaped values.
-it('drops external CSS resource declarations and keeps local styling', () => {
+// PLAT-746-1040: HTTPS artwork/fonts are an explicit owner choice. Relative,
+// script and escaped fetches must not gain permission through that choice.
+it('allows HTTPS images and fonts but drops unsafe URLs and hiding controls', () => {
   const { sheet, removed } = safeAppearanceSheet(String.raw`
-    [data-chat-composer-card] { border-radius: 20px; background: url(https://example.com/leak); --asset: u\72l(https://example.com/escaped); }
+    [data-chat-composer-card] { border-radius: 20px; background: url(https://example.com/art.png); --asset: u\72l(https://example.com/escaped); }
     [data-app-main] { background-image: url("data:image/svg+xml;base64,PHN2Zy8+"); }
     [data-app-ambient]::before {
       perspective: 700px; transform-style: preserve-3d; backface-visibility: hidden;
@@ -15,13 +15,29 @@ it('drops external CSS resource declarations and keeps local styling', () => {
       filter: drop-shadow(0 0 2px cyan);
     }
     @keyframes frame-tilt { to { transform: rotate3d(1,1,0,14deg); opacity: .5; } }
-    @font-face { font-family: untrusted; src: url(https://example.com/font.woff2); }
+    @font-face { font-family: custom; src: url(https://example.com/font.woff2); }
     @supports (display: grid) { .example { color: red; background-image: image-set("https://example.com/a" 1x); } }
     .relative { mask: url(/private); filter: url(//example.com/filter); --relative: url(art.svg#filter); }
+    .script { background-image: url("javascript:alert(1)"); --script: expression(alert(1)); }
+    .relative-set { background-image: image-set("relative.png" 1x); }
+    .variable-set { --path: "relative.png"; background-image: image-set(var(--path) 1x); }
+    button { display: none; visibility: hidden; pointer-events: none; opacity: 0; }
+    [data-app-ambient]::after { pointer-events: none; opacity: 0; }
   `)
   expect(removed).toBe(true)
   const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
-  expect(css).not.toContain('example.com')
+  expect(css).toContain('https://example.com/art.png')
+  expect(css).toContain('https://example.com/a')
+  expect(css).toContain('https://example.com/font.woff2')
+  expect(css).not.toContain('example.com/escaped')
+  expect(css).not.toContain('javascript:')
+  expect(css).not.toContain('expression(')
+  expect(css).not.toContain('image-set("relative.png"')
+  expect(css).not.toContain('image-set(var(')
+  const controls = [...sheet.cssRules].find(rule => 'selectorText' in rule && rule.selectorText === 'button') as CSSStyleRule
+  expect(controls.style.length).toBe(0)
+  const decoration = [...sheet.cssRules].find(rule => 'selectorText' in rule && rule.selectorText === '[data-app-ambient]::after') as CSSStyleRule
+  expect(decoration.style.getPropertyValue('pointer-events')).toBe('none')
   expect(css).not.toContain('/private')
   expect(css).not.toContain('art.svg')
   expect(css).toContain('border-radius: 20px')
@@ -45,4 +61,43 @@ it('keeps embedded SVG fragment artwork and canonicalizes encoded CSS fragments'
   expect(css).toContain('filter: url(#tomoeGlow)')
   expect(css).toMatch(/url\(['"]?#tomoeCut['"]?\)/)
   expect(css).toMatch(/url\(['"]?#another['"]?\)/)
+})
+
+
+afterEach(() => vi.unstubAllGlobals())
+
+// Constructed sheets silently drop imports: exercise the actual font loader,
+// including re-sanitization and rejecting remote UI rules, not just URL parsing.
+it('loads HTTPS font CSS without credentials and keeps relative imports and remote UI rules out', async () => {
+  const controller = new AbortController()
+  const fetcher = vi.fn(async () => new Response(`
+    @import "relative.css";
+    @font-face { font-family: Imported; src: url(https://example.com/face.woff2) format("woff2"); }
+    @font-face { font-family: Refused; src: url("javascript:alert(1)"); }
+    button { display: none; }
+  `, { headers: { 'content-type': 'text/css; charset=utf-8' } }))
+  vi.stubGlobal('fetch', fetcher)
+  const local = safeAppearanceSheet(`
+    @import url("https://example.com/fonts.css") screen and (min-width: 1px);
+    @import "//example.com/no.css";
+    @import "javascript:alert(1)";
+    @import "relative.css";
+    .local { color: red; }
+  `)
+  expect(local.removed).toBe(true)
+  expect(local.imports).toEqual([{ url: 'https://example.com/fonts.css', media: 'screen and (min-width: 1px)' }])
+  const result = await loadAppearanceFonts(local.imports, controller.signal)
+  expect(fetcher).toHaveBeenCalledTimes(1)
+  expect(fetcher).toHaveBeenCalledWith('https://example.com/fonts.css', { signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' })
+  const css = [...result.sheet.cssRules].map(rule => rule.cssText).join('\n')
+  expect(result.removed).toBe(true)
+  expect(css).toContain('https://example.com/face.woff2')
+  expect(css).toContain('@media screen and (min-width: 1px)')
+  expect(css).not.toContain('javascript:')
+  expect(css).not.toContain('relative.css')
+  expect(css).not.toContain('button')
+  expect([...local.sheet.cssRules].map(rule => rule.cssText).join('')).toContain('color: red')
+  // A failed import does not discard local styles or adopt an unchecked sheet.
+  fetcher.mockRejectedValueOnce(new Error('CORS unavailable'))
+  expect((await loadAppearanceFonts(local.imports, controller.signal)).removed).toBe(true)
 })

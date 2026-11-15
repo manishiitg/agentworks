@@ -4,7 +4,7 @@ import "slices"
 
 // Enough room for personal SVG art and expressive CSS, still bounded per theme.
 // The HTTP envelope also allows JSON escaping of every CSS byte plus metadata.
-const appearanceCSSMaxBytes = 64 << 10
+const appearanceCSSMaxBytes = 128 << 10
 const appearanceRequestMaxBytes = 8 * appearanceCSSMaxBytes
 
 // One documented selector inventory. Values describe presentation only: they

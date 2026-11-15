@@ -204,9 +204,9 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 		t.Fatalf("no-op claimed changes: %s", noChange.Body.String())
 	}
 
-	// PLAT-746-1040: expressive CSS can exceed the former 20KB cap. Its JSON
+	// PLAT-746-1040: expressive CSS can exceed the former 64KiB cap. Its JSON
 	// envelope must also fit when quotes/HTML characters are escaped by clients.
-	largeCSS := "/*" + strings.Repeat("\"<&雪", 8000) + "*/"
+	largeCSS := "/*" + strings.Repeat("\"<&雪", 16000) + "*/"
 	largeBody, _ := json.Marshal(map[string]any{"operation": "apply", "theme": map[string]any{"css": largeCSS}})
 	largeReply := invoke("owner", string(largeBody))
 	var largeDoc appearanceDocument
