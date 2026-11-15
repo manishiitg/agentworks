@@ -10,9 +10,11 @@ const textbox=()=>host.querySelector('textarea')!
 const type=async(value:string)=>act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textbox(),value);textbox().dispatchEvent(new Event('input',{bubbles:true}))})
 import { openTeammateAgent } from './openTeammateAgent'
 import { TeamAgentAsk } from './TeamAgentAsk'
+import { useChatShareLines } from './ChatEmptyState'
 const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:f.tabs}),{getState:()=>({chatTabs:f.tabs})})}))
 vi.mock('../../components/chat/AgentCard',()=>({useCrewAgentsStore:{getState:()=>({projectId:'crew',closed:[]})}}))
+vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:any)=>select({user:{id:'viewer'}})}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:(id:string)=>f.open(id)}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>f.identity,isChatIdentityCurrent:(value:number)=>value===f.identity}))
 vi.mock('../../services/api',()=>({default:{post:(...args:unknown[])=>f.post(...args)},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
@@ -36,4 +38,12 @@ it('does not carry a draft into a different signed-in chat identity',async()=>{
  f.team={target:{project:'crew'},view:{team:{on:true},agents:[{id:'peer',name:'Review',in_team:true}],reachable:[{agent_id:'peer',address:'workspace:work:crew/agent/peer'}]}}
  await render();await type('Private unsent question');expect(textbox().value).toBe('Private unsent question')
  f.identity=2;await render();expect(textbox().value).toBe('');expect(f.post).not.toHaveBeenCalled()
+})
+
+// The side-chat API marks a person's own scheduled history can_write=false too.
+it('does not apply a teammate-private gate or ask box to own schedule history',async()=>{
+ f.tabs.watch={metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'viewer',agentProfileConversationKey:'crew:schedule:job'}}
+ f.team={view:{team:{on:false},agents:[]}}
+ function Gate(){const line=useChatShareLines('watch');return <><span>{line.private||'own-history-visible'}</span><TeamAgentAsk tabId="watch"/></>}
+ await act(async()=>root.render(<Gate/>));expect(host.textContent).toContain('own-history-visible');expect(host.querySelector('textarea')).toBeNull()
 })
