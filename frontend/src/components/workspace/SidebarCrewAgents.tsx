@@ -1,6 +1,6 @@
 import { SidebarAgentPresence, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X, GripVertical } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X, GripVertical, Users } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentSetupMark } from '../chat/AgentIcon'
 import { useAgentMenuState, type AgentMenuState } from '../chat/agentMenuState'
@@ -118,6 +118,15 @@ function AgentRow({ agent, status, active, dragging, onDrag, groups, groupKey, o
         {reordering && agent.actions?.orderKey && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
         <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentSetupMark setup={agent.info?.setup} />
+        {/* Shared with team: the Team tab's server reading (info.sharedWith), the same in the Mac app and on the website. */}
+        {agent.info?.sharedWith && (() => {
+          // The mode from the server row: answers only keeps the people icon; can make changes adds a small pencil.
+          const label = `Shared with team · ${agent.info?.canChange ? 'can make changes' : 'answers only'}${agent.info?.sharedChosen ? ' · chosen people' : ''}`
+          return <span title={label} aria-label={label} role="img" className="relative shrink-0">
+            <Users aria-hidden="true" className={`h-3 w-3 ${agent.info?.canChange ? 'text-primary' : 'text-muted-foreground'}`} />
+            {agent.info?.canChange && <Pencil aria-hidden="true" className="absolute -bottom-1 -right-1 h-2 w-2 text-primary" />}
+          </span>
+        })()}
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
         <span className="flex-1" />
         <AgentCliMark tabId={agent.tabId} />

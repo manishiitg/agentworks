@@ -19,6 +19,8 @@ export interface AgentCardInfo {
   /** "tester-b", "everyone in the company"; undefined while the agent is not shared. */
   sharedWith?: string
   canChange?: boolean
+  /** Shared with chosen people only (the server row's audience). */
+  sharedChosen?: boolean
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   /** Only on your own agents; a teammate's agent is theirs to change. */
   onSetPurpose?: () => void
