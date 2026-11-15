@@ -133,3 +133,59 @@ func TestRestartBackgroundWakesAreRecentAndCapped(t *testing.T) {
 		}
 	}
 }
+
+// An active Codex goal that was between turns when the app restarted resumes with one continuation; a goal the
+// person paused, a chat with no goal and a chat the person stopped stay idle. A continuation that failed in an
+// earlier restart (kept in the queue with an error, never dispatched) is replaced, not mistaken for a waiting one.
+func TestRestartResumesActiveGoalBetweenTurns(t *testing.T) {
+	for _, scenario := range []string{"active", "paused_by_person", "no_goal", "stopped_by_person", "failed_continue_in_queue"} {
+		t.Run(scenario, func(t *testing.T) {
+			const sid = "restart-goal-chat"
+			backgroundFollowUps.personWrote(sid)
+			defer backgroundFollowUps.personWrote(sid)
+			api, ctx := restartBGAPI(t)
+			now := time.Now()
+			restartBGChat(t, api, ctx, sid, "", now.Add(-10*time.Minute), now.Add(-5*time.Minute))
+			if scenario != "no_goal" {
+				status := map[bool]string{true: "paused"}[scenario == "paused_by_person"]
+				if status == "" {
+					status = "active"
+				}
+				update := llmtypes.NativeGoalUpdate{Provider: "codex-cli", NativeSessionID: "native", Goal: &llmtypes.NativeGoal{Objective: "Finish the task", Status: status}}
+				if err := api.projectNativeGoal(sid, update, "test"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "stopped_by_person" {
+				api.stoppedSessions = map[string]bool{sid: true}
+			}
+			var queued []queuedConversationTurn
+			if scenario == "failed_continue_in_queue" {
+				failed := queuedConversationTurn{ID: "restart:old", UserID: restartBGUser, SessionID: sid, Request: QueryRequest{TriggeredBy: "restart_continue"}, DeliveryError: queuedTurnFailureMessage, CreatedAt: now.Add(-time.Hour)}
+				queued = []queuedConversationTurn{failed}
+			}
+			got, err := api.prepareRestartContinues(ctx, restartBGUser, queued)
+			if err != nil {
+				t.Fatal(err)
+			}
+			continues := 0
+			for _, turn := range got {
+				if turn.SessionID == sid && turn.Request.TriggeredBy == "restart_continue" {
+					continues++
+					if turn.DeliveryError != "" {
+						t.Fatal("the failed continuation was kept instead of replaced")
+					}
+				}
+			}
+			want := map[bool]int{true: 1}[scenario == "active" || scenario == "failed_continue_in_queue"]
+			if continues != want {
+				t.Fatalf("continuations=%d, want %d", continues, want)
+			}
+			if want == 1 {
+				if again, err := api.prepareRestartContinues(ctx, restartBGUser, got); err != nil || len(again) != len(got) {
+					t.Fatal("a second startup queued the continuation again")
+				}
+			}
+		})
+	}
+}

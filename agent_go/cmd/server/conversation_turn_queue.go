@@ -895,7 +895,14 @@ func (api *StreamingAPI) finishQueuedConversationTurn(turn queuedConversationTur
 		api.recordLiveInputConfirmed(turn.SessionID, turn.ID, outcome, proof, turn.Request.Provider, time.Since(turn.CreatedAt).Milliseconds(), queuedTurnDisplayID(turn))
 	}
 	storageCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if err != nil && !api.usageIncomingRetryArmed(storageCtx, turn) {
+	if err != nil && turn.Request.TriggeredBy == "restart_continue" {
+		// Our own continuation has no person's message to preserve. A failed row is never dispatched again and
+		// would block the next restart's fresh one; the next startup queues another if the chat is still open.
+		if removeErr := api.removeConversationTurn(storageCtx, turn); removeErr != nil {
+			logTurnQueue("cannot remove failed continuation %s: %v", turn.ID, removeErr)
+		}
+		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=drop reason=continue_failed", turn.SessionID, turn.ID)
+	} else if err != nil && !api.usageIncomingRetryArmed(storageCtx, turn) {
 		// Preserve the failed original for explicit resolution. Typed quota
 		// recovery either retries the still-unanswered incoming delivery or sends
 		// a separate continuation for the chat's own interrupted work.

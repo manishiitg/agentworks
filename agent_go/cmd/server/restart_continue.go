@@ -217,6 +217,12 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			kept = append(kept, usageLimitIncomingTurn(record, turn))
 			continue
 		}
+		if turn.StartedAt == nil && turn.Request.TriggeredBy == "restart_continue" && turn.DeliveryError != "" {
+			// A continuation that failed (usually: the app shut down again while it ran) is
+			// never dispatched again, so it must not stand in for a fresh one.
+			log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=drop reason=failed_continue_replaced", turn.SessionID, turn.ID)
+			continue
+		}
 		if turn.StartedAt == nil {
 			kept = append(kept, turn)
 			continue
@@ -250,6 +256,22 @@ func (api *StreamingAPI) prepareRestartContinues(ctx context.Context, userID str
 			if wake, handled := api.planRestartBackgroundKilledWake(sessionID, record, kept, time.Now()); handled {
 				if len(wake.labels) > 0 {
 					backgroundWakes = append(backgroundWakes, wake)
+				}
+				continue
+			}
+		}
+		if reason == "turn_not_open" {
+			// Between turns with an active Codex goal: the goal died with the app and resumes with one continuation.
+			if resume, handled := api.planRestartGoalResume(ctx, sessionID, record, kept, time.Now()); handled {
+				if resume {
+					now := time.Now().UTC()
+					record.RestartContinues = append(recentRestartContinues(record.RestartContinues, now), now)
+					record.Request.Query = restartContinueMessage
+					record.FollowUps++
+					backgroundFollowUps.restore(sessionID, record.FollowUps)
+					kept = append(kept, queuedConversationTurn{ID: "restart:" + record.QueryID, UserID: userID, SessionID: sessionID, Request: record.Request, Principal: record.Principal, CreatedAt: now})
+					document.Chats[sessionID] = record
+					log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=queued reason=goal_active_between_turns", sessionID, record.QueryID)
 				}
 				continue
 			}
@@ -416,4 +438,40 @@ func (api *StreamingAPI) storedRestartInterruption(sessionID string) bool {
 		return err == nil && json.Unmarshal(raw, &payload) == nil && payload.Metadata["source"] == "app_restart"
 	}
 	return false
+}
+
+// A goal the person left running is "active"; a person's pause or clear is saved as paused or cleared.
+// planRestartGoalResume says whether a chat between turns gets the one continuation that resumes its active Codex
+// goal. handled is false when the chat has no active goal (it stays idle). It obeys what the interrupted-turn
+// continuation obeys: Stop, a waiting person message, a continuation already waiting, the restart loop limit and
+// the follow-up chain limit; a skip is always logged.
+func (api *StreamingAPI) planRestartGoalResume(ctx context.Context, sessionID string, record restartContinueRecord, kept []queuedConversationTurn, now time.Time) (resume, handled bool) {
+	if record.QueryID == "" || api.eventStore == nil {
+		return false, false
+	}
+	goal, err := api.latestNativeGoal(ctx, sessionID)
+	if err != nil || goal == nil || goal.Provider != "codex-cli" || goal.Goal == nil || goal.Goal.Status != "active" {
+		return false, false
+	}
+	reason := ""
+	switch {
+	case api.isSessionMarkedStopped(sessionID):
+		reason = "stopped_by_person"
+	case waitingPersonTurn(kept, sessionID):
+		reason = "person_message_queued"
+	case len(recentRestartContinues(record.RestartContinues, now)) >= restartContinueLimit:
+		reason = "restart_loop_limit"
+	case record.FollowUps >= backgroundFollowUpChainLimit:
+		reason = "chain_limit"
+	}
+	for _, turn := range kept {
+		if turn.SessionID == sessionID && turn.Request.TriggeredBy == "restart_continue" {
+			reason = "continue_already_queued"
+		}
+	}
+	if reason != "" {
+		log.Printf("[RESTART_CONTINUE] session=%s turn=%s action=skip reason=%s goal_active=true", sessionID, record.QueryID, reason)
+		return false, true
+	}
+	return true, true
 }
