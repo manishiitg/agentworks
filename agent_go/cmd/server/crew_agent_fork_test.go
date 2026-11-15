@@ -17,7 +17,7 @@ import (
 func TestCrewAgentForkOnlyNamedCurrentRecipient(t *testing.T) {
 	now := time.Now()
 	agent := crewTeamRegisteredAgent{ID: "agent", OwnerID: "maker", Tab: "tab", ChatKey: "room:chat:tab"}
-	team := crewTeam{ProjectID: "room", OwnerID: "maker", On: true,
+	team := crewTeam{RegistryVersion: 1, ProjectID: "room", OwnerID: "maker", On: true,
 		People: []crewTeamPerson{{UserID: "recipient"}, {UserID: "other"}}, Agents: map[string]crewTeamRegisteredAgent{agent.ID: agent}}
 	offer, err := newCrewAgentFork(team, "maker", "recipient", agent.ID, now)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestCrewAgentForkPrivateStageAndCleanup(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	now := time.Now()
 	agent := crewTeamRegisteredAgent{ID: "agent", OwnerID: "maker", Tab: "tab", ChatKey: "room:chat:tab"}
-	team := crewTeam{ProjectID: "room", OwnerID: "maker", On: true, People: []crewTeamPerson{{UserID: "recipient"}, {UserID: "other"}}, Agents: map[string]crewTeamRegisteredAgent{agent.ID: agent}}
+	team := crewTeam{RegistryVersion: 1, ProjectID: "room", OwnerID: "maker", On: true, People: []crewTeamPerson{{UserID: "recipient"}, {UserID: "other"}}, Agents: map[string]crewTeamRegisteredAgent{agent.ID: agent}}
 	offer, err := newCrewAgentFork(team, "maker", "recipient", agent.ID, now)
 	if err != nil {
 		t.Fatal(err)
