@@ -361,7 +361,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				// attached agent. Recheck current authority instead of requiring an
 				// earlier SSE offer, which may belong to its previous lease.
 				if !serverAuthoredKind(m.Kind) {
-					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeMessagePeer(r.Context(), claims, c.Endpoints[m.From], false) != nil {
+					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.authorizeAgentConversationPeer(r.Context(), claims, *c, 1-m.From, false) != nil {
 						externalError(w, 409, "receipt_refused", "Incoming message is no longer authorized.")
 						return
 					}
@@ -402,6 +402,19 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if err = saveAgentMessageStore(r.Context(), s); err != nil {
 			externalCommunicationError(w, 400, "attachment_refused", err)
 			return
+		}
+	}
+
+	if externalArg(args, "action") == "ack" && !receiptUnchanged && ackDelivery == "delivered" {
+		for _, c := range s.Conversations {
+			for _, m := range c.Messages {
+				if m.ID == externalArg(args, "message_id") {
+					e := c.Endpoints[1-m.From]
+					if e.TerminalTeam != "" {
+						log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s inbox=%s message=%s outcome=ask_delivered", e.TerminalTeam, e.TeamAgentID, c.ID, m.ID)
+					}
+				}
+			}
 		}
 	}
 	if d := startupDiagnostic; d != nil {
@@ -487,14 +500,20 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	log.Printf("[AGENT-STREAM] connected agent=%s attachment=%s", a.ID, id)
 	agentLiveEvents.online[a.ID] = stream
 	agentLiveEvents.Unlock()
+	logTerminalTeamPresence(r.Context(), a, "online")
 	recordNamedAgentActivity(r.Context(), a.ID, id, true)
 	defer func() {
 		log.Printf("[AGENT-STREAM] disconnected agent=%s attachment=%s", a.ID, id)
 		agentLiveEvents.Lock()
-		if agentLiveEvents.online[a.ID] == stream {
+		removed := agentLiveEvents.online[a.ID] == stream
+		if removed {
 			delete(agentLiveEvents.online, a.ID)
 		}
 		agentLiveEvents.Unlock()
+		if removed {
+			logTerminalTeamPresence(context.WithoutCancel(r.Context()), a, "offline")
+		}
+
 		recordNamedAgentActivity(r.Context(), a.ID, id, true)
 	}()
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -624,7 +643,6 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					reasons[id] = "removed_from_inbox"
 					continue
 				}
-				src := c.Endpoints[m.From]
 				if serverAuthoredKind(m.Kind) {
 					permitted = append(permitted, id)
 					inboxes[id] = c.ID
@@ -634,7 +652,7 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					reasons[id] = "share_check_failed"
 					continue
 				}
-				if api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if api.authorizeAgentConversationPeer(r.Context(), live, c, 1-m.From, false) != nil {
 					reasons[id] = "sender_authorization_failed"
 					continue
 				}

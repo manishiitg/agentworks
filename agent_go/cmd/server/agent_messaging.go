@@ -48,6 +48,7 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
+	TerminalTeam string `json:"terminal_team,omitempty"`
 	// Published replies are inbox authority, not access to the asker's Crew.
 	PublishedAgent string `json:"published_agent,omitempty"`
 	PublishedAsker string `json:"published_asker,omitempty"`
@@ -261,6 +262,10 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 	return e
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
+	if t.TerminalTeam != "" {
+		return agentMessageEndpoint{TerminalTeam: t.TerminalTeam, TeamAgentID: t.TeamAgentID, UserID: t.CrewOwner, Kind: triggerCallerUser, ID: t.CrewOwner, External: true, NamedAgentID: t.NamedAgentID, Label: t.Label}
+	}
+
 	if t.NamedAgentID != "" {
 		if t.ShareID != "" {
 			return agentMessageEndpoint{UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID, ShareID: t.ShareID, ShareVersion: t.ShareVersion}
@@ -637,6 +642,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if err != nil {
 		return nil, err
 	}
+
+	if terminal := c.Endpoints[side]; terminal.TerminalTeam != "" {
+		log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s inbox=%s message=%s outcome=answered", terminal.TerminalTeam, terminal.TeamAgentID, id, m.ID)
+	}
 	if publisher := c.Endpoints[side]; publisher.PublishedAgent != "" {
 		log.Printf("[TEAM_ONLINE] event=offline_reply home=%s asker=%s thread=%s", publisher.ID, publisher.PublishedAsker, publisher.ChatKey)
 	}
@@ -708,6 +717,9 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 				continue
 			}
 			item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": s.endpointName(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+			if instruction := terminalTeamInstructions(ctx, c, side); instruction != "" {
+				item["team_instructions"] = instruction
+			}
 			for k, v := range messageArrivalFields(m) {
 				item[k] = v
 			}
@@ -1570,13 +1582,13 @@ func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint
 	return existing.External && requested.External && requested.NamedAgentID != "" &&
 		existing.NamedAgentID == requested.NamedAgentID && existing.UserID == requested.UserID &&
 		existing.Kind == requested.Kind && existing.ID == requested.ID &&
-		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion
+		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion && existing.TerminalTeam == requested.TerminalTeam && existing.TeamAgentID == requested.TeamAgentID
 }
 
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {
 	// A Team address carries revocable visibility. Never reuse an inbox whose
 	// endpoint lacks that identity, even when it points to the same chat.
-	if existing.TeamAgentID != requested.TeamAgentID {
+	if existing.TeamAgentID != requested.TeamAgentID || existing.TerminalTeam != requested.TerminalTeam {
 		return false
 	}
 	if existing.NamedAgentID != requested.NamedAgentID || existing.UserID != requested.UserID || existing.Kind != requested.Kind || existing.ID != requested.ID || existing.Profile != requested.Profile || existing.Path != requested.Path || existing.External != requested.External {
