@@ -1,3 +1,5 @@
+import { fillAskFromMyAgentDraft } from '../../utils/agentPurposeDraft'
+import { ownerShortName } from '../../components/chat/chatTabName'
 import { useEffect, useRef, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -49,6 +51,8 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
   return()=>{active=false;window.clearInterval(timer)}
  },[scope,inbox,watching,team.view?.team.on]) // eslint-disable-line react-hooks/exhaustive-deps
  if(!watching||(!agent&&team.view)) return null
+ const person=ownerShortName(agent?.owner_name||tab?.metadata?.agentProfileTabOwnerName||'your teammate')
+ const askLabel=`Ask ${person}'s ${agent?.name||'agent'}`
  const admitted=!!recipient&&!!team.target&&!!team.view?.team.on&&!team.error
  return <section aria-label="Ask this agent" className="shrink-0 border-t border-border px-4 py-3 text-sm">
   {admitted&&threadScope===scope&&replies.map(row=><p key={row.message_id} className="mb-2 whitespace-pre-wrap break-words"><b>{row.sender||agent?.name}: </b>{row.message}</p>)}
@@ -66,9 +70,16 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
    }catch(cause){if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setError(cause instanceof Error?cause.message:'Could not send this message.')}
    finally{if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setBusy(false)}
   }} className="flex items-end gap-2">
-   <textarea aria-label={`Ask ${agent?.name||'this agent'}`} placeholder={`Ask ${agent?.name||'this agent'}…`} rows={2} value={threadScope===scope?draft:''} onChange={event=>setDraft(event.target.value)} disabled={!admitted||busy} className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 disabled:opacity-50"/>
+   <textarea aria-label={askLabel} placeholder={`${askLabel}…`} rows={2} value={threadScope===scope?draft:''} onChange={event=>setDraft(event.target.value)} disabled={!admitted||busy} className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 disabled:opacity-50"/>
    <button type="submit" disabled={!admitted||busy||!draft.trim()} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50">{busy?'Sending…':'Send'}</button>
   </form>
+  <details className="mt-2 text-xs text-muted-foreground">
+   <summary className="w-fit cursor-pointer">More ways to ask</summary>
+   <button type="button" disabled={!admitted} className="mt-1 rounded border border-border px-2 py-1 disabled:opacity-50" onClick={()=>{
+    const project=tab?.metadata?.agentProfileProjectId
+    if(project&&!fillAskFromMyAgentDraft(project,person,agent?.name||'agent',recipient?.address))useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
+   }}>Ask from my agent</button>
+  </details>
   <p className="mt-1 text-xs text-muted-foreground">Your message goes to this agent through AgentBridge, not into their private chat.</p>
  </section>
 }
