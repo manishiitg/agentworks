@@ -226,6 +226,7 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		return result, nil
 	}
 	if destination.CrewID == "" {
+		// Only this explicit hand-off may provision a home. An agent ask never does.
 		home, err := api.ensureCrewTeamOnlineHome(ctx, in.TeamProjectID)
 		if err != nil {
 			return result, err
