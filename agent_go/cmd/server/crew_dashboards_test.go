@@ -340,3 +340,28 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 		}
 	}
 }
+
+// PLAT-746-1023: only a finished Artifact without live inputs skips the agent
+// agreement. Adding an Artifact label must not silently move feeding routines.
+func TestAddToTeamStaticArtifactCannotSkipLiveDependencyAgreement(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		artifact bool
+		files    map[string]string
+		direct   bool
+	}{
+		{"finished", true, map[string]string{"index.html": "<h1>Proposal</h1>"}, true},
+		{"dashboard", false, map[string]string{"index.html": "<h1>Orders</h1>"}, false},
+		{"live data", true, map[string]string{"online.json": `{"dataset":{"tables":["orders"]}}`}, false},
+		{"updates", true, map[string]string{"online.json": `{"automations":[{"id":"daily","name":"Daily"}]}`}, false},
+		{"button", true, map[string]string{"online.json": `{"functions":["ask"]}`}, false},
+		{"script", true, map[string]string{"scripts/read.py": "print('data')"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			direct, err := teamDashboardStaticArtifact(dashboards.Snapshot{Artifact: tc.artifact, Files: tc.files})
+			if err != nil || direct != tc.direct {
+				t.Fatalf("direct=%v err=%v", direct, err)
+			}
+		})
+	}
+}

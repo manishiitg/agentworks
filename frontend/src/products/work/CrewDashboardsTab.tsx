@@ -1,3 +1,6 @@
+import api from '../../services/api'
+import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chatIdentity'
+import { startTeamDashboardHandoff } from '../../utils/teamDashboardHandoff'
 import { loadDashboardDirectory, dashboardDisplayName, type DashboardDirectoryEntry } from '../../services/dashboardDirectory'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -20,10 +23,27 @@ const openAccess = (projectId: string, section: 'mac') => window.dispatchEvent(n
  * list), and a Crew on a Mac says it needs to be online first; this only shows them. The same tab in the Mac app and on
  * the website. */
 export function CrewDashboardsTab({ projectId }: { projectId: string }) {
-  const { target, unbound, error: reachError, retry: retryTeam } = useTeamTab(projectId)
+  const { target, view, unbound, error: reachError, retry: retryTeam } = useTeamTab(projectId)
   const localMode = useCapabilitiesStore(s => Boolean(s.capabilities?.local_mode))
   const host = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const onThisMac = localMode && host === 'local'
+  const [adding, setAdding] = useState('')
+  const [handoffMessage, setHandoffMessage] = useState('')
+  const canAdd = Boolean(view?.team.on && view.team.can_manage && !view.team.roster_source)
+  async function addToTeam(workspace: string, id: string) {
+    if (adding) return
+    const identity = captureChatIdentity()
+    setAdding(id); setHandoffMessage('')
+    try {
+      const { data } = await api.post<{ project_id: string; prompt?: string; message?: string }>('/api/dashboards', { action: 'add_to_team', workspace, dashboard_id: id })
+      assertChatIdentityCurrent(identity)
+      if (data.prompt) startTeamDashboardHandoff(data.project_id, data.prompt)
+      if (data.message) setHandoffMessage(data.message)
+      window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+    } catch (e) {
+      try { assertChatIdentityCurrent(identity); useChatStore.getState().addToast(teamFailure(e).message, 'error') } catch { /* account changed */ }
+    } finally { setAdding('') }
+  }
   const [localRows, setLocalRows] = useState<DashboardDirectoryEntry[]>()
   const [localError, setLocalError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -56,12 +76,13 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   }, [failure, attempt, retryTeam])
   const local = onThisMac ? <section aria-label="Artifacts on this Mac" className={teamCard}>
     <h3 className="font-semibold">On this Mac</h3>
-    {localError ? <p role="alert" className="text-xs text-muted-foreground">{localError}</p> : !localRows ? <p role="status">Loading local artifacts…</p> : !localRows.length ? <p className="text-sm text-muted-foreground">No published artifacts on this Mac.</p> : localRows.filter(row => kind === 'all' || kind === (row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard')).map(row => <div key={row.dashboard_id} className="flex items-center gap-2 border-t border-border py-2 text-sm"><span className="min-w-0 flex-1 truncate">{dashboardDisplayName(row)}</span><Button size="sm" variant="outline" onClick={() => selectReportDocument(row.workspace, row.document_path, true)}>Open</Button></div>)}
+    {localError ? <p role="alert" className="text-xs text-muted-foreground">{localError}</p> : !localRows ? <p role="status">Loading local artifacts…</p> : !localRows.length ? <p className="text-sm text-muted-foreground">No published artifacts on this Mac.</p> : localRows.filter(row => kind === 'all' || kind === (row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard')).map(row => <div key={row.dashboard_id} className="flex items-center gap-2 border-t border-border py-2 text-sm"><span className="min-w-0 flex-1 truncate">{dashboardDisplayName(row)}</span><Button size="sm" variant="outline" onClick={() => selectReportDocument(row.workspace, row.document_path, true)}>Open</Button>{canAdd && row.can_edit && <Button size="sm" variant="outline" disabled={Boolean(adding)} onClick={() => void addToTeam(row.workspace, row.dashboard_id)}>{adding === row.dashboard_id ? 'Adding…' : 'Add to Team'}</Button>}</div>)}
   </section> : null
   const notice = failure ? <p role="status" className="text-xs text-muted-foreground">Couldn't reach the Team server, retrying</p> : null
   if (!where || !tab) return <div className="space-y-3">{local}{notice || <p role="status" className="text-sm text-muted-foreground">Loading artifacts…</p>}</div>
   return <div className="space-y-3">
   {local}{notice}
+  {handoffMessage && <p role="status" className="text-sm">{handoffMessage}</p>}
   <section aria-label="Artifacts" className={teamCard}>
     <h3 className="font-semibold">{onThisMac ? 'Online with the Team' : 'Artifacts'}</h3>
     {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
@@ -97,6 +118,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
             <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{item.title}</span><span className="block text-xs text-muted-foreground">{item.line}</span></span>
             <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => selectReportDocument(tab.workspace, item.path, true)}>Open</Button>
+            {canAdd && !onThisMac && tab.can_change && <Button size="sm" variant="outline" className="h-7 rounded-full px-3" disabled={Boolean(adding)} onClick={() => void addToTeam(tab.workspace, item.id)}>{adding === item.id ? 'Adding…' : 'Add to Team'}</Button>}
           </div>
           <div className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
             <span className="min-w-0 flex-1">Who can open it: <span className="text-foreground">{item.who}</span></span>
