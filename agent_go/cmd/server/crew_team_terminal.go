@@ -212,7 +212,7 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 			break
 		}
 	}
-	if actor.ID == "" {
+	if _, err := currentCrewTeamTerminal(r.Context(), team, actor); actor.ID == "" || err != nil {
 		externalError(w, 403, "team_terminal_refused", "Join this Team from this session first.")
 		return
 	}
@@ -224,23 +224,8 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		externalJSON(w, post)
-	case "decisions":
-		posts := crewTeamActivityPostsFor(team, claims.UserID)
-		externalJSON(w, map[string]any{"decisions": posts.Decisions})
-	case "agents", "clashes", "resolve", "forks":
-		// Use existing handlers and their own access checks too. No caller can use
-		// this route to configure other agents, copy keys, or choose a command/path.
-		forwarded := map[string]any{"crew_id": team.ProjectID, "action": action}
-		if action == "resolve" {
-			for _, key := range []string{"path", "clash_id", "keep", "content"} {
-				if value, ok := args[key]; ok {
-					forwarded[key] = value
-				}
-			}
-		}
-		api.externalCrewTeamSyncCall(w, r, forwarded)
 	default:
-		externalError(w, 400, "team_terminal_refused", "Choose join, leave, doing, decision, decisions, agents, clashes, resolve or forks. Send tasks to the Team agent with the normal agent messaging tool.")
+		externalError(w, 400, "team_terminal_refused", "Choose join, leave, doing or decision. Find and message Team agents through AgentBridge. Use AgentWorks for clashes and conversation copies.")
 	}
 }
 

@@ -14,14 +14,14 @@ func addTerminalTeamTools(s *server.MCPServer, root, provider, host string, reso
 	if provider != "claude" {
 		return
 	}
-	s.AddTool(mcp.NewTool("team_sync", mcp.WithDescription("Join or leave a Team from THIS attached Claude Code session, only when the person asks. First join the Team in the running AgentWorks Mac app. join returns your existing local Team copy path; work in its selected folders. New sessions start Only me: choose In team in AgentWorks to let teammates ask. Answers only is the default; Live is explicit. AgentWorks must keep running for file sync. Team keys stay on the server; hand work needing them to the Team agent."), mcp.WithString("action", mcp.Required(), mcp.Enum("join", "leave", "doing", "decision", "decisions", "agents", "clashes", "resolve", "forks")), mcp.WithString("project", mcp.Required(), mcp.Description("Team Crew ID from AgentWorks, never a local path.")), mcp.WithString("line"), mcp.WithString("why"), mcp.WithString("path"), mcp.WithString("clash_id"), mcp.WithString("keep", mcp.Enum("current", "other")), mcp.WithString("content")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(mcp.NewTool("team_sync", mcp.WithDescription("Join or leave a Team from THIS attached Claude Code session, only when the person asks. First join the Team in the running AgentWorks Mac app. join returns your existing local Team copy path; work in its selected folders. New sessions start Only me: choose In team in AgentWorks to let teammates ask. Answers only is the default; Live is explicit. AgentWorks must keep running for file sync. Use normal AgentBridge discovery and messages to find and ask teammates. Clashes and conversation copies stay in AgentWorks. Team keys stay on the server; hand work needing them to the Team agent."), mcp.WithString("action", mcp.Required(), mcp.Enum("join", "leave", "doing", "decision")), mcp.WithString("project", mcp.Required(), mcp.Description("Team Crew ID from AgentWorks, never a local path.")), mcp.WithString("line"), mcp.WithString("why")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		session, err := resolve(ctx, req)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		args := req.GetArguments()
 		payload := map[string]any{"project": args["project"], "team_action": args["action"]}
-		for _, key := range []string{"line", "why", "path", "clash_id", "keep", "content"} {
+		for _, key := range []string{"line", "why"} {
 			if value, ok := args[key]; ok {
 				payload[key] = value
 			}
