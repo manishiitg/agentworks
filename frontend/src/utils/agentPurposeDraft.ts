@@ -60,7 +60,9 @@ function ownWritableTabs(projectId: string) {
   if (!viewer) return []
   return Object.values(useChatStore.getState().chatTabs).filter(tab => {
     const meta = tab.metadata
-    return meta?.agentProfileProjectId === projectId && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && meta.agentProfileBuilder !== false
+    // agentProfileBuilder marks the setup editor; ordinary own chats carry false (WorkSurface).
+    return meta?.agentProfileProjectId === projectId && !meta.isViewOnly && meta.agentProfileTabCanWrite !== false && meta.agentProfileBuilder !== true
+      && !meta.isScheduledRun && !meta.isBotRun && !meta.isExecutionRun
       && (!meta.agentProfileTabOwnerID || meta.agentProfileTabOwnerID === viewer)
   }).sort((a,b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
 }
