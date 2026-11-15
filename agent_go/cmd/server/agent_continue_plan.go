@@ -30,18 +30,21 @@ func (api *StreamingAPI) latestTurnOpenPlan(sessionID string) (open []openPlanIt
 		return nil, false
 	}
 	rows := api.eventStore.LastEventsRaw(sessionID, 300)
-	endSeen := false
+	completed := false
 	for i := len(rows) - 1; i >= 0; i-- {
 		row := rows[i]
 		switch {
 		case row.Type == "user_message":
 			return nil, false // no plan in the turn that just ended
-		case !endSeen && storeevents.IsTurnEndType(row.Type):
-			if row.Type != "unified_completion" || !completionWasNormal(row) {
+		case row.Type == "unified_completion":
+			// A turn saves unified_completion and then conversation_end; every end row of the newest turn counts.
+			if !completionWasNormal(row) {
 				return nil, false
 			}
-			endSeen = true
-		case endSeen && row.Type == "coding_agent_plan":
+			completed = true
+		case storeevents.IsTurnEndType(row.Type) && row.Type != "conversation_end":
+			return nil, false // error, cancel or Stop
+		case completed && row.Type == "coding_agent_plan":
 			return openPlanItems(row), true
 		}
 	}
@@ -102,7 +105,7 @@ func (api *StreamingAPI) continueOpenPlan(sessionID string) {
 	}
 	open, ended := api.latestTurnOpenPlan(sessionID)
 	if !ended || len(open) == 0 {
-		log.Printf("[AGENT_CONTINUE] session=%s action=skip reason=no_open_plan ended=%t", sessionID, ended)
+		log.Printf("[AGENT_CONTINUE] session=%s action=skip reason=no_open_plan ended=%t tail=%s", sessionID, ended, api.eventTail(sessionID, 8))
 		return
 	}
 	list := openPlanList(open)
@@ -143,4 +146,14 @@ func rememberOpenPlanContinued(sessionID, list string) bool {
 	}
 	openPlanContinued.seen[sessionID] = list
 	return true
+}
+
+// eventTail names the newest event types of a chat, so a skipped check shows what it saw.
+func (api *StreamingAPI) eventTail(sessionID string, n int) string {
+	rows := api.eventStore.LastEventsRaw(sessionID, n)
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Type)
+	}
+	return strings.Join(names, ",")
 }
