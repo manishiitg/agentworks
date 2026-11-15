@@ -82,9 +82,13 @@ func TestIdleCompactionPhaseIsNotRunning(t *testing.T) {
 	add(es, session, "llm_generation_start", &mcpevents.LLMGenerationStartEvent{ModelID: "codex"})
 	add(es, session, "llm_generation_end", &mcpevents.LLMGenerationEndEvent{})
 	es.EndIdleCompaction(session)
+	if es.TurnInProgress(session) {
+		t.Fatal("compaction left the turn running")
+	}
+	es.EndIdleCompaction(session) // settling twice must not emit another status
 	add(es, session, "user_message", nil)
-	want := []string{"compacting: Tidying this chat while you were away", "starting: Starting the agent"}
-	if got := phaseEvents(es, session); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	want := []string{"compacting: Tidying this chat while you were away", "idle: ", "starting: Starting the agent"}
+	if got := phaseEvents(es, session); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("phases = %q, want %q", got, want)
 	}
 	// The compaction's own model calls never reach the chat: their start made the screen reopen the reply that had

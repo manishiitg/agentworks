@@ -340,11 +340,16 @@ func (es *EventStore) BeginIdleCompaction(sessionID string, manual bool) {
 
 // EndIdleCompaction clears the compaction phase; the next person turn starts fresh.
 func (es *EventStore) EndIdleCompaction(sessionID string) {
+	cleared := false
 	turnPhasesMu.Lock()
 	if st := turnPhases[sessionID]; st != nil && st.phase == turnPhaseCompacting {
 		delete(turnPhases, sessionID)
+		cleared = true
 	}
 	turnPhasesMu.Unlock()
+	if cleared {
+		es.announceTurnPhase(sessionID, &turnPhaseState{phase: "idle"}, time.Now())
+	}
 }
 
 func (es *EventStore) announceTurnPhase(sessionID string, announce *turnPhaseState, now time.Time) {
