@@ -314,26 +314,3 @@ func crewHandbackKeptNote(project, person, tab string) string {
 
 // offerCrewHandbacks tells a Mac that just connected which of its agents the server answers for, so it takes them
 // back now (desktopCrewRelaySession, "handback").
-func offerCrewHandbacks(sock *crewMacSocket) {
-	sock.mu.Lock()
-	twins := map[string]string{}
-	for project, pair := range sock.twins {
-		twins[project] = pair
-	}
-	sock.mu.Unlock()
-	for project, pair := range twins {
-		// The connecting person's own rows, by the pair this connection was admitted with (owner or joined member).
-		rows, err := readCrewStandby(project, sock.owner)
-		if err != nil {
-			continue
-		}
-		for tab, row := range rows {
-			if row.User != sock.owner || row.Writer != "server" || row.PairID != pair {
-				continue
-			}
-			if sock.send != nil && sock.send(crewRelayMessage{Type: "handback", Project: project, State: tab}) == nil {
-				crewHandbackLog(project, tab, "handback_offered", "mac_online", 0, time.Now())
-			}
-		}
-	}
-}
