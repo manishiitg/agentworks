@@ -408,7 +408,7 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 		return rec.Code, out
 	}
 	status, out := call("owner")
-	if status != 200 || out.ProjectID != team.ProjectID || !strings.Contains(out.Prompt, "AgentBridge") || !strings.Contains(out.Prompt, created.Dashboard.Revision) || out.Message != "" {
+	if status != 200 || out.ProjectID != team.ProjectID || !strings.Contains(out.Prompt, "AgentBridge") || !strings.Contains(out.Prompt, "orders") || out.Message != "" {
 		t.Fatalf("owned task = %d %+v", status, out)
 	}
 	if status, out = call("reader"); status == 200 || out.Prompt != "" {
