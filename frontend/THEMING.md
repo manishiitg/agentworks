@@ -111,3 +111,15 @@ must not. Saved CSS is adopted after apply; material/scene-only edits reproject
 the root marker too. An adopted sheet/valid keyframe does not prove visible motion:
 check computed animation name/play state, two frames over time, ancestor surfaces,
 contrast, reduced-motion and a screenshot before claiming live success.
+
+## Starship (Light preset)
+
+Available to everyone from Appearance in the account menu or Settings. It saves
+through the same personal endpoint as agent-made themes: no scene enum, renderer
+or account behavior is added. Pale hull panels and a fixed panoramic nebula window
+sit behind readable dark text. The right panel has a small blur over static art;
+the composer and sidebar have no blur. Two narrow cyan strips animate transform
+and opacity only; the composer strip follows existing working hooks. The provider
+projects `html[data-appearance-visible="true|false"]` from its existing visibility
+subscription, clearing it at teardown. Both animations stop when hidden or under
+reduced motion. This is an app interior, not native desktop/window transparency.
