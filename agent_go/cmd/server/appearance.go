@@ -337,6 +337,20 @@ func (api *StreamingAPI) appearanceResponse(w http.ResponseWriter, r *http.Reque
 		livefeed.Default.PublishToUser(livefeed.Appearance, user, "")
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if forTool && request.Operation == "read" {
+		// Tools edit current in full; don't spend the agent's context on every saved
+		// CSS document. export(name) remains the explicit own-theme read path.
+		type savedLabel struct {
+			Name string `json:"name"`
+			Mode string `json:"mode"`
+		}
+		saved := make([]savedLabel, 0, len(doc.Saved))
+		for _, theme := range doc.Saved {
+			saved = append(saved, savedLabel{Name: theme.Name, Mode: theme.Mode})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"current": doc.Current, "saved": saved, "guide": appearanceGuide()})
+		return
+	}
 	if forTool && request.Operation != "read" {
 		changed := appearanceChangedFields(before, doc.Current)
 		if savedChanged {

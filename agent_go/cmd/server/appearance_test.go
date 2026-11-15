@@ -46,12 +46,28 @@ func TestAppearanceIsPersonalAndUsesOneValidatedDocument(t *testing.T) {
 	}
 	read := invoke("owner", `{"operation":"read"}`)
 	var doc appearanceDocument
-	if json.Unmarshal(read.Body.Bytes(), &doc) != nil || doc.Current.InterfaceFont != "fira-code" || len(doc.Saved) != 1 {
+	if json.Unmarshal(read.Body.Bytes(), &doc) != nil || doc.Current.InterfaceFont != "fira-code" || len(doc.Saved) != 1 || doc.Saved[0].CSS == "" {
 		t.Fatalf("not persisted: %s", read.Body.String())
 	}
 	toolRead := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "read"})
 	if toolRead.Code != 200 || !strings.Contains(toolRead.Body.String(), "fira-code") {
 		t.Fatalf("same tool document unavailable: %d %s", toolRead.Code, toolRead.Body.String())
+	}
+	// PLAT-746-1040: a tool read keeps one current body and saved labels only;
+	// HTTP still has full saved themes, and an explicit own export reads one body.
+	var toolDoc struct {
+		Current appearanceTheme  `json:"current"`
+		Saved   []map[string]any `json:"saved"`
+	}
+	if json.Unmarshal(toolRead.Body.Bytes(), &toolDoc) != nil || toolDoc.Current.CSS != doc.Current.CSS || len(toolDoc.Saved) != 1 || toolDoc.Saved[0]["name"] != "Warm" || toolDoc.Saved[0]["mode"] != doc.Saved[0].Mode || toolDoc.Saved[0]["css"] != nil || toolDoc.Saved[0]["colors"] != nil {
+		t.Fatal("tool read lost current or included saved payloads")
+	}
+	toolExport := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export", "name": "Warm"})
+	var exportedTheme struct {
+		Theme appearanceTheme `json:"theme"`
+	}
+	if toolExport.Code != 200 || json.Unmarshal(toolExport.Body.Bytes(), &exportedTheme) != nil || exportedTheme.Theme.CSS != doc.Saved[0].CSS {
+		t.Fatal("explicit tool export lost the saved body")
 	}
 	other := invoke("other", `{"operation":"read"}`)
 	var foreign appearanceDocument
