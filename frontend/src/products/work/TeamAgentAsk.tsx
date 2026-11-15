@@ -63,7 +63,7 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
    const identity=captureChatIdentity(),sendScope=scope,text=draft.trim()
    setBusy(true);setError('')
    try{
-    const data=await teamAgentMail(team.target,{action:'send',...(inbox?{inbox_id:inbox}:{target:recipient.address}),message:text,submission_id:crypto.randomUUID()})
+    const data=await teamAgentMail(team.target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:recipient.address}),message:text,submission_id:crypto.randomUUID()})
     if(!isChatIdentityCurrent(identity)||currentScope.current!==sendScope)return
     if(!data.inbox_id)throw new Error('No conversation receipt was returned. Check delivery before sending again.')
     setInbox(data.inbox_id);setReplies(old=>[...old,{message_id:data.message_id||crypto.randomUUID(),sender:'You',message:text}]);setDraft('');setStatus(data.delivery==='delivered'?'Delivered.':'Sent; waiting for delivery. Replies appear here.')
@@ -80,6 +80,6 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
     if(project&&!fillAskFromMyAgentDraft(project,person,agent?.name||'agent',recipient?.address))useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
    }}>Ask from my agent</button>
   </details>
-  <p className="mt-1 text-xs text-muted-foreground">Your message goes to this agent through AgentBridge, not into their private chat.</p>
+  <p className="mt-1 text-xs text-muted-foreground">{recipient?.online===false&&!inbox ? team.view?.reachable?.some(row=>row.kind==='team_agent') ? 'This agent is offline. Your new ask goes to the Team agent through AgentBridge.' : 'This agent is offline and no Team agent is available. Try again later or set up the Team agent.' : 'Ask through AgentBridge. Replies stay here; you are not typing in their private chat.'}</p>
  </section>
 }

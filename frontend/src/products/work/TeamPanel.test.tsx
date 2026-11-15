@@ -78,3 +78,11 @@ it('keeps both groups closed when new activity arrives', async () => {
  expect(host.querySelector('[aria-label="Recent Team activity"]')).toBeNull()
  expect(host.querySelector('[aria-label="Team agents"]')).toBeNull()
 })
+
+it('explains offline asks only when the server supplied an admitted Team agent',async()=>{
+ await render();await click('Agents')
+ expect(host.textContent).toContain('Offline · new asks go to the Team agent')
+ await render('server:owner:crew',agents.filter(row=>!row.team_agent))
+ expect(host.textContent).not.toContain('new asks go to the Team agent')
+ expect(host.textContent).toContain('Offline · no Team agent available')
+})
