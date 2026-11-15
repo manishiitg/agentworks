@@ -51,6 +51,10 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined.")
 		return
 	}
+	if externalArg(args, "action") == "team_sync" && action != "doing" && action != "decision" {
+		crewTeamTerminalRefused(w, 400, project, named, "unsupported_action", "Use join or leave for this Crew, or doing/decision for Team posts.")
+		return
+	}
 	if action != "join" && action != "leave" {
 		api.terminalTeamAction(w, r, args, team, named, action)
 		return
@@ -94,6 +98,35 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		}
 	}
 
+	instructions := ""
+	if action == "join" {
+		setup, workspace, ownerCtx, ok := api.crewSetupOf(r.Context(), team.OwnerID, project)
+		if ok {
+			instructions = setup.ChatInstructions
+			text, found, e := readFileFromWorkspace(ownerCtx, agentProfileRuntimeWorkspace(team.OwnerID, workspace)+"/PROJECT_INSTRUCTIONS.md")
+			if e != nil {
+				crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The Crew's instructions could not be read; try again.")
+				return
+			}
+			if found {
+				instructions = strings.TrimSpace(instructions + "\n\n" + text)
+			}
+		}
+	}
+
+	crewTerminalJoinMu.Lock()
+	defer crewTerminalJoinMu.Unlock()
+	if action == "join" {
+		other, _, joined, e := terminalCrewForNamed(named.ID)
+		if e != nil {
+			crewTeamTerminalRefused(w, 409, project, named, "membership_unavailable", "This agent's Crew membership could not be checked.")
+			return
+		}
+		if joined && other.ProjectID != project {
+			crewTeamTerminalRefused(w, 409, project, named, "already_joined", "This agent is already in another Crew. Leave it first.")
+			return
+		}
+	}
 	dir, err := crewTeamDir(project)
 	if err != nil {
 		crewTeamTerminalRefused(w, 503, project, named, "record_unavailable", "The Team is unavailable.")
@@ -165,7 +198,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if action == "join" && copy == nil {
 		notice += " This Crew's files are on the server, not this Mac. Ask its agents, or add it to this Mac in AgentWorks to work on its files here."
 	}
-	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "folders": append([]string{}, team.Folder.Folders...), "team_on": team.On, "instructions": "Read this Crew's PROJECT_INSTRUCTIONS.md and selected skills before working in its folder.", "outcome": action, "in_team": registered.InTeam && team.On, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice + " Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
+	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "folders": append([]string{}, team.Folder.Folders...), "team_on": team.On, "instructions": instructions, "outcome": action, "in_team": registered.InTeam && team.On, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice + " Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
 }
 
 // Reasons are fixed codes; neither provider text nor a caller's post enters logs.

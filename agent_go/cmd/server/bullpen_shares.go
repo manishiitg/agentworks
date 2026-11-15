@@ -367,6 +367,10 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s event=send outcome=refused reason=binding_changed", subjectID, a.ID)
 			return triggerTarget{}, teamErr
 		}
+		if _, _, joined, e := terminalCrewForNamed(a.ID); e != nil || joined {
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s event=send outcome=refused reason=crew_joined", subjectID, a.ID)
+			return triggerTarget{}, agentAdmissionRefusal{err: crewTeamReachRefusal{reason: "crew_joined"}}
+		}
 		var best *agentShare
 		for i := range s.Shares {
 			sh := &s.Shares[i]
@@ -400,6 +404,9 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 		}
 		for _, a := range s.Agents {
 			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) {
+				continue
+			}
+			if _, _, joined, e := terminalCrewForNamed(a.ID); e != nil || joined {
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
