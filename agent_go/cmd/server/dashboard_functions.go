@@ -77,7 +77,7 @@ func (api *StreamingAPI) handleDashboardFunctionList(w http.ResponseWriter, r *h
 }
 
 func (api *StreamingAPI) handleDashboardFunctionCall(w http.ResponseWriter, r *http.Request) {
-	if err := requireServerInteractive(); err != nil {
+	if err := requireServerInteractive("dashboard_function_call"); err != nil {
 		externalError(w, 403, "server_only", err.Error())
 		return
 	}

@@ -15,7 +15,7 @@ func (api *StreamingAPI) registerDashboardQuestionRoutes(router *mux.Router) {
 
 func (api *StreamingAPI) dashboardQuestionRequest(w http.ResponseWriter, r *http.Request, revision string, ask bool) (resolvedDashboardQuestion, bool) {
 	if ask {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("dashboard_ask"); err != nil {
 			externalError(w, 403, "server_only", err.Error())
 			return resolvedDashboardQuestion{}, false
 		}

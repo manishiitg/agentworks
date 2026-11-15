@@ -771,7 +771,7 @@ func (api *StreamingAPI) handleCrewSharePage(w http.ResponseWriter, r *http.Requ
 // stays saved but is not offered or callable (readCrewFunctionSource and workflow function triggers skip it).
 func setProjectFunctionEnabled(ctx context.Context, root, name string, on bool) error {
 	if on {
-		if err := requireServerInteractive(); err != nil {
+		if err := requireServerInteractive("function_enable"); err != nil {
 			return err
 		}
 	}

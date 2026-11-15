@@ -930,7 +930,7 @@ func crewFunctionPlaceText(call *crewFunctionCall) string {
 // startCrewFunctionCall validates, records and dispatches one call and
 // starts its supervisor.
 func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
-	if err := requireServerInteractive(); err != nil {
+	if err := requireServerInteractive("function_call"); err != nil {
 		return nil, err
 	}
 	if isBuiltinConversationalFunction(target, fn) || target.Chat != nil {
@@ -1471,7 +1471,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if name == "project_functions_define" || name == "project_functions_call" {
 			run := execute
 			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
-				if err := requireServerInteractive(); err != nil {
+				if err := requireServerInteractive(name); err != nil {
 					return "", err
 				}
 				return run(ctx, args)
