@@ -662,7 +662,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	if input.On && input.RosterSource == "" && !IsLocalMode() {
 		home, err := api.ensureCrewTeamOnlineHome(r.Context(), project, "team_on")
 		if err != nil {
-			externalError(w, 409, "team_home_failed", "The Team is on, but its online agent could not be set up. Try turning the Team on again.")
+			externalError(w, 409, "team_home_failed", "The Team is on; its online agent will be set up on the next try.")
 			log.Printf("[TEAM_HOME] team=%s event=create_failed reason=team_on error=%q", project, err)
 			return
 		}
