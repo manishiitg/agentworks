@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 type crewTeamMessagePreview struct {
+	Typing        bool   `json:"typing,omitempty"`
 	LastMessage   string `json:"last_message,omitempty"`
 	LastMessageAt string `json:"last_message_at,omitempty"`
 }
@@ -108,6 +110,14 @@ func crewTeamMessagePreviews(ctx context.Context, owner, project string) map[str
 				out[record.ConversationKey] = preview
 			}
 		}
+		// A first turn can stream before its first history-index entry exists.
+		if api := runningServerAPI; api != nil && api.eventStore != nil && api.sessionTurnRunning(record.SessionID) {
+			last, _ := api.eventStore.GetLatestEventIndex(record.SessionID)
+			current := crewTeamStreamingPreview(api.eventStore.GetEvents(record.SessionID, storeEvents.GetEventsOptions{SinceIndex: max(-1, last-200), IncludeStreaming: true}).Events)
+			if crewTeamMessageTimeAfter(current.LastMessageAt, out[record.ConversationKey].LastMessageAt) {
+				out[record.ConversationKey] = current
+			}
+		}
 	}
 	return out
 }
@@ -151,4 +161,86 @@ func crewTeamMessageTimeAfter(a, b string) bool {
 	}
 	right, _ := time.Parse(time.RFC3339Nano, b)
 	return left.After(right)
+}
+
+// The same visible assistant stream used by chat, not tools, reasoning, terminal
+// frames or child agents. Call only after the current Team ChatShare gate.
+func crewTeamStreamingPreview(rows []storeEvents.Event) crewTeamMessagePreview {
+	var out crewTeamMessagePreview
+	text := ""
+	delta := false
+	for _, event := range rows {
+		if event.Data == nil || event.Data.HierarchyLevel != 0 {
+			continue
+		}
+		var fields struct {
+			Content    string `json:"content"`
+			Source     string `json:"source"`
+			IsDelta    bool   `json:"is_delta"`
+			IsToolCall bool   `json:"is_tool_call"`
+		}
+		switch event.Type {
+		case "user_message", "llm_generation_start":
+			text, delta = "", false
+			out.Typing = false
+		case "streaming_chunk":
+			data, err := json.Marshal(event.Data.Data)
+			if err != nil || json.Unmarshal(data, &fields) != nil || fields.IsToolCall || (fields.Source != "" && fields.Source != "content" && fields.Source != "transcript") || fields.Content == "" {
+				continue
+			}
+			if fields.IsDelta && delta {
+				text += fields.Content
+			} else {
+				text = fields.Content
+			}
+			delta = fields.IsDelta
+			out = crewTeamMessagePreview{LastMessage: crewTeamMessageLine(text), LastMessageAt: event.Timestamp.UTC().Format(time.RFC3339Nano), Typing: true}
+		case "llm_generation_end":
+			data, err := json.Marshal(event.Data.Data)
+			if err == nil && json.Unmarshal(data, &fields) == nil && fields.Content != "" {
+				out = crewTeamMessagePreview{LastMessage: crewTeamMessageLine(fields.Content), LastMessageAt: event.Timestamp.UTC().Format(time.RFC3339Nano)}
+			}
+			delta = false
+			out.Typing = false
+		case "tool_call_start", "streaming_end", "agent_end", "unified_completion", "agent_error":
+			out.Typing = false
+		}
+	}
+	return out
+}
+
+// Shared projection for Monitor and the reachable-agents panel. Even cached Mac
+// metadata must pass TODAY's registry rule; answers-only returns a Doing post,
+// never a chat excerpt or a typing bit. Unknown rules fail closed.
+func crewTeamAgentMessagePreviews(ctx context.Context, team crewTeam, posts crewTeamActivityPosts) func(string, crewTeamAgent) crewTeamMessagePreview {
+	cache := map[string]map[string]crewTeamMessagePreview{}
+	return func(person string, agent crewTeamAgent) crewTeamMessagePreview {
+		registered, ok := team.Agents[agent.ID]
+		if !team.On || !ok || !registered.InTeam || registered.OwnerID != person || registered.ChatKey != agent.ChatKey || !team.member(person) {
+			return crewTeamMessagePreview{}
+		}
+		if registered.Rule.ChatShare == crewChatShareAgent {
+			post, found := posts.Doing[agent.ID]
+			if !found || post.Line == "" {
+				return crewTeamMessagePreview{}
+			}
+			return crewTeamMessagePreview{LastMessage: crewTeamMessageLine(post.Line), LastMessageAt: post.At.UTC().Format(time.RFC3339Nano)}
+		}
+		if registered.Rule.ChatShare != crewChatShareLive {
+			return crewTeamMessagePreview{}
+		}
+		preview := agent.lastMessage
+		if agent.Place != "mac" {
+			if cache[person] == nil {
+				cache[person] = crewTeamMessagePreviews(ctx, person, team.ProjectID)
+			}
+			preview = cache[person][agent.ChatKey]
+		}
+		preview.LastMessage = crewTeamMessageLine(preview.LastMessage)
+		preview.Typing = preview.Typing && agent.Activity == "running"
+		if preview.LastMessage == "" {
+			return crewTeamMessagePreview{}
+		}
+		return preview
+	}
 }

@@ -190,7 +190,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 			id, ok = macMainTab, true
 		}
 		if ok && crewMacTabID(id) && row.ConversationID != "" {
-			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: crewTeamMessagePreview{LastMessage: row.LastMessage, LastMessageAt: row.LastMessageAt}, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
+			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: row.crewTeamMessagePreview, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
 	if !withMain {
