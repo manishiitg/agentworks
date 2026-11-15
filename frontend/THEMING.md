@@ -154,3 +154,32 @@ reset loader tokens. Team activity rings/text reuse the same existing counts,
 not a new Team state or browser permission. Presence/avatar/typing colours are
 not automatically reclassified as work statuses. Explicit code palettes remain
 separate (owned by the code/terminal theme work).
+
+## Expressive personal CSS and the stable selector inventory
+
+The server publishes `guide.hooks` plus `guide.hook_guide` from one inventory in
+`appearance_contract.go`; `css_max_bytes` is 65536 (64KiB). The appearance-only
+HTTP envelope is bounded separately at512KiB so JSON-escaped valid CSS fits.
+Browser validation uses the advertised byte cap, not JS character length. There
+is no new fetch allowlist, JS, polling or per-hook runtime registry.
+
+Major shared components expose `data-theme-surface`, `data-theme-row`,
+`data-theme-control`, message-role/body and composer-action hooks. Native
+role=dialog/menu selectors remain public for legacy surfaces. Fields are static
+presentation or existing rendered status, never names/IDs/text or a new state
+machine. Tool status is historical unless inside an existing live turn/tools
+projection. Some inactive agent rows expose state on their existing glyph: CSS
+`:has()` on the row can consume it without a second status subscription.
+
+New controls should use the shared primitives and an existing semantic surface
+value, not invent a unique selector per screen. Keep native aria-* states and
+roles. Do not add wrappers/observers just to populate attributes. Authored report
+islands and terminal/syntax palettes retain their separate rendering paths.
+
+CSSOM accepts CSS3D, masks, gradients, blend modes, decorative filters, keyframes,
+pseudo-elements and embedded data SVG/images; external resources remain stripped.
+The appearance skill contains small original-look techniques and screenshot
+iteration. This is expressive CSS, not shipped preset artwork or shader support.
+Static markup/parser tests do not prove visual layout, compositor cost or GPU
+performance; those remain an actual-browser/laptop check. No universal migration
+claim for every ad-hoc legacy feature control.

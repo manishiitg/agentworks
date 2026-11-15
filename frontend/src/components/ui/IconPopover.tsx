@@ -82,6 +82,7 @@ export default function IconPopover({
 
       {open && (
         <div
+          data-theme-surface="popover"
           className={`absolute ${sidebar ? 'left-[calc(100%+12px)] bottom-0' : `${align === 'right' ? 'right-0' : 'left-0'} top-full mt-2`} ${panelClassName} max-w-[calc(100vw-5rem)] max-h-[75vh] overflow-y-auto rounded-lg border border-border  bg-surface-popover shadow-xl z-[60] p-3`}
         >
           {typeof children === 'function' ? children(() => setOpen(false)) : children}

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it } from 'vitest'
 import { actionForeground, appearanceTokens, applyAppearanceTokens } from './appThemeTokens'
-import { defaultAppearance, validateTheme } from '../stores/appearanceTheme'
+import { defaultAppearance, validateTheme, APPEARANCE_CSS_MAX_BYTES } from '../stores/appearanceTheme'
 import { changedLineRanges, themeViolations } from '../../scripts/check-theme-contract.mjs'
 
 it('keeps action labels legible on light custom accents and propagates shared control colours', () => {
@@ -58,4 +58,12 @@ it('projects and clears personal loader and status roles without leaking the pre
     expect(() => validateTheme({ ...theme, loader })).toThrow()
   }
   expect(validateTheme({ ...theme, loader: null }).loader).toBeNull()
+})
+
+// UTF-8 bytes, not character count; read uses the same advertised server cap.
+it('accepts expressive CSS within the server byte cap and refuses larger Unicode input', () => {
+  const theme = { ...defaultAppearance(), css: '/*' + '"<&雪'.repeat(8000) + '*/' }
+  expect(validateTheme(theme).css).toBe(theme.css)
+  expect(() => validateTheme(theme, { css_max_bytes: 20000 })).toThrow()
+  expect(() => validateTheme({ ...theme, css: '雪'.repeat(Math.floor(APPEARANCE_CSS_MAX_BYTES / 3) + 1) })).toThrow()
 })

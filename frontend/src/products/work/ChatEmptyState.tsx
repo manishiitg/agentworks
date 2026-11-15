@@ -23,7 +23,7 @@ export function ChatEmptyState({ tabId }: { tabId?: string | null }) {
   const team = useTeamTab(tab?.metadata?.agentProfileProjectId)
   const agent = own ? teamAgentForTab(team, tab?.metadata?.agentProfileConversationKey, main, own) : undefined
   const shared = Boolean(team.view?.team.on && agent?.in_team)
-  return <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center text-sm text-muted-foreground">
+  return <div data-theme-surface="empty" className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center text-sm text-muted-foreground">
     {!main && tab?.name && <p className="font-medium text-foreground/70">{tab.name}</p>}
     <p>Send a message to start.</p>
     {shared && <p className="text-xs">Shared with team · people in this Crew's Team can watch this agent</p>}

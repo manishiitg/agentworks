@@ -1,5 +1,6 @@
+import { LoadingIndicator } from './ui/LoadingIndicator'
 import { useRef, useState } from 'react'
-import { Loader2, Square } from 'lucide-react'
+import { Square } from 'lucide-react'
 import { agentApi } from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
@@ -52,6 +53,7 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
 
   const button = (
     <Button
+      data-theme-action="stop"
       type="button"
       onClick={() => void stopSession()}
       disabled={stopping}
@@ -63,7 +65,7 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
       title={footer ? 'Stop run and background work' : 'Stop the current turn (background work keeps running)'}
     >
       {stopping
-        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ? <LoadingIndicator className="h-3.5 w-3.5" />
         : <Square className="h-3.5 w-3.5" fill="currentColor" />}
       {footer && (stopping ? 'Stopping…' : 'Stop run')}
     </Button>

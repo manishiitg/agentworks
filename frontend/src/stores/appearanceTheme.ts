@@ -7,6 +7,7 @@ export const INTERFACE_FONTS = [
 ] as const
 export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'
 export const CODE_FONTS = [{ id: 'system-mono', label: 'System monospace', family: APPLE_MONO_FONT }, ...INTERFACE_FONTS.filter(font => font.id !== 'system')]
+export const APPEARANCE_CSS_MAX_BYTES = 64 * 1024
 export const COLOUR_ROLES = ['background', 'foreground', 'card', 'muted', 'muted_foreground', 'border', 'accent', 'sidebar', 'working', 'waiting', 'done', 'error', 'loader'] as const
 export type ColourRole = typeof COLOUR_ROLES[number]
 export type AppearanceProfile = 'light' | 'dark'
@@ -24,7 +25,7 @@ export interface AppearanceTheme {
   loader?: { style?: 'ring' | 'dots' | 'pulse' | 'orbit' | 'bar'; duration_ms?: number } | null
 }
 /** What the server offers (appearance.go's guide): fonts, code fonts and colour roles are checked against this list, not a copy. */
-export interface AppearanceGuide { fonts?: string[]; code_fonts?: string[]; colour_roles?: string[]; material_surfaces?: Record<string, string> }
+export interface AppearanceGuide { fonts?: string[]; code_fonts?: string[]; colour_roles?: string[]; material_surfaces?: Record<string, string>; css_max_bytes?: number }
 export interface AppearanceDocument { current: AppearanceTheme; saved: AppearanceTheme[]; guide?: AppearanceGuide }
 export const defaultAppearance = (): AppearanceTheme => ({ name: 'Default', mode: 'dark', interface_font: 'system', code_font: 'system-mono', interface_size: 14, code_size: 12, colors: {}, css: '', materials: {} })
 export const interfaceFontFamily = (id: string) => INTERFACE_FONTS.find(font => font.id === id)?.family ?? INTERFACE_FONTS[0].family
@@ -34,7 +35,7 @@ export function validateTheme(value: unknown, guide: AppearanceGuide = {}): Appe
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a theme JSON file.')
   const v = value as AppearanceTheme
   const keys = ['name', 'mode', 'interface_font', 'code_font', 'interface_size', 'code_size', 'colors', 'css', 'materials', 'loader']
-  if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > 20000 || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and at most 20 KB of CSS.')
+  if (Object.keys(v).some(key => !keys.includes(key)) || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60 || !['light', 'dark'].includes(v.mode) || typeof v.interface_font !== 'string' || typeof v.code_font !== 'string' || (guide.fonts ?? INTERFACE_FONTS.map(font => font.id)).indexOf(v.interface_font) < 0 || (guide.code_fonts ?? CODE_FONTS.map(font => font.id)).indexOf(v.code_font) < 0 || !Number.isInteger(v.interface_size) || v.interface_size < 12 || v.interface_size > 20 || !Number.isInteger(v.code_size) || v.code_size < 10 || v.code_size > 20 || typeof v.css !== 'string' || new TextEncoder().encode(v.css).length > (guide.css_max_bytes ?? APPEARANCE_CSS_MAX_BYTES) || !v.colors || typeof v.colors !== 'object' || Array.isArray(v.colors)) throw new Error('Use the offered fonts, sizes, colours and CSS within the limit returned by the server (normally 64 KiB).')
   if (v.loader != null) {
     const loader = v.loader
     if (typeof loader !== 'object' || Array.isArray(loader) || Object.keys(loader).some(key => !['style', 'duration_ms'].includes(key)) ||

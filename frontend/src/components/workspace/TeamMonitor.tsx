@@ -165,7 +165,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   const idleRows = only ? listed.filter(row => row.activity === 'idle') : []
   const rowView = (row: Row) => {
     const face = faces.find(item => item.key === row.personKey)
-    return <button key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
+    return <button data-theme-row="team-agent" key={row.key} type="button" role="menuitem" onClick={() => { setOpen(false); row.open() }} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted">
       {face && avatar(face, 'h-6 w-6 text-[11px]')}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-1.5"><span className="truncate text-sm font-medium text-foreground">{row.person}&apos;s {row.agent}</span>{row.private && <span className="shrink-0 text-[10px] text-muted-foreground">Only you</span>}<span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-muted-foreground">{multi ? `${row.network} · ${row.crew}` : row.crew}</span>{row.last_message && row.last_message_at && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{lastMessageTime(row.last_message_at)}</span>}</span>
@@ -199,7 +199,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
         <span className="hidden whitespace-nowrap md:inline">Team · <span className={working ? 'font-medium text-info' : ''}>{label}</span></span>
       </>}
     </button>
-    {open && createPortal(<div ref={panelRef} role="menu" aria-label="Running work and Team" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+    {open && createPortal(<div data-theme-surface="team" ref={panelRef} role="menu" aria-label="Running work and Team" style={position} className="fixed z-50 flex max-h-[75vh] w-96 max-w-[calc(100vw-1.5rem)] flex-col overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
       {mineActive && <div ref={setSlot} className={`pt-2 ${team ? 'border-b border-border pb-1' : 'pb-1'}`} />}
       {team && <>
         <div className="px-3 pb-1.5 pt-3 text-sm font-semibold text-foreground">Team</div>

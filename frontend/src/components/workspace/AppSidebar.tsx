@@ -147,7 +147,7 @@ export function AppSidebar() {
   // With the menu closed on a computer, its button sits in the top bar so one click also opens it.
   const leading = <div className="flex shrink-0 items-center gap-1">{toggle}</div>
   return <CompactProductNavigationContext.Provider value={true}>
-      <div data-terminal-focus-chrome="header" data-app-sidebar data-product-navigation-mode={navigationMode}
+      <div data-terminal-focus-chrome="header" data-app-sidebar data-theme-surface="sidebar" data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}
         className={`relative z-40 shrink-0 ${open ? 'w-0 md:w-[var(--chat-sidebar-width)]' : 'w-0'}`}>
         {isMobile ? mobileOpen && <div className="fixed inset-x-0 top-[var(--app-viewport-top,0px)] z-40 h-[var(--app-viewport-height,100dvh)]">

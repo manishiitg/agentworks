@@ -18,7 +18,7 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
   const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared artifact' : kind === 'crew' ? 'Crew' : 'Goal'
   // The laptop badge names whose Mac the Crew lives on: another person's Mac Crew says their Mac (owner, 12 Nov).
   const macHome = owned_by_caller === false ? 'On their Mac' : 'On your Mac'
-  return <div className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
+  return <div data-theme-row="project" className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
     <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
       className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {showIcon && <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={personal_agent ? <ProductSurfaceIcon surface="agentworks" className="h-4 w-4" /> : sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>}
