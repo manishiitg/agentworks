@@ -13,6 +13,9 @@ import (
 // Online agents are the confirmed server placements, with automations read on
 // that server. Disabled Mac entries are not the online agent's current setup.
 type crewOnlineAgent struct {
+	Activity        string              `json:"activity"`
+	LastActiveAt    *time.Time          `json:"last_active_at,omitempty"`
+	LastActiveLabel string              `json:"last_active_label,omitempty"`
 	Tab             string              `json:"tab"`
 	Name            string              `json:"name"`
 	Program         string              `json:"program,omitempty"`
@@ -102,6 +105,15 @@ func (api *StreamingAPI) crewOnlineAgents(ctx context.Context, owner string, roo
 		row.CrewName = manifest.displayTitle()
 		row.GroupNames = groups.agentGroupNames(roots.ID, key)
 		if record, ok := doc.Entries[entry]; ok {
+			activity := api.activityForRecord(record)
+			row.Activity = activity.Activity
+			if !activity.LastActiveAt.IsZero() {
+				at := activity.LastActiveAt
+				row.LastActiveAt = &at
+			}
+			words := map[string]interface{}{}
+			projectAgentActivity(words, activity.Activity, activity.LastActiveAt)
+			row.LastActiveLabel, _ = words["last_active_label"].(string)
 			if model, modelErr := effectiveProfileChatModel(profile, binding, record, doc.Agents[entry]); modelErr == nil {
 				row.CLI = providerAccountProductName(model.Provider)
 				row.Program = row.CLI

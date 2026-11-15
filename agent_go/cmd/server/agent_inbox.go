@@ -104,18 +104,23 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 		out["delivery_route"] = a.Attachment.DeliveryRoute
 		if !agentBridgeOnlyDeployment() {
 			out["repository"], out["branch"] = a.Attachment.Repository, a.Attachment.Branch
-			out["activity"] = "Unknown"
-			if namedAgentOnline(a) && !a.Attachment.ActivityAt.IsZero() && time.Since(a.Attachment.ActivityAt) <= 10*time.Minute {
-				switch a.Attachment.Activity {
-				case "busy":
-					out["activity"] = "Working"
-				case "idle":
-					out["activity"] = "Idle"
-				}
-				out["activity_at"] = a.Attachment.ActivityAt
-			}
 		}
 	}
+	activity := "Idle"
+	var at time.Time
+	if a.Attachment != nil {
+		at = a.Attachment.ActivityAt
+		switch a.Attachment.Activity {
+		case "busy":
+			activity = "Working"
+		case "idle":
+			activity = "Idle"
+		}
+		if a.Attachment.RuntimeInfo != nil {
+			activity, at = a.Attachment.RuntimeInfo.Activity, a.Attachment.RuntimeInfo.LastActiveAt
+		}
+	}
+	projectAgentActivity(out, activity, at)
 	if !a.LastOnlineAt.IsZero() {
 		out["last_seen_at"] = a.LastOnlineAt
 	}

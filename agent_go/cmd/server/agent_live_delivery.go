@@ -324,8 +324,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
 		if agentBridgeOnlyDeployment() {
-			a.Attachment.Repository, a.Attachment.Branch, a.Attachment.Activity = "", "", ""
-			a.Attachment.ActivityAt = time.Time{}
+			a.Attachment.Repository, a.Attachment.Branch = "", ""
 		}
 		a.Label = cleanAgentLabel(externalArg(args, "label"))
 	case "detach":
