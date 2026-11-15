@@ -1836,12 +1836,7 @@ html:is([data-appearance="dark"], [data-appearance="light"]) :is(code, pre, .fon
   font-family: var(--runloop-mono);
 }
 
-/* Light needs semantic surfaces; Default keeps the original dark utility colors. */
-html.light[data-appearance="light"] [data-workspace-context-card],
-html.light[data-appearance="light"] [data-chat-composer-card]:not(:where(.force-light *, [data-report-theme] *)) {
-  background-color: hsl(var(--card));
-  border-color: hsl(var(--border));
-}
+/* Shared semantic panel/composer materials own Light as well as Dark surfaces. */
 
 /* Native transcript status/tool rows used fixed dark neutral colors. Keep
    explicit dark dashboard boundaries independent of the app's light profile. */
