@@ -41,6 +41,9 @@ func crewTeamRecordMutex(dir string) *sync.Mutex {
 
 // Team people, agent identities and agent settings live in the same record.
 // Native agent discovery fills metadata; only an agent's person changes its rule.
+// crewTeamNoChatLogged holds the agents already logged as having no chat yet.
+var crewTeamNoChatLogged sync.Map
+
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	return assignCrewTeamAgentIDsWithMain(t, people, crewOwnerMainChatKey(t.ProjectID))
 }
@@ -99,7 +102,10 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			// identity to bind. Saving it would leave a row the check above refuses,
 			// which made the whole Team registry unavailable until fixed by hand.
 			if a.ChatKey == "" {
-				log.Printf("[CREW_TEAM] project=%s event=agent_registry_row_refused person=%s tab=%q reason=%q", t.ProjectID, people[i].UserID, a.Tab, "agent has no chat yet")
+				// Every Team read sees it again: log it once per server run, not on each read.
+				if _, seen := crewTeamNoChatLogged.LoadOrStore(t.ProjectID+"/"+people[i].UserID+"/"+a.Tab, true); !seen {
+					log.Printf("[CREW_TEAM] project=%s event=agent_registry_row_refused person=%s tab=%q reason=%q", t.ProjectID, people[i].UserID, a.Tab, "agent has no chat yet")
+				}
 				continue
 			}
 			tab := a.Tab
