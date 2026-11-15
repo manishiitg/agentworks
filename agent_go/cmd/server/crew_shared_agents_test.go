@@ -25,6 +25,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	// build host, letting cleanup remove the model stub before delivery reached it.
 	const deliveryTimeout = 30 * time.Second
 	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"other","username":"other","role":"editor","products":["work"]}]}`)
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
 	const callerRoot = "Crew/calling-team"
 	if err := os.MkdirAll(filepath.Join(f.docs, callerRoot), 0700); err != nil {
@@ -543,7 +544,7 @@ func TestTeamOfflineAskWithoutHomeRefusesWithoutProvisioning(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = crewTeamAskTarget(ctx, "other", target); err == nil {
-		t.Fatal("offline ASK was not refused without a Team home")
+		t.Fatalf("offline ASK was not refused without a Team home: twin=%v target=%+v rows=%+v", crewRelayTwin("team"), target, crewTeamReachableIn(ctx, team, "other"))
 	}
 	// Ordinary direct mail never redirects to the Team agent.
 	endpoint := targetMessageEndpoint("other", target)
