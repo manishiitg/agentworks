@@ -429,11 +429,6 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			if local != "" && msg.Conversation != "" {
 				followers.watch(session, msg.Project, local, pair, msg.Conversation, msg.Since)
 			}
-		case "handback":
-			// Always on: the server answered for this agent while the Mac was off; take it back now.
-			if local != "" && crewMacTabID(msg.State) {
-				go api.handBackCrewStandby(local, msg.State)
-			}
 		}
 	}
 }
