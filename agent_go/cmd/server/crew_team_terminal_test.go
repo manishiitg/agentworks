@@ -296,6 +296,44 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 
 			checkCrewOfflineCopyHTTP(t, srv.URL, token, wrongConnection, attached, saved, row)
+			// Real child credential -> exact source admission -> plan/chunk/commit:
+			// this is the same client invoked asynchronously by turn-end hooks.
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+			journalDir := filepath.Join(home, ".claude", "projects", "one")
+			journalName := attached.SessionID + ".jsonl"
+			if provider == "codex" {
+				journalDir = filepath.Join(home, ".codex", "sessions", "2026", "11", "15")
+				journalName = "rollout-now-" + attached.SessionID + ".jsonl"
+			}
+			if err = os.MkdirAll(journalDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			journal := filepath.Join(journalDir, journalName)
+			firstLine := "{\"type\":\"user\",\"text\":\"private source\"}\n"
+			if err = os.WriteFile(journal, []byte(firstLine), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cursor, copyErr := owner.SyncNativeCopy(t.Context(), attached, agentworksclient.NativeCopyCursor{})
+			if copyErr != nil || cursor.Offset != int64(len(firstLine)) {
+				t.Fatalf("actual native ingest failed: %+v %v", cursor, copyErr)
+			}
+			again, copyErr := owner.SyncNativeCopy(t.Context(), attached, cursor)
+			if copyErr != nil || again != cursor {
+				t.Fatalf("unchanged native journal re-uploaded: %+v %v", again, copyErr)
+			}
+			secondLine := "{\"type\":\"assistant\"}\n"
+			if err = os.WriteFile(journal, []byte(firstLine+secondLine), 0600); err != nil {
+				t.Fatal(err)
+			}
+			again, copyErr = owner.SyncNativeCopy(t.Context(), attached, cursor)
+			if copyErr != nil || again.Offset != int64(len(firstLine+secondLine)) || again.Revision != cursor.Revision+1 {
+				t.Fatalf("appended native delta failed: %+v %v", again, copyErr)
+			}
+			if _, copyErr = sender.SyncNativeCopy(t.Context(), attached, cursor); copyErr == nil {
+				t.Fatal("wrong attachment credential uploaded source history")
+			}
 
 			// PLAT-746-1030: real attachment label requests drive the shared
 			// activity projection, never a private native journal or browser guess.

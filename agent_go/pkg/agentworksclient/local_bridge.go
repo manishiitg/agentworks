@@ -151,7 +151,7 @@ type LocalBridgeReply struct {
 }
 
 type localSession struct {
-	NativeCopyCursor  nativeCopyCursor `json:"native_copy_cursor,omitempty"`
+	NativeCopyCursor  NativeCopyCursor `json:"native_copy_cursor,omitempty"`
 	nativeCopyRunning bool
 	nativeCopyAgain   bool
 	lastHeldRevision  string    // notice fingerprint only; never saved, no message bodies or IDs
@@ -1574,7 +1574,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}
 		}
 		if in.Action == "crew_leave" {
-			s.NativeCopyCursor = nativeCopyCursor{} // explicit leave, never a silent rewrite reset
+			s.NativeCopyCursor = NativeCopyCursor{} // explicit leave, never a silent rewrite reset
 			_ = b.save()
 		}
 		out.Result = raw
