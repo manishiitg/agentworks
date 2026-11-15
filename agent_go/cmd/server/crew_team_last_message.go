@@ -221,6 +221,10 @@ func crewTeamAgentMessagePreviews(ctx context.Context, team crewTeam, posts crew
 		if !team.On || !ok || !registered.InTeam || registered.OwnerID != person || registered.ChatKey != agent.ChatKey || !team.member(person) {
 			return crewTeamMessagePreview{}
 		}
+		// Terminal native text/typing is never a shared preview, even with Live.
+		if registered.Kind == "terminal" {
+			return crewTeamTerminalPostPreview(registered, posts)
+		}
 		if registered.Rule.ChatShare == crewChatShareAgent {
 			post, found := posts.Doing[agent.ID]
 			if !found || post.OwnerID != person || post.AgentID != agent.ID || post.Line == "" {

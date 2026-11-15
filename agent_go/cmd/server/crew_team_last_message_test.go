@@ -19,7 +19,7 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	newExternalCrewCommandFixture(t)
-	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"live": true, "hidden": true, "private": false, "unknown": true}})}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"live": true, "hidden": true, "private": false, "unknown": true, "terminal-private": true, "terminal-live": true}})}
 	preview := crewTeamMessagePreview{Typing: true, LastMessage: "Visible update", LastMessageAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	person := crewTeamAgentsPerson{UserID: "other", Name: "Colleague"}
 	for id, agent := range team.Agents {
@@ -28,6 +28,11 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 			agent.Rule.ChatShare = crewChatShareAgent
 		case "unknown":
 			agent.Rule.ChatShare = "unknown"
+		case "terminal-private":
+			agent.Kind = "terminal"
+			agent.Rule.ChatShare = crewChatShareAgent
+		case "terminal-live":
+			agent.Kind = "terminal"
 		}
 		team.Agents[id] = agent
 		person.Agents = append(person.Agents, crewTeamAgent{ID: id, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Tab, Place: "mac", InTeam: agent.InTeam, Activity: "running", lastMessage: preview})
@@ -38,6 +43,9 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 
 	posts := crewTeamActivityPosts{Doing: map[string]crewTeamActivityPost{}}
 	for id, registered := range team.Agents {
+		if registered.Tab == "terminal-private" {
+			posts.Decisions = append(posts.Decisions, crewTeamActivityPost{AgentID: id, OwnerID: "other", Kind: "decision", Line: "Explicit Team decision", At: time.Now().UTC()})
+		}
 		if registered.Tab == "hidden" {
 			posts.Doing[id] = crewTeamActivityPost{AgentID: id, OwnerID: "other", Kind: "doing", Line: "Reviewing the shared result", At: time.Now().UTC()}
 		}
@@ -54,6 +62,10 @@ func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
 	for _, row := range live.Agents {
 		if row.Tab == "live" {
 			seen = row.LastMessage == preview.LastMessage && row.LastMessageAt == preview.LastMessageAt && row.Typing
+		} else if row.Tab == "terminal-private" {
+			if row.LastMessage != "Explicit Team decision" || row.Typing {
+				t.Fatal("terminal preview exposed native text/typing or lost explicit post")
+			}
 		} else if row.Tab == "hidden" {
 			if row.LastMessage != "Reviewing the shared result" || row.Typing {
 				t.Fatal("answers-only did not show Doing without private text/typing")
