@@ -42,3 +42,63 @@ func TestAgentActivityUsesTurnAndQuestionStateWithoutText(t *testing.T) {
 		t.Fatalf("activity projection contains unexpected data: %v", row)
 	}
 }
+
+// The richer projection must use the real shared reach gate. A joined
+// teammate can see internal organization; invite, Only me and Team off cannot.
+func TestAgentRuntimeInfoUsesCanonicalTeamReachForInternalNames(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	_, _ = newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	team := crewTeam{ProjectID: "team", Name: "Internal Crew", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"worker": true}})}
+	for id, a := range team.Agents {
+		a.Place = "mac"
+		team.Agents[id] = a
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	info := &agentRuntimeInfo{TeamProject: "team", TeamTab: "worker", CLI: "Codex", ModelID: "example-model", CrewName: "Internal Crew", GroupNames: []string{"Internal group"}, OwnerStatus: &agentOwnerStatus{LastMessages: []string{"private line"}}}
+	if err := saveAgentMessageStore(t.Context(), agentMessageStore{Agents: []namedMessageAgent{{ID: "runtime-source", UserID: "owner", Name: "worker", Attachment: &namedAgentAttachment{ID: "attachment", Provider: "agentworks", DeliveryRoute: appAgentDeliveryRoute, RuntimeInfo: info}}}}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	admitted := api.reachableAgentRuntimeInfo(t.Context(), "other")
+	if len(admitted) != 1 {
+		t.Fatalf("joined teammate was not admitted: %+v", admitted)
+	}
+	for _, row := range admitted {
+		projected := map[string]interface{}{}
+		projectAgentRuntimeInfo(projected, row.Info, true)
+		if projected["crew_name"] != "Internal Crew" || len(projected["group_names"].([]string)) != 1 {
+			t.Fatalf("internal names unavailable to teammate: %v", projected)
+		}
+		if _, ok := projected["owner_status"]; ok {
+			t.Fatal("private messages entered the directory")
+		}
+	}
+	for _, scenario := range []string{"invited", "only_me", "off"} {
+		team.On = true
+		team.People[0].Invited = false
+		for id, a := range team.Agents {
+			a.InTeam = true
+			team.Agents[id] = a
+		}
+		switch scenario {
+		case "invited":
+			team.People[0].Invited = true
+		case "only_me":
+			for id, a := range team.Agents {
+				a.InTeam = false
+				team.Agents[id] = a
+			}
+		case "off":
+			team.On = false
+		}
+		if err := writeCrewTeamAgentFixture(team); err != nil {
+			t.Fatal(err)
+		}
+		if leaked := api.reachableAgentRuntimeInfo(t.Context(), "other"); len(leaked) != 0 {
+			t.Fatalf("%s exposed internal metadata: %+v", scenario, leaked)
+		}
+	}
+}

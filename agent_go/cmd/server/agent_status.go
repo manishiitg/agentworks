@@ -32,7 +32,7 @@ func agentStatusRow(directory map[string]interface{}, target string) (map[string
 		return nil, fmt.Errorf("Agent unavailable or name is ambiguous; use its exact address from list_agents")
 	}
 	out := map[string]interface{}{}
-	for _, field := range []string{"id", "target", "agent_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "activity", "last_active_at", "last_active_label", "group_names", "crew_name", "yours"} {
+	for _, field := range []string{"id", "target", "agent_id", "agent_name", "chat_id", "name", "label", "cli", "engine", "model_id", "reasoning_effort", "activity", "last_active_at", "last_active_label", "group_names", "crew_name", "yours"} {
 		if value, ok := matches[0][field]; ok {
 			out[field] = value
 		}
@@ -91,12 +91,46 @@ func (api *StreamingAPI) readAgentStatus(ctx context.Context, claims *UserClaims
 			}
 		}
 	}
+	if yours && !publicOnly && row["last_messages"] == nil {
+		if doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID)); err == nil {
+			for _, record := range doc.Entries {
+				if key, _ := row["chat_id"].(string); key != "" && key == record.ConversationKey || row["agent_name"] == desktopAppAgentName(desktopMachineID(), record.ConversationID) {
+					status := api.ownerStatusForRecord(ctx, claims.UserID, record)
+					if status.CurrentTask != "" {
+						row["current_task"] = status.CurrentTask
+					}
+					if status.CurrentStep != "" {
+						row["current_step"] = status.CurrentStep
+					}
+					if len(status.LastMessages) > 0 {
+						row["last_messages"] = status.LastMessages
+					}
+					break
+				}
+			}
+		}
+	}
 	if !yours && !publicOnly {
+		address, _ := row["id"].(string)
+		if admitted, ok := api.reachableAgentRuntimeInfo(ctx, claims.UserID)[address]; ok {
+			if admitted.Doing != "" {
+				row["current_task"] = admitted.Doing
+			}
+			if admitted.Reach.ChatShare == crewChatShareLive && admitted.Info.OwnerStatus != nil {
+				if lines := admitted.Info.OwnerStatus.LastMessages; len(lines) > 0 {
+					row["last_messages"] = lines
+				}
+			}
+		}
 		if store, err := readAgentMessageSnapshot(ctx); err == nil {
 			var latest time.Time
 			for _, conversation := range store.Conversations {
 				for side, endpoint := range conversation.Endpoints {
-					if endpoint.NamedAgentID != row["agent_id"] || conversation.Endpoints[1-side].UserID != claims.UserID {
+					same := endpoint.NamedAgentID != "" && endpoint.NamedAgentID == row["agent_id"]
+					if endpoint.TeamAgentID != "" {
+						same = crewTeamAgentAddress(endpoint.ID, endpoint.TeamAgentID) == row["id"]
+					}
+					if !same || conversation.Endpoints[1-side].UserID != claims.UserID {
 						continue
 					}
 					if recheckAgentConversationContact(ctx, conversation) != nil {
@@ -122,7 +156,7 @@ type agentOwnerStatus struct {
 	LastMessages []string `json:"last_messages,omitempty"`
 }
 
-func (api *StreamingAPI) ownerStatusForRecord(ctx context.Context, owner string, record ProductConversationRecord) *agentOwnerStatus {
+func (api *StreamingAPI) ownerStatusForRecord(ctx context.Context, owner string, record ProductConversationRecord, cached ...map[string]crewTeamMessagePreview) *agentOwnerStatus {
 	status := &agentOwnerStatus{}
 	if session, ok := api.getActiveSession(record.SessionID); ok && session != nil && session.UserID == owner {
 		status.CurrentTask = crewTeamMessageLine(session.Title)
@@ -137,7 +171,13 @@ func (api *StreamingAPI) ownerStatusForRecord(ctx context.Context, owner string,
 			}
 		}
 	}
-	if preview := crewTeamMessagePreviews(ctx, owner, record.ResourceID)[record.ConversationKey]; preview.LastMessage != "" {
+	previews := map[string]crewTeamMessagePreview{}
+	if len(cached) > 0 {
+		previews = cached[0]
+	} else {
+		previews = crewTeamMessagePreviews(ctx, owner, record.ResourceID)
+	}
+	if preview := previews[record.ConversationKey]; preview.LastMessage != "" {
 		status.LastMessages = []string{preview.LastMessage}
 	}
 	return status

@@ -63,6 +63,7 @@ func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner strin
 	}
 	groups, _ := updateMenuGroups(ctx, nil)
 	out := map[string]ProductConversationRecord{}
+	previews := map[string]map[string]crewTeamMessagePreview{}
 	for _, record := range document.Entries {
 		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) || !crewProjectOwnedByCallerStrict(owner, record.WorkspacePath) {
 			continue
@@ -71,6 +72,10 @@ func (api *StreamingAPI) desktopAppAgentRecords(ctx context.Context, owner strin
 		record.Title = firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
 		record.Description = identity.Purpose // Never advertise the project description as this agent's purpose.
 		record.runtimeInfo = api.runtimeInfoForRecord(ctx, owner, record, identity, groups)
+		if _, loaded := previews[record.ResourceID]; !loaded {
+			previews[record.ResourceID] = crewTeamMessagePreviews(ctx, owner, record.ResourceID)
+		}
+		record.runtimeInfo.OwnerStatus = api.ownerStatusForRecord(ctx, owner, record, previews[record.ResourceID])
 		out[record.ConversationID] = record
 	}
 	return out, nil

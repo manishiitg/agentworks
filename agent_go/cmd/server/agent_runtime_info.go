@@ -32,6 +32,7 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 		}
 	}
 	groups, _ := updateMenuGroups(ctx, nil)
+	reachable := api.reachableAgentRuntimeInfo(ctx, caller)
 	count := 0
 	var annotate func(map[string]interface{})
 	annotate = func(row map[string]interface{}) {
@@ -51,6 +52,22 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 				count++
 			}
 		}
+		if id, _ := row["id"].(string); id != "" {
+			if admitted, ok := reachable[id]; ok {
+				row["online"] = admitted.Reach.Online
+				projectAgentRuntimeInfo(row, admitted.Info, true)
+				activity := "Idle"
+				switch admitted.Reach.Activity {
+				case "running":
+					activity = "Working"
+				case "waiting":
+					activity = "Waiting for you"
+				}
+				projectAgentActivity(row, activity, admitted.Info.LastActiveAt)
+				row["crew_name"] = admitted.Reach.TeamName
+				count++
+			}
+		}
 		if children, ok := row["chats"].([]map[string]interface{}); ok {
 			for _, child := range children {
 				annotate(child)
@@ -66,6 +83,8 @@ func (api *StreamingAPI) annotateAgentRuntimeInfo(ctx context.Context, caller st
 // Runtime facts are public to callers who already see the agent. Project
 // organization is a separate, private projection, never a directory grant.
 type agentRuntimeInfo struct {
+	TeamProject     string            `json:"team_project_id,omitempty"`
+	TeamTab         string            `json:"team_tab,omitempty"`
 	OwnerStatus     *agentOwnerStatus `json:"owner_status,omitempty"`
 	Activity        string            `json:"activity,omitempty"`
 	LastActiveAt    time.Time         `json:"last_active_at,omitempty"`
@@ -105,7 +124,7 @@ func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
 	if err := decoder.Decode(&info); err != nil {
 		return nil, fmt.Errorf("agent runtime information is invalid")
 	}
-	for _, field := range []string{info.Activity, info.CLI, info.Engine, info.ModelID, info.ReasoningEffort, info.CrewID, info.CrewName} {
+	for _, field := range []string{info.TeamProject, info.TeamTab, info.Activity, info.CLI, info.Engine, info.ModelID, info.ReasoningEffort, info.CrewID, info.CrewName} {
 		if len(field) > 256 || strings.ContainsAny(field, "\r\n\x00") {
 			return nil, fmt.Errorf("agent runtime information must contain short single-line values")
 		}
@@ -139,7 +158,8 @@ func decodeAppAgentRuntimeInfo(raw any) (*agentRuntimeInfo, error) {
 
 func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string, record ProductConversationRecord, identity ProductAgentIdentity, groups menuGroups) *agentRuntimeInfo {
 	info := api.activityForRecord(record)
-	info.OwnerStatus = api.ownerStatusForRecord(ctx, owner, record)
+	info.TeamProject = record.ResourceID
+	info.TeamTab = crewStandbyTabForKeyOf(record.ResourceID, owner, record.ConversationKey)
 	if api.agentProfiles == nil && api.projectActions == nil {
 		return info
 	}
