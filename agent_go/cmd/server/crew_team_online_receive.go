@@ -202,8 +202,26 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		}
 	}
 	result.DestinationItemID = teamOnlineDashboardItemID(source.CrewID, in.Kind, in.ItemID)
+	itemName := "Automation"
 	var dashboardRef teamOnlineDashboardRef
 	if in.Kind != "automation" {
+		file, err := p.root.Open(teamonline.Descriptor)
+		if err != nil {
+			return result, err
+		}
+		descriptor, err := teamonline.DecodeItem(file)
+		file.Close()
+		if err != nil {
+			return result, err
+		}
+		itemName = descriptor.Snapshot.Title
+		if itemName == "" {
+			if in.Kind == "artifact" {
+				itemName = "Artifact"
+			} else {
+				itemName = "Dashboard"
+			}
+		}
 		dashboardRef = teamOnlineDashboardRef{ItemID: in.ItemID, Kind: in.Kind, Revision: in.Revision, SubmissionID: in.SubmissionID, Package: p.root, Seed: !exists}
 		dashboardRef.SourceAdmission = &teamOnlineDashboardSourceAdmission{person: GetUserIDFromContext(ctx), owner: source.CrewOwner, sourceProjectID: source.CrewID, kind: in.Kind, itemID: in.ItemID, revision: in.Revision, submissionID: in.SubmissionID, packageRoot: p.root}
 		preview, err := api.receiveTeamOnlineDashboard(ctx, source, destination, dashboardRef, true)
@@ -305,7 +323,7 @@ func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineReq
 		if err != nil {
 			return result, err
 		}
-		mapping := teamOnlineItemMapping{SourceProjectID: source.CrewID, Kind: in.Kind, ItemID: in.ItemID, DestinationProjectID: destination.CrewID, DestinationItemID: applied.DestinationItemID, Revision: in.Revision, SubmissionID: in.SubmissionID, Name: in.ItemID}
+		mapping := teamOnlineItemMapping{SourceProjectID: source.CrewID, Kind: in.Kind, ItemID: in.ItemID, DestinationProjectID: destination.CrewID, DestinationItemID: applied.DestinationItemID, Revision: in.Revision, SubmissionID: in.SubmissionID, Name: itemName}
 		mapping, err = acceptTeamOnlineMapping(ctx, destination, mapping)
 		if err != nil {
 			return result, err

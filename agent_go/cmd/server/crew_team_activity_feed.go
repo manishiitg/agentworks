@@ -60,7 +60,7 @@ func crewTeamActivityFeed(view crewTeamActivityView, caller string) []crewTeamFe
 		if item.UpdatedAt != item.AddedAt {
 			verb = "updated on Team"
 		}
-		out = append(out, crewTeamFeedItem{ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: item.UpdatedBy, Title: shareOwnerLabel(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
+		out = append(out, crewTeamFeedItem{ID: "online:" + item.DestinationItemID + ":" + item.UpdatedAt, Kind: "decision", At: at, Person: shareOwnerLabel(item.UpdatedBy), Title: shareOwnerLabel(item.UpdatedBy), Verb: verb, Line: item.Name, Why: "Runs in the Team's online home."})
 	}
 	slices.SortFunc(out, func(a, b crewTeamFeedItem) int {
 		if order := b.At.Compare(a.At); order != 0 {
