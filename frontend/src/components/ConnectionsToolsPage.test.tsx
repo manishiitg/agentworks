@@ -82,11 +82,11 @@ it('opens AI accounts in the same settings content area', async () => {
 })
 
 // PLAT-746: Appearance is the same Settings page, not another project editor.
-it('opens app-wide typography and theme controls in Settings', async () => {
+it('opens the copyable appearance prompt in Settings', async () => {
   await act(async () => root.render(<ConnectionsToolsPage />))
   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Appearance')!.click())
-  expect(host.textContent).toContain('Interface font')
-  expect(host.textContent).toContain('Code font')
-  expect(host.querySelector('[aria-label="Import theme file"]')).toBeTruthy()
-  expect(host.querySelector('[aria-label="Custom CSS"]')).toBeTruthy()
+  expect(host.querySelector('[aria-label="Import theme file"]')).toBeNull()
+  expect(host.querySelector('#appearance-prompt')).toBeTruthy()
+  expect(host.textContent).toContain('Copy prompt')
+  expect(host.textContent).toContain('Reset to default')
 })
