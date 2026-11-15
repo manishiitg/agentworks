@@ -1,38 +1,46 @@
 import { create } from 'zustand'
+import api from '../services/api'
+import { defaultAppearance, validateTheme, type AppearanceDocument, type AppearanceProfile, type AppearanceTheme } from './appearanceTheme'
+export { APPLE_MONO_FONT, codeFontFamily } from './appearanceTheme'
+export type { AppearanceProfile } from './appearanceTheme'
 
-export type AppearanceProfile = 'dark' | 'light'
-export const CHAT_FONTS = [
-  { id: 'system', label: 'System default', family: '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif' },
-  { id: 'jetbrains-mono', label: 'JetBrains Mono', family: '"JetBrains Mono", monospace' },
-  { id: 'fira-code', label: 'Fira Code', family: '"Fira Code", monospace' },
-  { id: 'ibm-plex-mono', label: 'IBM Plex Mono', family: '"IBM Plex Mono", monospace' },
-  { id: 'source-code-pro', label: 'Source Code Pro', family: '"Source Code Pro", monospace' },
-] as const
-export type ChatFont = typeof CHAT_FONTS[number]['id']
-const FONT_KEY = 'agentworks-chat-font'
-export function readChatFont(): ChatFont {
-  try {
-    const saved = localStorage.getItem(FONT_KEY)
-    return CHAT_FONTS.find(font => font.id === saved)?.id ?? 'system'
-  } catch { return 'system' }
+type Operation = 'read' | 'apply' | 'save' | 'delete' | 'reset'
+type State = AppearanceDocument & {
+  profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; saving: boolean; error: string
+  setProfile: (profile: AppearanceProfile) => void
+  setPreview: (theme: AppearanceTheme | null) => void
+  load: (scope: string) => Promise<void>
+  change: (operation: Operation, theme?: AppearanceTheme, name?: string) => Promise<boolean>
+  resetScope: (scope: string) => void
 }
-const KEY = 'agentworks-appearance'
-const readProfile = (): AppearanceProfile => {
-  try { const saved = localStorage.getItem(KEY); return saved === 'light' ? 'light' : 'dark' } catch { return 'dark' }
-}
-
-/** Device appearance only: never changes a coding program, model or conversation. */
-export const useAppearanceStore = create<{ profile: AppearanceProfile; setProfile: (profile: AppearanceProfile) => void; chatFont: ChatFont; setChatFont: (font: ChatFont) => void }>(set => ({
-  profile: readProfile(),
-  chatFont: readChatFont(),
-  setChatFont: chatFont => {
-    try { localStorage.setItem(FONT_KEY, chatFont) } catch { /* Preview still works without storage. */ }
-    set({ chatFont })
+export const useAppearanceStore = create<State>((set, get) => ({
+  current: defaultAppearance(), saved: [], profile: 'dark', preview: null, scope: '', loaded: false, saving: false, error: '',
+  resetScope: scope => set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, saving: false, error: '' }),
+  setPreview: preview => set({ preview, profile: (preview ?? get().current).mode, error: '' }),
+  setProfile: profile => { void get().change('apply', { ...(get().preview ?? get().current), mode: profile }) },
+  load: async scope => {
+    try {
+      const { data } = await api.get<AppearanceDocument>('/api/appearance', { skipSessionContext: true })
+      if (get().scope !== scope || get().preview || get().saving) return
+      const current = validateTheme(data.current)
+      const saved = data.saved.map(validateTheme)
+      set({ current, saved, profile: current.mode, loaded: true, error: '' })
+    } catch { if (get().scope === scope) set({ error: 'Could not load your appearance. The server may need an update; try again.', loaded: false }) }
   },
-  setProfile: profile => {
-    try { localStorage.setItem(KEY, profile) } catch { /* The current view can still change. */ }
-    set({ profile })
+  change: async (operation, theme, name) => {
+    if (get().saving) return false
+    const scope = get().scope
+    if (theme) set({ preview: theme, profile: theme.mode })
+    set({ saving: true, error: '' })
+    try {
+      const { data } = await api.put<AppearanceDocument>('/api/appearance', { operation, ...(theme ? { theme } : {}), ...(name ? { name } : {}) }, { skipSessionContext: true })
+      if (get().scope !== scope) return false
+      const current = validateTheme(data.current)
+      set({ current, saved: data.saved.map(validateTheme), profile: current.mode, preview: null, loaded: true, saving: false })
+      return true
+    } catch {
+      if (get().scope === scope) set({ saving: false, error: 'Appearance was not saved. Your preview is still visible; retry or discard it.' })
+      return false
+    }
   },
 }))
-
-export const APPLE_MONO_FONT = '"AgentWorks SF Mono Terminal", "SF Mono Terminal", "SFMonoTerminal-Regular", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace'

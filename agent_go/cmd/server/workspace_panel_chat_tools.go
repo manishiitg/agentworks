@@ -28,7 +28,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		// Browser and model chat tools already exist for Crews.
 		names = []string{"settings", "models", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
 	}
-	names = append(names, "chat_preferences", "menu_groups")
+	names = append(names, "chat_preferences", "menu_groups", "appearance")
 	catalog, err := externalTools()
 	if err != nil {
 		return err
@@ -81,6 +81,24 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				log.Printf("[PANEL_SETTINGS] tool=%s session=%s success=%t%s", name, session, err == nil, reason)
 			}()
 			claims := GetUserFromContext(ctx)
+			if name == "appearance" {
+				if claims == nil || claims.UserID != user {
+					return "", errors.New("Use your own chat to change your appearance.")
+				}
+				data, _ := json.Marshal(args)
+				var request appearanceRequest
+				decoder := json.NewDecoder(bytes.NewReader(data))
+				decoder.DisallowUnknownFields()
+				if decoder.Decode(&request) != nil {
+					return "", errors.New("Use the offered appearance fields.")
+				}
+				recorder := httptest.NewRecorder()
+				api.appearance(recorder, httptest.NewRequest(http.MethodGet, "/api/appearance", nil).WithContext(ctx), request)
+				if recorder.Code >= 400 {
+					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
+				}
+				return recorder.Body.String(), nil
+			}
 			if name == "chat_preferences" {
 				if claims == nil || claims.UserID != user {
 					return "", errors.New("Use your own chat to change your display.")

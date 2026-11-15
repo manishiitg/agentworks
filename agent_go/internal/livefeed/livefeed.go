@@ -26,6 +26,7 @@ const (
 	// MenuGroups is an owner-only personal menu preference change.
 	AccountLimits Kind = "account_limits"
 	MenuGroups    Kind = "menu_groups"
+	Appearance    Kind = "appearance"
 	// VaultConnections: owner-only notice after account setup or discovery changes.
 	VaultConnections Kind = "vault_connections"
 	Sessions         Kind = "sessions"

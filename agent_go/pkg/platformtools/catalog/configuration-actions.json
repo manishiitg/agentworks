@@ -40,6 +40,12 @@
   },
   {
     "family": "settings",
+    "name": "appearance",
+    "member": "appearance",
+    "description": "Read, apply, save or reset your personal app themes, typography and custom CSS."
+  },
+  {
+    "family": "settings",
     "name": "variable_add",
     "member": "update_variable__add",
     "description": "Add a declared variable to this workflow (name, value, description).",
