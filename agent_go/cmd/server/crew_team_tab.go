@@ -409,13 +409,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if a.StatusLabel != "" && a.PlaceLabel == "" {
 				detail = append(detail, a.StatusLabel)
 			}
-			// Always on: a hand back that found the agent had answered on both the Mac and the server (the agent's own
-			// person, owner or member).
-			if mine && a.Place == "mac" {
-				if kept := crewHandbackKeptNote(t.ProjectID, p.UserID, a.Tab); kept != "" {
-					detail = append(detail, kept)
-				}
-			}
 			row := crewTeamTabAgent{ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
 			if mine && !a.InTeam {
