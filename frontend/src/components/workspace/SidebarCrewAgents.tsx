@@ -1,3 +1,4 @@
+import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { SidebarAgentPresence, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal, Terminal, Plus, Pencil, X, GripVertical, Users } from 'lucide-react'
@@ -31,7 +32,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
-  if (crew.projectId !== projectId || !crew.agents.length) return null
+  if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
   // Selection changes the open chat, not the saved Hidden placement.
   const shown = crew.agents.filter(agent => !agent.ownerId && agent.pinned !== false)
   const hidden = crew.agents.filter(agent => !agent.ownerId && agent.pinned === false)
@@ -66,6 +67,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showClosed ? 'rotate-90' : ''}`} />Closed agents ({ungroupedClosed.length})
     </button>}
     {showClosed && ungroupedClosed.map(closedRow)}
+    <OwnTerminalAgents projectId={projectId} nested />
   </div>
 }
 

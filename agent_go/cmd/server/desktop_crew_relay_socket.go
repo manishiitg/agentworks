@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -41,18 +42,39 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 			for _, crew := range desktopRelayCrews("") {
 				live[crew.connection] = true
 			}
+			// A joined server Crew may have no downloaded copy or sync binding.
+			// Keep the existing desktop socket for exact attached sessions too;
+			// the server still admits each native read from its Crew registry.
+			if root, err := agentworksclient.DefaultLocalBridgeRoot(); err == nil {
+				probe, cancel := context.WithTimeout(ctx, 3*time.Second)
+				attached, err := agentworksclient.CallLocalBridge(probe, root, agentworksclient.LocalBridgeRequest{Action: "attachments"})
+				cancel()
+				if err == nil {
+					connections, _ := readDesktopConnections(GetDefaultUserID())
+					for _, s := range attached.AgentStates {
+						if s.ServerClosed || s.ID == "" || (s.Provider != "claude" && s.Provider != "codex") {
+							continue
+						}
+						for _, connection := range connections {
+							if s.Server != "" && strings.TrimRight(s.Server, "/") == strings.TrimRight(connection.Server, "/") {
+								live[connection.ID] = true
+							}
+						}
+					}
+				}
+			}
 			for id := range live {
 				if workers[id] == nil {
 					child, stop := context.WithCancel(ctx)
 					workers[id] = stop
-					log.Printf("[CREW_RELAY] desktop connection=%s start: a Crew has Reach on", id)
+					log.Printf("[CREW_RELAY] desktop connection=%s start: a Crew or attached terminal needs reach", id)
 					go api.runDesktopCrewRelay(child, id)
 				}
 			}
 			for id, stop := range workers {
 				if !live[id] {
 					// The Mac stops reaching this server when no Crew on it has Reach on; say so, it is otherwise silent.
-					log.Printf("[CREW_RELAY] desktop connection=%s stop: no Crew has Reach on for it", id)
+					log.Printf("[CREW_RELAY] desktop connection=%s stop: no Crew or attached terminal needs reach", id)
 					stop()
 					delete(workers, id)
 				}
@@ -383,7 +405,11 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				callCtx, done := context.WithTimeout(context.WithoutCancel(session), 55*time.Second)
 				defer done()
 				result := crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"This Mac does not offer that Crew."}`)}
-				if local != "" {
+				if call.Operation == "native_terminal_read" || call.Operation == "native_terminal_status" {
+					// Exact attached-session reads need no Crew folder or sync pair.
+					// The saved server connection and helper tuple are checked locally.
+					result = api.desktopNativeTerminalRead(callCtx, connection, call)
+				} else if local != "" {
 					result = api.runDesktopCrewChat(callCtx, local, pair, call)
 					result.ID = call.ID
 				}

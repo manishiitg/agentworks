@@ -1,3 +1,4 @@
+import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { SidebarAgentPresence, SidebarAgentVisibilityProvider, sidebarAgentIdentity } from './SidebarAgentVisibility'
 import { RecentAgentChats } from './RecentAgentChats'
 import type { TeamLiveView } from './TeamLiveAgents'
@@ -310,6 +311,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHiddenAgents ? 'rotate-90' : ''}`} />+{hiddenAgents.length} hidden
     </button>}
     {showHiddenAgents && hiddenAgents.map(chatRow)}
+    <OwnTerminalAgents projectId={projectId} connection={connectionId} nested />
     </div>)}</>
 }
 

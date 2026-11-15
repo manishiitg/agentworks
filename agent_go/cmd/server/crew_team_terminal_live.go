@@ -25,6 +25,11 @@ func crewTeamTerminalLiveRow(ctx context.Context, t crewTeam, viewer, id string)
 	if err != nil {
 		return crewTeamRegisteredAgent{}, err
 	}
+	// The person always sees their own exact session, even with Team off or
+	// Answers only. This grants nothing to teammates or scoped agent tokens.
+	if viewer == a.OwnerID && websiteDeviceClaims(GetUserFromContext(ctx)) && t.member(viewer) && crewTeamAccountActive(viewer) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID {
+		return a, nil
+	}
 	address := "agent:" + shareOwnerLabel(a.OwnerID) + "/" + named.Name
 	// The same central address admission as bridge discovery, send and read.
 	// It owns membership/In-team and the terminal branch owns exact transport.
@@ -51,7 +56,7 @@ func (api *StreamingAPI) handleCrewTeamTerminalLive(w http.ResponseWriter, r *ht
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"provider": a.Terminal.Provider, "session": a.ChatKey, "attachment": a.Terminal.AttachmentID, "agent": a.Terminal.NamedAgentID, "folder": t.Folder.ID})
-	result := callCrewMacPair(r.Context(), a.OwnerID, t.ProjectID, a.Terminal.MacPair, crewChatCall{Operation: "team_terminal_live", Args: payload}, 15*time.Second)
+	result := api.readCrewTerminalMac(r.Context(), t.ProjectID, a, crewChatCall{Operation: "native_terminal_read", Args: payload})
 	// A revocation during the Mac read must not release the response.
 	current, readErr := readCrewTeam(t.ProjectID)
 	admitted, checkErr := crewTeamTerminalLiveRow(r.Context(), current, claims.UserID, id)
@@ -65,31 +70,19 @@ func (api *StreamingAPI) handleCrewTeamTerminalLive(w http.ResponseWriter, r *ht
 	_, _ = w.Write(result.Body)
 }
 
-// The relay has authenticated this Mac's exact pair. Reuse the join proof of
-// native liveness and the accepted Team copy before opening the exact journal.
-func (api *StreamingAPI) desktopTeamTerminalLive(ctx context.Context, project string, call crewChatCall) crewChatResult {
-	proof := api.desktopTeamTerminalCopy(ctx, project, call)
-	if proof.Status != 200 {
-		return proof
-	}
-	var in struct {
-		Session  string `json:"session"`
-		Provider string `json:"provider"`
-	}
-	if json.Unmarshal(call.Args, &in) != nil {
-		return crewChatResult{ID: call.ID, Status: 403}
-	}
-	path, err := crewTeamTerminalJournal(in.Provider, in.Session)
+// Every caller has proved the exact attachment before this bounded native read.
+func readCrewTerminalJournal(provider, session string) crewChatResult {
+	path, err := crewTeamTerminalJournal(provider, session)
 	if err != nil {
-		return crewChatResult{ID: call.ID, Status: 409, Body: json.RawMessage(`{"error":"This session's local conversation is unavailable."}`)}
+		return crewChatResult{Status: 409, Body: json.RawMessage(`{"error":"This session's local conversation is unavailable."}`)}
 	}
-	provider := "claude-code"
-	if in.Provider == "codex" {
-		provider = "codex-cli"
+	runtime := "claude-code"
+	if provider == "codex" {
+		runtime = "codex-cli"
 	}
-	messages, stamp, err := readRecentNativeTranscript(path, provider, time.Time{})
+	messages, stamp, err := readRecentNativeTranscript(path, runtime, time.Time{})
 	if err != nil {
-		return crewChatResult{ID: call.ID, Status: 409, Body: json.RawMessage(`{"error":"The local conversation could not be read."}`)}
+		return crewChatResult{Status: 409, Body: json.RawMessage(`{"error":"The local conversation could not be read."}`)}
 	}
 	for i := range messages {
 		for j := range messages[i].Parts {
@@ -97,7 +90,7 @@ func (api *StreamingAPI) desktopTeamTerminalLive(ctx context.Context, project st
 		}
 	}
 	raw, _ := json.Marshal(map[string]any{"messages": messages, "updated_at": stamp})
-	return crewChatResult{ID: call.ID, Status: 200, Body: raw}
+	return crewChatResult{Status: 200, Body: raw}
 }
 
 // Exact native UUID only, with no caller path. Ambiguous or symlink-escaped
