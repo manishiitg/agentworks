@@ -122,7 +122,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, "Pi bridge root is unsafe or unavailable")
 			}
 		}
-		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID, WorkspaceDir: input.Cwd, Activity: hookActivity(input.Event), Transport: args[0] + "_hook"}
+		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID, WorkspaceDir: input.Cwd, Activity: hookActivity(input.Event), Transport: args[0] + "_hook", SyncTranscript: input.Event == "Stop" && !input.StopActive}
 		if args[0] != "pi" {
 			pid, host, _ := providerHostProcess(args[0])
 			req.HostKey = host
