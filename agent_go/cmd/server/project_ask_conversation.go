@@ -14,6 +14,10 @@ import (
 // supply a project, never another person's session, profile or Builder tab.
 // Sending remains on the normal chat submission/queue and admission path.
 func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *http.Request) {
+	if err := requireServerInteractive(); err != nil {
+		externalError(w, 403, "server_only", err.Error())
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" {

@@ -409,6 +409,11 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 		trigger.Kind = normalizeTriggerKind(req.Kind)
 	}
 	// A kept kind counts too: a Code trigger is never internal.
+	if (!trigger.IsInternal() || trigger.WorkspaceFunction) && (index < 0 || trigger.Enabled) {
+		if err := requireServerInteractive(); err != nil {
+			return productWebhookResponse{}, false, err
+		}
+	}
 
 	if trigger.IsInternal() {
 		trigger.RunDestination = runDestinationIsolated
