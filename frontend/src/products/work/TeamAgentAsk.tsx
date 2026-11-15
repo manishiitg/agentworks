@@ -88,6 +88,6 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
     if(project&&!fillAskFromMyAgentDraft(project,person,agent?.name||'agent',recipient?.address))useChatStore.getState().addToast('Open your own agent in this Crew to ask from it.','info')
    }}>Ask from my agent</button>
   </details>
-  <p className="mt-1 text-xs text-muted-foreground">{recipient?.online===false ? team.view?.reachable?.some(row=>row.kind==='team_agent') ? 'This agent is offline. Your new ask goes to the Team agent through AgentBridge.' : 'This agent is offline and no Team agent is available. Try again later or set up the Team agent.' : 'Ask through AgentBridge. Replies stay here; you are not typing in their private chat.'}</p>
+  <p className="mt-1 text-xs text-muted-foreground">{recipient?.online===false ? recipient.offline_copy_ready ? 'This agent is offline. Its copy answers your new ask through AgentBridge.' : team.view?.reachable?.some(row=>row.kind==='team_agent') ? 'This agent is offline. Your new ask goes to the Team agent through AgentBridge.' : 'This agent is offline and no Team agent is available. Try again later or set up the Team agent.' : 'Ask through AgentBridge. Replies stay here; you are not typing in their private chat.'}</p>
  </AgentAskThread>
 }
