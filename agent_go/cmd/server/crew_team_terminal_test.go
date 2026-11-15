@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	gorillamux "github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -262,7 +263,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	liveRead := func() *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "/live", nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "other"}))
-		req = mux.SetURLVars(req, map[string]string{"project": "alpha", "agent": id})
+		req = gorillamux.SetURLVars(req, map[string]string{"project": "alpha", "agent": id})
 		out := httptest.NewRecorder()
 		env.api.handleCrewTeamTerminalLive(out, req)
 		return out
