@@ -34,14 +34,14 @@ it('drops external CSS resource declarations and keeps local styling', () => {
 // dropping the whole background and showing a false resource warning.
 it('keeps embedded SVG fragment artwork and canonicalizes encoded CSS fragments', () => {
   const { sheet, removed } = safeAppearanceSheet(`
-    [data-app-main] { background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cg%20filter='url(%23tomoeGlow)'%20mask='url(#tomoeCut)'/%3E%3C/svg%3E"); }
+    [data-app-main] { --art: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cg%20filter='url(%23tomoeGlow)'%20mask='url(%23tomoeCut)'/%3E%3C/svg%3E"); background-image: var(--art); }
     .emblem { filter: url(#tomoeGlow); mask: url('%23tomoeCut'); --fragment: url(%23another); }
   `)
   expect(removed).toBe(false)
   const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
   expect(css).toContain('data:image/svg+xml,')
   expect(css).toContain("filter='url(%23tomoeGlow)'")
-  expect(css).toContain("mask='url(#tomoeCut)'")
+  expect(css).toContain("mask='url(%23tomoeCut)'")
   expect(css).toContain('filter: url(#tomoeGlow)')
   expect(css).toMatch(/url\(['"]?#tomoeCut['"]?\)/)
   expect(css).toMatch(/url\(['"]?#another['"]?\)/)
