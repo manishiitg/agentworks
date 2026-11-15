@@ -21,3 +21,26 @@ An Artifact is a finished page made in a chat to show or share one idea: a propo
 Adding or updating a Team item requires an account that allows Builder work; Run-only accounts cannot move items. A scoped connection also needs `crews:write` and the existing Crew and file grants.
 
 For **Add to Team**, prepare and publish the item's `online.json` dependency file: `dataset` with whole `tables` and explicit `views`/`triggers`, `functions` IDs, `assets` under `db/assets/`, and updating `automations` as `{id,name}`; use secret names only, never values, and point buttons at the Team agent before the shared `receive_online` preview—never guess rows, supply filesystem paths, retarget a Mac agent automatically, or reseed Team data on **Update on Team**.
+
+## Add a dashboard to the Team
+
+The person's Add to Team request is approval to arrange the move, not to reveal
+technical details or ask them to pick tables. Use `dashboard action=add_to_team`
+for the published item. A static Artifact copies directly; report its returned
+plain message, with no agent discussion. For a live dashboard:
+- Inspect its current queries, assets, functions and feeding routines; prepare
+  its `online.json` dependencies from actual use, never guess IDs or rows.
+- Discover the Team agent's exact `agent:` address through AgentBridge. Use
+  `messages` to agree on needed data, feeding schedules/Watchers, online Ask
+  targets and available connections. No sessions, substitute messaging or
+  impersonation; only names of Vault secrets, never values or personal logins.
+- From the original member's authorized source connection, use `receive_online`
+  preview first, then apply with the agreed `include_automations` and current
+  `item_revision`, retaining one `submission_id`. Use the existing backend:
+  it refuses collisions/secrets, copies first-use data once, updates code only
+  on republish, and stops Mac routines before enabling their Team copies.
+- Ask the person only for a genuinely missing connection or unresolved choice.
+  Keep technical preview details between agents, collapsed under the result
+  where the chat supports it. Say “preview” and “this Crew”. Confirm acceptance
+  from the tool and a real online update before saying “keeps updating online”;
+  otherwise plainly say the update is not yet checked. Never invent success.
