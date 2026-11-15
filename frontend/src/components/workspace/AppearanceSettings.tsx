@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, Copy, RotateCcw } from 'lucide-react'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
+import { neonOrbitTheme } from '../appearance/neonOrbitTheme'
 import { Button } from '../ui/Button'
 
 export const APPEARANCE_PROMPT = `Customize my AgentWorks appearance to match this style:
@@ -10,6 +11,7 @@ Read my current theme first using settings action=appearance. Use the appearance
 
 export default function AppearanceSettings() {
   const current = useAppearanceStore(state => state.current)
+  const saved = useAppearanceStore(state => state.saved)
   const saving = useAppearanceStore(state => state.saving)
   const error = useAppearanceStore(state => state.error)
   const change = useAppearanceStore(state => state.change)
@@ -22,6 +24,11 @@ export default function AppearanceSettings() {
   }
   return <div className="max-w-2xl space-y-5">
     <p className="text-sm text-muted-foreground">Describe the look you want to any of your agents. Copy this prompt, edit the style, and paste it into a chat.</p>
+    <section aria-label="Themes" className="space-y-3">
+      <h3 className="text-sm font-medium">Your themes</h3>
+      <div className="flex flex-wrap gap-2">{saved.map(theme => <Button key={theme.name} variant={current.name === theme.name ? 'default' : 'outline'} size="sm" disabled={saving} onClick={() => void change('apply', theme)}>{theme.name}</Button>)}</div>
+      {!saved.some(theme => theme.name === 'Neon Orbit') && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4"><div className="min-w-0 flex-1"><p className="text-sm font-medium">Neon Orbit</p><p className="text-xs text-muted-foreground">A living space background behind your chats. Play the arcade when you choose.</p></div><Button variant="outline" size="sm" disabled={saving} onClick={() => void change('save', neonOrbitTheme())}>Try Neon Orbit</Button></div>}
+    </section>
     <label htmlFor="appearance-prompt" className="sr-only">Appearance prompt</label>
     <textarea id="appearance-prompt" className="min-h-64 w-full resize-y rounded-xl border border-border bg-card p-4 text-sm leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={prompt} onChange={event => { setPrompt(event.target.value);setCopied(false) }} />
     <div className="flex flex-wrap items-center gap-3">

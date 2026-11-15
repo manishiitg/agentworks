@@ -50,9 +50,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const { sheet, removed } = safeAppearanceSheet(current.css)
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
       setCssWarning(removed)
-      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet) }
-    } catch { setCssWarning(true) }
-  }, [current.css])
+      // Only shipped renderers may be selected. Theme CSS never supplies script.
+      const backgroundScene = getComputedStyle(document.documentElement).getPropertyValue('--aw-background').trim() === 'neon-orbit' ? 'neon-orbit' : 'none'
+      document.documentElement.dataset.appearanceScene = backgroundScene
+      useAppearanceStore.setState({ backgroundScene })
+      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceScene }
+    } catch { setCssWarning(true); useAppearanceStore.setState({ backgroundScene: 'none' }); delete document.documentElement.dataset.appearanceScene }
+  }, [current.css, profile])
   const theme: Theme = profile
   return <ThemeContext.Provider value={{ theme, toggleTheme: () => setTheme(theme === 'light' ? 'dark' : 'light'), setTheme }}>
     {children}

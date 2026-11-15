@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import AppearanceSettings from './AppearanceSettings'
+import AppearanceControl from './AppearanceControl'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { defaultAppearance, type AppearanceDocument } from '../../stores/appearanceTheme'
 import { ThemeProvider } from '../../contexts/ThemeContext.tsx'
@@ -53,4 +54,23 @@ it('applies agent theme notices globally and clears them before switching accoun
   expect(useAppearanceStore.getState().saved).toEqual([])
   expect(document.documentElement.style.getPropertyValue('--app-font')).toContain('system-ui')
   expect(document.documentElement.style.getPropertyValue('--background')).toBe('')
+})
+
+// The actual account control applies the same saved document as Appearance.
+it('selects agent-saved themes and restores Default without deleting presets', async () => {
+  const warm={...defaultAppearance(),name:'Warm',interface_font:'fira-code'}
+  let doc:AppearanceDocument={current:warm,saved:[warm]}
+  fixture.get.mockImplementation(async()=>({data:structuredClone(doc)}))
+  fixture.put.mockImplementation(async (_:string,body:{operation:string;theme?:typeof warm})=>{doc.current=body.operation==='reset'?defaultAppearance():body.theme!;return {data:structuredClone(doc)}})
+  host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
+  await act(async()=>root.render(<ThemeProvider><AppearanceControl compact/><AppearanceSettings/></ThemeProvider>))
+  await click('Default')
+  expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'reset'},{skipSessionContext:true})
+  expect(useAppearanceStore.getState().saved[0].name).toBe('Warm')
+  const select=host.querySelector<HTMLSelectElement>('[aria-label="Saved themes"]')!
+  await act(async()=>{select.value='Warm';select.dispatchEvent(new Event('change',{bubbles:true}))})
+  expect(fixture.put).toHaveBeenLastCalledWith('/api/appearance',{operation:'apply',theme:warm,replace:true},{skipSessionContext:true})
+  await click('Try Neon Orbit')
+  expect(useAppearanceStore.getState().current.css).toContain('--aw-background: neon-orbit')
+  expect(useAppearanceStore.getState().saved.some(theme=>theme.name==='Warm')).toBe(true)
 })
