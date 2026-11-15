@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -415,5 +417,19 @@ func TestAddToTeamRequestKeepsSourceOwnerAndUsesPublishedItem(t *testing.T) {
 	}
 	if status, out = call("reader"); status == 200 || out.Prompt != "" {
 		t.Fatalf("other member arranged owner's handoff: %d %+v", status, out)
+	}
+	// Exercise the actual consolidated MCP catalog too, not merely the native
+	// schema. A screen action must also reach this same guarded handler in chat.
+	mcpContext, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	writer := crewWriter("owner")
+	writer.AccessToken.Scopes = append(writer.AccessToken.Scopes, "dashboards:read")
+	srv := serveExternalMCP(t, f.api, writer)
+	cli := dialExternalMCP(t, mcpContext, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, mcpContext, cli)
+	result := callRemoteTool(t, mcpContext, cli, "call_tool", map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "add_to_team", "crew_id": team.ProjectID, "dashboard_id": "orders"}})
+	requireRemoteSuccess(t, result, "dashboard")
+	if !strings.Contains(marshalStructured(t, result), "AgentBridge") {
+		t.Fatal("MCP omitted the source-agent task")
 	}
 }
