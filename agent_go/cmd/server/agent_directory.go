@@ -138,21 +138,8 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		row["relation"] = relation
 		if inTeam {
 			chats := []map[string]interface{}{}
-			for _, person := range teamAgentsByPerson(ctx, team, claims.UserID) {
-				for _, a := range person.Agents {
-					if !a.InTeam {
-						continue
-					}
-					chats = append(chats, map[string]interface{}{"chat_id": a.ID, "name": a.Name, "purpose": a.Purpose, "owner_name": person.Name, "shared_by": person.Name, "yours": person.You, "can_write": person.You, "place": a.Place})
-					agents = append(agents, map[string]interface{}{"kind": "crew_agent", "type": "Crew agent", "id": a.Address, "target": row["id"], "crew_id": id, "chat_id": a.ID, "name": a.Name, "crew_name": name, "relation": relation, "shared_by": person.Name, "purpose": a.Purpose, "presence": firstNonEmptyTrimmed(a.PlaceLabel, a.StatusLabel, "Runs when messaged"), "your_access": "run", "reach": "messages action=send(target=<id>) from any of your own chats"})
-					if person.You {
-						names := savedGroups.agentGroupNames(id, a.ChatKey)
-						if len(names) > 0 {
-							chats[len(chats)-1]["group_names"] = names
-							agents[len(agents)-1]["group_names"] = names
-						}
-					}
-				}
+			for _, agent := range crewTeamReachableIn(ctx, team, claims.UserID) {
+				chats = append(chats, map[string]interface{}{"chat_id": agent.ID, "name": agent.Name, "target": agent.Address, "owner_name": agent.Person, "place": agent.Place, "can_write": false})
 			}
 			row["chats"] = chats
 			agents = append(agents, row)

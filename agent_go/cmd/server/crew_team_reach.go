@@ -88,7 +88,7 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 			if a.ID == "" || !ok || registered.OwnerID != p.UserID || !crewTeamReachRow(t, viewer, registered) {
 				continue
 			}
-			online, address := !crewTeamAgentOnMac(t, p.UserID) || p.MacOn || a.PlaceServer || crewPublishedTarget(t.ProjectID, a.Tab), crewTeamAgentAddress(t.ProjectID, a.ID)
+			online, address := !crewTeamAgentOnMac(t, p.UserID) || p.MacOn || a.PlaceServer || crewPublishedTarget(t.ProjectID, a.Tab), crewTeamAgentBridgeAddress(registered.OwnerID, a.ID)
 			if registered.Kind == "terminal" {
 				named, err := currentCrewTeamTerminal(ctx, t, registered)
 				if err != nil {
@@ -105,7 +105,7 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 		owner, key := "team-"+t.ProjectID, crewOwnerMainChatKey(t.OnlineHome)
 		if home, err := readCrewTeam(t.OnlineHome); err == nil {
 			if a, ok := home.registeredAgent(owner, key); ok && a.InTeam {
-				out = append(out, crewTeamReachableAgent{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: "Team agent", Place: "server", Online: true, Address: crewTeamAgentAddress(t.OnlineHome, a.ID)})
+				out = append(out, crewTeamReachableAgent{Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "team_agent", Name: "Team agent", Place: "server", Online: true, Address: crewTeamAgentBridgeAddress(a.OwnerID, a.ID)})
 			}
 		}
 	}
