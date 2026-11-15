@@ -187,11 +187,11 @@ func (api *StreamingAPI) crewServerAccountChatAction(ctx context.Context, claims
 	if err != nil {
 		return "", err
 	}
-	tab, err := api.crewRunOnlineSource(ctx, claims, project, sessionID, strings.TrimSpace(externalArg(args, "agent")), rows)
+	tab, err := api.crewServerAccountSource(ctx, claims, project, sessionID, strings.TrimSpace(externalArg(args, "agent")), rows)
 	if err != nil {
 		return "", err
 	}
-	record, _, err := api.crewRunOnlineRecord(ctx, claims, roots, tab)
+	record, _, err := api.crewServerAccountRecord(ctx, claims, roots, tab)
 	if err != nil {
 		return "", err
 	}
@@ -238,4 +238,56 @@ func (api *StreamingAPI) crewServerAccountKind(ctx context.Context, claims *User
 		}
 	}
 	return ""
+}
+
+func (api *StreamingAPI) crewServerAccountSource(ctx context.Context, claims *UserClaims, project, sessionID, name string, rows []macAgentRow) (string, error) {
+	if name != "" {
+		tab := ""
+		for _, row := range rows {
+			if row.Tab == name || strings.EqualFold(row.Name, name) {
+				if tab != "" {
+					return "", fmt.Errorf("more than one agent has that name; choose it by tab from agents")
+				}
+				tab = row.Tab
+			}
+		}
+		if tab == "" {
+			return "", fmt.Errorf("choose this Crew's agent by name from agents")
+		}
+		return tab, nil
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID))
+	if err != nil {
+		return "", err
+	}
+	for _, record := range doc.Entries {
+		if record.ProfileID == crewProfileID && record.SessionID == sessionID && crewResourceProjectID(record.ConversationKey) == project {
+			return crewAgentPublishTab(record.ConversationKey), nil
+		}
+	}
+	return "", fmt.Errorf("choose the agent for this server account setting")
+}
+
+// Resolve this account-setting caller's own saved source record, without starting or copying a turn.
+func (api *StreamingAPI) crewServerAccountRecord(ctx context.Context, claims *UserClaims, roots crewroot.Roots, tab string) (ProductConversationRecord, ProductAgentIdentity, error) {
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(claims.UserID))
+	if err != nil {
+		return ProductConversationRecord{}, ProductAgentIdentity{}, err
+	}
+	key := productConversationRegistryEntryKey(crewProfileID, crewAgentPublishKey(roots.ID, tab))
+	record, ok := doc.Entries[key]
+	identity := doc.Agents[key]
+	if tab == macMainTab {
+		if main, ok := readCrewMainIdentity(ctx, roots.Virtual); ok {
+			identity.Name = "Main"
+			identity.Purpose = firstNonEmptyTrimmed(main.Purpose, identity.Purpose)
+		}
+	}
+	if !ok || canonicalCrewWorkspaceRoot(record.WorkspacePath) != roots.Virtual || record.ProfileID != crewProfileID || hiddenFromTabStrip(record.ConversationKey) {
+		return record, identity, fmt.Errorf("choose one of your Crew's agents")
+	}
+	if tab != macMainTab && strings.TrimSpace(identity.Name) == "" {
+		return record, identity, fmt.Errorf("give this agent a name first; ask it to set its name")
+	}
+	return record, identity, nil
 }
