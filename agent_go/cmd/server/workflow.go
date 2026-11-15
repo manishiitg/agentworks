@@ -174,6 +174,7 @@ func readConversationTailFromWorkspace(ctx context.Context, filePath string, n i
 // appendConversationHistoryInWorkspace adds messages to a chat conversation
 // and sets top-level fields, without rewriting the conversation.
 func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}, expected ...*chatlog.Version) error {
+	defer invalidateHotDocuments(filePath, false)
 	noteWorkspaceMutation(filePath, false)
 	segments := strings.Split(filePath, "/")
 	for i, segment := range segments {
@@ -336,14 +337,13 @@ func readFileFromWorkspaceQueryUncached(ctx context.Context, filePath, rawQuery 
 // deleteWorkspaceFile deletes a file from the workspace via the workspace API.
 // Returns nil if the file doesn't exist (404) or was successfully deleted.
 func deleteWorkspaceFile(ctx context.Context, configPath string) error {
-	invalidateHotDocuments(configPath, false)
-	defer invalidateHotDocuments(configPath, false)
 	if reason := publishedWriteRefusal(ctx, configPath); reason != "" {
 		return fmt.Errorf("%s", reason)
 	}
 	if e := teamStructuralMutation(ctx, configPath); e != nil {
 		return e
 	}
+	defer invalidateHotDocuments(configPath, false)
 	noteWorkspaceMutation(configPath, false)
 	if held, err := deleteHeldTeamFile(ctx, configPath); held {
 		if err == nil {
@@ -387,8 +387,6 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 
 // writeFileToWorkspace writes content to a file in the workspace via the workspace API
 func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
-	invalidateHotDocuments(filePath, false)
-	defer invalidateHotDocuments(filePath, false)
 	if refusal := publishedWriteRefusal(ctx, filePath); refusal != "" {
 		return fmt.Errorf("%s", refusal)
 	}
