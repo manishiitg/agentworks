@@ -10,6 +10,7 @@ import ToastHost from '../ui/ToastHost'
 import { TooltipProvider } from '../ui/tooltip'
 
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
+import '../appearance/sceneMaterials.css'
 const AppearanceBackground = lazy(() => import('../appearance/AppearanceBackground'))
 const DeepSpaceBackground = lazy(() => import('../appearance/DeepSpaceBackground'))
 

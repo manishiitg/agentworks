@@ -113,3 +113,21 @@ it('pauses the passive space scene on document hiding and releases its visibilit
     add.mockRestore(); remove.mockRestore()
   }
 })
+
+// Real failure: scene:none + a custom background stayed behind opaque Light wrappers;
+// changing only scene/material fields also did not rerun the scene projection.
+it('adopts animated CSS and projects translucent surfaces without a shipped scene in Light', async () => {
+  const css = '@keyframes theme-drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } } @media (prefers-reduced-motion: no-preference) { [data-app-main] { animation: theme-drift 6s linear infinite alternate; } }'
+  const doc: AppearanceDocument = { current: { ...defaultAppearance(), mode: 'light', css, materials: { panel: { opacity: .6 } } }, saved: [] }
+  fixture.get.mockImplementation(async () => ({ data: structuredClone(doc) }))
+  host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+  await act(async () => root.render(<ThemeProvider><AppearanceSettings /></ThemeProvider>))
+  expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('@keyframes theme-drift')))).toBe(true)
+  expect(document.documentElement.dataset.appearanceScene).toBe('none')
+  expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(true)
+  expect(document.documentElement.style.getPropertyValue('--aw-panel-opacity')).toBe('0.6')
+  doc.current.materials = { panel: { opacity: 1 } }
+  await act(async () => { fixture.wake?.(); await Promise.resolve() })
+  expect(document.documentElement.hasAttribute('data-appearance-scene-active')).toBe(false)
+  expect(document.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes('@keyframes theme-drift')))).toBe(true)
+})

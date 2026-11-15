@@ -91,3 +91,23 @@ mean no animation, not a claim that every agent is idle. Historical tool cards d
 not activate it. Idle phases freeze rather than restart on each tool call.
 Light/Default clear the scene; the prior Neon Orbit preset remains separate.
 There is no measured CPU/GPU/frame-time claim from choosing CSS over canvas.
+
+## Visible agent-authored CSS backgrounds (Light or Dark)
+
+Use `scene: "none"` and explicit translucent materials, e.g.
+`materials.panel.opacity: .6` and `materials.composer.opacity: .7`. Any offered
+surface with opacity below 1 activates the same transparent app wrappers
+as shipped scenes, also in Light, without a separate page-material trick. Then style the stable `[data-app-main]` hook,
+not a deeply nested generated class. Give its gradient enough contrast to see;
+1–2% alpha under opaque cards is not a visible background. Keep panels/composer
+around .7–.9 opacity so text remains legible; never fade the whole element.
+The semantic panel/composer materials own both Light and Dark, with no legacy
+Light-only background override. Shared materials set background-color only; they
+do not reset a custom gradient/background-image with an important shorthand. Put decorative keyframes inside
+`@media (prefers-reduced-motion: no-preference)` and prefer small transform/opacity
+motion to a full-window background-position repaint. Do not add blur over moving
+artwork. Existing running hooks can gate the animation; historical tool rows
+must not. Saved CSS is adopted after apply; material/scene-only edits reproject
+the root marker too. An adopted sheet/valid keyframe does not prove visible motion:
+check computed animation name/play state, two frames over time, ancestor surfaces,
+contrast, reduced-motion and a screenshot before claiming live success.
