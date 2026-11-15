@@ -62,7 +62,7 @@ it('projects and clears personal loader and status roles without leaking the pre
 
 // UTF-8 bytes, not character count; read uses the same advertised server cap.
 it('accepts expressive CSS within the server byte cap and refuses larger Unicode input', () => {
-  const theme = { ...defaultAppearance(), css: '/*' + '"<&雪'.repeat(8000) + '*/' }
+  const theme = { ...defaultAppearance(), css: '/*' + '"<&雪'.repeat(16000) + '*/' }
   expect(validateTheme(theme).css).toBe(theme.css)
   expect(() => validateTheme(theme, { css_max_bytes: 20000 })).toThrow()
   expect(() => validateTheme({ ...theme, css: '雪'.repeat(Math.floor(APPEARANCE_CSS_MAX_BYTES / 3) + 1) })).toThrow()
