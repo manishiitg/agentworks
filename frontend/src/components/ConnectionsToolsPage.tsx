@@ -9,6 +9,7 @@ import { useCanManageVault } from './integrations/OpenVaultButton'
 import { APP_VERSION } from '../version'
 import { openLocalSetup } from '../utils/homeNavigation'
 import AppearanceSettings from './workspace/AppearanceSettings'
+import ProfileSettings from './workspace/ProfileSettings'
 import { Button } from './ui/Button'
 import { useCanReviewCode } from '../hooks/useCanReviewCode'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -21,6 +22,7 @@ const CostsOverview = lazy(() => import('./providers/CostsOverview'))
 const VaultSecrets = lazy(() => import('./secrets/SecretSelectionSection'))
 const AccountMcpPanel = lazy(() => import('./integrations/AccountMcpPanel'))
 const categories = [
+  { id: 'profile', label: 'Profile', icon: Users },
   { id: 'apps', label: 'Apps', icon: Plug },
   { id: 'ai', label: 'AI accounts', icon: Cpu },
   { id: 'browser', label: 'Browser', icon: Globe },
@@ -80,6 +82,7 @@ function ConnectionsToolsContent() {
             {current.id === 'secrets' && <AccountVaultSecrets />}
             {current.id === 'users' && user?.is_admin && <UsersContent />}
             {current.id === 'connect' && user && <ConnectContent />}
+            {current.id === 'profile' && <ProfileSettings />}
             {current.id === 'appearance' && <AppearanceSettings />}
             {current.id === 'about' && <div className="space-y-4"><div><h3 className="text-sm font-medium">AgentWorks</h3><p className="text-sm text-muted-foreground">Version {APP_VERSION}</p></div>{window.electronAPI?.getDesktopConnection?.() === 'local' && <Button variant="outline" size="sm" onClick={openLocalSetup}><RotateCcw className="h-4 w-4" />Run setup again</Button>}</div>}
           </Suspense>

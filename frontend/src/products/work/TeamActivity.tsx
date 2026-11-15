@@ -1,5 +1,6 @@
+import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { ChevronRight, Clock, Lock } from 'lucide-react'
+import { ChevronRight, Lock } from 'lucide-react'
 import { liveFeed } from '../../services/liveFeed'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -9,9 +10,9 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { workConversationAgent } from '../../utils/workConversationKey'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
-type ActivityEnd = { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
+type ActivityEnd = AvatarFields & { person: string; agent: string; you?: boolean; label: string; chat_key: string; watch_key?: string; tab?: string }
 type ActivityMessage = { id: string; sentence: string; topic?: string; from: ActivityEnd; to: ActivityEnd; sent_at: string; status: 'answered' | 'waiting' | 'no_answer' | 'mac_off'; status_line: string; answered_at?: string; question?: string; answer?: string; hidden_line?: string }
-type ActivityItem = { private?: boolean; id: string; kind: 'decision' | 'finding' | 'question'; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
+type ActivityItem = AvatarFields & { private?: boolean; id: string; kind: 'decision' | 'finding' | 'question'; at: string; person: string; title: string; verb: string; line?: string; why?: string; state?: ActivityMessage['status']; state_line?: string; message?: ActivityMessage }
 type ActivityView = { feed: ActivityItem[]; next_cursor?: string; refresh_after_ms?: number }
 
 const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -100,7 +101,7 @@ export function TeamActivity({ target, projectId }: { target: TeamTarget; projec
       return <Fragment key={`${item.kind}:${item.id}`}>
         {(index === 0 || day(items[index - 1].at) !== group) && <h3 className={`${heading} pt-2`}>{group}</h3>}
         <div className="flex items-start gap-2 py-2">
-          <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium">{item.kind === 'finding' ? <Clock className="h-3.5 w-3.5" /> : item.person.slice(0, 1).toUpperCase()}</span>
+          <Avatar name={item.person} {...item} connection={target.connection} />
           <div className="min-w-0 flex-1">
             {message ? <button type="button" disabled={!readable} aria-expanded={readable ? isOpen : undefined} onClick={() => setOpen(isOpen ? '' : item.id)} className="flex w-full items-start gap-1 text-left enabled:hover:text-primary">
               <span className="min-w-0 flex-1 text-[13px]"><strong className="font-semibold">{item.title}</strong> <span className="text-muted-foreground">{item.verb}</span></span>

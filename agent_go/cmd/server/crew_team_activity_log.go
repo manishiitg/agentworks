@@ -30,6 +30,7 @@ type crewTeamActivityNow struct {
 }
 
 type crewTeamActivityEnd struct {
+	userAvatarFields
 	Person  string `json:"person"`
 	Agent   string `json:"agent"`
 	You     bool   `json:"you,omitempty"`
@@ -112,7 +113,7 @@ func crewTeamActivityPage(ctx context.Context, t crewTeam, caller, before string
 			if p.You {
 				label = "Your " + a.Name
 			}
-			entry := &crewTeamActivityAgent{person: p, agent: a, end: crewTeamActivityEnd{Person: p.Name, Agent: a.Name, You: p.You, Label: label, ChatKey: a.ChatKey, Tab: a.Tab}}
+			entry := &crewTeamActivityAgent{person: p, agent: a, end: crewTeamActivityEnd{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Person: p.Name, Agent: a.Name, You: p.You, Label: label, ChatKey: a.ChatKey, Tab: a.Tab}}
 			if p.Owner && onMac && a.Tab == macMainTab && !p.You {
 				entry.end.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey
 			}

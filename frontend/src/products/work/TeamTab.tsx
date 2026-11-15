@@ -1,3 +1,4 @@
+import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
@@ -16,7 +17,7 @@ import { LentCard } from './LentCard'
 import { TeamWizard } from './TeamWizard'
 import { TeamWayCard } from './TeamWay'
 
-type Person = { id: string; username: string; email?: string }
+type Person = AvatarFields & { id: string; username: string; email?: string }
 
 const mb = (bytes: number) => `${(bytes / (1 << 20)).toFixed(bytes < 10 << 20 ? 1 : 0)} MB`
 const sizeLine = (size?: { files: number; bytes: number }) => size ? `${size.files.toLocaleString()} ${size.files === 1 ? 'file' : 'files'} · ${mb(size.bytes)}` : ''
@@ -269,12 +270,12 @@ function useCompanyDirectory(target: TeamTarget, open: boolean, onError: (messag
 }
 
 /** One person: name, note, whether they are active, and how they use this Crew (a choice only where the server offers one). */
-function PersonLine({ person, people, activity, pending, closed, onMove }: { person: CrewPeoplePerson; people: CrewPeopleView; activity?: TeamTabPerson; pending: string; closed: boolean; onMove: (to: CrewPeopleChange['level']) => void }) {
+function PersonLine({ connection, person, people, activity, pending, closed, onMove }: { connection?: string; person: CrewPeoplePerson; people: CrewPeopleView; activity?: TeamTabPerson; pending: string; closed: boolean; onMove: (to: CrewPeopleChange['level']) => void }) {
   const levelOf = (key: CrewPeopleLevelKey) => people.levels.find(item => item.key === key)
   const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
   const saving = pending === `change:${person.user_id}`
   return <div className={`flex items-center gap-2 py-2 ${saving ? 'opacity-60' : ''}`}>
-    <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
+    <Avatar name={person.name} {...person} connection={connection} className="h-[22px] w-[22px] text-[11px]" />
     <span className="min-w-0 flex-1">
       <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
       {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
@@ -305,7 +306,7 @@ function AddPerson({ target, pending, known, onPick, everyone }: { target: TeamT
     {adding && <div className="rounded-xl border border-border bg-popover">
       <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
       {everyone && everyone.label.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(false); setSearch(''); everyone.onPick() }} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{everyone.label}</button>}
-      <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => pick(p.id, shortName(p.username))} className="block w-full px-3 py-2 text-left text-xs hover:bg-muted">{shortName(p.username)}</button>)}</div>
+      <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => pick(p.id, shortName(p.username))} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted"><Avatar name={p.username} {...p} connection={target.connection} />{shortName(p.username)}</button>)}</div>
       {failure && <p role="alert" className="px-3 py-2 text-xs text-destructive">{failure}</p>}
     </div>}
   </>
@@ -341,7 +342,7 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     {people && <>
       {people.intro && <p className="text-xs text-muted-foreground">{people.intro}</p>}
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
-      <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
+      <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine connection={target.connection} key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
       {people.more_dashboards && <button type="button" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'dashboards')} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
       {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
       {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
@@ -379,7 +380,7 @@ export function DashboardPeopleCard({ target }: { target: TeamTarget }) {
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {people.dashboard_people.length === 0
       ? <p className="text-xs text-muted-foreground">No one yet.</p>
-      : <div className="divide-y divide-border">{people.dashboard_people.map(person => <PersonLine key={person.user_id} person={person} people={people} pending={pending} closed={false} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>}
+      : <div className="divide-y divide-border">{people.dashboard_people.map(person => <PersonLine connection={target.connection} key={person.user_id} person={person} people={people} pending={pending} closed={false} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>}
     {people.can_share && <AddPerson target={target} pending={pending} known={known} everyone={everyone} onPick={(id, name) => void propose(id, name, 'dashboards')} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}

@@ -17,6 +17,7 @@ import (
 // current In-team agent whose chat is Live, never Only me or Just-the-agent.
 // Excerpts are visible text only, secret-redacted before shortening.
 type crewTeamLiveAgent struct {
+	userAvatarFields
 	Private  bool   `json:"private,omitempty"`
 	ID       string `json:"id"`
 	OwnerID  string `json:"owner_id"`
@@ -36,6 +37,7 @@ type crewTeamLiveAgent struct {
 // crewTeamLivePerson is one teammate (never the viewer): whether they are active now ("Active now · Mac app", "Mac app connected", or the
 // web") or when they were last seen, from the same reading as the Team tab's people dots.
 type crewTeamLivePerson struct {
+	userAvatarFields
 	UserID string `json:"user_id"`
 	Name   string `json:"name"`
 	Online bool   `json:"online"`
@@ -62,7 +64,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 	for _, person := range people {
 		own := person.You || person.UserID == viewer
 		if !own {
-			out.People = append(out.People, crewTeamLivePerson{UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
+			out.People = append(out.People, crewTeamLivePerson{userAvatarFields: avatarFieldsFor(person.UserID, project), UserID: person.UserID, Name: person.Name, Online: person.Active, Line: person.ActiveLabel})
 		}
 		for _, agent := range person.Agents {
 			post := doing[agent.ID]
@@ -76,7 +78,7 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 			} else if !agent.InTeam {
 				continue
 			}
-			row := crewTeamLiveAgent{Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
+			row := crewTeamLiveAgent{userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: person.Name, Activity: agent.Activity}
 			if row.ID == "" {
 				row.ID = row.ChatKey
 			}

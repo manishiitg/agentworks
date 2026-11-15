@@ -86,6 +86,7 @@ func externalTools() ([]externalTool, error) {
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats (Show in chat box; off by default). Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		menuGroupsToolDefinition(add)
 		appearanceToolDefinition(add)
+		userAvatarToolDefinition(add)
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and your access, including saved Python script typed inputs and input presets.", false, true, nil)
@@ -692,6 +693,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "browser_connections" {
 		api.externalBrowserConnectionsCall(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == "profile_picture" {
+		api.externalUserAvatar(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "appearance" {

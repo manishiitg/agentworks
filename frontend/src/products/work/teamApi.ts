@@ -1,3 +1,4 @@
+import type { AvatarFields } from '../../components/ui/Avatar'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { isLocalDeployment } from '../productSurfaceConfig'
 import type { TeamLiveView } from '../../components/workspace/TeamLiveAgents'
@@ -63,13 +64,13 @@ async function teamTarget(project: string, workspace = getRawActiveWorkspaceId()
 
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
-export type TeamTabPerson = { activity?: 'running' | 'waiting'; user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; you?: boolean; presence?: TeamTabPresence }
+export type TeamTabPerson = AvatarFields & { activity?: 'running' | 'waiting'; user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; you?: boolean; presence?: TeamTabPresence }
 // A teammate's Mac, as the server words it (crew_team_tab.go); absent when their agents work on the server.
 // tone picks the dot's colour: on (Mac on), server (Mac off, shared agents answer from the server), away (they wait).
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
+export type TeamTabAgent = AvatarFields & { cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
   /** Who may ask your own agent (Team Module Manager contract): the whole Team or the chosen people; absent on others' agents. */
   audience?: 'whole_team' | 'chosen'; chosen_people?: { user_id: string; name: string }[]; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports where the agent runs; Mac agents have no standby copy. Their placement
@@ -208,7 +209,7 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
 /** The People list (crew_people.go): the Team and the Share as one list with two levels. The server words every line and
  * says what each person may be moved to; the card shows them and sends the person's choice. */
 export type CrewPeopleLevelKey = 'works' | 'dashboards'
-export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; note?: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
+export type CrewPeoplePerson = AvatarFields & { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; note?: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
 export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
 export type CrewPeopleView = {
   kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; add_everyone?: string
@@ -311,7 +312,7 @@ export type CrewShareAgent = { key: string; name: string; line?: string; hint?: 
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
 export type CrewShareActionsGroup = { hidden?: boolean; title: string; line: string; rows: CrewShareAction[]; setup_ask?: string; wizard_for?: string }
 /** What other people share with the viewer (crew_share_page.go crewShareSharedWithYou): people, then their agents and actions. */
-export type CrewShareShared = { name: string; role: string; items: { name: string; line: string; can: string; key?: string; terminal_agent_id?: string }[] }
+export type CrewShareShared = AvatarFields & { name: string; role: string; items: { name: string; line: string; can: string; key?: string; terminal_agent_id?: string }[] }
 /** Share › Slack's Who can talk to it (crew_share_page.go crewShareSlack): one line per rule, then a note. */
 export type CrewShareSlack = { rules: { allowed: boolean; where?: string; line: string }[]; note?: string }
 export type CrewSharePage = { options: CrewShareOption[]; slack?: CrewShareSlack; agents: CrewShareAgent[]; agents_intro: string; agents_empty?: string; agents_setup_ask?: string; who_can_use: string; actions_group: CrewShareActionsGroup; shared_with_you: CrewShareShared[] }
@@ -341,7 +342,7 @@ export async function teamSideChats(profileId: string, projectId: string, worksp
 }
 
 /** A Team invite as the invited person sees it (owner, 5 Nov): accept on the web or on this Mac, or decline. */
-export type TeamInvite = { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean; folder?: TeamFolder }
+export type TeamInvite = AvatarFields & { project_id: string; name: string; owner_name: string; connection?: string; can_add_to_mac?: boolean; folder?: TeamFolder }
 
 export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
   await teamRequest<unknown>({ project: invite.project_id, connection: invite.connection }, '/invite', 'POST', { accept })

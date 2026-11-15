@@ -46,6 +46,12 @@
   },
   {
     "family": "settings",
+    "name": "profile",
+    "member": "profile_picture",
+    "description": "Read, set or remove your own profile picture: an offered icon or an admitted Crew image."
+  },
+  {
+    "family": "settings",
     "name": "variable_add",
     "member": "update_variable__add",
     "description": "Add a declared variable to this workflow (name, value, description).",

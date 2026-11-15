@@ -15,6 +15,7 @@ import (
 // viewer may change; the screen only shows it. People are grouped by account, never by a name.
 
 type crewTeamTabPerson struct {
+	userAvatarFields
 	Activity string `json:"activity,omitempty"`
 	UserID   string `json:"user_id"`
 	Name     string `json:"name"`
@@ -41,6 +42,7 @@ type crewTeamTabPresence struct {
 
 type crewTeamTabAgent struct {
 	crewTeamPanelRuntime
+	userAvatarFields
 	crewTeamMessagePreview
 	Online bool   `json:"online"`
 	ID     string `json:"id,omitempty"`
@@ -376,7 +378,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				activity = "waiting"
 			}
 		}
-		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: labels[id], Activity: activity, Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
+		out.People = append(out.People, crewTeamTabPerson{userAvatarFields: avatarFieldsFor(id, t.ProjectID), UserID: id, Name: labels[id], Activity: activity, Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
 			CanRemove: removable && view.CanManage && id != viewer, You: id == viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
 	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
@@ -413,7 +415,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if a.StatusLabel != "" && a.PlaceLabel == "" {
 				detail = append(detail, a.StatusLabel)
 			}
-			row := crewTeamTabAgent{ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
+			row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
@@ -617,7 +619,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 	out := []crewTeamTabAgent{}
 	for _, a := range agents {
 		rule := t.agentRule(t.OwnerID, crewTeamRuleKey(ctx, t, t.OwnerID, a.ChatKey))
-		row := crewTeamTabAgent{ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
+		row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ID: a.ID, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
 			ChatShare: t.agentChatShare(ctx, t.OwnerID, a.ChatKey), ChatShareLabel: crewTeamChatShareLabel, ChatShareOptions: crewChatShareOptions,

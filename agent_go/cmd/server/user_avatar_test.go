@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"hash/crc32"
 	"image"
 	"image/color"
@@ -77,10 +78,13 @@ func TestUserAvatarOwnWritesAndAuthenticatedJPEG(t *testing.T) {
 		api.handleUserAvatarImage(w, adminRequest(http.MethodGet, fields.AvatarURL, "", actor, map[string]string{"user": "me"}))
 		return w
 	}
-	for _, actor := range []*UserClaims{nil, {UserID: "other", Username: "other"}} {
+	for _, actor := range []*UserClaims{nil, {UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"files:read"}}}} {
 		if r := fetch(actor); r.Code < 400 || bytes.Equal(r.Body.Bytes(), jpegBytes) {
 			t.Fatal("private image readable without admission")
 		}
+	}
+	if allowed := fetch(&UserClaims{UserID: "other", Username: "other"}); allowed.Code != 200 {
+		t.Fatal("enabled company directory peer could not read photo")
 	}
 	got := fetch(me)
 	if got.Code != 200 || got.Header().Get("Content-Type") != "image/jpeg" || !bytes.Equal(got.Body.Bytes(), jpegBytes) {
@@ -119,5 +123,41 @@ func TestUserAvatarRejectsUnsafeImageAndCrop(t *testing.T) {
 		if _, err := normalizeUserAvatar(c); err == nil {
 			t.Fatalf("unsafe case %d accepted", i)
 		}
+	}
+}
+
+func TestUserAvatarSettingsToolUsesOwnAccountAndAdmittedImage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	icon := f.call(t, "owner", "settings", map[string]any{"action": "profile", "operation": "set", "icon": "rocket", "color": "green"})
+	if icon.Code != 200 {
+		t.Fatalf("own settings icon: %d %s", icon.Code, icon.Body.String())
+	}
+	if avatarFieldsFor("owner", "").AvatarIcon != "rocket" || avatarFieldsFor("other", "").AvatarIcon != "" {
+		t.Fatal("profile tool crossed accounts")
+	}
+	refused := f.call(t, "owner", "settings", map[string]any{"action": "profile", "operation": "set", "icon": "leaf", "user_id": "other"})
+	if refused.Code < 400 {
+		t.Fatal("profile settings accepted target account")
+	}
+	var photo bytes.Buffer
+	if err := png.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	// Use the exact relative Crew file admission used for chat attachments.
+	f.write(t, externalCommandCrewRoot+"/photo.png", photo.String())
+	upload := f.call(t, "owner", "settings", map[string]any{"action": "profile", "operation": "set", "image_file": map[string]any{"crew_id": "team", "path": "photo.png"}})
+	if upload.Code != 200 || avatarFieldsFor("owner", "").AvatarURL == "" {
+		t.Fatalf("own admitted image: %d %s", upload.Code, upload.Body.String())
+	}
+	for _, path := range []string{"../../config/users.json", "/etc/passwd", "https://example.com/photo.png"} {
+		denied := f.call(t, "owner", "settings", map[string]any{"action": "profile", "operation": "set", "image_file": map[string]any{"crew_id": "team", "path": path}})
+		if denied.Code < 400 {
+			t.Fatal("profile image escaped admitted Crew file")
+		}
+	}
+	if got := agentMessageAvatarFor(agentMessageEndpoint{UserID: "owner", External: true}); got.AvatarURL != "" || got.AvatarIcon != "" {
+		t.Fatal("external account ID resolved to local portrait")
 	}
 }

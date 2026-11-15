@@ -41,6 +41,7 @@ type crewTeamPerson struct {
 
 // crewTeamInvite is a Team invite as the invited person sees it.
 type crewTeamInvite struct {
+	userAvatarFields
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
 	OwnerName string `json:"owner_name"`
@@ -854,7 +855,7 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
-			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
+			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder})
 		}
 	}
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})

@@ -50,6 +50,7 @@ type crewPeopleLevel struct {
 }
 
 type crewPeoplePerson struct {
+	userAvatarFields
 	UserID     string `json:"user_id"`
 	Name       string `json:"name"`
 	Email      string `json:"email,omitempty"`
@@ -244,9 +245,9 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 	if owner && kind == crewKindServer && !everyone {
 		view.AddEveryone = crewPeopleEveryoneName
 	}
-	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: labels[t.OwnerID], Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Owner: true, You: owner}
+	view.Owner = crewPeoplePerson{userAvatarFields: avatarFieldsFor(t.OwnerID, project), UserID: t.OwnerID, Name: labels[t.OwnerID], Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Owner: true, You: owner}
 	add := func(id string, invited bool, level string) {
-		person := crewPeoplePerson{UserID: id, Name: labels[id], Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
+		person := crewPeoplePerson{userAvatarFields: avatarFieldsFor(id, project), UserID: id, Name: labels[id], Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
 			Note: crewPeopleNote(invited), Invited: invited, You: id == claims.UserID, Moves: crewPeopleMoves(kind, level, owner)}
 		if level == crewPeopleDashboards {
 			view.DashboardPeople = append(view.DashboardPeople, person)
