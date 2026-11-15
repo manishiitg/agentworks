@@ -41,9 +41,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Only shipped renderers may be selected. Theme CSS never supplies script.
       const backgroundScene = resolveBackgroundScene(getComputedStyle(document.documentElement).getPropertyValue('--aw-background'), profile)
       document.documentElement.dataset.appearanceScene = backgroundScene
+      if (backgroundScene === 'none') delete document.documentElement.dataset.appearanceSceneActive
+      else document.documentElement.dataset.appearanceSceneActive = ''
       useAppearanceStore.setState({ backgroundScene })
-      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceScene }
-    } catch { setCssWarning(true); useAppearanceStore.setState({ backgroundScene: 'none' }); delete document.documentElement.dataset.appearanceScene }
+      return () => { document.adoptedStyleSheets = document.adoptedStyleSheets.filter(item => item !== sheet); delete document.documentElement.dataset.appearanceScene; delete document.documentElement.dataset.appearanceSceneActive }
+    } catch { setCssWarning(true); useAppearanceStore.setState({ backgroundScene: 'none' }); delete document.documentElement.dataset.appearanceScene; delete document.documentElement.dataset.appearanceSceneActive }
   }, [current.css, profile])
   const theme: Theme = profile
   return <ThemeContext.Provider value={{ theme, toggleTheme: () => setTheme(theme === 'light' ? 'dark' : 'light'), setTheme }}>
