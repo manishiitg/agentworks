@@ -56,3 +56,16 @@ func crewTeamRouteAsk(ctx context.Context, t crewTeam, row crewTeamReachableAgen
 	log.Printf("[TEAM_AGENT_REACH] project=%s agent=%s caller=%s event=ask outcome=refused reason=offline_no_team_agent", t.ProjectID, row.ID, viewer)
 	return crewTeamReachableAgent{}, fmt.Errorf("This agent is offline. Try later, or set up the Team agent in AgentWorks.")
 }
+
+// The bridge directory consumes exactly the same reachable rows as admission.
+func crewTeamBridgeDirectoryItems(ctx context.Context, viewer string) []map[string]interface{} {
+	items := []map[string]interface{}{}
+	for _, row := range crewTeamReachableAgents(ctx, viewer) {
+		presence := "Offline"
+		if row.Online {
+			presence = "Online"
+		}
+		items = append(items, map[string]interface{}{"agent_name": row.Address, "name": row.Name, "label": row.Name, "id": row.Address, "target": row.Address, "agent_id": row.ID, "team_project_id": row.Team, "team_name": row.TeamName, "owner": row.Person, "kind": "team_agent", "type": "In-team agent", "shared": true, "online": row.Online, "presence": presence, "reach": "Ask or send through AgentBridge; replies stay in the original inbox."})
+	}
+	return items
+}

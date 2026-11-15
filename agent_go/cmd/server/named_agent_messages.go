@@ -192,6 +192,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	}
 	items = append(items, s.sharedAgentItems(userID, now)...)
 	items = append(items, macSharedAgentDirectoryItems(userID)...)
+	items = append(items, crewTeamBridgeDirectoryItems(ctx, userID)...)
 	projectAgentLabels(items)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}
