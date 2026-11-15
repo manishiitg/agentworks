@@ -143,14 +143,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     if (line.kind === 'dashboard' && line.dashboards?.length) {
       const dashboard = byId.get('dashboard')
       return <div key={`${line.kind}:${index}`} role="listitem">
+        {/* Owner, 15 Nov: the label opens the Artifacts pane like the other rows; only the caret, at the right end
+            as elsewhere in this panel, opens or closes the list. */}
         <div className="flex items-center">
-        <button type="button" aria-label="Show artifacts" aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="shrink-0 rounded p-1 hover:bg-muted">
-          <ChevronRight aria-hidden="true" className={`h-3 w-3 text-muted-foreground transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
-        </button>
-        <button type="button" onClick={() => openLine(line)} className={`${lineButton} items-center`}>
+        <button type="button" onClick={() => { const artifacts = byId.get('mcp:artifacts'); if (artifacts) open(artifacts); else openLine(line) }} className={`${lineButton} min-w-0 flex-1 items-center`}>
           <span className="font-medium text-foreground">{line.title}</span>
           {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
           {line.tag && <span className="ml-auto shrink-0 rounded-full border border-border px-1.5 text-[10px] leading-4 text-muted-foreground">{line.tag}</span>}
+        </button>
+        <button type="button" aria-label={dashboardsOpen ? 'Hide artifacts' : 'Show artifacts'} aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
         </button>
         </div>
         {dashboardsOpen && <div className="ml-3 border-l border-border pl-1.5">
