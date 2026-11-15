@@ -1,6 +1,7 @@
 /* Import VS Code Themes */
 @import './themes/vscode-light.css';
 @import './themes/vscode-dark.css';
+@import './assets/chat-fonts/fonts.css';
 
 @tailwind base;
 @tailwind components;
@@ -1967,7 +1968,7 @@ html.light[data-appearance="light"] {
   --appearance-code-background: #f0f0f0;
   --appearance-selection: #dbeafe;
 }
-/* Normal conversation text uses the native UI face; monospace is for code only. */
+/* Chat font is personal appearance; menus and code keep their existing typography. */
 html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
   font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
   font-size: calc(14px * var(--chat-scale, 1));
@@ -1978,7 +1979,7 @@ html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-sco
 html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li),
 html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="transcript-user-bubble"],
 html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-chat-composer] {
-  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif !important;
+  font-family: var(--chat-font, -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif) !important;
   font-size: calc(14px * var(--chat-scale, 1)) !important;
   line-height: calc(22px * var(--chat-scale, 1)) !important;
   font-weight: 400;

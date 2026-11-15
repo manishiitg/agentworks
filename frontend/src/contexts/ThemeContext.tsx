@@ -1,10 +1,15 @@
 import React, { useEffect } from 'react'
-import { useAppearanceStore } from '../stores/useAppearanceStore'
+import { CHAT_FONTS, useAppearanceStore } from '../stores/useAppearanceStore'
 import { ThemeContext, type Theme } from './ThemeContext'
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const profile = useAppearanceStore(state => state.profile)
   useEffect(() => { document.documentElement.dataset.appearance = profile }, [profile])
+  const chatFont = useAppearanceStore(state => state.chatFont)
+  useEffect(() => {
+    const font = CHAT_FONTS.find(font => font.id === chatFont) ?? CHAT_FONTS[0]
+    document.documentElement.style.setProperty('--chat-font', font.family)
+  }, [chatFont])
   const theme: Theme = profile
   const setTheme = useAppearanceStore(state => state.setProfile)
 
