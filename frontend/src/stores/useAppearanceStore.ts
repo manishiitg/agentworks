@@ -19,7 +19,11 @@ export const useAppearanceStore = create<State>((set, get) => ({
   current: defaultAppearance(), saved: [], profile: 'dark', preview: null, scope: '', loaded: false, saving: false, error: '',
   resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, saving: false, error: '' }) },
   setPreview: preview => set({ preview, profile: (preview ?? get().current).mode, error: '' }),
-  setProfile: profile => { void get().change('apply', { ...(get().preview ?? get().current), mode: profile }) },
+  setProfile: profile => {
+    const preview = get().preview
+    if (preview) { get().setPreview({ ...preview, mode: profile }); return }
+    void get().change('apply', { ...get().current, mode: profile })
+  },
   load: async scope => {
     if (get().preview || get().saving) return
     const version = ++requestVersion
