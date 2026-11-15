@@ -489,6 +489,25 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err != nil || !found || homeContact.Endpoints[1].UserID != "team-team" || homeContact.Endpoints[1].TeamAgentID == "" {
 		t.Fatalf("offline ask did not bind the normal home audience: %+v %v", homeContact, err)
 	}
+
+	// PLAT-746-1030: the terminal offline selector must use that same normal
+	// published home path, not an inbox queued against the offline session.
+	currentTeam, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalFallback, err := f.api.offlineTerminalTeamTarget(otherCtx, currentTeam, triggerTarget{TeamAgentID: shared.ID}, "other")
+	if err != nil || terminalFallback.CrewID != currentTeam.OnlineHome || terminalFallback.CrewOwner != "team-team" || terminalFallback.TerminalTeam != "" || terminalFallback.NamedAgentID != "" {
+		t.Fatalf("terminal fallback did not select the Team agent: %+v %v", terminalFallback, err)
+	}
+	if _, err = f.api.sendAgentMessage(otherCtx, "other", offlineCaller, terminalFallback, "Ask the Team agent instead of the offline terminal", "", "terminal-offline-home"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-homeTurn:
+	case <-time.After(deliveryTimeout):
+		t.Fatal("terminal fallback did not use the normal Team-agent turn")
+	}
 	// Even if the home publication is later shared more broadly, this Team
 	// inbox still requires the roster that admitted the original ask.
 	if err := defaultProjectOwners().SetAudience(crewProfileID, filepath.Base(homeContact.Endpoints[1].Path), false, nil); err != nil {

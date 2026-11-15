@@ -80,8 +80,12 @@ func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPer
 				row.ID = row.ChatKey
 			}
 			row.Label = row.Person + " · " + row.Name
-			if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.InTeam && registered.Rule.ChatShare == crewChatShareLive {
-				if agent.Place == "mac" {
+			if registered, ok := t.Agents[agent.ID]; ok && registered.OwnerID == person.UserID && registered.InTeam && (registered.Rule.ChatShare == crewChatShareLive || registered.Kind == "terminal") {
+
+				if registered.Kind == "terminal" {
+					// Never trust a native terminal line as an Answers-only preview.
+					row.crewTeamMessagePreview = terminalTeamPreview(ctx, t, registered, viewer)
+				} else if agent.Place == "mac" {
 					row.crewTeamMessagePreview = agent.lastMessage
 				} else {
 					if previews == nil {

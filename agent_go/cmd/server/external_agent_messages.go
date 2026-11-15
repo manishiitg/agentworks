@@ -36,7 +36,12 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
-				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims); err != nil {
+				if err := func() error {
+					if conversation.Endpoints[0].TerminalTeam != "" || conversation.Endpoints[1].TerminalTeam != "" {
+						return api.authorizeAgentConversationPeer(ctx, peerClaims, conversation, side, send && peerClaims == claims)
+					}
+					return api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send && peerClaims == claims)
+				}(); err != nil {
 					if send {
 						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
 					}
@@ -103,6 +108,16 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		return denied
 	}
+
+	if peer.TerminalTeam != "" {
+		if !terminalTeamMessagingAllowed(claims, peer.TerminalTeam, send) {
+			return denied
+		}
+		if _, _, _, err := terminalTeamMessagePeer(ctx, peer, claims.UserID); err != nil {
+			return denied
+		}
+		return nil
+	}
 	if peer.External {
 		if peer.UserID != claims.UserID && peer.ShareID != "" {
 			return api.externalAuthorizeSharedPeer(ctx, claims, peer, send)
@@ -141,6 +156,15 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 			return denied
 		}
 		return nil
+	}
+
+	// A Team agent address grants messaging only, including the Team's server
+	// agent; it does not expand a terminal connection's Crew/file tool scopes.
+	if peer.TeamAgentID != "" && peer.Kind == triggerCallerCrew && terminalTeamMessagingAllowed(claims, peer.ID, send) {
+		if _, _, err := resolveTeamMessageEndpoint(ctx, peer, claims.UserID); err == nil {
+			return nil
+		}
+		return denied
 	}
 	// An attached agent's connection exists only to receive its own mail: a chat inside AgentWorks that
 	// wrote to it is judged by what the person can reach, not by the connection's tool scopes (which a
@@ -223,6 +247,20 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		}
 		name = base
 		args["chat_id"] = key
+	}
+
+	// Exact Team IDs from the Team tool remain message-only addresses even for
+	// the attached terminal's deliberately messaging-only child connection.
+	if strings.HasPrefix(name, "workspace:work:") && strings.HasPrefix(externalArg(args, "chat_id"), crewTeamAgentIDPrefix) && crewID == "" && workflowID == "" && namedAgentOperationAllowed(claims, send) {
+		project := strings.TrimPrefix(name, "workspace:work:")
+		target, err := api.resolveTeamAgentTarget(ctx, triggerTarget{Kind: triggerCallerCrew, CrewID: project, CrewProfile: crewProfileID, Path: crewProjectRootByID(project)}, externalArg(args, "chat_id"))
+		if err != nil {
+			return triggerTarget{}, err
+		}
+		if err = api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
+			return triggerTarget{}, err
+		}
+		return target, nil
 	}
 	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
 		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")

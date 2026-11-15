@@ -494,7 +494,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue
 				}
-				if e = api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], false); e != nil {
+				if e = api.authorizeAgentConversationPeer(ctx, claims, c, side, false); e != nil {
 					continue
 				}
 				for _, m := range c.Messages {
@@ -506,6 +506,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 						continue
 					}
 					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": names.endpointName(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					if instruction := terminalTeamInstructions(ctx, c, side); instruction != "" {
+						item["team_instructions"] = instruction
+					}
 					for k, v := range messageArrivalFields(m) {
 						item[k] = v
 					}
