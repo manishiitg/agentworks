@@ -204,7 +204,11 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		if len(actions) != 0 {
 			action = actions[0]
 		}
-		raw, _ := json.Marshal(map[string]any{"action": "team_sync", "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": "alpha", "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
+		operation := "team_sync"
+		if action == "inbox" {
+			operation = "inbox"
+		}
+		raw, _ := json.Marshal(map[string]any{"action": operation, "team_action": action, "line": "Fixture work", "why": "Fixture reason", "project": "alpha", "agent_name": a.AgentName, "attachment_id": a.ID, "session": "forged", "path": "/outside", "owner_id": "other"})
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(raw))
 		req.Header.Set("Authorization", "Bearer "+auth)
 		req.Header.Set("Content-Type", "application/json")
@@ -317,6 +321,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 	if inbox == "" {
 		t.Fatalf("normal bridge returned no inbox: %v", receipt)
 	}
+	if status, pending := request(token, attached, "inbox"); status != 200 || !strings.Contains(fmt.Sprint(pending["messages"]), "answer questions only") {
+		t.Fatalf("native hook inbox lost admitted Team mail/instructions: %d %v", status, pending)
+	}
 	incoming := mail(owner, map[string]any{"action": "read", "inbox_id": inbox})
 	if messages, _ := incoming["messages"].([]any); len(messages) != 1 {
 		t.Fatalf("Team mail not readable by the exact attached receiver: %v", incoming)
@@ -325,7 +332,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 		message, _ := messages[0].(map[string]any)
 		instructions, _ := message["team_instructions"].(string)
 		if !strings.Contains(instructions, "answer questions only") || message["message"] != "Team fixture question" {
-			t.Fatal("Team instructions missing or mixed into sender content")
+			t.Fatalf("Team instructions missing or mixed into sender content: %v", message)
 		}
 	}
 	answer := mail(owner, map[string]any{"action": "send", "inbox_id": inbox, "message": "Team fixture answer", "submission_id": "team-answer"})
