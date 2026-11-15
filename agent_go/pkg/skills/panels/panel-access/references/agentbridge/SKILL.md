@@ -33,6 +33,8 @@ do not guess an address from a display name. The backend decides whether an
 omitted chat_id addresses the Crew's main agent. Product tabs and the external
 agent network are distinct, even when their names match.
 
+If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Normal final chat text is not forwarded.
+
 Reply in the original conversation using the exact returned reply_address or
 inbox_id. Preserve the whole address, including any `network:` prefix; do not
 strip it, rebuild it or replace it with a bare inbox ID. Read explicitly sent
