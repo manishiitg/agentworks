@@ -115,7 +115,7 @@ func TestAgentRuntimeDirectoryPublicFactsExcludeInternalNames(t *testing.T) {
 	shareAccountActive = func(string) bool { return true }
 	t.Cleanup(func() { shareAccountActive = before })
 	now := time.Now().UTC()
-	info := &agentRuntimeInfo{CLI: "Codex", Engine: "codex", ModelID: "example-model", ReasoningEffort: "high", CrewID: "private-project", CrewName: "Internal project", GroupNames: []string{"Internal group"}}
+	info := &agentRuntimeInfo{CLI: "Codex", Engine: "codex", ModelID: "example-model", ReasoningEffort: "high", CrewID: "private-project", CrewName: "Internal project", GroupNames: []string{"Internal group"}, OwnerStatus: &agentOwnerStatus{CurrentTask: "private task", LastMessages: []string{"private message"}}}
 	s := agentMessageStore{
 		Agents: []namedMessageAgent{{ID: "agent-one", UserID: "owner", Name: "example", CreatedAt: now, EverAttached: true, Attachment: &namedAgentAttachment{ID: "attachment", Provider: "agentworks", DeliveryRoute: appAgentDeliveryRoute, RuntimeInfo: info}}},
 		Shares: []agentShare{{ID: "share-one", OwnerUserID: "owner", AgentID: "agent-one", SubjectUserID: shareScopeServer, Capability: shareCapabilityChat, CreatedAt: now, ExpiresAt: now.Add(time.Hour), RevocationVersion: 1}},
@@ -134,7 +134,7 @@ func TestAgentRuntimeDirectoryPublicFactsExcludeInternalNames(t *testing.T) {
 				t.Fatalf("owner lost organization: %+v", row)
 			}
 		} else {
-			for _, field := range []string{"crew_name", "group_names", "crew_id", "runtime_info"} {
+			for _, field := range []string{"crew_name", "group_names", "crew_id", "runtime_info", "owner_status", "current_task", "last_messages"} {
 				if _, exists := row[field]; exists {
 					t.Fatalf("public agent leaked %s", field)
 				}

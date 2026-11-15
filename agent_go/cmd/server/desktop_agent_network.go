@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"strings"
 	"time"
@@ -29,6 +30,13 @@ func registerDesktopAppAgent(ctx context.Context, owner string, connection deskt
 		return out, fmt.Errorf("this app chat has no stable identity")
 	}
 	args := map[string]any{"action": "register", "agent_name": desktopAppAgentName(device, record.ConversationID), "device_id": device, "conversation_id": record.ConversationID, "label": record.Title, "purpose": cleanAgentPurpose(record.Description), "runtime_info": record.runtimeInfo}
+	if record.runtimeInfo != nil {
+		info := *record.runtimeInfo
+		if binding, err := crewroot.ReadSync(record.ResourceID); err == nil && binding != nil && binding.Side == "local" && binding.ConnectionID == connection.ID {
+			info.TeamProject = binding.PeerProjectID
+		}
+		args["runtime_info"] = &info
+	}
 	err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodPost, "/api/external/v1/agents/app", args, &out)
 	if err == nil && (out.ID == "" || out.Name != args["agent_name"] || out.Attachment == "") {
 		err = fmt.Errorf("the server did not register this app chat")
