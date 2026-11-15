@@ -9,6 +9,7 @@ const render=async()=>act(async()=>root.render(<TeamAgentAsk tabId="watch"/>))
 const textbox=()=>host.querySelector('textarea')!
 const type=async(value:string)=>act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textbox(),value);textbox().dispatchEvent(new Event('input',{bubbles:true}))})
 import { openTeammateAgent } from './openTeammateAgent'
+import { TeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { useChatShareLines } from './ChatEmptyState'
 const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
@@ -46,4 +47,17 @@ it('does not apply a teammate-private gate or ask box to own schedule history',a
  f.team={view:{team:{on:false},agents:[]}}
  function Gate(){const line=useChatShareLines('watch');return <><span>{line.private||'own-history-visible'}</span><TeamAgentAsk tabId="watch"/></>}
  await act(async()=>root.render(<Gate/>));expect(host.textContent).toContain('own-history-visible');expect(host.querySelector('textarea')).toBeNull()
+})
+
+// Owner T17 screenshot: the header kept the last own agent while viewing a peer.
+it('identifies the observed person and Mac above the transcript with one direct composer',async()=>{
+ f.tabs.watch={name:'Peer agent',metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'colleague',agentProfileTabOwnerName:'Colleague',agentProfileConversationKey:'peer-native'}}
+ f.tabs.own={name:'My previous agent',metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:true,agentProfileTabOwnerID:'viewer'}}
+ f.team={target:{project:'crew'},view:{team:{on:true},agents:[{id:'peer',name:'Peer agent',owner_name:'Colleague',place:'mac',activity:'running',in_team:true}],reachable:[{agent_id:'peer',online:true,address:'workspace:work:crew/agent/peer'}]}}
+ await act(async()=>root.render(<><TeammateChatIdentity tabId="watch"/><TeammateChatIdentity tabId="watch" banner/><TeamAgentAsk tabId="watch"/></>))
+ const header=host.querySelector('[data-agent-header]')!
+ expect(header.textContent).toContain('Peer agent');expect(header.textContent).toContain('Colleague');expect(header.textContent).toContain('their Mac');expect(header.textContent).toContain('Working');expect(header.textContent).not.toContain('My previous agent')
+ expect(host.querySelector('[role="note"]')?.textContent).toContain('Colleague')
+ expect(host.querySelectorAll('textarea')).toHaveLength(1);expect(textbox().placeholder).toContain("Colleague's Peer agent")
+ expect(host.querySelector('details')?.open).toBe(false)
 })

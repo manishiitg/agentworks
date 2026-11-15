@@ -62,6 +62,7 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
 import { teamSideChats } from './teamApi'
+import { TeammateChatIdentity, useTeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
@@ -1197,6 +1198,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const adminPage = useAppStore(state => state.adminPage)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
+  const teammateIdentity = useTeammateChatIdentity(tabId)
   const openAgentName = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId)?.name : undefined))
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number; since: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length, since: Date.now() })
@@ -1683,7 +1685,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
-                        <div className="min-h-0 flex-1">
+                        <TeammateChatIdentity tabId={tabId} banner />
+                        <div data-teammate-transcript={teammateIdentity ? true : undefined} className={`min-h-0 flex-1 ${teammateIdentity ? 'border-l-4 border-sky-200 bg-sky-50/40 dark:border-sky-900 dark:bg-sky-950/15' : ''}`}>
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
                           compact
