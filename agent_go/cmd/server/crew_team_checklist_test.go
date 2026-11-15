@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -220,14 +221,21 @@ func TestTeamChecklistUsesCurrentMembershipFilesAndOwnAgent(t *testing.T) {
 	}
 	// A real Team home may read shared setup instructions, but even its trusted
 	// runtime cannot fill personal progress. Ensure the refusal isn't missing setup.
+	team, err = readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
 	team.OnlineHome = "home"
 	if err = defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-home", ProjectID: "home", OwnerID: "team-team"}); err != nil {
 		t.Fatal(err)
 	}
-	if err = writeCrewTeam(crewTeam{ProjectID: "home", OwnerID: "team-team", On: true, RosterSource: "team"}); err != nil {
+	f.write(t, "Crew/team-home/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"home","title":"Team home"}`)
+	if err = writeCrewTeamRecord(crewTeam{ProjectID: "home", OwnerID: "team-team", On: true, RosterSource: "team"}, nil, true); err != nil {
 		t.Fatal(err)
 	}
-	if err = writeCrewTeamAgentFixture(team); err != nil {
+	// OnlineHome is backend-owned: the ordinary Team settings writer deliberately
+	// ignores it. Seed that provisioned state, not a person's settings payload.
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), team, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = crewChecklistTeam(&UserClaims{UserID: "team-team"}, "team", true); err != nil {
