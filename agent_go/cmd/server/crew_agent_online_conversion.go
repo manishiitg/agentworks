@@ -74,6 +74,7 @@ func crewOnlinePlacementRecord(ctx context.Context, person, project string, plac
 
 func (api *StreamingAPI) convertCrewOnlinePlacement(ctx context.Context, person, project string, placement crewAgentPlacement) (crewOnlineConversion, error) {
 	out := crewOnlineConversion{Tab: placement.Tab}
+	log.Printf("[AGENT_OFFLINE_COPY] project=%s tab=%s actor=%s event=conversion_started", project, placement.Tab, person)
 	record, err := crewOnlinePlacementRecord(ctx, person, project, placement)
 	if err != nil {
 		return out, err
@@ -104,6 +105,7 @@ func (api *StreamingAPI) convertCrewOnlinePlacement(ctx context.Context, person,
 	if err = fsutil.WriteJSONAtomic(filepath.Join(backup, "team.json"), team, 0600); err != nil {
 		return out, err
 	}
+	log.Printf("[AGENT_OFFLINE_COPY] project=%s tab=%s event=conversion_backup_saved", project, placement.Tab)
 	// The old scoped trees remain inert in place. No content is copied to the home.
 	scoped, err := crewAgentScopedRoots(roots, placement.Tab)
 	if err != nil {
