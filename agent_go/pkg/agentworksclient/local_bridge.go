@@ -1517,6 +1517,32 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.OwnServer = s.client.baseURL
 	}
 	switch in.Action {
+	case "team_sync":
+		if s.Attachment.Provider != "claude" {
+			return LocalBridgeReply{Error: "Team join is available for Claude Code first."}
+		}
+		// The helper has just checked the current process, lease and offline state.
+		// Never forward caller identity, arbitrary tools, file paths or credentials.
+		args := map[string]any{"action": "team_sync", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "project": in.Arguments["project"], "team_action": in.Arguments["team_action"]}
+		for _, key := range []string{"line", "why", "path", "clash_id", "keep", "content"} {
+			if value, ok := in.Arguments[key]; ok {
+				args[key] = value
+			}
+		}
+		client := s.client
+		var raw json.RawMessage
+		var err error
+		b.unlocked(func() {
+			raw, err = client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", args, true)
+		})
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		if b.closed || b.sessions[key] != s || s.Offline {
+			return LocalBridgeReply{Error: "This session disconnected while joining the Team; reconnect and check its Team status."}
+		}
+		out.Result = raw
+		return out
 	case "purpose":
 		snap := &localSession{Attachment: s.Attachment, client: s.client}
 		var raw json.RawMessage
