@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,45 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	dir, err := crewTeamDir(team.ProjectID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// PLAT-746-1030: a terminal row must not wedge discovery (986), rotate
+	// identity on rejoin, overwrite privacy choices or masquerade as another chat.
+	current, err := readCrewTeam(team.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := namedMessageAgent{ID: "named-terminal", UserID: "member", Name: "research", Label: "Research", Attachment: &namedAgentAttachment{ID: "lease-one", Provider: "claude", SessionID: "native-one"}}
+	terminal, err := upsertCrewTeamTerminal(&current, "member", named, "mac-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal.InTeam = true
+	terminal.Rule.CanMakeChanges = true
+	current.Agents[terminal.ID] = terminal
+	named.Attachment.ID, named.Attachment.SessionID = "lease-two", "native-two"
+	named.Label = "Research follow-up"
+	rotated, err := upsertCrewTeamTerminal(&current, "member", named, "mac-two")
+	if err != nil || rotated.ID != terminal.ID || rotated.Tab != terminal.Tab || !rotated.InTeam || !rotated.Rule.CanMakeChanges || rotated.ChatKey != "native-two" || rotated.Terminal.AttachmentID != "lease-two" || rotated.Terminal.MacPair != "mac-two" || rotated.Name != named.Label {
+		t.Fatalf("terminal rejoin lost identity, privacy or route: %+v %v", rotated, err)
+	}
+	count := len(current.Agents)
+	named.Attachment.SessionID = ""
+	if _, err := upsertCrewTeamTerminal(&current, "member", named, "mac-two"); err == nil || len(current.Agents) != count {
+		t.Fatal("empty session must never enter the registry")
+	}
+	named.Attachment.SessionID = people[1].Agents[0].ChatKey
+	if _, err := upsertCrewTeamTerminal(&current, "member", named, "mac-two"); err == nil {
+		t.Fatal("a terminal cannot reuse an app agent's owner/chat binding")
+	}
+	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), current, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := assignCrewTeamAgentIDsWithMain(current, people, crewOwnerMainChatKey(team.ProjectID)); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := readCrewTeam(team.ProjectID)
+	if err != nil || !reflect.DeepEqual(unchanged.Agents[rotated.ID], rotated) {
+		t.Fatalf("discovery changed terminal identity, route or privacy: %v", err)
 	}
 	// A discovery round started before removal must not register the removed person's agents.
 	saved, err := readCrewTeam(team.ProjectID)
