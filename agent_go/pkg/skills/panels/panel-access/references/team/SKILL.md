@@ -33,7 +33,12 @@ rather than copying action names or old workflow-team policy fields:
   them. Other Crew files are not shared. People changes still use their own
   returned preview and confirmation requirement.
 - `agents` lists what teammates share. `agent_rule` changes only your own
-  agent's instructions for others, change permission and chat visibility.
+  agent's Team settings in one call: `in_team` (Shared with team / Only me),
+  who it is shared with (`audience`: `whole_team`, the default, or `chosen`
+  with `chosen_people` as user IDs from `directory`, the complete list),
+  instructions for others, change permission and chat visibility. People not
+  chosen cannot find, ask, message or watch it; removing someone takes effect
+  on their next request.
   Use the offered enums: Answers only is the private default for terminal agents; Live shares the native conversation only when the person chooses it.
 - `clashes` shows both versions when the same lines changed. Read the Crew
   builder's clash procedure before `resolve`; save the requested version or

@@ -261,7 +261,10 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			}
 		}
 		if out[i].UserID != caller {
-			out[i].Agents = slices.DeleteFunc(out[i].Agents, func(a crewTeamAgent) bool { return !a.InTeam })
+			person := out[i].UserID
+			out[i].Agents = slices.DeleteFunc(out[i].Agents, func(a crewTeamAgent) bool {
+				return !a.InTeam || !t.agentRule(person, crewTeamRuleKey(ctx, t, person, a.ChatKey)).chosen(caller)
+			})
 		}
 	}
 	return out

@@ -38,6 +38,8 @@ func crewTeamAdmitAddress(ctx context.Context, viewer, address string) (crewTeam
 	reason := "not_reachable"
 	if crewTeamBindingChangedForAddress(ctx, viewer, address) {
 		reason = "binding_changed"
+	} else if crewTeamNotChosenForAddress(ctx, viewer, address) {
+		reason = "not_chosen"
 	}
 	log.Printf("[TEAM_AGENT_REACH] caller=%s event=admit outcome=refused reason=%s", viewer, reason)
 	return crewTeamReachableAgent{}, crewTeam{}, agentAdmissionRefusal{err: crewTeamReachRefusal{reason: reason}}

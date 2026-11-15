@@ -53,7 +53,7 @@ func (t crewTeam) agentChatShare(ctx context.Context, person, key string) string
 
 func (t crewTeam) anyChatLimit() bool {
 	for _, a := range t.Agents {
-		if a.Rule.ChatShare != crewChatShareLive {
+		if a.Rule.ChatShare != crewChatShareLive || a.Rule.Audience == crewTeamAudienceChosen {
 			return true
 		}
 	}
@@ -86,7 +86,7 @@ func (api *StreamingAPI) crewMacChatLimit(r *http.Request, project, conversation
 	if person == "" || person == GetUserIDFromContext(r.Context()) {
 		return nil
 	}
-	if t.agentChatShare(r.Context(), person, tab) != crewChatShareLive {
+	if t.agentChatShareFor(r.Context(), GetUserIDFromContext(r.Context()), person, tab) != crewChatShareLive {
 		return &crewChatRefusal{project: project, person: person, agent: tab}
 	}
 	return nil
@@ -136,7 +136,7 @@ func (api *StreamingAPI) crewSessionChatLimit(r *http.Request, session string) *
 			}
 			key = firstNonEmptyTrimmed(tab, key)
 		}
-		if t.agentChatShare(r.Context(), owner, key) != crewChatShareLive {
+		if t.agentChatShareFor(r.Context(), caller, owner, key) != crewChatShareLive {
 			return &crewChatRefusal{project: project, person: owner, agent: key}
 		}
 	}

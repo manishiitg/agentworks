@@ -63,7 +63,7 @@ func checkCrewTeamRegistries(out io.Writer) error {
 			if a.InTeam {
 				shared++
 			}
-			if a.Rule != (crewTeamAgentRule{}) {
+			if !a.Rule.empty() {
 				rules++
 			}
 			if a.Rule.ChatShare != crewChatShareLive && a.Rule.ChatShare != crewChatShareAgent {

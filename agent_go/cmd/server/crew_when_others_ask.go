@@ -27,6 +27,9 @@ type crewTeamAgentRule struct {
 	CanMakeChanges bool   `json:"can_make_changes,omitempty"`
 	// ChatShare: what teammates see of this agent's chat (crew_team_chat_private.go). Unset is Live chat.
 	ChatShare string `json:"chat_share,omitempty"`
+	// Audience: "" is the whole Team, "chosen" is only People (crew_team_agent_audience.go).
+	Audience string   `json:"audience,omitempty"`
+	People   []string `json:"people,omitempty"`
 }
 
 // whenOthersAskMaxRunes bounds the rule: it is added to every such turn's instructions.
@@ -113,33 +116,78 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 	return rule, nil
 }
 
-// handleCrewTeamAgentRule is POST /crew-teams/{project}/agent-rule: {agent_key, when_others_ask?, can_make_changes?,
-// chat_share?}:
-// one of the caller's own agents' settings from its Team tab row.
+// handleCrewTeamAgentRule is POST /crew-teams/{project}/agent-rule: {agent_key, in_team?, audience?, chosen_people?,
+// when_others_ask?, can_make_changes?, chat_share?}: one of the caller's own agents' Team settings from its Team tab
+// row or a tool, in one call. in_team is the Shared with team switch (crew_team_in_team.go); audience/people are who it
+// is shared with (crew_team_agent_audience.go).
 func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, person string) {
 	var in struct {
-		Key            string  `json:"agent_key"`
-		WhenOthersAsk  *string `json:"when_others_ask"`
-		CanMakeChanges *bool   `json:"can_make_changes"`
-		ChatShare      *string `json:"chat_share"`
+		Key            string    `json:"agent_key"`
+		InTeam         *bool     `json:"in_team"`
+		Audience       *string   `json:"audience"`
+		People         *[]string `json:"chosen_people"`
+		WhenOthersAsk  *string   `json:"when_others_ask"`
+		CanMakeChanges *bool     `json:"can_make_changes"`
+		ChatShare      *string   `json:"chat_share"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.WhenOthersAsk == nil && in.CanMakeChanges == nil && in.ChatShare == nil {
-		externalError(w, 400, "invalid_agent", "Choose your agent and give its rule, Answer only / Make changes, or what teammates see of its chat.")
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.InTeam == nil && in.Audience == nil && in.People == nil && in.WhenOthersAsk == nil && in.CanMakeChanges == nil && in.ChatShare == nil {
+		externalError(w, 400, "invalid_agent", "Choose your agent and give what to change: shared with the Team, who it is shared with, its rule, Answer only / Make changes, or what teammates see of its chat.")
 		return
 	}
-	rule, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.CanMakeChanges, in.ChatShare)
-	switch {
-	case errors.Is(err, errCrewTeamAgentNotYours):
-		externalError(w, 403, "agent_not_yours", "Only the agent's own person sets what it does when others ask. Choose one of your own agents.")
-	case errors.Is(err, errWhenOthersAskTooLong):
-		externalError(w, 400, "rule_too_long", "Keep the rule under 1000 characters.")
-	case errors.Is(err, errCrewChatShareUnknown):
-		externalError(w, 400, "invalid_chat_share", "Choose Live chat, Chat history or Just the agent.")
-	case err != nil:
-		externalError(w, 409, "agent_update_failed", "It was not saved. Try again.")
-	default:
-		externalJSON(w, map[string]any{"when_others_ask": rule.WhenOthersAsk, "has_rule": rule.WhenOthersAsk != "", "can_make_changes": rule.CanMakeChanges, "chat_share": rule.ChatShare})
+	refuse := func(err error) {
+		switch {
+		case errors.Is(err, errCrewTeamAgentNotYours):
+			externalError(w, 403, "agent_not_yours", "Only the agent's own person changes its Team settings. Choose one of your own agents.")
+		case errors.Is(err, errCrewTeamLastShared):
+			externalError(w, 400, "last_shared_agent", err.Error())
+		case errors.Is(err, errWhenOthersAskTooLong):
+			externalError(w, 400, "rule_too_long", "Keep the rule under 1000 characters.")
+		case errors.Is(err, errCrewChatShareUnknown):
+			externalError(w, 400, "invalid_chat_share", "Choose Live chat or Just the agent.")
+		case errors.Is(err, errCrewTeamAudienceUnknown):
+			externalError(w, 400, "invalid_audience", "Choose the whole Team (whole_team) or chosen people (chosen).")
+		case errors.Is(err, errCrewTeamAudiencePerson):
+			externalError(w, 400, "invalid_people", "Choose people who are in this Team (user IDs from directory), at most 200.")
+		default:
+			externalError(w, 409, "agent_update_failed", "It was not saved. Try again.")
+		}
 	}
+	if in.InTeam != nil {
+		if err := setCrewTeamAgentChoice(r.Context(), project, person, in.Key, *in.InTeam); err != nil {
+			refuse(err)
+			return
+		}
+	}
+	if in.Audience != nil || in.People != nil {
+		audience, people := "", []string(nil)
+		if in.Audience != nil {
+			audience = strings.TrimSpace(*in.Audience)
+			if audience == "" {
+				refuse(errCrewTeamAudienceUnknown)
+				return
+			}
+		}
+		if in.People != nil {
+			people = *in.People
+		}
+		if _, err := setCrewTeamAgentAudience(r.Context(), project, person, in.Key, audience, people, in.People != nil); err != nil {
+			refuse(err)
+			return
+		}
+	}
+	if in.WhenOthersAsk != nil || in.CanMakeChanges != nil || in.ChatShare != nil {
+		if _, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.CanMakeChanges, in.ChatShare); err != nil {
+			refuse(err)
+			return
+		}
+	}
+	t, stored, err := crewTeamOwnAgent(r.Context(), project, person, in.Key)
+	if err != nil {
+		refuse(err)
+		return
+	}
+	rule := t.agentRule(person, stored)
+	externalJSON(w, map[string]any{"in_team": t.agentInTeam(person, stored), "audience": rule.audienceName(), "chosen_people": t.audiencePeople(rule), "when_others_ask": rule.WhenOthersAsk, "has_rule": rule.WhenOthersAsk != "", "can_make_changes": rule.CanMakeChanges, "chat_share": rule.ChatShare})
 }
 
 // setOwnAgentRule is an agent's own rule from its chat (set_my_agent_identity). On a Mac the Team record is on the

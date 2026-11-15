@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -262,7 +263,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 		t.Fatalf("conflict changed registry size: %v", err)
 	}
 	for id, before := range registered.Agents {
-		if afterConflict.Agents[id] != before {
+		if !reflect.DeepEqual(afterConflict.Agents[id], before) {
 			t.Fatalf("conflict changed identity or settings: %s", id)
 		}
 	}
@@ -317,7 +318,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 		t.Fatal(err)
 	}
 	old.Tab, second.Tab = "root-example", macMainTab
-	if rebound.Agents[mainID] != old || rebound.Agents[secondID] != second {
+	if !reflect.DeepEqual(rebound.Agents[mainID], old) || !reflect.DeepEqual(rebound.Agents[secondID], second) {
 		t.Fatalf("Main movement changed more than role: %+v", rebound.Agents)
 	}
 	view := crewTeamTabFor(ctx, rebound, "owner")
@@ -355,7 +356,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 		t.Fatal("registry accepted duplicate owner/chat binding")
 	}
 	unchanged, err := readCrewTeam("team")
-	if err != nil || len(unchanged.Agents) != 2 || unchanged.Agents[mainID] != saved.Agents[mainID] || unchanged.Agents[dupID] != duplicate {
+	if err != nil || len(unchanged.Agents) != 2 || !reflect.DeepEqual(unchanged.Agents[mainID], saved.Agents[mainID]) || !reflect.DeepEqual(unchanged.Agents[dupID], duplicate) {
 		t.Fatal("refused duplicate registry write changed identities or settings")
 	}
 }
@@ -426,6 +427,24 @@ func TestCrewTeamRegisteredTargetsSurviveMissingMacMetadata(t *testing.T) {
 	agent, owner, err := crewTeamAgentByID(t.Context(), "team", "owner", shared)
 	if err != nil || owner != "other" || agent.ID != shared {
 		t.Fatalf("listed registry target refused by admission: %+v %s %v", agent, owner, err)
+	}
+	// Chosen people (PLAT-746-1034): a teammate left off the list cannot reach the agent; putting them on restores it.
+	if _, err := setCrewTeamAgentAudience(t.Context(), "team", "other", shared, crewTeamAudienceChosen, []string{}, true); err != nil {
+		t.Fatal(err)
+	}
+	team, _ = readCrewTeam("team")
+	if rows := crewTeamReachableIn(t.Context(), team, "owner"); len(rows) != 0 || crewTeamReachRow(team, "owner", team.Agents[shared]) {
+		t.Fatalf("agent reachable by a teammate who is not chosen: %+v", rows)
+	}
+	if _, err := setCrewTeamAgentAudience(t.Context(), "team", "other", shared, "", []string{"owner", "not-a-member"}, true); !errors.Is(err, errCrewTeamAudiencePerson) {
+		t.Fatalf("chosen list accepted a non-member: %v", err)
+	}
+	if _, err := setCrewTeamAgentAudience(t.Context(), "team", "other", shared, "", []string{"owner"}, true); err != nil {
+		t.Fatal(err)
+	}
+	team, _ = readCrewTeam("team")
+	if rows := crewTeamReachableIn(t.Context(), team, "owner"); len(rows) != 1 {
+		t.Fatalf("chosen teammate cannot reach the agent: %+v", rows)
 	}
 	if err := removeCrewAgentListing("team", "other", "team:chat:helper"); err != nil {
 		t.Fatal(err)

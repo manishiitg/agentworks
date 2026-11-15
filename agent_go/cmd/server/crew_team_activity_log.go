@@ -175,7 +175,7 @@ func crewTeamActivityMessagesFrom(ctx context.Context, t crewTeam, caller string
 	// hiddenBy is the person whose chat the viewer may not read ("" when both are Live for them).
 	hiddenBy := func(ends ...*crewTeamActivityAgent) string {
 		for _, end := range ends {
-			if end.person.UserID != caller && t.agentChatShare(ctx, end.person.UserID, end.agent.ChatKey) != crewChatShareLive {
+			if end.person.UserID != caller && t.agentChatShareFor(ctx, caller, end.person.UserID, end.agent.ChatKey) != crewChatShareLive {
 				return end.person.Name
 			}
 		}

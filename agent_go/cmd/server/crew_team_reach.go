@@ -67,10 +67,11 @@ func crewTeamReachOpen(t crewTeam, viewer string) bool {
 }
 
 // crewTeamReachRow is the one per-row admission check (nonrecursive): the Team is open to the viewer, and the row is
-// someone else's, In team, owned by a current active member. Discovery and every send use it. A terminal row's
+// someone else's, In team (for this viewer: the whole Team or chosen people including them), owned by a current active
+// member. Discovery and every send use it. A terminal row's
 // transport check is applied separately: a changed binding refuses, while a valid disconnected stream is offline.
 func crewTeamReachRow(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
-	return crewTeamReachOpen(t, viewer) && row.InTeam && row.OwnerID != "" && row.OwnerID != viewer && t.member(row.OwnerID) && crewTeamAccountActive(row.OwnerID)
+	return crewTeamReachOpen(t, viewer) && row.InTeam && row.Rule.chosen(viewer) && row.OwnerID != "" && row.OwnerID != viewer && t.member(row.OwnerID) && crewTeamAccountActive(row.OwnerID)
 }
 
 // crewTeamReachableIn is one Team's reachable agents for the viewer.
