@@ -60,7 +60,7 @@ type resolvedDashboardQuestion struct {
 // workspace, role, session or captured revision can supply that authority.
 func (api *StreamingAPI) resolveDashboardQuestion(ctx context.Context, claims *UserClaims, id, revision string) (resolvedDashboardQuestion, error) {
 	var out resolvedDashboardQuestion
-	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
+	if claims == nil || claims.UserID == "" || claims.Provider == "bot_route" || !dashboardReadPurposeAllowed(claims) {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	dashboardQuestionRegistryMu.Lock()
@@ -89,7 +89,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 	if resource.Removed {
 		return out, dashboardFailure(http.StatusGone, dashboardRemovedMessage)
 	}
-	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
+	if claims == nil || claims.UserID == "" || claims.Provider == "bot_route" || !dashboardReadPurposeAllowed(claims) {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	target, err := api.dashboardTarget(ctx, claims, out.Resource.Root)

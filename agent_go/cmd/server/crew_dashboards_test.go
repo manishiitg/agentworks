@@ -437,6 +437,13 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 		if (scope == "mcp") != (err == nil) {
 			t.Fatalf("mapped purpose boundary %s: %v", scope, err)
 		}
+		app := f.api.openDashboardApp(httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, &copy)), selector)
+		if (scope == "mcp") == app.IsError {
+			t.Fatalf("full inline purpose boundary %s: %+v", scope, app)
+		}
+	}
+	if _, err := f.api.teamOnlineMappedOpen(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "reader", Scope: "mcp"}), team.ProjectID, "mac-source", "artifact", "proposal"); err == nil {
+		t.Fatal("MCP purpose without validated token read Team item")
 	}
 	limited := *readerClaims
 	token := *readerClaims.AccessToken

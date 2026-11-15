@@ -74,6 +74,12 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 	return false
 }
 
+// MCP-purpose readers retain the validated connection's consent. Preview or
+// share-purpose claims are not general dashboard read/Open authority.
+func dashboardReadPurposeAllowed(claims *UserClaims) bool {
+	return claims != nil && (claims.Scope == "" || claims.Scope == "mcp" && claims.AccessToken != nil) && dashboardScopeAllowed(claims, "get")
+}
+
 func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	// Uploads reuse Crew attachment use-access, not dashboard authoring consent.
 	if action == "upload" {
