@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // The browser and Builder tools use the same caller-authorized directory.
@@ -201,7 +203,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 				mine = append(mine, crew)
 			}
 		}
-		agents = append(agents, teamMemberAgentRows(ctx, claims.UserID, mine)...)
+		rows := teamMemberAgentRows(ctx, claims.UserID, mine)
+		logTeamAgentReach(claims.UserID, here, len(rows))
+		agents = append(agents, rows...)
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
@@ -429,4 +433,14 @@ func annotateDirectoryHiddenAgents(rows []map[string]interface{}, preferences pr
 			}
 		}
 	}
+}
+
+var teamAgentReachLogged sync.Map
+
+// logTeamAgentReach logs how many Team agents a Crew chat's list offered, once per change (IDs and counts only).
+func logTeamAgentReach(caller, workspace string, count int) {
+	if previous, ok := teamAgentReachLogged.Swap(caller+"/"+workspace, count); ok && previous == count {
+		return
+	}
+	log.Printf("[TEAM_AGENT_REACH] caller=%s workspace=%s event=discover team_agents=%d", caller, workspace, count)
 }
