@@ -51,7 +51,7 @@ it('allows HTTPS images and fonts but drops unsafe URLs and hiding controls', ()
 it('keeps embedded SVG fragment artwork and canonicalizes encoded CSS fragments', () => {
   const { sheet, removed } = safeAppearanceSheet(`
     [data-app-main] { --art: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cg%20filter='url(%23tomoeGlow)'%20mask='url(%23tomoeCut)'/%3E%3C/svg%3E"); background-image: var(--art); }
-    .emblem { filter: url(#tomoeGlow); mask: url('%23tomoeCut'); --fragment: url(%23another); background-image: image-set("%23emblem" 1x); }
+    .emblem { filter: url(#tomoeGlow); mask: url('%23tomoeCut'); --fragment: url(%23another); --fragment-set: image-set("%23emblem" 1x); }
   `)
   expect(removed).toBe(false)
   const css = [...sheet.cssRules].map(rule => rule.cssText).join('\n')
