@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"log"
 	"net/http"
@@ -184,7 +185,7 @@ func acceptTeamOnlineMapping(ctx context.Context, destination triggerTarget, m t
 func (api *StreamingAPI) receiveTeamOnline(ctx context.Context, in teamOnlineRequest) (final teamOnlineResult, failure error) {
 	defer func() {
 		if failure != nil && in.validate() == nil {
-			log.Printf("[TEAM_ONLINE_ITEM] step=failed team=%s source_project=%s kind=%s item_id=%s item_revision=%s reason=handoff_refused", in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID, in.Revision)
+			log.Printf("[TEAM_ONLINE_ITEM] step=failed team=%s source_project=%s kind=%s item_id=%s item_revision=%s reason=handoff_refused error=%q", in.TeamProjectID, in.SourceProjectID, in.Kind, in.ItemID, in.Revision, redaction.Text(failure.Error()))
 		}
 	}()
 	result := teamOnlineResult{TeamProjectID: in.TeamProjectID, ItemID: in.ItemID, Revision: in.Revision, SubmissionID: in.SubmissionID, Preview: in.Preview, Notes: []string{}, Dependencies: teamOnlineDependencies{Tables: []teamonline.Table{}, Automations: []teamonline.Automation{}}}

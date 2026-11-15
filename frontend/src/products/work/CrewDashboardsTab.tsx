@@ -1,4 +1,5 @@
 import api from '../../services/api'
+import { openTeamOnlineReport } from '../../components/workflow/teamOnlineReport'
 import { captureChatIdentity, assertChatIdentityCurrent } from '../../utils/chatIdentity'
 import { startTeamDashboardHandoff } from '../../utils/teamDashboardHandoff'
 import { loadDashboardDirectory, dashboardDisplayName, type DashboardDirectoryEntry } from '../../services/dashboardDirectory'
@@ -75,10 +76,22 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     return () => window.clearTimeout(timer)
   }, [failure, attempt, retryTeam])
   // Fetch all once: filters and counts describe both places, not just the last server response.
+  const onlineItems = tab?.items.filter(item => item.online) || []
+  const mappedLocal = (row: DashboardDirectoryEntry) => onlineItems.some(item => item.online?.source_project_id === projectId && item.online.dashboard_id === row.dashboard_id)
   const rows = [
-    ...(onThisMac ? (localRows || []).map(row => ({ id: `local:${row.dashboard_id}`, sourceId: row.dashboard_id, title: dashboardDisplayName(row), kind: row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard', workspace: row.workspace, path: row.document_path, place: 'This Mac', canAdd: canAdd && row.can_edit, publicLink: undefined as DashboardsTab['items'][number]['public_link'] })) : []),
-    ...((!onThisMac || !unbound) && tab ? tab.items.map(item => ({ id: `remote:${item.id}`, sourceId: item.id, title: item.title, kind: item.kind, workspace: tab.workspace, path: item.path, place: tab.on_mac ? 'This Mac' : 'On the Team', canAdd: false, publicLink: item.public_link })) : []),
+    ...(onThisMac ? (localRows || []).filter(row => !mappedLocal(row)).map(row => ({ id: `local:${row.dashboard_id}`, sourceId: row.dashboard_id, title: dashboardDisplayName(row), kind: row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard', workspace: row.workspace, path: row.document_path, place: 'This Mac', online: undefined as DashboardsTab['items'][number]['online'], canAdd: canAdd && row.can_edit, publicLink: undefined as DashboardsTab['items'][number]['public_link'] })) : []),
+    ...((!onThisMac || !unbound) && tab ? tab.items.map(item => ({ id: `remote:${item.id}`, sourceId: item.id, title: item.title, kind: item.kind, workspace: item.workspace || tab.workspace, path: item.path, online: item.online, place: item.online ? 'On the Team' : tab.on_mac ? 'This Mac' : 'On the Team', canAdd: false, publicLink: item.public_link })) : []),
   ]
+  async function openRow(row: typeof rows[number]) {
+    if (!row.online) { selectReportDocument(row.workspace, row.path, true); return }
+    const identity = captureChatIdentity()
+    const current = () => { try { assertChatIdentityCurrent(identity); return true } catch { return false } }
+    try {
+      if (!await openTeamOnlineReport(row.workspace, row.path, current, undefined, { ...row.online, connection: where?.connection })) throw new Error('The Team item is unavailable. Refresh the list and try again.')
+    } catch (cause) {
+      if (current()) useChatStore.getState().addToast(teamFailure(cause).message, 'error')
+    }
+  }
   const complete = Boolean(tab) && (!onThisMac || Boolean(localRows)) && !failure && !localError
   const filters = [{ key: 'all', label: 'All' }, { key: 'dashboard', label: 'Dashboards' }, { key: 'artifact', label: 'Artifacts' }, { key: 'motion', label: 'Motion' }]
   const chosen = tab?.filters.find(filter => filter.key === kind)
@@ -102,7 +115,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
         {rows.filter(row => kind === 'all' || kind === row.kind).map(row => {
           const Icon = kindIcon[row.kind] || LayoutDashboard
           return <div key={row.id} className="group flex items-center gap-2 py-1">
-            <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={() => selectReportDocument(row.workspace, row.path, true)}>
+            <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void openRow(row)}>
               <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.title}</span>
               <span className="shrink-0 text-[11px] text-muted-foreground">{row.place}</span>

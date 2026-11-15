@@ -13,11 +13,13 @@ import (
 // /tab, which every screen re-reads on each panel notice.
 
 type crewTeamDashboard struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Path     string `json:"path"`
-	Artifact bool   `json:"artifact,omitempty"`
-	Motion   bool   `json:"motion,omitempty"`
+	Workspace string                  `json:"workspace,omitempty"`
+	Online    *teamOnlineItemSelector `json:"online,omitempty"`
+	ID        string                  `json:"id"`
+	Title     string                  `json:"title"`
+	Path      string                  `json:"path"`
+	Artifact  bool                    `json:"artifact,omitempty"`
+	Motion    bool                    `json:"motion,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
 }
@@ -77,7 +79,7 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 		}
 		offset += len(page.Dashboards)
 	}
-	return rows, true
+	return api.crewTeamDashboardOnlineRows(w, r, t, root, rows)
 }
 
 // handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the

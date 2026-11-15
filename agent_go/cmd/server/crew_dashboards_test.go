@@ -1,10 +1,16 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/gin-gonic/gin"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -259,6 +265,25 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 		}
 	}
 	saveRoster()
+	// Serve both real Crew manifests in this fixture, not just its historical
+	// hard-coded dashboard-team path. The actual dashboard handlers stay real.
+	f.write(t, "Crew/source-team/.agentworks/settings/product.json", `{"id":"source-team","product":"work","title":"Source"}`)
+	upstream, err := url.Parse(os.Getenv("WORKSPACE_API_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	forward := httputil.NewSingleHostReverseProxy(upstream)
+	documents := gin.New()
+	documents.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
+			documents.ServeHTTP(w, r)
+			return
+		}
+		forward.ServeHTTP(w, r)
+	}))
+	defer proxy.Close()
+	t.Setenv("WORKSPACE_API_URL", proxy.URL)
 	item := teamOnlineDashboardItemID("mac-source", "dashboard", "sales")
 	ctx := internalBotRequestContext(t.Context(), "reader")
 	created, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: home, Action: "create", ID: item, Title: "Sales", Files: map[string]string{"index.html": "<html><title>Sales</title><body>Team data</body></html>"}, IncludeDraft: true})
@@ -271,6 +296,75 @@ func TestTeamOnlineSourceOpenUsesAcceptedHomeAndRechecksMembership(t *testing.T)
 	}
 	if err := saveTeamOnlineMappings(ctx, triggerTarget{CrewID: "dashboard-team"}, []teamOnlineItemMapping{{SourceProjectID: "mac-source", Kind: "dashboard", ItemID: "sales", DestinationProjectID: "dashboard-team", DestinationItemID: item, Revision: published.Dashboard.Published}}); err != nil {
 		t.Fatal(err)
+	}
+	// Real reported failure: the source-root list was empty after acceptance
+	// into the online home. Include direct publications and accepted home items
+	// once each, but never an unrelated private page in that home.
+	publishExtra := func(root, id, title string, artifact bool) dashboards.Result {
+		t.Helper()
+		draft, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "create", ID: id, Title: title, Artifact: &artifact, Files: map[string]string{"index.html": "<h1>" + title + "</h1>"}, IncludeDraft: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pub, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "publish", ID: id, ExpectedRevision: draft.Dashboard.Revision, IncludeDraft: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pub
+	}
+	publishExtra("Crew/source-team", "overview", "Overview", false)
+	proposalID := teamOnlineDashboardItemID("mac-source", "artifact", "proposal")
+	proposal := publishExtra(home, proposalID, "Proposal", true)
+	publishExtra(home, "private-helper", "Private helper", true)
+	mappings, _ := readTeamOnlineMappings(ctx, triggerTarget{CrewID: "dashboard-team"})
+	mappings = append(mappings, teamOnlineItemMapping{SourceProjectID: "mac-source", Kind: "artifact", ItemID: "proposal", DestinationProjectID: "dashboard-team", DestinationItemID: proposalID, Revision: proposal.Dashboard.Published})
+	if err := saveTeamOnlineMappings(ctx, triggerTarget{CrewID: "dashboard-team"}, mappings); err != nil {
+		t.Fatal(err)
+	}
+	readTab := func(mcp bool) crewDashboardsTab {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+		rec := httptest.NewRecorder()
+		if mcp {
+			f.api.externalCrewTeamSyncCall(rec, req, map[string]any{"crew_id": team.ProjectID, "action": "dashboards"})
+		} else {
+			f.api.handleCrewTeamDashboardsTab(rec, mux.SetURLVars(req, map[string]string{"project": team.ProjectID}))
+		}
+		var tab crewDashboardsTab
+		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &tab) != nil {
+			t.Fatalf("Team list: %d %s", rec.Code, rec.Body.String())
+		}
+		return tab
+	}
+	for _, mcp := range []bool{false, true} {
+		tab := readTab(mcp)
+		if len(tab.Items) != 3 || tab.Filters[0].Count != 3 {
+			t.Fatalf("union/counts: %+v", tab)
+		}
+		seen := map[string]bool{}
+		for _, row := range tab.Items {
+			if seen[row.ID] || row.Title == "Private helper" {
+				t.Fatalf("duplicate/private row: %+v", row)
+			}
+			seen[row.ID] = true
+			if row.ID == proposalID && (row.Kind != "artifact" || row.Workspace != home || row.Online == nil || !strings.Contains(row.Line, "On the Team")) {
+				t.Fatalf("mapped Artifact: %+v", row)
+			}
+		}
+	}
+	// A mapped-row click selects this Team explicitly and reuses normal Open.
+	chosen, err := f.api.teamOnlineMappedOpen(ctx, team.ProjectID, "mac-source", "artifact", "proposal")
+	if err != nil || !chosen.Found || chosen.Location.Workspace != home {
+		t.Fatalf("mapped row Open: %+v %v", chosen, err)
+	}
+	// Failed handoffs need a useful error, not just a generic reason code.
+	var recorded bytes.Buffer
+	before := log.Writer()
+	log.SetOutput(&recorded)
+	_, refused := f.api.receiveTeamOnline(internalBotRequestContext(t.Context(), "outsider"), teamOnlineRequest{TeamProjectID: team.ProjectID, SourceProjectID: "mac-source", Kind: "artifact", ItemID: "proposal", Revision: proposal.Dashboard.Published, SubmissionID: "refused-log", Preview: true})
+	log.SetOutput(before)
+	if refused == nil || !strings.Contains(recorded.String(), "error=") || !strings.Contains(recorded.String(), refused.Error()) {
+		t.Fatalf("missing real failure reason: %v %s", refused, recorded.String())
 	}
 	open := func(user string) (int, teamOnlineOpenResult) {
 		t.Helper()

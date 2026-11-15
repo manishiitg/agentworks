@@ -126,35 +126,51 @@ func (api *StreamingAPI) teamOnlineOpen(ctx context.Context, workspace, source, 
 			if out.Found {
 				return teamOnlineOpenResult{}, fmt.Errorf("this item is on more than one Team; open it from the Team you want")
 			}
-			location, found, err := api.teamOnlineAcceptedLocation(ctx, team.ProjectID, source, mapping.Kind, mapping.ItemID)
+			resolved, err := api.teamOnlineMappedOpen(ctx, team.ProjectID, source, mapping.Kind, mapping.ItemID)
 			if err != nil {
 				return out, err
 			}
-			if !found {
-				return out, fmt.Errorf("this Team item is unavailable")
-			}
-			target, err := api.dashboardTarget(ctx, claims, location.Workspace)
-			if err != nil {
-				return out, err
-			}
-			published, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, ID: location.ItemID, Action: "get", Guard: dashboardFileGuard(claims)})
-			if err != nil {
-				return out, err
-			}
-			if published.Dashboard == nil {
-				return out, fmt.Errorf("this Team item is unavailable")
-			}
-			row := map[string]any{}
-			addDashboardQuestionResource(ctx, target, *published.Dashboard, row)
-			shortPath, _ := row["short_path"].(string)
-			if !strings.HasPrefix(shortPath, "/d/") || !validDashboardShortCode(strings.TrimPrefix(shortPath, "/d/")) {
-				return out, fmt.Errorf("the Team dashboard link is unavailable; try again")
-			}
-			out = teamOnlineOpenResult{Found: true, Location: &location, ShortPath: shortPath}
+			out = resolved
 		}
 	}
-	if out.Found {
-		log.Printf("[TEAM_ONLINE] event=open person=%s source_project=%s destination=%s item_id=%s", claims.UserID, source, out.Location.ProjectID, out.Location.ItemID)
-	}
 	return out, nil
+}
+
+// A row selected from a particular Team does not search another Team or trust
+// a destination path from the browser. Mapping, membership and access are fresh.
+func (api *StreamingAPI) teamOnlineMappedOpen(ctx context.Context, team, source, kind, item string) (teamOnlineOpenResult, error) {
+	out := teamOnlineOpenResult{}
+	claims := GetUserFromContext(ctx)
+	if IsLocalMode() || claims == nil || claims.Scope != "" || !dashboardScopeAllowed(claims, "get") {
+		return out, fmt.Errorf("sign in with dashboard access to open this item")
+	}
+	if (kind != "dashboard" && kind != "artifact") || !teamOnlineIdentifier.MatchString(team) || !teamOnlineIdentifier.MatchString(source) || !teamOnlineIdentifier.MatchString(item) {
+		return out, fmt.Errorf("choose a published Team item")
+	}
+	location, found, err := api.teamOnlineAcceptedLocation(ctx, team, source, kind, item)
+	if err != nil {
+		return out, err
+	}
+	if !found {
+		return out, fmt.Errorf("this Team item is unavailable")
+	}
+	target, err := api.dashboardTarget(ctx, claims, location.Workspace)
+	if err != nil {
+		return out, err
+	}
+	published, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, ID: location.ItemID, Action: "get", Guard: dashboardFileGuard(claims)})
+	if err != nil {
+		return out, err
+	}
+	if published.Dashboard == nil {
+		return out, fmt.Errorf("this Team item is unavailable")
+	}
+	row := map[string]any{}
+	addDashboardQuestionResource(ctx, target, *published.Dashboard, row)
+	shortPath, _ := row["short_path"].(string)
+	if !strings.HasPrefix(shortPath, "/d/") || !validDashboardShortCode(strings.TrimPrefix(shortPath, "/d/")) {
+		return out, fmt.Errorf("the Team dashboard link is unavailable; try again")
+	}
+	log.Printf("[TEAM_ONLINE] event=open person=%s team=%s source_project=%s destination=%s item_id=%s", claims.UserID, team, source, location.ProjectID, location.ItemID)
+	return teamOnlineOpenResult{Found: true, Location: &location, ShortPath: shortPath}, nil
 }

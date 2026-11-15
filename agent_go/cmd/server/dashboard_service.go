@@ -324,7 +324,13 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "online_location" {
-		result, err := api.teamOnlineOpen(r.Context(), args.Workspace, args.SourceProjectID, args.Document)
+		var result teamOnlineOpenResult
+		var err error
+		if args.TeamProjectID != "" {
+			result, err = api.teamOnlineMappedOpen(r.Context(), args.TeamProjectID, args.SourceProjectID, args.ItemKind, args.ID)
+		} else {
+			result, err = api.teamOnlineOpen(r.Context(), args.Workspace, args.SourceProjectID, args.Document)
+		}
 		if err != nil {
 			dashboardError(w, err)
 			return
