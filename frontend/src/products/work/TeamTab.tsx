@@ -275,7 +275,7 @@ function PersonLine({ connection, person, people, activity, pending, closed, onM
   const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
   const saving = pending === `change:${person.user_id}`
   return <div className={`flex items-center gap-2 py-2 ${saving ? 'opacity-60' : ''}`}>
-    <Avatar name={person.name} {...person} connection={connection} className="h-[22px] w-[22px] text-[11px]" />
+    <Avatar {...person} name={person.name} connection={connection} className="h-[22px] w-[22px] text-[11px]" />
     <span className="min-w-0 flex-1">
       <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
       {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
@@ -306,7 +306,7 @@ function AddPerson({ target, pending, known, onPick, everyone }: { target: TeamT
     {adding && <div className="rounded-xl border border-border bg-popover">
       <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
       {everyone && everyone.label.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(false); setSearch(''); everyone.onPick() }} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{everyone.label}</button>}
-      <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => pick(p.id, shortName(p.username))} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted"><Avatar name={p.username} {...p} connection={target.connection} />{shortName(p.username)}</button>)}</div>
+      <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => pick(p.id, shortName(p.username))} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted"><Avatar {...p} name={p.username} connection={target.connection} />{shortName(p.username)}</button>)}</div>
       {failure && <p role="alert" className="px-3 py-2 text-xs text-destructive">{failure}</p>}
     </div>}
   </>

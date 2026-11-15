@@ -134,7 +134,7 @@ export function TeamInviteRow({ invite }: { invite: TeamInvite }) {
     : !connection ? "Add this team's network to your Mac first (Servers), then try again."
       : 'Add it to this Mac: its shared folder syncs here and you can chat with its shared agents.'
   return <div role="group" aria-label={`Team invite: ${invite.name}`} className="rounded-lg border border-border px-3 py-2 text-[13px]">
-    <p className="flex items-center gap-2 leading-5"><Avatar name={invite.owner_name} {...invite} connection={connection} /><span><b className="font-medium">{invite.owner_name}</b> invited you to the {invite.name} team.</span></p>
+    <p className="flex items-center gap-2 leading-5"><Avatar {...invite} name={invite.owner_name} connection={connection} /><span><b className="font-medium">{invite.owner_name}</b> invited you to the {invite.name} team.</span></p>
     <p className="text-[11px] leading-4 text-muted-foreground">{line}</p>
     <div className="mt-1.5 flex flex-wrap gap-1.5">
       {!folder && (!inMacApp || canAdd) && <button type="button" disabled={busy} onClick={() => void (inMacApp ? chooseFolder() : answer(true))} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs shadow-sm hover:bg-muted">{inMacApp ? 'Add to my Mac' : 'Join'}</button>}
