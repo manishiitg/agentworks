@@ -12,10 +12,11 @@ import { openTeammateAgent } from './openTeammateAgent'
 import { TeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { useChatShareLines } from './ChatEmptyState'
-const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
+const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),ask:vi.fn(),post:vi.fn(),team:{} as any,identity:1}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:f.tabs}),{getState:()=>({chatTabs:f.tabs})})}))
 vi.mock('../../components/chat/AgentCard',()=>({useCrewAgentsStore:{getState:()=>({projectId:'crew',closed:[]})}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:any)=>select({user:{id:'viewer'}})}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillAskFromMyAgentDraft:(...args:unknown[])=>{f.ask(...args);return true}}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:(id:string)=>f.open(id)}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>f.identity,isChatIdentityCurrent:(value:number)=>value===f.identity}))
 vi.mock('../../services/api',()=>({default:{post:(...args:unknown[])=>f.post(...args)},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>''}))
@@ -60,4 +61,7 @@ it('identifies the observed person and Mac above the transcript with one direct 
  expect(host.querySelector('[role="note"]')?.textContent).toContain('Colleague')
  expect(host.querySelectorAll('textarea')).toHaveLength(1);expect(textbox().placeholder).toContain("Colleague's Peer agent")
  expect(host.querySelector('details')?.open).toBe(false)
+ await act(async()=>{host.querySelector('details')!.open=true;[...host.querySelectorAll('button')].find(button=>button.textContent==='Ask from my agent')!.click()})
+ expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','workspace:work:crew/agent/peer')
+ expect(host.querySelectorAll('textarea')).toHaveLength(1)
 })
