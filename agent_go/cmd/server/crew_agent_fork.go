@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 const crewAgentForkLifetime = 7 * 24 * time.Hour
@@ -117,4 +118,15 @@ func completeCrewAgentFork(team crewTeam, offer crewAgentFork, person string, no
 	}
 	log.Printf("[AGENT_FORK] project=%s fork=%s source=%s copy=%s actor=%s event=accepted", offer.Project, offer.ID, offer.Agent.ID, copy.ID, person)
 	return nil
+}
+
+func crewAgentForkRunsOnMac(team crewTeam, person string) bool {
+	if _, ok := team.memberMac(person); ok {
+		return true
+	}
+	if person != team.OwnerID {
+		return false
+	}
+	binding, err := crewroot.ReadSync(team.ProjectID)
+	return err == nil && binding != nil && binding.Mode == "relay" && binding.Side == "server" && binding.Editing == "local"
 }

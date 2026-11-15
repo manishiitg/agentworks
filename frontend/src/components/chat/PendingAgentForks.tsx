@@ -1,3 +1,4 @@
+import { actOnAgentFork } from './agentForkApi'
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { teamError, teamRequest, type TeamTabState } from '../../products/work/teamApi'
@@ -25,7 +26,7 @@ export function PendingAgentForks({ state }: { state: TeamTabState }) {
     if (!target || busy) return
     setBusy(offer.id); setError('')
     try {
-      const result = await teamRequest<{ accepted?: boolean }>(target, `/agent-forks/${encodeURIComponent(offer.id)}/${operation}`, 'POST', {})
+      const result = await actOnAgentFork<{ accepted?: boolean }>(target, operation, { fork_id: offer.id })
       if (operation === 'accept' && !result.accepted) throw new Error('Finish downloading this copy on your computer before accepting it.')
       await reload()
     } catch (error) { setError(teamError(error)) }
