@@ -33,7 +33,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
   const [needsDashboard, setNeedsDashboard] = useState(false)
   useEffect(() => {
     let active = true
-    void teamWizard(target).then(data => { if (active) { setOptions(data); setFolder(data.folders.default) } }).catch(e => { if (active) setError(teamFailure(e).message) })
+    void teamWizard(target).then(data => { if (active) { setOptions(data); setFolder(data.folders.default); setAgents(data.agents.map(agent => agent.key)) } }).catch(e => { if (active) setError(teamFailure(e).message) })
     return () => { active = false }
   }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!options) return error ? <p role="alert" className="text-xs text-destructive">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
@@ -54,7 +54,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
   }
   const next = () => { if (step === 1 && !yes) onNo(); else setStep(step + 1) }
   const heading = ['Share this Crew with a team?', 'Who is on the Team?', 'What do people work on?', 'Which agents can the Team ask?'][step - 1]
-  const sub = ['A Team lets other people use this Crew with you. You can change it any time.', 'Choose people, then how each uses this Crew.', 'The part of the Crew people with “Works with me” can open.', 'Main answers by default. Add more if the Team should reach them.'][step - 1]
+  const sub = ['A Team lets other people use this Crew with you. You can change it any time.', 'Choose people, then how each uses this Crew.', 'The part of the Crew people with “Works with me” can open.', 'Every agent is ticked. Untick any you want to keep to yourself.'][step - 1]
   return <section aria-label="Set up the Team" className="rounded-xl border border-border text-sm">
     <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
       <div className="flex flex-1 gap-1" aria-hidden="true">{Array.from({ length: STEPS }, (_, i) => <i key={i} className={`h-1 flex-1 rounded ${i < step ? 'bg-primary' : 'bg-border'}`} />)}</div>
@@ -89,7 +89,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
       {step === 4 && <div className="space-y-2">
         <p className="text-xs text-muted-foreground">Terminal agents already joined to this Crew are shared when the Team turns on, unless you chose Only me. Their saved choices stay the same.</p>
         {options.agents.map(agent => <Option key={agent.key} kind="check" on={agent.main || agents.includes(agent.key)} disabled={agent.main} title={agent.name}
-          line={agent.main ? 'The default agent. Always on.' : 'Add so the Team can ask it too.'}
+          line={agent.main ? 'The default agent. Always on.' : 'Untick to keep it to yourself.'}
           onClick={() => setAgents(current => current.includes(agent.key) ? current.filter(key => key !== agent.key) : [...current, agent.key])}
           aside={agent.main && <span className="shrink-0 rounded-full border border-border px-2 py-px text-xs text-muted-foreground">Default</span>} />)}
       </div>}

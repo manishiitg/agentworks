@@ -8,7 +8,7 @@ Team dashboards run from items explicitly added to the Team's online Crew. There
 
 Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use MCP `messages action=ask` (in Crew chat, `messages action=send` with `ask=true`) for a question: an offline agent's ask goes to the existing Team agent, or refuses if none is available. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox. Never provision a substitute or use the maker's login. There is no automatic standby copy or handback. Member agents are listed from their own Mac pairs, not server-shadow chats in the owner's website copy. A Mac agent's own turns stay on its Mac; explicitly moved-online agents keep using their normal server home.
 
-The first-time Team setup chooses people and their level, the chosen shared folders, and agents (Main selected initially), then
+The first-time Team setup chooses people and their level, the chosen shared folders, and agents (every agent ticked; untick any to keep private), then
 saves with Finish. If sharing requires a dashboard, explain that before saving
 and ask before creating one. Do not create it as a side effect of listing.
 

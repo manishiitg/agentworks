@@ -11,13 +11,15 @@ vi.mock('../../services/desktopConnections', () => ({ desktopRequest: vi.fn() })
 let listed: { project_id: string; name: string; owner_name: string }[] = []
 vi.mock('../../products/work/teamApi', () => ({ answerTeamInvite: vi.fn(), useTeamInvites: () => listed }))
 vi.mock('./SidebarServerGroup', () => ({ openSidebarProject: vi.fn() }))
-let mac = true, person = 'first', workspace = 'local'
+let mac = true, person = 'first'
+// Hoisted: the store mock is read while modules load (api.ts reads the workspace at import).
+const ws = vi.hoisted(() => ({ id: 'local' }))
 vi.mock('../../stores/useConnectedWorkStore', () => ({ hasDesktopConnections: () => mac }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: person } }) }))
-vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getRawActiveWorkspaceId: () => workspace, useWorkspaceConnectionStore: (select: (state: { activeWorkspaceId: string }) => unknown) => select({ activeWorkspaceId: workspace }) }))
+vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getRawActiveWorkspaceId: () => ws.id, getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: (select: (state: { activeWorkspaceId: string }) => unknown) => select({ activeWorkspaceId: ws.id }) }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-// PLAT-746-976: unchecked existing agents must stay private; the screen sends
+// PLAT-746-976: every agent starts ticked (owner, 15 Nov); an unticked agent must stay private; the screen sends
 // the selected local identity, rather than making another project or trusting an online target.
 it('sends the existing project and only selected agents, while retaining new-project acceptance', async () => {
   vi.mocked(desktopRequest).mockImplementation(async (_route, method) => method === 'POST' ? {} : {
@@ -37,10 +39,10 @@ it('sends the existing project and only selected agents, while retaining new-pro
     await act(async () => host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1].click())
     expect(host.textContent).toContain('Instruction notice from server')
     const agents = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect([...agents].every(agent => !agent.checked)).toBe(true)
+    expect([...agents].every(agent => agent.checked)).toBe(true)
     await act(async () => agents[1].click())
     await act(async () => button('OK').click())
-    expect(desktopRequest).toHaveBeenLastCalledWith('/saved/crew-teams/invited/join', 'POST', { local_project: 'mine', agents: ['research'], confirm: true })
+    expect(desktopRequest).toHaveBeenLastCalledWith('/saved/crew-teams/invited/join', 'POST', { local_project: 'mine', agents: ['main'], confirm: true })
     await act(async () => root.render(<TeamInviteRow key="new" invite={invite} />))
     await act(async () => button('Add to my Mac').click())
     await act(async () => button('OK').click())
@@ -118,7 +120,7 @@ it('does not carry minimized invitations between people or networks and retains 
     await act(async () => [...popup()!.querySelectorAll('button')].find(b => b.textContent === 'Join')!.click())
     expect(answerTeamInvite).toHaveBeenLastCalledWith(invite, true)
     await act(async () => popup()!.querySelector<HTMLButtonElement>('button')!.click())
-    workspace = 'other-network'
+    ws.id = 'other-network'
     await act(async () => render())
     expect(popup()).not.toBeNull()
     await act(async () => [...popup()!.querySelectorAll('button')].find(b => b.textContent === 'Decline')!.click())
@@ -134,5 +136,5 @@ it('does not carry minimized invitations between people or networks and retains 
     listed = [invite]
     await act(async () => render())
     expect(popup()).not.toBeNull()
-  } finally { await act(async () => root.unmount()); host.remove(); listed = []; mac = true; person = 'first'; workspace = 'local'; useTeamInviteNotice.setState({ count: 0 }) }
+  } finally { await act(async () => root.unmount()); host.remove(); listed = []; mac = true; person = 'first'; ws.id = 'local'; useTeamInviteNotice.setState({ count: 0 }) }
 })
