@@ -132,6 +132,17 @@ func TestTeamHomeLifecycleProvisionsOnEnableAndDoesNotRecurseOnDelete(t *testing
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
+	if saved, err := readCrewTeam(fixtureCrewID); err != nil || saved.Agents[sourceAgent].InTeam {
+		t.Fatal("explicit Only me while Off did not survive Team On", err)
+	}
+	// Share it explicitly before testing the separate last-shared refusal.
+	if err := setCrewTeamAgentChoice(f.Ctx(fixtureUserA), fixtureCrewID, fixtureUserA, sourceAgent, true); err != nil {
+		t.Fatal(err)
+	}
+	team, err = readCrewTeam(fixtureCrewID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if rec := put(fixtureUserA, "source-pair"); rec.Code != 400 || !strings.Contains(rec.Body.String(), "last_shared_agent") {
 		t.Fatalf("Put online bypassed last-shared rule: %d %s", rec.Code, rec.Body.String())
 	}
