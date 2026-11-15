@@ -7,7 +7,7 @@ export function useChatShareLines(tabId?: string | null) {
   const watching = tab?.metadata?.agentProfileTabCanWrite === false
   const team = useTeamTab(watching ? tab?.metadata?.agentProfileProjectId : undefined)
   const agent = watching ? teamAgentFor(team.view?.agents, tab?.metadata?.agentProfileConversationKey) : undefined
-  return { private: agent?.chat_private_line || '' }
+  return { private: !watching ? '' : team.error ? 'Could not check access to this chat. Refresh the Team and try again.' : !team.view ? 'Checking access to this chat…' : !team.view.team.on || !agent?.in_team ? 'This agent’s chat is not available to you now.' : agent.chat_private_line || '' }
 }
 
 /** A new chat's light empty state (owner, 3 Nov): the tab's name and one line, plus, for your own agent In team, one
