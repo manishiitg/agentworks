@@ -453,7 +453,7 @@ func (api *StreamingAPI) desktopAppMessageInput(owner string, record ProductConv
 }
 
 func desktopAppAgentRecipient(ctx context.Context, owner string, expected ProductConversationRecord) (ProductConversationRecord, error) {
-	records, err := api.desktopAppAgentRecords(ctx, owner)
+	records, err := desktopAppAgentRecords(ctx, owner)
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
