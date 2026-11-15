@@ -307,7 +307,7 @@ func teamOnlineFunctionName(source, name string) string {
 
 // Stop only the exact definitions that were exported. A concurrently edited
 // source routine is refused, never accidentally stopped by an old package.
-func stopTeamOnlineSource(ctx context.Context, source triggerTarget, p *teamOnlinePackage) error {
+func stopTeamOnlineSource(ctx context.Context, source triggerTarget, p *teamOnlinePackage, restart bool) error {
 	item, err := readTeamOnlineAutomations(p)
 	if err != nil {
 		return err
@@ -324,7 +324,24 @@ func stopTeamOnlineSource(ctx context.Context, source triggerTarget, p *teamOnli
 		if i < 0 || current[i].RunAs != source.CrewOwner || teamOnlineScheduleRevision(current[i]) != teamOnlineScheduleRevision(s) {
 			return fmt.Errorf("the source automation changed; preview it again")
 		}
-		current[i].Enabled = false
+		current[i].Enabled = restart && s.Enabled
 	}
 	return writeProjectSchedules(ctx, source.Path, current)
+}
+
+func confirmTeamOnlineSchedulesEnabled(ctx context.Context, destination triggerTarget, p *teamOnlinePackage) error {
+	current, err := readProjectSchedules(ctx, destination.Path)
+	if err != nil {
+		return err
+	}
+	for id, wanted := range p.desiredEnabled {
+		if !wanted {
+			continue
+		}
+		i := slices.IndexFunc(current, func(s projectactions.Schedule) bool { return s.ID == id })
+		if i < 0 || !current[i].Enabled {
+			return fmt.Errorf("the Team routine needs account or secret setup; its source routine is kept running")
+		}
+	}
+	return nil
 }

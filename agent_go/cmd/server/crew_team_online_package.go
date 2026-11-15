@@ -50,6 +50,8 @@ type teamOnlinePackage struct {
 	chunkRoot      *os.Root
 	expires        time.Time
 	desiredEnabled map[string]bool
+	sourceLocal    triggerTarget
+	sourceStopped  bool
 }
 
 func newTeamOnlinePackage(project string) (*teamOnlinePackage, error) {
@@ -156,9 +158,11 @@ func (api *StreamingAPI) scanTeamOnlinePackage(ctx context.Context, source trigg
 	if err != nil {
 		return err
 	}
+	matched := false
 	contains := func(data []byte) bool {
 		for _, s := range secrets {
 			if s.Value != "" && bytes.Contains(data, []byte(s.Value)) {
+				matched = true
 				return true
 			}
 		}
@@ -198,6 +202,9 @@ func (api *StreamingAPI) scanTeamOnlinePackage(ctx context.Context, source trigg
 			}
 		}
 		if err := teamonline.InspectParts(p.root, item.DatasetParts, contains); err != nil {
+			if matched {
+				return fmt.Errorf("secret_match")
+			}
 			return err
 		}
 	} else {

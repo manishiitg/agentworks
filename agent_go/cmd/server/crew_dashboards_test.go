@@ -201,3 +201,22 @@ func TestTeamOnlinePackageRejectsCredentialPathsAndDecodedSecretValues(t *testin
 		}
 	}
 }
+
+// PLAT-746-1023: a standalone routine hand-off belongs to the current Team,
+// not to an arbitrary other Crew the member owns. Dashboard dependencies are
+// admitted separately from their actual source-owned dependency preview.
+func TestTeamOnlineAutomationRefusesNonTeamSource(t *testing.T) {
+	in := teamOnlineRequest{TeamProjectID: "team", SourceProjectID: "other-owned-crew", Kind: "automation", ItemID: "weekly", Revision: strings.Repeat("a", 64), SubmissionID: "move-weekly"}
+	if err := in.validate(); err == nil {
+		t.Fatal("unrelated Crew routine admitted")
+	}
+	in.SourceProjectID = in.TeamProjectID
+	if err := in.validate(); err != nil {
+		t.Fatalf("Team routine refused: %v", err)
+	}
+	in.Kind = "dashboard"
+	in.SourceProjectID = "other-owned-crew"
+	if err := in.validate(); err != nil {
+		t.Fatalf("owned dashboard source refused: %v", err)
+	}
+}
