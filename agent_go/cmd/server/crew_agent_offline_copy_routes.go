@@ -3,10 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -153,8 +156,22 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, map[string]any{"missing": missingChunks(store, []chunkedFile{in.Delta})})
 	case "chunks":
-		err = readChunkFrames(io.LimitReader(r.Body, chunkBatchBytes+1), func(id string, data []byte) error { return putChunk(store, id, data) })
+		limited := &io.LimitedReader{R: r.Body, N: chunkBatchBytes + 1}
+		frames, payload := 0, 0
+		err = readChunkFrames(limited, func(id string, data []byte) error { frames++; payload += len(data); return putChunk(store, id, data) })
 		if err != nil {
+			// Parser errors contain counts, never frame contents. Strip OS paths
+			// from storage errors before redaction; no source text belongs in logs.
+			detail := err.Error()
+			var pathErr *os.PathError
+			var linkErr *os.LinkError
+			if errors.As(err, &pathErr) {
+				detail = pathErr.Op + ": " + pathErr.Err.Error()
+			}
+			if errors.As(err, &linkErr) {
+				detail = linkErr.Op + ": " + linkErr.Err.Error()
+			}
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s event=chunks_failed frames=%d payload_bytes=%d stream_bytes=%d content_length=%d limit=%d reason=%q", project, agent, frames, payload, chunkBatchBytes+1-limited.N, r.ContentLength, chunkBatchBytes, redaction.Text(detail))
 			fail(400, "invalid_chunks")
 			return
 		}

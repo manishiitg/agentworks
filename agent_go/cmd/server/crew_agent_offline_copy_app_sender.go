@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -222,6 +223,14 @@ func sendCrewOfflineAppDelta(ctx context.Context, user string, c desktopConnecti
 		if response != nil {
 			io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 			response.Body.Close()
+		}
+		if e != nil {
+			status := 0
+			var remote *crewRemoteHTTPError
+			if errors.As(e, &remote) {
+				status = remote.Status
+			}
+			log.Printf("[AGENT_OFFLINE_COPY] session=%s event=chunks_upload_failed bytes=%d limit=%d status=%d revision=%d offset=%d retry=next_finished_turn", b.Session, frames.Len(), chunkBatchBytes, status, cursor.Revision, cursor.Offset)
 		}
 		frames.Reset()
 		return e
