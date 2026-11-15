@@ -17,6 +17,10 @@ import (
 // invent a Mac binding, read another person's journal or clone a home copy.
 func registerCrewPutOnlineServerSource(ctx context.Context, person, project, key string) (string, ProductConversationRecord, error) {
 	var source ProductConversationRecord
+	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.UserID != person || claims.AccessToken != nil || claims.Scope != "" {
+		return "", source, errCrewTeamAgentNotYours
+	}
 	t, err := readCrewTeamOrNew(project, person)
 	if err != nil || !t.member(person) || t.RosterSource != "" || !crewTeamAccountActive(person) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		return "", source, errCrewTeamAgentNotYours
@@ -95,7 +99,7 @@ func crewOfflineServerSource(ctx context.Context, user string, record ProductCon
 
 // The same coalesced finished-turn worker captures server sources. It writes
 // only appended portable JSONL chunks, with a fresh source gate per commit.
-func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, session, workspace string) error {
+func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, session, workspace string) (retErr error) {
 	records, err := defaultProductConversationRegistryStore().crewWorkspaceChats(ctx, user, workspace)
 	if err != nil {
 		return err
@@ -121,6 +125,15 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	if err != nil {
 		return nil
 	} // ordinary private chats are not copied implicitly
+	stage := "history"
+	log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=server_capture_started", project, a.ID, session)
+	defer func() {
+		if retErr != nil {
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=server_capture_failed stage=%s", project, a.ID, session, stage)
+		} else {
+			log.Printf("[AGENT_OFFLINE_COPY] project=%s agent=%s session=%s event=server_capture_finished", project, a.ID, session)
+		}
+	}()
 	roots, found, err := crewStorageRoots(workspace)
 	if err != nil || !found || roots.ID != project || roots.Owner != t.OwnerID {
 		return fmt.Errorf("source Crew changed")
@@ -137,6 +150,7 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	if json.Unmarshal(raw, &saved) != nil || saved.UserID != user || saved.Session != session {
 		return fmt.Errorf("source history owner changed")
 	}
+	stage = "journal"
 	path, err := crewOfflineAppJournal(roots, record, saved.History)
 	if err != nil {
 		return err
@@ -159,6 +173,7 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	if err != nil {
 		return err
 	}
+	stage = "delta_commit"
 	mu := crewTeamRecordMutex(teamDir)
 	for {
 		if err := ctx.Err(); err != nil {
