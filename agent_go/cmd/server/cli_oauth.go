@@ -271,7 +271,7 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
 	}
-	if grant.BoundAgentID != "" && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/agents/usage" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
+	if grant.BoundAgentID != "" && !crewOfflineCopyOAuthPath(r.Method, r.URL.Path) && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/agents/usage" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
@@ -286,6 +286,9 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 }
 
 func cliOAuthAllowedPath(method, path string) bool {
+	if crewOfflineCopyOAuthPath(method, path) {
+		return true // Exact source attachment and current registry are rechecked by the ingest handler.
+	}
 	if method == http.MethodPost && (path == "/api/external/v1/mcp/tasks" || path == "/api/external/v1/mcp/elicitation") {
 		return true // Protocol adapters redispatch native operations under the current grant.
 	}
