@@ -51,6 +51,7 @@ var (
 
 // Record counts one read of path that took elapsed.
 func Record(ctx context.Context, path string, elapsed time.Duration) {
+	traceRead(path)
 	if ctx != nil {
 		if counter, ok := ctx.Value(requestKey{}).(*Request); ok {
 			counter.reads.Add(1)
