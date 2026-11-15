@@ -82,6 +82,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		return
 	}
 	id := ""
+	newJoin := false
 	if action == "leave" {
 		for key, a := range team.Agents {
 			if a.OwnerID == claims.UserID && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
@@ -91,6 +92,14 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 			}
 		}
 	} else {
+		known := false
+		for _, a := range team.Agents {
+			if a.OwnerID == claims.UserID && a.Terminal != nil && a.Terminal.NamedAgentID == named.ID {
+				known = true
+				break
+			}
+		}
+		newJoin = !known
 		record, joinErr := upsertCrewTeamTerminal(&team, claims.UserID, named, pair)
 		if joinErr != nil {
 			crewTeamTerminalRefused(w, 409, project, named, "registry_changed", joinErr.Error())
@@ -107,7 +116,14 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	log.Printf("[TEAM_TERMINAL_AGENT] project=%s agent=%s session=%s outcome=%s", project, id, named.Attachment.SessionID, action)
 	go pushCrewTeamRecordChanged(team)
 	registered := team.Agents[id]
-	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "outcome": action, "in_team": registered.InTeam, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": "New agents start Not shared; rejoining keeps this agent's existing sharing and chat choices. Choose Shared with team in AgentWorks to let teammates ask. Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
+	notice := "Rejoining keeps this agent's existing sharing and chat choices."
+	if newJoin {
+		notice = "Teammates can now ask this agent; answers only. Switch to Only me in AgentWorks to hide it."
+	}
+	if action == "leave" {
+		notice = "Left this Team; files and the AgentBridge connection are unchanged."
+	}
+	externalJSON(w, map[string]any{"project": project, "agent_id": id, "copy": copy, "outcome": action, "in_team": registered.InTeam, "chat_share": registered.Rule.ChatShare, "chat_share_label": crewChatShareName(registered.Rule.ChatShare), "notice": notice + " Keep AgentWorks running for sync. Work only in the selected Team folders; Team keys stay on the server."})
 }
 
 // Reasons are fixed codes; neither provider text nor a caller's post enters logs.
@@ -207,9 +223,9 @@ func currentCrewTeamTerminal(ctx context.Context, t crewTeam, a crewTeamRegister
 	return current, nil
 }
 
-// Same defaults as an app agent's explicit Only-me/Answers-only choices.
+// A new join is In team, with answers only and no change permission.
 func newCrewTeamTerminalAgent(id, owner string, named namedMessageAgent) crewTeamRegisteredAgent {
-	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Place: "mac", Kind: "terminal", Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
+	return crewTeamRegisteredAgent{ID: id, OwnerID: owner, Tab: "terminal-" + uuid.NewString(), ChatKey: named.Attachment.SessionID, Name: firstNonEmptyTrimmed(named.Label, named.Name), Place: "mac", Kind: "terminal", InTeam: true, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
 }
 
 // Same Team operations as the screen/chat, with actor stamped from the exact

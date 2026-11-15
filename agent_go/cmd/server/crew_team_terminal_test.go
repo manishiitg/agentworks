@@ -18,12 +18,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// PLAT-746-1030: joining is not consent to share the session or its transcript.
-func TestTerminalTeamJoinStartsPrivateAndKeepsNativeSessionIdentity(t *testing.T) {
+// PLAT-746-1030: new joins are In team, without sharing the transcript or change permission.
+func TestTerminalTeamJoinStartsInTeamWithPrivateChatAndKeepsNativeSessionIdentity(t *testing.T) {
 	named := namedMessageAgent{ID: "named-agent", UserID: "owner", Name: "session-label", Attachment: &namedAgentAttachment{ID: "lease", SessionID: "exact-native-session", Provider: "claude"}}
 	a := newCrewTeamTerminalAgent(crewTeamAgentIDPrefix+"11111111-1111-4111-8111-111111111111", "owner", named)
-	if a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
-		t.Fatal("joining must not share a session, its transcript, or permission to change files for others")
+	if !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.CanMakeChanges {
+		t.Fatal("joining must put the agent In team without sharing its transcript or change permission")
 	}
 	if a.ChatKey != named.Attachment.SessionID || a.OwnerID != named.UserID || a.Kind != "terminal" {
 		t.Fatal("terminal identity must come from the admitted native attachment")
@@ -263,10 +263,19 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			id, _ := out["agent_id"].(string)
 			row := saved.Agents[id]
-			if row.ID == "" || row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
+			if row.ID == "" || !row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 				t.Fatal("join did not preserve exact native identity and private defaults")
 			}
 
+			// Explicit Only me remains available and survives rejoin.
+			row.InTeam = false
+			saved.Agents[id] = row
+			if e = writeCrewTeamAgentFixture(saved); e != nil {
+				t.Fatal(e)
+			}
+			if status, again := request(token, attached); status != 200 || again["in_team"] != false {
+				t.Fatalf("rejoin changed Only me: %d %v", status, again)
+			}
 			if status, out = request(token, attached, "doing"); status != 200 || out["private"] != true {
 				t.Fatalf("Only-me activity through a messaging child must stay private: %d %v", status, out)
 			}
