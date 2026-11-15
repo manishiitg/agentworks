@@ -1410,6 +1410,14 @@
   },
   {
     "family": "sessions",
+    "name": "goal",
+    "member": "sessions_goal_crew",
+    "description": "Set, show, pause, resume or clear a Codex goal on one of your own Crew chats, as /goal does when you type it.",
+    "source": "manage_crew_chats",
+    "source_action": "goal"
+  },
+  {
+    "family": "sessions",
     "name": "message",
     "member": "sessions_message_crew",
     "description": "Use the existing sessions message operation with its current access.",
