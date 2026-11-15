@@ -2,7 +2,9 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -135,4 +137,66 @@ func TestTeamWayAddSharesKeysAndNeverSignIns(t *testing.T) {
 	if copies != 0 {
 		t.Fatal("a personal sign-in was copied to the Team")
 	}
+
+	// A key that lives only in a member's Mac Vault: the Mac sends its value in the request body and the Team's vault
+	// stores it; the value is never returned, a web page cannot send one, and an existing Team key is not overwritten
+	// without replace.
+	send := func(body string, header ...string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(body))).WithContext(f.Ctx(fixtureUserB))
+		for i := 0; i+1 < len(header); i += 2 {
+			req.Header.Set(header[i], header[i+1])
+		}
+		rec := httptest.NewRecorder()
+		f.API.handleCrewTeamWay(rec, mux.SetURLVars(req, map[string]string{"project": fixtureCrewID}))
+		return rec
+	}
+	if rec := send(`{"op":"add","kind":"secret","id":"MAC_ONLY","value":"mac-value"}`, "Origin", "https://app.example.com"); rec.Code != http.StatusForbidden {
+		t.Fatalf("a web page sent a key value: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := send(`{"op":"remove","kind":"secret","id":"MAC_ONLY","value":"mac-value"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("a value was accepted on a remove: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := send(`{"op":"add","kind":"secret","id":"MAC_ONLY","value":"mac-value"}`); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "mac-value") {
+		t.Fatalf("add a key sent from a Mac: %d %s", rec.Code, rec.Body.String())
+	}
+	macFull, _ := vaultSecretName(way.Vault, "MAC_ONLY")
+	managedGlobalsMu.RLock()
+	stored := managedGlobals[macFull]
+	managedGlobalsMu.RUnlock()
+	if stored != "mac-value" || !vault.has(macFull) {
+		t.Fatal("the Team's vault did not store the key sent from the Mac")
+	}
+	if rec := send(`{"op":"add","kind":"secret","id":"MAC_ONLY","value":"other-value"}`); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "already on the Team") {
+		t.Fatalf("an existing Team key was changed without replace: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := send(`{"op":"add","kind":"secret","id":"MAC_ONLY","value":"other-value","replace":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("replace a Team key: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// The Mac's side: the value is read from the Mac's own Vault and sent straight to the server; an agent-supplied value
+	// is never used, and the reply carries the server's answer only.
+	vault.seed(t, f.API, fixtureUserB, "", "MAC_KEY", "mac-local-value")
+	var sent []byte
+	rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		sent, _ = io.ReadAll(r.Body)
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"notice":"MAC_KEY is on the Team now."}`))}, nil
+	})
+	macCtx := context.WithValue(f.Ctx(fixtureUserB), crewTeamTransportKey{}, http.RoundTripper(rt))
+	conn := desktopConnection{Server: "https://server.example.com", Token: "t"}
+	reply, err := f.API.crewTeamWayRemote(macCtx, fixtureUserB, conn, fixtureCrewID, "way_add", map[string]any{"item": "secret", "id": "MAC_KEY", "value": "agent-supplied"})
+	if err != nil || strings.Contains(reply, "mac-local-value") || strings.Contains(reply, "agent-supplied") {
+		t.Fatalf("Mac add: %v %s", err, reply)
+	}
+	var body map[string]any
+	if json.Unmarshal(sent, &body) != nil || body["value"] != "mac-local-value" {
+		t.Fatalf("the Mac did not send its own Vault's value: %s", sent)
+	}
+	sent = nil
+	if _, err := f.API.crewTeamWayRemote(macCtx, fixtureUserB, conn, fixtureCrewID, "way_add", map[string]any{"item": "secret", "id": "NOT_ON_THIS_MAC", "value": "agent-supplied"}); err != nil || strings.Contains(string(sent), "agent-supplied") || strings.Contains(string(sent), `"value"`) {
+		t.Fatalf("a key this Mac does not have carried a value: %v %s", err, sent)
+	}
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

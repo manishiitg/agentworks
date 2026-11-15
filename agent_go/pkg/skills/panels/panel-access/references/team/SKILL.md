@@ -57,6 +57,10 @@ Members' agents on the server pick up the Team's shared apps and secrets while t
 running on a member's Mac does not get them: the Team's keys stay on the server and are never copied to a laptop.
 When work on a Mac needs the Team's keys, say "This needs the Team's keys; I'll ask the Team agent to do it" and hand
 the task to the Team agent in plain words (the normal ask path), then report what it answers.
+A key that lives only in a member's Mac Vault can still reach the Team: the Team agent tells the member's agent which
+key names it needs (names only, in an agent message), and the member's agent runs way_add with item secret and that
+name on the Mac. The Mac reads the value from its own Vault and sends it straight to the server; never ask for, read
+out, paste or message a key's value, and report the name only.
 
 Connections, accounts and secret selections keep their own Vault rules. Team
 membership alone does not copy all local files or sign-ins. A person's agent

@@ -224,9 +224,16 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 		Kind    string `json:"kind"`
 		ID      string `json:"id"`
 		Replace bool   `json:"replace"`
+		// Value is a key's value sent straight from the person's Mac (their own Vault there), in this body only. It is
+		// never logged, returned or stored anywhere but the Team's vault.
+		Value string `json:"value,omitempty"`
 	}
-	if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&in) != nil {
+	if json.NewDecoder(io.LimitReader(r.Body, teamWayValueLimit+8192)).Decode(&in) != nil || len(in.Value) > teamWayValueLimit {
 		externalError(w, 400, "invalid_team_way", "Choose what to add or remove.")
+		return
+	}
+	if in.Value != "" && (in.Op != "add" || in.Kind != "secret" || r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "") {
+		externalError(w, 403, "team_way_refused", "A key's value is sent only from your Mac, when you add it to the Team.")
 		return
 	}
 	dir, err := crewTeamDir(project)
@@ -244,7 +251,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 	case "add:app":
 		notice, err = api.teamWayAddApp(ctx, claims.UserID, project, in.ID)
 	case "add:secret":
-		notice, err = api.teamWayAddSecret(ctx, claims.UserID, project, in.ID, in.Replace)
+		notice, err = api.teamWayAddSecret(ctx, claims.UserID, project, in.ID, in.Value, in.Replace)
 	case "remove:app":
 		notice, err = api.teamWayRemoveApp(ctx, claims.UserID, project, in.ID)
 	case "remove:secret":
@@ -419,20 +426,37 @@ func (api *StreamingAPI) teamWayAddApp(ctx context.Context, person, project, con
 	return c.Label + " is on the Team now. You keep your own copy.", nil
 }
 
-func (api *StreamingAPI) teamWayAddSecret(ctx context.Context, person, project, name string, replace bool) (string, error) {
+// ownPersonalVaultKey is the person's own Vault secret by name, read inside this process (the server's, or a Mac's own
+// Vault): it is handed to the Team's vault or sent to the Team's server and never goes through an agent or a log.
+func ownPersonalVaultKey(ctx context.Context, person, name string) (string, bool) {
 	mine, err := ensurePersonalVault(ctx, person)
 	if err != nil {
-		return "", err
+		return "", false
 	}
 	source, err := vaultSecretName(mine, name)
 	if err != nil {
-		return "", err
+		return "", false
 	}
 	managedGlobalsMu.RLock()
 	value, ok := managedGlobals[source]
 	managedGlobalsMu.RUnlock()
-	if !ok || !vaultOwnerOf(ctx, person, mine) {
-		return "", errors.New("You have no secret with that name in your Vault.")
+	if !ok || value == "" || !vaultOwnerOf(ctx, person, mine) {
+		return "", false
+	}
+	return value, true
+}
+
+// teamWayValueLimit bounds a key value sent from a Mac.
+const teamWayValueLimit = 64 << 10
+
+// teamWayAddSecret puts one key in the Team's vault. The value is the one a member's Mac sent in the request; without
+// it, the member's own Vault on this server is the source. The member keeps their own copy either way.
+func (api *StreamingAPI) teamWayAddSecret(ctx context.Context, person, project, name, value string, replace bool) (string, error) {
+	if value == "" {
+		var ok bool
+		if value, ok = ownPersonalVaultKey(ctx, person, name); !ok {
+			return "", errors.New("You have no secret with that name in your Vault.")
+		}
 	}
 	home, vault, err := api.ensureTeamVault(ctx, project)
 	if err != nil {
@@ -570,6 +594,14 @@ func (api *StreamingAPI) crewTeamWayRemote(ctx context.Context, person string, c
 		in := map[string]any{"op": strings.TrimPrefix(action, "way_"), "kind": externalArg(args, "item"), "id": externalArg(args, "id")}
 		if args["replace"] == true {
 			in["replace"] = true
+		}
+		// A key that lives in this Mac's own Vault goes straight to the server in the request body: it is read here, never
+		// by the agent, and is not logged or returned. A key this Mac does not have is looked up in the person's Vault on
+		// the server, as before.
+		if action == "way_add" && in["kind"] == "secret" {
+			if value, ok := ownPersonalVaultKey(ctx, person, externalArg(args, "id")); ok {
+				in["value"] = value
+			}
 		}
 		payload = in
 	}
