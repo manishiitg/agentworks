@@ -84,7 +84,7 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	if claims.UserID == ownerOfCrewProjectID(project) {
 		binding, _, ok := api.readExternalWorkspace(ctx, claims, project)
 		if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {
-			log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=sender_workspace", project)
+			log.Printf("[TEAM_AGENT_REACH] project=%s caller=%s event=refused reason=sender_workspace", project, claims.UserID)
 			externalError(w, 403, "sender_workspace_unavailable", "This Crew is unavailable or its owner changed.")
 			return
 		}
@@ -188,7 +188,7 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 func (api *StreamingAPI) callTeamMessageFromMac(ctx context.Context, owner string, caller triggerLinkCaller, project string, input crewTeamMessageRequest) (crewSyncReply, error) {
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
-		log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=no_team_pairing", project)
+		log.Printf("[TEAM_AGENT_REACH] project=%s caller=%s event=refused reason=no_team_pairing", project, owner)
 		return crewSyncReply{}, fmt.Errorf("turn on the Team for this Crew first")
 	}
 	connection, err := desktopConnectionFor(owner, b.ConnectionID)
@@ -196,7 +196,7 @@ func (api *StreamingAPI) callTeamMessageFromMac(ctx context.Context, owner strin
 		return crewSyncReply{}, err
 	}
 	if caller.Chat == nil || caller.Stamp.ID != project {
-		log.Printf("[CREW_TEAM] project=%s event=team_message_refused reason=other_crew from_crew=%s", project, caller.Stamp.ID)
+		log.Printf("[TEAM_AGENT_REACH] project=%s caller=%s event=refused reason=other_crew from_crew=%s", project, owner, caller.Stamp.ID)
 		return crewSyncReply{}, fmt.Errorf("send to a Team member's agent from an agent of the same Crew")
 	}
 	tab := macMainTab
