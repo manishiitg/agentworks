@@ -222,7 +222,6 @@ func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *User
 func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, claims *UserClaims, args map[string]any, send bool) (triggerTarget, error) {
 	crewID, workflowID, name := externalArg(args, "crew_id"), externalArg(args, "workflow_id"), strings.TrimSpace(externalArg(args, "target"))
 	if base, key, ok := strings.Cut(name, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
-
 		if explicit := externalArg(args, "chat_id"); explicit != "" && explicit != key {
 			return triggerTarget{}, fmt.Errorf("target and chat_id name different agents")
 		}
