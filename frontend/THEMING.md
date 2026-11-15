@@ -160,7 +160,9 @@ and reduced-motion pause it. No compositor/frame-time claim without measurement.
 
 Colour roles working/waiting/done/error fan out to existing info/warning/success/
 destructive semantic controls, with contrasting labels; working also styles the
-turn text. The optional loader role overrides glyph colour only. Authored scopes
+turn text. The optional loader role overrides the inner SVG colour only; without it a glyph
+inherits its caller (including contrasting action-button labels), while agent marks
+keep their existing working tone. Authored scopes
 reset loader tokens. Team activity rings/text reuse the same existing counts,
 not a new Team state or browser permission. Presence/avatar/typing colours are
 not automatically reclassified as work statuses. Explicit code palettes remain

@@ -47,7 +47,7 @@ export function PersonPresenceDot({ presence, className = 'h-1.5 w-1.5' }: { pre
  * a pulsing amber ring when it needs you, red when it failed (until opened), green when a reply is not read yet, and a
  * green pulse while someone else is asking it. Nothing when all is quiet. */
 export function AgentMark({ state, asking }: { state: AgentMenuState; asking?: boolean }) {
-  if (state === 'running') return <LoadingIndicator role="img" aria-label="Working" className="h-3 w-3 shrink-0" />
+  if (state === 'running') return <LoadingIndicator role="img" aria-label="Working" className="h-3 w-3 shrink-0 text-info" />
   if (state === 'waiting') return <span role="img" aria-label="Needs you" title="Needs you" className="relative grid h-3 w-3 shrink-0 place-items-center">
     <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-[hsl(var(--warning))] opacity-60" />
     <span className="relative h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />

@@ -1,8 +1,8 @@
-.force-light, [data-report-theme] { --aw-loader-color: var(--info); --aw-loader-duration: 1000ms; }
+.force-light, [data-report-theme] { --aw-loader-color: initial; --aw-loader-duration: 1000ms; }
 /* Decorative only; the server-backed caller decides when the indicator exists.
    No per-glyph timers, observers, listeners, or work-state inference. */
-.aw-loader { display: inline-flex; flex-shrink: 0; vertical-align: -.125em; color: hsl(var(--aw-loader-color, var(--info))); }
-.aw-loader > svg { width: 100%; height: 100%; overflow: visible; }
+.aw-loader { display: inline-flex; flex-shrink: 0; vertical-align: -.125em; pointer-events: none; }
+.aw-loader > svg { width: 100%; height: 100%; overflow: visible; color: var(--aw-loader-color, inherit); }
 .aw-loader [data-loader-part] { display: none; transform-origin: 12px 12px; }
 .aw-loader [data-loader-part="ring"] { display: initial; }
 html[data-appearance-loader]:not([data-appearance-loader="ring"]) .aw-loader [data-loader-part="ring"] { display: none; }

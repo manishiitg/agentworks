@@ -24,7 +24,7 @@ export function SharedPeopleIcon({ sharedLine, people }: { sharedLine?: string; 
             <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${person.state === 'offline' ? 'bg-muted-foreground/50' : 'bg-emerald-500'}`} />
             <span className="min-w-0 flex-1 truncate">{person.name}</span>
             {(person.state === 'working' || person.state === 'waiting') && <span className="shrink-0 text-muted-foreground">{person.state}</span>}
-            {person.state === 'working' && <LoadingIndicator aria-hidden="true" className="h-3 w-3 shrink-0" />}
+            {person.state === 'working' && <LoadingIndicator aria-hidden="true" className="h-3 w-3 shrink-0 text-info" />}
           </div>
           {person.line && <p className="truncate pl-3.5 text-[11px] text-muted-foreground">{person.line}</p>}
         </div>)}
