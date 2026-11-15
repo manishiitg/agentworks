@@ -8,7 +8,7 @@ const root=createRoot(host)
 const render=async()=>act(async()=>root.render(<TeamAgentAsk tabId="watch"/>))
 const textbox=()=>host.querySelector('textarea')!
 const type=async(value:string)=>act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textbox(),value);textbox().dispatchEvent(new Event('input',{bubbles:true}))})
-import { openTeammateAgent, openTeamAgentHome } from './openTeammateAgent'
+import { openTeammateAgent } from './openTeammateAgent'
 import { TeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { useChatShareLines } from './ChatEmptyState'
@@ -65,10 +65,4 @@ it('identifies the observed person and Mac above the transcript with one direct 
  await act(async()=>{host.querySelector('details')!.open=true;[...host.querySelectorAll('button')].find(button=>button.textContent==='Ask from my agent')!.click()})
  expect(f.ask).toHaveBeenCalledWith('crew','Colleague','Peer agent','agent:colleague/review')
  expect(host.querySelectorAll('textarea')).toHaveLength(1)
-})
-
-it('opens the admitted Team Main in its own home instead of a viewer Main draft',()=>{
- openTeamAgentHome('team-home')
- expect(f.navigate).toHaveBeenCalledWith({surface:'work',id:'team-home',agent:'main'})
- expect(f.ask).not.toHaveBeenCalled()
 })

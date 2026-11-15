@@ -5,7 +5,8 @@ import { crewDashboardsTab, teamHomeRoutines, teamRequest, type CrewDashboardsTa
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { useTeamActivity, TeamActivityContent } from './TeamActivity'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { openTeammateAgent, openTeamAgentHome } from './openTeammateAgent'
+import { openTeammateAgent } from './openTeammateAgent'
+import { AgentAskThread } from './TeamAgentAsk'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
@@ -45,12 +46,11 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  if(team.error) return <p role="alert" className="px-1 text-[11px] text-muted-foreground">Could not load this Team. Try again.</p>
  if(!enabled || !team.view) return null
  const rows:TeamPanelAgent[]=(team.view.reachable||[]).map(row=>({...row,connection:target?.connection,id:row.agent_id,name:row.name,person:row.person||'Team',mine:false,team_agent:row.kind==='team_agent',online:row.online,place:row.place,activity:row.activity,last_message:row.last_message,last_message_at:row.last_message_at,typing:row.typing,cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}))
+ const homeAgent=team.view.reachable?.find(agent=>agent.kind==='team_agent')
  const ask=(row:TeamPanelAgent)=>{
   if(useAuthStore.getState().user?.id!==user || useWorkspaceConnectionStore.getState().activeWorkspaceId!==server) return
-	if (row.team_agent && team.view?.team.online_home && team.view.reachable?.some(agent=>agent.kind==='team_agent'&&agent.agent_id===row.id)) {
-	 void openTeamAgentHome(team.view.team.online_home,target?.connection,server)
-	 return
-	}
+  // The Team agent answers over AgentBridge inside this panel: never switch the app's connection or open the online home.
+  if (row.team_agent && homeAgent?.agent_id===row.id) { onPanelView('ask'); return }
   if(row.mine) {
    const own=team.view!.agents.find(agent=>agent.mine&&(agent.id||agent.key)===row.id)
    const tab=own&&teamAgentChatTab(team,projectId,own.key)
@@ -71,5 +71,5 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
   const item=online.items.find(row=>row.id===id)
   if(item) selectReportDocument(online.workspace,item.path,true)
  }
- return <TeamPanel view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask}/>
+ return <TeamPanel view={panelView} onNavigate={onPanelView} fullActivity={<TeamActivityContent target={target!} projectId={projectId} activity={activity}/>} routines={online?.scope===scope?online.routines:[]} artifacts={artifacts.map(item=>({id:item.id,title:item.title,kind:item.kind,addedBy:item.addedBy}))} onArtifact={openArtifact} shared={shared} onShared={openShared} scope={scope} agents={rows} events={activity.view?.feed||[]} error={onlineError||activity.error} onAsk={ask} teamAgentAsk={<AgentAskThread target={target} address={homeAgent?.address} label={`Ask the ${homeAgent?.name||'Team agent'}`} sender={homeAgent?.name||'Team agent'} scope={`${scope}:${target?.connection}:${target?.project}:${homeAgent?.address}`} enabled={!!homeAgent}><p className="mt-1 text-xs text-muted-foreground">Ask through AgentBridge. Replies stay here.</p></AgentAskThread>}/>
 }
