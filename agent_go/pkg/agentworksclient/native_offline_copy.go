@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 )
+
+var errNativeCopyNotShared = errors.New("native copy is not shared")
 
 type nativeCopyCursor struct {
 	Project  string `json:"project"`
@@ -36,7 +39,7 @@ func (c *Client) syncNativeCopy(ctx context.Context, a AgentAttachment, old nati
 		return old, err
 	}
 	if !status.Shared {
-		return old, nil
+		return old, errNativeCopyNotShared
 	}
 	cur := status.nativeCopyCursor
 	if cur.Project == "" || cur.Agent == "" || cur.Offset < 0 {
@@ -133,7 +136,9 @@ func (b *localBridge) queueNativeCopy(ctx context.Context, s *localSession) {
 			return
 		}
 		outcome := "synced"
-		if err != nil {
+		if errors.Is(err, errNativeCopyNotShared) {
+			outcome = "skipped"
+		} else if err != nil {
 			outcome = "refused"
 		} else {
 			s.NativeCopyCursor = next
