@@ -80,7 +80,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   const mappedLocal = (row: DashboardDirectoryEntry) => onlineItems.some(item => item.online?.source_project_id === projectId && item.online.dashboard_id === row.dashboard_id)
   const rows = [
     ...(onThisMac ? (localRows || []).filter(row => !mappedLocal(row)).map(row => ({ id: `local:${row.dashboard_id}`, sourceId: row.dashboard_id, title: dashboardDisplayName(row), kind: row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard', workspace: row.workspace, path: row.document_path, place: 'This Mac', online: undefined as DashboardsTab['items'][number]['online'], canAdd: canAdd && row.can_edit, publicLink: undefined as DashboardsTab['items'][number]['public_link'] })) : []),
-    ...((!onThisMac || !unbound) && tab ? tab.items.map(item => ({ id: `remote:${item.id}`, sourceId: item.id, title: item.title, kind: item.kind, workspace: item.workspace || tab.workspace, path: item.path, online: item.online, place: item.online ? 'On the Team' : tab.on_mac ? 'This Mac' : 'On the Team', canAdd: false, publicLink: item.public_link })) : []),
+    ...((!onThisMac || !unbound) && tab ? tab.items.map(item => ({ id: `remote:${item.workspace || tab.workspace}:${item.id}`, sourceId: item.id, title: item.title, kind: item.kind, workspace: item.workspace || tab.workspace, path: item.path, online: item.online, place: item.online ? 'On the Team' : tab.on_mac ? 'This Mac' : 'On the Team', canAdd: false, publicLink: item.public_link })) : []),
   ]
   async function openRow(row: typeof rows[number]) {
     if (!row.online) { selectReportDocument(row.workspace, row.path, true); return }
