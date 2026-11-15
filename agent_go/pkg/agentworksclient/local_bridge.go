@@ -46,6 +46,7 @@ type LocalBridgeRequest struct {
 	SwitchConnection bool           `json:"switch_connection,omitempty"`
 	Setup            bool           `json:"setup,omitempty"`
 	Action           string         `json:"action"`
+	SyncTranscript   bool           `json:"sync_transcript,omitempty"`
 	Arguments        map[string]any `json:"arguments,omitempty"`
 	AttachmentID     string         `json:"attachment_id,omitempty"`
 	Provider         string         `json:"provider"`
@@ -150,15 +151,18 @@ type LocalBridgeReply struct {
 }
 
 type localSession struct {
-	lastHeldRevision string    // notice fingerprint only; never saved, no message bodies or IDs
-	WorkspaceDir     string    `json:"workspace_dir,omitempty"`
-	Activity         string    `json:"activity,omitempty"`
-	ActivityAt       time.Time `json:"activity_at,omitempty"`
-	LabelName        string    `json:"label_name,omitempty"`
-	HookTransport    string    `json:"hook_transport,omitempty"`
-	lateNotice       string    // set when an attach finished after its command had given up; said once on the next prompt
-	museWatch        *museWatchState
-	OwnCLI           bool `json:"own_cli,omitempty"`
+	NativeCopyCursor  nativeCopyCursor `json:"native_copy_cursor,omitempty"`
+	nativeCopyRunning bool
+	nativeCopyAgain   bool
+	lastHeldRevision  string    // notice fingerprint only; never saved, no message bodies or IDs
+	WorkspaceDir      string    `json:"workspace_dir,omitempty"`
+	Activity          string    `json:"activity,omitempty"`
+	ActivityAt        time.Time `json:"activity_at,omitempty"`
+	LabelName         string    `json:"label_name,omitempty"`
+	HookTransport     string    `json:"hook_transport,omitempty"`
+	lateNotice        string    // set when an attach finished after its command had given up; said once on the next prompt
+	museWatch         *museWatchState
+	OwnCLI            bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
 	Also             bool            `json:"also,omitempty"`
@@ -1502,6 +1506,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			_ = b.save()
 		}
 	}
+	if in.SyncTranscript && (in.Provider == "claude" || in.Provider == "codex") && !s.Offline && in.HostKey != "" && in.HostKey == s.HostKey {
+		b.queueNativeCopy(serverCtx, s)
+	}
 	if in.Action == "observe" {
 		return LocalBridgeReply{}
 	}
@@ -1565,6 +1572,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if b.closed || b.sessions[key] != s || s.Offline {
 			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}
+		}
+		if in.Action == "crew_leave" {
+			s.NativeCopyCursor = nativeCopyCursor{} // explicit leave, never a silent rewrite reset
+			_ = b.save()
 		}
 		out.Result = raw
 		return out
