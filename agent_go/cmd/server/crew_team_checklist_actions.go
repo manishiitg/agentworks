@@ -130,7 +130,7 @@ func (api *StreamingAPI) crewChecklistAction(ctx context.Context, claims *UserCl
 				continue
 			}
 			if versionErr != nil {
-				return nil, versionErr
+				return nil, fmt.Errorf("This setup is unavailable; ask the sharer to restore its shared instruction file")
 			}
 			text, err := crewChecklistReadInstructions(project, setup.Instruction.Path, state)
 			if err != nil {
