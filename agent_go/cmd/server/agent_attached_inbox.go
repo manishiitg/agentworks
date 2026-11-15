@@ -80,7 +80,7 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 				hold(message, source, "admission_recheck_failed", why)
 				continue
 			}
-			if api.authorizeAgentConversationPeer(r.Context(), live, conversation, 1-message.From, false) != nil {
+			if api.externalAuthorizeMessagePeer(r.Context(), live, source, false) != nil {
 				hold(message, source, "sender_authorization_failed", "This sender no longer has access to this chat.")
 				continue
 			}
@@ -88,9 +88,6 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
 			"sender": store.endpointName(source, agent.UserID), "sender_id": source.NamedAgentID,
 			"message": message.Text, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt}
-		if instruction := terminalTeamInstructions(r.Context(), conversation, 1-message.From); instruction != "" {
-			row["team_instructions"] = instruction
-		}
 		if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute {
 			row["sender_user_id"] = source.UserID
 			row["own_agent_message"] = !message.SenderNonOwnerTurn && crewOwnAgentMessage(conversation.Endpoints[1-message.From], source)
