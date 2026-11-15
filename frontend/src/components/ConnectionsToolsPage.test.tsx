@@ -90,3 +90,13 @@ it('opens the copyable appearance prompt in Settings', async () => {
   expect(host.textContent).toContain('Copy prompt')
   expect(host.textContent).toContain('Reset to default')
 })
+
+it('opens the Appearance section directly from the account menu route', async () => {
+  const previous=window.location.href
+  window.history.replaceState({},'', '/settings/connections?section=appearance')
+  try {
+    await act(async()=>root.render(<ConnectionsToolsPage/>))
+    expect(host.querySelector('textarea#appearance-prompt')).toBeTruthy()
+    expect(host.querySelector('nav button[aria-current="page"]')?.textContent).toBe('Appearance')
+  } finally {window.history.replaceState({},'',previous)}
+})

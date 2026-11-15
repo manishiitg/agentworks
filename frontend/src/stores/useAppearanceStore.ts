@@ -8,7 +8,7 @@ let requestVersion = 0
 
 type Operation = 'read' | 'apply' | 'save' | 'delete' | 'reset'
 type State = AppearanceDocument & {
-  profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; saving: boolean; error: string
+  backgroundScene: 'none' | 'neon-orbit'; profile: AppearanceProfile; preview: AppearanceTheme | null; scope: string; loaded: boolean; saving: boolean; error: string
   setProfile: (profile: AppearanceProfile) => void
   setPreview: (theme: AppearanceTheme | null) => void
   load: (scope: string) => Promise<void>
@@ -16,8 +16,8 @@ type State = AppearanceDocument & {
   resetScope: (scope: string) => void
 }
 export const useAppearanceStore = create<State>((set, get) => ({
-  current: defaultAppearance(), saved: [], profile: 'dark', preview: null, scope: '', loaded: false, saving: false, error: '',
-  resetScope: scope => { requestVersion++; set({ scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, saving: false, error: '' }) },
+  current: defaultAppearance(), saved: [], backgroundScene: 'none', profile: 'dark', preview: null, scope: '', loaded: false, saving: false, error: '',
+  resetScope: scope => { requestVersion++; set({ backgroundScene: 'none', scope, current: defaultAppearance(), saved: [], preview: null, profile: 'dark', loaded: false, saving: false, error: '' }) },
   setPreview: preview => set({ preview, profile: (preview ?? get().current).mode, error: '' }),
   setProfile: profile => {
     const preview = get().preview

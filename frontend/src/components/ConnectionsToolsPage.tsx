@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Blocks, Cpu, Globe, KeyRound, Plug, Sparkles, Users, Terminal, Info, RotateCcw, DollarSign, Server, Palette } from 'lucide-react'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { AccountWhatsAppPanel, AccountGitHubPanel, AccountComputerUsePanel } from './integrations/AccountConnectionPanels'
@@ -49,7 +49,9 @@ function ConnectionsToolsContent() {
   const canReview = useCanReviewCode()
   const localMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const availableCategories = categories.filter(item => item.id === 'users' ? user?.is_admin === true : item.id === 'servers' ? localMac : item.id === 'costs' ? canReview : item.id !== 'connect' || Boolean(user))
-  const [category, setCategory] = useState<Category>('apps')
+  const readSection = (): Category => new URLSearchParams(window.location.search).get('section') === 'appearance' ? 'appearance' : 'apps'
+  const [category, setCategory] = useState<Category>(readSection)
+  useEffect(() => { const read = () => setCategory(readSection()); window.addEventListener('popstate', read); return () => window.removeEventListener('popstate', read) }, [])
   const current = availableCategories.find(item => item.id === category) || availableCategories[0]
   const choose = (next: Category) => setCategory(next)
   return <section aria-label="Settings" className="flex h-full min-h-0 flex-col bg-background">
